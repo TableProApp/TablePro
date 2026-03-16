@@ -50,9 +50,35 @@ actor CloudKitSyncEngine {
 
     // MARK: - Push
 
+    /// CloudKit allows at most 400 items (saves + deletions) per modify operation
+    private static let maxBatchSize = 400
+
     func push(records: [CKRecord], deletions: [CKRecord.ID]) async throws {
         guard !records.isEmpty || !deletions.isEmpty else { return }
 
+        // Split into batches that fit within CloudKit's 400-item limit
+        var remainingSaves = records[...]
+        var remainingDeletions = deletions[...]
+
+        while !remainingSaves.isEmpty || !remainingDeletions.isEmpty {
+            let batchSaves: [CKRecord]
+            let batchDeletions: [CKRecord.ID]
+
+            let savesCount = min(remainingSaves.count, Self.maxBatchSize)
+            batchSaves = Array(remainingSaves.prefix(savesCount))
+            remainingSaves = remainingSaves.dropFirst(savesCount)
+
+            let deletionsCount = min(remainingDeletions.count, Self.maxBatchSize - savesCount)
+            batchDeletions = Array(remainingDeletions.prefix(deletionsCount))
+            remainingDeletions = remainingDeletions.dropFirst(deletionsCount)
+
+            try await pushBatch(records: batchSaves, deletions: batchDeletions)
+        }
+
+        Self.logger.info("Pushed \(records.count) records, \(deletions.count) deletions")
+    }
+
+    private func pushBatch(records: [CKRecord], deletions: [CKRecord.ID]) async throws {
         try await withRetry {
             let operation = CKModifyRecordsOperation(
                 recordsToSave: records,
@@ -83,8 +109,6 @@ actor CloudKitSyncEngine {
                 self.database.add(operation)
             }
         }
-
-        Self.logger.info("Pushed \(records.count) records, \(deletions.count) deletions")
     }
 
     // MARK: - Pull
