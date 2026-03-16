@@ -90,11 +90,12 @@ extension MainContentCoordinator {
         tabIndex: Int,
         mutate: @escaping (inout PaginationState) -> Void
     ) {
+        let tabId = tabManager.tabs[tabIndex].id
         confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
             guard let self, confirmed else { return }
-            guard tabIndex < self.tabManager.tabs.count else { return }
+            guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
-            mutate(&self.tabManager.tabs[tabIndex].pagination)
+            mutate(&self.tabManager.tabs[idx].pagination)
             self.reloadCurrentPage()
         }
     }

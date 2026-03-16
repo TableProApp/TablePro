@@ -338,7 +338,6 @@ final class MainContentCommandActions {
             AppState.shared.isCurrentTabEditable = false
             coordinator?.toolbarState.isTableTab = false
             AppState.shared.isTableTab = false
-            AppState.shared.isTableTab = false
         }
     }
 
