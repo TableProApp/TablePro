@@ -314,7 +314,7 @@ final class EtcdHttpClient: @unchecked Sendable {
     private var authToken: String?
     private var _isAuthenticating = false
 
-    private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdHttpClient")
+    private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdHttpClient")
 
     init(config: DriverConnectionConfig) {
         self.config = config
@@ -903,6 +903,7 @@ final class EtcdHttpClient: @unchecked Sendable {
 
             if !verifyHostname {
                 // VerifyCA mode: validate the CA chain but skip hostname check
+                Self.logger.debug("TLS: skipping hostname verification (VerifyCA mode)")
                 let policy = SecPolicyCreateBasicX509()
                 SecTrustSetPolicies(serverTrust, policy)
             }

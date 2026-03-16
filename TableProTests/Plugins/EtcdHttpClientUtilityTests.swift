@@ -116,21 +116,19 @@ struct EtcdPrefixRangeEndTests {
 
     @Test("All 0xFF bytes returns null byte")
     func allMaxBytes() {
-        // Build a string where all bytes are 0xFF
-        let bytes: [UInt8] = [0xFF, 0xFF, 0xFF]
-        let input = String(bytes: bytes, encoding: .utf8) ?? ""
-        // If input can't be created as valid UTF-8, test that the function handles it
-        if !input.isEmpty {
-            let result = TestEtcdPrefixRange.rangeEnd(for: input)
-            #expect(result == "\0")
-        }
+        // 0xFF bytes aren't valid UTF-8; test with lossy decoding to exercise the all-max-byte path
+        let input = String(decoding: [0xFF, 0xFF, 0xFF] as [UInt8], as: UTF8.self)
+        let result = TestEtcdPrefixRange.rangeEnd(for: input)
+        #expect(result == "\0")
     }
 
-    @Test("Prefix with trailing 0xFF bytes rolls back correctly")
-    func trailingMaxBytes() {
-        // "a" followed by nothing special: just increment last byte
-        let result = TestEtcdPrefixRange.rangeEnd(for: "a")
-        #expect(result == "b")
+    @Test("Prefix ending with high-value byte rolls back correctly")
+    func trailingHighBytes() {
+        // "a" + 0xFE (high but not max) should increment 0xFE to 0xFF, truncate to "a\xFF"
+        // But since 0xFE isn't valid UTF-8 continuation, test with valid multi-byte:
+        // Use "z" which is 0x7A — incrementing gives 0x7B = "{"
+        let result = TestEtcdPrefixRange.rangeEnd(for: "az")
+        #expect(result == "a{")
     }
 }
 

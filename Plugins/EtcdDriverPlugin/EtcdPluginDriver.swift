@@ -21,7 +21,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         lock.withLock { _httpClient }
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdPluginDriver")
+    private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdPluginDriver")
     private static let maxKeys = PluginRowLimits.defaultMax
 
 
@@ -213,7 +213,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             // Skip leading "/" when finding the first segment
             let searchStart: String.Index
-            if relative.hasPrefix("/") && relative.count > 1 {
+            if relative.hasPrefix("/"), relative.index(after: relative.startIndex) < relative.endIndex {
                 searchStart = relative.index(after: relative.startIndex)
             } else {
                 searchStart = relative.startIndex
@@ -919,8 +919,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     /// Empty prefix uses null byte (\0) as key to mean "all keys".
     private static func allKeysRange(for prefix: String) -> (key: String, rangeEnd: String) {
         if prefix.isEmpty {
-            // \0 as key = start from beginning, \0 as range_end = all keys
-            let b64Key = EtcdHttpClient.base64Encode("\0")
+            // Empty key = start from beginning, \0 as range_end = all keys
+            let b64Key = EtcdHttpClient.base64Encode("")
             let b64RangeEnd = EtcdHttpClient.base64Encode("\0")
             return (b64Key, b64RangeEnd)
         }

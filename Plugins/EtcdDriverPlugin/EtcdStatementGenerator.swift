@@ -10,7 +10,7 @@ import os
 import TableProPluginKit
 
 struct EtcdStatementGenerator {
-    private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdStatementGenerator")
+    private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdStatementGenerator")
 
     let prefix: String
     let columns: [String]

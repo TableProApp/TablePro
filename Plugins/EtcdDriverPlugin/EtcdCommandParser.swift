@@ -80,7 +80,7 @@ extension EtcdParseError: PluginDriverError {
 }
 
 struct EtcdCommandParser {
-    private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdCommandParser")
+    private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdCommandParser")
 
     // MARK: - Public API
 
