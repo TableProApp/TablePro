@@ -300,6 +300,8 @@ struct MainContentView: View {
                 let sessions = DatabaseManager.shared.activeSessions
                 guard let session = sessions[connection.id] else { return }
                 if session.isConnected && coordinator.needsLazyLoad {
+                    // Don't auto-reload if the user has unsaved changes
+                    guard !changeManager.hasChanges else { return }
                     coordinator.needsLazyLoad = false
                     if let selectedTab = tabManager.selectedTab,
                        !selectedTab.databaseName.isEmpty,
@@ -331,13 +333,16 @@ struct MainContentView: View {
                 }
                 // Lazy-load: execute query for restored tabs that skipped auto-execute,
                 // or re-query tabs whose row data was evicted while inactive.
+                // Skip if the user has unsaved changes (in-memory or tab-level).
+                let hasPendingEdits = changeManager.hasChanges
+                    || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
                 let needsLazyLoad = tabManager.selectedTab.map { tab in
                     tab.tabType == .table
                         && (tab.resultRows.isEmpty || tab.rowBuffer.isEvicted)
                         && (tab.lastExecutedAt == nil || tab.rowBuffer.isEvicted)
                         && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 } ?? false
-                if needsLazyLoad {
+                if needsLazyLoad && !hasPendingEdits {
                     coordinator.runQuery()
                 }
             }
@@ -348,10 +353,13 @@ struct MainContentView: View {
 
                 // Schedule row data eviction for inactive native window-tabs.
                 // 5s delay avoids thrashing when quickly switching between tabs.
+                // Skip eviction entirely if the active tab has unsaved in-memory changes,
+                // since evictInactiveRowData only checks tab-level pendingChanges.
                 evictionTask?.cancel()
                 evictionTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(5))
                     guard !Task.isCancelled else { return }
+                    guard !changeManager.hasChanges else { return }
                     coordinator.evictInactiveRowData()
                 }
             }

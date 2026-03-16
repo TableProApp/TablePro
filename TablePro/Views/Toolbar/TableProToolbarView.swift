@@ -90,7 +90,7 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                ToolbarItem(placement: .navigation) {
+                ToolbarItemGroup(placement: .navigation) {
                     Button {
                         NotificationCenter.default.post(name: .refreshData, object: nil)
                     } label: {
@@ -98,6 +98,15 @@ struct TableProToolbar: ViewModifier {
                     }
                     .help("Refresh (⌘R)")
                     .disabled(state.connectionState != .connected)
+
+                    Button {
+                        actions?.saveChanges()
+                    } label: {
+                        Label("Save Changes", systemImage: "checkmark.circle.fill")
+                    }
+                    .help("Save Changes (⌘S)")
+                    .disabled(!state.hasPendingChanges || state.connectionState != .connected)
+                    .tint(.accentColor)
                 }
 
                 // MARK: - Principal (Center)

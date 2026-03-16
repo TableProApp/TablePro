@@ -97,6 +97,12 @@ extension MainContentCoordinator {
         switch action {
         case .refresh:
             return String(localized: "Refreshing will discard all unsaved changes.")
+        case .sort:
+            return String(localized: "Sorting will reload data and discard all unsaved changes.")
+        case .pagination:
+            return String(localized: "Navigating to another page will discard all unsaved changes.")
+        case .filter:
+            return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
         }
     }
 

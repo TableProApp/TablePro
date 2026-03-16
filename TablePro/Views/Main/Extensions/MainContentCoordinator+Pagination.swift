@@ -87,24 +87,31 @@ extension MainContentCoordinator {
         reloadCurrentPage()
     }
 
-    /// Reload current page data
+    /// Reload current page data, guarding against unsaved changes
     func reloadCurrentPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
               let tableName = tabManager.tabs[tabIndex].tableName else { return }
 
-        let tab = tabManager.tabs[tabIndex]
-        let pagination = tab.pagination
+        let capturedTabIndex = tabIndex
+        let capturedTableName = tableName
+        confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
-        let newQuery = queryBuilder.buildBaseQuery(
-            tableName: tableName,
-            sortState: tab.sortState,
-            columns: tab.resultColumns,
-            limit: pagination.pageSize,
-            offset: pagination.currentOffset
-        )
+            let tab = self.tabManager.tabs[capturedTabIndex]
+            let pagination = tab.pagination
 
-        tabManager.tabs[tabIndex].query = newQuery
-        runQuery()
+            let newQuery = self.queryBuilder.buildBaseQuery(
+                tableName: capturedTableName,
+                sortState: tab.sortState,
+                columns: tab.resultColumns,
+                limit: pagination.pageSize,
+                offset: pagination.currentOffset
+            )
+
+            self.tabManager.tabs[capturedTabIndex].query = newQuery
+            self.runQuery()
+        }
     }
 }

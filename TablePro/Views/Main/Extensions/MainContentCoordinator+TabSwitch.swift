@@ -18,6 +18,14 @@ extension MainContentCoordinator {
         isHandlingTabSwitch = true
         defer { isHandlingTabSwitch = false }
 
+        // Persist the outgoing tab's unsaved changes so they survive the switch
+        if let oldId = oldTabId,
+           let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId }),
+           changeManager.hasChanges
+        {
+            tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
+        }
+
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
             evictInactiveTabs(excluding: activeIds)
@@ -36,6 +44,7 @@ extension MainContentCoordinator {
             selectedRowIndices = newTab.selectedRowIndices
             AppState.shared.isCurrentTabEditable = newTab.isEditable && !newTab.isView && newTab.tableName != nil
             toolbarState.isTableTab = newTab.tabType == .table
+            AppState.shared.isTableTab = newTab.tabType == .table
 
             // Configure change manager without triggering reload yet — we'll fire a single
             // reloadVersion bump below after everything is set up.
@@ -106,6 +115,7 @@ extension MainContentCoordinator {
         } else {
             AppState.shared.isCurrentTabEditable = false
             toolbarState.isTableTab = false
+            AppState.shared.isTableTab = false
         }
     }
 

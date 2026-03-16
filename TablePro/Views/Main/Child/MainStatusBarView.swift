@@ -37,14 +37,14 @@ struct MainStatusBarView: View {
         HStack {
             // Left: Data/Structure toggle for table tabs
             if let tab = tab, tab.tabType == .table, tab.tableName != nil {
-                Picker("", selection: $showStructure) {
+                Picker(String(localized: "View Mode"), selection: $showStructure) {
                     Label("Data", systemImage: "tablecells").tag(false)
                     Label("Structure", systemImage: "list.bullet.rectangle").tag(true)
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
                 .frame(width: 180)
                 .controlSize(.small)
-                .offset(x: -26)
             }
 
             Spacer()
@@ -104,7 +104,7 @@ struct MainStatusBarView: View {
                     }
                     .toggleStyle(.button)
                     .controlSize(.small)
-                    .help("Toggle Filters (Cmd+F)")
+                    .help(String(localized: "Toggle Filters (⌘F)"))
                 }
 
                 // Pagination controls for table tabs

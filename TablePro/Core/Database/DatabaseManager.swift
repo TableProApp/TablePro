@@ -41,6 +41,11 @@ final class DatabaseManager {
     /// Health monitors for active connections (MySQL/PostgreSQL only)
     private var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
 
+    /// Tracks connections with user queries currently in-flight.
+    /// The health monitor skips pings while a query is running to avoid
+    /// racing on non-thread-safe driver connections.
+    private var queriesInFlight: Set<UUID> = []
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }
@@ -311,10 +316,12 @@ final class DatabaseManager {
 
     /// Execute a query on the current session
     func execute(query: String) async throws -> QueryResult {
-        guard let driver = activeDriver else {
+        guard let sessionId = currentSessionId, let driver = activeDriver else {
             throw DatabaseError.notConnected
         }
 
+        queriesInFlight.insert(sessionId)
+        defer { queriesInFlight.remove(sessionId) }
         return try await driver.execute(query: query)
     }
 
@@ -346,17 +353,22 @@ final class DatabaseManager {
             sshPasswordOverride: sshPassword
         )
 
-        defer {
-            // Close tunnel after test
+        let result: Bool
+        do {
+            let driver = try DatabaseDriverFactory.createDriver(for: testConnection)
+            result = try await driver.testConnection()
+        } catch {
             if connection.sshConfig.enabled {
-                Task {
-                    try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                }
+                try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
             }
+            throw error
         }
 
-        let driver = try DatabaseDriverFactory.createDriver(for: testConnection)
-        return try await driver.testConnection()
+        if connection.sshConfig.enabled {
+            try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+        }
+
+        return result
     }
 
     // MARK: - SSH Tunnel Helper
@@ -447,6 +459,9 @@ final class DatabaseManager {
             connectionId: connectionId,
             pingHandler: { [weak self] in
                 guard let self else { return false }
+                // Skip ping while a user query is in-flight to avoid racing
+                // on the same non-thread-safe driver connection.
+                guard await !self.queriesInFlight.contains(connectionId) else { return true }
                 guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
                     return false
                 }
@@ -638,8 +653,14 @@ final class DatabaseManager {
 
         Self.logger.warning("SSH tunnel died for connection: \(session.connection.name)")
 
-        // Mark connection as reconnecting
+        // Stop health monitor before retrying to prevent stale pings during reconnect
+        await stopHealthMonitor(for: connectionId)
+
+        // Disconnect the stale driver and invalidate it so connectToSession
+        // creates a fresh connection instead of short-circuiting on driver != nil
+        session.driver?.disconnect()
         updateSession(connectionId) { session in
+            session.driver = nil
             session.status = .connecting
         }
 

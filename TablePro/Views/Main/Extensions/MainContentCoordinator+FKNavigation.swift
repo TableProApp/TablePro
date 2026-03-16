@@ -80,6 +80,8 @@ extension MainContentCoordinator {
             let tab = tabManager.tabs[tabIndex]
             AppState.shared.isCurrentTabEditable = tab.isEditable && !tab.isView && tab.tableName != nil
             toolbarState.isTableTab = tab.tabType == .table
+            AppState.shared.isTableTab = tab.tabType == .table
+            AppState.shared.isTableTab = tab.tabType == .table
         }
 
         if needsQuery {

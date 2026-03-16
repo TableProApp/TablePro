@@ -2514,6 +2514,9 @@
         }
       }
     },
+    "Applying or clearing filters will reload data and discard all unsaved changes." : {
+
+    },
     "Are you sure you want to delete \"%@\"?" : {
       "localizations" : {
         "vi" : {
@@ -2529,6 +2532,9 @@
           }
         }
       }
+    },
+    "Are you sure you want to delete this connection? This cannot be undone." : {
+
     },
     "Are you sure you want to disconnect from this database?" : {
       "extractionState" : "stale",
@@ -10958,6 +10964,9 @@
         }
       }
     },
+    "Navigating to another page will discard all unsaved changes." : {
+
+    },
     "Nearest" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15321,6 +15330,9 @@
         }
       }
     },
+    "Save Changes (⌘S)" : {
+
+    },
     "Save Failed" : {
       "localizations" : {
         "vi" : {
@@ -16510,6 +16522,9 @@
           }
         }
       }
+    },
+    "Sorting will reload data and discard all unsaved changes." : {
+
     },
     "Source:" : {
       "extractionState" : "stale",
@@ -18248,6 +18263,7 @@
       }
     },
     "Toggle Filters (Cmd+F)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -19441,6 +19457,9 @@
           }
         }
       }
+    },
+    "View Mode" : {
+
     },
     "View: %@" : {
       "localizations" : {

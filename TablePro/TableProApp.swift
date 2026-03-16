@@ -29,6 +29,7 @@ final class AppState {
     var isHistoryPanelVisible: Bool = false  // Global history panel visibility
     var hasQueryText: Bool = false  // True when current editor has non-empty query
     var hasStructureChanges: Bool = false  // True when structure view has pending schema changes
+    var isTableTab: Bool = false  // True when current tab is a table tab (not query)
 }
 
 // MARK: - Pasteboard Commands
@@ -332,7 +333,7 @@ struct AppMenuCommands: Commands {
                 actions?.toggleFilterPanel()
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleFilters))
-            .disabled(!appState.isConnected)
+            .disabled(!appState.isConnected || !appState.isTableTab)
 
             Button("Toggle History") {
                 actions?.toggleHistoryPanel()

@@ -30,13 +30,12 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     private let isAlive = OSAllocatedUnfairLock(initialState: true)
     private let relayTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
 
-    /// Dedicated queue for blocking I/O (poll, send, recv, libssh2 calls).
-    /// Keeps blocking work off the Swift cooperative thread pool.
-    private static let relayQueue = DispatchQueue(
-        label: "com.TablePro.ssh.relay",
-        qos: .utility,
-        attributes: .concurrent
-    )
+    /// Serial queue for all libssh2 calls on this tunnel's session.
+    /// libssh2 is not thread-safe per session, so every call must be serialized.
+    private let sessionQueue: DispatchQueue
+
+    /// Dedicated queue for the accept loop (poll + accept only, no libssh2 calls).
+    private let acceptQueue: DispatchQueue
 
     /// Callback invoked when the tunnel dies (keep-alive failure, etc.)
     var onDeath: ((UUID) -> Void)?
@@ -59,6 +58,14 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         self.listenFD = listenFD
         self.jumpChain = jumpChain
         self.createdAt = Date()
+        self.sessionQueue = DispatchQueue(
+            label: "com.TablePro.ssh.session.\(connectionId.uuidString)",
+            qos: .utility
+        )
+        self.acceptQueue = DispatchQueue(
+            label: "com.TablePro.ssh.accept.\(connectionId.uuidString)",
+            qos: .utility
+        )
     }
 
     var isRunning: Bool {
@@ -74,11 +81,13 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             guard let self else { return }
 
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                Self.relayQueue.async { [weak self] in
+                self.acceptQueue.async { [weak self] in
                     defer { continuation.resume() }
                     guard let self else { return }
 
-                    Self.logger.info("Forwarding started on port \(self.localPort) -> \(remoteHost):\(remotePort)")
+                    Self.logger.info(
+                        "Forwarding started on port \(self.localPort) -> \(remoteHost):\(remotePort)"
+                    )
 
                     while self.isRunning {
                         let clientFD = self.acceptClient()
@@ -89,19 +98,29 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                             break
                         }
 
-                        let channel = self.openDirectTcpipChannel(
-                            remoteHost: remoteHost,
-                            remotePort: remotePort
-                        )
+                        // Open channel and spawn relay on the session queue
+                        // to serialize libssh2 calls
+                        let semaphore = DispatchSemaphore(value: 0)
+                        self.sessionQueue.async {
+                            let channel = self.openDirectTcpipChannel(
+                                remoteHost: remoteHost,
+                                remotePort: remotePort
+                            )
 
-                        guard let channel else {
-                            Self.logger.error("Failed to open direct-tcpip channel")
-                            Darwin.close(clientFD)
-                            continue
+                            guard let channel else {
+                                Self.logger.error("Failed to open direct-tcpip channel")
+                                Darwin.close(clientFD)
+                                semaphore.signal()
+                                return
+                            }
+
+                            Self.logger.debug(
+                                "Client connected, relaying to \(remoteHost):\(remotePort)"
+                            )
+                            self.spawnRelay(clientFD: clientFD, channel: channel)
+                            semaphore.signal()
                         }
-
-                        Self.logger.debug("Client connected, relaying to \(remoteHost):\(remotePort)")
-                        self.spawnRelay(clientFD: clientFD, channel: channel)
+                        semaphore.wait()
                     }
 
                     Self.logger.info("Forwarding loop ended for port \(self.localPort)")
@@ -119,17 +138,21 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             guard let self else { return }
 
             while !Task.isCancelled && self.isRunning {
-                var secondsToNext: Int32 = 0
-                let rc = libssh2_keepalive_send(self.session, &secondsToNext)
+                let failed = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                    self.sessionQueue.async {
+                        var secondsToNext: Int32 = 0
+                        let rc = libssh2_keepalive_send(self.session, &secondsToNext)
+                        continuation.resume(returning: rc != 0)
+                    }
+                }
 
-                if rc != 0 {
-                    Self.logger.warning("Keep-alive failed with error \(rc), marking tunnel dead")
+                if failed {
+                    Self.logger.warning("Keep-alive failed, marking tunnel dead")
                     self.markDead()
                     break
                 }
 
-                let sleepInterval = max(Int(secondsToNext), 10)
-                try? await Task.sleep(for: .seconds(sleepInterval))
+                try? await Task.sleep(for: .seconds(10))
             }
         }
     }
@@ -154,24 +177,27 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             return copy
         }
 
-        // Close listenFD first to stop accepting new connections
+        // Shutdown socketFD to unblock any blocking reads in relay tasks
+        // without closing the fd (which could be reused by another thread)
+        shutdown(socketFD, SHUT_RDWR)
+        // Close listenFD to stop accepting new connections
         Darwin.close(listenFD)
-        // Close socketFD to unblock any channel reads in relay tasks
-        Darwin.close(socketFD)
 
         // Defer session teardown to a detached task that waits for relays to exit.
-        // Relay tasks will see isRunning=false and skip libssh2 channel cleanup.
         let session = self.session
+        let socketFD = self.socketFD
         let jumpChain = self.jumpChain
         let connectionId = self.connectionId
         Task.detached {
             // Wait for all relay tasks to finish (they'll exit quickly since
-            // socketFD is closed and isRunning is false)
+            // socketFD is shut down and isRunning is false)
             for task in currentRelayTasks {
                 await task.value
             }
 
-            // Now safe to tear down the session — no relay is using it
+            // Now safe to close the socket and tear down the session
+            Darwin.close(socketFD)
+
             libssh2_session_set_blocking(session, 1)
             tablepro_libssh2_session_disconnect(session, "Closing tunnel")
             libssh2_session_free(session)
@@ -190,7 +216,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
     /// Synchronous cleanup for app termination.
     /// At termination the process is exiting imminently, so we cancel relay tasks
-    /// and tear down immediately — any in-flight relays will be killed with the process.
+    /// and tear down immediately. We avoid closing socketFD or freeing the session
+    /// since relay tasks may still reference them; the OS reclaims all resources.
     func closeSync() {
         let wasAlive = isAlive.withLock { alive -> Bool in
             let was = alive
@@ -206,22 +233,14 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             tasks.removeAll()
         }
 
-        // Close sockets first so any blocking relay reads fail immediately
+        // Shutdown sockets to unblock reads, close listenFD (accept loop only)
+        shutdown(socketFD, SHUT_RDWR)
         Darwin.close(listenFD)
-        Darwin.close(socketFD)
 
-        // At app termination we free the session synchronously.
-        // Relay tasks are cancelled and won't touch libssh2 (isRunning is false).
-        libssh2_session_set_blocking(session, 1)
-        tablepro_libssh2_session_disconnect(session, "Closing tunnel")
-        libssh2_session_free(session)
-
+        // At app termination, skip session teardown and fd close.
+        // Relay tasks may still be using them, and the OS reclaims everything.
         for hop in jumpChain.reversed() {
             hop.relayTask?.cancel()
-            libssh2_channel_free(hop.channel)
-            tablepro_libssh2_session_disconnect(hop.session, "Closing")
-            libssh2_session_free(hop.session)
-            Darwin.close(hop.socket)
         }
     }
 
@@ -260,6 +279,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     /// Open a direct-tcpip channel, handling EAGAIN with select().
+    /// Must be called on `sessionQueue`.
     private func openDirectTcpipChannel(remoteHost: String, remotePort: Int) -> OpaquePointer? {
         while true {
             let channel = libssh2_channel_direct_tcpip_ex(
@@ -286,10 +306,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     /// Bidirectional relay between a client socket and an SSH channel.
-    /// Runs on a dedicated dispatch queue to avoid blocking Swift's cooperative thread pool.
+    /// The relay loop runs on `sessionQueue` to serialize all libssh2 calls.
     private func spawnRelay(clientFD: Int32, channel: OpaquePointer) {
-        // Wrap the blocking relay in a Task so close() can cancel/await it,
-        // but immediately hop to the dedicated dispatch queue for the actual I/O.
         let task = Task.detached { [weak self] in
             guard let self else {
                 Darwin.close(clientFD)
@@ -297,7 +315,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             }
 
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                Self.relayQueue.async { [weak self] in
+                self.sessionQueue.async { [weak self] in
                     defer { continuation.resume() }
                     guard let self else {
                         Darwin.close(clientFD)
@@ -314,7 +332,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Blocking relay loop — must only be called on `relayQueue`, never the cooperative pool.
+    /// Blocking relay loop. Must only be called on `sessionQueue`.
     private func runRelay(clientFD: Int32, channel: OpaquePointer) {
         let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: Self.relayBufferSize)
         defer {
