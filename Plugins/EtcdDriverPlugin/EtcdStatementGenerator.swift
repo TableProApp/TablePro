@@ -73,8 +73,10 @@ struct EtcdStatementGenerator {
             return []
         }
 
+        // Prepend the current browse prefix if the key doesn't already include it
+        let fullKey = !prefix.isEmpty && !k.hasPrefix(prefix) ? prefix + k : k
         let v = value ?? ""
-        var cmd = "put \(escapeArgument(k)) \(escapeArgument(v))"
+        var cmd = "put \(escapeArgument(fullKey)) \(escapeArgument(v))"
         if let lease = leaseId, !lease.isEmpty, lease != "0" {
             cmd += " --lease=\(lease)"
         }
