@@ -907,10 +907,10 @@ final class EtcdHttpClient: @unchecked Sendable {
                 SecTrustSetPolicies(serverTrust, policy)
             }
 
-            var secResult: SecTrustResultType = .invalid
-            SecTrustEvaluate(serverTrust, &secResult)
+            var error: CFError?
+            let isValid = SecTrustEvaluateWithError(serverTrust, &error)
 
-            if secResult == .unspecified || secResult == .proceed {
+            if isValid {
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))
             } else {
                 completionHandler(.cancelAuthenticationChallenge, nil)
@@ -944,8 +944,10 @@ final class EtcdHttpClient: @unchecked Sendable {
                 return
             }
 
-            // swiftlint:disable:next force_cast
-            let identity = identityRef as! SecIdentity
+            guard let identity = identityRef as? SecIdentity else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
             let credential = URLCredential(
                 identity: identity,
                 certificates: nil,

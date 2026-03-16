@@ -23,7 +23,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdPluginDriver")
     private static let maxKeys = PluginRowLimits.defaultMax
-    private static let maxOffset = 10_000
+
 
     private static let columns = ["Key", "Value", "Version", "ModRevision", "CreateRevision", "Lease"]
     private static let columnTypeNames = ["String", "String", "Int64", "Int64", "Int64", "String"]
@@ -34,15 +34,34 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     var supportsTransactions: Bool { false }
 
+    // etcd has no transaction support — these are no-ops
     func beginTransaction() async throws {}
     func commitTransaction() async throws {}
     func rollbackTransaction() async throws {}
 
     func quoteIdentifier(_ name: String) -> String { name }
 
+    func escapeStringLiteral(_ value: String) -> String { value }
+
     func defaultExportQuery(table: String) -> String? {
         let prefix = resolvedPrefix(for: table)
         return "get \(escapeArgument(prefix)) --prefix"
+    }
+
+    func truncateTableStatements(table: String, cascade: Bool) -> [String]? {
+        let prefix = resolvedPrefix(for: table)
+        if prefix.isEmpty {
+            return ["del \"\" --prefix"]
+        }
+        return ["del \(escapeArgument(prefix)) --prefix"]
+    }
+
+    func dropObjectStatement(name: String, type: String) -> String? {
+        let prefix = resolvedPrefix(for: name)
+        if prefix.isEmpty {
+            return "del \"\" --prefix"
+        }
+        return "del \(escapeArgument(prefix)) --prefix"
     }
 
     init(config: DriverConnectionConfig) {
@@ -59,9 +78,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let status = try? await client.endpointStatus()
         lock.withLock {
             _serverVersion = status?.version
+            _httpClient = client
         }
-
-        lock.withLock { _httpClient = client }
     }
 
     func disconnect() {
@@ -280,7 +298,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
-        ""
+        throw EtcdError.serverError("etcd does not support views")
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
@@ -847,11 +865,12 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let response = try await client.rangeRequest(req)
         var kvs = response.kvs ?? []
 
-        // Apply client-side filter if needed
+        // Apply client-side filter if needed (checks both key and value)
         if needsClientFilter {
             kvs = kvs.filter { kv in
                 let key = EtcdHttpClient.base64Decode(kv.key)
-                return matchesFilter(key: key, filterType: filterType, filterValue: filterValue)
+                let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
+                return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue)
             }
         }
 
@@ -881,14 +900,16 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return Int(response.count ?? "0") ?? 0
         }
 
-        // Need to fetch keys and filter client-side
-        let req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys), keysOnly: true)
+        // Need to fetch keys (and values for contains/startsWith filters) and filter client-side
+        let needsValues = filterType == .contains || filterType == .startsWith
+        let req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: Int64(Self.maxKeys), keysOnly: !needsValues)
         let response = try await client.rangeRequest(req)
         let kvs = response.kvs ?? []
 
         return kvs.filter { kv in
             let key = EtcdHttpClient.base64Decode(kv.key)
-            return matchesFilter(key: key, filterType: filterType, filterValue: filterValue)
+            let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
+            return matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue)
         }.count
     }
 
@@ -916,7 +937,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             return table
         }
         let root = _rootPrefix.hasSuffix("/") ? _rootPrefix : _rootPrefix + "/"
-        return root + table
+        let cleanTable = table.hasPrefix("/") ? String(table.dropFirst()) : table
+        return root + cleanTable
     }
 
     private func stripRootPrefix(_ key: String) -> String {
@@ -928,14 +950,21 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return key
     }
 
-    private func matchesFilter(key: String, filterType: EtcdFilterType, filterValue: String) -> Bool {
+    private func matchesFilter(key: String, value: String? = nil, filterType: EtcdFilterType, filterValue: String) -> Bool {
         switch filterType {
         case .none:
             return true
         case .contains:
-            return key.localizedCaseInsensitiveContains(filterValue)
+            if key.localizedCaseInsensitiveContains(filterValue) {
+                return true
+            }
+            return value?.localizedCaseInsensitiveContains(filterValue) ?? false
         case .startsWith:
-            return key.lowercased().hasPrefix(filterValue.lowercased())
+            let lowerFilter = filterValue.lowercased()
+            if key.lowercased().hasPrefix(lowerFilter) {
+                return true
+            }
+            return value?.lowercased().hasPrefix(lowerFilter) ?? false
         case .endsWith:
             return key.lowercased().hasSuffix(filterValue.lowercased())
         case .equals:
