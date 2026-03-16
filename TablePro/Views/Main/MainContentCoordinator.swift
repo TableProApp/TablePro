@@ -1101,14 +1101,10 @@ final class MainContentCoordinator {
             currentSort = SortState()
             currentSort.columns = [SortColumn(columnIndex: columnIndex, direction: newDirection)]
         }
-
-        tabManager.tabs[tabIndex].sortState = currentSort
-        tabManager.tabs[tabIndex].hasUserInteraction = true
-
-        // Reset pagination to page 1 when sorting changes
-        tabManager.tabs[tabIndex].pagination.reset()
-
         if tab.tabType == .query {
+            tabManager.tabs[tabIndex].sortState = currentSort
+            tabManager.tabs[tabIndex].hasUserInteraction = true
+            tabManager.tabs[tabIndex].pagination.reset()
             let rows = tab.resultRows
             let tabId = tab.id
             let resultVersion = tab.resultVersion
@@ -1158,20 +1154,21 @@ final class MainContentCoordinator {
             return
         }
 
-        // Table tabs: rebuild query with ORDER BY and re-execute.
-        // Guard against discarding unsaved edits.
         let capturedTabIndex = tabIndex
         let capturedSort = currentSort
         let capturedQuery = tab.query
         let capturedColumns = tab.resultColumns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed else { return }
+            guard capturedTabIndex < self.tabManager.tabs.count else { return }
+            self.tabManager.tabs[capturedTabIndex].sortState = capturedSort
+            self.tabManager.tabs[capturedTabIndex].hasUserInteraction = true
+            self.tabManager.tabs[capturedTabIndex].pagination.reset()
             let newQuery = self.queryBuilder.buildMultiSortQuery(
                 baseQuery: capturedQuery,
                 sortState: capturedSort,
                 columns: capturedColumns
             )
-            guard capturedTabIndex < self.tabManager.tabs.count else { return }
             self.tabManager.tabs[capturedTabIndex].query = newQuery
             self.runQuery()
         }
@@ -1341,8 +1338,7 @@ private extension MainContentCoordinator {
         tabManager.tabs[idx] = updatedTab
         AppState.shared.isCurrentTabEditable = updatedTab.isEditable
             && !updatedTab.isView && updatedTab.tableName != nil
-        toolbarState.isTableTab = updatedTab.tabType == .table
-        AppState.shared.isTableTab = updatedTab.tabType == .table
+        toolbarState.isTableTab = updatedTab.tabType == .table; AppState.shared.isTableTab = toolbarState.isTableTab
 
         let resolvedPK: String?
         if let pk = metadata?.primaryKeyColumn {

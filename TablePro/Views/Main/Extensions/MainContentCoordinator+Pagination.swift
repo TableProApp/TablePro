@@ -13,40 +13,34 @@ extension MainContentCoordinator {
     /// Navigate to next page
     func goToNextPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+              tabIndex < tabManager.tabs.count,
+              tabManager.tabs[tabIndex].pagination.hasNextPage else { return }
 
-        var tab = tabManager.tabs[tabIndex]
-        guard tab.pagination.hasNextPage else { return }
-
-        tab.pagination.goToNextPage()
-        tabManager.tabs[tabIndex] = tab
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.goToNextPage()
+        }
     }
 
     /// Navigate to previous page
     func goToPreviousPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+              tabIndex < tabManager.tabs.count,
+              tabManager.tabs[tabIndex].pagination.hasPreviousPage else { return }
 
-        var tab = tabManager.tabs[tabIndex]
-        guard tab.pagination.hasPreviousPage else { return }
-
-        tab.pagination.goToPreviousPage()
-        tabManager.tabs[tabIndex] = tab
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.goToPreviousPage()
+        }
     }
 
     /// Navigate to first page
     func goToFirstPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
+              tabIndex < tabManager.tabs.count,
+              tabManager.tabs[tabIndex].pagination.currentPage != 1 else { return }
 
-        var tab = tabManager.tabs[tabIndex]
-        guard tab.pagination.currentPage != 1 else { return }
-
-        tab.pagination.goToFirstPage()
-        tabManager.tabs[tabIndex] = tab
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.goToFirstPage()
+        }
     }
 
     /// Navigate to last page
@@ -54,12 +48,12 @@ extension MainContentCoordinator {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
-        var tab = tabManager.tabs[tabIndex]
+        let tab = tabManager.tabs[tabIndex]
         guard tab.pagination.currentPage != tab.pagination.totalPages else { return }
 
-        tab.pagination.goToLastPage()
-        tabManager.tabs[tabIndex] = tab
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.goToLastPage()
+        }
     }
 
     /// Update page size (limit) and reload
@@ -68,8 +62,9 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count,
               newSize > 0 else { return }
 
-        tabManager.tabs[tabIndex].pagination.updatePageSize(newSize)
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.updatePageSize(newSize)
+        }
     }
 
     /// Update offset and reload
@@ -78,8 +73,9 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count,
               newOffset >= 0 else { return }
 
-        tabManager.tabs[tabIndex].pagination.updateOffset(newOffset)
-        reloadCurrentPage()
+        paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
+            pagination.updateOffset(newOffset)
+        }
     }
 
     /// Apply both limit and offset changes and reload
@@ -87,31 +83,40 @@ extension MainContentCoordinator {
         reloadCurrentPage()
     }
 
-    /// Reload current page data, guarding against unsaved changes
-    func reloadCurrentPage() {
+    // MARK: - Private
+
+    /// Confirm discard if needed, then mutate pagination state and reload.
+    private func paginateAfterConfirmation(
+        tabIndex: Int,
+        mutate: @escaping (inout PaginationState) -> Void
+    ) {
+        confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
+            guard let self, confirmed else { return }
+            guard tabIndex < self.tabManager.tabs.count else { return }
+
+            mutate(&self.tabManager.tabs[tabIndex].pagination)
+            self.reloadCurrentPage()
+        }
+    }
+
+    /// Reload current page data
+    private func reloadCurrentPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
               let tableName = tabManager.tabs[tabIndex].tableName else { return }
 
-        let capturedTabIndex = tabIndex
-        let capturedTableName = tableName
-        confirmDiscardChangesIfNeeded(action: .pagination) { [weak self] confirmed in
-            guard let self, confirmed else { return }
-            guard capturedTabIndex < self.tabManager.tabs.count else { return }
+        let tab = tabManager.tabs[tabIndex]
+        let pagination = tab.pagination
 
-            let tab = self.tabManager.tabs[capturedTabIndex]
-            let pagination = tab.pagination
+        let newQuery = queryBuilder.buildBaseQuery(
+            tableName: tableName,
+            sortState: tab.sortState,
+            columns: tab.resultColumns,
+            limit: pagination.pageSize,
+            offset: pagination.currentOffset
+        )
 
-            let newQuery = self.queryBuilder.buildBaseQuery(
-                tableName: capturedTableName,
-                sortState: tab.sortState,
-                columns: tab.resultColumns,
-                limit: pagination.pageSize,
-                offset: pagination.currentOffset
-            )
-
-            self.tabManager.tabs[capturedTabIndex].query = newQuery
-            self.runQuery()
-        }
+        tabManager.tabs[tabIndex].query = newQuery
+        runQuery()
     }
 }

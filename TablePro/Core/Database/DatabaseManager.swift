@@ -44,7 +44,7 @@ final class DatabaseManager {
     /// Tracks connections with user queries currently in-flight.
     /// The health monitor skips pings while a query is running to avoid
     /// racing on non-thread-safe driver connections.
-    private var queriesInFlight: Set<UUID> = []
+    private var queriesInFlight: [UUID: Int] = [:]
 
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
@@ -320,8 +320,14 @@ final class DatabaseManager {
             throw DatabaseError.notConnected
         }
 
-        queriesInFlight.insert(sessionId)
-        defer { queriesInFlight.remove(sessionId) }
+        queriesInFlight[sessionId, default: 0] += 1
+        defer {
+            if let count = queriesInFlight[sessionId], count > 1 {
+                queriesInFlight[sessionId] = count - 1
+            } else {
+                queriesInFlight.removeValue(forKey: sessionId)
+            }
+        }
         return try await driver.execute(query: query)
     }
 
@@ -461,7 +467,7 @@ final class DatabaseManager {
                 guard let self else { return false }
                 // Skip ping while a user query is in-flight to avoid racing
                 // on the same non-thread-safe driver connection.
-                guard await !self.queriesInFlight.contains(connectionId) else { return true }
+                guard await self.queriesInFlight[connectionId] == nil else { return true }
                 guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
                     return false
                 }

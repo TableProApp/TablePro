@@ -34,6 +34,10 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     /// libssh2 is not thread-safe per session, so every call must be serialized.
     private let sessionQueue: DispatchQueue
 
+    /// Concurrent queue for relay I/O (poll, send, recv — no libssh2 calls).
+    /// Individual libssh2 calls within each relay are dispatched to `sessionQueue`.
+    private let relayQueue: DispatchQueue
+
     /// Dedicated queue for the accept loop (poll + accept only, no libssh2 calls).
     private let acceptQueue: DispatchQueue
 
@@ -61,6 +65,11 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         self.sessionQueue = DispatchQueue(
             label: "com.TablePro.ssh.session.\(connectionId.uuidString)",
             qos: .utility
+        )
+        self.relayQueue = DispatchQueue(
+            label: "com.TablePro.ssh.relay.\(connectionId.uuidString)",
+            qos: .utility,
+            attributes: .concurrent
         )
         self.acceptQueue = DispatchQueue(
             label: "com.TablePro.ssh.accept.\(connectionId.uuidString)",
@@ -98,29 +107,25 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                             break
                         }
 
-                        // Open channel and spawn relay on the session queue
-                        // to serialize libssh2 calls
-                        let semaphore = DispatchSemaphore(value: 0)
-                        self.sessionQueue.async {
-                            let channel = self.openDirectTcpipChannel(
+                        // Open channel on sessionQueue (serialized libssh2 call),
+                        // then hand off relay to relayQueue (concurrent I/O).
+                        let channel: OpaquePointer? = self.sessionQueue.sync {
+                            self.openDirectTcpipChannel(
                                 remoteHost: remoteHost,
                                 remotePort: remotePort
                             )
-
-                            guard let channel else {
-                                Self.logger.error("Failed to open direct-tcpip channel")
-                                Darwin.close(clientFD)
-                                semaphore.signal()
-                                return
-                            }
-
-                            Self.logger.debug(
-                                "Client connected, relaying to \(remoteHost):\(remotePort)"
-                            )
-                            self.spawnRelay(clientFD: clientFD, channel: channel)
-                            semaphore.signal()
                         }
-                        semaphore.wait()
+
+                        guard let channel else {
+                            Self.logger.error("Failed to open direct-tcpip channel")
+                            Darwin.close(clientFD)
+                            continue
+                        }
+
+                        Self.logger.debug(
+                            "Client connected, relaying to \(remoteHost):\(remotePort)"
+                        )
+                        self.spawnRelay(clientFD: clientFD, channel: channel)
                     }
 
                     Self.logger.info("Forwarding loop ended for port \(self.localPort)")
@@ -306,7 +311,8 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
     }
 
     /// Bidirectional relay between a client socket and an SSH channel.
-    /// The relay loop runs on `sessionQueue` to serialize all libssh2 calls.
+    /// The relay loop runs on `relayQueue` (concurrent). Individual libssh2 calls
+    /// are dispatched to `sessionQueue` (serial) for thread safety.
     private func spawnRelay(clientFD: Int32, channel: OpaquePointer) {
         let task = Task.detached { [weak self] in
             guard let self else {
@@ -315,7 +321,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             }
 
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                self.sessionQueue.async { [weak self] in
+                self.relayQueue.async { [weak self] in
                     defer { continuation.resume() }
                     guard let self else {
                         Darwin.close(clientFD)
@@ -332,15 +338,17 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
         }
     }
 
-    /// Blocking relay loop. Must only be called on `sessionQueue`.
+    /// Blocking relay loop. Runs on `relayQueue`; libssh2 calls go through `sessionQueue`.
     private func runRelay(clientFD: Int32, channel: OpaquePointer) {
         let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: Self.relayBufferSize)
         defer {
             buffer.deallocate()
             Darwin.close(clientFD)
             if self.isRunning {
-                libssh2_channel_close(channel)
-                libssh2_channel_free(channel)
+                sessionQueue.sync {
+                    libssh2_channel_close(channel)
+                    libssh2_channel_free(channel)
+                }
             }
         }
 
@@ -353,52 +361,29 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
             let pollResult = poll(&pollFDs, 2, 100) // 100ms timeout
             if pollResult < 0 { break }
 
-            // Only read from SSH channel when the SSH socket has data ready
-            if pollFDs[1].revents & Int16(POLLIN) != 0 {
-                let channelRead = tablepro_libssh2_channel_read(
-                    channel, buffer, Self.relayBufferSize
-                )
-                if channelRead > 0 {
+            // Read from SSH channel when the SSH socket has data or on timeout
+            // (libssh2 may have internally buffered data)
+            if pollFDs[1].revents & Int16(POLLIN) != 0 || pollResult == 0 {
+                let readResult: Int = sessionQueue.sync {
+                    Int(tablepro_libssh2_channel_read(channel, buffer, Self.relayBufferSize))
+                }
+                if readResult > 0 {
                     var totalSent = 0
-                    while totalSent < Int(channelRead) {
+                    while totalSent < readResult {
                         let sent = send(
                             clientFD,
                             buffer.advanced(by: totalSent),
-                            Int(channelRead) - totalSent,
+                            readResult - totalSent,
                             0
                         )
                         if sent <= 0 { return }
                         totalSent += sent
                     }
-                } else if channelRead == 0 || libssh2_channel_eof(channel) != 0 {
+                } else if readResult == 0 || sessionQueue.sync({ libssh2_channel_eof(channel) }) != 0 {
                     return
-                } else if channelRead != Int(LIBSSH2_ERROR_EAGAIN) {
-                    return
-                }
-            }
-
-            // Also attempt a non-blocking channel read when poll timed out,
-            // because libssh2 may have buffered data internally
-            if pollResult == 0 {
-                let channelRead = tablepro_libssh2_channel_read(
-                    channel, buffer, Self.relayBufferSize
-                )
-                if channelRead > 0 {
-                    var totalSent = 0
-                    while totalSent < Int(channelRead) {
-                        let sent = send(
-                            clientFD,
-                            buffer.advanced(by: totalSent),
-                            Int(channelRead) - totalSent,
-                            0
-                        )
-                        if sent <= 0 { return }
-                        totalSent += sent
-                    }
-                } else if channelRead == 0 || libssh2_channel_eof(channel) != 0 {
+                } else if readResult != Int(LIBSSH2_ERROR_EAGAIN) {
                     return
                 }
-                // Ignore EAGAIN on timeout read — no data buffered
             }
 
             // Read from client -> write to SSH channel
@@ -408,13 +393,15 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
 
                 var totalWritten = 0
                 while totalWritten < Int(clientRead) {
-                    let written = tablepro_libssh2_channel_write(
-                        channel,
-                        buffer.advanced(by: totalWritten),
-                        Int(clientRead) - totalWritten
-                    )
+                    let written: Int = sessionQueue.sync {
+                        Int(tablepro_libssh2_channel_write(
+                            channel,
+                            buffer.advanced(by: totalWritten),
+                            Int(clientRead) - totalWritten
+                        ))
+                    }
                     if written > 0 {
-                        totalWritten += Int(written)
+                        totalWritten += written
                     } else if written == Int(LIBSSH2_ERROR_EAGAIN) {
                         _ = self.waitForSocket(
                             session: self.session,
