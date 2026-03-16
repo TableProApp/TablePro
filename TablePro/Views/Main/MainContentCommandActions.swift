@@ -417,11 +417,12 @@ final class MainContentCommandActions {
         // Check if we're in structure view mode
         if coordinator?.tabManager.selectedTab?.showStructure == true {
             coordinator?.structureActions?.saveChanges?()
-        } else if rightPanelState.editState.hasEdits {
-            // Save sidebar edits if the right panel has pending changes
-            rightPanelState.onSave?()
-        } else {
-            // Handle data grid changes
+        } else if coordinator?.changeManager.hasChanges == true
+            || !pendingTruncates.wrappedValue.isEmpty
+            || !pendingDeletes.wrappedValue.isEmpty {
+            // Handle data grid changes (prioritize over sidebar edits since
+            // data grid edits are synced to sidebar editState, and the data grid
+            // path uses the correct plugin driver for statement generation)
             var truncates = pendingTruncates.wrappedValue
             var deletes = pendingDeletes.wrappedValue
             var options = tableOperationOptions.wrappedValue
@@ -433,6 +434,9 @@ final class MainContentCommandActions {
             pendingTruncates.wrappedValue = truncates
             pendingDeletes.wrappedValue = deletes
             tableOperationOptions.wrappedValue = options
+        } else if rightPanelState.editState.hasEdits {
+            // Save sidebar-only edits (edits made directly in the right panel)
+            rightPanelState.onSave?()
         }
     }
 
