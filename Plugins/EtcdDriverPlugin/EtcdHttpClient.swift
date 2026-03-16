@@ -10,7 +10,7 @@ import TableProPluginKit
 
 // MARK: - Error Types
 
-enum EtcdError: Error, LocalizedError {
+internal enum EtcdError: Error, LocalizedError {
     case notConnected
     case connectionFailed(String)
     case serverError(String)
@@ -35,7 +35,7 @@ enum EtcdError: Error, LocalizedError {
 
 // MARK: - Codable Types
 
-struct EtcdResponseHeader: Decodable {
+internal struct EtcdResponseHeader: Decodable {
     let clusterId: String?
     let memberId: String?
     let revision: String?
@@ -49,7 +49,7 @@ struct EtcdResponseHeader: Decodable {
     }
 }
 
-struct EtcdKeyValue: Decodable {
+internal struct EtcdKeyValue: Decodable {
     let key: String
     let value: String?
     let version: String?
@@ -69,7 +69,7 @@ struct EtcdKeyValue: Decodable {
 
 // KV Request/Response
 
-struct EtcdRangeRequest: Encodable {
+internal struct EtcdRangeRequest: Encodable {
     let key: String
     var rangeEnd: String?
     var limit: Int64?
@@ -89,13 +89,13 @@ struct EtcdRangeRequest: Encodable {
     }
 }
 
-struct EtcdRangeResponse: Decodable {
+internal struct EtcdRangeResponse: Decodable {
     let kvs: [EtcdKeyValue]?
     let count: String?
     let more: Bool?
 }
 
-struct EtcdPutRequest: Encodable {
+internal struct EtcdPutRequest: Encodable {
     let key: String
     let value: String
     var lease: String?
@@ -109,7 +109,7 @@ struct EtcdPutRequest: Encodable {
     }
 }
 
-struct EtcdPutResponse: Decodable {
+internal struct EtcdPutResponse: Decodable {
     let header: EtcdResponseHeader?
     let prevKv: EtcdKeyValue?
 
@@ -119,7 +119,7 @@ struct EtcdPutResponse: Decodable {
     }
 }
 
-struct EtcdDeleteRequest: Encodable {
+internal struct EtcdDeleteRequest: Encodable {
     let key: String
     var rangeEnd: String?
     var prevKv: Bool?
@@ -131,7 +131,7 @@ struct EtcdDeleteRequest: Encodable {
     }
 }
 
-struct EtcdDeleteResponse: Decodable {
+internal struct EtcdDeleteResponse: Decodable {
     let deleted: String?
     let prevKvs: [EtcdKeyValue]?
 
@@ -143,49 +143,49 @@ struct EtcdDeleteResponse: Decodable {
 
 // Lease
 
-struct EtcdLeaseGrantRequest: Encodable {
+internal struct EtcdLeaseGrantRequest: Encodable {
     let TTL: String
     var ID: String?
 }
 
-struct EtcdLeaseGrantResponse: Decodable {
+internal struct EtcdLeaseGrantResponse: Decodable {
     let ID: String?
     let TTL: String?
     let error: String?
 }
 
-struct EtcdLeaseRevokeRequest: Encodable {
+internal struct EtcdLeaseRevokeRequest: Encodable {
     let ID: String
 }
 
-struct EtcdLeaseTimeToLiveRequest: Encodable {
+internal struct EtcdLeaseTimeToLiveRequest: Encodable {
     let ID: String
     let keys: Bool?
 }
 
-struct EtcdLeaseTimeToLiveResponse: Decodable {
+internal struct EtcdLeaseTimeToLiveResponse: Decodable {
     let ID: String?
     let TTL: String?
     let grantedTTL: String?
     let keys: [String]?
 }
 
-struct EtcdLeaseListResponse: Decodable {
+internal struct EtcdLeaseListResponse: Decodable {
     let leases: [EtcdLeaseStatus]?
 }
 
-struct EtcdLeaseStatus: Decodable {
+internal struct EtcdLeaseStatus: Decodable {
     let ID: String
 }
 
 // Cluster
 
-struct EtcdMemberListResponse: Decodable {
+internal struct EtcdMemberListResponse: Decodable {
     let members: [EtcdMember]?
     let header: EtcdResponseHeader?
 }
 
-struct EtcdMember: Decodable {
+internal struct EtcdMember: Decodable {
     let ID: String?
     let name: String?
     let peerURLs: [String]?
@@ -193,7 +193,7 @@ struct EtcdMember: Decodable {
     let isLearner: Bool?
 }
 
-struct EtcdStatusResponse: Decodable {
+internal struct EtcdStatusResponse: Decodable {
     let version: String?
     let dbSize: String?
     let leader: String?
@@ -204,7 +204,7 @@ struct EtcdStatusResponse: Decodable {
 
 // Watch
 
-struct EtcdWatchRequest: Encodable {
+internal struct EtcdWatchRequest: Encodable {
     let createRequest: EtcdWatchCreateRequest
 
     private enum CodingKeys: String, CodingKey {
@@ -212,7 +212,7 @@ struct EtcdWatchRequest: Encodable {
     }
 }
 
-struct EtcdWatchCreateRequest: Encodable {
+internal struct EtcdWatchCreateRequest: Encodable {
     let key: String
     var rangeEnd: String?
 
@@ -222,16 +222,16 @@ struct EtcdWatchCreateRequest: Encodable {
     }
 }
 
-struct EtcdWatchStreamResponse: Decodable {
+internal struct EtcdWatchStreamResponse: Decodable {
     let result: EtcdWatchResult?
 }
 
-struct EtcdWatchResult: Decodable {
+internal struct EtcdWatchResult: Decodable {
     let events: [EtcdWatchEvent]?
     let header: EtcdResponseHeader?
 }
 
-struct EtcdWatchEvent: Decodable {
+internal struct EtcdWatchEvent: Decodable {
     let type: String?
     let kv: EtcdKeyValue?
     let prevKv: EtcdKeyValue?
@@ -245,53 +245,53 @@ struct EtcdWatchEvent: Decodable {
 
 // Auth
 
-struct EtcdAuthRequest: Encodable {
+internal struct EtcdAuthRequest: Encodable {
     let name: String
     let password: String
 }
 
-struct EtcdAuthResponse: Decodable {
+internal struct EtcdAuthResponse: Decodable {
     let token: String?
 }
 
-struct EtcdUserAddRequest: Encodable {
+internal struct EtcdUserAddRequest: Encodable {
     let name: String
     let password: String
 }
 
-struct EtcdUserDeleteRequest: Encodable {
+internal struct EtcdUserDeleteRequest: Encodable {
     let name: String
 }
 
-struct EtcdUserListResponse: Decodable {
+internal struct EtcdUserListResponse: Decodable {
     let users: [String]?
 }
 
-struct EtcdRoleAddRequest: Encodable {
+internal struct EtcdRoleAddRequest: Encodable {
     let name: String
 }
 
-struct EtcdRoleDeleteRequest: Encodable {
+internal struct EtcdRoleDeleteRequest: Encodable {
     let name: String
 }
 
-struct EtcdRoleListResponse: Decodable {
+internal struct EtcdRoleListResponse: Decodable {
     let roles: [String]?
 }
 
-struct EtcdUserGrantRoleRequest: Encodable {
+internal struct EtcdUserGrantRoleRequest: Encodable {
     let user: String
     let role: String
 }
 
-struct EtcdUserRevokeRoleRequest: Encodable {
+internal struct EtcdUserRevokeRoleRequest: Encodable {
     let user: String
     let role: String
 }
 
 // Maintenance
 
-struct EtcdCompactionRequest: Encodable {
+internal struct EtcdCompactionRequest: Encodable {
     let revision: String
     let physical: Bool?
 }
@@ -306,7 +306,7 @@ private struct EtcdErrorResponse: Decodable {
 
 // MARK: - HTTP Client
 
-final class EtcdHttpClient: @unchecked Sendable {
+internal final class EtcdHttpClient: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let lock = NSLock()
     private var session: URLSession?
@@ -344,12 +344,8 @@ final class EtcdHttpClient: @unchecked Sendable {
         let delegate: URLSessionDelegate?
         switch tlsMode {
         case "Required":
-            delegate = EtcdTlsDelegate(
-                caCertPath: nil,
-                clientCertPath: config.additionalFields["etcdClientCertPath"],
-                clientKeyPath: config.additionalFields["etcdClientKeyPath"],
-                verifyHostname: false
-            )
+            // Encryption without certificate verification — matches UI "Required (skip verify)"
+            delegate = InsecureTlsDelegate()
         case "VerifyCA", "VerifyIdentity":
             delegate = EtcdTlsDelegate(
                 caCertPath: config.additionalFields["etcdCaCertPath"],
@@ -505,7 +501,7 @@ final class EtcdHttpClient: @unchecked Sendable {
                     self.lock.lock()
                     self.currentTask = task
                     self.lock.unlock()
-                    collectedData.task = task
+                    collectedData.setTask(task)
                     task.resume()
                 }
                 return Self.parseWatchEvents(from: data)
@@ -513,7 +509,7 @@ final class EtcdHttpClient: @unchecked Sendable {
 
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                collectedData.task?.cancel()
+                collectedData.cancelTask()
                 return []
             }
 
@@ -827,7 +823,21 @@ final class EtcdHttpClient: @unchecked Sendable {
     // MARK: - Data Collector for Watch
 
     private final class DataCollector: @unchecked Sendable {
-        var task: URLSessionDataTask?
+        private let lock = NSLock()
+        private var _task: URLSessionDataTask?
+
+        func setTask(_ task: URLSessionDataTask) {
+            lock.lock()
+            _task = task
+            lock.unlock()
+        }
+
+        func cancelTask() {
+            lock.lock()
+            let task = _task
+            lock.unlock()
+            task?.cancel()
+        }
     }
 
     // MARK: - TLS Delegates
@@ -945,8 +955,10 @@ final class EtcdHttpClient: @unchecked Sendable {
                 return
             }
 
-            // swiftlint:disable:next force_cast
-            let identity = identityRef as! SecIdentity
+            guard let identity = identityRef as? SecIdentity else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
             let credential = URLCredential(
                 identity: identity,
                 certificates: nil,
@@ -1027,14 +1039,14 @@ final class EtcdHttpClient: @unchecked Sendable {
         }
 
         private func createIdentity(certificate: SecCertificate, privateKey: SecKey) -> SecIdentity? {
-            // Add cert and key to a temporary keychain to get an identity
+            // Add cert and key to the keychain temporarily to create an identity
             let addCertQuery: [String: Any] = [
                 kSecClass as String: kSecClassCertificate,
                 kSecValueRef as String: certificate,
                 kSecReturnRef as String: true
             ]
             var certRef: CFTypeRef?
-            SecItemAdd(addCertQuery as CFDictionary, &certRef)
+            let certAddStatus = SecItemAdd(addCertQuery as CFDictionary, &certRef)
 
             let addKeyQuery: [String: Any] = [
                 kSecClass as String: kSecClassKey,
@@ -1042,23 +1054,27 @@ final class EtcdHttpClient: @unchecked Sendable {
                 kSecReturnRef as String: true
             ]
             var keyRef: CFTypeRef?
-            SecItemAdd(addKeyQuery as CFDictionary, &keyRef)
+            let keyAddStatus = SecItemAdd(addKeyQuery as CFDictionary, &keyRef)
 
             var identity: SecIdentity?
             let status = SecIdentityCreateWithCertificate(nil, certificate, &identity)
 
-            // Clean up: remove imported items from keychain
-            let deleteCertQuery: [String: Any] = [
-                kSecClass as String: kSecClassCertificate,
-                kSecValueRef as String: certificate
-            ]
-            SecItemDelete(deleteCertQuery as CFDictionary)
+            // Clean up: only delete items that this call actually inserted
+            if certAddStatus == errSecSuccess {
+                let deleteCertQuery: [String: Any] = [
+                    kSecClass as String: kSecClassCertificate,
+                    kSecValueRef as String: certRef ?? certificate
+                ]
+                SecItemDelete(deleteCertQuery as CFDictionary)
+            }
 
-            let deleteKeyQuery: [String: Any] = [
-                kSecClass as String: kSecClassKey,
-                kSecValueRef as String: privateKey
-            ]
-            SecItemDelete(deleteKeyQuery as CFDictionary)
+            if keyAddStatus == errSecSuccess {
+                let deleteKeyQuery: [String: Any] = [
+                    kSecClass as String: kSecClassKey,
+                    kSecValueRef as String: keyRef ?? privateKey
+                ]
+                SecItemDelete(deleteKeyQuery as CFDictionary)
+            }
 
             if status == errSecSuccess {
                 return identity
