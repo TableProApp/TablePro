@@ -10,27 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Save Changes button in toolbar for committing pending data edits
-- Confirmation dialog when deleting a connection
-- Unsaved changes confirmation before sort, pagination, filter, and search operations
+- Confirmation dialog before deleting a connection
+- Confirmation dialog before sort, pagination, filter, or search discards unsaved edits
 
 ### Fixed
 
-- SSH tunnel thread safety: serialized all libssh2 calls per session to prevent crashes and data corruption
-- SSH tunnel close race condition: fd no longer closed while relay tasks are still using it
-- Jump-host relay socketpair double-close on error
-- Unsaved cell edits lost when switching tabs
-- Unsaved cell edits silently discarded by sort, pagination, filter, and quick search
-- Unsaved cell edits lost when switching apps and returning after 5+ seconds
-- Auto-reconnect silently discarding unsaved changes
-- Health monitor ping racing with user queries on the same database driver
-- SSH tunnel death recovery silently failing due to stale driver reference
-- Duplicate reconnection loops when SSH tunnel dies (health monitor + tunnel handler)
-- Test Connection button not cleaning up SSH tunnel properly
-- Connection test success indicator persisting after changing connection fields
-- SSH port field accepting invalid values without validation
-- Menu "Toggle Filters" incorrectly enabled on query tabs
-- Status bar Data/Structure picker missing accessibility label
-- Status bar filter tooltip using inconsistent shortcut format
+- SSH tunnel crashes caused by concurrent libssh2 calls on the same session
+- Unsaved cell edits lost when switching tabs, sorting, paginating, filtering, or switching apps
+- Auto-reconnect and health monitor silently discarding unsaved changes
+- SSH tunnel recovery failing after tunnel death due to stale driver state
+- Health monitor ping interfering with active user queries
+- Connection test not cleaning up SSH tunnel on completion
+- Test connection success indicator not resetting after field changes
+- SSH port field accepting invalid values
 
 ## [0.19.1] - 2026-03-16
 
