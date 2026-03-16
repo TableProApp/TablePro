@@ -621,7 +621,23 @@ final class DataChangeManager {
     // MARK: - SQL Generation
 
     func generateSQL() throws -> [ParameterizedStatement] {
-        // Try plugin dispatch first (handles MongoDB, Redis, and future NoSQL plugins)
+        try generateSQL(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+    }
+
+    /// Unified statement generation for both data grid and sidebar edits.
+    /// Routes through plugin driver for NoSQL databases, falls back to SQLStatementGenerator for SQL.
+    func generateSQL(
+        for changes: [RowChange],
+        insertedRowData: [Int: [String?]] = [:],
+        deletedRowIndices: Set<Int> = [],
+        insertedRowIndices: Set<Int> = []
+    ) throws -> [ParameterizedStatement] {
+        // Try plugin dispatch first (handles MongoDB, Redis, etcd, and future NoSQL plugins)
         if let pluginDriver {
             let pluginChanges = changes.map { change -> PluginRowChange in
                 PluginRowChange(
