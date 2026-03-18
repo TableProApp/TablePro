@@ -471,16 +471,25 @@ struct DataGridView: NSViewRepresentable {
         if needsFullReload {
             tableView.reloadData()
         } else if metadataChanged {
-            // FK metadata arrived (Phase 2) — reload only FK columns to show arrow buttons
+            // FK metadata arrived (Phase 2) — reload only FK columns to show arrow buttons.
+            // Use display-order indices from tableView.tableColumns (respects user column reordering).
             let fkColumnIndices = IndexSet(
-                rowProvider.columns.enumerated().compactMap { index, columnName in
-                    rowProvider.columnForeignKeys[columnName] != nil ? index + 1 : nil
+                tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
+                    guard tableColumn.identifier.rawValue != "__rowNumber__",
+                          let modelIndex = Self.columnIndex(from: tableColumn.identifier),
+                          modelIndex < rowProvider.columns.count else { return nil }
+                    let columnName = rowProvider.columns[modelIndex]
+                    return rowProvider.columnForeignKeys[columnName] != nil ? displayIndex : nil
                 }
             )
             if !fkColumnIndices.isEmpty {
                 let visibleRange = tableView.rows(in: tableView.visibleRect)
-                let visibleRows = IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length))
-                tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
+                if visibleRange.length > 0 {
+                    let visibleRows = IndexSet(
+                        integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
+                    )
+                    tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
+                }
             }
         } else if versionChanged {
             // Granular reload: only reload rows that changed

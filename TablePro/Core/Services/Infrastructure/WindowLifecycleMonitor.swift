@@ -108,7 +108,8 @@ internal final class WindowLifecycleMonitor {
 
     /// Look up the connectionId for a given windowId.
     internal func connectionId(for windowId: UUID) -> UUID? {
-        entries[windowId]?.connectionId
+        purgeStaleEntries()
+        return entries[windowId]?.connectionId
     }
 
     /// Check if any windows are registered for a connection.
@@ -137,7 +138,8 @@ internal final class WindowLifecycleMonitor {
 
     /// Look up the NSWindow for a given windowId.
     internal func window(for windowId: UUID) -> NSWindow? {
-        entries[windowId]?.window
+        purgeStaleEntries()
+        return entries[windowId]?.window
     }
 
     /// Update the preview flag for a registered window.

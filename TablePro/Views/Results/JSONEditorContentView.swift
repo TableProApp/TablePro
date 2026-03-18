@@ -213,11 +213,12 @@ private struct JSONSyntaxTextView: NSViewRepresentable {
 
             // Debounce syntax highlighting to avoid 4 regex passes per keystroke
             highlightWorkItem?.cancel()
-            highlightWorkItem = DispatchWorkItem { [weak textView] in
+            let workItem = DispatchWorkItem { [weak textView] in
                 guard let textView else { return }
                 JSONSyntaxTextView.applyHighlighting(to: textView)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: highlightWorkItem!)
+            highlightWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
         }
     }
 }

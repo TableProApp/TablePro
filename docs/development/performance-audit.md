@@ -1,6 +1,6 @@
 # Performance Audit — TablePro
 
-**Date:** 2025-03-18
+**Date:** 2026-03-18
 **Related Issue:** [#368 — High CPU Usage by TablePro on macOS](https://github.com/datlechin/TablePro/issues/368)
 **Status:** Phase 1-4 fixes applied (16/17 medium+ issues fixed) — build verified
 
@@ -91,7 +91,7 @@ Secondary contributors include main-thread I/O blocking (Keychain, plugin loadin
 
 ### HIGH-6: N+1 Default `fetchAllColumns`/`fetchAllForeignKeys` at Both Protocol Layers
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **Files:** `DatabaseDriver.swift:247-262`, `PluginDatabaseDriver.swift:168-185`
 
@@ -113,7 +113,7 @@ Default implementations loop per-table with one query each. A schema with 200 ta
 
 ### MED-2: `NSWindow.didUpdateNotification` Fires on Every Event Loop Cycle
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **File:** `EditorEventRouter.swift:83-92`
 
@@ -125,7 +125,7 @@ Default implementations loop per-table with one query each. A schema with 200 ta
 
 ### MED-3: SSH Relay Poll at 100ms Intervals
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **File:** `LibSSH2TunnelFactory.swift:488`
 
@@ -137,7 +137,7 @@ Jump-host channel relay uses `poll()` with 100ms timeout, waking 10x/second even
 
 ### MED-4: Column Layout Write-Back Triggers Extra Tab Persistence Save
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **Files:** `DataGridView.swift:389-396`, `MainContentView.swift:293-295`
 
@@ -181,7 +181,7 @@ Jump-host channel relay uses `poll()` with 100ms timeout, waking 10x/second even
 
 ### MED-9: `[[String?]]` → `[QueryResultRow]` Full Copy After Every Query
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **File:** `MainContentCoordinator.swift:840-845`
 
@@ -209,7 +209,7 @@ Jump-host channel relay uses `poll()` with 100ms timeout, waking 10x/second even
 
 ### MED-12: `DateFormattingService.format` Called Per Cell Per Reload
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **File:** `DataGridCellFactory.swift:333-336`
 
@@ -253,7 +253,7 @@ Every visible date cell re-formats on every `reloadData`, even when the value ha
 
 ### MED-17: `multiColumnSortIndices` Pre-builds 300K String Copies for Large Datasets
 
-- [ ] **Fix applied**
+- [ ] **Fix pending**
 
 **File:** `MainContentCoordinator.swift:1190-1195`
 
