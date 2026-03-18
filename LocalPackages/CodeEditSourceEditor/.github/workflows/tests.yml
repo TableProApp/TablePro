@@ -1,0 +1,13 @@
+name: tests
+on:
+  workflow_dispatch:
+  workflow_call:
+jobs:
+  code-edit-text-view-tests:
+    name: Testing CodeEditSourceEditor
+    runs-on: [self-hosted, macOS]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Testing Package
+        run: exec ./.github/scripts/tests.sh arm

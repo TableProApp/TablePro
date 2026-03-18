@@ -20,16 +20,16 @@ struct TagBadgeView: View {
 
     var body: some View {
         Text(displayName)
-            .font(ToolbarDesignTokens.Typography.tagLabel)
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
             .foregroundStyle(tag.color.color)
             .lineLimit(1)  // Prevent overflow from very long tag names
-            .padding(.horizontal, ToolbarDesignTokens.Tag.horizontalPadding)
-            .padding(.vertical, ToolbarDesignTokens.Tag.verticalPadding)
+            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.xs)
+            .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
             .background(
                 Capsule()
-                    .fill(tag.color.color.opacity(ToolbarDesignTokens.Tag.backgroundOpacity))
+                    .fill(tag.color.color.opacity(0.2))
             )
-            .padding(.leading, DesignConstants.Spacing.xs)
+            .padding(.leading, ThemeEngine.shared.activeTheme.spacing.xs)
             .help("Tag: \(tag.name)")
             .accessibilityLabel("Tag: \(tag.name)")
     }

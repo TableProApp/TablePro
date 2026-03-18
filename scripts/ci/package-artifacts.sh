@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ARCH="${1:?Usage: package-artifacts.sh <arch> <staging_dir>}"
-STAGING="${2:?Usage: package-artifacts.sh <arch> <staging_dir>}"
+ARCH="${1:?Usage: package-artifacts.sh <arch> [staging_dir]}"
+STAGING="${2:-}"
 
 if [[ "$ARCH" != "arm64" && "$ARCH" != "x86_64" ]]; then
   echo "❌ ERROR: Invalid architecture: $ARCH (expected arm64 or x86_64)"
   exit 1
 fi
 
-VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.1.13")
+VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//') || { echo "❌ ERROR: Cannot determine version from git tags"; exit 1; }
 
 # --- Create DMG ---
 echo "Creating DMG installer..."
@@ -59,9 +59,11 @@ ls -lh "TablePro-${ARCH}.zip"
 
 cd - > /dev/null
 
-# --- Stage artifacts ---
-mkdir -p "$STAGING"
-cp build/Release/*.dmg "$STAGING/" 2>/dev/null || true
-cp "build/Release/TablePro-${ARCH}.zip" "$STAGING/" 2>/dev/null || true
-echo "✅ ${ARCH} artifacts staged to $STAGING"
-ls -lh "$STAGING"
+# --- Stage artifacts (optional, for local/self-hosted use) ---
+if [ -n "$STAGING" ]; then
+  mkdir -p "$STAGING"
+  cp build/Release/*.dmg "$STAGING/" 2>/dev/null || true
+  cp "build/Release/TablePro-${ARCH}.zip" "$STAGING/" 2>/dev/null || true
+  echo "Artifacts staged to $STAGING"
+  ls -lh "$STAGING"
+fi

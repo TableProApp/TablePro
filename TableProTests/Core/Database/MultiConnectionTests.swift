@@ -188,6 +188,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -207,6 +208,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator1.teardown() }
@@ -216,6 +218,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator2.teardown() }
@@ -235,6 +238,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator1.teardown() }
@@ -244,6 +248,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: QueryTabManager(),
             changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
         )
         defer { coordinator2.teardown() }
@@ -268,6 +273,7 @@ struct CoordinatorConnectionIsolationTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

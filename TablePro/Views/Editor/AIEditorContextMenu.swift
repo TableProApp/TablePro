@@ -12,6 +12,10 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     /// Closure provided by the coordinator to check if text is selected
     var hasSelection: (() -> Bool)?
     var selectedText: (() -> String?)?
+    var fullText: (() -> String?)?
+    var onExplainWithAI: ((String) -> Void)?
+    var onOptimizeWithAI: ((String) -> Void)?
+    var onSaveAsFavorite: ((String) -> Void)?
 
     override init(title: String) {
         super.init(title: title)
@@ -43,6 +47,18 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         let selectAllItem = NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
         menu.addItem(selectAllItem)
 
+        menu.addItem(.separator())
+
+        let saveAsFavItem = NSMenuItem(
+            title: String(localized: "Save as Favorite..."),
+            action: #selector(handleSaveAsFavorite),
+            keyEquivalent: ""
+        )
+        saveAsFavItem.target = self
+        saveAsFavItem.image = NSImage(systemSymbolName: "star", accessibilityDescription: nil)
+        saveAsFavItem.isEnabled = (fullText?()?.isEmpty == false)
+        menu.addItem(saveAsFavItem)
+
         // AI items — only when text is selected
         guard hasSelection?() == true else { return }
 
@@ -70,18 +86,20 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     // MARK: - AI Actions
 
     @objc private func handleExplainWithAI() {
-        NotificationCenter.default.post(
-            name: .aiExplainSelection,
-            object: nil,
-            userInfo: selectedText?().map { ["selectedText": $0] }
-        )
+        guard let text = selectedText?() else { return }
+        onExplainWithAI?(text)
     }
 
     @objc private func handleOptimizeWithAI() {
-        NotificationCenter.default.post(
-            name: .aiOptimizeSelection,
-            object: nil,
-            userInfo: selectedText?().map { ["selectedText": $0] }
-        )
+        guard let text = selectedText?() else { return }
+        onOptimizeWithAI?(text)
+    }
+
+    @objc private func handleSaveAsFavorite() {
+        if let text = selectedText?(), !text.isEmpty {
+            onSaveAsFavorite?(text)
+        } else if let text = fullText?(), !text.isEmpty {
+            onSaveAsFavorite?(text)
+        }
     }
 }

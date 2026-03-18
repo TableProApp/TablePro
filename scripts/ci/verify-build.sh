@@ -70,8 +70,66 @@ else
   echo "⚠️  WARNING: No Frameworks directory found — dylibs may not be bundled"
 fi
 
-# Verify code signature
+# Verify plugins
 APP_BUNDLE="build/Release/TablePro-${ARCH}.app"
+PLUGINS_DIR="$APP_BUNDLE/Contents/PlugIns"
+
+echo "Verifying plugins..."
+
+if [ ! -d "$PLUGINS_DIR" ]; then
+  echo "❌ ERROR: PlugIns directory not found at: $PLUGINS_DIR"
+  exit 1
+fi
+echo "✅ PlugIns directory exists"
+
+REQUIRED_PLUGINS=(
+  "MySQLDriver.tableplugin"
+  "PostgreSQLDriver.tableplugin"
+  "SQLiteDriver.tableplugin"
+)
+
+MISSING_PLUGINS=0
+for PLUGIN in "${REQUIRED_PLUGINS[@]}"; do
+  if [ ! -d "$PLUGINS_DIR/$PLUGIN" ]; then
+    echo "❌ ERROR: Missing plugin bundle: $PLUGIN"
+    MISSING_PLUGINS=1
+  else
+    echo "  ✅ $PLUGIN"
+  fi
+done
+
+if [ "$MISSING_PLUGINS" -eq 1 ]; then
+  echo "❌ ERROR: One or more plugin bundles are missing"
+  exit 1
+fi
+echo "✅ All bundled plugin bundles present"
+
+# Verify each plugin has a valid binary
+MISSING_BINARIES=0
+for PLUGIN in "${REQUIRED_PLUGINS[@]}"; do
+  PLUGIN_NAME="${PLUGIN%.tableplugin}"
+  PLUGIN_BINARY="$PLUGINS_DIR/$PLUGIN/Contents/MacOS/$PLUGIN_NAME"
+  if [ ! -f "$PLUGIN_BINARY" ]; then
+    echo "❌ ERROR: Missing binary for plugin: $PLUGIN (expected $PLUGIN_BINARY)"
+    MISSING_BINARIES=1
+  fi
+done
+
+if [ "$MISSING_BINARIES" -eq 1 ]; then
+  echo "❌ ERROR: One or more plugin binaries are missing"
+  exit 1
+fi
+echo "✅ All plugin binaries present"
+
+# Verify TableProPluginKit framework
+PLUGINKIT_FRAMEWORK="$APP_BUNDLE/Contents/Frameworks/TableProPluginKit.framework"
+if [ ! -d "$PLUGINKIT_FRAMEWORK" ]; then
+  echo "❌ ERROR: TableProPluginKit.framework not found at: $PLUGINKIT_FRAMEWORK"
+  exit 1
+fi
+echo "✅ TableProPluginKit.framework present"
+
+# Verify code signature
 echo "Verifying code signature..."
 if codesign --verify --deep --strict "$APP_BUNDLE" 2>&1; then
   SIGN_INFO=$(codesign -dvv "$APP_BUNDLE" 2>&1 | grep "Authority=" | head -1)

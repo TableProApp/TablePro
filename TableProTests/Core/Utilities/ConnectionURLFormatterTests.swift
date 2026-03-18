@@ -295,4 +295,53 @@ struct ConnectionURLFormatterTests {
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(url.hasPrefix("mariadb://"))
     }
+
+    @Test("SSH Agent connection formats useSSHAgent=true")
+    func testSSHAgentConnectionFormat() {
+        let sshConfig = SSHConfiguration(
+            enabled: true, host: "jump.example.com", port: 22,
+            username: "admin", authMethod: .sshAgent
+        )
+        let conn = DatabaseConnection(
+            name: "Test", host: "127.0.0.1", port: 3_306, database: "mydb",
+            username: "root", type: .mysql, sshConfig: sshConfig
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("useSSHAgent=true"))
+        #expect(!url.contains("usePrivateKey"))
+        #expect(!url.contains("agentSocket"))
+    }
+
+    @Test("SSH Agent with custom socket formats agentSocket")
+    func testSSHAgentWithCustomSocket() {
+        let sshConfig = SSHConfiguration(
+            enabled: true, host: "jump.example.com", port: 22,
+            username: "admin", authMethod: .sshAgent,
+            agentSocketPath: SSHAgentSocketOption.onePasswordSocketPath
+        )
+        let conn = DatabaseConnection(
+            name: "Test", host: "127.0.0.1", port: 3_306, database: "mydb",
+            username: "root", type: .mysql, sshConfig: sshConfig
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("useSSHAgent=true"))
+        #expect(url.contains("agentSocket="))
+        #expect(url.contains("Group%20Containers"))
+        #expect(!url.contains("Group Containers"))
+    }
+
+    @Test("SSH Agent without custom socket omits agentSocket param")
+    func testSSHAgentNoSocketOmitsParam() {
+        let sshConfig = SSHConfiguration(
+            enabled: true, host: "jump.example.com", port: 22,
+            username: "admin", authMethod: .sshAgent
+        )
+        let conn = DatabaseConnection(
+            name: "", host: "127.0.0.1", port: 3_306, database: "mydb",
+            username: "root", type: .mysql, sshConfig: sshConfig
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("useSSHAgent=true"))
+        #expect(!url.contains("agentSocket"))
+    }
 }

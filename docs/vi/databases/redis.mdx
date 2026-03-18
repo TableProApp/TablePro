@@ -1,61 +1,61 @@
 ---
 title: Redis
-description: Kết nối với cơ sở dữ liệu Redis bằng TablePro
+description: Duyệt key theo namespace, quản lý TTL và chạy lệnh Redis trực tiếp từ editor
 ---
 
 # Kết nối Redis
 
-TablePro cung cấp hỗ trợ cho Redis 6.0 và các phiên bản mới hơn. Redis là kho dữ liệu key-value trong bộ nhớ, được sử dụng làm cơ sở dữ liệu, cache và message broker. Các key được nhóm theo namespace phân tách bởi dấu hai chấm trong sidebar, và các giá trị được hiển thị với định dạng phù hợp theo kiểu dữ liệu trong data grid.
+TablePro hỗ trợ Redis 6.0 trở lên. Key được nhóm theo namespace phân cách bởi dấu hai chấm trong sidebar. Giá trị hiển thị với format theo kiểu dữ liệu (string, hash, list, set, sorted set, JSON).
 
 ## Thiết lập Nhanh
 
 <Steps>
-  <Step title="Mở Biểu mẫu Kết nối">
+  <Step title="Mở Form Kết nối">
     Nhấp **New Connection** từ màn hình Chào mừng hoặc **File** > **New Connection**
   </Step>
   <Step title="Chọn Redis">
-    Chọn **Redis** từ trình chọn loại cơ sở dữ liệu
+    Chọn **Redis** từ trình chọn loại database
   </Step>
   <Step title="Nhập Thông tin Kết nối">
     Điền host, port, password (nếu cần) và database index
   </Step>
   <Step title="Kiểm tra và Kết nối">
-    Nhấp **Test Connection**, sau đó **Create**
+    Nhấp **Test Connection**, rồi **Create**
   </Step>
 </Steps>
 
 ## Cài đặt Kết nối
 
-### Các trường Bắt buộc
+### Trường Bắt buộc
 
 | Trường | Mô tả | Mặc định |
 |-------|-------------|---------|
-| **Name** | Định danh kết nối | - |
-| **Host** | Hostname hoặc IP của máy chủ | `localhost` |
-| **Port** | Cổng máy chủ Redis | `6379` |
+| **Name** | Tên định danh kết nối | - |
+| **Host** | Hostname hoặc IP server | `localhost` |
+| **Port** | Cổng Redis | `6379` |
 
-### Các trường Tùy chọn
+### Trường Tùy chọn
 
 | Trường | Mô tả |
 |-------|-------------|
-| **Password** | Mật khẩu máy chủ Redis (AUTH) |
+| **Password** | Mật khẩu Redis (AUTH) |
 | **Database** | Chỉ số database (0-15, mặc định `0`) |
 
 <Tip>
-Đối với phát triển local không bật xác thực, bạn có thể để trống trường password. Redis sử dụng database index `0` theo mặc định.
+Cho dev local không bật xác thực, để trống password. Redis mặc định dùng database index `0`.
 </Tip>
 
-## Định dạng URL Kết nối
+## Định dạng URL
 
-Bạn có thể import kết nối bằng Redis URL.
+Import kết nối bằng Redis URL.
 
-Scheme `rediss://` (lưu ý hai chữ `s`) chỉ định kết nối được mã hóa TLS.
+Scheme `rediss://` (hai chữ `s`) chỉ kết nối TLS.
 
-Xem [Tham chiếu URL kết nối](/databases/connection-urls#redis) để biết định dạng URL Redis đầy đủ.
+Xem [Tham chiếu URL kết nối](/databases/connection-urls#redis) để biết format đầy đủ.
 
 ## Ví dụ Cấu hình
 
-### Máy chủ Phát triển Local
+### Server Dev Local
 
 ```
 Name:     Local Redis
@@ -70,8 +70,8 @@ Database: 0
 ```
 Name:     Docker Redis
 Host:     localhost
-Port:     6379 (hoặc cổng được ánh xạ của bạn)
-Password: (mật khẩu từ biến môi trường REDIS_PASSWORD)
+Port:     6379 (hoặc cổng mapped)
+Password: (mật khẩu từ REDIS_PASSWORD)
 Database: 0
 ```
 
@@ -81,15 +81,15 @@ Database: 0
 Name:     Redis Cloud
 Host:     redis-12345.c1.us-east-1-2.ec2.cloud.redislabs.com
 Port:     12345
-Password: (mật khẩu Redis Cloud của bạn)
+Password: (mật khẩu Redis Cloud)
 Database: 0
 ```
 
 <Note>
-Đối với các dịch vụ Redis quản lý, SSL/TLS thường là bắt buộc. Bật nó trong phần SSL/TLS của biểu mẫu kết nối.
+Dịch vụ Redis quản lý thường bắt buộc SSL/TLS. Bật trong phần SSL/TLS của form kết nối.
 </Note>
 
-### Máy chủ Từ xa
+### Server Từ xa
 
 ```
 Name:     Production Cache
@@ -100,68 +100,68 @@ Database: 0
 ```
 
 <Warning>
-Đối với các instance Redis production, hãy xem xét sử dụng [SSH tunneling](/vi/databases/ssh-tunneling) để kết nối an toàn.
+Cho Redis production, nên dùng [SSH tunneling](/vi/databases/ssh-tunneling) để kết nối an toàn.
 </Warning>
 
 ## Kết nối SSL/TLS
 
-TablePro hỗ trợ mã hóa SSL/TLS cho kết nối Redis. Cấu hình SSL trong phần **SSL/TLS** của biểu mẫu kết nối.
+Cấu hình SSL trong phần **SSL/TLS** của form kết nối.
 
 | Chế độ SSL | Mô tả |
 |----------|-------------|
 | **Disabled** | Không mã hóa SSL |
-| **Required** | Bắt buộc mã hóa SSL |
+| **Required** | Bắt buộc SSL |
 | **Verify CA** | Bắt buộc SSL và xác minh chứng chỉ server với CA |
 
-Đối với chế độ **Verify CA**, cung cấp đường dẫn đến file chứng chỉ CA. Bạn cũng có thể cung cấp file chứng chỉ client và khóa tùy chọn để xác thực TLS hai chiều.
+Với **Verify CA**, cung cấp file chứng chỉ CA. Tùy chọn thêm file chứng chỉ client và key cho mutual TLS.
 
 <Tip>
-Sử dụng scheme URL `rediss://` khi import kết nối yêu cầu TLS.
+Dùng scheme `rediss://` khi import kết nối yêu cầu TLS.
 </Tip>
 
 <Note>
-Nếu bạn không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/databases/ssh-tunneling) là phương án thay thế mã hóa toàn bộ traffic qua đường hầm SSH.
+Nếu không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/databases/ssh-tunneling) mã hóa toàn bộ traffic qua tunnel SSH.
 </Note>
 
 ## Hỗ trợ SSH Tunnel
 
-Bạn có thể kết nối đến Redis qua SSH tunnel để truy cập an toàn đến máy chủ từ xa. Xem [SSH Tunneling](/vi/databases/ssh-tunneling) để biết hướng dẫn thiết lập chi tiết.
+Kết nối Redis qua SSH tunnel để truy cập an toàn server từ xa. Xem [SSH Tunneling](/vi/databases/ssh-tunneling) để biết cách cài đặt.
 
 ## Tính năng
 
 ### Duyệt Namespace
 
-Sau khi kết nối, sidebar nhóm các key theo tiền tố phân tách bởi dấu hai chấm. Ví dụ, các key có tên `user:1`, `user:2` và `session:abc` xuất hiện dưới namespace `user` và `session`:
+Sau khi kết nối, sidebar nhóm key theo tiền tố dấu hai chấm. Key tên `user:1`, `user:2` và `session:abc` nằm trong namespace `user` và `session`:
 
-1. Nhấp vào tên kết nối trong sidebar
-2. Mở rộng namespace để xem các key
-3. Nhấp vào key để xem giá trị
+1. Nhấp tên kết nối trong sidebar
+2. Mở rộng namespace để xem key
+3. Nhấp key để xem giá trị
 
-Các key không có dấu hai chấm phân tách được nhóm dưới namespace gốc.
+Key không có dấu hai chấm nằm trong namespace gốc.
 
 ### Xem Key-Value
 
-Các giá trị được hiển thị trong data grid với định dạng phù hợp theo kiểu:
+Giá trị hiển thị trong data grid theo kiểu dữ liệu:
 
-- Giá trị **String** được hiển thị dạng văn bản thuần
-- Các trường **Hash** được hiển thị dạng cặp key-value theo hàng
-- Các phần tử **List** được hiển thị với chỉ số
-- Các thành viên **Set** được hiển thị dạng hàng riêng lẻ
-- Các thành viên **Sorted Set** được hiển thị cùng với điểm số
-- Giá trị **JSON** được tô sáng cú pháp
+- **String** hiển thị văn bản thuần
+- **Hash** hiển thị cặp key-value theo hàng
+- **List** hiển thị với chỉ số
+- **Set** hiển thị từng hàng riêng
+- **Sorted Set** hiển thị kèm điểm số
+- **JSON** tô sáng cú pháp
 
 ### Quản lý TTL
 
-Xem và quản lý thời gian sống (TTL) cho các key:
+Xem và quản lý thời gian sống (TTL) cho key:
 
-- TTL được hiển thị bên cạnh mỗi key trong data grid
-- Key không có hạn sử dụng hiển thị `-1`
+- TTL hiển thị cạnh mỗi key trong data grid
+- Key không hết hạn hiển thị `-1`
 - Key không tồn tại hiển thị `-2`
-- Đặt hoặc cập nhật giá trị TTL trực tiếp từ giao diện
+- Đặt hoặc cập nhật TTL trực tiếp từ giao diện
 
 ### Redis CLI
 
-Thực thi lệnh Redis trực tiếp trong tab editor sử dụng cú pháp lệnh Redis chuẩn:
+Chạy lệnh Redis trực tiếp trong editor tab:
 
 ```redis
 -- Thao tác key
@@ -199,9 +199,9 @@ INFO
 DBSIZE
 ```
 
-### Các Lệnh Được Hỗ trợ
+### Lệnh Được Hỗ trợ
 
-TablePro hỗ trợ toàn bộ tập lệnh Redis, bao gồm:
+TablePro hỗ trợ đầy đủ tập lệnh Redis:
 
 | Danh mục | Lệnh |
 |----------|----------|
@@ -213,7 +213,7 @@ TablePro hỗ trợ toàn bộ tập lệnh Redis, bao gồm:
 | **Key** | DEL, EXISTS, EXPIRE, TTL, TYPE, RENAME, KEYS, SCAN |
 | **Server** | PING, INFO, DBSIZE, FLUSHDB, SELECT |
 
-Các lệnh không được liệt kê ở trên vẫn được gửi đến server và phản hồi được hiển thị trong bảng kết quả.
+Lệnh không liệt kê ở trên vẫn gửi đến server và phản hồi hiển thị trong bảng kết quả.
 
 ## Khắc phục sự cố
 
@@ -223,22 +223,21 @@ Các lệnh không được liệt kê ở trên vẫn được gửi đến ser
 
 **Nguyên nhân và Giải pháp**:
 
-1. **Máy chủ Redis không chạy**
+1. **Redis không chạy**
    ```bash
-   # Kiểm tra xem Redis có đang chạy không
+   # Kiểm tra Redis
    redis-cli ping
 
-   # Khởi động Redis (macOS với Homebrew)
+   # Khởi động (macOS Homebrew)
    brew services start redis
    ```
 
-2. **Cổng sai**
-   - Xác minh cổng trong file cấu hình Redis (`redis.conf`)
-   - Kiểm tra cấu hình của bạn
+2. **Sai cổng**
+   - Kiểm tra cổng trong `redis.conf`
 
-3. **Redis không lắng nghe trên địa chỉ mong đợi**
-   - Kiểm tra chỉ thị `bind` trong `redis.conf`
-   - Đối với kết nối từ xa, thêm IP client hoặc sử dụng `0.0.0.0`
+3. **Redis không lắng nghe đúng địa chỉ**
+   - Kiểm tra `bind` trong `redis.conf`
+   - Cho kết nối remote, thêm IP client hoặc dùng `0.0.0.0`
 
 ### Xác thực Thất bại
 
@@ -246,8 +245,8 @@ Các lệnh không được liệt kê ở trên vẫn được gửi đến ser
 
 **Giải pháp**:
 
-1. Xác minh mật khẩu khớp với `requirepass` trong `redis.conf`
-2. Đối với Redis 6.0+ với ACL:
+1. Kiểm tra password khớp `requirepass` trong `redis.conf`
+2. Cho Redis 6.0+ với ACL:
    ```redis
    ACL LIST
    ACL SETUSER myuser on >password ~* +@all
@@ -255,35 +254,35 @@ Các lệnh không được liệt kê ở trên vẫn được gửi đến ser
 
 ### Hết thời gian Kết nối
 
-**Triệu chứng**: Kết nối bị treo hoặc hết thời gian
+**Triệu chứng**: Kết nối treo hoặc timeout
 
 **Giải pháp**:
 
-1. Xác minh host và port chính xác
-2. Kiểm tra kết nối mạng và quy tắc firewall
-3. Đối với Redis được host trên cloud, đảm bảo IP của bạn được thêm vào danh sách trắng
+1. Kiểm tra host và port đúng
+2. Kiểm tra mạng và firewall
+3. Cho Redis cloud, đảm bảo IP được whitelist
 
-## Hạn chế Đã biết
+## Hạn chế
 
-- **Cluster mode**: Redis Cluster với sharding tự động không được hỗ trợ. Kết nối trực tiếp đến từng node riêng lẻ.
-- **Pub/Sub**: Đăng ký Pub/Sub thời gian thực không được hỗ trợ trong phiên bản hiện tại.
-- **Streams**: Redis Streams (XADD, XREAD, v.v.) không được hỗ trợ trong data grid, nhưng có thể thực thi lệnh trong CLI.
-- **Modules**: Các lệnh RedisJSON, RediSearch và module khác có thể được thực thi qua CLI nhưng có thể không có hỗ trợ UI chuyên biệt.
-- **Key lớn**: Key có hàng triệu phần tử (list, set hoặc hash lớn) được phân trang để tránh vấn đề bộ nhớ.
+- **Cluster mode**: Redis Cluster sharding tự động không hỗ trợ. Kết nối trực tiếp từng node.
+- **Pub/Sub**: Pub/Sub thời gian thực không hỗ trợ trong phiên bản hiện tại.
+- **Streams**: Redis Streams (XADD, XREAD, v.v.) không hỗ trợ trong data grid, nhưng chạy được trong CLI.
+- **Modules**: RedisJSON, RediSearch và module khác chạy qua CLI nhưng chưa có UI chuyên biệt.
+- **Key lớn**: Key có hàng triệu phần tử được phân trang để tránh vấn đề bộ nhớ.
 
 ## Mẹo Hiệu suất
 
 ### Database Lớn
 
-Đối với các instance Redis có hàng triệu key:
+Cho Redis có hàng triệu key:
 
-1. Sử dụng duyệt namespace để lọc key theo tiền tố
-2. Sử dụng `SCAN` thay vì `KEYS` để tìm kiếm theo mẫu trong CLI
-3. Phân trang được áp dụng tự động khi duyệt collection lớn
+1. Dùng namespace browsing để lọc key theo tiền tố
+2. Dùng `SCAN` thay `KEYS` trong CLI
+3. Phân trang áp dụng tự động khi duyệt collection lớn
 
 ### Giám sát Bộ nhớ
 
-Kiểm tra mức sử dụng bộ nhớ cho instance Redis:
+Kiểm tra bộ nhớ Redis:
 
 ```redis
 INFO memory
@@ -295,15 +294,15 @@ DBSIZE
 
 <CardGroup cols={2}>
   <Card title="SSH Tunneling" icon="lock" href="/vi/databases/ssh-tunneling">
-    Kết nối an toàn đến máy chủ Redis từ xa
+    Kết nối an toàn đến Redis server từ xa
   </Card>
   <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Làm chủ các tính năng trình soạn thảo truy vấn
+    Các tính năng query editor
   </Card>
   <Card title="Nhập/Xuất" icon="file-import" href="/vi/features/import-export">
-    Nhập và xuất dữ liệu Redis
+    Import và export dữ liệu Redis
   </Card>
   <Card title="Data Grid" icon="table" href="/vi/features/data-grid">
-    Duyệt và chỉnh sửa dữ liệu key-value trong data grid
+    Duyệt và chỉnh sửa key-value trong data grid
   </Card>
 </CardGroup>

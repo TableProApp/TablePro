@@ -6,9 +6,9 @@
 import Foundation
 
 extension MainContentCoordinator {
-    func setupURLNotificationObservers() {
+    func setupURLNotificationObservers() -> [NSObjectProtocol] {
         let connId = connectionId
-        NotificationCenter.default.addObserver(
+        let observer1 = NotificationCenter.default.addObserver(
             forName: .applyURLFilter,
             object: nil,
             queue: .main
@@ -17,7 +17,6 @@ extension MainContentCoordinator {
                   let targetId = userInfo["connectionId"] as? UUID,
                   targetId == connId else { return }
 
-            // Extract Sendable values before crossing isolation boundary
             let condition = userInfo["condition"] as? String
             let column = userInfo["column"] as? String
             let operation = userInfo["operation"] as? String
@@ -30,7 +29,7 @@ extension MainContentCoordinator {
             }
         }
 
-        NotificationCenter.default.addObserver(
+        let observer2 = NotificationCenter.default.addObserver(
             forName: .switchSchemaFromURL,
             object: nil,
             queue: .main
@@ -42,14 +41,16 @@ extension MainContentCoordinator {
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                
-                if self.connection.type == .postgresql {
+
+                if PluginManager.shared.supportsSchemaSwitching(for: self.connection.type) {
                     await self.switchSchema(to: schema)
                 } else {
                     await self.switchDatabase(to: schema)
                 }
             }
         }
+
+        return [observer1, observer2]
     }
 
     private func applyURLFilterValues(

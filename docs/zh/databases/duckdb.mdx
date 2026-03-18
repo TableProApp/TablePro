@@ -1,0 +1,101 @@
+---
+title: DuckDB
+description: 使用 TablePro 连接 DuckDB 数据库
+---
+
+# DuckDB
+
+DuckDB 是一个嵌入式分析数据库，针对 OLAP 工作负载进行了优化。TablePro 支持连接 DuckDB 数据库文件，用于浏览表、执行查询和管理 schema。
+
+## 连接 DuckDB 数据库
+
+<Steps>
+  <Step title="创建新连接">
+    打开 TablePro 并点击 **New Connection** 或按 <kbd>Cmd+N</kbd>。
+  </Step>
+  <Step title="选择 DuckDB">
+    从数据库类型列表中选择 **DuckDB**。
+  </Step>
+  <Step title="选择数据库文件">
+    点击 **Browse** 选择一个已有的 `.duckdb` 文件，或输入路径创建新数据库。
+  </Step>
+  <Step title="连接">
+    点击 **Connect** 打开数据库。
+  </Step>
+</Steps>
+
+## 从 Finder 打开 DuckDB 文件
+
+在 Finder 中双击任意 `.duckdb` 文件即可直接在 TablePro 中打开。
+
+## 直接查询文件
+
+DuckDB 可以用 SQL 直接查询 CSV、Parquet 和 JSON 文件：
+
+```sql
+-- 查询 CSV 文件
+SELECT * FROM 'data.csv';
+
+-- 查询 Parquet 文件
+SELECT * FROM read_parquet('analytics.parquet');
+
+-- 查询 JSON 文件
+SELECT * FROM read_json('config.json');
+```
+
+## Schema 支持
+
+DuckDB 在单个数据库中支持多个 schema。默认 schema 是 `main`。使用工具栏中的 schema 切换器在不同 schema 之间导航。
+
+```sql
+-- 创建新的 schema
+CREATE SCHEMA analytics;
+
+-- 在特定 schema 中创建表
+CREATE TABLE analytics.events (
+    id INTEGER PRIMARY KEY,
+    event_name VARCHAR,
+    created_at TIMESTAMP
+);
+```
+
+## DuckDB 扩展
+
+DuckDB 拥有丰富的扩展生态系统。使用 SQL 安装和加载扩展：
+
+```sql
+-- 安装扩展
+INSTALL httpfs;
+
+-- 加载扩展
+LOAD httpfs;
+
+-- 查询远程 Parquet 文件
+SELECT * FROM read_parquet('https://example.com/data.parquet');
+```
+
+## 数据类型
+
+DuckDB 支持广泛的数据类型：
+
+| 类别 | 类型 |
+|----------|-------|
+| 数值 | `INTEGER`、`BIGINT`、`HUGEINT`、`DOUBLE`、`FLOAT`、`DECIMAL` |
+| 字符串 | `VARCHAR`、`TEXT`、`CHAR` |
+| 日期/时间 | `DATE`、`TIME`、`TIMESTAMP`、`INTERVAL` |
+| 复合类型 | `LIST`、`MAP`、`STRUCT`、`UNION`、`ENUM` |
+| 其他 | `BOOLEAN`、`BLOB`、`UUID`、`JSON`、`BIT` |
+
+## 限制
+
+- DuckDB 是嵌入式数据库，没有网络服务器可供连接。
+- 同一时间只有一个进程可以写入 DuckDB 文件。
+
+<CardGroup cols={2}>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    学习键盘快捷键以加速操作
+  </Card>
+  <Card title="查询编辑器" icon="code" href="/zh/features/query-editor">
+    编写和执行 SQL 查询
+  </Card>
+</CardGroup>

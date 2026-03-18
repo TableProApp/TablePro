@@ -21,14 +21,6 @@ extension ConnectionHealthMonitor {
     }
 }
 
-// MARK: - Notification
-
-extension Notification.Name {
-    /// Posted when a connection's health state changes.
-    /// userInfo: ["connectionId": UUID, "state": ConnectionHealthMonitor.HealthState]
-    static let connectionHealthStateChanged = Notification.Name("connectionHealthStateChanged")
-}
-
 // MARK: - ConnectionHealthMonitor
 
 /// Monitors a single database connection's health via periodic pings and

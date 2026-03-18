@@ -1,23 +1,23 @@
 ---
-title: Cài đặt Trình soạn thảo
-description: Cấu hình font, kích thước và hành vi của trình soạn thảo SQL
+title: Cài đặt Editor
+description: Font, kích thước, số dòng, xuống dòng, thụt lề và chế độ Vim trong SQL editor
 ---
 
-# Cài đặt Trình soạn thảo
+# Cài đặt Editor
 
-Tùy chỉnh trình soạn thảo SQL để phù hợp với sở thích lập trình của bạn. Truy cập cài đặt trình soạn thảo qua **Settings** > **Editor**.
+Cấu hình SQL editor trong **Settings** > **Editor**.
 
 {/* Screenshot: Editor settings panel */}
-<Frame caption="Cài đặt trình soạn thảo">
+<Frame caption="Cài đặt editor">
   <img
     className="block dark:hidden"
     src="/images/settings-editor.png"
-    alt="Cài đặt trình soạn thảo"
+    alt="Cài đặt editor"
   />
   <img
     className="hidden dark:block"
     src="/images/settings-editor-dark.png"
-    alt="Cài đặt trình soạn thảo"
+    alt="Cài đặt editor"
   />
 </Frame>
 
@@ -25,36 +25,34 @@ Tùy chỉnh trình soạn thảo SQL để phù hợp với sở thích lập t
 
 ### Họ Font
 
-Chọn từ các font monospace có sẵn:
+Các font monospace có sẵn:
 
 | Font | Mô tả |
 |------|-------------|
-| **System Mono** | Monospace mặc định của macOS (khuyến nghị) |
+| **System Mono** | Monospace mặc định macOS (khuyến nghị) |
 | **SF Mono** | San Francisco Mono |
-| **Menlo** | Monospace cổ điển của macOS |
-| **Monaco** | Font lập trình truyền thống của Mac |
-| **Courier New** | Tiêu chuẩn đa nền tảng |
+| **Menlo** | Monospace cổ điển macOS |
+| **Monaco** | Font lập trình truyền thống Mac |
+| **Courier New** | Chuẩn đa nền tảng |
 
 <Tip>
-**System Mono** được khuyến nghị vì nó tự động sử dụng font monospace hệ thống tốt nhất có sẵn.
+**System Mono** tự động dùng font monospace hệ thống tốt nhất.
 </Tip>
 
 ### Tính khả dụng Font
 
-Không phải tất cả các font đều có sẵn trên mọi hệ thống:
-
 | Font | Khả dụng |
 |------|--------------|
-| System Mono | Luôn có sẵn |
+| System Mono | Luôn có |
 | SF Mono | macOS 10.12+ |
 | Menlo | macOS 10.6+ |
 | Monaco | macOS Classic |
-| Courier New | Font hệ thống tiêu chuẩn |
+| Courier New | Font hệ thống chuẩn |
 
-Nếu font đã chọn không khả dụng, TablePro sẽ quay lại System Mono.
+Nếu font chọn không khả dụng, TablePro fallback về System Mono.
 
 {/* Screenshot: Bộ chọn họ font */}
-<Frame caption="Bộ chọn họ font với các font có sẵn">
+<Frame caption="Bộ chọn họ font">
   <img
     className="block dark:hidden"
     src="/images/editor-font-family.png"
@@ -68,8 +66,6 @@ Nếu font đã chọn không khả dụng, TablePro sẽ quay lại System Mono
 </Frame>
 
 ### Kích thước Font
-
-Điều chỉnh kích thước font trình soạn thảo:
 
 | Cài đặt | Phạm vi | Mặc định |
 |---------|-------|---------|
@@ -91,11 +87,11 @@ Nếu font đã chọn không khả dụng, TablePro sẽ quay lại System Mono
 
 **Khuyến nghị**:
 
-| Kích thước | Tốt nhất cho |
+| Kích thước | Phù hợp |
 |------|----------|
-| 11-12 pt | Màn hình nhỏ, xem nhiều code hơn |
-| 13-14 pt | Sử dụng tiêu chuẩn (mặc định) |
-| 15-16 pt | Khả năng đọc tốt hơn |
+| 11-12 pt | Màn hình nhỏ, xem nhiều code |
+| 13-14 pt | Sử dụng chuẩn (mặc định) |
+| 15-16 pt | Dễ đọc hơn |
 | 17-18 pt | Màn hình lớn, khả năng tiếp cận |
 
 ## Cài đặt Hiển thị
@@ -104,14 +100,14 @@ Nếu font đã chọn không khả dụng, TablePro sẽ quay lại System Mono
 
 | Tùy chọn | Mô tả |
 |--------|-------------|
-| **On** | Hiển thị số dòng (mặc định) |
-| **Off** | Ẩn số dòng cho giao diện tối giản |
+| **On** | Hiện số dòng (mặc định) |
+| **Off** | Ẩn cho giao diện tối giản |
 
-Số dòng giúp:
+Số dòng hữu ích khi:
 
-- Tham chiếu các dòng cụ thể
-- Thông báo lỗi có đề cập đến số dòng
-- Điều hướng các truy vấn lớn
+- Tham chiếu dòng cụ thể
+- Error message đề cập số dòng
+- Điều hướng query lớn
 - Thảo luận code với người khác
 
 {/* Screenshot: Editor with and without line numbers */}
@@ -133,12 +129,12 @@ Số dòng giúp:
 | Tùy chọn | Mô tả |
 |--------|-------------|
 | **On** | Tô sáng nhẹ dòng có con trỏ (mặc định) |
-| **Off** | Không tô sáng dòng hiện tại |
+| **Off** | Không tô sáng |
 
-Điều này giúp theo dõi vị trí con trỏ của bạn, đặc biệt trong các truy vấn dài.
+Giúp theo dõi vị trí con trỏ trong query dài.
 
 {/* Screenshot: Tô sáng dòng hiện tại */}
-<Frame caption="Tô sáng dòng hiện tại trong trình soạn thảo">
+<Frame caption="Tô sáng dòng hiện tại">
   <img
     className="block dark:hidden"
     src="/images/current-line-highlight.png"
@@ -155,23 +151,23 @@ Số dòng giúp:
 
 | Tùy chọn | Mô tả |
 |--------|-------------|
-| **Off** | Các dòng dài cuộn theo chiều ngang (mặc định) |
-| **On** | Các dòng dài tự động xuống dòng |
+| **Off** | Dòng dài cuộn ngang (mặc định) |
+| **On** | Dòng dài tự động xuống dòng |
 
-**Khi nào nên bật xuống dòng**:
+**Bật xuống dòng khi**:
 
 - Làm việc trên màn hình hẹp
-- Truy vấn có các dòng dài
-- Không muốn cuộn theo chiều ngang
+- Query có dòng dài
+- Muốn tránh cuộn ngang
 
-**Khi nào nên tắt xuống dòng**:
+**Tắt xuống dòng khi**:
 
 - Muốn độ dài dòng nhất quán
-- Làm việc với các truy vấn đã được định dạng
-- Cần xem cấu trúc truy vấn rõ ràng
+- Làm việc với query đã format
+- Cần thấy rõ cấu trúc query
 
 {/* Screenshot: Xuống dòng */}
-<Frame caption="Xuống dòng: tự động xuống dòng so với cuộn ngang">
+<Frame caption="Xuống dòng: tự động xuống so với cuộn ngang">
   <img
     className="block dark:hidden"
     src="/images/editor-word-wrap.png"
@@ -188,8 +184,6 @@ Số dòng giúp:
 
 ### Độ rộng Tab
 
-Đặt số khoảng trắng mà một tab đại diện:
-
 | Cài đặt | Tùy chọn | Mặc định |
 |---------|---------|---------|
 | Độ rộng Tab | 1-16 khoảng trắng | 4 |
@@ -198,12 +192,12 @@ Lựa chọn phổ biến:
 
 | Độ rộng | Sử dụng |
 |-------|-------|
-| 2 khoảng trắng | Code gọn, kiểu JavaScript |
-| 4 khoảng trắng | Định dạng SQL tiêu chuẩn (khuyến nghị) |
+| 2 khoảng trắng | Gọn, kiểu JavaScript |
+| 4 khoảng trắng | SQL chuẩn (khuyến nghị) |
 | 8 khoảng trắng | Truyền thống, kiểu Unix |
 
 {/* Screenshot: Cài đặt độ rộng tab */}
-<Frame caption="Cài đặt độ rộng tab cho thụt lề">
+<Frame caption="Cài đặt độ rộng tab">
   <img
     className="block dark:hidden"
     src="/images/editor-tab-width.png"
@@ -220,56 +214,50 @@ Lựa chọn phổ biến:
 
 | Tùy chọn | Mô tả |
 |--------|-------------|
-| **On** | Dòng mới khớp thụt lề trước đó (mặc định) |
+| **On** | Dòng mới khớp thụt lề trước (mặc định) |
 | **Off** | Dòng mới bắt đầu ở cột 1 |
-
-Tự động thụt lề giúp duy trì định dạng nhất quán:
 
 ```sql
 SELECT
     u.id,
     u.name,
-    |  -- Con trỏ ở đây, dòng tiếp theo tự động thụt lề
+    |  -- Con trỏ ở đây, dòng tiếp tự động thụt lề
 ```
 
 {/* Screenshot: Tự động thụt lề */}
-<Frame caption="Tự động thụt lề sau các mệnh đề SQL">
+<Frame caption="Tự động thụt lề sau mệnh đề SQL">
   <img
     className="block dark:hidden"
     src="/images/editor-auto-indent.png"
-    alt="Tự động thụt lề trong trình soạn thảo"
+    alt="Tự động thụt lề"
   />
   <img
     className="hidden dark:block"
     src="/images/editor-auto-indent-dark.png"
-    alt="Tự động thụt lề trong trình soạn thảo"
+    alt="Tự động thụt lề"
   />
 </Frame>
 
-## Hành vi Trình soạn thảo
+## Hành vi Editor
 
 ### Nhập Văn bản
 
-Trình soạn thảo hoạt động như một trình soạn thảo văn bản macOS tiêu chuẩn:
+Editor hoạt động như trình soạn thảo macOS chuẩn:
 
-- Các phím tắt tiêu chuẩn hoạt động
-- Chức năng Copy/paste bình thường
-- Lịch sử Undo/redo được duy trì
-- Chọn vùng hoạt động với chuột và bàn phím
+- Phím tắt chuẩn hoạt động
+- Copy/paste bình thường
+- Lịch sử undo/redo được duy trì
+- Chọn vùng bằng chuột và bàn phím
 
 ### Tự động hoàn thành
 
-Tự động hoàn thành không thể tắt nhưng có thể bỏ qua bằng `Escape`.
+Autocomplete luôn bật, dismiss bằng `Escape`.
 
-Xem [Tự động hoàn thành](/vi/features/autocomplete) để biết chi tiết về cách sử dụng tính năng này.
+Xem [Tự động hoàn thành](/vi/features/autocomplete) để biết chi tiết.
 
 ## Áp dụng Cài đặt
 
-Cài đặt áp dụng ngay lập tức:
-
-1. Thay đổi một cài đặt
-2. Trình soạn thảo cập nhật theo thời gian thực
-3. Không cần khởi động lại
+Mọi thay đổi áp dụng ngay. Không cần khởi động lại.
 
 ## Cấu hình Khuyến nghị
 
@@ -285,7 +273,7 @@ Auto Indent: On
 Word Wrap: Off
 ```
 
-### Gọn (Xem nhiều Code hơn)
+### Gọn (Xem nhiều Code)
 
 ```
 Font Family: SF Mono
@@ -297,7 +285,7 @@ Auto Indent: On
 Word Wrap: Off
 ```
 
-### Thoải mái (Đọc dễ dàng)
+### Thoải mái (Dễ Đọc)
 
 ```
 Font Family: Menlo
@@ -335,7 +323,7 @@ Word Wrap: On
 
 ## Tô sáng Cú pháp
 
-Trình soạn thảo tự động tô sáng cú pháp SQL:
+SQL tự động tô sáng:
 
 | Phần tử | Màu (Tối) | Màu (Sáng) |
 |---------|--------------|---------------|
@@ -346,23 +334,21 @@ Trình soạn thảo tự động tô sáng cú pháp SQL:
 | Functions | Mặc định | Mặc định |
 | Identifiers | Trắng | Đen |
 
-Màu cú pháp tự động thích ứng với chủ đề hiện tại.
+Màu thích ứng theo chủ đề hiện tại.
 
 ### Keywords được Tô sáng
-
-Các keywords SQL được tô sáng bao gồm:
 
 - `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `DROP`
 - `FROM`, `WHERE`, `JOIN`, `ON`, `GROUP BY`, `ORDER BY`, `HAVING`
 - `AND`, `OR`, `NOT`, `IN`, `LIKE`, `BETWEEN`, `IS NULL`
 - `INNER`, `LEFT`, `RIGHT`, `OUTER`, `CROSS`, `UNION`
-- Và nhiều keywords SQL tiêu chuẩn khác
+- Và nhiều keywords SQL chuẩn khác
 
-## Phím tắt trong Trình soạn thảo
+## Phím tắt trong Editor
 
 | Hành động | Phím tắt |
 |--------|----------|
-| Thực thi truy vấn | `Cmd+Enter` |
+| Thực thi query | `Cmd+Enter` |
 | Hoàn tác | `Cmd+Z` |
 | Làm lại | `Cmd+Shift+Z` |
 | Tìm | `Cmd+F` |
@@ -370,39 +356,39 @@ Các keywords SQL được tô sáng bao gồm:
 | Chọn tất cả | `Cmd+A` |
 | Đi đến dòng | `Cmd+G` |
 
-Xem [Phím tắt](/vi/features/keyboard-shortcuts) để biết danh sách đầy đủ.
+Xem [Phím tắt](/vi/features/keyboard-shortcuts) cho danh sách đầy đủ.
 
 ## Khắc phục Sự cố
 
 ### Font Không Hiển thị Đúng
 
-1. Xác minh font đã được cài đặt trên hệ thống của bạn
-2. Thử chọn một font khác
+1. Xác minh font đã cài trên hệ thống
+2. Thử font khác
 3. Khởi động lại TablePro
 
 ### Cài đặt Không Lưu
 
 1. Kiểm tra quyền đĩa
-2. Xác minh file preferences có thể ghi:
+2. Xác minh file preferences ghi được:
    ```bash
    ls -la ~/Library/Preferences/com.TablePro.plist
    ```
 3. Thử đặt lại preferences
 
-### Trình soạn thảo Cảm thấy Chậm
+### Editor Chậm
 
-1. Giảm kích thước font (font lớn hơn render chậm hơn)
-2. Tắt xuống dòng cho các truy vấn dài
-3. Kiểm tra các truy vấn rất lớn trong trình soạn thảo
+1. Giảm kích thước font (font lớn render chậm hơn)
+2. Tắt xuống dòng cho query dài
+3. Kiểm tra query quá lớn trong editor
 
 ## Trang Liên quan
 
 <CardGroup cols={2}>
-  <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Tính năng và cách sử dụng trình soạn thảo
+  <Card title="SQL Editor" icon="code" href="/vi/features/sql-editor">
+    Tính năng và cách dùng editor
   </Card>
   <Card title="Tự động hoàn thành" icon="wand-magic-sparkles" href="/vi/features/autocomplete">
-    Chức năng tự động hoàn thành
+    Chức năng autocomplete
   </Card>
   <Card title="Giao diện" icon="palette" href="/vi/customization/appearance">
     Chủ đề và màu sắc

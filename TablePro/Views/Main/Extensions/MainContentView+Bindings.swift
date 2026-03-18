@@ -34,7 +34,7 @@ extension MainContentView {
 
     /// Determine if sidebar should be in editable mode
     var isSidebarEditable: Bool {
-        guard !coordinator.connection.isReadOnly,
+        guard !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableName != nil,
               !selectedRowIndices.isEmpty else {

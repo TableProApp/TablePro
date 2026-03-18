@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// Builds schema context for AI system prompts
 struct AISchemaContext {
@@ -18,7 +19,7 @@ struct AISchemaContext {
     // MARK: - Public
 
     /// Build a system prompt including database context
-    static func buildSystemPrompt(
+    @MainActor static func buildSystemPrompt(
         databaseType: DatabaseType,
         databaseName: String,
         tables: [TableInfo],
@@ -26,7 +27,8 @@ struct AISchemaContext {
         foreignKeys: [String: [ForeignKeyInfo]],
         currentQuery: String?,
         queryResults: String?,
-        settings: AISettings
+        settings: AISettings,
+        identifierQuote: String = "\""
     ) -> String {
         var parts: [String] = []
 
@@ -44,7 +46,7 @@ struct AISchemaContext {
                 columnsByTable: columnsByTable,
                 foreignKeys: foreignKeys,
                 maxTables: settings.maxSchemaTables,
-                databaseType: databaseType
+                identifierQuote: identifierQuote
             )
             if !schemaContext.isEmpty {
                 parts.append("\n## Database Schema\n\(schemaContext)")
@@ -54,12 +56,7 @@ struct AISchemaContext {
         if settings.includeCurrentQuery,
            let query = currentQuery,
            !query.isEmpty {
-            let lang: String
-            switch databaseType {
-            case .mongodb: lang = "javascript"
-            case .redis: lang = "bash"
-            default: lang = "sql"
-            }
+            let lang = PluginManager.shared.editorLanguage(for: databaseType).codeBlockTag
             parts.append("\n## Current Query\n```\(lang)\n\(query)\n```")
         }
 
@@ -69,21 +66,12 @@ struct AISchemaContext {
             parts.append("\n## Recent Query Results\n\(results)")
         }
 
-        if databaseType == .mongodb {
-            parts.append(
-                "\nProvide MongoDB shell queries using `javascript` fenced code blocks."
-            )
-            parts.append(
-                "Use MongoDB shell syntax (db.collection.find(), etc.), not SQL."
-            )
-        } else if databaseType == .redis {
-            parts.append(
-                "\nProvide Redis commands using `bash` fenced code blocks."
-            )
-            parts.append(
-                "Use Redis CLI syntax (GET, SET, HGETALL, etc.), not SQL."
-            )
-        } else {
+        let editorLang = PluginManager.shared.editorLanguage(for: databaseType)
+        let langName = PluginManager.shared.queryLanguageName(for: databaseType)
+        let langTag = editorLang.codeBlockTag
+
+        switch editorLang {
+        case .sql:
             parts.append(
                 "\nProvide SQL queries appropriate for"
                 + " \(databaseType.rawValue) syntax when applicable."
@@ -91,6 +79,13 @@ struct AISchemaContext {
             parts.append(
                 "When writing SQL, use the correct identifier quoting"
                 + " for \(databaseType.rawValue)."
+            )
+        default:
+            parts.append(
+                "\nProvide \(langName) queries using `\(langTag)` fenced code blocks."
+            )
+            parts.append(
+                "Use \(langName) syntax, not SQL."
             )
         }
 
@@ -104,13 +99,13 @@ struct AISchemaContext {
         columnsByTable: [String: [ColumnInfo]],
         foreignKeys: [String: [ForeignKeyInfo]],
         maxTables: Int,
-        databaseType: DatabaseType
+        identifierQuote: String
     ) -> String {
         let selectedTables = Array(tables.prefix(maxTables))
         guard !selectedTables.isEmpty else { return "" }
 
         var lines: [String] = []
-        let q = databaseType.identifierQuote
+        let q = identifierQuote
 
         for table in selectedTables {
             var tableLine = "- \(q)\(table.name)\(q)"

@@ -1,11 +1,11 @@
 ---
 title: Phím tắt
-description: Làm chủ TablePro với phím tắt để làm việc nhanh hơn
+description: Danh sách đầy đủ phím tắt cho SQL editor, data grid, tab, chế độ Vim và tùy chỉnh
 ---
 
 # Phím tắt
 
-TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh hơn mà không cần dùng chuột. Học các phím tắt này để tăng tốc đáng kể quy trình làm việc database của bạn.
+TablePro thiên về bàn phím. Hầu hết thao tác đều có phím tắt, và hầu hết phím tắt menu đều gán lại được.
 
 ## Tham Khảo Nhanh
 
@@ -17,6 +17,7 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 | Kết nối mới | `Cmd+N` |
 | Mở lịch sử | `Cmd+Y` |
 | Cài đặt | `Cmd+,` |
+| Quick Switcher | `Cmd+P` |
 | Đóng cửa sổ | `Cmd+W` |
 | Thoát | `Cmd+Q` |
 
@@ -26,12 +27,12 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 
 | Hành động | Phím tắt | Mô tả |
 |--------|----------|-------------|
-| Thực thi query | `Cmd+Enter` | Chạy query tại con trỏ, hoặc tất cả câu lệnh đã chọn tuần tự |
-| Giải thích query | `Option+Cmd+E` | Hiển thị kế hoạch thực thi cho query tại con trỏ |
-| Định dạng SQL | `Option+Cmd+F` | Định dạng query SQL (làm đẹp và chuẩn hóa cú pháp SQL) |
+| Thực thi query | `Cmd+Enter` | Chạy query tại con trỏ, hoặc chạy tuần tự các câu lệnh đã chọn |
+| Giải thích query | `Option+Cmd+E` | Hiển thị kế hoạch thực thi |
+| Định dạng SQL | `Option+Cmd+F` | Làm đẹp và chuẩn hóa cú pháp SQL |
 
 <Tip>
-`Cmd+Enter` là phím tắt quan trọng nhất. Nó chạy query mà con trỏ của bạn đang ở trong đó, hoặc thực thi văn bản đã chọn. Nếu phần chọn chứa nhiều câu lệnh, chúng sẽ được thực thi tuần tự trong một transaction.
+`Cmd+Enter` là phím tắt quan trọng nhất. Chạy query tại con trỏ, hoặc chỉ thực thi văn bản đã chọn. Nếu chọn nhiều câu lệnh, chúng chạy tuần tự trong một transaction.
 </Tip>
 
 ### Chỉnh Sửa Văn Bản
@@ -51,7 +52,6 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 
 | Hành động | Phím tắt |
 |--------|----------|
-| Đi đến dòng | `Cmd+Shift+L` |
 | Đi đến đầu | `Cmd+Up` |
 | Đi đến cuối | `Cmd+Down` |
 | Di chuyển dòng lên | `Option+Up` |
@@ -125,8 +125,8 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 |--------|----------|
 | Sao chép lựa chọn | `Cmd+C` |
 | Sao chép dạng CSV | `Cmd+Shift+C` |
-| Sao chép dạng JSON | `Cmd+Option+C` |
-| Sao chép dạng TSV | Có sẵn từ menu ngữ cảnh |
+| Sao chép dạng JSON | `Cmd+Option+J` |
+| Sao chép dạng TSV | Có trong menu ngữ cảnh |
 
 ## Ứng Dụng
 
@@ -147,7 +147,7 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 | Hành động | Phím tắt |
 |--------|----------|
 | Kết nối mới | `Cmd+N` |
-| Chuyển đổi kết nối | `Cmd+Option+C` |
+| Chuyển kết nối | `Cmd+Option+C` |
 | Ngắt kết nối | `Cmd+D` |
 | Làm mới kết nối | `Cmd+R` |
 
@@ -179,7 +179,7 @@ TablePro hỗ trợ phím tắt phong phú để giúp bạn làm việc nhanh h
 
 ## Phím Tắt Chế Độ Vim
 
-Khi chế độ Vim được bật (**Settings** > **Editor** > **Editing** > **Vim mode**), trình soạn thảo SQL sử dụng phím tắt theo chế độ. Huy hiệu chỉ báo chế độ xuất hiện trên thanh công cụ.
+Khi bật chế độ Vim (**Settings** > **Editor** > **Editing** > **Vim mode**), SQL editor dùng phím tắt modal. Badge chỉ báo chế độ hiện trên thanh công cụ.
 
 ### Các Chế Độ
 
@@ -198,10 +198,10 @@ Khi chế độ Vim được bật (**Settings** > **Editor** > **Editing** > **
 | Phím | Hành động |
 |------|-----------|
 | `h` / `j` / `k` / `l` | Trái / Xuống / Lên / Phải |
-| `w` / `b` / `e` | Từ tiếp theo / Từ trước / Cuối từ |
+| `w` / `b` / `e` | Từ tiếp / Từ trước / Cuối từ |
 | `0` / `$` | Đầu dòng / Cuối dòng |
-| `^` / `_` | Ký tự không trống đầu tiên của dòng |
-| `gg` / `G` | Dòng đầu tiên / Dòng cuối cùng |
+| `^` / `_` | Ký tự không trống đầu tiên |
+| `gg` / `G` | Dòng đầu / Dòng cuối |
 
 ### Toán Tử (Chế Độ Normal)
 
@@ -233,18 +233,18 @@ Khi chế độ Vim được bật (**Settings** > **Editor** > **Editing** > **
 
 ### Tiền Tố Số Đếm
 
-Thêm số trước các phím di chuyển và toán tử: `3j` (xuống 3 dòng), `2dd` (xóa 2 dòng), `5x` (xóa 5 ký tự).
+Thêm số trước phím di chuyển và toán tử: `3j` (xuống 3 dòng), `2dd` (xóa 2 dòng), `5x` (xóa 5 ký tự).
 
 <Note>
-Phím tắt chế độ Vim chỉ hoạt động trong trình soạn thảo SQL và không ảnh hưởng đến bảng dữ liệu hoặc các panel khác. Các phím tắt chuẩn như `Cmd+Enter` vẫn có sẵn trong tất cả các chế độ.
+Phím tắt Vim chỉ áp dụng trong SQL editor. Không ảnh hưởng data grid hay panel khác. Phím tắt chuẩn như `Cmd+Enter` vẫn hoạt động trong mọi chế độ.
 </Note>
 
 ## Lọc
 
 | Hành động | Phím tắt |
 |--------|----------|
-| Bật/tắt panel lọc / Tìm kiếm nhanh | `Cmd+F` |
-| Tìm kiếm nhanh | Gõ trong trường tìm kiếm |
+| Bật/tắt panel lọc / Tìm nhanh | `Cmd+F` |
+| Tìm nhanh | Gõ trong trường tìm kiếm |
 | Áp dụng bộ lọc | `Enter` (trong trường filter) |
 
 ## Cấu Trúc Bảng
@@ -265,6 +265,19 @@ Phím tắt chế độ Vim chỉ hoạt động trong trình soạn thảo SQL 
 | Export dữ liệu | `Cmd+Shift+E` |
 | Import dữ liệu | `Cmd+Shift+I` |
 
+## Quick switcher
+
+Quick Switcher (`Cmd+P`) cho phép tìm kiếm và chuyển nhanh đến bất kỳ bảng, view, database, schema, hoặc query gần đây. Hỗ trợ fuzzy matching, gõ `usr` sẽ tìm `users`, `user_settings`, v.v.
+
+| Hành động | Phím tắt |
+|--------|----------|
+| Mở Quick Switcher | `Cmd+P` |
+| Di chuyển kết quả | `Up` / `Down` |
+| Mở mục đã chọn | `Return` |
+| Đóng | `Escape` |
+
+Kết quả được nhóm theo loại (bảng, view, bảng hệ thống, database, schema, query gần đây) và xếp hạng theo chất lượng khớp khi tìm kiếm.
+
 ## Phím Tắt Toàn Cục
 
 ### Chuẩn macOS
@@ -273,7 +286,7 @@ Phím tắt chế độ Vim chỉ hoạt động trong trình soạn thảo SQL 
 |--------|----------|
 | Thoát ứng dụng | `Cmd+Q` |
 | Ẩn ứng dụng | `Cmd+H` |
-| Ẩn các ứng dụng khác | `Cmd+Option+H` |
+| Ẩn ứng dụng khác | `Cmd+Option+H` |
 | Hiện tất cả | - |
 | Preferences | `Cmd+,` |
 
@@ -285,7 +298,7 @@ Phím tắt chế độ Vim chỉ hoạt động trong trình soạn thảo SQL 
 
 ## Tùy Chỉnh Phím Tắt
 
-TablePro cho phép bạn tùy chỉnh hầu hết các phím tắt menu từ **Settings** > **Keyboard**.
+Hầu hết phím tắt menu gán lại được trong **Settings** > **Keyboard**.
 
 {/* Screenshot: Cài đặt Keyboard */}
 <Frame caption="Tùy chỉnh phím tắt">
@@ -304,37 +317,33 @@ TablePro cho phép bạn tùy chỉnh hầu hết các phím tắt menu từ **S
 ### Gán lại Phím tắt
 
 1. Mở **Settings** (`Cmd+,`) và chọn tab **Keyboard**
-2. Tìm hành động bạn muốn gán lại (sử dụng ô tìm kiếm để lọc)
-3. Click vào ô phím tắt bên cạnh hành động
-4. Nhấn tổ hợp phím mới bạn muốn gán
-5. Phím tắt được cập nhật ngay lập tức trong thanh menu
+2. Tìm hành động (dùng ô tìm kiếm để lọc)
+3. Click vào ô phím tắt
+4. Nhấn tổ hợp phím mới
+5. Cập nhật ngay trong thanh menu
 
 ### Xóa Phím tắt
 
-Để xóa hoàn toàn một phím tắt:
-
-1. Click vào ô phím tắt của hành động
+1. Click vào ô phím tắt
 2. Nhấn `Delete` hoặc `Backspace`
-3. Phím tắt được xóa — mục menu sẽ không có phím tắt
+3. Phím tắt bị xóa
 
 ### Phát hiện Xung đột
 
-Khi bạn gán một phím tắt đã được sử dụng bởi hành động khác, TablePro hiển thị hộp thoại xác nhận:
+Nếu gán phím tắt đã dùng, TablePro hiện hộp thoại xác nhận:
 
-- **Cancel** — giữ nguyên phím tắt hiện tại
-- **Reassign** — chuyển phím tắt sang hành động mới (phím tắt của hành động trước đó bị xóa)
+- **Cancel** -- giữ nguyên
+- **Reassign** -- chuyển phím tắt sang hành động mới (xóa phím tắt cũ)
 
 <Warning>
-Các phím tắt hệ thống (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) không thể gán lại. TablePro sẽ hiển thị cảnh báo nếu bạn cố sử dụng chúng.
+Phím tắt hệ thống (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) không gán lại được. TablePro sẽ cảnh báo nếu bạn thử.
 </Warning>
 
 ### Đặt lại về Mặc định
 
-Nhấp **Reset to Defaults** ở cuối cài đặt Keyboard để khôi phục tất cả phím tắt về giá trị ban đầu.
+Nhấp **Reset to Defaults** ở cuối cài đặt Keyboard để khôi phục tất cả phím tắt.
 
 ### Danh mục Phím tắt
-
-Phím tắt được tổ chức theo danh mục:
 
 | Danh mục | Ví dụ |
 |----------|-------|
@@ -345,14 +354,14 @@ Phím tắt được tổ chức theo danh mục:
 | **AI** | Toggle AI Chat, Explain with AI, Optimize with AI |
 
 <Note>
-Phím tắt chuyển tab (`Cmd+1` đến `Cmd+9`) tuân theo quy ước chuẩn macOS và không thể tùy chỉnh.
+Phím chuyển tab (`Cmd+1` đến `Cmd+9`) theo chuẩn macOS, không tùy chỉnh được.
 </Note>
 
 ## Mẹo Để Hiệu Quả
 
-### Phím Tắt Được Dùng Nhiều Nhất
+### Phím Tắt Dùng Nhiều Nhất
 
-Tập trung học những phím này trước:
+Học 5 phím này trước:
 
 1. `Cmd+Enter` - Thực thi query
 2. `Cmd+N` - Kết nối mới
@@ -360,43 +369,41 @@ Tập trung học những phím này trước:
 4. `Cmd+F` - Tìm
 5. `Cmd+C` / `Cmd+V` - Sao chép/Dán
 
-### Mẹo Quy Trình Làm Việc
+### Mẹo Quy Trình
 
 **Lặp query nhanh**:
 1. Viết query trong editor
 2. `Cmd+Enter` để chạy
-3. Thực hiện thay đổi
+3. Sửa
 4. `Cmd+Enter` lại
 
 **Khám phá dữ liệu**:
 1. Click bảng trong sidebar
 2. Xem dữ liệu trong grid
 3. `Cmd+Enter` với query tùy chỉnh
-4. `Cmd+Y` để tìm query trước đó
+4. `Cmd+Y` tìm query trước đó
 
 **Chỉnh sửa dữ liệu**:
 1. Điều hướng bằng phím mũi tên
-2. `Enter` để chỉnh sửa ô
+2. `Enter` để sửa ô
 3. Gõ giá trị mới
-4. `Tab` để chuyển đến ô tiếp theo
-5. `Cmd+S` để lưu tất cả thay đổi
+4. `Tab` chuyển ô tiếp
+5. `Cmd+S` lưu tất cả
 
 ### Kỹ Thuật Ghi Nhớ
 
 **Nhóm theo ngữ cảnh**:
-- Tất cả phím tắt `Cmd+` là hành động chính
-- Thêm `Shift` cho biến thể (ví dụ: `Cmd+Z` hoàn tác → `Cmd+Shift+Z` làm lại)
+- `Cmd+` là hành động chính
+- Thêm `Shift` cho biến thể (`Cmd+Z` hoàn tác -> `Cmd+Shift+Z` làm lại)
 - Thêm `Option` cho phương án thay thế
 
 **Mẫu thường gặp**:
 - `Cmd+[chữ cái]` - Hành động thông thường (N=mới, W=đóng, Q=thoát)
-- `Cmd+Shift+[chữ cái]` - Biến thể của hành động thông thường
+- `Cmd+Shift+[chữ cái]` - Biến thể
 - Phím mũi tên - Điều hướng
-- `Tab` / `Shift+Tab` - Tiếp theo/Trước
+- `Tab` / `Shift+Tab` - Tiếp/Trước
 
 ## Bảng Tra Cứu
-
-In hoặc lưu tham khảo nhanh này:
 
 ```
 === SQL Editor ===
@@ -447,6 +454,7 @@ dd/yy/cc       Xóa/Yank/Thay đổi dòng
 Cmd+N          Kết nối mới
 Cmd+Y          Lịch sử query
 Cmd+,          Cài đặt
+Cmd+P          Quick Switcher
 Cmd+W          Đóng cửa sổ
 Cmd+Q          Thoát
 ```
@@ -457,16 +465,16 @@ Cmd+Q          Thoát
 
 TablePro hoạt động với macOS VoiceOver:
 
-- Điều hướng bằng phím `Control+Option+Mũi tên`
+- Điều hướng bằng `Control+Option+Mũi tên`
 - Tương tác bằng `Control+Option+Space`
 - Tất cả phần tử UI đều có nhãn
 
-### Điều Hướng Chỉ Bằng Bàn Phím
+### Điều Hướng Chỉ Bàn Phím
 
-Bạn có thể sử dụng TablePro hoàn toàn không cần chuột:
+Dùng TablePro hoàn toàn không cần chuột:
 
-1. `Tab` di chuyển giữa các phần UI chính
-2. Phím mũi tên điều hướng trong các phần
+1. `Tab` chuyển giữa các phần UI chính
+2. Phím mũi tên điều hướng trong phần
 3. `Enter` hoặc `Space` kích hoạt control
 4. `Escape` đóng dialog/menu
 
@@ -474,13 +482,13 @@ Bạn có thể sử dụng TablePro hoàn toàn không cần chuột:
 
 ### Phím Tắt Không Hoạt Động
 
-1. **Kiểm tra focus**: Đảm bảo panel đúng có focus
-2. **Kiểm tra xung đột**: Ứng dụng khác có thể đang bắt phím tắt
-3. **Kiểm tra modifier**: Đảm bảo bạn đang nhấn đúng phím modifier
+1. **Kiểm tra focus**: Đảm bảo đúng panel có focus
+2. **Kiểm tra xung đột**: App khác có thể đang bắt phím tắt
+3. **Kiểm tra modifier**: Đảm bảo nhấn đúng phím modifier
 
 ### Xung Đột Toàn Hệ Thống
 
-Nếu phím tắt không hoạt động, kiểm tra **System Settings** > **Keyboard** > **Keyboard Shortcuts** để tìm xung đột với:
+Nếu phím tắt không hoạt động, kiểm tra **System Settings** > **Keyboard** > **Keyboard Shortcuts** tìm xung đột với:
 
 - Mission Control
 - Spotlight

@@ -7,8 +7,10 @@
 //
 
 import AppKit
+import Combine
 import os
 import SwiftUI
+import TableProPluginKit
 import UniformTypeIdentifiers
 
 /// View displaying table structure with DataGridView
@@ -17,6 +19,7 @@ struct TableStructureView: View {
     let tableName: String
     let connection: DatabaseConnection
     let toolbarState: ConnectionToolbarState
+    let coordinator: MainContentCoordinator?
 
     @State private var selectedTab: StructureTab = .columns
     @State private var columns: [ColumnInfo] = []
@@ -40,11 +43,13 @@ struct TableStructureView: View {
     @State private var sortState = SortState()
     @State private var editingCell: CellPosition?
     @State private var structureColumnLayout = ColumnLayoutState()
+    @State private var actionHandler = StructureViewActionHandler()
 
-    init(tableName: String, connection: DatabaseConnection, toolbarState: ConnectionToolbarState) {
+    init(tableName: String, connection: DatabaseConnection, toolbarState: ConnectionToolbarState, coordinator: MainContentCoordinator?) {
         self.tableName = tableName
         self.connection = connection
         self.toolbarState = toolbarState
+        self.coordinator = coordinator
 
         // Initialize wrappedChangeManager using the StateObject's wrappedValue
         let manager = StructureChangeManager()
@@ -70,47 +75,43 @@ struct TableStructureView: View {
             AppState.shared.isCurrentTabEditable = (selectedTab != .ddl)
             AppState.shared.hasRowSelection = !selectedRows.isEmpty
             AppState.shared.hasStructureChanges = structureChangeManager.hasChanges
+
+            // Wire action handler for direct coordinator calls
+            actionHandler.saveChanges = {
+                if self.structureChangeManager.hasChanges && self.selectedTab != .ddl {
+                    Task { await self.executeSchemaChanges() }
+                }
+            }
+            actionHandler.previewSQL = { self.generateStructurePreviewSQL() }
+            actionHandler.copyRows = { self.handleCopyRows(self.selectedRows) }
+            actionHandler.pasteRows = { self.handlePaste() }
+            actionHandler.undo = { self.handleUndo() }
+            actionHandler.redo = { self.handleRedo() }
+            coordinator?.structureActions = actionHandler
         }
         .onDisappear {
             AppState.shared.isCurrentTabEditable = false
             AppState.shared.hasRowSelection = false
             AppState.shared.hasStructureChanges = false
+            coordinator?.structureActions = nil
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
             AppState.shared.hasStructureChanges = newValue
         }
         .onReceive(NotificationCenter.default.publisher(for: .refreshData), perform: onRefreshData)
-        .onReceive(NotificationCenter.default.publisher(for: .saveStructureChanges)) { _ in
-            if structureChangeManager.hasChanges && selectedTab != .ddl {
-                Task {
-                    await executeSchemaChanges()
-                }
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .previewStructureSQL)) { _ in
-            generateStructurePreviewSQL()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .copySelectedRows)) { _ in
-            handleCopyRows(selectedRows)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .pasteRows)) { _ in
-            handlePaste()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .undoChange)) { _ in
-            handleUndo()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .redoChange)) { _ in
-            handleRedo()
-        }
     }
 
     // MARK: - Toolbar
 
     private var availableTabs: [StructureTab] {
+        var tabs = StructureTab.allCases
         if !connection.type.supportsForeignKeys {
-            return StructureTab.allCases.filter { $0 != .foreignKeys }
+            tabs = tabs.filter { $0 != .foreignKeys }
         }
-        return StructureTab.allCases
+        if connection.type != .clickhouse {
+            tabs = tabs.filter { $0 != .parts }
+        }
+        return tabs
     }
 
     private var toolbar: some View {
@@ -149,6 +150,8 @@ struct TableStructureView: View {
             structureGrid
         case .ddl:
             ddlView
+        case .parts:
+            ClickHousePartsView(tableName: tableName, connectionId: connection.id)
         }
     }
 
@@ -162,7 +165,6 @@ struct TableStructureView: View {
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
             isEditable: canEdit,
-            onCommit: nil,
             onRefresh: nil,
             onCellEdit: handleCellEdit,
             onDeleteRows: handleDeleteRows,
@@ -215,18 +217,32 @@ struct TableStructureView: View {
 
         case .ddl:
             break
+        case .parts:
+            break
         }
     }
 
     private func updateColumn(_ column: inout EditableColumnDefinition, at index: Int, with value: String) {
-        switch index {
-        case 0: column.name = value
-        case 1: column.dataType = value
-        case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
-        case 3: column.defaultValue = value.isEmpty ? nil : value
-        case 4: column.autoIncrement = value.uppercased() == "YES" || value == "1"
-        case 5: column.comment = value.isEmpty ? nil : value
-        default: break
+        if connection.type == .clickhouse {
+            // ClickHouse: Name(0), Type(1), Nullable(2), Default(3), Comment(4) — no Auto Inc
+            switch index {
+            case 0: column.name = value
+            case 1: column.dataType = value
+            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
+            case 3: column.defaultValue = value.isEmpty ? nil : value
+            case 4: column.comment = value.isEmpty ? nil : value
+            default: break
+            }
+        } else {
+            switch index {
+            case 0: column.name = value
+            case 1: column.dataType = value
+            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
+            case 3: column.defaultValue = value.isEmpty ? nil : value
+            case 4: column.autoIncrement = value.uppercased() == "YES" || value == "1"
+            case 5: column.comment = value.isEmpty ? nil : value
+            default: break
+            }
         }
     }
 
@@ -285,6 +301,9 @@ struct TableStructureView: View {
                 let fk = structureChangeManager.workingForeignKeys[row]
                 structureChangeManager.deleteForeignKey(id: fk.id)
             }
+        case .parts:
+            selectedRows.removeAll()
+            return
         case .ddl:
             selectedRows.removeAll()
             return
@@ -300,6 +319,8 @@ struct TableStructureView: View {
         case .foreignKeys:
             newCount = structureChangeManager.workingForeignKeys.count
         case .ddl:
+            newCount = 0
+        case .parts:
             newCount = 0
         }
 
@@ -331,6 +352,8 @@ struct TableStructureView: View {
             structureChangeManager.addNewForeignKey()
         case .ddl:
             break
+        case .parts:
+            break
         }
     }
 
@@ -352,7 +375,7 @@ struct TableStructureView: View {
     private static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
 
     private func handleCopyRows(_ rowIndices: Set<Int>) {
-        guard selectedTab != .ddl, !rowIndices.isEmpty else { return }
+        guard selectedTab != .ddl, selectedTab != .parts, !rowIndices.isEmpty else { return }
 
         var copiedItems: [Any] = []
 
@@ -375,7 +398,7 @@ struct TableStructureView: View {
                 let fk = structureChangeManager.workingForeignKeys[row]
                 copiedItems.append(fk)
             }
-        case .ddl:
+        case .ddl, .parts:
             break
         }
 
@@ -488,7 +511,8 @@ struct TableStructureView: View {
             }
 
         case .ddl:
-            // DDL tab doesn't support paste
+            break
+        case .parts:
             break
         }
     }
@@ -509,9 +533,15 @@ struct TableStructureView: View {
             return
         }
 
+        guard let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver else {
+            toolbarState.previewStatements = ["-- Error: no plugin driver available for DDL generation"]
+            toolbarState.showSQLReviewPopover = true
+            return
+        }
+
         let generator = SchemaStatementGenerator(
             tableName: tableName,
-            databaseType: getDatabaseType()
+            pluginDriver: pluginDriver
         )
 
         do {
@@ -571,7 +601,7 @@ struct TableStructureView: View {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
-                window: nil
+                window: NSApp.keyWindow
             )
         }
     }
@@ -716,11 +746,13 @@ struct TableStructureView: View {
                     }
                     for enumType in enumTypes {
                         let quotedName = "\"\(enumType.name.replacingOccurrences(of: "\"", with: "\"\""))\""
-                        let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0, databaseType: .postgresql))'" }
+                        let quotedLabels = enumType.labels.map { "'\(SQLEscaping.escapeStringLiteral($0))'" }
                         preamble += "CREATE TYPE \(quotedName) AS ENUM (\(quotedLabels.joined(separator: ", ")));\n"
                     }
                     ddlStatement = preamble + "\n" + baseDDL
                 }
+            case .parts:
+                break
             }
             loadedTabs.insert(tab)
         } catch {
@@ -750,7 +782,7 @@ struct TableStructureView: View {
 
         copyResetTask?.cancel()
         copyResetTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .milliseconds(1_500))
             guard !Task.isCancelled else { return }
             withAnimation {
                 showCopyConfirmation = false
@@ -778,8 +810,7 @@ struct TableStructureView: View {
     // MARK: - Lifecycle Callbacks
 
     private func onSelectedTabChanged(_ new: StructureTab) {
-        // Update AppState when switching to/from DDL tab
-        AppState.shared.isCurrentTabEditable = (new != .ddl)
+        AppState.shared.isCurrentTabEditable = (new != .ddl && new != .parts)
 
         Task {
             await loadTabDataIfNeeded(new)
@@ -815,11 +846,13 @@ struct TableStructureView: View {
         if structureChangeManager.hasChanges && !justSaved {
             // Show confirmation dialog
             Task { @MainActor in
+                let window = NSApp.keyWindow
                 let confirmed = await AlertHelper.confirmDestructive(
                     title: String(localized: "Discard Changes?"),
                     message: String(localized: "You have unsaved changes to the table structure. Refreshing will discard these changes."),
                     confirmButton: String(localized: "Discard"),
-                    cancelButton: String(localized: "Cancel")
+                    cancelButton: String(localized: "Cancel"),
+                    window: window
                 )
 
                 if confirmed {
@@ -851,7 +884,8 @@ struct TableStructureView: View {
             username: "root",
             type: .mysql
         ),
-        toolbarState: ConnectionToolbarState()
+        toolbarState: ConnectionToolbarState(),
+        coordinator: nil
     )
     .frame(width: 800, height: 600)
 }

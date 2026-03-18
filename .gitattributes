@@ -44,4 +44,4 @@
 *.yaml text eol=lf
 *.plist text eol=lf
 
-Libs/*.a filter=lfs diff=lfs merge=lfs -text
+.github/workflows/*.lock.yml linguist-generated=true merge=ours

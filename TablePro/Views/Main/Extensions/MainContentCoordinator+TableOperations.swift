@@ -8,6 +8,13 @@
 import Foundation
 
 extension MainContentCoordinator {
+    // MARK: - Plugin Adapter Access
+
+    /// Returns the current connection's PluginDriverAdapter, if available.
+    private var currentPluginDriverAdapter: PluginDriverAdapter? {
+        DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
+    }
+
     // MARK: - Table Operation SQL Generation
 
     /// Generates SQL statements for table truncate/drop operations.
@@ -15,14 +22,12 @@ extension MainContentCoordinator {
     ///   - truncates: Set of table names to truncate
     ///   - deletes: Set of table names to drop
     ///   - options: Per-table options for FK and cascade handling
-    ///   - wrapInTransaction: Whether to wrap statements in BEGIN/COMMIT
     ///   - includeFKHandling: Whether to include FK disable/enable statements (set false when caller handles FK)
     /// - Returns: Array of SQL statements to execute
     func generateTableOperationSQL(
         truncates: Set<String>,
         deletes: Set<String>,
         options: [String: TableOperationOptions],
-        wrapInTransaction: Bool = true,
         includeFKHandling: Bool = true
     ) -> [String] {
         var statements: [String] = []
@@ -32,8 +37,7 @@ extension MainContentCoordinator {
         let sortedTruncates = truncates.sorted()
         let sortedDeletes = deletes.sorted()
 
-        // Check if any operation needs FK disabled (not applicable to PostgreSQL or MSSQL)
-        let needsDisableFK = includeFKHandling && dbType != .postgresql && dbType != .mssql && truncates.union(deletes).contains { tableName in
+        let needsDisableFK = includeFKHandling && truncates.union(deletes).contains { tableName in
             options[tableName]?.ignoreForeignKeys == true
         }
 
@@ -42,16 +46,11 @@ extension MainContentCoordinator {
             statements.append(contentsOf: fkDisableStatements(for: dbType))
         }
 
-        // Wrap in transaction for atomicity
-        let needsTransaction = wrapInTransaction && (sortedTruncates.count + sortedDeletes.count) > 1
-        if needsTransaction {
-            statements.append(dbType == .mssql ? "BEGIN TRANSACTION" : "BEGIN")
-        }
-
         for tableName in sortedTruncates {
-            let quotedName = dbType.quoteIdentifier(tableName)
             let tableOptions = options[tableName] ?? TableOperationOptions()
-            statements.append(contentsOf: truncateStatements(tableName: tableName, quotedName: quotedName, options: tableOptions, dbType: dbType))
+            statements.append(contentsOf: truncateStatements(
+                tableName: tableName, options: tableOptions
+            ))
         }
 
         let viewNames: Set<String> = {
@@ -60,13 +59,14 @@ extension MainContentCoordinator {
         }()
 
         for tableName in sortedDeletes {
-            let quotedName = dbType.quoteIdentifier(tableName)
             let tableOptions = options[tableName] ?? TableOperationOptions()
-            statements.append(dropTableStatement(tableName: tableName, quotedName: quotedName, isView: viewNames.contains(tableName), options: tableOptions, dbType: dbType))
-        }
-
-        if needsTransaction {
-            statements.append("COMMIT")
+            let stmt = dropTableStatement(
+                tableName: tableName,
+                isView: viewNames.contains(tableName), options: tableOptions
+            )
+            if !stmt.isEmpty {
+                statements.append(stmt)
+            }
         }
 
         // FK re-enable must be OUTSIDE transaction to ensure it runs even on rollback
@@ -79,75 +79,40 @@ extension MainContentCoordinator {
 
     // MARK: - Foreign Key Handling
 
-    /// Returns SQL statements to disable foreign key checks for the database type.
-    /// - Note: PostgreSQL doesn't support globally disabling FK checks; use CASCADE instead.
     func fkDisableStatements(for dbType: DatabaseType) -> [String] {
-        switch dbType {
-        case .mysql, .mariadb: return ["SET FOREIGN_KEY_CHECKS=0"]
-        case .postgresql, .redshift, .mongodb, .redis, .mssql: return []
-        case .sqlite: return ["PRAGMA foreign_keys = OFF"]
+        guard let adapter = currentPluginDriverAdapter,
+              let stmts = adapter.foreignKeyDisableStatements() else {
+            return []
         }
+        return stmts
     }
 
-    /// Returns SQL statements to re-enable foreign key checks for the database type.
     func fkEnableStatements(for dbType: DatabaseType) -> [String] {
-        switch dbType {
-        case .mysql, .mariadb:
-            return ["SET FOREIGN_KEY_CHECKS=1"]
-        case .postgresql, .redshift, .mongodb, .redis, .mssql:
+        guard let adapter = currentPluginDriverAdapter,
+              let stmts = adapter.foreignKeyEnableStatements() else {
             return []
-        case .sqlite:
-            return ["PRAGMA foreign_keys = ON"]
         }
+        return stmts
     }
 
     // MARK: - Private SQL Builders
 
-    /// Generates TRUNCATE/DELETE statements for a table.
-    /// - Note: SQLite uses DELETE and resets auto-increment via sqlite_sequence.
-    private func truncateStatements(tableName: String, quotedName: String, options: TableOperationOptions, dbType: DatabaseType) -> [String] {
-        switch dbType {
-        case .mysql, .mariadb:
-            return ["TRUNCATE TABLE \(quotedName)"]
-        case .postgresql, .redshift:
-            let cascade = options.cascade ? " CASCADE" : ""
-            return ["TRUNCATE TABLE \(quotedName)\(cascade)"]
-        case .mssql:
-            return ["TRUNCATE TABLE \(quotedName)"]
-        case .sqlite:
-            // DELETE FROM + reset auto-increment counter for true TRUNCATE semantics.
-            // Note: quotedName uses backticks (via quoteIdentifier) for SQL identifiers,
-            // while escapedName uses single-quote escaping for string literals in the
-            // sqlite_sequence query. These are different SQL quoting mechanisms for
-            // different purposes (identifier vs string literal).
-            let escapedName = tableName.replacingOccurrences(of: "'", with: "''")
-            return [
-                "DELETE FROM \(quotedName)",
-                // sqlite_sequence may not exist if no table has AUTOINCREMENT.
-                // This DELETE will succeed silently if the table isn't in sqlite_sequence.
-                "DELETE FROM sqlite_sequence WHERE name = '\(escapedName)'"
-            ]
-        case .mongodb:
-            let escaped = tableName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return ["db[\"\(escaped)\"].deleteMany({})"]
-        case .redis:
-            return ["FLUSHDB"]
-        }
+    private func truncateStatements(
+        tableName: String, options: TableOperationOptions
+    ) -> [String] {
+        guard let adapter = currentPluginDriverAdapter else { return [] }
+        return adapter.truncateTableStatements(
+            table: tableName, schema: nil, cascade: options.cascade
+        )
     }
 
-    /// Generates DROP TABLE/VIEW statement with optional CASCADE.
-    private func dropTableStatement(tableName: String, quotedName: String, isView: Bool, options: TableOperationOptions, dbType: DatabaseType) -> String {
+    private func dropTableStatement(
+        tableName: String, isView: Bool, options: TableOperationOptions
+    ) -> String {
         let keyword = isView ? "VIEW" : "TABLE"
-        switch dbType {
-        case .postgresql, .redshift:
-            return "DROP \(keyword) \(quotedName)\(options.cascade ? " CASCADE" : "")"
-        case .mysql, .mariadb, .sqlite, .mssql:
-            return "DROP \(keyword) \(quotedName)"
-        case .mongodb:
-            let escaped = tableName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-            return "db[\"\(escaped)\"].drop()"
-        case .redis:
-            return "DEL \(tableName)"
-        }
+        guard let adapter = currentPluginDriverAdapter else { return "" }
+        return adapter.dropObjectStatement(
+            name: tableName, objectType: keyword, schema: nil, cascade: options.cascade
+        )
     }
 }

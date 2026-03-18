@@ -2,16 +2,16 @@
 //  ImportDialog.swift
 //  TablePro
 //
-//  Main import dialog for importing SQL files.
+//  Plugin-aware import dialog.
 //
 
 import AppKit
 import Observation
 import os
 import SwiftUI
+import TableProPluginKit
 import UniformTypeIdentifiers
 
-/// Main import dialog view
 struct ImportDialog: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ImportDialog")
     @Binding var isPresented: Bool
@@ -25,19 +25,15 @@ struct ImportDialog: View {
     @State private var fileSize: Int64 = 0
     @State private var statementCount: Int = 0
     @State private var isCountingStatements = false
-    @State private var config = ImportConfiguration()
     @State private var selectedEncoding: ImportEncoding = .utf8
+    @State private var selectedFormatId: String = "sql"
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var showErrorDialog = false
-    @State private var importResult: ImportResult?
-    @State private var importError: ImportError?
+    @State private var importResult: PluginImportResult?
+    @State private var importError: (any Error)?
 
-    // Track temp files for cleanup
     @State private var tempPreviewURL: URL?
-    @State private var tempCountURL: URL?
-
-    // Track active tasks for cancellation
     @State private var loadFileTask: Task<Void, Never>?
 
     // MARK: - Import Service
@@ -48,50 +44,54 @@ struct ImportDialog: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content
             VStack(spacing: 16) {
-                // File info
                 fileInfoView
 
                 Divider()
 
-                // Preview
+                if availableFormats.count > 1 {
+                    formatPickerView
+                    Divider()
+                }
+
                 filePreviewView
 
-                // Options
-                importOptionsView
+                optionsView
             }
             .padding(16)
             .frame(width: 600, height: 550)
 
             Divider()
 
-            // Footer
             footerView
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            let available = availableFormats
+            if !available.contains(where: { type(of: $0).formatId == selectedFormatId }) {
+                if let first = available.first {
+                    selectedFormatId = type(of: first).formatId
+                }
+            }
+        }
         .onExitCommand {
             if !importServiceState.isImporting {
                 isPresented = false
             }
         }
         .task {
-            // Load initial file if provided
             if let initialURL = initialFileURL, fileURL == nil {
                 await loadFile(initialURL)
             }
         }
         .onDisappear {
-            // Cancel any in-progress file loading when dialog is dismissed
             loadFileTask?.cancel()
-            // Clean up temp files when dialog is dismissed
             cleanupTempFiles()
         }
         .sheet(isPresented: $showProgressDialog) {
             ImportProgressView(
-                currentStatement: importServiceState.currentStatement,
-                statementIndex: importServiceState.currentStatementIndex,
-                totalStatements: importServiceState.totalStatements,
+                processedStatements: importServiceState.processedStatements,
+                estimatedTotalStatements: importServiceState.estimatedTotalStatements,
                 statusMessage: importServiceState.statusMessage
             ) {
                 importServiceState.service?.cancelImport()
@@ -104,7 +104,6 @@ struct ImportDialog: View {
             ) {
                 showSuccessDialog = false
                 isPresented = false
-                // Refresh schema
                 NotificationCenter.default.post(name: .refreshData, object: nil)
             }
         }
@@ -117,19 +116,34 @@ struct ImportDialog: View {
         }
     }
 
-    // MARK: - View Components
+    // MARK: - Plugin Helpers
 
-    private var fileSelectionView: some View {
-        Button(fileURL == nil ? String(localized: "Select SQL File...") : String(localized: "Change File")) {
-            selectFile()
-        }
-        .buttonStyle(.borderedProminent)
+    private var availableFormats: [any ImportFormatPlugin] {
+        let dbTypeId = connection.type.rawValue
+        return PluginManager.shared.importPlugins.values
+            .filter { plugin in
+                let supported = type(of: plugin).supportedDatabaseTypeIds
+                let excluded = type(of: plugin).excludedDatabaseTypeIds
+                if !supported.isEmpty && !supported.contains(dbTypeId) {
+                    return false
+                }
+                if excluded.contains(dbTypeId) {
+                    return false
+                }
+                return true
+            }
+            .sorted { type(of: $0).formatDisplayName < type(of: $1).formatDisplayName }
     }
+
+    private var currentPlugin: (any ImportFormatPlugin)? {
+        PluginManager.shared.importPlugins[selectedFormatId]
+    }
+
+    // MARK: - View Components
 
     private var fileInfoView: some View {
         HStack(alignment: .top, spacing: 12) {
-            // File icon
-            Image(systemName: "doc.text.fill")
+            Image(systemName: currentPlugin.map { type(of: $0).iconName } ?? "doc.text.fill")
                 .font(.system(size: 32))
                 .foregroundStyle(.blue)
 
@@ -174,6 +188,24 @@ struct ImportDialog: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var formatPickerView: some View {
+        HStack(spacing: 8) {
+            Text("Format:")
+                .font(.system(size: 13))
+                .frame(width: 80, alignment: .leading)
+
+            Picker("", selection: $selectedFormatId) {
+                ForEach(availableFormats.map { (id: type(of: $0).formatId, name: type(of: $0).formatDisplayName) }, id: \.id) { item in
+                    Text(item.name).tag(item.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 120)
+
+            Spacer()
+        }
+    }
+
     private var filePreviewView: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Preview")
@@ -181,7 +213,7 @@ struct ImportDialog: View {
                 .foregroundStyle(.primary)
 
             SQLCodePreview(text: $filePreview)
-                .frame(height: 280)
+                .frame(height: availableFormats.count > 1 ? 220 : 280)
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
@@ -190,14 +222,14 @@ struct ImportDialog: View {
         }
     }
 
-    private var importOptionsView: some View {
+    private var optionsView: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Options")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
 
             VStack(alignment: .leading, spacing: 12) {
-                // Encoding picker
+                // Encoding picker (always shown, independent of plugin)
                 HStack(spacing: 8) {
                     Text("Encoding:")
                         .font(.system(size: 13))
@@ -210,11 +242,8 @@ struct ImportDialog: View {
                     }
                     .pickerStyle(.menu)
                     .frame(width: 120)
-                    .onChange(of: selectedEncoding) { _, newEncoding in
-                        config.encoding = newEncoding.encoding
-                        // Cancel previous task to avoid race conditions
+                    .onChange(of: selectedEncoding) { _, _ in
                         loadFileTask?.cancel()
-                        // Reload preview with new encoding
                         if let url = fileURL {
                             loadFileTask = Task {
                                 await loadFile(url)
@@ -225,19 +254,11 @@ struct ImportDialog: View {
                     Spacer()
                 }
 
-                // Transaction checkbox
-                Toggle("Wrap in transaction (BEGIN/COMMIT)", isOn: $config.wrapInTransaction)
-                    .font(.system(size: 13))
-                    .help(
-                        "Execute all statements in a single transaction. If any statement fails, all changes are rolled back."
-                    )
-
-                // FK checkbox
-                Toggle("Disable foreign key checks", isOn: $config.disableForeignKeyChecks)
-                    .font(.system(size: 13))
-                    .help(
-                        "Temporarily disable foreign key constraints during import. Useful for importing data with circular dependencies."
-                    )
+                // Plugin-provided options
+                if let settable = currentPlugin as? any SettablePluginDiscoverable,
+                   let pluginView = settable.settingsView() {
+                    pluginView
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -255,7 +276,7 @@ struct ImportDialog: View {
                 performImport()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(fileURL == nil || importServiceState.isImporting)
+            .disabled(fileURL == nil || importServiceState.isImporting || availableFormats.isEmpty)
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(16)
@@ -266,10 +287,11 @@ struct ImportDialog: View {
     private func selectFile() {
         let panel = NSOpenPanel()
 
-        let allowedTypes = ["sql", "gz"].compactMap { UTType(filenameExtension: $0) }
+        let extensions = currentPlugin.map { type(of: $0).acceptedFileExtensions } ?? ["sql", "gz"]
+        let allowedTypes = extensions.compactMap { UTType(filenameExtension: $0) }
         panel.allowedContentTypes = allowedTypes.isEmpty ? [.data] : allowedTypes
         panel.allowsMultipleSelection = false
-        panel.message = "Select SQL file to import"
+        panel.message = "Select file to import"
 
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
@@ -282,10 +304,8 @@ struct ImportDialog: View {
 
     @MainActor
     private func loadFile(_ url: URL) async {
-        // Clean up previous temp files
         cleanupTempFiles()
 
-        // Validate that the URL points to a regular file, not a directory or symlink
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
             !isDirectory.boolValue
@@ -296,7 +316,6 @@ struct ImportDialog: View {
 
         fileURL = url
 
-        // Get file size
         do {
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
             fileSize = attrs[.size] as? Int64 ?? 0
@@ -305,11 +324,9 @@ struct ImportDialog: View {
             fileSize = 0
         }
 
-        // Decompress .gz files before preview
         let urlToRead: URL
         do {
             urlToRead = try await decompressIfNeeded(url)
-            // Track temp file if decompression occurred
             if urlToRead != url {
                 tempPreviewURL = urlToRead
             }
@@ -318,7 +335,6 @@ struct ImportDialog: View {
             return
         }
 
-        // Load preview (up to 5MB for preview)
         do {
             let handle = try FileHandle(forReadingFrom: urlToRead)
             defer {
@@ -329,21 +345,18 @@ struct ImportDialog: View {
                 }
             }
 
-            // Load up to 5MB for preview (enough for most SQL files)
-            let maxPreviewSize = 5 * 1_024 * 1_024  // 5 MB
+            let maxPreviewSize = 5 * 1_024 * 1_024
             let previewData = handle.readData(ofLength: maxPreviewSize)
 
-            if let preview = String(data: previewData, encoding: config.encoding) {
+            if let preview = String(data: previewData, encoding: selectedEncoding.encoding) {
                 filePreview = preview
             } else {
-                let encodingDescription = String(describing: config.encoding)
-                filePreview = String(localized: "Failed to load preview using encoding: \(encodingDescription). Try selecting a different text encoding from the encoding picker and reload the preview.")
+                filePreview = String(localized: "Failed to load preview using encoding: \(selectedEncoding.rawValue). Try selecting a different text encoding.")
             }
         } catch {
             filePreview = String(localized: "Failed to load preview: \(error.localizedDescription)")
         }
 
-        // Count statements asynchronously
         Task {
             await countStatements(url: urlToRead)
         }
@@ -355,14 +368,13 @@ struct ImportDialog: View {
         statementCount = 0
 
         do {
-            let encoding = config.encoding
+            let encoding = selectedEncoding.encoding
             let parser = SQLFileParser()
             let count = try await Task.detached {
                 try await parser.countStatements(url: url, encoding: encoding)
             }.value
             statementCount = count
         } catch {
-            // If counting fails, use a sentinel value to distinguish from a real 0
             statementCount = -1
         }
 
@@ -379,30 +391,27 @@ struct ImportDialog: View {
 
         Task {
             do {
-                let result = try await service.importSQL(from: url, config: config)
+                let result = try await service.importFile(
+                    from: url,
+                    formatId: selectedFormatId,
+                    encoding: selectedEncoding.encoding
+                )
 
                 await MainActor.run {
                     showProgressDialog = false
                     importResult = result
                     showSuccessDialog = true
                 }
-            } catch let error as ImportError {
-                await MainActor.run {
-                    showProgressDialog = false
-                    importError = error
-                    showErrorDialog = true
-                }
             } catch {
                 await MainActor.run {
                     showProgressDialog = false
-                    importError = ImportError.fileReadFailed(error.localizedDescription)
+                    importError = error
                     showErrorDialog = true
                 }
             }
         }
     }
 
-    /// Clean up temporary decompressed files
     private func cleanupTempFiles() {
         if let tempURL = tempPreviewURL {
             do {
@@ -414,24 +423,12 @@ struct ImportDialog: View {
             }
             tempPreviewURL = nil
         }
-        if let tempURL = tempCountURL {
-            do {
-                try FileManager.default.removeItem(at: tempURL)
-            } catch {
-                Self.logger.error(
-                    "cleanupTempFiles: Failed to remove tempCountURL at \(tempURL.path(percentEncoded: false), privacy: .public): \(error.localizedDescription, privacy: .public)"
-                )
-            }
-            tempCountURL = nil
-        }
     }
 
-    /// Returns filesystem path for URL.
     private func fileSystemPath(for url: URL) -> String {
         url.path()
     }
 
-    /// Decompress .gz file if needed, returns URL to read
     private func decompressIfNeeded(_ url: URL) async throws -> URL {
         try await FileDecompressor.decompressIfNeeded(url, fileSystemPath: fileSystemPath)
     }
@@ -449,8 +446,7 @@ final class ImportServiceState {
     }
 
     var isImporting: Bool { service?.state.isImporting ?? false }
-    var currentStatement: String { service?.state.currentStatement ?? "" }
-    var currentStatementIndex: Int { service?.state.currentStatementIndex ?? 0 }
-    var totalStatements: Int { service?.state.totalStatements ?? 0 }
+    var processedStatements: Int { service?.state.processedStatements ?? 0 }
+    var estimatedTotalStatements: Int { service?.state.estimatedTotalStatements ?? 0 }
     var statusMessage: String { service?.state.statusMessage ?? "" }
 }

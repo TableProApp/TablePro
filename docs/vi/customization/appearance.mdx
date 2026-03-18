@@ -1,14 +1,14 @@
 ---
 title: Giao diện
-description: Tùy chỉnh chủ đề, màu sắc và phong cách hiển thị của TablePro
+description: Theme engine với preset có sẵn, theme tùy chỉnh, màu sắc và phông chữ, nhập/xuất
 ---
 
 # Cài đặt Giao diện
 
-Tùy chỉnh cách TablePro hiển thị để phù hợp với sở thích của bạn và giảm mỏi mắt. Truy cập cài đặt giao diện qua **Settings** > **Appearance**.
+Cấu hình giao diện TablePro trong **Settings** > **Appearance**.
 
 {/* Screenshot: Appearance settings panel */}
-<Frame caption="Cài đặt giao diện">
+<Frame caption="Cài đặt giao diện với trình duyệt theme">
   <img
     className="block dark:hidden"
     src="/images/settings-appearance.png"
@@ -21,23 +21,30 @@ Tùy chỉnh cách TablePro hiển thị để phù hợp với sở thích củ
   />
 </Frame>
 
-## Chủ đề
+## Theme
 
-TablePro hỗ trợ ba chế độ chủ đề:
+Tab Appearance hiển thị giao diện HSplitView chia thành hai phần:
 
-| Chủ đề | Mô tả |
-|-------|-------------|
-| **System** | Tự động khớp với giao diện macOS (mặc định) |
-| **Light** | Luôn sử dụng chủ đề sáng |
-| **Dark** | Luôn sử dụng chủ đề tối |
+- **Panel trái**: Sidebar danh sách theme, chia thành ba section — "Built-in" (9 theme có sẵn), "Registry" (theme cài từ registry) và "Custom" (theme tùy chỉnh). Mỗi hàng hiển thị thumbnail thu nhỏ, tên theme và nhãn. Thanh công cụ phía dưới có nút `+` (New Theme, Import...), `−` (xóa theme, không khả dụng cho built-in và registry), và biểu tượng gear (Duplicate, Export..., Uninstall cho registry theme).
+- **Panel phải**: Hiển thị tên theme đang chọn, kèm segmented picker gồm ba tab: **Fonts**, **Colors** và **Layout**.
 
-### Chủ đề Hệ thống
+### Theme Có sẵn
 
-Khi đặt thành **System**, TablePro sẽ theo cài đặt giao diện macOS của bạn:
+| Theme | Kiểu | Mô tả |
+|-------|------|-------|
+| **Default Light** | Light | Giao diện sáng chuẩn theo macOS |
+| **Default Dark** | Dark | Giao diện tối chuẩn theo macOS |
+| **Dracula** | Dark | Theme tối tông tím theo bảng màu Dracula |
+| **Solarized Light** | Light | Bảng màu sáng ấm của Ethan Schoonover |
+| **Solarized Dark** | Dark | Bảng màu tối mát của Ethan Schoonover |
+| **One Dark** | Dark | Bảng màu One Dark của Atom |
+| **GitHub Light** | Light | Màu giao diện sáng GitHub |
+| **GitHub Dark** | Dark | Màu giao diện tối GitHub |
+| **Nord** | Dark | Bảng màu Bắc Cực, tông xanh dương |
 
-1. Mở **System Settings** > **Appearance**
-2. Chọn Light, Dark hoặc Auto
-3. TablePro tự động cập nhật
+### Giao diện Hệ thống
+
+Mỗi theme có thuộc tính `appearance`: `light`, `dark` hoặc `auto`. Giá trị này quyết định `NSApp.appearance` khi theme được áp dụng. Khi giao diện macOS thay đổi giữa sáng và tối, TablePro chuyển sang theme bạn đã gán cho chế độ đó.
 
 {/* Screenshot: Side-by-side light and dark themes */}
 <Frame caption="Chủ đề Sáng vs Tối">
@@ -53,104 +60,113 @@ Khi đặt thành **System**, TablePro sẽ theo cài đặt giao diện macOS c
   />
 </Frame>
 
-### Chủ đề Sáng
+## Tùy chỉnh Theme
 
-Chủ đề sáng có các đặc điểm:
+Panel phải có ba tab chỉnh sửa qua segmented picker:
 
-- Nền trắng/xám nhạt
-- Văn bản tối để dễ đọc
-- Lý tưởng cho môi trường có đủ ánh sáng
-- Độ tương phản thấp hơn để giảm mỏi mắt trong phòng sáng
+### Fonts
 
-### Chủ đề Tối
+Tab Fonts luôn cho phép chỉnh sửa, kể cả trên theme built-in. Khi bạn thay đổi font của theme built-in, TablePro tự động tạo bản sao (duplicate) để giữ nguyên preset gốc.
 
-Chủ đề tối có các đặc điểm:
+Hai cài đặt font:
 
-- Nền xám đậm/đen
-- Văn bản sáng để tạo độ tương phản
-- Giảm mỏi mắt trong điều kiện ánh sáng yếu
-- Phổ biến cho các phiên làm việc kéo dài
-- Tiêu thụ pin thấp hơn trên màn hình OLED
+- **Editor font**: họ font và cỡ chữ cho SQL editor
+- **Data grid font**: họ font và cỡ chữ cho lưới kết quả
+
+Mỗi thay đổi hiển thị ngay trên bản xem trước (live preview).
 
 <Tip>
-Chủ đề tối thường được các nhà phát triển ưa chuộng khi làm việc trong thời gian dài, đặc biệt trong môi trường ánh sáng yếu.
+Nếu chỉ muốn đổi font mà không đổi màu, chỉ cần chỉnh tab Fonts — theme sẽ tự duplicate nếu là built-in.
 </Tip>
 
-## Màu nhấn
+### Colors
 
-Tùy chỉnh màu nhấn được sử dụng trong toàn bộ ứng dụng:
+5 danh mục màu, mỗi màu dùng hex color picker:
 
-| Tùy chọn | Mô tả |
-|--------|-------------|
-| **System** | Sử dụng màu nhấn macOS của bạn |
-| **Blue** | Màu xanh dương cổ điển |
-| **Purple** | Màu tím |
-| **Pink** | Màu hồng |
-| **Red** | Màu đỏ |
-| **Orange** | Màu cam |
-| **Yellow** | Màu vàng |
-| **Green** | Màu xanh lá |
-| **Graphite** | Màu xám/trung tính |
+| Danh mục | Kiểm soát |
+|----------|-----------|
+| **Editor** | Background, text, cursor, selection, line numbers, 8 màu token cú pháp |
+| **Data Grid** | 12 thuộc tính màu: ô, nền, NULL placeholder, boolean, hàng xen kẽ, v.v. |
+| **Interface** | Text tiers, backgrounds, borders, status, badges |
+| **Sidebar** | 5 thuộc tính màu sidebar |
+| **Toolbar** | 2 thuộc tính màu toolbar |
 
-### Vị trí Hiển thị Màu nhấn
+Theme built-in không cho chỉnh trực tiếp. Tab Colors hiển thị thông báo "Duplicate to customize" — nhấp để tạo bản sao rồi chỉnh.
 
-Màu nhấn được sử dụng cho:
+### Layout
 
-- Các mục đã chọn và phần được tô sáng
-- Nút và các phần tử tương tác
-- Thanh tiến trình
-- Viền focus
-- Chỉ báo tab đang hoạt động
+6 danh mục layout:
 
-{/* Screenshot: Different accent colors applied */}
-<Frame caption="Tùy chọn màu nhấn">
-  <img
-    className="block dark:hidden"
-    src="/images/accent-colors.png"
-    alt="Màu nhấn"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/accent-colors-dark.png"
-    alt="Màu nhấn"
-  />
-</Frame>
+| Danh mục | Nội dung |
+|----------|----------|
+| **Typography** | 7 cỡ chữ |
+| **Spacing** | 7 spacing token + list row insets |
+| **Icon Sizes** | 9 kích thước icon |
+| **Corner Radius** | 3 giá trị bo góc |
+| **Row Heights** | 3 chiều cao hàng |
+| **Animations** | 4 cài đặt animation |
 
-{/* Screenshot: Màu nhấn áp dụng trên giao diện */}
-<Frame caption="Màu nhấn áp dụng trên các phần tử giao diện">
-  <img
-    className="block dark:hidden"
-    src="/images/accent-color-applied.png"
-    alt="Màu nhấn áp dụng trên các phần tử giao diện"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/accent-color-applied-dark.png"
-    alt="Màu nhấn áp dụng trên các phần tử giao diện"
-  />
-</Frame>
+Cùng cơ chế khóa như Colors: theme built-in cần duplicate trước khi chỉnh.
 
-### Khớp với macOS
+## Nhập và Xuất
 
-Để sử dụng màu nhấn hệ thống của bạn:
+Nhập/xuất theme qua thanh công cụ phía dưới sidebar:
 
-1. Đặt màu nhấn của TablePro thành **System**
-2. Mở **System Settings** > **Appearance**
-3. Chọn màu nhấn ưa thích của bạn
-4. TablePro tự động cập nhật
+### Xuất Theme
+
+1. Chọn theme trong sidebar
+2. Nhấp biểu tượng gear > **Export...**
+3. Chọn vị trí lưu
+
+File `.json` xuất ra chứa toàn bộ định nghĩa: màu sắc, font, spacing, layout.
+
+### Nhập Theme
+
+1. Nhấp nút `+` > **Import...**
+2. Chọn file theme `.json`
+3. Theme xuất hiện trong section "Custom"
+
+<Note>
+Theme được lưu tại `~/Library/Application Support/TablePro/Themes/` dưới dạng JSON.
+</Note>
+
+## Theme từ Registry
+
+Cài đặt theme từ cộng đồng thông qua plugin registry.
+
+### Cài đặt Theme
+
+1. Vào **Settings > Plugins > Browse**
+2. Lọc theo danh mục **Themes**
+3. Nhấn **Install Theme**
+4. Theme xuất hiện trong section "Registry" của **Settings > Appearance**
+
+Theme từ registry ở chế độ chỉ đọc. Để tùy chỉnh, nhân bản theme trước: bản sao xuất hiện trong section "Custom" và có thể chỉnh sửa.
+
+### Gỡ cài đặt Theme
+
+1. Chọn registry theme trong **Settings > Appearance**
+2. Nhấp biểu tượng **gear**
+3. Chọn **Uninstall**
+
+Nếu theme đang dùng bị gỡ, TablePro chuyển về Default Light.
+
+<Note>
+Registry theme được lưu tại `~/Library/Application Support/TablePro/Themes/Registry/` với tiền tố ID `registry.*`.
+</Note>
 
 ## Màu Kết nối
 
-Gán màu cho từng kết nối để tổ chức trực quan:
+Gán màu cho kết nối để tổ chức trực quan:
 
-| Màu | Sử dụng Đề xuất |
+| Màu | Đề xuất |
 |-------|---------------|
 | None | Mặc định, trung tính |
-| Red | Cơ sở dữ liệu Production |
+| Red | Database Production |
 | Orange | Môi trường Staging |
-| Yellow | Cơ sở dữ liệu Testing |
+| Yellow | Database Testing |
 | Green | Development/local |
-| Blue | Cơ sở dữ liệu Shared |
+| Blue | Database Shared |
 | Purple | Mục đích đặc biệt |
 | Pink | Dự án cá nhân |
 
@@ -158,7 +174,7 @@ Gán màu cho từng kết nối để tổ chức trực quan:
 
 1. Mở form kết nối (chỉnh sửa hoặc tạo mới)
 2. Trong phần **Appearance**, nhấp **Color**
-3. Chọn một màu từ bảng màu
+3. Chọn màu từ bảng màu
 4. Lưu kết nối
 
 {/* Screenshot: Connection color picker */}
@@ -177,7 +193,7 @@ Gán màu cho từng kết nối để tổ chức trực quan:
 
 ### Hiển thị Màu Kết nối
 
-Màu kết nối xuất hiện ở:
+Màu kết nối hiện ở:
 
 - Danh sách kết nối trong sidebar
 - Tiêu đề tab
@@ -185,7 +201,7 @@ Màu kết nối xuất hiện ở:
 - Tiêu đề cửa sổ (khi đã kết nối)
 
 <Warning>
-Cân nhắc sử dụng màu đỏ cho cơ sở dữ liệu production như một cảnh báo trực quan để cẩn thận với các truy vấn.
+Dùng đỏ cho database production như nhắc nhở cẩn thận khi chạy query.
 </Warning>
 
 {/* Screenshot: Màu kết nối trong sidebar và tab */}
@@ -202,25 +218,25 @@ Cân nhắc sử dụng màu đỏ cho cơ sở dữ liệu production như mộ
   />
 </Frame>
 
-## Màu Loại Cơ sở dữ liệu
+## Màu Loại Database
 
-Mỗi loại cơ sở dữ liệu có một màu liên kết để nhận diện nhanh:
+Mỗi loại database có màu cố định để nhận diện nhanh:
 
-| Cơ sở dữ liệu | Màu |
+| Database | Màu |
 |----------|-------|
 | MySQL | Cam |
 | MariaDB | Cyan |
 | PostgreSQL | Xanh dương |
 | SQLite | Xanh lá |
 
-Các màu này xuất hiện trên:
+Hiển thị trên:
 
-- Biểu tượng loại cơ sở dữ liệu
+- Biểu tượng loại database
 - Chỉ báo loại kết nối
 - Biểu tượng sidebar
 
 {/* Screenshot: Màu loại cơ sở dữ liệu */}
-<Frame caption="Mã màu loại cơ sở dữ liệu: MySQL, MariaDB, PostgreSQL, SQLite">
+<Frame caption="Mã màu loại database: MySQL, MariaDB, PostgreSQL, SQLite">
   <img
     className="block dark:hidden"
     src="/images/database-type-colors.png"
@@ -233,9 +249,9 @@ Các màu này xuất hiện trên:
   />
 </Frame>
 
-## Chủ đề Trình soạn thảo
+## Chủ đề Editor
 
-Trình soạn thảo SQL sử dụng màu tô sáng cú pháp:
+Màu tô sáng cú pháp SQL do theme đang dùng quyết định. Ví dụ, trong Default Dark:
 
 | Phần tử | Màu |
 |---------|-------|
@@ -245,7 +261,7 @@ Trình soạn thảo SQL sử dụng màu tô sáng cú pháp:
 | Comments | Xám |
 | Identifiers | Màu văn bản mặc định |
 
-Màu trình soạn thảo tự động thích ứng với chủ đề sáng/tối.
+Chuyển theme sẽ thay đổi màu cú pháp. Tùy chỉnh bất kỳ màu nào qua tab Colors của theme.
 
 ## Phần tử UI
 
@@ -271,72 +287,20 @@ Trong bảng dữ liệu:
 | Numbers | Màu tiêu chuẩn |
 | Text | Màu tiêu chuẩn |
 
-## Thực hành Tốt nhất
-
-### Cho Khả năng Đọc
-
-1. **Khớp môi trường**: Sử dụng chủ đề tối trong ánh sáng yếu, sáng trong ánh sáng mạnh
-2. **Độ tương phản**: Đảm bảo độ tương phản đủ cho điều kiện ánh sáng của bạn
-3. **Kích thước font**: Tăng lên nếu văn bản khó đọc
-
-### Cho Tổ chức
-
-1. **Màu kết nối**: Phát triển một bảng màu nhất quán
-2. **Mã hóa môi trường**: Đỏ=prod, xanh lá=dev, v.v.
-3. **Quy ước nhóm**: Thống nhất về ý nghĩa màu với nhóm của bạn
-
-### Cho Sức khỏe Mắt
-
-1. **Chủ đề tối vào ban đêm**: Giảm tiếp xúc với ánh sáng xanh
-2. **Nghỉ giải lao**: Nhìn ra xa màn hình định kỳ
-3. **Night Shift**: Bật Night Shift của macOS để có màu ấm hơn
-
-## Khả năng Tiếp cận
-
-### Mù Màu
-
-Cân nhắc những mẹo này cho người dùng mù màu:
-
-1. Không chỉ dựa vào màu sắc để truyền đạt ý nghĩa
-2. Tên kết nối cung cấp nhận dạng văn bản
-3. Biểu tượng bổ sung thông tin màu
-
-### Độ Tương phản Cao
-
-Để có khả năng nhìn thấy tốt hơn:
-
-1. Sử dụng chủ đề sáng hoặc tối (không phải auto)
-2. Chọn màu nhấn độ tương phản cao (xanh dương, xanh lá)
-3. Tăng kích thước font trong cài đặt trình soạn thảo
-
 ## Khắc phục Sự cố
 
-### Chủ đề Không Thay đổi
-
-1. Khởi động lại TablePro sau khi thay đổi cài đặt
-2. Kiểm tra giao diện macOS nếu sử dụng chủ đề System
-3. Xác minh cài đặt đã được lưu
-
-### Màu Trông Sai
-
-1. Kiểm tra color profile màn hình trong System Settings
-2. Xác minh hiệu chỉnh màn hình
-3. Kiểm tra cài đặt True Tone trên các màn hình được hỗ trợ
-
-### Màu nhấn Không Áp dụng
-
-1. Khởi động lại TablePro
-2. Đặt thành màu cụ thể thay vì System
-3. Kiểm tra các extension hệ thống xung đột
+- **Theme không thay đổi**: Khởi động lại TablePro. Nếu dùng chế độ auto, kiểm tra giao diện macOS trong System Settings.
+- **Màu hiển thị sai**: Kiểm tra color profile và hiệu chỉnh màn hình trong System Settings. True Tone có thể ảnh hưởng trên màn hình hỗ trợ.
+- **Theme tùy chỉnh bị mất**: Kiểm tra thư mục `~/Library/Application Support/TablePro/Themes/` — file JSON của theme phải có ở đó.
 
 ## Cài đặt Liên quan
 
 <CardGroup cols={2}>
-  <Card title="Cài đặt Trình soạn thảo" icon="code" href="/vi/customization/editor-settings">
-    Font và giao diện trình soạn thảo
+  <Card title="Cài đặt Editor" icon="code" href="/vi/customization/editor-settings">
+    Font và giao diện editor
   </Card>
   <Card title="Tổng quan Cài đặt" icon="gear" href="/vi/customization/settings">
-    Tất cả các danh mục cài đặt
+    Tất cả danh mục cài đặt
   </Card>
   <Card title="Bảng Dữ liệu" icon="table" href="/vi/features/data-grid">
     Cấu hình hiển thị dữ liệu

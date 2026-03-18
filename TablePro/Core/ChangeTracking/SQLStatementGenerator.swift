@@ -8,6 +8,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// A parameterized SQL statement with placeholders and bound values
 struct ParameterizedStatement {
@@ -19,32 +20,33 @@ struct ParameterizedStatement {
 struct SQLStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLStatementGenerator")
 
-    /// Known SQL function expressions that should not be quoted/parameterized
-    private static let sqlFunctionExpressions: Set<String> = [
-        "NOW()",
-        "CURRENT_TIMESTAMP()",
-        "CURRENT_TIMESTAMP",
-        "CURDATE()",
-        "CURTIME()",
-        "UTC_TIMESTAMP()",
-        "UTC_DATE()",
-        "UTC_TIME()",
-        "LOCALTIME()",
-        "LOCALTIME",
-        "LOCALTIMESTAMP()",
-        "LOCALTIMESTAMP",
-        "SYSDATE()",
-        "UNIX_TIMESTAMP()",
-        "CURRENT_DATE()",
-        "CURRENT_DATE",
-        "CURRENT_TIME()",
-        "CURRENT_TIME",
-    ]
-
     let tableName: String
     let columns: [String]
     let primaryKeyColumn: String?
     let databaseType: DatabaseType
+    let parameterStyle: ParameterStyle
+    private let quoteIdentifierFn: (String) -> String
+
+    init(
+        tableName: String,
+        columns: [String],
+        primaryKeyColumn: String?,
+        databaseType: DatabaseType,
+        parameterStyle: ParameterStyle? = nil,
+        dialect: SQLDialectDescriptor? = nil,
+        quoteIdentifier: ((String) -> String)? = nil
+    ) {
+        self.tableName = tableName
+        self.columns = columns
+        self.primaryKeyColumn = primaryKeyColumn
+        self.databaseType = databaseType
+        self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
+        self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
+    }
+
+    private static func defaultParameterStyle(for databaseType: DatabaseType) -> ParameterStyle {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.parameterStyle ?? .questionMark
+    }
 
     // MARK: - Public API
 
@@ -88,8 +90,7 @@ struct SQLStatementGenerator {
             }
         }
 
-        // Generate individual UPDATE statements with LIMIT 1 (safer than batched CASE/WHEN)
-        // This prevents accidentally updating multiple rows with the same value
+        // Generate individual UPDATE statements (safer than batched CASE/WHEN)
         if !updateChanges.isEmpty {
             for change in updateChanges {
                 if let stmt = generateUpdateSQL(for: change) {
@@ -117,19 +118,20 @@ struct SQLStatementGenerator {
         return statements
     }
 
-    /// Get placeholder syntax for the database type
     private func placeholder(at index: Int) -> String {
-        switch databaseType {
-        case .postgresql, .redshift:
-            return "$\(index + 1)"  // PostgreSQL uses $1, $2, etc.
-        case .mysql, .mariadb, .sqlite, .mongodb, .redis, .mssql:
-            return "?"  // MySQL, MariaDB, SQLite, MongoDB, and MSSQL use ?
+        switch parameterStyle {
+        case .dollar:
+            return "$\(index + 1)"
+        case .questionMark:
+            return "?"
         }
     }
 
     // MARK: - INSERT Generation
 
-    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [String?]]) -> ParameterizedStatement? {
+    private func generateInsertSQL(for change: RowChange, insertedRowData: [Int: [String?]])
+        -> ParameterizedStatement?
+    {
         // OPTIMIZATION: Get values from lazy storage instead of cellChanges
         if let values = insertedRowData[change.rowIndex] {
             return generateInsertSQLFromStoredData(rowIndex: change.rowIndex, values: values)
@@ -140,53 +142,48 @@ struct SQLStatementGenerator {
     }
 
     /// Generate INSERT SQL from lazy-stored row data (optimized path)
-    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [String?]) -> ParameterizedStatement? {
+    private func generateInsertSQLFromStoredData(rowIndex: Int, values: [String?])
+        -> ParameterizedStatement?
+    {
         var nonDefaultColumns: [String] = []
-        var parameters: [Any?] = []
+        var placeholderParts: [String] = []
+        var bindParameters: [Any?] = []
 
         for (index, value) in values.enumerated() {
-            // Skip DEFAULT columns - let DB handle them
             if value == "__DEFAULT__" { continue }
 
             guard index < columns.count else { continue }
             let columnName = columns[index]
 
-            nonDefaultColumns.append(databaseType.quoteIdentifier(columnName))
+            nonDefaultColumns.append(quoteIdentifierFn(columnName))
 
             if let val = value {
                 if isSQLFunctionExpression(val) {
-                    // SQL function - cannot parameterize, use literal
-                    // This is safe because we validate it's a known SQL function
-                    parameters.append(SQLFunctionLiteral(val.trimmingCharacters(in: .whitespaces).uppercased()))
+                    placeholderParts.append(val.trimmingCharacters(in: .whitespaces).uppercased())
                 } else {
-                    parameters.append(val)
+                    bindParameters.append(val)
+                    placeholderParts.append(placeholder(at: bindParameters.count - 1))
                 }
             } else {
-                parameters.append(nil)
+                bindParameters.append(nil)
+                placeholderParts.append(placeholder(at: bindParameters.count - 1))
             }
         }
 
-        // If all columns are DEFAULT, don't generate INSERT
         guard !nonDefaultColumns.isEmpty else { return nil }
 
         let columnList = nonDefaultColumns.joined(separator: ", ")
-        let placeholders = parameters.enumerated().map { index, param in
-            if let funcLiteral = param as? SQLFunctionLiteral {
-                return funcLiteral.value
-            }
-            return placeholder(at: index)
-        }.joined(separator: ", ")
+        let placeholders = placeholderParts.joined(separator: ", ")
 
-        let sql = "INSERT INTO \(databaseType.quoteIdentifier(tableName)) (\(columnList)) VALUES (\(placeholders))"
-
-        // Filter out SQL function literals from parameters
-        let bindParameters = parameters.filter { !($0 is SQLFunctionLiteral) }
+        let sql =
+            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnList)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: bindParameters)
     }
 
     /// Generate INSERT SQL from cellChanges (fallback for backward compatibility)
-    private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement? {
+    private func generateInsertSQLFromCellChanges(for change: RowChange) -> ParameterizedStatement?
+    {
         guard !change.cellChanges.isEmpty else { return nil }
 
         // Filter out DEFAULT columns - let DB handle them
@@ -198,7 +195,7 @@ struct SQLStatementGenerator {
         guard !nonDefaultChanges.isEmpty else { return nil }
 
         let columnNames = nonDefaultChanges.map {
-            databaseType.quoteIdentifier($0.columnName)
+            quoteIdentifierFn($0.columnName)
         }.joined(separator: ", ")
 
         var parameters: [Any?] = []
@@ -215,7 +212,8 @@ struct SQLStatementGenerator {
             return placeholder(at: parameters.count - 1)
         }.joined(separator: ", ")
 
-        let sql = "INSERT INTO \(databaseType.quoteIdentifier(tableName)) (\(columnNames)) VALUES (\(placeholders))"
+        let sql =
+            "INSERT INTO \(quoteIdentifierFn(tableName)) (\(columnNames)) VALUES (\(placeholders))"
 
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
@@ -229,48 +227,58 @@ struct SQLStatementGenerator {
     // MARK: - UPDATE Generation
 
     /// Generate individual UPDATE statement for a single row using parameterized query
-    private func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {
+    func generateUpdateSQL(for change: RowChange) -> ParameterizedStatement? {
         guard !change.cellChanges.isEmpty else { return nil }
 
         var parameters: [Any?] = []
         let setClauses = change.cellChanges.map { cellChange -> String in
             if cellChange.newValue == "__DEFAULT__" {
-                return "\(databaseType.quoteIdentifier(cellChange.columnName)) = DEFAULT"
+                return "\(quoteIdentifierFn(cellChange.columnName)) = DEFAULT"
             } else if let newValue = cellChange.newValue {
                 if isSQLFunctionExpression(newValue) {
-                    return "\(databaseType.quoteIdentifier(cellChange.columnName)) = \(newValue.trimmingCharacters(in: .whitespaces).uppercased())"
+                    return
+                        "\(quoteIdentifierFn(cellChange.columnName)) = \(newValue.trimmingCharacters(in: .whitespaces).uppercased())"
                 } else {
                     parameters.append(newValue)
-                    return "\(databaseType.quoteIdentifier(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
+                    return
+                        "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
                 }
             } else {
                 parameters.append(nil)
-                return "\(databaseType.quoteIdentifier(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
+                return
+                    "\(quoteIdentifierFn(cellChange.columnName)) = \(placeholder(at: parameters.count - 1))"
             }
         }.joined(separator: ", ")
 
         if let pkColumn = primaryKeyColumn,
-           let pkColumnIndex = columns.firstIndex(of: pkColumn) {
+            let pkColumnIndex = columns.firstIndex(of: pkColumn)
+        {
             var pkValue: Any?
             if let originalRow = change.originalRow, pkColumnIndex < originalRow.count {
                 pkValue = originalRow[pkColumnIndex]
-            } else if let pkChange = change.cellChanges.first(where: { $0.columnName == pkColumn }) {
+            } else if let pkChange = change.cellChanges.first(where: { $0.columnName == pkColumn })
+            {
                 pkValue = pkChange.oldValue
             }
 
             guard pkValue != nil else {
-                Self.logger.warning("Skipping UPDATE for table '\(self.tableName)' - cannot determine primary key value for row")
+                Self.logger.warning(
+                    "Skipping UPDATE for table '\(self.tableName)' - cannot determine primary key value for row"
+                )
                 return nil
             }
 
             parameters.append(pkValue)
-            let whereClause = "\(databaseType.quoteIdentifier(pkColumn)) = \(placeholder(at: parameters.count - 1))"
-            let limitClause = (databaseType == .mysql || databaseType == .mariadb) ? " LIMIT 1" : ""
-            let sql = "UPDATE \(databaseType.quoteIdentifier(tableName)) SET \(setClauses) WHERE \(whereClause)\(limitClause)"
+            let whereClause =
+                "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
+            let sql =
+                "UPDATE \(quoteIdentifierFn(tableName)) SET \(setClauses) WHERE \(whereClause)"
             return ParameterizedStatement(sql: sql, parameters: parameters)
         } else {
             guard let originalRow = change.originalRow else {
-                Self.logger.warning("Skipping UPDATE for table '\(self.tableName)' - no primary key and no original row data")
+                Self.logger.warning(
+                    "Skipping UPDATE for table '\(self.tableName)' - no primary key and no original row data"
+                )
                 return nil
             }
 
@@ -278,7 +286,7 @@ struct SQLStatementGenerator {
             for (index, columnName) in columns.enumerated() {
                 guard index < originalRow.count else { continue }
                 let value = originalRow[index]
-                let quotedColumn = databaseType.quoteIdentifier(columnName)
+                let quotedColumn = quoteIdentifierFn(columnName)
                 if let value = value {
                     parameters.append(value)
                     conditions.append("\(quotedColumn) = \(placeholder(at: parameters.count - 1))")
@@ -290,16 +298,8 @@ struct SQLStatementGenerator {
             guard !conditions.isEmpty else { return nil }
 
             let whereClause = conditions.joined(separator: " AND ")
-
-            let sql: String
-            switch databaseType {
-            case .mysql, .mariadb, .sqlite:
-                sql = "UPDATE \(databaseType.quoteIdentifier(tableName)) SET \(setClauses) WHERE \(whereClause) LIMIT 1"
-            case .mssql:
-                sql = "UPDATE TOP (1) \(databaseType.quoteIdentifier(tableName)) SET \(setClauses) WHERE \(whereClause)"
-            case .postgresql, .redshift, .mongodb, .redis:
-                sql = "UPDATE \(databaseType.quoteIdentifier(tableName)) SET \(setClauses) WHERE \(whereClause)"
-            }
+            let sql =
+                "UPDATE \(quoteIdentifierFn(tableName)) SET \(setClauses) WHERE \(whereClause)"
 
             return ParameterizedStatement(sql: sql, parameters: parameters)
         }
@@ -313,24 +313,26 @@ struct SQLStatementGenerator {
 
         // If we have a primary key, use it for efficient deletion
         if let pkColumn = primaryKeyColumn,
-           let pkIndex = columns.firstIndex(of: pkColumn) {
+            let pkIndex = columns.firstIndex(of: pkColumn)
+        {
             // Build OR conditions for all rows using PK
             var parameters: [Any?] = []
             let conditions = changes.compactMap { change -> String? in
                 guard let originalRow = change.originalRow,
-                      pkIndex < originalRow.count else {
+                    pkIndex < originalRow.count
+                else {
                     return nil
                 }
 
                 parameters.append(originalRow[pkIndex])
-                return "\(databaseType.quoteIdentifier(pkColumn)) = \(placeholder(at: parameters.count - 1))"
+                return
+                    "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
             }
 
             guard !conditions.isEmpty else { return nil }
 
-            // Combine all conditions with OR
             let whereClause = conditions.joined(separator: " OR ")
-            let sql = "DELETE FROM \(databaseType.quoteIdentifier(tableName)) WHERE \(whereClause)"
+            let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
 
             return ParameterizedStatement(sql: sql, parameters: parameters)
         }
@@ -351,7 +353,7 @@ struct SQLStatementGenerator {
             guard index < originalRow.count else { continue }
 
             let value = originalRow[index]
-            let quotedColumn = databaseType.quoteIdentifier(columnName)
+            let quotedColumn = quoteIdentifierFn(columnName)
 
             if let value = value {
                 parameters.append(value)
@@ -364,16 +366,7 @@ struct SQLStatementGenerator {
         guard !conditions.isEmpty else { return nil }
 
         let whereClause = conditions.joined(separator: " AND ")
-
-        let sql: String
-        switch databaseType {
-        case .mysql, .mariadb, .sqlite:
-            sql = "DELETE FROM \(databaseType.quoteIdentifier(tableName)) WHERE \(whereClause) LIMIT 1"
-        case .mssql:
-            sql = "DELETE TOP (1) FROM \(databaseType.quoteIdentifier(tableName)) WHERE \(whereClause)"
-        case .postgresql, .redshift, .mongodb, .redis:
-            sql = "DELETE FROM \(databaseType.quoteIdentifier(tableName)) WHERE \(whereClause)"
-        }
+        let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
 
         return ParameterizedStatement(sql: sql, parameters: parameters)
     }
@@ -382,7 +375,6 @@ struct SQLStatementGenerator {
 
     /// Check if a string is a SQL function expression that should not be quoted
     private func isSQLFunctionExpression(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespaces).uppercased()
-        return Self.sqlFunctionExpressions.contains(trimmed)
+        SQLEscaping.isTemporalFunction(value)
     }
 }

@@ -1,0 +1,369 @@
+---
+title: 查询历史
+description: 每条执行的查询都保存在本地 SQLite 数据库中，支持 FTS5 全文搜索
+---
+
+# 查询历史
+
+每条执行的查询都会自动保存到本地 SQLite 数据库中。支持全文搜索、按连接或时间范围筛选，以及重新运行历史查询。历史记录跨会话持久化。
+
+{/* Screenshot: Query history panel showing list of past queries */}
+<Frame caption="查询历史面板">
+  <img
+    className="block dark:hidden"
+    src="/images/query-history.png"
+    alt="查询历史"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/query-history-dark.png"
+    alt="查询历史"
+  />
+</Frame>
+
+## 访问历史
+
+### 历史面板
+
+打开历史面板：
+
+1. 点击 **View** > **Query History**
+2. 或按 `Cmd+Y`
+3. 或点击工具栏中的 **History** 图标
+
+### 侧边栏中的历史
+
+最近执行的查询也会出现在侧边栏的活跃连接下方。
+
+## 历史功能
+
+### 查询列表
+
+历史面板显示：
+
+| 列 | 说明 |
+|-----|------|
+| **查询** | SQL 文本（过长时截断） |
+| **时间** | 查询执行时间 |
+| **耗时** | 执行时长 |
+| **状态** | 成功或失败 |
+| **数据库** | 使用的数据库/连接 |
+
+### 排序
+
+可按以下方式排序历史：
+
+- **时间**：最近的在前（默认）
+- **耗时**：最慢的在前
+- **查询文本**：按字母排序
+
+点击列标题更改排序方式。
+
+### 筛选
+
+按以下条件筛选查询：
+
+- **连接**：只显示特定连接的查询
+- **状态**：只显示成功或失败的查询
+- **时间范围**：今天、本周、本月、全部
+
+{/* Screenshot: History panel with filter controls */}
+<Frame caption="带筛选控件的历史面板">
+  <img
+    className="block dark:hidden"
+    src="/images/history-filters.png"
+    alt="带筛选控件的历史面板"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/history-filters-dark.png"
+    alt="带筛选控件的历史面板"
+  />
+</Frame>
+
+## 搜索历史
+
+### 全文搜索
+
+在搜索框中输入以查找包含特定文本的查询：
+
+```
+SELECT users  -- 查找包含 "SELECT" 和 "users" 的所有查询
+```
+
+{/* Screenshot: Search results in history */}
+<Frame caption="搜索查询历史">
+  <img
+    className="block dark:hidden"
+    src="/images/history-search.png"
+    alt="历史搜索"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/history-search-dark.png"
+    alt="历史搜索"
+  />
+</Frame>
+
+### 搜索技巧
+
+- 搜索不区分大小写
+- 支持部分匹配
+- 搜索范围覆盖完整查询文本
+
+**搜索示例**：
+
+| 搜索词 | 查找结果 |
+|--------|----------|
+| `users` | 提到 "users" 的查询 |
+| `JOIN orders` | 连接 orders 表的查询 |
+| `WHERE created` | 按 created 筛选的查询 |
+| `UPDATE users SET` | 对 users 表的 UPDATE 语句 |
+
+## 使用历史
+
+### 重新运行查询
+
+要重新运行历史查询：
+
+1. 在历史列表中找到该查询
+2. 双击查询
+3. 它会加载到 SQL 编辑器中
+4. 按 `Cmd+Enter` 执行
+
+或右键点击选择 **Run Query**。
+
+### 复制查询
+
+要复制查询：
+
+1. 在列表中选中查询
+2. 右键 > **Copy Query**
+3. 或按 `Cmd+C`
+
+完整的查询文本会复制到剪贴板。
+
+{/* Screenshot: Query history context menu */}
+<Frame caption="查询历史右键菜单">
+  <img
+    className="block dark:hidden"
+    src="/images/history-context-menu.png"
+    alt="查询历史右键菜单"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/history-context-menu-dark.png"
+    alt="查询历史右键菜单"
+  />
+</Frame>
+
+### 修改后运行
+
+要修改历史查询：
+
+1. 双击加载到编辑器
+2. 进行修改
+3. 执行修改后的查询
+
+原始历史记录保持不变。修改后的查询会创建新的历史条目。
+
+## 历史存储
+
+### 存储位置
+
+查询历史存储在：
+
+```
+~/Library/Application Support/TablePro/query_history.db
+```
+
+该 SQLite 数据库包含：
+
+- 查询文本
+- 执行时间戳
+- 执行时长
+- 连接/数据库信息
+- 成功/失败状态
+- 错误信息（如果失败）
+
+### 历史保留策略
+
+在 **Settings** > **History** 中配置保留策略：
+
+| 设置 | 默认值 | 说明 |
+|------|--------|------|
+| **最大条目数** | 10,000 | 最多存储的查询数 |
+| **最大天数** | 90 | 删除超过此天数的查询 |
+| **自动清理** | 开 | 自动删除旧条目 |
+
+<Tip>
+将**最大条目数**设为 0 表示不限制历史数量（历史量很大时可能降低搜索速度）。
+</Tip>
+
+### 清除历史
+
+要清除所有历史：
+
+1. 打开 **Settings** > **History**
+2. 点击 **Clear All History**
+3. 确认操作
+
+<Warning>
+清除历史不可撤销。请考虑先导出重要查询。
+</Warning>
+
+要清除特定连接的历史：
+
+1. 右键点击侧边栏中的连接
+2. 选择 **Clear History**
+
+## 查询详情
+
+### 查看完整查询
+
+对于长查询，点击展开查看完整文本：
+
+{/* Screenshot: Expanded query detail view */}
+<Frame caption="完整查询视图">
+  <img
+    className="block dark:hidden"
+    src="/images/history-detail.png"
+    alt="查询详情"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/history-detail-dark.png"
+    alt="查询详情"
+  />
+</Frame>
+
+### 执行详情
+
+每条历史记录包含：
+
+| 详情 | 说明 |
+|------|------|
+| **开始时间** | 执行开始的时间戳 |
+| **耗时** | 查询执行时长 |
+| **影响行数** | 返回/修改的行数 |
+| **错误** | 查询失败时的错误信息 |
+
+### 失败的查询
+
+失败的查询显示：
+
+- 错误信息
+- 导致错误的查询
+- 失败时间戳
+
+这对调试很有用：
+
+1. 找到失败的查询
+2. 阅读错误信息
+3. 加载到编辑器
+4. 修复并重新运行
+
+{/* Screenshot: Failed query entry with error message */}
+<Frame caption="带错误信息的失败查询条目">
+  <img
+    className="block dark:hidden"
+    src="/images/history-failed-query.png"
+    alt="带错误信息的失败查询条目"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/history-failed-query-dark.png"
+    alt="带错误信息的失败查询条目"
+  />
+</Frame>
+
+## 最佳实践
+
+### 为查询添加注释
+
+为重要查询添加注释以便搜索：
+
+```sql
+-- Monthly revenue report 2024
+SELECT
+    DATE_FORMAT(created_at, '%Y-%m') as month,
+    SUM(total) as revenue
+FROM orders
+WHERE created_at >= '2024-01-01'
+GROUP BY month;
+```
+
+之后搜索 "Monthly revenue report" 即可找到。
+
+### 使用注释组织
+
+使用一致的注释模式：
+
+```sql
+-- [REPORT] User growth
+-- [DEBUG] Performance issue
+-- [ADMIN] Data cleanup
+-- [TEMP] Testing query
+```
+
+### 导出重要查询
+
+对于需要永久保留的查询：
+
+1. 在历史中找到该查询
+2. 复制到 SQL 文件
+3. 保存到版本控制中
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 打开历史 | `Cmd+Y` |
+| 搜索历史 | `Cmd+F`（历史面板打开时） |
+| 加载选中的查询 | `Enter` 或双击 |
+| 复制查询 | `Cmd+C` |
+
+## 故障排除
+
+### 历史未保存
+
+1. 检查磁盘空间 — 历史需要存储空间
+2. 验证 TablePro 有写入权限
+3. 检查设置中是否禁用了历史
+
+### 历史搜索慢
+
+对于非常大的历史记录：
+
+1. 在设置中减少**最大条目数**
+2. 清除旧历史
+3. 使用更具体的搜索词
+
+### 找不到旧查询
+
+检查**最大天数**设置 — 超过此限制的查询会被自动删除。
+
+要防止自动删除：
+1. 打开 **Settings** > **History**
+2. 将**最大天数**设为 0（不限制）
+
+### 重复条目
+
+每次执行都会创建新的历史条目，即使查询完全相同。这是有意为之的：它记录每次查询的运行时间。
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写和执行查询
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看查询结果
+  </Card>
+  <Card title="设置" icon="gear" href="/zh/customization/settings">
+    配置历史选项
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    了解所有快捷键
+  </Card>
+</CardGroup>

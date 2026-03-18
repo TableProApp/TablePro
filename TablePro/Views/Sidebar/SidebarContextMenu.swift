@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 
 /// Extracted logic from SidebarContextMenu for testability
 enum SidebarContextMenuLogic {
@@ -17,8 +18,8 @@ enum SidebarContextMenuLogic {
         clickedTable?.type == .view
     }
 
-    static func importVisible(isView: Bool, isMongoDB: Bool) -> Bool {
-        !isView && !isMongoDB
+    static func importVisible(isView: Bool, supportsImport: Bool) -> Bool {
+        !isView && supportsImport
     }
 
     static func truncateVisible(isView: Bool) -> Bool {
@@ -37,6 +38,7 @@ struct SidebarContextMenu: View {
     let isReadOnly: Bool
     let onBatchToggleTruncate: () -> Void
     let onBatchToggleDelete: () -> Void
+    let coordinator: MainContentCoordinator?
 
     private var hasSelection: Bool {
         SidebarContextMenuLogic.hasSelection(selectedTables: selectedTables, clickedTable: clickedTable)
@@ -48,7 +50,7 @@ struct SidebarContextMenu: View {
 
     var body: some View {
         Button("Create New View...") {
-            NotificationCenter.default.post(name: .createView, object: nil)
+            coordinator?.createView()
         }
         .disabled(isReadOnly)
 
@@ -57,10 +59,7 @@ struct SidebarContextMenu: View {
         if isView {
             Button("Edit View Definition") {
                 if let viewName = clickedTable?.name {
-                    NotificationCenter.default.post(
-                        name: .editViewDefinition,
-                        object: viewName
-                    )
+                    coordinator?.editViewDefinition(viewName)
                 }
             }
             .disabled(isReadOnly)
@@ -68,10 +67,7 @@ struct SidebarContextMenu: View {
 
         Button("Show Structure") {
             if let tableName = clickedTable?.name {
-                NotificationCenter.default.post(
-                    name: .showTableStructure,
-                    object: tableName
-                )
+                coordinator?.openTableTab(tableName, showStructure: true)
             }
         }
         .disabled(clickedTable == nil)
@@ -92,14 +88,19 @@ struct SidebarContextMenu: View {
             if selectedTables.isEmpty, let table = clickedTable {
                 selectedTables.insert(table)
             }
-            NotificationCenter.default.post(name: .exportTables, object: nil)
+            coordinator?.openExportDialog()
         }
         .keyboardShortcut("e", modifiers: [.command, .shift])
         .disabled(!hasSelection)
 
-        if !isView && !AppState.shared.isMongoDB && !AppState.shared.isRedis {
+        if SidebarContextMenuLogic.importVisible(
+            isView: isView,
+            supportsImport: PluginManager.shared.supportsImport(
+                for: AppState.shared.currentDatabaseType ?? .mysql
+            )
+        ) {
             Button("Import...") {
-                NotificationCenter.default.post(name: .importTables, object: nil)
+                coordinator?.openImportDialog()
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
             .disabled(isReadOnly)

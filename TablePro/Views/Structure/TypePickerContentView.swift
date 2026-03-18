@@ -7,95 +7,6 @@
 
 import SwiftUI
 
-/// Data type categories for type picker
-enum DataTypeCategory: String, CaseIterable {
-    case numeric = "Numeric"
-    case string = "String"
-    case dateTime = "Date & Time"
-    case binary = "Binary"
-    case other = "Other"
-
-    func types(for dbType: DatabaseType) -> [String] {
-        switch self {
-        case .numeric:
-            switch dbType {
-            case .mysql, .mariadb:
-                return ["TINYINT", "SMALLINT", "MEDIUMINT", "INT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "BIT"]
-            case .postgresql, .redshift:
-                return ["SMALLINT", "INTEGER", "BIGINT", "DECIMAL", "NUMERIC", "REAL", "DOUBLE PRECISION", "SMALLSERIAL", "SERIAL", "BIGSERIAL"]
-            case .mssql:
-                return ["TINYINT", "SMALLINT", "INT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "REAL", "MONEY", "SMALLMONEY", "BIT"]
-            case .sqlite:
-                return ["INTEGER", "REAL", "NUMERIC"]
-            case .mongodb:
-                return ["Int32", "Int64", "Double", "Decimal128"]
-            case .redis:
-                return ["Integer"]
-            }
-        case .string:
-            switch dbType {
-            case .mysql, .mariadb:
-                return ["CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT"]
-            case .postgresql, .redshift:
-                return ["CHAR", "VARCHAR", "TEXT"]
-            case .mssql:
-                return ["CHAR", "VARCHAR", "NCHAR", "NVARCHAR", "TEXT", "NTEXT"]
-            case .sqlite:
-                return ["TEXT"]
-            case .mongodb:
-                return ["String", "ObjectId", "UUID"]
-            case .redis:
-                return ["String"]
-            }
-        case .dateTime:
-            switch dbType {
-            case .mysql, .mariadb:
-                return ["DATE", "TIME", "DATETIME", "TIMESTAMP", "YEAR"]
-            case .postgresql, .redshift:
-                return ["DATE", "TIME", "TIMESTAMP", "TIMESTAMPTZ", "INTERVAL"]
-            case .mssql:
-                return ["DATE", "TIME", "DATETIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET"]
-            case .sqlite:
-                return ["DATE", "DATETIME"]
-            case .mongodb:
-                return ["Date", "Timestamp"]
-            case .redis:
-                return []
-            }
-        case .binary:
-            switch dbType {
-            case .mysql, .mariadb:
-                return ["BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB"]
-            case .postgresql, .redshift:
-                return ["BYTEA"]
-            case .mssql:
-                return ["BINARY", "VARBINARY", "IMAGE"]
-            case .sqlite:
-                return ["BLOB"]
-            case .mongodb:
-                return ["BinData"]
-            case .redis:
-                return []
-            }
-        case .other:
-            switch dbType {
-            case .mysql, .mariadb:
-                return ["BOOLEAN", "ENUM", "SET", "JSON"]
-            case .postgresql, .redshift:
-                return ["BOOLEAN", "UUID", "JSON", "JSONB", "ARRAY", "HSTORE", "INET", "CIDR", "MACADDR", "TSVECTOR", "TSQUERY"]
-            case .mssql:
-                return ["BIT", "UNIQUEIDENTIFIER", "XML", "SQL_VARIANT", "ROWVERSION", "HIERARCHYID"]
-            case .sqlite:
-                return ["BOOLEAN"]
-            case .mongodb:
-                return ["Boolean", "Object", "Array", "Null", "Regex"]
-            case .redis:
-                return ["List", "Set", "Sorted Set", "Hash", "Stream"]
-            }
-        }
-    }
-}
-
 struct TypePickerContentView: View {
     let databaseType: DatabaseType
     let currentValue: String
@@ -109,19 +20,27 @@ struct TypePickerContentView: View {
     private static let searchAreaHeight: CGFloat = 44
     private static let maxTotalHeight: CGFloat = 360
 
-    private var visibleCategories: [DataTypeCategory] {
-        DataTypeCategory.allCases.filter { !filteredTypes(for: $0).isEmpty }
+    private var allCategories: [(name: String, types: [String])] {
+        PluginManager.shared.columnTypesByCategory(for: databaseType)
+            .sorted { $0.key < $1.key }
+            .map { (name: $0.key, types: $0.value) }
     }
 
-    private func filteredTypes(for category: DataTypeCategory) -> [String] {
-        let types = category.types(for: databaseType)
+    private var visibleCategories: [(name: String, types: [String])] {
+        allCategories.compactMap { category in
+            let filtered = filteredTypes(from: category.types)
+            return filtered.isEmpty ? nil : (name: category.name, types: filtered)
+        }
+    }
+
+    private func filteredTypes(from types: [String]) -> [String] {
         if searchText.isEmpty { return types }
         let query = searchText.lowercased()
         return types.filter { $0.lowercased().contains(query) }
     }
 
     private var totalFilteredCount: Int {
-        visibleCategories.reduce(0) { $0 + filteredTypes(for: $1).count }
+        visibleCategories.reduce(0) { $0 + $1.types.count }
     }
 
     private var listHeight: CGFloat {
@@ -143,9 +62,9 @@ struct TypePickerContentView: View {
             Divider()
 
             List {
-                ForEach(visibleCategories, id: \.self) { category in
-                    Section(header: Text(category.rawValue)) {
-                        ForEach(filteredTypes(for: category), id: \.self) { type in
+                ForEach(visibleCategories, id: \.name) { category in
+                    Section(header: Text(category.name)) {
+                        ForEach(category.types, id: \.self) { type in
                             typeRow(type)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .contentShape(Rectangle())

@@ -1,11 +1,11 @@
 ---
 title: Nhập & Xuất
-description: Import dữ liệu từ file SQL và export dữ liệu theo nhiều định dạng
+description: Export sang CSV, JSON, SQL, MQL hoặc XLSX. Import file SQL với transaction safety và theo dõi tiến trình.
 ---
 
 # Nhập & Xuất
 
-TablePro hỗ trợ export dữ liệu theo nhiều định dạng (CSV, JSON, SQL, MQL và Excel XLSX) để sao lưu, di chuyển hoặc phân tích, cũng như import dữ liệu từ file SQL.
+Export dữ liệu theo năm định dạng (CSV, JSON, SQL, MQL, XLSX), import file SQL có hỗ trợ gzip, và dán dữ liệu dạng bảng từ clipboard vào grid.
 
 ## Export Dữ Liệu
 
@@ -14,18 +14,18 @@ TablePro hỗ trợ export dữ liệu theo nhiều định dạng (CSV, JSON, S
 Export dữ liệu từ kết quả query hoặc bảng:
 
 1. Chạy query hoặc mở bảng
-2. Click nút **Export** trong toolbar
+2. Click nút **Export** trong toolbar (hoặc nhấn `Cmd+Shift+E`)
 3. Chọn định dạng export
-4. Chọn bảng cần export (dạng tree view, có thể chọn nhiều bảng)
+4. Chọn bảng cần export trong tree view
 5. Cấu hình tùy chọn cho từng định dạng
 6. Click **Export**
 
 <Note>
-**MongoDB**: Export SQL không khả dụng cho kết nối MongoDB. Sử dụng định dạng CSV, JSON, MQL hoặc XLSX thay thế. Định dạng MQL tạo script `db.collection.insertMany([...])` có thể chạy trực tiếp trong `mongosh`.
+**MongoDB**: Export SQL không khả dụng cho MongoDB. Dùng CSV, JSON, MQL hoặc XLSX thay thế. MQL tạo script `db.collection.insertMany([...])` chạy trực tiếp trong `mongosh`.
 </Note>
 
 <Note>
-**Redis**: Export SQL và MQL không khả dụng cho kết nối Redis. Sử dụng định dạng CSV, JSON hoặc XLSX để export dữ liệu key-value.
+**Redis**: Export SQL và MQL không khả dụng cho Redis. Dùng CSV, JSON hoặc XLSX để export dữ liệu key-value.
 </Note>
 
 {/* Screenshot: Export dialog with format options */}
@@ -56,14 +56,14 @@ Export dữ liệu từ kết quả query hoặc bảng:
     Tùy chọn:
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
-    | Header | Bao gồm tên cột ở hàng đầu | Có |
-    | Delimiter | Ký tự phân tách giá trị: dấu phẩy, chấm phẩy, tab, pipe | Dấu phẩy |
-    | Quote handling | Cách trích dẫn chuỗi: always, as needed, never | As needed |
-    | Line break | Định dạng xuống dòng: LF, CRLF, CR | LF |
-    | Decimal format | Dấu chấm hoặc dấu phẩy cho số thập phân | Dấu chấm |
-    | NULL as empty | Chuyển giá trị NULL thành chuỗi rỗng | Có |
-    | Convert line breaks | Chuyển ký tự xuống dòng trong giá trị thành khoảng trắng | Không |
-    | Formula sanitization | Ngăn chặn CSV injection | Có |
+    | Header | Tên cột ở hàng đầu | Có |
+    | Delimiter | Ký tự phân tách: dấu phẩy, chấm phẩy, tab, pipe | Dấu phẩy |
+    | Quote handling | Cách trích dẫn: always, as needed, never | As needed |
+    | NULL handling | Chuyển NULL thành chuỗi rỗng | Có |
+    | Line breaks in data | Chuyển xuống dòng trong giá trị thành khoảng trắng | Không |
+    | Line break format | Kiểu xuống dòng: LF, CRLF, CR | LF |
+    | Decimal format | Dấu chấm hoặc phẩy cho số thập phân | Dấu chấm |
+    | Formula sanitization | Ngăn CSV injection | Có |
 
     Ví dụ output:
     ```csv
@@ -95,16 +95,14 @@ Export dữ liệu từ kết quả query hoặc bảng:
     - NoSQL database
     - Xử lý tự động
 
+    Dữ liệu export dạng mảng object.
+
     Tùy chọn:
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
-    | Pretty print | Định dạng với indent dễ đọc | Có |
-    | Include null values | Bao gồm các trường có giá trị NULL | Có |
-    | Preserve as strings | Giữ tất cả giá trị dạng chuỗi (hữu ích cho mã ZIP, số điện thoại) | Không |
-
-    <Note>
-    Dữ liệu luôn được export dạng mảng object (array of objects).
-    </Note>
+    | Pretty print | Định dạng với indent | Có |
+    | Include null values | Bao gồm trường có giá trị NULL | Có |
+    | Preserve as strings | Giữ tất cả giá trị dạng chuỗi (cho mã ZIP, số điện thoại) | Không |
 
     Ví dụ output:
     ```json
@@ -149,15 +147,15 @@ Export dữ liệu từ kết quả query hoặc bảng:
     Tùy chọn chung:
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
-    | Compress with gzip | Nén file output bằng gzip | Không |
-    | Batch size | Số hàng INSERT mỗi câu lệnh | 500 |
+    | Compress with gzip | Lưu dạng `.sql.gz` giảm kích thước | Không |
+    | Batch size | Số hàng mỗi câu lệnh INSERT | 500 |
 
     Tùy chọn cho từng bảng (khi export nhiều bảng):
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
-    | Include structure | Bao gồm câu lệnh CREATE TABLE | Có |
+    | Include structure | Bao gồm CREATE TABLE | Có |
     | Include DROP | Bao gồm DROP TABLE IF EXISTS | Có |
-    | Include data | Bao gồm dữ liệu (INSERT statements) | Có |
+    | Include data | Bao gồm INSERT statements | Có |
 
     Ví dụ output:
     ```sql
@@ -187,14 +185,14 @@ Export dữ liệu từ kết quả query hoặc bảng:
     **MongoDB Query Language Script**
 
     Tốt nhất cho:
-    - Khôi phục dữ liệu MongoDB qua `mongosh`
+    - Khôi phục MongoDB qua `mongosh`
     - Sao lưu và di chuyển MongoDB
-    - Chia sẻ dữ liệu MongoDB dưới dạng script thực thi
+    - Chia sẻ dữ liệu MongoDB dạng script
 
     Tùy chọn:
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
-    | Batch size | Số document mỗi câu lệnh `insertMany` | 500 |
+    | Batch size | Số document mỗi `insertMany` | 500 |
 
     Ví dụ output:
     ```javascript
@@ -210,30 +208,30 @@ Export dữ liệu từ kết quả query hoặc bảng:
     ```
 
     <Note>
-    Export MQL chỉ khả dụng cho kết nối MongoDB. Output là file `.js` có thể thực thi trực tiếp trong `mongosh`.
+    Export MQL chỉ cho MongoDB. Output là file `.js` chạy trực tiếp trong `mongosh`.
     </Note>
   </Tab>
   <Tab title="XLSX">
     **Bảng tính Excel**
 
     Tốt nhất cho:
-    - Chia sẻ dữ liệu với người dùng không kỹ thuật
+    - Chia sẻ dữ liệu với người không kỹ thuật
     - Excel và ứng dụng bảng tính
-    - Báo cáo và phân tích kinh doanh
+    - Báo cáo kinh doanh
 
     Tùy chọn:
     | Tùy chọn | Mô tả | Mặc định |
     |--------|-------------|---------|
     | Include headers | Tên cột ở hàng đầu (in đậm) | Có |
-    | NULL as empty | Chuyển giá trị NULL thành ô trống | Có |
+    | NULL as empty | Chuyển NULL thành ô trống | Có |
 
     Tính năng:
-    - **Export nhiều sheet**: Khi export nhiều bảng, mỗi bảng trở thành một worksheet riêng
-    - **Nhận diện số**: Số được lưu dạng numeric cell (không phải text) để Excel định dạng đúng
-    - **Shared strings**: Loại bỏ chuỗi trùng lặp để giảm kích thước file
+    - **Multi-sheet**: Mỗi bảng thành một worksheet riêng
+    - **Nhận diện số**: Số lưu dạng numeric cell, Excel định dạng đúng
+    - **Shared strings**: Loại bỏ chuỗi trùng, giảm kích thước file
     - **Header in đậm**: Hàng đầu tự động in đậm khi bao gồm header
-    - **Hỗ trợ dataset lớn**: Tối ưu cho 175K+ hàng sử dụng Data buffer streaming và lắp ráp file trên background thread
-    - **Không phụ thuộc**: Sử dụng OOXML writer thuần Swift -- không cần thư viện bên ngoài
+    - **Dataset lớn**: Tối ưu cho 175K+ hàng bằng Data buffer streaming và lắp ráp file trên background thread
+    - **Không phụ thuộc**: OOXML writer thuần Swift, không cần thư viện ngoài
 
     {/* Screenshot: Tùy chọn export Excel */}
     <Frame caption="Tùy chọn export Excel">
@@ -253,26 +251,26 @@ Export dữ liệu từ kết quả query hoặc bảng:
 
 ### Export Kết Quả Query
 
-Để export kết quả của query cụ thể:
+Để export kết quả query cụ thể:
 
-1. Viết và thực thi query
-2. Click **Export** khi kết quả được hiển thị
-3. Chỉ kết quả hiển thị được export
+1. Viết và chạy query
+2. Click **Export** khi kết quả hiển thị
+3. Chỉ kết quả hiện tại được export
 
 <Tip>
-Đối với export lớn, sử dụng phân trang hoặc LIMIT trong query để kiểm soát kích thước export.
+Với export lớn, dùng phân trang hoặc LIMIT trong query để kiểm soát kích thước output.
 </Tip>
 
 ### Export Toàn Bộ Bảng
 
 Để export tất cả dữ liệu từ bảng:
 
-1. Click vào bảng trong sidebar
-2. Click **Export** mà không áp dụng bộ lọc nào
-3. Hoặc chạy `SELECT * FROM table_name` và export
+1. Click bảng trong sidebar
+2. Click **Export** không áp dụng filter
+3. Hoặc chạy `SELECT * FROM table_name` rồi export
 
 <Tip>
-Bạn có thể export nhiều bảng cùng lúc bằng cách chọn chúng trong tree view của hộp thoại export. Mỗi bảng có thể có tùy chọn riêng cho cấu trúc (DDL) và dữ liệu khi export dạng SQL.
+Export nhiều bảng cùng lúc bằng cách chọn trong tree view. Khi export SQL, mỗi bảng có tùy chọn riêng cho structure (DDL), DROP statements và data.
 </Tip>
 
 ### Export Chỉ Cấu Trúc
@@ -283,7 +281,7 @@ Bạn có thể export nhiều bảng cùng lúc bằng cách chọn chúng tron
 2. Đi đến tab con **DDL**
 3. Sao chép câu lệnh CREATE TABLE
 
-Hoặc sử dụng lệnh cụ thể theo database:
+Hoặc dùng lệnh theo database:
 
 ```sql
 -- MySQL
@@ -295,57 +293,57 @@ pg_dump -s -t users database_name
 
 ### Tiến Trình Export
 
-Khi export bảng lớn hoặc nhiều bảng, thanh tiến trình hiển thị:
+Khi export bảng lớn, thanh tiến trình hiển thị:
 
-- Số hàng đã xử lý / tổng số hàng
-- Bảng đang được export
+- **Số hàng đã xử lý** trên tổng hàng
+- **Bảng đang export** (khi export nhiều bảng)
 
 ## Dán từ Clipboard (CSV/TSV)
 
-Bạn có thể dán dữ liệu dạng bảng trực tiếp từ clipboard vào bảng dữ liệu. TablePro tự động phát hiện nội dung clipboard là định dạng CSV (phân tách bằng dấu phẩy) hay TSV (phân tách bằng tab).
+Dán dữ liệu dạng bảng từ clipboard vào data grid. TablePro tự động phát hiện CSV (phân tách dấu phẩy) hay TSV (phân tách tab).
 
-**Cách hoạt động:**
+**Cách dùng:**
 
-1. Sao chép dữ liệu từ bảng tính, trình soạn thảo văn bản hoặc nguồn khác
-2. Chọn một hàng trong bảng dữ liệu
+1. Sao chép dữ liệu từ bảng tính, text editor hoặc nguồn khác
+2. Chọn một hàng trong data grid
 3. Nhấn `Cmd+V` để dán
 
-TablePro sử dụng trình phân tích CSV tuân thủ RFC 4180, hỗ trợ:
+CSV parser tuân thủ RFC 4180, hỗ trợ:
 
-- Trường được trích dẫn có dấu phẩy bên trong (ví dụ: `"New York, NY"`)
+- Trường có dấu phẩy bên trong (ví dụ: `"New York, NY"`)
 - Dấu ngoặc kép thoát (ví dụ: `"He said ""hello"""`)
-- Giá trị nhiều dòng trong trường được trích dẫn
+- Giá trị nhiều dòng trong trường trích dẫn
 - Tự động phát hiện hàng tiêu đề (bỏ qua nếu tên cột khớp)
 
 <Tip>
-Định dạng được tự động phát hiện dựa trên nội dung: nếu dữ liệu chứa nhiều tab hơn dấu phẩy, nó được phân tích dạng TSV; ngược lại là CSV. Dữ liệu sao chép từ Excel hoặc Google Sheets thường là dạng tab-separated.
+Định dạng tự động phát hiện: nhiều tab hơn dấu phẩy thì parse TSV, ngược lại CSV. Dữ liệu từ Excel hoặc Google Sheets thường là tab-separated.
 </Tip>
 
 ## Import Dữ Liệu
 
-TablePro hỗ trợ import file SQL (`.sql` và `.sql.gz`). Đây là cách nhanh nhất để khôi phục database dump, chạy migration script hoặc seeding dữ liệu.
+TablePro import file **SQL** (`.sql` và `.sql.gz`). Câu lệnh chạy trực tiếp trên database, phù hợp để khôi phục backup, chạy migration hoặc seeding dữ liệu.
 
 <Note>
-**MongoDB**: Import SQL không khả dụng cho kết nối MongoDB. Sử dụng `mongoimport` hoặc MQL shell để import dữ liệu.
+**MongoDB**: Import SQL không khả dụng cho MongoDB. Dùng `mongoimport` hoặc MQL shell.
 </Note>
 
 ### Quy Trình Import
 
 <Steps>
   <Step title="Mở hộp thoại Import">
-    Click **File** > **Import** hoặc kéo thả file `.sql` / `.sql.gz` vào cửa sổ ứng dụng
+    Click **File** > **Import** (hoặc nhấn `Cmd+Shift+I`). Cũng có thể kéo thả file `.sql` hoặc `.sql.gz` vào ứng dụng.
   </Step>
   <Step title="Chọn file SQL">
-    Chọn file `.sql` hoặc `.sql.gz` từ máy tính. File `.gz` sẽ được tự động giải nén.
+    Chọn file `.sql` hoặc `.sql.gz` từ máy tính.
   </Step>
   <Step title="Cấu hình tùy chọn">
-    Đặt encoding, transaction và các tùy chọn khác (xem bảng bên dưới)
+    Đặt encoding, transaction wrapping và tùy chọn foreign key check.
   </Step>
-  <Step title="Xem trước mã SQL">
-    Xem mã SQL trong file, cùng với số lượng câu lệnh và kích thước file
+  <Step title="Xem trước SQL">
+    Kiểm tra SQL preview, số câu lệnh và kích thước file trước khi import.
   </Step>
   <Step title="Import">
-    Click **Import** và theo dõi tiến trình thực thi
+    Click **Import** để chạy các câu lệnh và theo dõi tiến trình.
   </Step>
 </Steps>
 
@@ -367,35 +365,37 @@ TablePro hỗ trợ import file SQL (`.sql` và `.sql.gz`). Đây là cách nhan
 
 | Tùy chọn | Mô tả | Mặc định |
 |--------|-------------|---------|
-| Encoding | Encoding của file SQL: UTF-8, UTF-16, Latin1, ASCII | UTF-8 |
-| Wrap in transaction | Bao toàn bộ import trong một transaction | Có |
-| Disable foreign key checks | Tạm tắt kiểm tra foreign key trong quá trình import | Có |
+| Encoding | Encoding file: UTF-8, UTF-16, Latin1, ASCII | UTF-8 |
+| Wrap in transaction | Chạy tất cả câu lệnh trong một transaction | Có |
+| Disable foreign key checks | Tạm tắt kiểm tra FK trong quá trình import | Có |
 
-<Note>
-Khi bật "Wrap in transaction", nếu có lỗi xảy ra, tất cả thay đổi sẽ được rollback tự động, giữ database ở trạng thái nhất quán.
-</Note>
+<Tip>
+Bọc trong transaction đảm bảo nếu câu lệnh nào lỗi, tất cả thay đổi rollback, giữ database nhất quán.
+</Tip>
+
+<Tip>
+Các tùy chọn import (gói trong transaction, tắt kiểm tra foreign key) được lưu lại giữa các lần khởi động ứng dụng. Chỉ cần thay đổi một lần.
+</Tip>
 
 ### Xem Trước SQL
 
 Trước khi import, hộp thoại hiển thị:
 
-- **Mã SQL**: Nội dung file SQL để bạn kiểm tra trước khi thực thi
-- **Số câu lệnh**: Tổng số câu lệnh SQL trong file
-- **Kích thước file**: Dung lượng file gốc
+- **SQL code preview** nội dung file
+- **Số câu lệnh** -- tổng số câu lệnh SQL phát hiện
+- **Kích thước file**
 
-<Tip>
-Luôn kiểm tra mã SQL trước khi import, đặc biệt với các file dump từ nguồn bên ngoài, để đảm bảo không có câu lệnh gây hại (ví dụ: DROP DATABASE).
-</Tip>
+Giúp kiểm tra file chứa đúng SQL mong đợi trước khi chạy.
 
-### Tiến Trình và Lỗi Import
+## Tiến Trình và Lỗi
 
-#### Tiến Trình
+### Tiến Trình Import
 
-Khi import đang chạy, thanh tiến trình hiển thị:
+Trong quá trình import, thanh tiến trình hiển thị:
 
-- Số câu lệnh đã xử lý / tổng số câu lệnh
-- Câu lệnh đang thực thi (rút gọn còn 50 ký tự)
-- Thanh tiến trình phần trăm
+- **Câu lệnh đã xử lý** trên tổng câu lệnh
+- **Câu lệnh đang chạy** (rút gọn 50 ký tự)
+- **Thanh tiến trình** phần trăm hoàn thành
 
 {/* Screenshot: Import progress bar */}
 <Frame caption="Tiến trình import">
@@ -411,111 +411,110 @@ Khi import đang chạy, thanh tiến trình hiển thị:
   />
 </Frame>
 
-#### Xử Lý Lỗi
+### Xử Lý Lỗi
 
-Import luôn dừng ngay khi gặp lỗi đầu tiên. Nếu "Wrap in transaction" được bật, tất cả thay đổi sẽ được rollback.
+Import dừng ngay khi gặp lỗi đầu tiên. Nếu bật transaction, tất cả thay đổi tự động rollback.
 
-Khi lỗi xảy ra, thông tin hiển thị bao gồm:
+Khi lỗi xảy ra, TablePro hiển thị:
 
-- **Câu lệnh thất bại**: Nội dung câu lệnh SQL gây lỗi
-- **Số dòng**: Vị trí của câu lệnh trong file
-- **Thông báo lỗi**: Lỗi trả về từ database
+- **Câu lệnh lỗi** -- SQL gây ra lỗi
+- **Số dòng** -- vị trí trong file
+- **Thông báo lỗi** -- lỗi từ database
 
 <Warning>
-Import không có tùy chọn "bỏ qua lỗi". Nếu gặp lỗi, bạn cần sửa file SQL và import lại. Bật "Wrap in transaction" để đảm bảo database không bị ở trạng thái nửa chừng.
+Không có chế độ "bỏ qua lỗi". Nếu gặp lỗi, import dừng. Bật "Wrap in transaction" để partial import rollback sạch.
 </Warning>
 
 ## Nén
 
 ### Export Nén
 
-Nén gzip chỉ khả dụng cho định dạng **SQL**:
+Gzip chỉ khả dụng cho **SQL export**:
 
-- Bật tùy chọn "Compress with gzip" trong hộp thoại export SQL
-- File output nhận phần mở rộng `.sql.gz`
-- Giảm đáng kể kích thước file cho export lớn
+- Bật "Compress with gzip" trong tùy chọn SQL export
+- Output lưu dạng `.sql.gz`
+- Giảm đáng kể kích thước file cho SQL dump lớn
 
 <Note>
-Nén gzip không khả dụng cho các định dạng CSV, JSON và XLSX.
+Nén gzip không khả dụng cho CSV, JSON hoặc XLSX.
 </Note>
 
 ### Import Nén
 
-- TablePro tự động phát hiện file `.gz`
+- TablePro tự động phát hiện file `.sql.gz`
 - Giải nén tức thì trong quá trình import
-- Không cần giải nén thủ công
+- Hoạt động giống import file `.sql` thường
 
 ## Thực Hành Tốt Nhất
 
 ### Export
 
-1. **Lọc trước**: Chỉ export những gì bạn cần
+1. **Lọc trước**: Chỉ export những gì cần
    ```sql
    SELECT * FROM orders WHERE status = 'completed' AND year(created_at) = 2024;
    ```
 
-2. **Cân nhắc kích thước file**: Sử dụng LIMIT cho bảng rất lớn
+2. **Cân nhắc kích thước**: Dùng LIMIT cho bảng rất lớn
    ```sql
    SELECT * FROM logs ORDER BY created_at DESC LIMIT 100000;
    ```
 
 3. **Chọn định dạng phù hợp**:
-   - CSV cho công cụ phân tích dữ liệu
+   - CSV cho phân tích dữ liệu
    - JSON cho API/web
    - SQL cho di chuyển database
-   - MQL cho sao lưu/khôi phục MongoDB qua `mongosh`
-   - XLSX cho chia sẻ với người dùng không kỹ thuật qua Excel
+   - MQL cho MongoDB backup/restore qua `mongosh`
+   - XLSX cho chia sẻ với người không kỹ thuật qua Excel
+
+4. **Dùng gzip cho SQL export lớn**: Nén giảm kích thước file đáng kể
 
 ### Import
 
-1. **Sao lưu trước**: Luôn sao lưu trước khi import file SQL lớn
+1. **Sao lưu trước**: Luôn backup database trước khi import SQL
 
-2. **Kiểm tra với mẫu**: Import vào bảng test trước
-   ```sql
-   -- Tạo bảng test
-   CREATE TABLE users_import_test LIKE users;
-   -- Import mẫu vào bảng test
-   ```
+2. **Test với file nhỏ trước**: Xác minh tùy chọn import hoạt động đúng trên một phần trước khi chạy import lớn
 
-3. **Bật transaction**: Luôn bật "Wrap in transaction" cho import quan trọng để có thể rollback nếu gặp lỗi
+3. **Dùng transaction**: Giữ "Wrap in transaction" bật để import lỗi tự động rollback
 
-4. **Bật tắt foreign key checks**: Khi import database dump có nhiều bảng liên quan, bật "Disable foreign key checks" để tránh lỗi thứ tự import
+4. **Tắt foreign key checks**: Khi import dump tham chiếu bảng theo thứ tự, giữ bật để tránh lỗi constraint
 
-5. **Kiểm tra encoding**: Đảm bảo encoding file SQL khớp với nội dung thực tế, đặc biệt với file chứa ký tự tiếng Việt hoặc Unicode
+5. **Kiểm tra encoding**: Đảm bảo encoding khớp với nội dung thực tế của file SQL để tránh lỗi ký tự
 
 ## Khắc Phục Sự Cố
 
 ### Vấn Đề Export
 
-**"File too large"**
-- Sử dụng LIMIT trong query
+**"File quá lớn"**
+- Dùng LIMIT trong query
 - Export theo batch
+- Bật nén gzip cho SQL export
 - Chọn định dạng nhỏ gọn hơn (CSV vs JSON)
 
-**"Character encoding issues"**
-- Xác minh encoding database
-- Export với encoding UTF-8
+**"Lỗi encoding ký tự"**
+- Kiểm tra encoding database
+- Export với UTF-8
 - Kiểm tra ký tự đặc biệt
 
 ### Vấn Đề Import
 
-**"Syntax error" hoặc lỗi SQL**
-- Kiểm tra file SQL có đúng cú pháp không
-- Xác minh file được tạo cho đúng loại database (MySQL vs PostgreSQL vs SQLite)
-- Kiểm tra encoding file có khớp với tùy chọn đã chọn
-
-**"Foreign key constraint"**
-- Bật tùy chọn "Disable foreign key checks" trong hộp thoại import
-- Hoặc đảm bảo bảng cha đã tồn tại trước khi import
+**"Syntax error trong SQL"**
+- Kiểm tra file SQL đúng cú pháp
+- Xác minh file tạo cho đúng loại database (MySQL vs PostgreSQL vs SQLite)
+- Kiểm tra encoding file khớp tùy chọn đã chọn
 
 **"Duplicate key error"**
-- File SQL chứa dữ liệu trùng với dữ liệu đã có trong database
-- Thêm `DROP TABLE IF EXISTS` vào file SQL trước câu lệnh CREATE TABLE
-- Hoặc xóa dữ liệu cũ trước khi import
+- Dữ liệu trùng với primary key hoặc unique key đã có
+- Thêm DROP TABLE statements vào file SQL
+- Hoặc xóa bảng đích trước khi import
 
-**Import bị dừng giữa chừng**
-- Bật "Wrap in transaction" để tự động rollback khi có lỗi
-- Kiểm tra thông tin lỗi (câu lệnh, số dòng) để sửa file SQL
+**"Foreign key constraint"**
+- Bật "Disable foreign key checks" trong tùy chọn import
+- Hoặc đảm bảo bảng cha tạo trước bảng con trong file SQL
+
+**"Transaction bị rollback"**
+- Câu lệnh trong file gây lỗi, rollback toàn bộ import
+- Kiểm tra thông báo lỗi và số dòng để tìm câu lệnh lỗi
+- Sửa file SQL và import lại
 
 ## Phím Tắt
 

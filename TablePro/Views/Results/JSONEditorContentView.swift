@@ -110,7 +110,7 @@ private struct JSONSyntaxTextView: NSViewRepresentable {
 
         textView.isEditable = true
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: DesignConstants.FontSize.medium, weight: .regular)
+        textView.font = NSFont.monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular)
         textView.textContainerInset = NSSize(width: 8, height: 8)
         textView.backgroundColor = NSColor.textBackgroundColor
         textView.textColor = NSColor.labelColor
@@ -147,8 +147,15 @@ private struct JSONSyntaxTextView: NSViewRepresentable {
         guard length > 0 else { return }
 
         let fullRange = NSRange(location: 0, length: length)
-        let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: DesignConstants.FontSize.medium, weight: .regular)
+        let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular)
         let content = textStorage.string
+        let maxHighlightLength = 10_000
+        let highlightRange: NSRange
+        if length > maxHighlightLength {
+            highlightRange = NSRange(location: 0, length: maxHighlightLength)
+        } else {
+            highlightRange = fullRange
+        }
 
         textStorage.beginEditing()
 
@@ -156,37 +163,28 @@ private struct JSONSyntaxTextView: NSViewRepresentable {
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
 
-        // 1. Highlight all quoted strings as red (both keys and values initially)
-        applyPattern("\"(?:[^\"\\\\]|\\\\.)*\"", color: .systemRed, in: textStorage, content: content)
+        applyPattern(JSONHighlightPatterns.string, color: .systemRed, in: textStorage, content: content, range: highlightRange)
 
-        // 2. Re-highlight keys (strings followed by colon) as blue using capture group
-        if let keyRegex = try? NSRegularExpression(pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")\\s*:") {
-            let range = NSRange(location: 0, length: length)
-            for match in keyRegex.matches(in: content, range: range) {
-                let keyRange = match.range(at: 1)
-                if keyRange.location != NSNotFound {
-                    textStorage.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: keyRange)
-                }
+        for match in JSONHighlightPatterns.key.matches(in: content, range: highlightRange) {
+            let captureRange = match.range(at: 1)
+            if captureRange.location != NSNotFound {
+                textStorage.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: captureRange)
             }
         }
 
-        // 3. Numbers
-        applyPattern("(?<=[\\s,:\\[{])-?\\d+\\.?\\d*(?:[eE][+-]?\\d+)?(?=[\\s,\\]}])", color: .systemPurple, in: textStorage, content: content)
-
-        // 4. Booleans and null
-        applyPattern("\\b(?:true|false|null)\\b", color: .systemOrange, in: textStorage, content: content)
+        applyPattern(JSONHighlightPatterns.number, color: .systemPurple, in: textStorage, content: content, range: highlightRange)
+        applyPattern(JSONHighlightPatterns.booleanNull, color: .systemOrange, in: textStorage, content: content, range: highlightRange)
 
         textStorage.endEditing()
     }
 
     private static func applyPattern(
-        _ pattern: String,
+        _ regex: NSRegularExpression,
         color: NSColor,
         in textStorage: NSTextStorage,
-        content: String
+        content: String,
+        range: NSRange
     ) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        let range = NSRange(location: 0, length: textStorage.length)
         for match in regex.matches(in: content, range: range) {
             textStorage.addAttribute(.foregroundColor, value: color, range: match.range)
         }

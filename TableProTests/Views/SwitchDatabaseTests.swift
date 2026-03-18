@@ -18,7 +18,7 @@ import Testing
 private struct MockTableFetcher: TableFetcher {
     var tables: [TableInfo]
 
-    func fetchTables() async throws -> [TableInfo] {
+    func fetchTables(force: Bool) async throws -> [TableInfo] {
         tables
     }
 }
@@ -53,6 +53,7 @@ struct SwitchDatabaseTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -74,6 +75,7 @@ struct SwitchDatabaseTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -98,6 +100,7 @@ struct SwitchDatabaseTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -132,6 +135,7 @@ struct SwitchDatabaseTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }
@@ -165,6 +169,7 @@ struct SwitchDatabaseTests {
             tabManager: tabManager,
             changeManager: changeManager,
             filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
         )
         defer { coordinator.teardown() }

@@ -1,11 +1,11 @@
 ---
 title: Connection URL Reference
-description: Full specification for database connection URLs supported by TablePro
+description: Every supported database URL scheme, format, and query parameter for imports and direct connections
 ---
 
 # Connection URL Reference
 
-TablePro supports standard database connection URLs for importing connections, opening them directly from a browser or terminal, and configuring SSH tunnels. This page covers every supported scheme, format, and query parameter.
+TablePro parses standard database connection URLs for importing connections, opening them directly from a browser or terminal, and configuring SSH tunnels. This page covers every supported scheme, format, and query parameter.
 
 ## URL Schemes
 
@@ -23,6 +23,10 @@ TablePro supports standard database connection URLs for importing connections, o
 | `redshift://` | Amazon Redshift |
 | `mssql://` | Microsoft SQL Server |
 | `sqlserver://` | Microsoft SQL Server (alias) |
+| `oracle://` | Oracle Database |
+| `jdbc:oracle:thin:@//` | Oracle Database (JDBC thin) |
+| `cassandra://` | Cassandra |
+| `scylladb://` | ScyllaDB |
 
 Append `+ssh` to any scheme (except SQLite) to use an SSH tunnel:
 
@@ -83,7 +87,7 @@ If `db_host` is omitted, it defaults to `127.0.0.1`.
 | Parameter | Values | Description |
 |-----------|--------|-------------|
 | `sslmode` | `disable`, `prefer`, `require`, `verify-ca`, `verify-full` | SSL mode (standard PostgreSQL names) |
-| `tlsmode` | `0`–`4` | SSL mode as integer: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
+| `tlsmode` | `0`--`4` | SSL mode as integer: 0=disable, 1=prefer, 2=require, 3=verify-ca, 4=verify-full |
 
 **Example:**
 
@@ -155,11 +159,21 @@ mongodb://user:pass@host:27017/mydb?authSource=admin
 
 ### Redis
 
-The path component sets the database index (0–15). The `rediss://` scheme automatically enables TLS.
+The path component sets the database index (0--15). The `rediss://` scheme automatically enables TLS.
 
 ```
 redis://:password@host:6379/2       # database index 2
 rediss://:password@host:6380        # TLS, default index 0
+```
+
+### Cassandra / ScyllaDB
+
+The path component sets the default keyspace. Both `cassandra://` and `scylladb://` schemes use the same format.
+
+```text
+cassandra://user:pass@host:9042/my_keyspace
+scylladb://user:pass@host:9042/my_keyspace
+cassandra://host:9042                        # no auth, no default keyspace
 ```
 
 ### SSH Tunnel
@@ -178,8 +192,8 @@ postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
 
 When you open a database URL from a browser or terminal, TablePro handles it automatically:
 
-1. **Matching saved connection** — if host, port, database, and username all match an existing saved connection, TablePro connects using that connection (including its saved password)
-2. **No match** — TablePro creates a temporary session. The password from the URL is stored in Keychain for the session but the connection is not saved to your list
+1. **Matching saved connection**: if host, port, database, and username all match an existing saved connection, TablePro connects using that connection (including its saved password)
+2. **No match**: TablePro creates a temporary session. The password from the URL is stored in Keychain for the session but the connection is not saved to your list
 
 To open a URL from the terminal:
 

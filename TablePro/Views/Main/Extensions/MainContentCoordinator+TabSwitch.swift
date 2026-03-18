@@ -18,6 +18,16 @@ extension MainContentCoordinator {
         isHandlingTabSwitch = true
         defer { isHandlingTabSwitch = false }
 
+        // Persist the outgoing tab's unsaved changes and filter state so they survive the switch
+        if let oldId = oldTabId,
+           let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
+        {
+            if changeManager.hasChanges {
+                tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
+            }
+            tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
+        }
+
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
             evictInactiveTabs(excluding: activeIds)
@@ -30,9 +40,13 @@ extension MainContentCoordinator {
             // Restore filter state for new tab
             filterStateManager.restoreFromTabState(newTab.filterState)
 
+            // Restore column visibility for new tab
+            columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
+
             selectedRowIndices = newTab.selectedRowIndices
             AppState.shared.isCurrentTabEditable = newTab.isEditable && !newTab.isView && newTab.tableName != nil
             toolbarState.isTableTab = newTab.tabType == .table
+            AppState.shared.isTableTab = newTab.tabType == .table
 
             // Configure change manager without triggering reload yet — we'll fire a single
             // reloadVersion bump below after everything is set up.
@@ -53,10 +67,6 @@ extension MainContentCoordinator {
             // When a query runs, executeQueryInternal Phase 1 sets new result data
             // that triggers its own SwiftUI update; bumping beforehand causes a
             // redundant re-evaluation that blocks the Task executor (15-40ms).
-
-            // Defer async operations (database switch, lazy load) to avoid blocking
-            let shouldSkipLazyLoad = tabPersistence.justRestoredTab
-            tabPersistence.clearJustRestoredFlag()
 
             if !newTab.databaseName.isEmpty {
                 let currentDatabase: String
@@ -89,8 +99,7 @@ extension MainContentCoordinator {
             }
 
             let isEvicted = newTab.rowBuffer.isEvicted
-            let needsLazyQuery = !shouldSkipLazyLoad
-                && newTab.tabType == .table
+            let needsLazyQuery = newTab.tabType == .table
                 && (newTab.resultRows.isEmpty || isEvicted)
                 && (newTab.lastExecutedAt == nil || isEvicted)
                 && !newTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -108,6 +117,7 @@ extension MainContentCoordinator {
         } else {
             AppState.shared.isCurrentTabEditable = false
             toolbarState.isTableTab = false
+            AppState.shared.isTableTab = false
         }
     }
 
@@ -129,7 +139,6 @@ extension MainContentCoordinator {
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
         for tab in toEvict {
-            tab.rowBuffer.sourceQuery = tab.query
             tab.rowBuffer.evict()
         }
     }

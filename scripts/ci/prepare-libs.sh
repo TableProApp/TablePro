@@ -10,7 +10,7 @@ fi
 
 # Prepare libmariadb
 echo "📦 Preparing libmariadb.a for $ARCH..."
-cp Libs/libmariadb_${ARCH}.a Libs/libmariadb.a
+cp "Libs/libmariadb_${ARCH}.a" "Libs/libmariadb.a"
 echo "✅ libmariadb.a ready"
 lipo -info Libs/libmariadb.a
 ls -lh Libs/libmariadb.a

@@ -1,0 +1,609 @@
+---
+title: SQL 编辑器
+description: tree-sitter 语法高亮、多语句执行、Vim 模式及内置 SQL 格式化
+---
+
+# SQL 编辑器
+
+借助 tree-sitter 驱动的语法高亮、感知数据库结构的自动补全以及多语句执行功能，在同一个编辑器中编写和运行 SQL。
+
+{/* Screenshot: SQL editor with syntax highlighting and autocomplete popup */}
+<Frame caption="SQL 编辑器与语法高亮">
+  <img
+    className="block dark:hidden"
+    src="/images/sql-editor.png"
+    alt="SQL 编辑器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sql-editor-dark.png"
+    alt="SQL 编辑器"
+  />
+</Frame>
+
+## 编辑器功能
+
+### 语法高亮
+
+实时语法高亮涵盖：
+
+- **关键字**：`SELECT`、`FROM`、`WHERE`、`JOIN` 等（粉色）
+- **字符串**：单引号和双引号字符串（绿色）
+- **数字**：数字字面量（蓝色）
+- **注释**：单行注释（`--`）和多行注释（`/* */`）（灰色）
+- **函数**：内置 SQL 函数
+- **标识符**：表名和列名
+
+### 行号
+
+行号默认开启，方便你：
+
+- 将错误信息定位到具体行
+- 在大型查询中快速导航
+- 在交流时引用代码位置
+
+<Tip>
+在 **Settings** > **Editor** > **Show Line Numbers** 中切换行号显示。
+</Tip>
+
+### 当前行高亮
+
+当前行会显示淡色高亮，让你在长查询中始终清楚光标所在位置。
+
+## 编写查询
+
+### 单条查询
+
+编写并执行单条查询：
+
+```sql
+SELECT * FROM users WHERE active = true;
+```
+
+按 `Cmd+Enter` 执行。
+
+### 多条查询
+
+用分号分隔多条查询：
+
+```sql
+SELECT * FROM users LIMIT 10;
+SELECT COUNT(*) FROM orders;
+SELECT name, email FROM customers WHERE country = 'US';
+```
+
+将光标放在任意语句中，按 `Cmd+Enter` 即可单独执行该条。
+
+### 选中执行
+
+选中文本后按 `Cmd+Enter`，仅运行选中部分。
+
+如果选中内容包含**多条语句**（以分号分隔），它们会在一个事务中依次执行：
+
+- 语句按顺序逐条执行
+- 如果任一语句失败，执行停止并回滚所有变更
+- 错误信息会标明是哪条语句失败（例如 "Statement 3/5 failed: ..."）
+- 最后一个 `SELECT` 的结果显示在数据网格中
+- 每条语句都会单独记录到查询历史
+
+适合运行 SQL 转储文件、数据迁移或一批相关语句：
+
+```sql
+DROP TABLE IF EXISTS users;
+CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));
+INSERT INTO users VALUES (1, 'Alice'), (2, 'Bob');
+SELECT * FROM users;
+```
+
+{/* Screenshot: Multiple queries in editor with execution results */}
+<Frame caption="执行多条 SQL 语句">
+  <img
+    className="block dark:hidden"
+    src="/images/multi-statement-execution.png"
+    alt="多语句执行"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/multi-statement-execution-dark.png"
+    alt="多语句执行"
+  />
+</Frame>
+
+## 自动补全
+
+感知数据库结构的 SQL 自动补全，能根据查询上下文进行调整。
+
+### 触发自动补全
+
+输入时自动补全会自动出现。你也可以：
+
+- 开始输入关键字、表名或列名
+- 按 `Escape` 关闭弹出窗口
+- 用方向键浏览建议
+- 按 `Enter` 或 `Tab` 接受建议
+
+{/* Screenshot: Autocomplete popup showing table and column suggestions */}
+<Frame caption="SQL 自动补全">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-popup.png"
+    alt="自动补全"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-popup-dark.png"
+    alt="自动补全"
+  />
+</Frame>
+
+### 建议内容
+
+| 上下文 | 建议内容 |
+|---------|----------|
+| `SELECT` 之后 | 列名、`*`、函数 |
+| `FROM` 之后 | 表名、schema 名 |
+| `JOIN` 之后 | 表名 |
+| `WHERE` 之后 | 已选表的列名 |
+| `.`（点号）之后 | 指定表的列 |
+| 语句开头 | SQL 关键字 |
+
+### 感知 Schema 的补全
+
+自动补全能解析表别名并显示正确的列：
+
+```sql
+SELECT u.  -- 显示别名为 'u' 的 'users' 表的列
+FROM users u
+JOIN orders o ON u.id = o.  -- 显示 'orders' 表的列
+```
+
+### SQL 关键字
+
+关键字建议基于上下文：
+
+- `SELECT` 之后：`DISTINCT`、`TOP`、`ALL`
+- `FROM` 之后：`JOIN`、`LEFT JOIN`、`INNER JOIN`、`WHERE`
+- `WHERE` 之后：`AND`、`OR`、`NOT`、`IN`、`LIKE`、`BETWEEN`
+
+## 查询执行
+
+### 运行查询
+
+| 操作 | 快捷键 | 说明 |
+|------|--------|------|
+| 执行查询 | `Cmd+Enter` | 运行光标所在的查询，或运行所有选中的语句 |
+| 解释查询 | `Option+Cmd+E` | 显示光标所在查询的执行计划 |
+| 格式化查询 | `Option+Cmd+F` | 格式化当前查询以提高可读性 |
+
+### 查询结果
+
+结果显示在编辑器下方的数据网格中：
+
+- 显示行数和执行时间
+- 大数据集会自动分页
+- 点击列标题可排序
+
+### 查询解释
+
+查看查询的执行计划，发现缺失的索引或低效的连接。
+
+要查看查询执行计划：
+
+- 点击编辑器工具栏中的 **Explain** 按钮，或
+- 按 `Option+Cmd+E`，或
+- 通过菜单 **Query** > **Explain Query**
+
+TablePro 会自动为你的数据库使用正确的语法：
+
+| 数据库 | 使用的语法 |
+|--------|-----------|
+| MySQL / MariaDB | `EXPLAIN <query>` |
+| PostgreSQL | `EXPLAIN <query>` |
+| SQLite | `EXPLAIN QUERY PLAN <query>` |
+
+执行计划在数据网格中展示索引使用情况、连接策略和预估行数。
+
+<Tip>
+在执行高成本查询前运行 Explain，验证其是否使用了预期的索引和连接策略。
+</Tip>
+
+{/* Screenshot: EXPLAIN output displayed in data grid */}
+<Frame caption="EXPLAIN 查询执行计划">
+  <img
+    className="block dark:hidden"
+    src="/images/explain-query-result.png"
+    alt="EXPLAIN 查询执行计划"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/explain-query-result-dark.png"
+    alt="EXPLAIN 查询执行计划"
+  />
+</Frame>
+
+## SQL 格式化
+
+内置 SQL 格式化器，可将查询重新组织以提高可读性。支持方言感知：会根据 MySQL、PostgreSQL 或 SQLite 语法调整输出。
+
+### 格式化查询
+
+要格式化当前查询：
+
+- 按 `Option+Cmd+F`，或
+- 点击编辑器工具栏中的 **Format** 按钮，或
+- 通过菜单 **Query** > **Format Query**
+
+格式化器会进行以下转换：
+
+| 转换 | 说明 |
+|------|------|
+| **关键字大写** | SQL 关键字转为大写（`select` 变为 `SELECT`） |
+| **智能缩进** | 子句按逻辑层级缩进，间距一致 |
+| **换行** | 每个主要子句（`SELECT`、`FROM`、`WHERE`、`JOIN` 等）另起一行 |
+| **保留光标** | 格式化后光标位置保持不变 |
+| **保留注释** | 单行注释（`--`）和多行注释（`/* */`）完整保留 |
+| **保留字符串** | 字符串字面量不会被修改 |
+
+### 方言感知格式化
+
+格式化器检测当前连接的数据库类型，并应用特定方言规则：
+
+| 数据库 | 格式化行为 |
+|--------|-----------|
+| MySQL / MariaDB | 保留反引号标识符，处理 MySQL 专有语法 |
+| PostgreSQL | 保留双引号标识符，处理 PostgreSQL 专有语法 |
+| SQLite | 处理 SQLite 专有关键字和语法 |
+
+### 格式化前后对比
+
+**格式化前**（未格式化）：
+
+```sql
+select u.id,u.name,u.email,count(o.id) as order_count from users u left join orders o on u.id=o.user_id where u.created_at>'2024-01-01' and u.status='active' group by u.id,u.name,u.email having count(o.id)>5 order by order_count desc limit 100;
+```
+
+**格式化后**（`Option+Cmd+F`）：
+
+```sql
+SELECT
+    u.id,
+    u.name,
+    u.email,
+    COUNT(o.id) AS order_count
+FROM users u
+LEFT JOIN orders o ON u.id = o.user_id
+WHERE u.created_at > '2024-01-01'
+    AND u.status = 'active'
+GROUP BY u.id, u.name, u.email
+HAVING COUNT(o.id) > 5
+ORDER BY order_count DESC
+LIMIT 100;
+```
+
+<Tip>
+在分享给队友或保存为模板前格式化查询，保持 SQL 的一致性和可读性。
+</Tip>
+
+{/* Screenshot: SQL query before and after formatting */}
+<Frame caption="SQL 查询格式化前后对比">
+  <img
+    className="block dark:hidden"
+    src="/images/sql-format-result.png"
+    alt="SQL 查询格式化前后对比"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sql-format-result-dark.png"
+    alt="SQL 查询格式化前后对比"
+  />
+</Frame>
+
+### 错误处理
+
+查询失败时：
+
+1. 错误信息显示在编辑器下方
+2. 如果错误指向具体行，对应行号会高亮
+3. 阅读错误信息了解问题详情
+
+{/* Screenshot: Query error message display */}
+<Frame caption="查询错误信息">
+  <img
+    className="block dark:hidden"
+    src="/images/query-error.png"
+    alt="查询错误"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/query-error-dark.png"
+    alt="查询错误"
+  />
+</Frame>
+
+## Vim 模式
+
+可选的 Vim 键绑定，支持模态编辑。完整支持 Normal、Insert、Visual 和命令行模式。
+
+### 启用 Vim 模式
+
+在 **Settings** > **Editor** > **Editing** > **Vim mode** 中切换。启用后编辑器工具栏会显示模式指示标记。
+
+### 模式
+
+| 模式 | 说明 |
+|------|------|
+| **Normal** | 默认模式，用于导航和命令。按 `Escape` 返回此模式。 |
+| **Insert** | 文本输入模式，行为与普通编辑器相同。 |
+| **Visual** | 按字符选择模式。 |
+| **Visual Line** | 按行选择模式。 |
+| **命令行** | Ex 命令（`:w`、`:q` 等）。 |
+
+### 移动
+
+| 按键 | 操作 |
+|------|------|
+| `h` / `j` / `k` / `l` | 左 / 下 / 上 / 右 |
+| `w` / `b` / `e` | 下一个单词 / 上一个单词 / 单词末尾 |
+| `0` / `$` | 行首 / 行尾 |
+| `gg` / `G` | 首行 / 末行 |
+
+### 操作符
+
+| 按键 | 操作 |
+|------|------|
+| `dd` | 删除行 |
+| `yy` | 复制行 |
+| `cc` | 更改行 |
+| `x` | 删除字符 |
+| `p` / `P` | 在后面粘贴 / 在前面粘贴 |
+| `d` + 移动 | 按移动范围删除（如 `dw`、`d$`） |
+| `y` + 移动 | 按移动范围复制（如 `yw`、`y0`） |
+| `c` + 移动 | 按移动范围更改（如 `cw`、`c$`） |
+
+### 进入 Insert 模式
+
+| 按键 | 操作 |
+|------|------|
+| `i` / `I` | 在光标前插入 / 在行首插入 |
+| `a` / `A` | 在光标后追加 / 在行尾追加 |
+| `o` / `O` | 在下方新开一行 / 在上方新开一行 |
+
+### Visual 模式
+
+按 `v` 进入按字符选择，按 `V` 进入按行选择。使用移动键扩展选区，然后应用操作符：
+
+- `d` — 删除选区
+- `y` — 复制选区
+- `c` — 更改选区
+
+### 命令行模式
+
+在 Normal 模式下按 `:` 进入命令行模式：
+
+| 命令 | 操作 |
+|------|------|
+| `:w` | 执行当前查询（等同于 `Cmd+Enter`） |
+| `:q` | 关闭当前标签页 |
+
+### 数字前缀
+
+大多数移动和操作符支持数字前缀：`3j` 向下移动 3 行，`2dd` 删除 2 行，`5x` 删除 5 个字符。
+
+### Escape 键协调
+
+启用 Vim 模式后，`Escape` 返回 Normal 模式。如果 AI 自动补全建议可见，第一次 `Escape` 关闭建议，第二次 `Escape` 才返回 Normal 模式。
+
+<Tip>
+工具栏中的模式指示标记会显示当前 Vim 模式（NORMAL、INSERT、VISUAL），让你始终知道处于哪种模式。
+</Tip>
+
+## 编辑器设置
+
+在 **Settings** > **Editor** 中自定义编辑器：
+
+### 字体设置
+
+| 设置 | 选项 | 默认值 |
+|------|------|--------|
+| **字体** | System Mono、SF Mono、Menlo、Monaco、Courier New | System Mono |
+| **字号** | 11-18 pt | 13 pt |
+
+### 显示设置
+
+| 设置 | 说明 | 默认值 |
+|------|------|--------|
+| **显示行号** | 显示行号 | 开 |
+| **高亮当前行** | 当前行淡色高亮 | 开 |
+| **自动换行** | 长行自动换行 | 关 |
+
+### 编辑设置
+
+| 设置 | 说明 | 默认值 |
+|------|------|--------|
+| **Vim 模式** | 启用 Vim 键绑定（Normal/Insert/Visual 模式） | 关 |
+
+### 缩进设置
+
+| 设置 | 选项 | 默认值 |
+|------|------|--------|
+| **Tab 宽度** | 2、4、8 个空格 | 4 |
+| **自动缩进** | 自动缩进 | 开 |
+
+{/* Screenshot: Editor settings panel in Preferences */}
+<Frame caption="偏好设置中的编辑器设置">
+  <img
+    className="block dark:hidden"
+    src="/images/editor-settings-panel.png"
+    alt="偏好设置中的编辑器设置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/editor-settings-panel-dark.png"
+    alt="偏好设置中的编辑器设置"
+  />
+</Frame>
+
+## 技巧与窍门
+
+### AI 辅助
+
+SQL 编辑器与 TablePro 的 AI 聊天集成，辅助编写和调试查询：
+
+- **AI 解释**（`Cmd+L`）— 获取查询的详细解释
+- **AI 优化**（`Cmd+Option+L`）— 获取性能优化建议
+- **AI 修复** — 查询失败时，在错误对话框中点击"Ask AI to Fix"
+
+详情参见 [AI 聊天](/zh/features/ai-chat)。
+
+### 使用注释
+
+为查询添加注释：
+
+```sql
+-- Get active users with recent orders
+SELECT u.name, COUNT(o.id) as orders
+FROM users u
+JOIN orders o ON u.id = o.user_id
+WHERE u.active = true
+    AND o.created_at > CURRENT_DATE - INTERVAL '30 days'
+GROUP BY u.name;
+
+/*
+ * Multi-line comment
+ * Useful for longer explanations
+ */
+```
+
+### 快速查看表结构
+
+快速检查表的结构和数据：
+
+```sql
+-- View table structure (MySQL)
+DESCRIBE users;
+
+-- View table structure (PostgreSQL)
+\d users
+
+-- Sample data
+SELECT * FROM users LIMIT 10;
+
+-- Row count
+SELECT COUNT(*) FROM users;
+```
+
+### 使用别名
+
+表别名能让查询更简洁：
+
+```sql
+-- Without aliases (verbose)
+SELECT users.name, orders.total
+FROM users
+JOIN orders ON users.id = orders.user_id;
+
+-- With aliases (cleaner)
+SELECT u.name, o.total
+FROM users u
+JOIN orders o ON u.id = o.user_id;
+```
+
+## 打开 SQL 文件
+
+TablePro 可直接从 Finder 打开 `.sql` 文件。
+
+### 从 Finder 打开
+
+两种打开 `.sql` 文件的方式：
+
+- **双击** Finder 中的 `.sql` 文件（需将 TablePro 设为默认应用）
+- **右键点击** `.sql` 文件 > **打开方式** > **TablePro**
+
+### 连接行为
+
+| 状态 | 行为 |
+|------|------|
+| **已连接**数据库 | 文件立即在新编辑器标签页中打开 |
+| **未连接** | 文件排入队列，连接数据库后自动打开 |
+
+### 多文件
+
+同时打开多个 `.sql` 文件时，每个文件会创建一个单独的标签页。
+
+<Note>
+文件内容会被加载到编辑器标签页中。在编辑器中所做的更改不会修改磁盘上的原始 `.sql` 文件。
+</Note>
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 执行查询 | `Cmd+Enter` |
+| 解释查询 | `Option+Cmd+E` |
+| 格式化查询 | `Option+Cmd+F` |
+| 全选 | `Cmd+A` |
+| 剪切 | `Cmd+X` |
+| 复制 | `Cmd+C` |
+| 粘贴 | `Cmd+V` |
+| 撤销 | `Cmd+Z` |
+| 重做 | `Cmd+Shift+Z` |
+| 查找 | `Cmd+F` |
+| 查找和替换 | `Cmd+Option+F` |
+
+## 最佳实践
+
+### 始终使用 LIMIT
+
+浏览数据时，始终添加 `LIMIT` 以避免加载数百万行：
+
+```sql
+SELECT * FROM large_table LIMIT 100;
+```
+
+### 先用 SELECT 测试 DELETE/UPDATE
+
+执行破坏性查询前，先用 SELECT 验证：
+
+```sql
+-- First, verify what will be affected
+SELECT * FROM users WHERE last_login < '2023-01-01';
+
+-- Then run the actual delete
+DELETE FROM users WHERE last_login < '2023-01-01';
+```
+
+### 使用事务保障安全
+
+用事务包裹危险操作：
+
+```sql
+BEGIN;
+
+DELETE FROM important_table WHERE condition;
+
+-- Verify the results
+SELECT COUNT(*) FROM important_table;
+
+-- If correct:
+COMMIT;
+
+-- If wrong:
+ROLLBACK;
+```
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="自动补全" icon="wand-magic-sparkles" href="/zh/features/autocomplete">
+    了解更多自动补全功能
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看和编辑查询结果
+  </Card>
+  <Card title="查询历史" icon="clock-rotate-left" href="/zh/features/query-history">
+    访问历史查询
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    所有键盘快捷键
+  </Card>
+</CardGroup>

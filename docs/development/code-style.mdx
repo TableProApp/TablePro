@@ -1,15 +1,13 @@
 ---
 title: Code Style
-description: Coding conventions and style guide for TablePro
+description: Swift conventions, SwiftLint/SwiftFormat rules, naming, access control, and file organization
 ---
 
 # Code Style Guide
 
-This guide covers the coding conventions used in TablePro. Following these conventions ensures consistent, readable code across the project.
+These conventions keep TablePro's codebase consistent and readable.
 
 ## Tools
-
-TablePro uses automated tools for code quality:
 
 | Tool | Purpose | Config File |
 |------|---------|-------------|
@@ -33,15 +31,15 @@ swiftformat --lint .
 ```
 
 <Tip>
-Run these tools before committing. SwiftLint also runs automatically during Xcode builds.
+Run these before committing. SwiftLint also runs automatically during Xcode builds.
 </Tip>
 
 ## Architecture Principles
 
 ### Separation of Concerns
 
-- Keep business logic in models/view models, not in views
-- Views should only handle presentation
+- Business logic belongs in models/view models, not views
+- Views handle presentation only
 
 ```swift
 // Good: Logic in ViewModel
@@ -83,7 +81,7 @@ class DatabaseManager: ObservableObject {
 
 ### Immutability
 
-Use `let` by default; only use `var` when mutation is required:
+Default to `let`. Only use `var` when mutation is required:
 
 ```swift
 // Good
@@ -143,7 +141,7 @@ func makeDriver(for type: DatabaseType) -> DatabaseDriver
 
 ### Line Length
 
-- **Maximum 120 characters** per line
+- **120 characters max** per line
 - Break long lines for readability
 
 ```swift
@@ -159,7 +157,7 @@ let result = try await driver.executeParameterized(query: "SELECT * FROM users W
 
 ### Braces
 
-K&R style - opening brace on same line:
+K&R style -- opening brace on same line:
 
 ```swift
 // Good
@@ -374,7 +372,7 @@ button.onTap { event in  // event not used
 
 ```swift
 // Good: Explain "why", not "what"
-// We use a 1.5 second delay to ensure the SSH tunnel is established
+// 1.5s delay ensures the SSH tunnel is established
 // before attempting the database connection
 try await Task.sleep(nanoseconds: 1_500_000_000)
 

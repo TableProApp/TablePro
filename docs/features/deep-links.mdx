@@ -1,9 +1,85 @@
 ---
 title: Deep Links
-description: Open connections, tables, and queries from external apps using the tablepro:// URL scheme
+description: Open connections, tables, and queries from the terminal or other apps using database URLs or tablepro:// links
 ---
 
-TablePro registers a `tablepro://` URL scheme so you can open connections, tables, and queries directly from your browser, terminal, Slack messages, or any app that supports links.
+TablePro supports two URL-based entry points: standard database URLs (`mysql://`, `postgresql://`, etc.) and the custom `tablepro://` scheme.
+
+## Database URLs
+
+Open any database connection directly using its standard URL. Works from the terminal, scripts, Alfred, Raycast, or any app that can open URLs.
+
+### Supported Schemes
+
+| Scheme | Database |
+|--------|----------|
+| `mysql://` | MySQL / MariaDB |
+| `postgresql://`, `postgres://` | PostgreSQL |
+| `mongodb://`, `mongodb+srv://` | MongoDB |
+| `redis://`, `rediss://` | Redis |
+| `mssql://`, `sqlserver://` | SQL Server |
+| `sqlite://` | SQLite (local file path) |
+
+### URL Format
+
+```
+scheme://[username[:password]@]host[:port][/database][?param=value]
+```
+
+### Examples
+
+```bash
+# MySQL
+open "mysql://root@localhost/mydb" -a TablePro
+
+# PostgreSQL with port and database
+open "postgresql://admin@db.example.com:5432/analytics" -a TablePro
+
+# MongoDB
+open "mongodb://localhost:27017/mydb" -a TablePro
+
+# Redis
+open "redis://localhost:6379" -a TablePro
+
+# SQLite (local file)
+open "sqlite:///Users/me/data/app.db" -a TablePro
+```
+
+### How It Works
+
+1. **Saved connection match:** TablePro checks if a saved connection matches the URL's host, port, database, and username. If found, it reuses that connection (including its stored password).
+2. **Active session match:** If the connection is already open, TablePro brings the existing window to front instead of creating a duplicate.
+3. **New transient connection:** If no match is found, TablePro creates a temporary connection and connects immediately. Passwords in the URL are used for the initial connection but not saved.
+
+### Query Parameters
+
+Pass additional options as query parameters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `table` | Open a specific table after connecting |
+| `filter_column`, `filter_operation`, `filter_value` | Apply a filter on the opened table |
+| `condition` | Apply a raw SQL WHERE condition |
+| `schema` | Switch to a specific schema (PostgreSQL) or database (MySQL) after connecting |
+
+```bash
+# Open a table with a filter
+open "mysql://root@localhost/mydb?table=users&filter_column=status&filter_operation=equal&filter_value=active" -a TablePro
+
+# Open with a raw SQL condition
+open "postgresql://admin@localhost/mydb?table=orders&condition=total%20%3E%20100" -a TablePro
+
+# Switch schema on connect
+open "postgresql://admin@localhost/mydb?schema=reporting" -a TablePro
+```
+
+<Warning>
+Passwords can be included in URLs (`mysql://user:pass@host/db`), but avoid sharing URLs that contain passwords. Prefer saved connections with Keychain-stored passwords.
+</Warning>
+
+## Custom Deep Links (tablepro://)
+
+TablePro registers a `tablepro://` URL scheme for opening connections, tables, and queries from your browser, terminal, Slack messages, or any app that supports links.
 
 ## URL Patterns
 
@@ -13,7 +89,7 @@ TablePro registers a `tablepro://` URL scheme so you can open connections, table
 tablepro://connect/{name}
 ```
 
-Opens the saved connection matching `{name}`. If no connection matches, an error alert is shown.
+Opens the saved connection matching `{name}`. If no match is found, an error alert appears.
 
 ```bash
 open "tablepro://connect/Production"
@@ -26,7 +102,7 @@ tablepro://connect/{name}/table/{table}
 tablepro://connect/{name}/database/{db}/table/{table}
 ```
 
-Connects and opens the specified table. The second form lets you target a specific database on the connection.
+Connects and opens the specified table. The second form targets a specific database on the connection.
 
 ```bash
 open "tablepro://connect/Production/table/users"
@@ -51,7 +127,7 @@ open "tablepro://connect/Production/query?sql=SELECT%20*%20FROM%20users%20LIMIT%
 tablepro://import?name={n}&host={h}&port={p}&type={t}&username={u}&database={db}
 ```
 
-Creates a new saved connection and opens the connection form so you can review the details and add a password before connecting.
+Creates a new saved connection and opens the connection form for review. You can add a password before connecting.
 
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"

@@ -14,13 +14,14 @@ struct ConnectionColorPicker: View {
     var body: some View {
         HStack(spacing: 8) {
             ForEach(ConnectionColor.allCases) { color in
-                ColorDot(
-                    color: color,
-                    isSelected: selectedColor == color
-                )
-                .onTapGesture {
-                    selectedColor = color
+                Button(action: { selectedColor = color }) {
+                    ColorDot(
+                        color: color,
+                        isSelected: selectedColor == color
+                    )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Color \(color.rawValue)"))
             }
         }
     }
@@ -38,20 +39,20 @@ private struct ColorDot: View {
                 // "None" option - shows as crossed circle
                 Circle()
                     .stroke(Color.secondary, lineWidth: 1)
-                    .frame(width: DesignConstants.IconSize.large, height: DesignConstants.IconSize.large)
+                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.large, height: ThemeEngine.shared.activeTheme.iconSizes.large)
                 Image(systemName: "circle.slash")
-                    .font(.system(size: DesignConstants.IconSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
                     .foregroundStyle(.secondary)
             } else {
                 Circle()
                     .fill(color.color)
-                    .frame(width: DesignConstants.IconSize.large, height: DesignConstants.IconSize.large)
+                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.large, height: ThemeEngine.shared.activeTheme.iconSizes.large)
             }
 
             if isSelected {
                 Circle()
                     .stroke(Color.primary, lineWidth: 2)
-                    .frame(width: DesignConstants.IconSize.extraLarge, height: DesignConstants.IconSize.extraLarge)
+                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.extraLarge, height: ThemeEngine.shared.activeTheme.iconSizes.extraLarge)
             }
         }
         .frame(width: 28, height: 28)

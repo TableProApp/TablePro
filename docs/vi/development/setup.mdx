@@ -1,23 +1,19 @@
 ---
 title: Thiết lập môi trường
-description: Thiết lập môi trường phát triển để đóng góp cho TablePro
+description: Clone, build và chạy TablePro cục bộ với Xcode 15+, SwiftLint và SwiftFormat
 ---
 
 # Thiết lập Phát triển
 
-Hướng dẫn này sẽ giúp bạn thiết lập môi trường phát triển để build và đóng góp cho TablePro.
-
 ## Yêu cầu
-
-Trước khi bắt đầu, đảm bảo bạn đã cài đặt những thứ sau:
 
 ### Phần mềm bắt buộc
 
 | Phần mềm | Phiên bản | Mục đích |
 |----------|---------|---------|
 | **macOS** | 14.0+ (Sonoma) | Nền tảng target |
-| **Xcode** | 15.0+ | Development IDE |
-| **Git** | Latest | Version control |
+| **Xcode** | 15.0+ | IDE phát triển |
+| **Git** | Latest | Quản lý phiên bản |
 
 ### Công cụ tùy chọn
 
@@ -25,37 +21,50 @@ Trước khi bắt đầu, đảm bảo bạn đã cài đặt những thứ sau
 |------|---------|
 | **SwiftLint** | Code linting |
 | **SwiftFormat** | Code formatting |
-| **Homebrew** | Package management |
+| **Homebrew** | Quản lý package |
+| **GitHub CLI (`gh`)** | Tải thư viện native từ GitHub Releases |
 
 ## Bắt đầu
 
-### Bước 1: Clone Repository
+### Bước 1: Clone và Bootstrap
 
 ```bash
 git clone https://github.com/datlechin/tablepro.git
 cd tablepro
-```
 
-### Bước 2: Cài đặt Development Tools
+# Tải thư viện native từ GitHub Releases
+scripts/download-libs.sh
 
-Cài đặt SwiftLint và SwiftFormat cho chất lượng code:
+# Tạo file config bắt buộc (file trống đủ cho phát triển)
+touch Secrets.xcconfig
 
-```bash
-# Sử dụng Homebrew
+# Cài đặt công cụ lint/format
 brew install swiftlint swiftformat
 ```
 
-### Bước 3: Mở trong Xcode
+<Warning>
+Bỏ qua `scripts/download-libs.sh` sẽ khiến `Libs/` không có binary, gây lỗi linker.
+</Warning>
+
+### Bước 2: Mở trong Xcode
 
 ```bash
 open TablePro.xcodeproj
 ```
 
-Hoặc mở Xcode thủ công và chọn **File** > **Open** > điều hướng đến `TablePro.xcodeproj`.
+### Bước 3: Cấu hình Signing
+
+1. Chọn target **TablePro** trong project navigator
+2. Vào tab **Signing & Capabilities**
+3. Đổi **Team** sang tài khoản Apple Developer của bạn
+
+<Info>
+Dự án sử dụng team ID của maintainer. Bạn cần chuyển sang team của mình để build. Tài khoản Apple Developer miễn phí cũng có thể dùng cho bản development.
+</Info>
 
 ### Bước 4: Build và Run
 
-1. Chọn scheme **TablePro** trong Xcode
+1. Chọn scheme **TablePro**
 2. Chọn **My Mac** làm destination
 3. Nhấn `Cmd+R` để build và chạy
 
@@ -78,43 +87,38 @@ Hoặc mở Xcode thủ công và chọn **File** > **Open** > điều hướng 
 <Tree>
   <Tree.Folder name="tablepro" defaultOpen>
     <Tree.Folder name="TablePro" defaultOpen>
-      <Tree.Folder name="Models">
-        <Tree.File name="DatabaseConnection.swift" />
-        <Tree.File name="QueryResult.swift" />
-        <Tree.File name="TableInfo.swift" />
-        <Tree.File name="AppSettings.swift" />
+      <Tree.Folder name="Core" defaultOpen>
+        <Tree.Folder name="Database">
+          <Tree.File name="DatabaseDriver.swift" />
+          <Tree.File name="DatabaseManager.swift" />
+        </Tree.Folder>
+        <Tree.Folder name="Plugins">
+          <Tree.File name="PluginDriverAdapter.swift" />
+          <Tree.File name="PluginManager.swift" />
+        </Tree.Folder>
+        <Tree.Folder name="Services" />
+        <Tree.Folder name="Utilities" />
       </Tree.Folder>
+      <Tree.Folder name="Models" />
       <Tree.Folder name="Views">
         <Tree.Folder name="Connection" />
         <Tree.Folder name="Editor" />
+        <Tree.Folder name="Main" />
         <Tree.Folder name="Results" />
-        <Tree.Folder name="Structure" />
         <Tree.Folder name="Settings" />
       </Tree.Folder>
-      <Tree.Folder name="ViewModels">
-        <Tree.File name="DatabaseManager.swift" />
-      </Tree.Folder>
-      <Tree.Folder name="Core">
-        <Tree.Folder name="Database">
-          <Tree.File name="DatabaseDriver.swift" />
-          <Tree.File name="MySQLDriver.swift" />
-          <Tree.File name="PostgreSQLDriver.swift" />
-          <Tree.File name="SQLiteDriver.swift" />
-        </Tree.Folder>
-        <Tree.Folder name="Autocomplete">
-          <Tree.File name="CompletionEngine.swift" />
-          <Tree.File name="SQLContextAnalyzer.swift" />
-          <Tree.File name="SQLKeywords.swift" />
-        </Tree.Folder>
-        <Tree.Folder name="SSH">
-          <Tree.File name="SSHTunnelManager.swift" />
-        </Tree.Folder>
-      </Tree.Folder>
+      <Tree.Folder name="ViewModels" />
       <Tree.Folder name="Extensions" />
-      <Tree.Folder name="Theme">
-        <Tree.File name="Theme.swift" />
-      </Tree.Folder>
+      <Tree.Folder name="Theme" />
       <Tree.Folder name="Resources" />
+    </Tree.Folder>
+    <Tree.Folder name="Plugins" defaultOpen>
+      <Tree.Folder name="TableProPluginKit" />
+      <Tree.Folder name="MySQLDriverPlugin" />
+      <Tree.Folder name="PostgreSQLDriverPlugin" />
+      <Tree.Folder name="SQLiteDriverPlugin" />
+      <Tree.Folder name="ClickHouseDriverPlugin" />
+      <Tree.Folder name="..." />
     </Tree.Folder>
     <Tree.Folder name="TableProTests" />
     <Tree.Folder name="Libs" />
@@ -131,43 +135,39 @@ Hoặc mở Xcode thủ công và chọn **File** > **Open** > điều hướng 
 
 ### Build Phát Triển
 
-Cho phát triển hàng ngày:
-
 ```bash
-# Build cho kiến trúc hiện tại (Debug)
+# Build kiến trúc hiện tại (Debug)
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 
-# Hoặc sử dụng Xcode: Cmd+B
+# Hoặc trong Xcode: Cmd+B
 ```
 
 ### Build Release
 
-Cho builds sẵn sàng phân phối:
-
 ```bash
-# Build cho Apple Silicon
+# Apple Silicon
 scripts/build-release.sh arm64
 
-# Build cho Intel
+# Intel
 scripts/build-release.sh x86_64
 
-# Build cho cả hai kiến trúc
+# Cả hai kiến trúc
 scripts/build-release.sh both
 ```
 
-Xem [Building](/development/building) để biết hướng dẫn build chi tiết.
+Xem [Build](/vi/development/building) để biết chi tiết.
 
 ## Chạy Tests
 
 ```bash
-# Chạy tất cả tests
+# Tất cả tests
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
 
-# Chạy test class cụ thể
+# Test class cụ thể
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
     -only-testing:TableProTests/TestClassName
 
-# Chạy test method cụ thể
+# Test method cụ thể
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation \
     -only-testing:TableProTests/TestClassName/testMethodName
 ```
@@ -178,48 +178,44 @@ Hoặc trong Xcode: **Product** > **Test** (`Cmd+U`).
 
 ### SwiftLint
 
-Chạy SwiftLint để kiểm tra các vấn đề code:
-
 ```bash
-# Kiểm tra các vấn đề
+# Kiểm tra vấn đề
 swiftlint lint
 
-# Tự động sửa các vấn đề có thể sửa
+# Tự động sửa
 swiftlint --fix
 ```
 
-SwiftLint chạy tự động trong quá trình build Xcode.
+SwiftLint cũng chạy tự động khi build Xcode.
 
 ### SwiftFormat
-
-Format code để khớp với phong cách dự án:
 
 ```bash
 # Format tất cả code
 swiftformat .
 
-# Kiểm tra formatting mà không áp dụng
+# Kiểm tra mà không áp dụng
 swiftformat --lint .
 ```
 
 <Tip>
-Chạy SwiftFormat trước khi commit để đảm bảo code style nhất quán.
+Chạy SwiftFormat trước khi commit để giữ code style nhất quán.
 </Tip>
 
 ## Tệp cấu hình
 
 ### .swiftlint.yml
 
-Các rules và cấu hình SwiftLint:
+Rules và cấu hình SwiftLint:
 
 - Giới hạn độ dài dòng
 - Giới hạn độ phức tạp function
-- Các rules bị vô hiệu hóa
-- Các rules tùy chỉnh
+- Rules bị vô hiệu hóa
+- Rules tùy chỉnh
 
 ### .swiftformat
 
-Các tùy chọn SwiftFormat:
+Tùy chọn SwiftFormat:
 
 - Kiểu indentation
 - Vị trí brace
@@ -235,7 +231,7 @@ Các tùy chọn SwiftFormat:
    git checkout -b feature/my-feature
    ```
 
-2. Thực hiện thay đổi của bạn
+2. Thực hiện thay đổi
 
 3. Chạy linting:
    ```bash
@@ -248,7 +244,7 @@ Các tùy chọn SwiftFormat:
    xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
    ```
 
-5. Commit thay đổi của bạn:
+5. Commit:
    ```bash
    git add .
    git commit -m "Add my feature"
@@ -261,16 +257,14 @@ Các tùy chọn SwiftFormat:
 
 ### Debugging
 
-Sử dụng công cụ debugging của Xcode:
-
 1. Đặt breakpoints bằng cách click số dòng
-2. Sử dụng `po` trong debug console để in objects
-3. Sử dụng Variables View để kiểm tra state
-4. Sử dụng Console.app cho system logs
+2. Dùng `po` trong debug console để in objects
+3. Dùng Variables View để kiểm tra state
+4. Dùng Console.app cho system logs
 
 ### Logging
 
-TablePro sử dụng OSLog cho debugging:
+TablePro dùng OSLog:
 
 ```swift
 import os
@@ -283,27 +277,28 @@ logger.info("Query executed in \(duration)s")
 logger.error("Failed to connect: \(error.localizedDescription)")
 ```
 
-## Các tác vụ thông dụng
+## Tác vụ thông dụng
 
-### Thêm một View mới
+### Thêm View mới
 
 1. Tạo SwiftUI view trong subfolder `Views/` phù hợp
-2. Tuân theo quy ước đặt tên hiện tại (`FeatureNameView.swift`)
-3. Sử dụng `@Observable` hoặc `@StateObject` cho quản lý state
+2. Theo quy ước đặt tên (`FeatureNameView.swift`)
+3. Dùng `@Observable` hoặc `@StateObject` cho state management
 4. Thêm vào navigation/routing nếu cần
 
 ### Thêm tính năng Database
 
-1. Triển khai trong driver phù hợp (`MySQLDriver.swift`, etc.)
-2. Thêm vào protocol `DatabaseDriver` nếu là generic
-3. Thêm UI trong các view components liên quan
-4. Thêm tests
+1. Tạo plugin bundle mới trong `Plugins/`, hoặc sửa driver plugin hiện có
+2. Triển khai các method trong protocol `PluginDatabaseDriver`
+3. Cập nhật `PluginDriverAdapter` nếu cần bridge method mới
+4. Thêm UI trong view components liên quan
+5. Thêm tests
 
 ### Sửa đổi Settings
 
-1. Thêm vào struct settings phù hợp trong `AppSettings.swift`
-2. Cập nhật `SettingsView` để hiển thị setting
-3. Sử dụng setting trong toàn bộ app qua `@AppStorage` hoặc settings manager
+1. Thêm vào struct settings trong `AppSettings.swift`
+2. Cập nhật `SettingsView`
+3. Dùng setting trong app qua `@AppStorage` hoặc settings manager
 
 ## Khắc Phục Sự Cố
 
@@ -319,27 +314,23 @@ logger.error("Failed to connect: \(error.localizedDescription)")
 
 ### Lỗi SwiftLint
 
-1. Đọc kỹ error message
-2. Kiểm tra `.swiftlint.yml` cho cấu hình rule
-3. Sửa vấn đề hoặc vô hiệu hóa rule nếu phù hợp
-4. Chạy `swiftlint --fix` cho các vấn đề có thể tự động sửa
+1. Đọc error message
+2. Kiểm tra `.swiftlint.yml`
+3. Sửa vấn đề hoặc disable rule nếu phù hợp
+4. Chạy `swiftlint --fix` cho vấn đề auto-fix được
 
-### Thư viện bị thiếu
+### Thiếu thư viện hoặc Secrets.xcconfig
 
-Nếu thư viện native bị thiếu:
-
-1. Kiểm tra thư mục `Libs/`
-2. Đảm bảo `libmariadb_universal.a` tồn tại
-3. Chạy `scripts/build-release.sh` để chuẩn bị thư viện
+Chạy `scripts/download-libs.sh` và `touch Secrets.xcconfig` tại thư mục gốc. Xem [Bước 1](#bước-1-clone-và-bootstrap).
 
 ## Bước tiếp theo
 
 <CardGroup cols={2}>
   <Card title="Kiến trúc" icon="sitemap" href="/vi/development/architecture">
-    Hiểu về cấu trúc codebase
+    Hiểu cấu trúc codebase
   </Card>
-  <Card title="Phong cách Code" icon="code" href="/vi/development/code-style">
-    Tuân theo quy ước code
+  <Card title="Code Style" icon="code" href="/vi/development/code-style">
+    Quy ước code
   </Card>
   <Card title="Build" icon="hammer" href="/vi/development/building">
     Build phiên bản release

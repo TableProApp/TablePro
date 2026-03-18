@@ -43,14 +43,7 @@ struct TableOperationDialog: View {
     }
 
     private var cascadeSupported: Bool {
-        // PostgreSQL supports CASCADE for both DROP and TRUNCATE.
-        // MySQL, MariaDB, and SQLite do not support CASCADE for these operations.
-        switch databaseType {
-        case .postgresql, .redshift:
-            return true
-        default:
-            return false
-        }
+        PluginManager.shared.supportsCascadeDrop(for: databaseType)
     }
 
     private var isMultipleTables: Bool {
@@ -60,31 +53,32 @@ struct TableOperationDialog: View {
     private var cascadeDescription: String {
         switch operationType {
         case .drop:
-            return "Drop all tables that depend on this table"
+            return String(localized: "Drop all tables that depend on this table")
         case .truncate:
-            if databaseType == .mysql || databaseType == .mariadb {
-                return "Not supported for TRUNCATE in MySQL/MariaDB"
+            if !cascadeSupported {
+                return String(localized: "Not supported for TRUNCATE with this database")
             }
-            return "Truncate all tables linked by foreign keys"
+            return String(localized: "Truncate all tables linked by foreign keys")
         }
     }
 
     private var cascadeDisabled: Bool {
-        // MySQL/MariaDB don't support CASCADE for TRUNCATE
-        if operationType == .truncate && (databaseType == .mysql || databaseType == .mariadb) {
+        if operationType == .truncate && !cascadeSupported {
             return true
         }
         return !cascadeSupported
     }
 
-    /// PostgreSQL doesn't support globally disabling FK checks; use CASCADE instead
     private var ignoreFKDisabled: Bool {
-        databaseType == .postgresql || databaseType == .redshift
+        !PluginManager.shared.supportsForeignKeyDisable(for: databaseType)
     }
 
     private var ignoreFKDescription: String? {
-        if databaseType == .postgresql || databaseType == .redshift {
-            return "Not supported for PostgreSQL. Use CASCADE instead."
+        if !PluginManager.shared.supportsForeignKeyDisable(for: databaseType) {
+            if cascadeSupported {
+                return String(localized: "Not supported for this database. Use CASCADE instead.")
+            }
+            return String(localized: "Not supported for this database.")
         }
         return nil
     }
@@ -95,7 +89,7 @@ struct TableOperationDialog: View {
         VStack(spacing: 0) {
             // Header
             Text(title)
-                .font(.system(size: DesignConstants.FontSize.body, weight: .semibold))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
                 .padding(.vertical, 16)
                 .padding(.horizontal, 20)
 
@@ -106,7 +100,7 @@ struct TableOperationDialog: View {
                 // Note for multiple tables
                 if isMultipleTables {
                     Text("Same options will be applied to all selected tables.")
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                 }
 
@@ -114,14 +108,14 @@ struct TableOperationDialog: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $ignoreForeignKeys) {
                         Text("Ignore foreign key checks")
-                            .font(.system(size: DesignConstants.FontSize.body))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                     }
                     .toggleStyle(.checkbox)
                     .disabled(ignoreFKDisabled)
 
                     if let description = ignoreFKDescription {
                         Text(description)
-                            .font(.system(size: DesignConstants.FontSize.small))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                             .foregroundStyle(.secondary)
                             .padding(.leading, 20)
                     }
@@ -132,13 +126,13 @@ struct TableOperationDialog: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $cascade) {
                         Text("Cascade")
-                            .font(.system(size: DesignConstants.FontSize.body))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                     }
                     .toggleStyle(.checkbox)
                     .disabled(cascadeDisabled)
 
                     Text(cascadeDescription)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                         .padding(.leading, 20)
                 }

@@ -1,0 +1,356 @@
+---
+title: Cassandra / ScyllaDB
+description: Connect to Cassandra and ScyllaDB clusters, browse keyspaces, and run CQL queries
+---
+
+# Cassandra / ScyllaDB Connections
+
+TablePro supports Apache Cassandra 3.11+ and ScyllaDB 4.0+ via the CQL native protocol. Browse keyspaces, inspect table structures, view materialized views, and run CQL queries from the editor.
+
+## Quick setup
+
+<Steps>
+  <Step title="Open Connection Form">
+    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  </Step>
+  <Step title="Select Cassandra or ScyllaDB">
+    Choose **Cassandra** or **ScyllaDB** from the database type selector
+  </Step>
+  <Step title="Enter Connection Details">
+    Fill in host, port, username, password, and keyspace
+  </Step>
+  <Step title="Test and Connect">
+    Click **Test Connection**, then **Create**
+  </Step>
+</Steps>
+
+## Connection settings
+
+### Required fields
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| **Name** | Connection identifier | - |
+| **Host** | Contact point hostname or IP | `localhost` |
+| **Port** | CQL native transport port | `9042` |
+
+### Optional fields
+
+| Field | Description |
+|-------|-------------|
+| **Username** | Authentication username |
+| **Password** | Authentication password |
+| **Keyspace** | Default keyspace to use after connecting |
+
+<Tip>
+Local Cassandra installations typically have authentication disabled. Leave username and password empty for local development.
+</Tip>
+
+## Connection URL format
+
+Import connections using a Cassandra or ScyllaDB URL.
+
+See [Connection URL Reference](/databases/connection-urls#cassandra--scylladb) for the full URL format.
+
+## Example configurations
+
+### Local development server
+
+```text
+Name:     Local Cassandra
+Host:     localhost
+Port:     9042
+Username: (empty)
+Password: (empty)
+Keyspace: my_keyspace
+```
+
+### Docker Cassandra container
+
+```text
+Name:     Docker Cassandra
+Host:     localhost
+Port:     9042 (or your mapped port)
+Username: cassandra
+Password: cassandra
+Keyspace: (empty)
+```
+
+### DataStax Astra DB (Cloud)
+
+```text
+Name:     Astra DB
+Host:     <your-cluster-id>-<region>.apps.astra.datastax.com
+Port:     29042
+Username: (Client ID from token)
+Password: (Client Secret from token)
+Keyspace: my_keyspace
+```
+
+<Note>
+Astra DB requires a Secure Connect Bundle for TLS. Download the bundle from the Astra dashboard and configure it in the SSL/TLS section.
+</Note>
+
+### Remote server
+
+```text
+Name:     Production Cassandra
+Host:     cassandra.example.com
+Port:     9042
+Username: app_user
+Password: (secure password)
+Keyspace: production
+```
+
+<Warning>
+For production Cassandra clusters, consider using [SSH tunneling](/databases/ssh-tunneling) for secure connections.
+</Warning>
+
+## SSL/TLS connections
+
+Configure SSL in the **SSL/TLS** section of the connection form.
+
+| SSL Mode | Description |
+|----------|-------------|
+| **Disabled** | No SSL encryption |
+| **Required** | Require SSL encryption |
+| **Verify CA** | Require SSL and verify the server certificate against a CA |
+
+For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS.
+
+<Note>
+If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
+</Note>
+
+## SSH tunnel support
+
+Connect to Cassandra through an SSH tunnel for secure access to remote clusters. See [SSH Tunneling](/databases/ssh-tunneling) for setup instructions.
+
+## Features
+
+### Keyspace browsing
+
+After connecting, the sidebar lists all keyspaces. Expand a keyspace to see its tables, materialized views, user-defined types (UDTs), and secondary indexes.
+
+1. Click the connection name in the sidebar
+2. Expand a keyspace to see its objects
+3. Click a table to view its data
+
+### Table structure
+
+View the full schema for any table:
+
+- **Columns**: name, CQL type, clustering order
+- **Partition key**: columns that determine data distribution
+- **Clustering columns**: columns that determine row ordering within a partition
+- **Secondary indexes**: index name, target column, index class
+- **Table options**: compaction strategy, compression, TTL defaults, gc_grace_seconds
+
+### Materialized views
+
+Browse materialized views alongside tables in the sidebar. View their definition, base table, and column mappings.
+
+### Data grid
+
+Browse table data with pagination. Cell values display with CQL type-aware formatting:
+
+- **text/varchar** values show as plain text
+- **int/bigint/varint** display as numbers
+- **uuid/timeuuid** display as formatted UUIDs
+- **timestamp** values display with configurable date formatting
+- **map/set/list/tuple** display as formatted collections
+- **blob** values display as hex
+
+### CQL editor
+
+Execute CQL statements directly in the editor tab:
+
+```sql
+-- Select with partition key restriction
+SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Insert data
+INSERT INTO users (user_id, name, email, created_at)
+VALUES (uuid(), 'Alice', 'alice@example.com', toTimestamp(now()));
+
+-- Update with TTL
+UPDATE users USING TTL 86400
+SET email = 'new@example.com'
+WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Delete
+DELETE FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Create table
+CREATE TABLE IF NOT EXISTS events (
+    event_id timeuuid,
+    user_id uuid,
+    event_type text,
+    payload text,
+    PRIMARY KEY ((user_id), event_id)
+) WITH CLUSTERING ORDER BY (event_id DESC);
+
+-- Create index
+CREATE INDEX ON users (email);
+
+-- Describe table
+DESCRIBE TABLE users;
+```
+
+## CQL-specific notes
+
+Cassandra Query Language (CQL) looks like SQL but has important differences:
+
+### No JOINs
+CQL does not support JOIN operations. Design your data model around query patterns, denormalizing data across multiple tables as needed.
+
+### No subqueries
+
+CQL does not support subqueries. Break complex queries into multiple sequential statements.
+
+### Partition key restrictions
+
+Every SELECT query must include the full partition key in the WHERE clause, unless you use `ALLOW FILTERING` (which scans the entire cluster and should be avoided in production).
+
+```sql
+-- Good: includes partition key
+SELECT * FROM orders WHERE customer_id = 42;
+
+-- Bad: missing partition key, requires ALLOW FILTERING
+SELECT * FROM orders WHERE total > 100 ALLOW FILTERING;
+```
+
+### ALLOW FILTERING
+
+The `ALLOW FILTERING` clause forces a full cluster scan. It works for development and small datasets but causes timeouts and performance issues on production clusters. TablePro shows a warning when a query includes `ALLOW FILTERING`.
+
+### Lightweight transactions
+
+Cassandra supports conditional writes using `IF` clauses (lightweight transactions / compare-and-set):
+
+```sql
+INSERT INTO users (user_id, email) VALUES (uuid(), 'alice@example.com') IF NOT EXISTS;
+UPDATE users SET email = 'new@example.com' WHERE user_id = ? IF email = 'old@example.com';
+```
+
+### TTL and Writetime
+
+Set per-row or per-column TTL (time-to-live) in seconds:
+
+```sql
+INSERT INTO cache (key, value) VALUES ('k1', 'v1') USING TTL 3600;
+SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';
+```
+
+## Troubleshooting
+
+### Connection refused
+
+**Symptoms**: "Connection refused" or timeout
+
+**Causes and Solutions**:
+
+1. **Cassandra not running**
+   ```bash
+   # Check if Cassandra is running
+   nodetool status
+
+   # Start Cassandra (macOS with Homebrew)
+   brew services start cassandra
+
+   # Start Cassandra (Docker)
+   docker run -d -p 9042:9042 cassandra:latest
+   ```
+
+2. **Wrong port**
+   - Verify `native_transport_port` in `cassandra.yaml`
+   - Default CQL port is `9042`, not `9160` (Thrift, deprecated)
+
+3. **Cassandra not listening on the expected address**
+   - Check `rpc_address` and `listen_address` in `cassandra.yaml`
+   - For remote connections, set `rpc_address` to `0.0.0.0`
+
+### Authentication failed
+
+**Symptoms**: "Provided username and/or password are incorrect"
+
+**Solutions**:
+
+1. Verify credentials match the role configured in Cassandra
+2. Check if authentication is enabled:
+   ```yaml
+   # cassandra.yaml
+   authenticator: PasswordAuthenticator
+   ```
+3. Default superuser is `cassandra` / `cassandra` (change this in production)
+
+### Connection timeout
+
+**Symptoms**: Connection hangs or times out
+
+**Solutions**:
+
+1. Verify the host and port are correct
+2. Check network connectivity and firewall rules (port 9042)
+3. For cloud-hosted Cassandra, ensure your IP is in the allowed list
+4. Increase the connection timeout in the Advanced tab
+
+### Read timeout
+
+**Symptoms**: "Read timed out" on queries
+
+**Solutions**:
+
+1. Add the full partition key to your WHERE clause
+2. Remove `ALLOW FILTERING` and redesign the query
+3. Check cluster health with `nodetool status`
+4. Reduce the result set with `LIMIT`
+
+## Known limitations
+
+- **Multi-datacenter**: connecting to a specific datacenter is not yet configurable. TablePro connects to whichever node the contact point resolves to.
+- **User-Defined Functions (UDFs)**: UDFs and UDAs are not displayed in the sidebar but can be used in CQL queries.
+- **BATCH statements**: supported in the CQL editor but not generated by the change tracking system.
+- **Counter tables**: counter columns are read-only in the data grid. Use the CQL editor for counter updates.
+- **Large partitions**: partitions with millions of rows are paginated automatically to prevent memory issues.
+
+## Performance tips
+
+### Query performance
+
+For Cassandra clusters with large datasets:
+
+1. Always include the partition key in WHERE clauses
+2. Avoid `ALLOW FILTERING` in production
+3. Use `LIMIT` to cap result sets
+4. Use `TOKEN()` for range scans across partitions
+
+### Monitoring
+
+Check cluster health and performance:
+
+```sql
+-- Check cluster status (via nodetool, not CQL)
+-- nodetool status
+-- nodetool info
+
+-- Check table statistics
+SELECT * FROM system.size_estimates WHERE keyspace_name = 'my_keyspace';
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
+    Connect securely to remote Cassandra clusters
+  </Card>
+  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
+    Master the query editor features
+  </Card>
+  <Card title="Import/Export" icon="file-import" href="/features/import-export">
+    Import and export Cassandra data
+  </Card>
+  <Card title="Data Grid" icon="table" href="/features/data-grid">
+    Browse and edit data in the data grid
+  </Card>
+</CardGroup>

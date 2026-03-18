@@ -78,6 +78,21 @@ final class CellTextField: NSTextField {
 /// Custom text field cell that provides a field editor with custom context menu behavior
 final class CellTextFieldCell: NSTextFieldCell {
     private class CellFieldEditor: NSTextView {
+        /// Key equivalents that should commit the edit and bubble up to the menu bar.
+        private static let menuKeyEquivalents: Set<String> = ["s"]
+
+        override func performKeyEquivalent(with event: NSEvent) -> Bool {
+            if event.modifierFlags.contains(.command),
+               let chars = event.charactersIgnoringModifiers,
+               Self.menuKeyEquivalents.contains(chars) {
+                // Commit the inline edit so the change is recorded in DataChangeManager
+                // before the menu action (e.g. Cmd+S save) fires.
+                window?.makeFirstResponder(nil)
+                return false
+            }
+            return super.performKeyEquivalent(with: event)
+        }
+
         override func rightMouseDown(with event: NSEvent) {
             window?.makeFirstResponder(nil)
 

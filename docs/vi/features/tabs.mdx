@@ -1,11 +1,11 @@
 ---
 title: Tab Truy Vấn
-description: Quản lý nhiều tab truy vấn với trạng thái liên tục
+description: Mỗi tab lưu riêng SQL, kết quả, phân trang, sắp xếp và filter, tồn tại qua các lần khởi động lại
 ---
 
 # Tab Truy Vấn
 
-TablePro sử dụng giao diện tab để làm việc với nhiều truy vấn và bảng đồng thời. Mỗi tab duy trì nội dung SQL, kết quả, phân trang, sắp xếp và trạng thái bộ lọc riêng của nó, vì vậy bạn có thể chuyển đổi giữa các tác vụ mà không mất ngữ cảnh.
+Mỗi tab là một workspace độc lập với SQL, kết quả, phân trang, sắp xếp và filter riêng. Mở bao nhiêu tùy thích. Tất cả tồn tại qua các lần khởi động lại ứng dụng.
 
 {/* Screenshot: Tab bar showing multiple open tabs */}
 <Frame caption="Thanh tab với nhiều tab truy vấn và bảng đang mở">
@@ -23,50 +23,60 @@ TablePro sử dụng giao diện tab để làm việc với nhiều truy vấn 
 
 ## Tổng Quan
 
-Tab là không gian làm việc chính trong TablePro. Khi bạn kết nối với một cơ sở dữ liệu, bạn có thể mở nhiều tab tùy thích. Tab tồn tại qua các lần khởi động lại ứng dụng và mỗi kết nối ghi nhớ tập hợp tab riêng của nó.
+Tab là workspace chính trong TablePro. Mỗi kết nối nhớ tập tab riêng, và tab tồn tại qua các lần khởi động lại nên bạn tiếp tục đúng chỗ đã dừng.
 
 ## Loại Tab
 
-TablePro hỗ trợ hai loại tab, mỗi loại được thiết kế cho một quy trình làm việc khác nhau:
+TablePro có hai loại tab:
 
 | Loại | Biểu Tượng | Mục Đích |
 |------|------|---------|
-| **Tab Truy Vấn** | Biểu tượng tài liệu | Viết và thực thi các truy vấn SQL tùy chỉnh |
-| **Tab Bảng** | Biểu tượng bảng (xanh dương) | Duyệt dữ liệu bảng với phân trang và lọc |
+| **Tab Truy Vấn** | Biểu tượng tài liệu | Viết và chạy SQL tùy chỉnh |
+| **Tab Bảng** | Biểu tượng bảng (xanh) | Duyệt dữ liệu bảng với phân trang và lọc |
 
 ### Tab Truy Vấn
 
-Tab truy vấn là trình soạn thảo SQL đa năng. Sử dụng chúng cho:
+Tab truy vấn là SQL editor đa năng. Dùng cho query ad-hoc, khám phá dữ liệu với SELECT tùy chỉnh, chạy DDL/DML, và test query trước khi đưa vào ứng dụng.
 
-- Viết và chạy các truy vấn ad-hoc
-- Khám phá dữ liệu với các câu lệnh SELECT tùy chỉnh
-- Chạy các thao tác DDL hoặc DML
-- Kiểm tra truy vấn trước khi thêm chúng vào ứng dụng của bạn
-
-Tab truy vấn bắt đầu với trình soạn thảo trống. Gõ SQL của bạn và nhấn `Cmd+Enter` để thực thi.
+Tab truy vấn bắt đầu trống. Gõ SQL và nhấn `Cmd+Enter` để chạy.
 
 ### Tab Bảng
 
-Tab bảng được mở khi bạn click vào tên bảng trong sidebar. Chúng cung cấp:
+Tab bảng mở khi click tên bảng trong sidebar:
 
-- Tạo truy vấn `SELECT * FROM table LIMIT n` tự động
-- Phân trang phía server với các điều khiển điều hướng trang
+- Tự động tạo query `SELECT * FROM table LIMIT n`
+- Phân trang phía server với điều khiển chuyển trang
 - Chỉnh sửa inline với theo dõi thay đổi
-- Chuyển đổi xem Structure để xem/sửa đổi schema bảng
-- Hỗ trợ bộ lọc để thu hẹp kết quả
+- Chuyển đổi xem Structure để xem/sửa schema bảng
+- Hỗ trợ filter để thu hẹp kết quả
 
 <Tip>
-Tab bảng có thể chỉnh sửa theo mặc định. Tab truy vấn chỉ đọc trừ khi truy vấn là một câu lệnh `SELECT * FROM table` đơn giản.
+Tab bảng cho phép chỉnh sửa mặc định. Tab truy vấn chỉ đọc trừ khi query là `SELECT * FROM table` đơn giản.
 </Tip>
 
 ### Tái Sử Dụng Tab Thông Minh
 
-Khi bạn click vào một bảng trong sidebar, TablePro sử dụng quản lý tab thông minh:
+Khi click bảng trong sidebar:
 
-- **Cùng bảng**: Chuyển sang tab hiện có (không thực thi truy vấn mới)
+- **Cùng bảng**: Chuyển sang tab hiện có (không chạy query mới)
 - **Bảng khác**: Mở tab mới
 
-Tùy chọn, bạn có thể bật **Tái sử dụng tab bảng sạch** trong **Cài đặt** > **Tab** để có hành vi giống TablePlus: khi bật, click vào bảng khác sẽ thay thế tab bảng hiện tại nếu nó không có thay đổi chưa lưu, không có tương tác người dùng (sắp xếp, lọc, v.v.) và không được ghim. Điều này giữ cho thanh tab sạch sẽ trong khi bảo vệ công việc của bạn.
+Bật **Tái sử dụng tab bảng sạch** trong **Cài đặt** > **Tab** để có hành vi giống TablePlus: click bảng khác sẽ thay thế tab bảng hiện tại nếu không có thay đổi chưa lưu, không có tương tác người dùng (sắp xếp, lọc, v.v.) và không bị ghim. Giữ thanh tab gọn mà vẫn bảo vệ công việc.
+
+### Tab Xem Trước
+
+Tab xem trước giảm lộn xộn tab khi duyệt bảng. Click đơn bảng trong sidebar mở tab tạm thời, sẽ bị thay thế khi click bảng khác. Tương tự tab xem trước của VS Code.
+
+Tab xem trước được chỉ báo bằng "Preview" trong subtitle cửa sổ. Chúng trở thành tab cố định khi:
+
+- **Click đúp** bảng trong sidebar
+- **Tương tác** với tab (sắp xếp, lọc, chỉnh sửa, chọn hàng)
+
+Tab xem trước không được lưu qua các lần khởi động lại.
+
+<Tip>
+Tắt tab xem trước trong **Settings** > **Tabs** nếu muốn mỗi click đều mở tab cố định.
+</Tip>
 
 {/* Screenshot: Các loại tab khác nhau: Truy vấn và Bảng */}
 <Frame caption="Các loại tab khác nhau: Truy vấn và Bảng">
@@ -88,46 +98,46 @@ Tùy chọn, bạn có thể bật **Tái sử dụng tab bảng sạch** trong 
 
 | Hành Động | Cách Thực Hiện |
 |--------|-----|
-| Tab truy vấn mới | Click vào nút **+** trong thanh tab, hoặc nhấn `Cmd+T` |
-| Tab truy vấn mới (từ toolbar) | Click vào nút **SQL** trên toolbar |
-| Tab bảng mới | Click vào tên bảng trong sidebar |
-| Tab bảng mới (với truy vấn) | Mở tab truy vấn, sau đó sử dụng trình soạn thảo SQL |
+| Tab truy vấn mới | Click nút **+** trong thanh tab, hoặc nhấn `Cmd+T` |
+| Tab truy vấn mới (từ toolbar) | Click nút **SQL** trên toolbar |
+| Tab bảng mới | Click tên bảng trong sidebar |
+| Tab bảng mới (với query) | Mở tab truy vấn, rồi dùng SQL editor |
 
 ### Đóng Tab
 
 | Hành Động | Cách Thực Hiện |
 |--------|-----|
 | Đóng tab hiện tại | Nhấn `Cmd+W` |
-| Đóng tab cụ thể | Di chuột qua tab và click vào nút **x** |
-| Đóng từ menu ngữ cảnh | Click phải vào tab và chọn **Close Tab** |
-| Đóng các tab khác | Click phải vào tab và chọn **Close Other Tabs** |
+| Đóng tab cụ thể | Di chuột qua tab, click nút **x** |
+| Đóng từ menu ngữ cảnh | Click phải vào tab, chọn **Close Tab** |
+| Đóng các tab khác | Click phải vào tab, chọn **Close Other Tabs** |
 
 <Warning>
-Đóng tab có thay đổi chưa lưu sẽ loại bỏ những thay đổi đó. TablePro sẽ cảnh báo bạn trước khi đóng nếu có các sửa đổi dữ liệu đang chờ.
+Đóng tab có thay đổi chưa lưu sẽ mất thay đổi đó. TablePro cảnh báo trước khi đóng nếu có sửa đổi dữ liệu đang chờ.
 </Warning>
 
 ### Chuyển Đổi Tab
 
-Click vào bất kỳ tab nào trong thanh tab để chuyển sang nó, hoặc sử dụng phím tắt:
+Click bất kỳ tab nào, hoặc dùng phím tắt:
 
-- `Cmd+1` đến `Cmd+9` để nhảy đến tab theo vị trí
+- `Cmd+1` đến `Cmd+9` nhảy đến tab theo vị trí
 - `Cmd+Shift+[` hoặc `Cmd+Option+Left` cho tab trước
 - `Cmd+Shift+]` hoặc `Cmd+Option+Right` cho tab tiếp theo
 
-Trạng thái của tab trước đó được bảo toàn hoàn toàn, bao gồm:
+Trạng thái tab trước được bảo toàn hoàn toàn:
 
-- Nội dung trình soạn thảo SQL và vị trí con trỏ
-- Kết quả truy vấn
+- Nội dung SQL editor và vị trí con trỏ
+- Kết quả query
 - Vị trí cuộn trong data grid
-- Các hàng đã chọn
-- Trạng thái sắp xếp và bộ lọc
-- Các thay đổi đang chờ
+- Hàng đã chọn
+- Trạng thái sắp xếp và filter
+- Thay đổi đang chờ
 
 ### Sắp Xếp Lại Tab
 
-Kéo bất kỳ tab nào đến vị trí mới trong thanh tab để sắp xếp lại. Một chỉ báo chèn màu xanh sẽ hiển thị vị trí tab sẽ được đặt khi bạn thả.
+Kéo tab đến vị trí mới. Chỉ báo chèn màu xanh hiển thị nơi tab sẽ đặt.
 
-Thanh tab cuộn ngang khi có nhiều tab hơn có thể hiển thị trong không gian có sẵn. Tab đang chọn sẽ tự động được cuộn vào vùng nhìn thấy.
+Thanh tab cuộn ngang khi có nhiều tab hơn không gian hiển thị. Tab đang chọn tự động cuộn vào vùng nhìn thấy.
 
 {/* Screenshot: Kéo và thả sắp xếp lại tab */}
 <Frame caption="Kéo và thả sắp xếp lại tab">
@@ -145,20 +155,20 @@ Thanh tab cuộn ngang khi có nhiều tab hơn có thể hiển thị trong kh�
 
 ### Ghim Tab
 
-Ghim các tab quan trọng để ngăn việc đóng nhầm:
+Ghim tab quan trọng để tránh đóng nhầm:
 
 1. Click phải vào tab
 2. Chọn **Pin Tab**
-3. Một biểu tượng ghim xuất hiện trên tab
+3. Biểu tượng ghim xuất hiện trên tab
 
 Tab đã ghim:
 
-- Không thể đóng qua nút đóng, `Cmd+W`, hoặc menu ngữ cảnh
-- Không bị đóng khi bạn chọn **Close Other Tabs**
-- Không bị thay thế khi click vào bảng khác trong sidebar
+- Không thể đóng qua nút đóng, `Cmd+W`, hay menu ngữ cảnh
+- Không bị đóng khi chọn **Close Other Tabs**
+- Không bị thay thế khi click bảng khác trong sidebar
 - Vẫn mở qua các phiên
 
-Để bỏ ghim, click phải và chọn **Unpin Tab**.
+Bỏ ghim: click phải, chọn **Unpin Tab**.
 
 {/* Screenshot: Tab đã ghim với chỉ báo ghim */}
 <Frame caption="Tab đã ghim với chỉ báo ghim">
@@ -176,107 +186,108 @@ Tab đã ghim:
 
 ### Nhân Bản Tab
 
-Để tạo bản sao của tab hiện có:
+Tạo bản sao của tab:
 
 1. Click phải vào tab
 2. Chọn **Duplicate Tab**
-3. Một tab mới mở với cùng nội dung truy vấn và kết quả
+3. Tab mới mở với cùng nội dung query và kết quả
 
-Tab được nhân bản được chèn ngay sau tab gốc.
+Tab nhân bản được chèn ngay sau tab gốc.
 
 ## Trạng Thái Tab
 
-Mỗi tab lưu trữ một tập hợp trạng thái toàn diện được bảo toàn khi chuyển đổi giữa các tab.
+Mỗi tab lưu toàn bộ trạng thái, được bảo toàn khi chuyển tab.
 
 ### Thuộc Tính Trạng Thái
 
 | Thuộc Tính | Mô Tả |
 |----------|-------------|
-| **Tab ID** | Mã định danh duy nhất (UUID) |
-| **Title** | Tên hiển thị được hiển thị trong thanh tab |
-| **SQL Content** | Văn bản truy vấn trong trình soạn thảo SQL |
+| **Tab ID** | UUID duy nhất |
+| **Title** | Tên hiển thị trong thanh tab |
+| **SQL Content** | Văn bản query trong SQL editor |
 | **Tab Type** | Truy vấn hoặc bảng |
 | **Table Name** | Tên bảng liên quan (cho tab bảng) |
-| **Result Columns** | Tên cột từ truy vấn cuối cùng |
-| **Result Rows** | Dữ liệu hàng từ truy vấn cuối cùng (được cache) |
-| **Column Types** | Metadata kiểu dữ liệu cho định dạng |
-| **Execution Time** | Thời lượng của truy vấn cuối cùng |
-| **Error Message** | Lỗi từ truy vấn thất bại cuối cùng |
-| **Is Editable** | Liệu chỉnh sửa inline có được bật hay không |
-| **Pagination State** | Trang hiện tại, kích thước trang, tổng số hàng |
+| **Result Columns** | Tên cột từ query cuối |
+| **Result Rows** | Dữ liệu hàng từ query cuối (cache) |
+| **Column Types** | Metadata kiểu dữ liệu |
+| **Execution Time** | Thời lượng query cuối |
+| **Error Message** | Lỗi từ query thất bại cuối |
+| **Is Editable** | Chỉnh sửa inline có bật không |
+| **Pagination State** | Trang hiện tại, kích thước trang, tổng hàng |
 | **Sort State** | Cột sắp xếp và hướng |
-| **Filter State** | Bộ lọc đang hoạt động và khả năng hiển thị |
-| **Pending Changes** | Các sửa đổi dữ liệu đang chờ |
-| **Selected Rows** | Các chỉ số hàng hiện được chọn |
-| **Result Version** | Bộ đếm vô hiệu hóa cache |
+| **Filter State** | Filter đang hoạt động |
+| **Pending Changes** | Sửa đổi dữ liệu đang chờ |
+| **Selected Rows** | Chỉ số hàng đang chọn |
+| **Result Version** | Bộ đếm cache invalidation |
 
 ### Theo Dõi Thay Đổi Theo Tab
 
-Mỗi tab duy trì các thay đổi đang chờ riêng của nó. Khi bạn chuyển sang tab khác:
+Mỗi tab có thay đổi đang chờ riêng. Khi chuyển tab:
 
-1. Các thay đổi của tab hiện tại được lưu vào thuộc tính `pendingChanges` của tab
-2. Trình quản lý thay đổi tải các thay đổi đang chờ của tab mới
-3. Các chỉ báo trực quan cập nhật để phản ánh trạng thái của tab mới
+1. Thay đổi của tab hiện tại lưu vào thuộc tính `pendingChanges`
+2. Change manager tải thay đổi đang chờ của tab mới
+3. Chỉ báo trực quan cập nhật theo trạng thái tab mới
 
-Điều này có nghĩa là bạn có thể có các chỉnh sửa đang chờ trong nhiều tab đồng thời mà không bị can thiệp.
+Bạn có thể có chỉnh sửa đang chờ ở nhiều tab cùng lúc mà không xung đột.
 
 ## Tính Liên Tục Tab
 
-Tab tồn tại qua các lần khởi động lại ứng dụng để bạn có thể tiếp tục chính xác nơi bạn đã dừng lại.
+Tab tồn tại qua các lần khởi động lại ứng dụng.
 
-### Những Gì Được Lưu Trữ
+### Những Gì Được Lưu
 
 | Được Lưu | Không Được Lưu |
 |-------|-----------|
-| Tab ID và tiêu đề | Kết quả truy vấn (được truy vấn lại khi mở lại) |
-| Nội dung SQL | Các thay đổi dữ liệu đang chờ |
-| Loại tab | Các hàng đã chọn |
-| Tên bảng | Trạng thái sắp xếp và bộ lọc |
+| Tab ID và tiêu đề | Kết quả query (truy vấn lại khi mở) |
+| Nội dung SQL | Thay đổi dữ liệu đang chờ |
+| Loại tab | Hàng đã chọn |
+| Tên bảng | Trạng thái sắp xếp và filter |
 | Trạng thái ghim | Thời gian thực thi |
+| -- | Trạng thái tab xem trước (tab xem trước bị loại bỏ) |
 
-### Cách Hoạt Động Của Tính Liên Tục
+### Cách Hoạt Động
 
 <Steps>
   <Step title="Tự Động Lưu Với Debounce">
-    Trạng thái tab được tự động lưu 500ms sau bất kỳ thay đổi nào (debounce để tránh ghi liên tiếp nhanh)
+    Trạng thái tab tự động lưu 500ms sau thay đổi (debounce để tránh ghi liên tiếp)
   </Step>
-  <Step title="Lưu Trữ Theo Kết Nối">
-    Mỗi kết nối cơ sở dữ liệu có trạng thái tab được lưu riêng, được lưu trữ trong UserDefaults với khóa cụ thể cho kết nối
+  <Step title="Lưu Theo Kết Nối">
+    Mỗi kết nối database có trạng thái tab riêng, lưu trong UserDefaults với key theo kết nối
   </Step>
   <Step title="Khôi Phục Khi Kết Nối">
-    Khi bạn kết nối lại với cơ sở dữ liệu, TablePro khôi phục các tab đã lưu và thực thi lại các truy vấn cho tab bảng
+    Khi kết nối lại database, TablePro khôi phục tab đã lưu và chạy lại query cho tab bảng
   </Step>
   <Step title="Xử Lý Đóng Cửa Sổ">
-    Khi bạn đóng cửa sổ, bất kỳ lưu debounce đang chờ nào được đẩy ngay lập tức để ngăn mất dữ liệu
+    Khi đóng cửa sổ, lưu debounce đang chờ được flush ngay để tránh mất dữ liệu
   </Step>
 </Steps>
 
-### Bộ Nhớ Truy Vấn Cuối Cùng
+### Nhớ Query Cuối Cùng
 
-TablePro cũng ghi nhớ văn bản truy vấn cuối cùng cho mỗi kết nối, tương tự TablePlus. Ngay cả khi bạn đóng tất cả các tab, truy vấn cuối cùng được bảo toàn và có thể được khôi phục khi bạn tạo tab mới.
+TablePro cũng nhớ query cuối cho mỗi kết nối, tương tự TablePlus. Dù đóng hết tab, query cuối vẫn được giữ và khôi phục khi tạo tab mới.
 
 ## Phân Trang Trong Tab
 
-TablePro sử dụng các chiến lược phân trang khác nhau tùy thuộc vào loại tab.
+TablePro dùng chiến lược phân trang khác nhau theo loại tab.
 
 ### Tab Bảng (Phân Trang Phía Server)
 
-Tab bảng sử dụng SQL `LIMIT` và `OFFSET` cho phân trang:
+Tab bảng dùng SQL `LIMIT` và `OFFSET`:
 
-- Chỉ trang dữ liệu hiện tại được tải từ cơ sở dữ liệu
-- Điều hướng trang kích hoạt một truy vấn mới
-- Kích thước trang mặc định có thể cấu hình trong **Settings** > **Data Grid**
+- Chỉ tải trang hiện tại từ database
+- Chuyển trang kích hoạt query mới
+- Kích thước trang mặc định cấu hình trong **Settings** > **Data Grid**
 
 | Điều Khiển | Hành Động |
 |---------|--------|
 | Trang đầu | Nhảy đến trang 1 |
-| Trang trước | Quay lại một trang |
-| Chỉ báo trang | Hiển thị trang hiện tại / tổng số trang |
-| Trang tiếp theo | Tiến một trang |
-| Trang cuối | Nhảy đến trang cuối cùng |
+| Trang trước | Lùi một trang |
+| Chỉ báo trang | Hiện trang hiện tại / tổng trang |
+| Trang tiếp | Tiến một trang |
+| Trang cuối | Nhảy đến trang cuối |
 
 <Tip>
-Phân trang phía server tiết kiệm bộ nhớ. Chỉ trang dữ liệu hiển thị được giữ trong bộ nhớ, ngay cả đối với các bảng có hàng triệu hàng.
+Phân trang server-side tiết kiệm bộ nhớ. Chỉ trang đang xem được giữ trong RAM, dù bảng có hàng triệu hàng.
 </Tip>
 
 {/* Screenshot: Phân trang phía server trong tab bảng */}
@@ -295,11 +306,11 @@ Phân trang phía server tiết kiệm bộ nhớ. Chỉ trang dữ liệu hiể
 
 ### Tab Truy Vấn (Phân Trang Phía Client)
 
-Tab truy vấn thực thi truy vấn đầy đủ và nhận tất cả kết quả. Đối với các tập kết quả lớn, TablePro áp dụng phân trang phía client:
+Tab truy vấn chạy query đầy đủ và nhận tất cả kết quả. Với tập kết quả lớn, TablePro phân trang client-side:
 
-- Kết quả được lưu trữ trong bộ nhớ
-- Phân trang cắt mảng kết quả mà không cần truy vấn lại
-- Sắp xếp được thực hiện cục bộ trên kết quả được cache
+- Kết quả lưu trong bộ nhớ
+- Phân trang cắt mảng kết quả mà không truy vấn lại
+- Sắp xếp thực hiện cục bộ trên kết quả cache
 
 ### Cấu Hình Kích Thước Trang
 
@@ -314,14 +325,14 @@ Cấu hình kích thước trang mặc định trong **Settings** > **Data Grid*
 
 ## Menu Ngữ Cảnh Tab
 
-Click phải vào bất kỳ tab nào để truy cập menu ngữ cảnh:
+Click phải bất kỳ tab nào:
 
 | Hành Động | Mô Tả |
 |--------|-------------|
-| **Duplicate Tab** | Tạo bản sao của tab này |
-| **Pin Tab** / **Unpin Tab** | Chuyển đổi trạng thái ghim |
-| **Close Tab** | Đóng tab này |
-| **Close Other Tabs** | Đóng tất cả các tab trừ tab này (tôn trọng các tab đã ghim) |
+| **Duplicate Tab** | Tạo bản sao tab |
+| **Pin Tab** / **Unpin Tab** | Bật/tắt ghim |
+| **Close Tab** | Đóng tab |
+| **Close Other Tabs** | Đóng tất cả tab khác (giữ tab ghim) |
 
 {/* Screenshot: Tab context menu */}
 <Frame caption="Menu ngữ cảnh tab">
@@ -351,35 +362,35 @@ Click phải vào bất kỳ tab nào để truy cập menu ngữ cảnh:
 
 ### Tổ Chức Theo Tác Vụ
 
-Sử dụng các tab riêng biệt cho các tác vụ khác nhau: một tab để khám phá dữ liệu, một tab khác để viết truy vấn migration, một tab khác để kiểm tra. Điều này giữ cho không gian làm việc của bạn có tổ chức.
+Dùng tab riêng cho từng tác vụ: một tab khám phá dữ liệu, một tab viết migration, một tab test. Giữ workspace có tổ chức.
 
-### Ghim Các Tab Quan Trọng
+### Ghim Tab Quan Trọng
 
-Ghim các tab chứa truy vấn bạn tham khảo thường xuyên. Điều này ngăn chúng bị đóng nhầm.
+Ghim tab chứa query hay dùng. Tránh đóng nhầm.
 
-### Sử Dụng Tab Bảng Để Duyệt
+### Dùng Tab Bảng Để Duyệt
 
-Khi bạn chỉ cần xem dữ liệu, click vào bảng trong sidebar để mở tab bảng. Điều này cung cấp cho bạn phân trang, chỉnh sửa và xem cấu trúc mà không cần viết SQL.
+Khi chỉ cần xem dữ liệu, click bảng trong sidebar mở tab bảng. Có sẵn phân trang, chỉnh sửa và xem cấu trúc mà không cần viết SQL.
 
-### Sử Dụng Tab Truy Vấn Cho Công Việc Phức Tạp
+### Dùng Tab Truy Vấn Cho Việc Phức Tạp
 
-Đối với join, aggregation, subquery và các thao tác nhiều câu lệnh, sử dụng tab truy vấn. Trình soạn thảo SQL cung cấp cho bạn toàn quyền kiểm soát những gì được thực thi.
+Cho JOIN, aggregation, subquery và thao tác nhiều câu lệnh, dùng tab truy vấn. SQL editor cho toàn quyền kiểm soát.
 
-### Đóng Các Tab Không Sử Dụng
+### Đóng Tab Không Dùng
 
-Mặc dù tab rất nhẹ, việc đóng các tab bạn không còn cần giữ cho thanh tab sạch sẽ và giúp dễ dàng tìm thấy những gì bạn đang tìm kiếm.
+Tab nhẹ, nhưng đóng tab không cần nữa giữ thanh tab gọn và dễ tìm hơn.
 
 ## Các Bước Tiếp Theo
 
 <CardGroup cols={2}>
   <Card title="Trình Soạn Thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Viết truy vấn trong tab truy vấn
+    Viết query trong tab truy vấn
   </Card>
   <Card title="Bảng Dữ Liệu" icon="table" href="/vi/features/data-grid">
-    Xem và chỉnh sửa kết quả truy vấn
+    Xem và chỉnh sửa kết quả query
   </Card>
   <Card title="Lịch Sử Truy Vấn" icon="clock-rotate-left" href="/vi/features/query-history">
-    Truy cập các truy vấn đã thực thi trước đó
+    Truy cập query đã chạy trước đó
   </Card>
   <Card title="Phím Tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
     Tất cả phím tắt

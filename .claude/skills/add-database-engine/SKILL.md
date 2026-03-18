@@ -27,7 +27,7 @@ Complete guide for adding a new database engine, based on the Redis implementati
 | Services | — | `ColumnType.swift`, `SQLDialectProvider.swift`, `TableQueryBuilder.swift`, `ExportService.swift`, `ImportService.swift`, `SQLEscaping.swift`, `FilterSQLGenerator.swift` |
 | Change Tracking | — | `DataChangeManager.swift`, `SQLStatementGenerator.swift` |
 | Coordinator | `MainContentCoordinator+NewDB.swift` | `MainContentCoordinator.swift`, `+Navigation.swift`, `+TableOperations.swift`, `+SidebarSave.swift` |
-| Views | — | `ConnectionFormView.swift`, `OpenTableToolbarView.swift`, `SidebarView.swift`, `DataGridView.swift`, `ExportDialog.swift`, `FilterPanelView.swift`, `SQLEditorView.swift`, `HighlightedSQLTextView.swift`, `SQLReviewPopover.swift`, `TypePickerContentView.swift`, `StructureRowProvider.swift` |
+| Views | — | `ConnectionFormView.swift`, `TableProToolbarView.swift`, `SidebarView.swift`, `DataGridView.swift`, `ExportDialog.swift`, `FilterPanelView.swift`, `SQLEditorView.swift`, `HighlightedSQLTextView.swift`, `SQLReviewPopover.swift`, `TypePickerContentView.swift`, `StructureRowProvider.swift` |
 | AI | — | `AISchemaContext.swift`, `AIPromptTemplates.swift`, `AIChatPanelView.swift` |
 | Other | — | `ContentView.swift`, `MainContentView.swift`, `Theme.swift`, `ConnectionURLParser.swift`, `ConnectionURLFormatter.swift`, `SQLParameterInliner.swift`, `SchemaStatementGenerator.swift` |
 | Tests | `NewDBTests/` directory | `TestFixtures.swift`, `DatabaseTypeTests.swift` |
@@ -301,13 +301,13 @@ Key integration points (search for `case .redis` to find all):
 
 ### 6b. Toolbar
 
-**File:** `TablePro/Views/Toolbar/OpenTableToolbarView.swift`
+**File:** `TablePro/Views/Toolbar/TableProToolbarView.swift`
 - Hide/show toolbar items based on engine capabilities
 - Example: Redis hides Connection Switcher and Database Switcher buttons
 
 ### 6c. Menu Bar
 
-**File:** `TablePro/OpenTableApp.swift`
+**File:** `TablePro/TableProApp.swift`
 - Disable irrelevant menu items (e.g., "Open Database..." for Redis)
 
 ### 6d. Data Grid
@@ -402,7 +402,7 @@ Use subagents with `isolation: "worktree"` for parallel work:
 - Agent C: Services (`SQLDialectProvider`, `TableQueryBuilder`, `SQLEscaping`, `FilterSQLGenerator`)
 
 **Wave 4 (Views — parallel):**
-- Agent A: `ConnectionFormView.swift` + `OpenTableToolbarView.swift` + `OpenTableApp.swift`
+- Agent A: `ConnectionFormView.swift` + `TableProToolbarView.swift` + `TableProApp.swift`
 - Agent B: `DataGridView.swift` + `SidebarView.swift` + `FilterPanelView.swift`
 - Agent C: Remaining views (editor, export, structure, AI)
 

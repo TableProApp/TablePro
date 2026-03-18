@@ -1,11 +1,11 @@
 ---
 title: Microsoft SQL Server
-description: Connect to Microsoft SQL Server (MSSQL) databases with TablePro
+description: Connect to SQL Server 2017+ and Azure SQL Database via FreeTDS with T-SQL query support
 ---
 
 # Microsoft SQL Server Connections
 
-TablePro supports Microsoft SQL Server 2017 and later via FreeTDS. This covers SQL Server instances running on Windows, Linux, or in Docker, as well as Azure SQL Database.
+TablePro connects to SQL Server 2017 and later via FreeTDS. This covers instances on Windows, Linux, Docker, and Azure SQL Database.
 
 <Warning>
 FreeTDS must be built before connecting to SQL Server. Run `scripts/build-freetds.sh` once to compile the required library.
@@ -45,7 +45,7 @@ FreeTDS must be built before connecting to SQL Server. Run `scripts/build-freetd
 | **Database** | Database name to connect to | - |
 
 <Note>
-TablePro connects using SQL Server Authentication (username and password). Windows Authentication is not supported.
+TablePro uses SQL Server Authentication (username and password). Windows Authentication is not supported.
 </Note>
 
 ## Example Configurations
@@ -112,16 +112,16 @@ Database: mydb
 ```
 
 <Note>
-Azure SQL Database requires the username to include the server suffix (e.g., `user@servername`) or just the username depending on your authentication configuration.
+Azure SQL Database may require the username to include the server suffix (e.g., `user@servername`) depending on your authentication configuration.
 </Note>
 
 ## Features
 
 ### Schema Selection
 
-SQL Server organizes objects into schemas within a database. The default schema is `dbo`. TablePro displays all schemas your login has access to and lists tables within each schema.
+SQL Server organizes objects into schemas within a database. The default schema is `dbo`. TablePro displays all schemas your login has access to and lists tables within each.
 
-You can switch schemas using the database switcher (**⌘K**), which shows available schemas for the current database.
+Switch schemas with the database switcher (**Cmd+K**), which shows available schemas for the current database.
 
 ### Table Browsing
 
@@ -134,7 +134,7 @@ For each table, TablePro shows:
 
 ### Query Editor
 
-Write and execute T-SQL queries in the SQL editor. Pagination uses SQL Server's standard offset syntax:
+Write and execute T-SQL in the SQL editor. Pagination uses SQL Server's standard offset syntax:
 
 ```sql
 -- Paginated results
@@ -162,7 +162,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME;
 
 ### Schema Editing
 
-Modify table structure via T-SQL ALTER TABLE statements in the query editor. SQL Server uses bracket notation for identifiers:
+Modify table structure via T-SQL ALTER TABLE. SQL Server uses bracket notation for identifiers:
 
 ```sql
 -- Add a column

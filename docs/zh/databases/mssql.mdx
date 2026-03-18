@@ -1,0 +1,290 @@
+---
+title: Microsoft SQL Server
+description: 通过 FreeTDS 连接 SQL Server 2017+ 和 Azure SQL Database，支持 T-SQL 查询
+---
+
+# Microsoft SQL Server 连接
+
+TablePro 通过 FreeTDS 连接 SQL Server 2017 及更高版本。涵盖 Windows、Linux、Docker 和 Azure SQL Database 上的实例。
+
+<Warning>
+连接 SQL Server 之前需要构建 FreeTDS。运行一次 `scripts/build-freetds.sh` 编译所需的库。
+</Warning>
+
+## 快速设置
+
+<Steps>
+  <Step title="构建 FreeTDS">
+    如果尚未构建，从仓库根目录运行 `scripts/build-freetds.sh`
+  </Step>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 SQL Server">
+    从数据库类型选择器中选择 **SQL Server**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password 和数据库名称
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP 地址 | `localhost` |
+| **Port** | SQL Server 端口 | `1433` |
+| **Username** | SQL Server 登录名 | `sa` |
+| **Password** | 登录密码 | - |
+| **Database** | 要连接的数据库名称 | - |
+
+<Note>
+TablePro 使用 SQL Server Authentication（用户名和密码）。不支持 Windows Authentication。
+</Note>
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local SQL Server
+Host:     localhost
+Port:     1433
+Username: sa
+Password: （你的密码）
+Database: master
+```
+
+### Docker SQL Server 容器
+
+启动一个 SQL Server 2022 容器用于本地测试：
+
+```bash
+docker run \
+  -e "ACCEPT_EULA=Y" \
+  -e "SA_PASSWORD=YourStrong@Passw0rd" \
+  -p 1433:1433 \
+  --name sql-server \
+  -d mcr.microsoft.com/mssql/server:2022-latest
+```
+
+然后用以下信息连接：
+
+```
+Name:     Docker SQL Server
+Host:     localhost
+Port:     1433
+Username: sa
+Password: YourStrong@Passw0rd
+Database: master
+```
+
+<Tip>
+`SA_PASSWORD` 必须满足 SQL Server 的复杂性要求：至少 8 个字符，包含大写、小写、数字和符号。
+</Tip>
+
+### 远程服务器
+
+```
+Name:     Production SQL Server
+Host:     sql.example.com
+Port:     1433
+Username: app_user
+Password: （安全密码）
+Database: myapp_production
+```
+
+### Azure SQL Database
+
+```
+Name:     Azure SQL
+Host:     myserver.database.windows.net
+Port:     1433
+Username: admin@myserver
+Password: （你的密码）
+Database: mydb
+```
+
+<Note>
+Azure SQL Database 可能要求用户名包含服务器后缀（如 `user@servername`），具体取决于你的认证配置。
+</Note>
+
+## 功能
+
+### Schema 选择
+
+SQL Server 在数据库内将对象组织到 schema 中。默认 schema 是 `dbo`。TablePro 显示你的登录有权访问的所有 schema，并列出每个 schema 中的表。
+
+使用数据库切换器（**Cmd+K**）切换 schema，它会显示当前数据库可用的 schema。
+
+### 表浏览
+
+每个表显示以下内容：
+
+- **Structure**：列及其 SQL Server 数据类型、可空性和默认值
+- **Indexes**：聚集索引和非聚集索引
+- **Foreign Keys**：与其他表的关系
+- **DDL**：包含约束的表定义
+
+### 查询编辑器
+
+在 SQL 编辑器中编写和执行 T-SQL。分页使用 SQL Server 的标准 offset 语法：
+
+```sql
+-- 分页结果
+SELECT *
+FROM dbo.orders
+ORDER BY order_id
+OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
+
+-- 行数估算（快速，使用统计信息）
+SELECT SUM(p.rows) AS row_count
+FROM sys.partitions p
+JOIN sys.tables t ON p.object_id = t.object_id
+WHERE p.index_id IN (0, 1)
+  AND t.name = 'orders';
+
+-- 查看视图定义
+SELECT OBJECT_DEFINITION(OBJECT_ID('dbo.my_view'));
+
+-- 列出当前数据库中的所有表
+SELECT TABLE_SCHEMA, TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE = 'BASE TABLE'
+ORDER BY TABLE_SCHEMA, TABLE_NAME;
+```
+
+### Schema 编辑
+
+通过 T-SQL ALTER TABLE 修改表结构。SQL Server 使用方括号表示标识符：
+
+```sql
+-- 添加列
+ALTER TABLE [dbo].[users] ADD [last_login] DATETIME2 NULL;
+
+-- 重命名列（需要 sp_rename）
+EXEC sp_rename 'dbo.users.old_name', 'new_name', 'COLUMN';
+
+-- 删除列
+ALTER TABLE [dbo].[users] DROP COLUMN [legacy_field];
+
+-- 添加索引
+CREATE INDEX [IX_users_email] ON [dbo].[users] ([email]);
+```
+
+### 外键
+
+TablePro 在表结构视图中显示外键关系。手动查看外键：
+
+```sql
+SELECT
+    fk.name AS fk_name,
+    OBJECT_NAME(fk.parent_object_id) AS parent_table,
+    COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS parent_column,
+    OBJECT_NAME(fk.referenced_object_id) AS referenced_table,
+    COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS referenced_column
+FROM sys.foreign_keys fk
+JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+ORDER BY parent_table, fk_name;
+```
+
+## 认证
+
+TablePro 仅使用 SQL Server Authentication。在连接表单中提供 SQL Server 登录名和密码。
+
+**不支持 Windows Authentication**（集成安全/Kerberos）。
+
+创建 SQL Server 登录：
+
+```sql
+-- 创建登录
+CREATE LOGIN app_user WITH PASSWORD = 'StrongPassword1!';
+
+-- 为该登录创建数据库用户
+USE mydb;
+CREATE USER app_user FOR LOGIN app_user;
+
+-- 授予权限
+ALTER ROLE db_datareader ADD MEMBER app_user;
+ALTER ROLE db_datawriter ADD MEMBER app_user;
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Unable to connect" 或连接超时
+
+**原因及解决方案**：
+
+1. **SQL Server 未运行或未接受 TCP 连接**
+
+   SQL Server Browser 和 TCP/IP 协议必须启用：
+   - 打开 SQL Server Configuration Manager
+   - 在「SQL Server Network Configuration」下启用 TCP/IP
+   - 确保 SQL Server 服务正在运行
+
+2. **1433 端口被防火墙阻止**
+   - 对于 Windows Firewall，添加 TCP 端口 1433 的入站规则
+   - 对于云 VM，检查安全组/防火墙规则
+
+3. **Docker 容器未启动**
+   ```bash
+   docker start sql-server
+   docker logs sql-server
+   ```
+
+### 登录失败
+
+**症状**："Login failed for user" 错误
+
+**解决方案**：
+
+1. 验证用户名和密码
+2. 确认 SQL Server Authentication 已启用（不是仅 Windows 模式）：
+   ```sql
+   -- 检查服务器认证模式（1 = 仅 Windows，2 = 混合模式）
+   SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');
+   ```
+3. 在 SQL Server Management Studio 的 Server Properties > Security 中启用混合模式认证，然后重启 SQL Server 服务
+
+### 未找到 FreeTDS
+
+**症状**："FreeTDS library not found" 或启动时的链接错误
+
+**解决方案**：从仓库根目录运行构建脚本：
+
+```bash
+scripts/build-freetds.sh
+```
+
+这会编译 FreeTDS 并将静态库放置在 Xcode 项目期望的位置。
+
+## 已知限制
+
+- **不支持 Windows Authentication。** 仅 SQL Server Authentication（用户名 + 密码）可用。
+- **不支持命名实例**（如 `HOSTNAME\INSTANCENAME`）。请通过 IP 地址和明确的端口连接。
+- **`NTEXT`、`TEXT`、`IMAGE` 列**（自 SQL Server 2005 起已弃用）编辑支持有限。在新的 schema 中请使用 `NVARCHAR(MAX)`、`VARCHAR(MAX)` 和 `VARBINARY(MAX)`。
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 SQL Server 实例
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握 SQL 编辑器功能
+  </Card>
+  <Card title="变更追踪" icon="pen" href="/zh/features/change-tracking">
+    编辑行并通过 SQL 预览保存更改
+  </Card>
+  <Card title="表结构" icon="table" href="/zh/features/table-structure">
+    查看和修改表结构
+  </Card>
+</CardGroup>

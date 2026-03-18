@@ -23,22 +23,6 @@ struct AIChatPanelView: View {
         settingsManager.ai.providers.contains(where: { $0.isEnabled })
     }
 
-    private var queryLanguage: String {
-        switch connection.type {
-        case .mongodb: return "javascript"
-        case .redis: return "bash"
-        default: return "sql"
-        }
-    }
-
-    private var queryTypeName: String {
-        switch connection.type {
-        case .mongodb: return "MongoDB query"
-        case .redis: return "Redis command"
-        default: return "SQL query"
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -68,39 +52,6 @@ struct AIChatPanelView: View {
         }
         .task(id: tables) {
             await fetchSchemaContext()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .sendAIPrompt)) { notification in
-            guard let userInfo = notification.userInfo,
-                  let prompt = userInfo["prompt"] as? String,
-                  let featureRaw = userInfo["feature"] as? String,
-                  let feature = AIFeature(rawValue: featureRaw) else { return }
-            updateContext()
-            viewModel.sendWithContext(prompt: prompt, feature: feature)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aiFixError)) { notification in
-            guard let userInfo = notification.userInfo,
-                  let query = userInfo["query"] as? String,
-                  let error = userInfo["error"] as? String else { return }
-            viewModel.startNewConversation()
-            updateContext()
-            let prompt = "Fix this \(queryTypeName) error:\n\nQuery:\n```\(queryLanguage)\n\(query)\n```\n\nError: \(error)"
-            viewModel.sendWithContext(prompt: prompt, feature: .fixError)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aiExplainSelection)) { notification in
-            let selectedText = notification.userInfo?["selectedText"] as? String ?? currentQuery ?? ""
-            guard !selectedText.isEmpty else { return }
-            viewModel.startNewConversation()
-            updateContext()
-            let prompt = "Explain this \(queryTypeName):\n```\(queryLanguage)\n\(selectedText)\n```"
-            viewModel.sendWithContext(prompt: prompt, feature: .explainQuery)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .aiOptimizeSelection)) { notification in
-            let selectedText = notification.userInfo?["selectedText"] as? String ?? currentQuery ?? ""
-            guard !selectedText.isEmpty else { return }
-            viewModel.startNewConversation()
-            updateContext()
-            let prompt = "Optimize this \(queryTypeName):\n```\(queryLanguage)\n\(selectedText)\n```"
-            viewModel.sendWithContext(prompt: prompt, feature: .optimizeQuery)
         }
         .alert(
             String(localized: "Allow AI Access"),

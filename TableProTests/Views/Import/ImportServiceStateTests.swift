@@ -20,9 +20,8 @@ struct ImportServiceStateTests {
 
         #expect(state.service == nil)
         #expect(state.isImporting == false)
-        #expect(state.currentStatement == "")
-        #expect(state.currentStatementIndex == 0)
-        #expect(state.totalStatements == 0)
+        #expect(state.processedStatements == 0)
+        #expect(state.estimatedTotalStatements == 0)
         #expect(state.statusMessage == "")
     }
 
@@ -36,18 +35,16 @@ struct ImportServiceStateTests {
 
         service.state = ImportState(
             isImporting: true,
-            currentStatement: "CREATE TABLE users",
-            currentStatementIndex: 3,
-            totalStatements: 10,
+            processedStatements: 3,
+            estimatedTotalStatements: 10,
             statusMessage: "Importing..."
         )
 
         state.setService(service)
 
         #expect(state.isImporting == true)
-        #expect(state.currentStatement == "CREATE TABLE users")
-        #expect(state.currentStatementIndex == 3)
-        #expect(state.totalStatements == 10)
+        #expect(state.processedStatements == 3)
+        #expect(state.estimatedTotalStatements == 10)
         #expect(state.statusMessage == "Importing...")
     }
 
@@ -62,18 +59,15 @@ struct ImportServiceStateTests {
         state.setService(service)
 
         #expect(state.isImporting == false)
-        #expect(state.currentStatement == "")
 
         service.state.isImporting = true
-        service.state.currentStatement = "INSERT INTO orders"
-        service.state.currentStatementIndex = 7
-        service.state.totalStatements = 20
+        service.state.processedStatements = 7
+        service.state.estimatedTotalStatements = 20
         service.state.statusMessage = "Processing statements..."
 
         #expect(state.isImporting == true)
-        #expect(state.currentStatement == "INSERT INTO orders")
-        #expect(state.currentStatementIndex == 7)
-        #expect(state.totalStatements == 20)
+        #expect(state.processedStatements == 7)
+        #expect(state.estimatedTotalStatements == 20)
         #expect(state.statusMessage == "Processing statements...")
     }
 }

@@ -63,4 +63,43 @@ struct ColumnLayoutStateTests {
         let b = ColumnLayoutState(columnOrder: [])
         #expect(a != b)
     }
+
+    // MARK: - hiddenColumns
+
+    @Test("Default hiddenColumns is empty")
+    func defaultHiddenColumnsEmpty() {
+        let state = ColumnLayoutState()
+        #expect(state.hiddenColumns.isEmpty)
+    }
+
+    @Test("Same hiddenColumns produces equal states")
+    func sameHiddenColumnsEqual() {
+        let a = ColumnLayoutState(hiddenColumns: ["name", "email"])
+        let b = ColumnLayoutState(hiddenColumns: ["name", "email"])
+        #expect(a == b)
+    }
+
+    @Test("Different hiddenColumns produces unequal states")
+    func differentHiddenColumnsNotEqual() {
+        let a = ColumnLayoutState(hiddenColumns: ["name"])
+        let b = ColumnLayoutState(hiddenColumns: ["email"])
+        #expect(a != b)
+    }
+
+    @Test("Same widths with different hiddenColumns are not equal")
+    func sameWidthsDifferentHiddenColumnsNotEqual() {
+        let a = ColumnLayoutState(columnWidths: ["id": 50.0], hiddenColumns: ["name"])
+        let b = ColumnLayoutState(columnWidths: ["id": 50.0], hiddenColumns: ["email"])
+        #expect(a != b)
+    }
+
+    @Test("Setting hiddenColumns stores and retrieves values")
+    func setAndReadHiddenColumns() {
+        var state = ColumnLayoutState()
+        state.hiddenColumns = ["id", "created_at"]
+        #expect(state.hiddenColumns == ["id", "created_at"])
+        #expect(state.hiddenColumns.contains("id"))
+        #expect(state.hiddenColumns.contains("created_at"))
+        #expect(!state.hiddenColumns.contains("name"))
+    }
 }

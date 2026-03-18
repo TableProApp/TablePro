@@ -5,13 +5,17 @@
 <h1 align="center">TablePro</h1>
 
 <p align="center">
-  Ứng dụng quản lý cơ sở dữ liệu native cho macOS với trợ lý SQL bằng AI.
+  Ứng dụng quản lý cơ sở dữ liệu native cho macOS với trợ lý AI.
 </p>
 
 <p align="center">
   <a href="https://docs.tablepro.app">Tài liệu</a> ·
   <a href="https://github.com/datlechin/tablepro/releases">Tải xuống</a> ·
   <a href="https://github.com/datlechin/tablepro/issues">Báo lỗi</a>
+</p>
+
+<p align="center">
+  <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
 </p>
 
 ---
@@ -22,7 +26,15 @@
 
 ## Giới thiệu
 
-TablePro là một giải pháp thay thế nhẹ cho TablePlus, được xây dựng hoàn toàn bằng các framework native của Apple. Không Electron, không web view — chỉ SwiftUI + AppKit thuần tuý cho trải nghiệm macOS native thực sự.
+TablePro là ứng dụng quản lý database native cho macOS. Kết nối MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redis, SQL Server và Redshift. Có trình soạn SQL với autocomplete, chỉnh sửa trực tiếp và hỗ trợ AI.
+
+## Cài đặt
+
+```bash
+brew install --cask tablepro
+```
+
+Hoặc tải DMG từ [GitHub Releases](https://github.com/datlechin/tablepro/releases).
 
 ## Tài liệu
 
@@ -43,4 +55,6 @@ Cảm ơn những người tuyệt vời đã hỗ trợ TablePro:
 
 ## Giấy phép
 
-Dự án này được cấp phép theo [TablePro Source Available License](LICENSE).
+Dự án này được cấp phép theo [GNU Affero General Public License v3.0 (AGPLv3)](LICENSE).
+
+Đóng góp yêu cầu ký Contributor License Agreement (CLA). Xem [CLA.md](CLA.md) để biết thêm chi tiết.

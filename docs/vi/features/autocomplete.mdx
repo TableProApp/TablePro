@@ -1,11 +1,11 @@
 ---
 title: Autocomplete
-description: Autocomplete SQL thông minh hiểu schema database của bạn
+description: Autocomplete SQL theo schema với phân giải alias, debounce 50ms, hỗ trợ file trên 500KB
 ---
 
 # SQL Autocomplete
 
-TablePro cung cấp autocomplete SQL thông minh, nhận biết ngữ cảnh, hiểu schema database, cú pháp SQL và ngữ cảnh query của bạn. Điều này giúp bạn viết query nhanh hơn và ít lỗi hơn.
+Autocomplete phân tích vị trí con trỏ, ngữ cảnh cú pháp SQL, bảng và alias được tham chiếu, cùng schema database để chỉ gợi ý những gì phù hợp tại mỗi điểm trong query.
 
 {/* Screenshot: Autocomplete popup showing mixed suggestions */}
 <Frame caption="Autocomplete nhận biết ngữ cảnh">
@@ -23,43 +23,43 @@ TablePro cung cấp autocomplete SQL thông minh, nhận biết ngữ cảnh, hi
 
 ## Cách Autocomplete Hoạt Động
 
-Hệ thống autocomplete phân tích:
+Engine autocomplete phân tích bốn yếu tố:
 
-1. **Vị trí hiện tại** của bạn trong query
+1. **Vị trí hiện tại** trong query
 2. **Ngữ cảnh cú pháp SQL** (SELECT, FROM, WHERE, v.v.)
-3. **Các bảng được tham chiếu** và alias của chúng
-4. **Schema database** của bạn (bảng, cột, hàm)
+3. **Bảng được tham chiếu** và alias
+4. **Schema database** (bảng, cột, hàm)
 
-Điều này cho phép nó chỉ gợi ý các completion phù hợp dựa trên những gì có ý nghĩa tại mỗi điểm trong query của bạn.
+Gợi ý được lọc theo những gì có nghĩa tại vị trí con trỏ.
 
 ## Kích Hoạt Autocomplete
 
 ### Tự động
 
-Autocomplete xuất hiện tự động khi bạn gõ:
+Autocomplete xuất hiện tự động khi gõ:
 
-- Sau khi gõ 1-2 ký tự
-- Sau khi gõ `.` (dấu chấm) để truy cập cột
-- Sau một số từ khóa nhất định (SELECT, FROM, JOIN, v.v.)
+- Sau 1-2 ký tự
+- Sau `.` (dấu chấm) để truy cập cột
+- Sau một số từ khóa (SELECT, FROM, JOIN, v.v.)
 
 ### Thủ công
 
-Bắt buộc hiển thị popup autocomplete:
+Bắt buộc hiển thị popup:
 
 - Bắt đầu gõ và đợi một chút
-- Popup xuất hiện với các gợi ý phù hợp
+- Popup xuất hiện với gợi ý phù hợp
 
 ### Đóng
 
-- Nhấn `Escape` để đóng popup
-- Tiếp tục gõ để lọc gợi ý
-- Click bên ngoài popup
+- `Escape` để đóng popup
+- Tiếp tục gõ để lọc
+- Click ngoài popup
 
 ## Các Loại Completion
 
 ### Từ Khóa SQL
 
-Từ khóa được gợi ý dựa trên ngữ cảnh cú pháp SQL:
+Từ khóa được gợi ý theo ngữ cảnh:
 
 ```sql
 SEL|  -- Gợi ý: SELECT
@@ -81,7 +81,7 @@ SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Gợi ý: ORDER
   />
 </Frame>
 
-**Các từ khóa được gợi ý bao gồm**:
+**Từ khóa được gợi ý**:
 
 | Danh mục | Từ khóa |
 |----------|----------|
@@ -92,12 +92,12 @@ SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Gợi ý: ORDER
 
 ### Tên Bảng
 
-Các bảng được gợi ý sau các từ khóa mong đợi tham chiếu bảng:
+Bảng được gợi ý sau từ khóa mong đợi tham chiếu bảng:
 
 ```sql
-SELECT * FROM |  -- Gợi ý tất cả các bảng
-SELECT * FROM us|  -- Gợi ý các bảng bắt đầu bằng "us": users, user_roles
-SELECT * FROM users JOIN |  -- Gợi ý tất cả các bảng
+SELECT * FROM |  -- Gợi ý tất cả bảng
+SELECT * FROM us|  -- Gợi ý bảng bắt đầu "us": users, user_roles
+SELECT * FROM users JOIN |  -- Gợi ý tất cả bảng
 ```
 
 {/* Screenshot: Table name suggestions */}
@@ -116,17 +116,17 @@ SELECT * FROM users JOIN |  -- Gợi ý tất cả các bảng
 
 ### Tên Cột
 
-Các cột được gợi ý dựa trên các bảng được tham chiếu:
+Cột được gợi ý theo bảng tham chiếu:
 
 ```sql
-SELECT | FROM users  -- Gợi ý các cột từ bảng users
-SELECT u.| FROM users u  -- Gợi ý các cột với prefix "u."
-SELECT * FROM users WHERE |  -- Gợi ý các cột từ users
+SELECT | FROM users  -- Gợi ý cột từ bảng users
+SELECT u.| FROM users u  -- Gợi ý cột với prefix "u."
+SELECT * FROM users WHERE |  -- Gợi ý cột từ users
 ```
 
 #### Sau Table Alias
 
-Khi bạn sử dụng table alias, gõ alias theo sau bởi `.` sẽ hiển thị các cột của bảng đó:
+Gõ alias rồi `.` hiển thị cột của bảng đó:
 
 ```sql
 SELECT
@@ -151,15 +151,15 @@ JOIN orders o ON u.id = o.|  -- Hiển thị: id, user_id, total (từ orders)
 
 ### Hàm
 
-Các hàm SQL được gợi ý trong ngữ cảnh phù hợp:
+Hàm SQL được gợi ý trong ngữ cảnh phù hợp:
 
 ```sql
 SELECT |  -- Gợi ý: COUNT, SUM, AVG, MAX, MIN, v.v.
-SELECT COUNT(|  -- Gợi ý các cột và *
+SELECT COUNT(|  -- Gợi ý cột và *
 WHERE date_column > |  -- Gợi ý: NOW(), CURRENT_DATE, v.v.
 ```
 
-**Các hàm được gợi ý thường gặp**:
+**Hàm thường gặp**:
 
 | Danh mục | Hàm |
 |----------|-----------|
@@ -185,22 +185,22 @@ WHERE date_column > |  -- Gợi ý: NOW(), CURRENT_DATE, v.v.
 
 ### Tên Schema
 
-Đối với database có nhiều schema (PostgreSQL):
+Với database nhiều schema (PostgreSQL):
 
 ```sql
 SELECT * FROM |  -- Gợi ý: public, schema1, schema2
-SELECT * FROM public.|  -- Gợi ý các bảng trong schema public
+SELECT * FROM public.|  -- Gợi ý bảng trong schema public
 ```
 
-## Gợi Ý Nhận Biết Ngữ Cảnh
+## Gợi Ý Theo Ngữ Cảnh
 
 ### Sau SELECT
 
 Ngay sau SELECT:
 
-- Tên cột từ các bảng trong mệnh đề FROM
-- `*` cho tất cả các cột
-- Modifier `DISTINCT`
+- Tên cột từ bảng trong FROM
+- `*` cho tất cả cột
+- `DISTINCT`
 - Hàm tổng hợp
 
 ```sql
@@ -210,25 +210,25 @@ SELECT |
 
 ### Sau FROM/JOIN
 
-Sau từ khóa FROM hoặc JOIN:
+Sau FROM hoặc JOIN:
 
-- Tất cả tên bảng có thể truy cập
+- Tất cả tên bảng truy cập được
 - Tên có schema (schema.table)
 
 ### Sau WHERE
 
 Trong mệnh đề WHERE:
 
-- Tên cột từ các bảng được chọn
+- Tên cột từ bảng đã chọn
 - Toán tử so sánh
 - Toán tử logic (AND, OR)
 
 ### Sau ON (điều kiện JOIN)
 
-Trong mệnh đề JOIN ON:
+Trong JOIN ON:
 
-- Các cột từ cả hai bảng được join
-- Thường được sử dụng cho quan hệ foreign key
+- Cột từ cả hai bảng join
+- Thường dùng cho quan hệ foreign key
 
 ```sql
 SELECT * FROM users u
@@ -252,124 +252,124 @@ JOIN orders o ON |
 
 ### Sau GROUP BY
 
-- Các cột xuất hiện trong mệnh đề SELECT
-- Tên cột không được tổng hợp
+- Cột xuất hiện trong SELECT
+- Cột không tổng hợp
 
 ### Sau ORDER BY
 
 - Tên cột
-- Alias được định nghĩa trong SELECT
-- Từ khóa ASC/DESC
+- Alias trong SELECT
+- ASC/DESC
 
 ## Sử Dụng Completion
 
-### Điều Hướng Bằng Bàn Phím
+### Điều Hướng Bàn Phím
 
 | Phím | Hành động |
 |-----|--------|
-| `↓` Mũi tên xuống | Chọn gợi ý tiếp theo |
-| `↑` Mũi tên lên | Chọn gợi ý trước |
-| `Enter` | Chấp nhận gợi ý đã chọn |
-| `Tab` | Chấp nhận gợi ý đã chọn |
+| `Down` | Gợi ý tiếp theo |
+| `Up` | Gợi ý trước |
+| `Enter` | Chấp nhận gợi ý |
+| `Tab` | Chấp nhận gợi ý |
 | `Escape` | Đóng popup |
 
 ### Lọc
 
-Tiếp tục gõ để lọc các gợi ý:
+Tiếp tục gõ để lọc:
 
 ```sql
 SELECT * FROM user|
 -- Hiển thị: users, user_roles, user_preferences
--- Gõ thêm sẽ thu hẹp kết quả
+-- Gõ thêm thu hẹp kết quả
 ```
 
 ### Chấp Nhận Gợi Ý
 
-Khi bạn chấp nhận một gợi ý:
+Khi chấp nhận gợi ý:
 
-1. Văn bản gợi ý được chèn tại con trỏ
-2. Bất kỳ prefix đã gõ nào được thay thế
-3. Con trỏ di chuyển đến cuối văn bản đã chèn
+1. Text được chèn tại con trỏ
+2. Prefix đã gõ được thay thế
+3. Con trỏ di chuyển đến cuối text chèn
 
 ## Cache Schema
 
 ### Cách Schema Được Tải
 
-Khi bạn kết nối đến database, TablePro:
+Khi kết nối, TablePro:
 
 1. Lấy tất cả tên bảng
 2. Tải thông tin cột cho mỗi bảng
-3. Cache thông tin này để autocomplete nhanh
+3. Cache để autocomplete nhanh
 
 ### Làm Mới Schema
 
-Nếu bạn thực hiện thay đổi schema (thêm bảng, thay đổi cột):
+Nếu thay đổi schema (thêm bảng, đổi cột):
 
-1. Click chuột phải vào kết nối trong sidebar
+1. Click chuột phải kết nối trong sidebar
 2. Chọn **Refresh**
 
-Hoặc ngắt kết nối và kết nối lại đến database.
+Hoặc ngắt kết nối và kết nối lại.
 
 <Tip>
-Các thay đổi schema được thực hiện trong TablePro (qua tab Structure) tự động được phản ánh trong autocomplete.
+Thay đổi schema trong TablePro (qua tab Structure) tự động phản ánh trong autocomplete.
 </Tip>
 
 ## Hiệu Suất
 
 ### File Lớn
 
-Autocomplete hoạt động trên file SQL với bất kỳ kích thước nào, bao gồm các file dump nhiều megabyte. Đối với file lớn hơn 500 KB, engine tự động trích xuất một cửa sổ cục bộ xung quanh con trỏ và chỉ phân tích câu lệnh gần nhất, vì vậy các gợi ý vẫn xuất hiện ngay lập tức bất kể tổng kích thước file.
+Autocomplete hoạt động trên file SQL bất kỳ kích thước, kể cả dump nhiều megabyte. Với file trên 500 KB, engine trích xuất cửa sổ cục bộ (~10 KB) quanh con trỏ và chỉ phân tích câu lệnh gần nhất. Gợi ý vẫn xuất hiện tức thì bất kể kích thước file.
 
 ### Schema Lớn
 
-Đối với database có nhiều bảng (100+):
+Với database trên 100 bảng:
 
-- Tải schema ban đầu có thể mất một chút thời gian
-- Autocomplete vẫn phản hồi nhanh sau khi cache
-- Lọc gợi ý bằng cách gõ thêm ký tự
+- Tải schema ban đầu có thể mất chút thời gian
+- Autocomplete vẫn nhanh sau khi cache
+- Gõ thêm ký tự để thu hẹp nhanh hơn
 
-### Mẹo Để Có Hiệu Suất Tốt Hơn
+### Mẹo Hiệu Suất
 
-1. **Gõ thêm ký tự**: Gõ nhiều hơn để thu hẹp gợi ý nhanh hơn
-2. **Sử dụng table alias**: Giảm phạm vi lookup
-3. **Để cache hoạt động**: Schema được cache sau lần tải đầu tiên
+1. **Gõ thêm ký tự**: Thu hẹp gợi ý nhanh hơn
+2. **Dùng table alias**: Giảm phạm vi tìm kiếm
+3. **Để cache hoạt động**: Schema được cache sau lần tải đầu
 
 ## Giới Hạn
 
-### Những Gì Không Được Gợi Ý
+### Không Được Gợi Ý
 
-- Bảng tạm thời (không có trong schema)
-- Alias của subquery
+- Bảng tạm (không trong schema)
+- Alias subquery
 - Tên cột động
-- Các cột từ kết nối khác
+- Cột từ kết nối khác
 
 ### Độ Phức Tạp Query
 
-Các query rất phức tạp có thể có khả năng nhận biết ngữ cảnh hạn chế:
+Query rất phức tạp có khả năng nhận biết ngữ cảnh hạn chế:
 
 - Subquery lồng sâu
 - CTE phức tạp
 - SQL động
 
-Trong những trường hợp này, gợi ý từ khóa và bảng cơ bản vẫn hoạt động.
+Gợi ý từ khóa và bảng cơ bản vẫn hoạt động trong các trường hợp này.
 
 ## Cấu Hình
 
-Autocomplete được bật mặc định và không cần cấu hình. Debounce 50ms được áp dụng cho trigger completion để giảm thiểu công việc không cần thiết.
+Autocomplete bật mặc định, không cần cấu hình. Debounce 50ms áp dụng cho trigger completion để giảm công việc không cần thiết.
 
-## Thực Hành Tốt Nhất
+## Thực Hành Tốt
 
-### Sử Dụng Table Alias
+### Dùng Table Alias
 
-Alias làm cho autocomplete chính xác hơn:
+Alias giúp autocomplete chính xác hơn:
 
 ```sql
--- Tốt: Rõ ràng mỗi cột đến từ bảng nào
+-- Tốt: Rõ ràng cột từ bảng nào
 SELECT u.name, o.total
 FROM users u
 JOIN orders o ON u.id = o.user_id
 
--- Kém rõ ràng hơn nếu không có alias
+-- Kém rõ ràng hơn
 SELECT users.name, orders.total
 FROM users
 JOIN orders ON users.id = orders.user_id
@@ -377,42 +377,42 @@ JOIN orders ON users.id = orders.user_id
 
 ### Bắt Đầu Với FROM
 
-Viết FROM trước giúp autocomplete biết các bảng của bạn:
+Viết FROM trước cho autocomplete biết bảng:
 
 ```sql
--- Cách tiếp cận này giúp autocomplete
+-- Cách này giúp autocomplete
 FROM users u
 JOIN orders o ON u.id = o.user_id
-SELECT u.|  -- Bây giờ biết về các bảng u và o
+SELECT u.|  -- Giờ đã biết bảng u và o
 ```
 
-### Để Gợi Ý Hướng Dẫn Bạn
+### Để Gợi Ý Hướng Dẫn
 
-Nếu bạn không chắc chắn tên cột chính xác:
+Không chắc tên cột? Thử:
 
-1. Gõ table alias và dấu chấm: `u.`
-2. Duyệt các gợi ý
+1. Gõ alias và dấu chấm: `u.`
+2. Duyệt gợi ý
 3. Chọn cột đúng
 
 ## Khắc Phục Sự Cố
 
 ### Không Xuất Hiện Gợi Ý
 
-1. **Kiểm tra kết nối**: Đảm bảo bạn đã kết nối đến database
-2. **Làm mới schema**: Click chuột phải vào kết nối > Refresh
-3. **Đợi cache**: Schema lớn có thể mất thời gian để tải
+1. **Kiểm tra kết nối**: Đảm bảo đã kết nối database
+2. **Làm mới schema**: Chuột phải kết nối > Refresh
+3. **Đợi cache**: Schema lớn cần thời gian tải
 
 ### Gợi Ý Sai
 
-1. **Kiểm tra table alias**: Đảm bảo alias được định nghĩa đúng
-2. **Kiểm tra mệnh đề FROM**: Bảng phải được tham chiếu để gợi ý cột
-3. **Làm mới nếu schema thay đổi**: Thay đổi schema cần refresh
+1. **Kiểm tra alias**: Đảm bảo alias đúng
+2. **Kiểm tra FROM**: Bảng phải được tham chiếu để gợi ý cột
+3. **Refresh khi schema đổi**: Thay đổi schema cần refresh
 
 ### Gợi Ý Chậm
 
-1. **Gõ thêm ký tự**: Thu hẹp không gian tìm kiếm
-2. **Sử dụng alias**: Giới hạn phạm vi tìm kiếm cột
-3. **Kiểm tra kết nối database**: Độ trễ mạng ảnh hưởng đến tải schema
+1. **Gõ thêm ký tự**: Thu hẹp phạm vi tìm kiếm
+2. **Dùng alias**: Giới hạn scope tìm cột
+3. **Kiểm tra kết nối**: Độ trễ mạng ảnh hưởng tải schema
 
 ## Các Bước Tiếp Theo
 
@@ -424,9 +424,9 @@ Nếu bạn không chắc chắn tên cột chính xác:
     Xem kết quả query
   </Card>
   <Card title="Cấu trúc Bảng" icon="table-columns" href="/vi/features/table-structure">
-    Khám phá schema của bạn
+    Khám phá schema
   </Card>
   <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
-    Tăng tốc quy trình làm việc
+    Tăng tốc workflow
   </Card>
 </CardGroup>

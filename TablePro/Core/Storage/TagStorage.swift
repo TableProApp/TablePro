@@ -47,6 +47,7 @@ final class TagStorage {
         do {
             let data = try encoder.encode(tags)
             defaults.set(data, forKey: tagsKey)
+            SyncChangeTracker.shared.markDirty(.tag, ids: tags.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save tags: \(error)")
         }
@@ -66,6 +67,7 @@ final class TagStorage {
     /// Delete a custom tag (presets cannot be deleted)
     func deleteTag(_ tag: ConnectionTag) {
         guard !tag.isPreset else { return }
+        SyncChangeTracker.shared.markDeleted(.tag, id: tag.id.uuidString)
         var tags = loadTags()
         tags.removeAll { $0.id == tag.id }
         saveTags(tags)

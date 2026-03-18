@@ -1,23 +1,23 @@
 ---
 title: Introduction
-description: A fast, native macOS database client with AI-powered SQL assistance
+description: Native macOS database client supporting MySQL, PostgreSQL, SQLite, MongoDB, Redis, SQL Server, ClickHouse, Oracle, and Redshift with AI SQL assistance
 ---
 
-# Welcome to TablePro
+# TablePro
 
-TablePro is a native macOS database client. Fast, lightweight, with built-in AI SQL assistance. Built with SwiftUI and AppKit, it uses Apple-native frameworks and system libraries for native performance and tight macOS integration.
+A native macOS database client. Fast, lightweight, with built-in AI SQL assistance. Built on SwiftUI and AppKit using Apple-native frameworks and system libraries for real macOS performance.
 
 {/* Screenshot: Main application window showing the SQL editor, sidebar with connections, and data grid */}
 <Frame caption="TablePro - Native macOS Database Client">
-  <img 
-    className="block dark:hidden" 
-    src="/images/hero.png" 
-    alt="TablePro main interface" 
+  <img
+    className="block dark:hidden"
+    src="/images/hero.png"
+    alt="TablePro main interface"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/hero-dark.png" 
-    alt="TablePro main interface" 
+  <img
+    className="hidden dark:block"
+    src="/images/hero-dark.png"
+    alt="TablePro main interface"
   />
 </Frame>
 
@@ -25,45 +25,45 @@ TablePro is a native macOS database client. Fast, lightweight, with built-in AI 
 
 <CardGroup cols={2}>
   <Card title="Native Performance" icon="bolt">
-    Built with Swift and native Apple frameworks, TablePro delivers the responsiveness you expect from a macOS application.
+    Swift and Apple-native frameworks. No Electron, no web views. Just the responsiveness you expect from a real Mac app.
   </Card>
   <Card title="Multiple Databases" icon="database">
-    Connect to MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, and Amazon Redshift databases with a single interface.
+    MySQL, MariaDB, PostgreSQL, SQLite, MongoDB, Redis, SQL Server, ClickHouse, Oracle, and Amazon Redshift in one interface.
   </Card>
   <Card title="Smart Autocomplete" icon="wand-magic-sparkles">
-    Context-aware SQL autocomplete that understands your schema, tables, columns, and SQL syntax.
+    Context-aware SQL autocomplete that knows your schema, tables, columns, and SQL syntax.
   </Card>
   <Card title="Secure Connections" icon="lock">
-    Full SSH tunnel support with password and private key authentication to securely access remote databases.
+    SSH tunnel support with password and private key authentication for remote databases.
   </Card>
   <Card title="AI SQL Assistant" icon="sparkles">
-    Chat with AI, get inline suggestions, and use context-menu actions to explain, optimize, or fix SQL — with Claude, OpenAI, Gemini, Ollama, and more.
+    Chat with AI, get inline suggestions, and use context-menu actions to explain, optimize, or fix SQL. Works with Claude, OpenAI, Gemini, Ollama, and more.
   </Card>
 </CardGroup>
 
 ## Key Features
 
 ### SQL Editor
-A SQL editor with syntax highlighting, line numbers, and intelligent autocomplete that adapts to your database schema.
+Syntax highlighting, line numbers, and autocomplete that adapts to your database schema.
 
 <Tip>
 Use `Cmd+Enter` to execute the current query or selected text.
 </Tip>
 
 ### Data Grid
-View and edit your data in a high-performance, spreadsheet-like grid with support for inline editing, sorting, and filtering.
+A high-performance, spreadsheet-like grid with inline editing, sorting, and filtering.
 
 ### Table Structure
-Inspect and modify table structures, including columns, indexes, and foreign keys, all from a visual interface.
+Inspect and modify columns, indexes, and foreign keys from a visual interface.
 
 ### Import & Export
-Import data from CSV, JSON, and SQL files. Export your data in multiple formats for backup or migration.
+Import from CSV, JSON, and SQL files. Export in multiple formats for backup or migration.
 
 ### Query History
-Access your complete query history with full-text search. Quickly re-run or modify previous queries.
+Full-text search across your entire query history. Re-run or modify previous queries instantly.
 
 ### AI SQL Assistant
-Chat with AI in plain English to write queries, get Copilot-style inline suggestions, and right-click to explain or optimize SQL. Supports Claude, OpenAI, Gemini, OpenRouter, Ollama, and custom endpoints.
+Write queries in plain English, get Copilot-style inline suggestions, and right-click to explain or optimize SQL. Supports Claude, OpenAI, Gemini, OpenRouter, Ollama, and custom endpoints.
 
 ## Supported Databases
 
@@ -75,29 +75,33 @@ Chat with AI in plain English to write queries, get Copilot-style inline suggest
 | SQLite | Fully Supported | N/A (file-based) |
 | Amazon Redshift | Fully Supported | 5439 |
 | MongoDB | Fully Supported | 27017 |
+| Redis | Fully Supported | 6379 |
+| Microsoft SQL Server | Fully Supported | 1433 |
+| ClickHouse | Fully Supported | 8123 |
+| Oracle Database | Fully Supported | 1521 |
 
 ## System Requirements
 
 - **macOS**: 14.0 (Sonoma) or later
 - **Architecture**: Apple Silicon (arm64) or Intel (x86_64)
-- **Storage**: ~50 MB for the application
+- **Storage**: ~50 MB for the application (~200 MB recommended free disk space including data)
 
 ## Getting Started
 
-Get started: follow the [Quick Start Guide](/quickstart) to download TablePro and connect to your first database.
+Follow the [Quick Start Guide](/quickstart) to download TablePro and connect to your first database.
 
 <CardGroup cols={2}>
   <Card title="Quick Start" icon="rocket" href="/quickstart">
-    Get up and running in minutes with your first database connection.
+    Download, install, and connect to a database in under 5 minutes.
   </Card>
   <Card title="Installation" icon="download" href="/installation">
-    Detailed installation instructions and system requirements.
+    System requirements, Homebrew install, and troubleshooting.
   </Card>
 </CardGroup>
 
-## Source Available
+## Open Source
 
-TablePro is free, source-available software. The source code is publicly viewable on GitHub for transparency.
+TablePro is free, open-source software licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](https://www.gnu.org/licenses/agpl-3.0.html). The full source code is on GitHub.
 
 <Card title="GitHub Repository" icon="github" href="https://github.com/datlechin/tablepro">
   View source code, report issues, and contribute to TablePro.

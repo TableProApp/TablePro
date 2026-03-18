@@ -6,22 +6,62 @@ body:
     id: description
     attributes:
       label: What happened?
-      description: Describe the bug. Include steps to reproduce if possible.
-      placeholder: |
-        When I click X, Y happens instead of Z.
-
-        Steps to reproduce:
-        1. Open a MySQL connection
-        2. ...
+      description: A clear description of the bug.
+      placeholder: "When I do X, Y happens instead of Z."
     validations:
       required: true
 
-  - type: input
-    id: environment
+  - type: textarea
+    id: steps
     attributes:
-      label: Environment
-      description: "TablePro version, macOS version, chip (e.g. 0.5.0 / macOS 15.3 / Apple Silicon)"
-      placeholder: "0.5.0 / macOS 15.3 / Apple Silicon"
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Open a MySQL connection
+        2. Run a SELECT query
+        3. Click on a cell to edit
+        4. ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database type
+      options:
+        - MySQL / MariaDB
+        - PostgreSQL
+        - SQLite
+        - SQL Server
+        - MongoDB
+        - Redis
+        - ClickHouse
+        - Oracle
+        - N/A
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: TablePro version
+      placeholder: "0.16.0"
+    validations:
+      required: false
+
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version & chip
+      placeholder: "macOS 15.3 / Apple Silicon"
     validations:
       required: false
 

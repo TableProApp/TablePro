@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("SQL Parameter Inliner")
 struct SQLParameterInlinerTests {
-
     @Test("Simple ? replacement for MySQL")
     func simpleQuestionMarkReplacementMySQL() {
         let statement = ParameterizedStatement(
@@ -274,5 +273,19 @@ struct SQLParameterInlinerTests {
         let result = SQLParameterInliner.inline(statement, databaseType: .mariadb)
 
         #expect(result == "DELETE FROM users WHERE id = 10")
+    }
+
+    @Test("Large SQL with ? placeholders performs correctly")
+    func largeSQL() {
+        let columns = (0..<100).map { "col\($0) = ?" }.joined(separator: " AND ")
+        let sql = "UPDATE large_table SET \(columns)"
+        let params: [Any?] = (0..<100).map { $0 as Any? }
+        let statement = ParameterizedStatement(sql: sql, parameters: params)
+
+        let result = SQLParameterInliner.inline(statement, databaseType: .mysql)
+
+        #expect(result.contains("col0 = 0"))
+        #expect(result.contains("col99 = 99"))
+        #expect(!result.contains("?"))
     }
 }

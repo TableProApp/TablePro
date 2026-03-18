@@ -304,6 +304,7 @@ private func makeCoordinator(database: String = "db_a", type: DatabaseType = .my
         tabManager: QueryTabManager(),
         changeManager: DataChangeManager(),
         filterStateManager: FilterStateManager(),
+        columnVisibilityManager: ColumnVisibilityManager(),
         toolbarState: ConnectionToolbarState()
     )
 }

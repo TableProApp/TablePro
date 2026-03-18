@@ -1,0 +1,432 @@
+---
+title: 自动补全
+description: 感知 Schema 的 SQL 自动补全，支持别名解析、50ms 防抖，适用于 500KB+ 文件
+---
+
+# SQL 自动补全
+
+自动补全会分析光标位置、SQL 语法上下文、引用的表和别名以及数据库 schema，在查询的每个位置只提供相关的补全建议。
+
+{/* Screenshot: Autocomplete popup showing mixed suggestions */}
+<Frame caption="上下文感知的自动补全">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete.png"
+    alt="自动补全"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-dark.png"
+    alt="自动补全"
+  />
+</Frame>
+
+## 自动补全的工作原理
+
+自动补全引擎分析四个要素：
+
+1. **光标的当前位置**
+2. **SQL 语法上下文**（SELECT、FROM、WHERE 等）
+3. **引用的表**及其别名
+4. **数据库 schema**（表、列、函数）
+
+建议结果会过滤为光标处有意义的内容。
+
+## 触发自动补全
+
+### 自动触发
+
+输入时自动补全会自动出现：
+
+- 输入 1-2 个字符后
+- 输入 `.`（点号）访问列时
+- 在特定关键字后（SELECT、FROM、JOIN 等）
+
+### 手动触发
+
+手动呼出自动补全弹窗：
+
+- 开始输入并稍等片刻
+- 弹窗会显示相关建议
+
+### 关闭
+
+- 按 `Escape` 关闭弹窗
+- 继续输入以筛选建议
+- 点击弹窗外部
+
+## 补全类型
+
+### SQL 关键字
+
+关键字根据 SQL 语法上下文建议：
+
+```sql
+SEL|  -- 建议：SELECT
+FROM users WH|  -- 建议：WHERE
+SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- 建议：ORDER
+```
+
+{/* Screenshot: Keyword suggestions */}
+<Frame caption="SQL 关键字建议">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-keywords.png"
+    alt="关键字建议"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-keywords-dark.png"
+    alt="关键字建议"
+  />
+</Frame>
+
+**建议的关键字包括**：
+
+| 分类 | 关键字 |
+|------|--------|
+| 语句 | SELECT、INSERT、UPDATE、DELETE、CREATE、ALTER、DROP |
+| 子句 | FROM、WHERE、JOIN、ON、GROUP BY、ORDER BY、HAVING、LIMIT |
+| 运算符 | AND、OR、NOT、IN、LIKE、BETWEEN、IS NULL、EXISTS |
+| 连接 | INNER JOIN、LEFT JOIN、RIGHT JOIN、CROSS JOIN |
+
+### 表名
+
+在需要表引用的关键字后建议表名：
+
+```sql
+SELECT * FROM |  -- 建议所有表
+SELECT * FROM us|  -- 建议以 "us" 开头的表：users、user_roles
+SELECT * FROM users JOIN |  -- 建议所有表
+```
+
+{/* Screenshot: Table name suggestions */}
+<Frame caption="表名建议">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-tables.png"
+    alt="表名建议"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-tables-dark.png"
+    alt="表名建议"
+  />
+</Frame>
+
+### 列名
+
+根据引用的表建议列名：
+
+```sql
+SELECT | FROM users  -- 建议 users 表的列
+SELECT u.| FROM users u  -- 建议带 "u." 前缀的列
+SELECT * FROM users WHERE |  -- 建议 users 表的列
+```
+
+#### 表别名之后
+
+输入别名加 `.` 后显示该表的列：
+
+```sql
+SELECT
+    u.|  -- 显示：id、name、email、created_at（来自 users）
+FROM users u
+JOIN orders o ON u.id = o.|  -- 显示：id、user_id、total（来自 orders）
+```
+
+{/* Screenshot: Column suggestions after alias */}
+<Frame caption="别名表的列建议">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-alias.png"
+    alt="别名建议"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-alias-dark.png"
+    alt="别名建议"
+  />
+</Frame>
+
+### 函数
+
+在适当的上下文中建议 SQL 函数：
+
+```sql
+SELECT |  -- 建议：COUNT、SUM、AVG、MAX、MIN 等
+SELECT COUNT(|  -- 建议列和 *
+WHERE date_column > |  -- 建议：NOW()、CURRENT_DATE 等
+```
+
+**常见函数建议**：
+
+| 分类 | 函数 |
+|------|------|
+| 聚合 | COUNT、SUM、AVG、MAX、MIN |
+| 字符串 | CONCAT、SUBSTRING、UPPER、LOWER、TRIM |
+| 日期 | NOW、CURRENT_DATE、DATE_FORMAT、DATEADD |
+| 数学 | ROUND、ABS、CEIL、FLOOR |
+| 条件 | COALESCE、NULLIF、CASE、IF |
+
+{/* Screenshot: SQL function suggestions */}
+<Frame caption="SQL 函数建议">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-functions.png"
+    alt="SQL 函数建议"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-functions-dark.png"
+    alt="SQL 函数建议"
+  />
+</Frame>
+
+### Schema 名
+
+对于有多个 schema 的数据库（PostgreSQL）：
+
+```sql
+SELECT * FROM |  -- 建议：public、schema1、schema2
+SELECT * FROM public.|  -- 建议 public schema 中的表
+```
+
+## 上下文感知建议
+
+### SELECT 之后
+
+紧跟 SELECT 之后：
+
+- FROM 子句中表的列名
+- `*` 表示所有列
+- `DISTINCT` 修饰符
+- 聚合函数
+
+```sql
+SELECT |
+-- 建议：*、DISTINCT、列名、函数
+```
+
+### FROM/JOIN 之后
+
+在 FROM 或 JOIN 关键字之后：
+
+- 所有可访问的表名
+- 带 schema 限定的名称（schema.table）
+
+### WHERE 之后
+
+在 WHERE 子句中：
+
+- 已选表的列名
+- 比较运算符
+- 逻辑运算符（AND、OR）
+
+### ON 之后（JOIN 条件）
+
+在 JOIN ON 子句中：
+
+- 两个连接表的列
+- 常用于外键关系
+
+```sql
+SELECT * FROM users u
+JOIN orders o ON |
+-- 建议：u.id、o.user_id 等
+```
+
+{/* Screenshot: Column suggestions in JOIN ON clause */}
+<Frame caption="JOIN ON 子句中的列建议">
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-join.png"
+    alt="JOIN ON 子句中的列建议"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-join-dark.png"
+    alt="JOIN ON 子句中的列建议"
+  />
+</Frame>
+
+### GROUP BY 之后
+
+- SELECT 子句中出现的列
+- 非聚合的列名
+
+### ORDER BY 之后
+
+- 列名
+- SELECT 中定义的别名
+- ASC/DESC 关键字
+
+## 使用补全
+
+### 键盘导航
+
+| 按键 | 操作 |
+|------|------|
+| `Down` 方向键 | 选择下一个建议 |
+| `Up` 方向键 | 选择上一个建议 |
+| `Enter` | 接受选中的建议 |
+| `Tab` | 接受选中的建议 |
+| `Escape` | 关闭弹窗 |
+
+### 筛选
+
+继续输入以筛选建议：
+
+```sql
+SELECT * FROM user|
+-- 显示：users、user_roles、user_preferences
+-- 输入更多字符可缩小范围
+```
+
+### 接受建议
+
+接受建议后：
+
+1. 建议文本插入到光标位置
+2. 已输入的前缀被替换
+3. 光标移到插入文本的末尾
+
+## Schema 缓存
+
+### Schema 加载方式
+
+连接时，TablePro 会：
+
+1. 获取所有表名
+2. 加载每张表的列信息
+3. 缓存这些信息以加速自动补全
+
+### 刷新 Schema
+
+如果你进行了 schema 变更（添加表、修改列）：
+
+1. 右键点击侧边栏中的连接
+2. 选择 **Refresh**
+
+或者断开连接后重新连接。
+
+<Tip>
+在 TablePro 中进行的 schema 变更（通过结构标签页）会自动反映到自动补全中。
+</Tip>
+
+## 性能
+
+### 大文件
+
+自动补全适用于任意大小的 SQL 文件，包括数 MB 的转储文件。对于大于 500 KB 的文件，引擎会提取光标附近约 10 KB 的窗口，仅分析就近的语句。无论文件总大小如何，建议都能即时呈现。
+
+### 大型 Schema
+
+对于有 100+ 张表的数据库：
+
+- 初始 schema 加载可能需要一点时间
+- 缓存完成后自动补全保持响应
+- 输入更多字符可更快缩小建议范围
+
+### 提升性能的建议
+
+1. **输入更多字符**：更快缩小建议范围
+2. **使用表别名**：减少查找范围
+3. **等待缓存完成**：首次加载后 schema 会被缓存
+
+## 局限性
+
+### 不会建议的内容
+
+- 临时表（不在 schema 中）
+- 子查询别名
+- 动态列名
+- 来自其他连接的列
+
+### 查询复杂度
+
+非常复杂的查询上下文感知能力有限：
+
+- 深度嵌套的子查询
+- 复杂的 CTE
+- 动态 SQL
+
+这些情况下基本的关键字和表名建议仍然有效。
+
+## 配置
+
+自动补全默认开启，无需配置。补全触发器应用了 50ms 的防抖，以减少不必要的计算。
+
+## 最佳实践
+
+### 使用表别名
+
+别名让自动补全更精准：
+
+```sql
+-- Good: Clear which table each column comes from
+SELECT u.name, o.total
+FROM users u
+JOIN orders o ON u.id = o.user_id
+
+-- Less clear without aliases
+SELECT users.name, orders.total
+FROM users
+JOIN orders ON users.id = orders.user_id
+```
+
+### 先写 FROM
+
+先写 FROM 可以为自动补全提供表的上下文：
+
+```sql
+-- This approach helps autocomplete
+FROM users u
+JOIN orders o ON u.id = o.user_id
+SELECT u.|  -- Now knows about u and o tables
+```
+
+### 让建议引导你
+
+如果你不确定确切的列名：
+
+1. 输入表别名加点号：`u.`
+2. 浏览建议列表
+3. 选择正确的列
+
+## 故障排除
+
+### 建议不出现
+
+1. **检查连接**：确保已连接到数据库
+2. **刷新 schema**：右键点击连接 > Refresh
+3. **等待缓存**：大型 schema 可能需要时间加载
+
+### 建议不正确
+
+1. **检查表别名**：确保别名定义正确
+2. **检查 FROM 子句**：必须引用了表才能建议列
+3. **schema 变更后刷新**：schema 变更需要刷新
+
+### 建议速度慢
+
+1. **输入更多字符**：缩小搜索范围
+2. **使用别名**：限制列搜索范围
+3. **检查数据库连接**：网络延迟会影响 schema 加载
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    配合自动补全编写查询
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看查询结果
+  </Card>
+  <Card title="表结构" icon="table-columns" href="/zh/features/table-structure">
+    探索你的 schema
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    提升工作效率
+  </Card>
+</CardGroup>

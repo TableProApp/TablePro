@@ -71,7 +71,7 @@ final class DatePickerCellEditor: NSDatePicker {
     private func setupUI() {
         datePickerStyle = .textFieldAndStepper
         datePickerElements = [.yearMonthDay, .hourMinuteSecond]
-        font = .monospacedSystemFont(ofSize: DesignConstants.FontSize.body, weight: .regular)
+        font = .monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.body, weight: .regular)
         isBezeled = false
         isBordered = false
         drawsBackground = false

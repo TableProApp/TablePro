@@ -2,7 +2,7 @@
 //  AppearanceSettingsView.swift
 //  TablePro
 //
-//  Settings for theme and accent color
+//  Settings for theme browsing, customization, and accent color.
 //
 
 import SwiftUI
@@ -11,34 +11,39 @@ struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
 
     var body: some View {
-        Form {
-            Picker("Appearance:", selection: $settings.theme) {
-                ForEach(AppTheme.allCases) { theme in
-                    Text(theme.displayName).tag(theme)
-                }
-            }
-            .pickerStyle(.segmented)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text("Appearance")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
 
-            Picker("Accent Color:", selection: $settings.accentColor) {
-                ForEach(AccentColorOption.allCases) { option in
-                    HStack {
-                        if option != .system {
-                            Circle()
-                                .fill(option.color)
-                                .frame(width: 12, height: 12)
-                        }
-                        Text(option.displayName)
+                Picker("", selection: $settings.appearanceMode) {
+                    ForEach(AppAppearanceMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
                     }
-                    .tag(option)
                 }
+                .pickerStyle(.segmented)
+                .fixedSize()
+
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            HSplitView {
+                ThemeListView(selectedThemeId: $settings.activeThemeId)
+                    .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
+
+                ThemeEditorView(selectedThemeId: $settings.activeThemeId)
+                    .frame(minWidth: 400)
             }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 }
 
 #Preview {
     AppearanceSettingsView(settings: .constant(.default))
-        .frame(width: 450, height: 200)
+        .frame(width: 720, height: 500)
 }

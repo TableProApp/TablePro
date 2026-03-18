@@ -15,6 +15,8 @@ struct SSHConfigEntry: Identifiable, Hashable {
     let port: Int?  // Port number
     let user: String?  // Username
     let identityFile: String?  // Path to private key
+    let identityAgent: String?  // Path to SSH agent socket
+    let proxyJump: String?  // ProxyJump directive
 
     /// Display name for UI
     var displayName: String {
@@ -52,6 +54,8 @@ final class SSHConfigParser {
         var currentPort: Int?
         var currentUser: String?
         var currentIdentityFile: String?
+        var currentIdentityAgent: String?
+        var currentProxyJump: String?
 
         let lines = content.components(separatedBy: .newlines)
 
@@ -82,7 +86,9 @@ final class SSHConfigParser {
                                 hostname: currentHostname,
                                 port: currentPort,
                                 user: currentUser,
-                                identityFile: expandPath(currentIdentityFile)
+                                identityFile: currentIdentityFile.map(SSHPathUtilities.expandTilde),
+                                identityAgent: currentIdentityAgent.map(SSHPathUtilities.expandTilde),
+                                proxyJump: currentProxyJump
                             ))
                     }
                 }
@@ -93,6 +99,8 @@ final class SSHConfigParser {
                 currentPort = nil
                 currentUser = nil
                 currentIdentityFile = nil
+                currentIdentityAgent = nil
+                currentProxyJump = nil
 
             case "hostname":
                 currentHostname = value
@@ -105,6 +113,12 @@ final class SSHConfigParser {
 
             case "identityfile":
                 currentIdentityFile = value
+
+            case "identityagent":
+                currentIdentityAgent = value
+
+            case "proxyjump":
+                currentProxyJump = value
 
             default:
                 break  // Ignore other directives
@@ -119,7 +133,9 @@ final class SSHConfigParser {
                     hostname: currentHostname,
                     port: currentPort,
                     user: currentUser,
-                    identityFile: expandPath(currentIdentityFile)
+                    identityFile: currentIdentityFile.map(SSHPathUtilities.expandTilde),
+                    identityAgent: currentIdentityAgent.map(SSHPathUtilities.expandTilde),
+                    proxyJump: currentProxyJump
                 ))
         }
 
@@ -136,14 +152,43 @@ final class SSHConfigParser {
         return entries.first { $0.host.lowercased() == host.lowercased() }
     }
 
-    /// Expand ~ to home directory in path
-    private static func expandPath(_ path: String?) -> String? {
-        guard let path = path else { return nil }
+    /// Parse a ProxyJump value (e.g., "user@host:port,user2@host2") into SSHJumpHost array
+    static func parseProxyJump(_ value: String) -> [SSHJumpHost] {
+        let hops = value.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        var jumpHosts: [SSHJumpHost] = []
 
-        if path.hasPrefix("~") {
-            return FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(String(path.dropFirst(2))).path(percentEncoded: false)
+        for hop in hops where !hop.isEmpty {
+            var jumpHost = SSHJumpHost()
+
+            var remaining = hop
+
+            // Extract user@ prefix
+            if let atIndex = remaining.firstIndex(of: "@") {
+                jumpHost.username = String(remaining[remaining.startIndex..<atIndex])
+                remaining = String(remaining[remaining.index(after: atIndex)...])
+            }
+
+            // Extract host and port (supports bracketed IPv6, e.g. [::1]:22)
+            if remaining.hasPrefix("["),
+               let closeBracket = remaining.firstIndex(of: "]") {
+                jumpHost.host = String(remaining[remaining.index(after: remaining.startIndex)..<closeBracket])
+                let afterBracket = remaining.index(after: closeBracket)
+                if afterBracket < remaining.endIndex,
+                   remaining[afterBracket] == ":",
+                   let port = Int(String(remaining[remaining.index(after: afterBracket)...])) {
+                    jumpHost.port = port
+                }
+            } else if let colonIndex = remaining.lastIndex(of: ":"),
+                      let port = Int(String(remaining[remaining.index(after: colonIndex)...])) {
+                jumpHost.host = String(remaining[remaining.startIndex..<colonIndex])
+                jumpHost.port = port
+            } else {
+                jumpHost.host = remaining
+            }
+
+            jumpHosts.append(jumpHost)
         }
-        return path
+
+        return jumpHosts
     }
 }

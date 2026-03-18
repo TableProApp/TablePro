@@ -1,0 +1,122 @@
+---
+title: 概述
+description: 用于许可证激活、验证和停用的 REST API，支持 RSA-SHA256 签名响应
+---
+
+## 基础 URL
+
+```
+https://api.tablepro.app/v1
+```
+
+## 端点
+
+三个端点用于许可证生命周期管理：
+
+| 方法 | 端点 | 描述 |
+| ------ | -------- | ----------- |
+| `POST` | `/license/activate` | 在某台设备上激活许可证 |
+| `POST` | `/license/validate` | 验证已激活的许可证 |
+| `POST` | `/license/deactivate` | 从某台设备停用许可证 |
+
+## 请求格式
+
+所有请求必须为 JSON 格式，并携带 `Content-Type: application/json` 头部。
+
+### 公共参数
+
+| 参数 | 类型 | 描述 |
+| --------- | ---- | ----------- |
+| `license_key` | `string` | 许可证密钥，格式为 `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`（字母数字） |
+| `machine_id` | `string` | 设备标识符的 SHA-256 哈希值（64 位十六进制字符） |
+
+## 响应格式
+
+成功的激活和验证响应会返回已签名的许可证数据：
+
+```json
+{
+  "data": {
+    "email": "john@example.com",
+    "expires_at": "2027-02-11T00:00:00+00:00",
+    "issued_at": "2026-02-12T10:30:00+00:00",
+    "license_key": "ABCDE-12345-FGHIJ-67890-KLMNO",
+    "status": "active"
+  },
+  "signature": "base64-encoded-signature"
+}
+```
+
+`signature` 字段是 `data` 对象的 RSA-SHA256 加密签名。可在客户端使用公钥验证以确保响应完整性。
+
+## 响应签名
+
+所有成功的激活和验证响应都经过加密签名：
+
+1. `data` 对象的字段按键名字母顺序排序
+2. 排序后的对象进行 JSON 编码
+3. JSON 字符串使用 RSA-SHA256 签名
+4. 签名以 Base64 格式返回
+
+这使客户端能够验证许可证数据未被篡改。
+
+## 速率限制
+
+所有端点都有速率限制。速率限制信息包含在响应头中：
+
+| 头部 | 描述 |
+| ------ | ----------- |
+| `X-RateLimit-Limit` | 当前窗口期内允许的最大请求数 |
+| `X-RateLimit-Remaining` | 当前窗口期内剩余的请求数 |
+| `X-RateLimit-Reset` | 窗口期重置的 Unix 时间戳 |
+
+超出限制时，API 返回 `429`：
+
+```json
+{
+  "message": "Too many requests.",
+  "retry_after": 60
+}
+```
+
+## 错误处理
+
+错误响应采用统一格式：
+
+```json
+{
+  "message": "Human-readable error message."
+}
+```
+
+### 状态码
+
+| 状态码 | 描述 |
+| ---- | ----------- |
+| `200` | 成功 |
+| `403` | 许可证已暂停、已过期或设备未激活 |
+| `404` | 未找到许可证密钥 |
+| `409` | 已达激活数量上限 |
+| `422` | 验证错误（请求参数无效） |
+| `429` | 超出速率限制 |
+
+### 验证错误
+
+`422` 响应包含字段级别的详细信息：
+
+```json
+{
+  "message": "The given data was invalid.",
+  "errors": {
+    "license_key": ["The license key field is required."],
+    "machine_id": ["The machine id must be 64 characters."]
+  }
+}
+```
+
+## 许可证状态
+
+| 状态 | 描述 |
+| ------ | ----------- |
+| `active` | 许可证有效且可用 |
+| `suspended` | 许可证已暂停，无法激活或验证 |

@@ -1,0 +1,108 @@
+---
+title: 简介
+description: 原生 macOS 数据库客户端，支持 MySQL、PostgreSQL、SQLite、MongoDB、Redis、SQL Server、ClickHouse、Oracle、Redshift，并内置 AI SQL 助手
+---
+
+# TablePro
+
+一款原生 macOS 数据库客户端。快速、轻量，内置 AI SQL 助手。基于 SwiftUI 和 AppKit 构建，使用 Apple 原生框架和系统库，带来真正的 macOS 性能体验。
+
+{/* Screenshot: Main application window showing the SQL editor, sidebar with connections, and data grid */}
+<Frame caption="TablePro - 原生 macOS 数据库客户端">
+  <img
+    className="block dark:hidden"
+    src="/images/hero.png"
+    alt="TablePro 主界面"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/hero-dark.png"
+    alt="TablePro 主界面"
+  />
+</Frame>
+
+## 为什么选择 TablePro？
+
+<CardGroup cols={2}>
+  <Card title="原生性能" icon="bolt">
+    Swift 与 Apple 原生框架。没有 Electron，没有 Web 视图。响应速度符合真正 Mac 应用的标准。
+  </Card>
+  <Card title="多数据库支持" icon="database">
+    MySQL、MariaDB、PostgreSQL、SQLite、MongoDB、Redis、SQL Server、ClickHouse、Oracle 和 Amazon Redshift，一个界面全搞定。
+  </Card>
+  <Card title="智能自动补全" icon="wand-magic-sparkles">
+    上下文感知的 SQL 自动补全，能识别你的 schema、表、列和 SQL 语法。
+  </Card>
+  <Card title="安全连接" icon="lock">
+    支持 SSH 隧道，提供密码和私钥认证，安全访问远程数据库。
+  </Card>
+  <Card title="AI SQL 助手" icon="sparkles">
+    与 AI 对话、获取内联建议，通过右键菜单解释、优化或修复 SQL。支持 Claude、OpenAI、Gemini、Ollama 等多种服务。
+  </Card>
+</CardGroup>
+
+## 核心功能
+
+### SQL 编辑器
+语法高亮、行号显示，以及能根据数据库 schema 自适应的自动补全。
+
+<Tip>
+使用 `Cmd+Enter` 执行当前查询或选中的文本。
+</Tip>
+
+### 数据表格
+高性能的电子表格式数据网格，支持内联编辑、排序和筛选。
+
+### 表结构
+通过可视化界面查看和修改列、索引和外键。
+
+### 导入与导出
+支持从 CSV、JSON 和 SQL 文件导入。支持多种格式导出，用于备份或迁移。
+
+### 查询历史
+在完整的查询历史中进行全文搜索。即时重新运行或修改历史查询。
+
+### AI SQL 助手
+用自然语言编写查询，获取 Copilot 风格的内联建议，右键即可解释或优化 SQL。支持 Claude、OpenAI、Gemini、OpenRouter、Ollama 和自定义端点。
+
+## 支持的数据库
+
+| 数据库 | 状态 | 默认端口 |
+|----------|--------|--------------|
+| MySQL | 完全支持 | 3306 |
+| MariaDB | 完全支持 | 3306 |
+| PostgreSQL | 完全支持 | 5432 |
+| SQLite | 完全支持 | 不适用（基于文件） |
+| Amazon Redshift | 完全支持 | 5439 |
+| MongoDB | 完全支持 | 27017 |
+| Redis | 完全支持 | 6379 |
+| Microsoft SQL Server | 完全支持 | 1433 |
+| ClickHouse | 完全支持 | 8123 |
+| Oracle Database | 完全支持 | 1521 |
+
+## 系统要求
+
+- **macOS**: 14.0 (Sonoma) 或更高版本
+- **架构**: Apple Silicon (arm64) 或 Intel (x86_64)
+- **存储空间**: 应用约 50 MB（建议预留约 200 MB 可用磁盘空间，包含数据存储）
+
+## 开始使用
+
+按照[快速入门指南](/zh/quickstart)下载 TablePro，并连接到你的第一个数据库。
+
+<CardGroup cols={2}>
+  <Card title="快速入门" icon="rocket" href="/zh/quickstart">
+    下载、安装并在 5 分钟内连接到数据库。
+  </Card>
+  <Card title="安装指南" icon="download" href="/zh/installation">
+    系统要求、Homebrew 安装和常见问题排查。
+  </Card>
+</CardGroup>
+
+## 开源项目
+
+TablePro 是免费的开源软件，采用 [GNU Affero General Public License v3.0 (AGPLv3)](https://www.gnu.org/licenses/agpl-3.0.html) 许可证。完整源代码托管在 GitHub 上。
+
+<Card title="GitHub 仓库" icon="github" href="https://github.com/datlechin/tablepro">
+  查看源代码、报告问题并参与 TablePro 的开发。
+</Card>

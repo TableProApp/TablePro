@@ -63,11 +63,11 @@ struct FilterPanelView: View {
     private var filterHeader: some View {
         HStack(spacing: 8) {
             Text("Filters")
-                .font(.system(size: DesignConstants.FontSize.medium, weight: .medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
 
             if filterState.hasAppliedFilters {
                 Text("(\(filterState.appliedFilters.count) active)")
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
             }
 
@@ -88,7 +88,7 @@ struct FilterPanelView: View {
             // Settings button
             Button(action: { showSettingsPopover.toggle() }) {
                 Image(systemName: "gearshape")
-                    .font(.system(size: DesignConstants.IconSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
@@ -103,7 +103,7 @@ struct FilterPanelView: View {
                 filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
             }) {
                 Image(systemName: "plus")
-                    .font(.system(size: DesignConstants.IconSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.tint)
@@ -111,7 +111,7 @@ struct FilterPanelView: View {
             .help("Add Filter (Cmd+Shift+F)")
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, DesignConstants.Spacing.xs)
+        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xs)
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .onTapGesture { filterState.focusedFilterId = nil }
@@ -167,7 +167,7 @@ struct FilterPanelView: View {
             }
         } label: {
             Image(systemName: "folder")
-                .font(.system(size: DesignConstants.IconSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
@@ -217,7 +217,7 @@ struct FilterPanelView: View {
         HStack(spacing: 8) {
             Toggle("Select All", isOn: selectAllBinding)
                 .toggleStyle(.checkbox)
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .foregroundStyle(.secondary)
                 .disabled(filterState.filters.isEmpty)
 
@@ -231,7 +231,7 @@ struct FilterPanelView: View {
             .controlSize(.small)
             .disabled(!filterState.hasAppliedFilters)
 
-            Button(databaseType == .mongodb ? "MQL" : databaseType == .redis ? "CMD" : "SQL") {
+            Button(PluginManager.shared.queryLanguageName(for: databaseType)) {
                 generatedSQL = filterState.generatePreviewSQL(databaseType: databaseType)
                 showSQLSheet = true
             }

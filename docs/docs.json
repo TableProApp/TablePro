@@ -39,7 +39,11 @@
                   "databases/mongodb",
                   "databases/redis",
                   "databases/redshift",
+                  "databases/oracle",
+                  "databases/clickhouse",
+                  "databases/cassandra",
                   "databases/mssql",
+                  "databases/oracle",
                   "databases/ssh-tunneling"
                 ]
               },
@@ -55,10 +59,13 @@
                   "features/change-tracking",
                   "features/tabs",
                   "features/import-export",
+                  "features/sql-favorites",
                   "features/query-history",
                   "features/ai-chat",
                   "features/keyboard-shortcuts",
-                  "features/deep-links"
+                  "features/deep-links",
+                  "features/safe-mode",
+                  "features/icloud-sync"
                 ]
               },
               {
@@ -94,7 +101,8 @@
                   "development/setup",
                   "development/architecture",
                   "development/code-style",
-                  "development/building"
+                  "development/building",
+                  "development/plugin-registry"
                 ]
               }
             ]
@@ -128,7 +136,11 @@
                   "vi/databases/mongodb",
                   "vi/databases/redis",
                   "vi/databases/redshift",
+                  "vi/databases/oracle",
+                  "vi/databases/clickhouse",
+                  "vi/databases/cassandra",
                   "vi/databases/mssql",
+                  "vi/databases/oracle",
                   "vi/databases/ssh-tunneling"
                 ]
               },
@@ -144,10 +156,13 @@
                   "vi/features/change-tracking",
                   "vi/features/tabs",
                   "vi/features/import-export",
+                  "vi/features/sql-favorites",
                   "vi/features/query-history",
                   "vi/features/ai-chat",
                   "vi/features/keyboard-shortcuts",
-                  "vi/features/deep-links"
+                  "vi/features/deep-links",
+                  "vi/features/safe-mode",
+                  "vi/features/icloud-sync"
                 ]
               },
               {
@@ -187,7 +202,109 @@
                   "vi/development/setup",
                   "vi/development/architecture",
                   "vi/development/code-style",
-                  "vi/development/building"
+                  "vi/development/building",
+                  "vi/development/plugin-registry"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "zh",
+        "tabs": [
+          {
+            "tab": "文档",
+            "groups": [
+              {
+                "group": "快速开始",
+                "pages": [
+                  "zh/index",
+                  "zh/quickstart",
+                  "zh/installation",
+                  "zh/changelog"
+                ]
+              },
+              {
+                "group": "数据库连接",
+                "pages": [
+                  "zh/databases/overview",
+                  "zh/databases/connection-urls",
+                  "zh/databases/mysql",
+                  "zh/databases/postgresql",
+                  "zh/databases/sqlite",
+                  "zh/databases/mongodb",
+                  "zh/databases/redis",
+                  "zh/databases/redshift",
+                  "zh/databases/oracle",
+                  "zh/databases/clickhouse",
+                  "zh/databases/cassandra",
+                  "zh/databases/duckdb",
+                  "zh/databases/mssql",
+                  "zh/databases/oracle",
+                  "zh/databases/ssh-tunneling"
+                ]
+              },
+              {
+                "group": "功能特性",
+                "pages": [
+                  "zh/features/sql-editor",
+                  "zh/features/data-grid",
+                  "zh/features/autocomplete",
+                  "zh/features/table-structure",
+                  "zh/features/table-operations",
+                  "zh/features/filtering",
+                  "zh/features/change-tracking",
+                  "zh/features/tabs",
+                  "zh/features/import-export",
+                  "zh/features/sql-favorites",
+                  "zh/features/query-history",
+                  "zh/features/ai-chat",
+                  "zh/features/keyboard-shortcuts",
+                  "zh/features/deep-links",
+                  "zh/features/safe-mode",
+                  "zh/features/icloud-sync"
+                ]
+              },
+              {
+                "group": "自定义",
+                "pages": [
+                  "zh/customization/settings",
+                  "zh/customization/appearance",
+                  "zh/customization/editor-settings"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API",
+            "groups": [
+              {
+                "group": "API 参考",
+                "pages": ["zh/api/overview"]
+              },
+              {
+                "group": "许可证",
+                "icon": "key",
+                "pages": [
+                  "zh/api/activate",
+                  "zh/api/validate",
+                  "zh/api/deactivate"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "开发",
+            "groups": [
+              {
+                "group": "参与贡献",
+                "pages": [
+                  "zh/development/setup",
+                  "zh/development/architecture",
+                  "zh/development/code-style",
+                  "zh/development/building",
+                  "zh/development/plugin-registry"
                 ]
               }
             ]

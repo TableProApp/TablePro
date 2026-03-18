@@ -54,10 +54,6 @@ struct ConnectionSessionEquivalenceTests {
         a.lastActiveAt = Date(timeIntervalSince1970: 1_000)
         b.lastActiveAt = Date(timeIntervalSince1970: 2_000)
 
-        // selectedTabId differs — excluded from comparison
-        a.selectedTabId = UUID()
-        b.selectedTabId = UUID()
-
         // lastError differs — excluded from comparison
         a.lastError = "something"
         b.lastError = nil

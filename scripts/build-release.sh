@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eo pipefail
+set -euo pipefail
 
 # Build script for creating architecture-specific releases
 # Usage: ./build-release.sh [arm64|x86_64|both]
@@ -264,8 +264,7 @@ bundle_dylibs() {
     # (e.g. strchrnul) that don't exist on earlier OS versions → launch crash.
     echo "   Verifying deployment target compatibility..."
     local deploy_target
-    deploy_target=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showBuildSettings 2>/dev/null \
-        | grep -m 1 'MACOSX_DEPLOYMENT_TARGET' | awk '{print $3}')
+    deploy_target=$(echo "$build_settings" | grep -m 1 '^\s*MACOSX_DEPLOYMENT_TARGET = ' | awk '{print $3}')
     if [ -n "$deploy_target" ]; then
         local deploy_major
         deploy_major=$(echo "$deploy_target" | cut -d. -f1)
@@ -301,13 +300,6 @@ bundle_dylibs() {
         echo "   ⚠️  WARNING: Could not determine deployment target, skipping dylib version check"
     fi
 
-    # Sign bundled dylibs (will be re-signed with proper identity later)
-    echo "   Signing bundled libraries (preliminary)..."
-    for fw in "$frameworks_dir"/*.dylib; do
-        [ -f "$fw" ] || continue
-        codesign -fs - --force "$fw" 2>/dev/null || true
-    done
-
     echo "✅ Bundled $count dynamic libraries into Frameworks/"
     ls -lh "$frameworks_dir"/*.dylib 2>/dev/null
 }
@@ -316,6 +308,14 @@ build_for_arch() {
     local arch=$1
     echo ""
     echo "🔨 Building for $arch..."
+
+    # Fetch build settings once for this arch (used by build_for_arch and bundle_dylibs)
+    echo "Fetching build settings..."
+    if ! build_settings=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$CONFIG" -arch "$arch" -skipPackagePluginValidation -showBuildSettings 2>&1); then
+        echo "❌ FATAL: xcodebuild -showBuildSettings failed"
+        echo "$build_settings"
+        exit 1
+    fi
 
     # Prepare architecture-specific libraries
     prepare_mariadb "$arch"
@@ -335,6 +335,21 @@ build_for_arch() {
     # Persistent SPM package cache (speeds up CI on self-hosted runners)
     SPM_CACHE_DIR="${HOME}/.spm-cache"
     mkdir -p "$SPM_CACHE_DIR"
+
+    # Inject provisioning profile UUID into pbxproj for the main app target only.
+    # Command-line PROVISIONING_PROFILE_SPECIFIER applies to ALL targets (plugins,
+    # SPM packages) which breaks them. Instead, replace the empty specifier in
+    # the main app target's build settings directly.
+    PROFILE_PATH=$(find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.provisionprofile" -print -quit 2>/dev/null)
+    if [ -n "${PROFILE_PATH:-}" ]; then
+        PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH" 2>/dev/null)" || true)
+        if [ -n "${PROFILE_UUID:-}" ]; then
+            echo "📋 Injecting provisioning profile into pbxproj: $PROFILE_UUID"
+            # The main app target has PROVISIONING_PROFILE_SPECIFIER = "";
+            # Other targets don't have this key at all, so this is safe.
+            sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = \"\";/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_UUID\";/g" "$PROJECT/project.pbxproj"
+        fi
+    fi
 
     # Build with xcodebuild
     echo "Running xcodebuild..."
@@ -358,7 +373,7 @@ build_for_arch() {
     echo "✅ Build succeeded for $arch"
 
     # Get binary path with validation
-    DERIVED_DATA=$(xcodebuild -project "$PROJECT" -scheme "$SCHEME" -showBuildSettings 2>&1 | grep -m 1 "BUILD_DIR" | awk '{print $3}')
+    DERIVED_DATA=$(echo "$build_settings" | grep -m 1 "BUILD_DIR" | awk '{print $3}')
 
     if [ -z "$DERIVED_DATA" ]; then
         echo "❌ FATAL: Failed to determine build directory from xcodebuild settings"
@@ -404,25 +419,50 @@ build_for_arch() {
         exit 1
     fi
 
-    # Fix app icon - Xcode strips larger sizes from icns in asset catalogs
-    # Copy the full source icon to ensure all sizes (16-1024px) are included
-    SOURCE_ICON="TablePro/Assets.xcassets/AppIcon.appiconset/AppIcon.icns"
-    DEST_ICON="$BUILD_DIR/$OUTPUT_NAME/Contents/Resources/AppIcon.icns"
-    if [ -f "$SOURCE_ICON" ]; then
-        echo "🎨 Restoring full app icon (Xcode strips large sizes from asset catalog)..."
-        if cp "$SOURCE_ICON" "$DEST_ICON"; then
-            echo "   ✅ Full icon restored ($(ls -lh "$SOURCE_ICON" | awk '{print $5}'))"
-        else
-            echo "   ⚠️  WARNING: Could not copy icon, DMG may have missing icon"
-        fi
-    else
-        echo "   ⚠️  WARNING: Source icon not found at $SOURCE_ICON"
-    fi
-
     # Remove any stale nested .app bundles in the bundle root (breaks codesign)
     for nested in "$BUILD_DIR/$OUTPUT_NAME"/*.app; do
         [ -d "$nested" ] && rm -rf "$nested"
     done
+
+    # Strip plugin binaries — removes debug symbols, code coverage (__LLVM_COV),
+    # and dead LINKEDIT metadata that bloat the bundle (e.g., OracleDriver 43MB → ~15MB)
+    echo "🔪 Stripping plugin binaries..."
+    PLUGINS_DIR="$BUILD_DIR/$OUTPUT_NAME/Contents/PlugIns"
+    if [ -d "$PLUGINS_DIR" ]; then
+        for plugin in "$PLUGINS_DIR"/*.tableplugin; do
+            [ -d "$plugin" ] || continue
+            local plugin_name
+            plugin_name=$(basename "$plugin" .tableplugin)
+            local plugin_binary="$plugin/Contents/MacOS/$plugin_name"
+            if [ -f "$plugin_binary" ]; then
+                local before
+                before=$(ls -lh "$plugin_binary" | awk '{print $5}')
+                strip -x "$plugin_binary"
+                local after
+                after=$(ls -lh "$plugin_binary" | awk '{print $5}')
+                echo "   $plugin_name: $before → $after"
+            fi
+        done
+        echo "✅ Plugin binaries stripped"
+    fi
+
+    # Strip main binary
+    local main_binary="$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS/TablePro"
+    if [ -f "$main_binary" ]; then
+        local before
+        before=$(ls -lh "$main_binary" | awk '{print $5}')
+        strip -x "$main_binary"
+        local after
+        after=$(ls -lh "$main_binary" | awk '{print $5}')
+        echo "🔪 Main binary: $before → $after"
+    fi
+
+    # Strip PluginKit framework
+    local pluginkit_binary="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks/TableProPluginKit.framework/Versions/A/TableProPluginKit"
+    if [ -f "$pluginkit_binary" ]; then
+        strip -x "$pluginkit_binary"
+        echo "   TableProPluginKit framework stripped"
+    fi
 
     # Bundle non-system dynamic libraries (libpq, OpenSSL, etc.)
     bundle_dylibs "$BUILD_DIR/$OUTPUT_NAME"
@@ -460,8 +500,32 @@ build_for_arch() {
         codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$dylib"
     done
 
+    # Sign plugin bundles (stripped binaries need re-signing)
+    # Sign binary first, then bundle — inside-out order required for valid signatures
+    if [ -d "$PLUGINS_DIR" ]; then
+        for plugin in "$PLUGINS_DIR"/*.tableplugin; do
+            [ -d "$plugin" ] || continue
+            local plugin_name
+            plugin_name=$(basename "$plugin" .tableplugin)
+            local plugin_binary="$plugin/Contents/MacOS/$plugin_name"
+            # Sign the binary inside the bundle first
+            if [ -f "$plugin_binary" ]; then
+                codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$plugin_binary"
+            fi
+            # Then sign the bundle
+            codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$plugin"
+        done
+    fi
+
+    # Embed provisioning profile (required for iCloud entitlements)
+    PROFILE=$(find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.provisionprofile" -print -quit 2>/dev/null)
+    if [ -n "$PROFILE" ]; then
+        echo "📋 Embedding provisioning profile: $(basename "$PROFILE")"
+        cp "$PROFILE" "$BUILD_DIR/$OUTPUT_NAME/Contents/embedded.provisionprofile"
+    fi
+
     # Sign the app bundle last
-    codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$BUILD_DIR/$OUTPUT_NAME"
+    codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp --entitlements "TablePro/TablePro.entitlements" "$BUILD_DIR/$OUTPUT_NAME"
     echo "✅ Code signing complete"
 
     # Verify signature

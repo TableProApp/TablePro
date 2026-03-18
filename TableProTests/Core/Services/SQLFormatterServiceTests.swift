@@ -10,6 +10,7 @@ import Testing
 @testable import TablePro
 
 @Suite("SQL Formatter Service")
+@MainActor
 struct SQLFormatterServiceTests {
 
     let formatter = SQLFormatterService()

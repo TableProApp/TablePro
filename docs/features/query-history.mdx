@@ -1,23 +1,23 @@
 ---
 title: Query History
-description: Access and search your complete query history
+description: Every executed query is saved to a local SQLite database with FTS5 full-text search
 ---
 
 # Query History
 
-TablePro automatically saves every query you execute, making it easy to find, re-run, or modify previous queries. The query history persists across sessions and can be searched with full-text search.
+Every query you execute is automatically saved to a local SQLite database. Search with full-text search, filter by connection or time range, and re-run past queries. History persists across sessions.
 
 {/* Screenshot: Query history panel showing list of past queries */}
 <Frame caption="Query history panel">
-  <img 
-    className="block dark:hidden" 
-    src="/images/query-history.png" 
-    alt="Query History" 
+  <img
+    className="block dark:hidden"
+    src="/images/query-history.png"
+    alt="Query History"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/query-history-dark.png" 
-    alt="Query History" 
+  <img
+    className="hidden dark:block"
+    src="/images/query-history-dark.png"
+    alt="Query History"
   />
 </Frame>
 
@@ -28,7 +28,7 @@ TablePro automatically saves every query you execute, making it easy to find, re
 Open the history panel:
 
 1. Click **View** > **Query History**
-2. Or use the keyboard shortcut `Cmd+Y`
+2. Or press `Cmd+Y`
 3. Or click the **History** icon in the toolbar
 
 ### History in Sidebar
@@ -63,7 +63,7 @@ Click column headers to change sort order.
 
 Filter queries by:
 
-- **Connection**: Show only queries from specific connection
+- **Connection**: Show only queries from a specific connection
 - **Status**: Show only successful or failed queries
 - **Time range**: Today, this week, this month, all time
 
@@ -93,15 +93,15 @@ SELECT users  -- Find all queries containing "SELECT" and "users"
 
 {/* Screenshot: Search results in history */}
 <Frame caption="Searching query history">
-  <img 
-    className="block dark:hidden" 
-    src="/images/history-search.png" 
-    alt="History search" 
+  <img
+    className="block dark:hidden"
+    src="/images/history-search.png"
+    alt="History search"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/history-search-dark.png" 
-    alt="History search" 
+  <img
+    className="hidden dark:block"
+    src="/images/history-search-dark.png"
+    alt="History search"
   />
 </Frame>
 
@@ -165,13 +165,13 @@ To modify a historical query:
 2. Make your changes
 3. Execute the modified query
 
-The original history entry is preserved; a new entry is created for the modified query.
+The original history entry is preserved. A new entry is created for the modified query.
 
 ## History Storage
 
 ### Where History is Stored
 
-Query history is stored in:
+Query history lives in:
 
 ```
 ~/Library/Application Support/TablePro/query_history.db
@@ -188,7 +188,7 @@ This SQLite database contains:
 
 ### History Retention
 
-Configure history retention in **Settings** > **History**:
+Configure retention in **Settings** > **History**:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -197,7 +197,7 @@ Configure history retention in **Settings** > **History**:
 | **Auto Cleanup** | On | Automatically remove old entries |
 
 <Tip>
-Set **Max Entries** to 0 for unlimited history (may impact performance with very large histories).
+Set **Max Entries** to 0 for unlimited history (may slow searches with very large histories).
 </Tip>
 
 ### Clearing History
@@ -225,15 +225,15 @@ For long queries, click to expand and see the full text:
 
 {/* Screenshot: Expanded query detail view */}
 <Frame caption="Full query view">
-  <img 
-    className="block dark:hidden" 
-    src="/images/history-detail.png" 
-    alt="Query detail" 
+  <img
+    className="block dark:hidden"
+    src="/images/history-detail.png"
+    alt="Query detail"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/history-detail-dark.png" 
-    alt="Query detail" 
+  <img
+    className="hidden dark:block"
+    src="/images/history-detail-dark.png"
+    alt="Query detail"
   />
 </Frame>
 
@@ -256,7 +256,7 @@ Failed queries show:
 - The query that caused the error
 - Timestamp of the failure
 
-This helps debug issues:
+This is useful for debugging:
 
 1. Find the failed query
 2. Read the error message
@@ -293,7 +293,7 @@ WHERE created_at >= '2024-01-01'
 GROUP BY month;
 ```
 
-Now you can search for "Monthly revenue report" to find it.
+Now search for "Monthly revenue report" to find it.
 
 ### Organizing with Comments
 
@@ -327,7 +327,7 @@ For queries you want to keep permanently:
 
 ### History Not Saving
 
-1. Check disk space - history needs storage
+1. Check disk space -- history needs storage
 2. Verify TablePro has write permissions
 3. Check if history is disabled in settings
 
@@ -341,7 +341,7 @@ For very large histories:
 
 ### Missing Old Queries
 
-Check **Max Days** setting - queries older than this limit are automatically deleted.
+Check **Max Days** setting -- queries older than this limit are automatically deleted.
 
 To prevent automatic deletion:
 1. Open **Settings** > **History**
@@ -349,7 +349,7 @@ To prevent automatic deletion:
 
 ### Duplicate Entries
 
-Each execution creates a new history entry, even for identical queries. This is intentional to track when queries were run.
+Each execution creates a new history entry, even for identical queries. This is intentional: it tracks when each query was run.
 
 ## Next Steps
 

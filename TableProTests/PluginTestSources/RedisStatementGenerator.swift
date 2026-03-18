@@ -1,0 +1,1 @@
+../../Plugins/RedisDriverPlugin/RedisStatementGenerator.swift

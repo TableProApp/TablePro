@@ -17,7 +17,7 @@ struct ConnectionStatusView: View {
     let connectionState: ToolbarConnectionState
     let displayColor: Color
     let tagName: String?  // Tag name to avoid duplication
-    var isReadOnly: Bool = false
+    var safeModeLevel: SafeModeLevel = .silent
 
     var body: some View {
         HStack(spacing: 10) {
@@ -26,7 +26,7 @@ struct ConnectionStatusView: View {
 
             // Vertical separator
             Divider()
-                .frame(height: DesignConstants.Spacing.sm)
+                .frame(height: ThemeEngine.shared.activeTheme.spacing.sm)
 
             // Database name (clickable to switch databases)
             if !databaseName.isEmpty {
@@ -40,8 +40,8 @@ struct ConnectionStatusView: View {
     /// Database type and version info
     private var databaseInfoSection: some View {
         Text(formattedDatabaseInfo)
-            .font(ToolbarDesignTokens.Typography.databaseType)
-            .foregroundStyle(ToolbarDesignTokens.Colors.secondaryText)
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+            .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
             .accessibilityLabel(
                 String(localized: "Database type: \(formattedDatabaseInfo)")
             )
@@ -51,7 +51,7 @@ struct ConnectionStatusView: View {
     /// Database name (clickable to open database switcher, plain label for SQLite)
     @ViewBuilder
     private var databaseNameSection: some View {
-        if databaseType == .sqlite {
+        if !PluginManager.shared.supportsDatabaseSwitching(for: databaseType) {
             databaseNameLabel
                 .help("Database: \(databaseName)")
         } else {
@@ -61,7 +61,7 @@ struct ConnectionStatusView: View {
                 databaseNameLabel
             }
             .buttonStyle(.plain)
-            .help(isReadOnly
+            .help(safeModeLevel == .readOnly
                 ? String(localized: "Current database: \(databaseName) (read-only, ⌘K to switch)")
                 : String(localized: "Current database: \(databaseName) (⌘K to switch)"))
         }
@@ -71,19 +71,17 @@ struct ConnectionStatusView: View {
         HStack(spacing: 4) {
             Image(systemName: "cylinder")
                 .font(.system(size: 13))
-                .foregroundStyle(ToolbarDesignTokens.Colors.secondaryText)
+                .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
                 .overlay(alignment: .bottomTrailing) {
-                    if isReadOnly {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.orange)
-                            .offset(x: 3, y: 2)
-                            .help("Read-only connection")
-                    }
+                    Image(systemName: safeModeLevel.iconName)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(safeModeLevel.badgeColor)
+                        .offset(x: 3, y: 2)
+                        .help(safeModeLevel.displayName)
                 }
 
             Text(databaseName)
-                .font(ToolbarDesignTokens.Typography.databaseName)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
                 .foregroundStyle(.primary)
         }
     }

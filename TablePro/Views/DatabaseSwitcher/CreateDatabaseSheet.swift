@@ -36,7 +36,7 @@ struct CreateDatabaseSheet: View {
         VStack(spacing: 0) {
             // Header
             Text("Create Database")
-                .font(.system(size: DesignConstants.FontSize.body, weight: .semibold))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
                 .padding(.vertical, 12)
 
             Divider()
@@ -46,18 +46,18 @@ struct CreateDatabaseSheet: View {
                 // Database name
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Database Name")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     TextField("Enter database name", text: $databaseName)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: DesignConstants.FontSize.body))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 }
 
                 // Charset
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Character Set")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     Picker("", selection: $charset) {
@@ -67,13 +67,13 @@ struct CreateDatabaseSheet: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .font(.system(size: DesignConstants.FontSize.body))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 }
 
                 // Collation
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Collation")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     Picker("", selection: $collation) {
@@ -83,13 +83,13 @@ struct CreateDatabaseSheet: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .font(.system(size: DesignConstants.FontSize.body))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 }
 
                 // Error message
                 if let error = errorMessage {
                     Text(error)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.red)
                 }
             }

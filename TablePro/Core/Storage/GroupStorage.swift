@@ -53,6 +53,7 @@ final class GroupStorage {
         do {
             let data = try encoder.encode(groups)
             defaults.set(data, forKey: groupsKey)
+            SyncChangeTracker.shared.markDirty(.group, ids: groups.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save groups: \(error)")
         }
@@ -87,6 +88,7 @@ final class GroupStorage {
 
     /// Delete a group and all its descendants, including their connections.
     func deleteGroup(_ group: ConnectionGroup) {
+        SyncChangeTracker.shared.markDeleted(.group, id: group.id.uuidString)
         var groups = loadGroups()
         let deletedIds = collectDescendantIds(of: group.id, in: groups)
         let allDeletedIds = deletedIds.union([group.id])

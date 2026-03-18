@@ -1,23 +1,23 @@
 ---
 title: Editor Settings
-description: Configure the SQL editor font, size, and behavior
+description: SQL editor font, size, line numbers, word wrap, indentation, and Vim mode configuration
 ---
 
 # Editor Settings
 
-Customize the SQL editor to match your coding preferences. Access editor settings via **Settings** > **Editor**.
+Configure the SQL editor in **Settings** > **Editor**.
 
 {/* Screenshot: Editor settings panel */}
 <Frame caption="Editor settings">
-  <img 
-    className="block dark:hidden" 
-    src="/images/settings-editor.png" 
-    alt="Editor settings" 
+  <img
+    className="block dark:hidden"
+    src="/images/settings-editor.png"
+    alt="Editor settings"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/settings-editor-dark.png" 
-    alt="Editor settings" 
+  <img
+    className="hidden dark:block"
+    src="/images/settings-editor-dark.png"
+    alt="Editor settings"
   />
 </Frame>
 
@@ -25,7 +25,7 @@ Customize the SQL editor to match your coding preferences. Access editor setting
 
 ### Font Family
 
-Choose from available monospace fonts:
+Available monospace fonts:
 
 | Font | Description |
 |------|-------------|
@@ -36,12 +36,10 @@ Choose from available monospace fonts:
 | **Courier New** | Cross-platform standard |
 
 <Tip>
-**System Mono** is recommended as it automatically uses the best available system monospace font.
+**System Mono** automatically uses the best available system monospace font.
 </Tip>
 
 ### Font Availability
-
-Not all fonts are available on every system:
 
 | Font | Availability |
 |------|--------------|
@@ -69,23 +67,21 @@ If a selected font isn't available, TablePro falls back to System Mono.
 
 ### Font Size
 
-Adjust the editor font size:
-
 | Setting | Range | Default |
 |---------|-------|---------|
 | Font Size | 11-18 pt | 13 pt |
 
 {/* Screenshot: Editor with different font sizes */}
 <Frame caption="Font size comparison">
-  <img 
-    className="block dark:hidden" 
-    src="/images/font-size-comparison.png" 
-    alt="Font sizes" 
+  <img
+    className="block dark:hidden"
+    src="/images/font-size-comparison.png"
+    alt="Font sizes"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/font-size-comparison-dark.png" 
-    alt="Font sizes" 
+  <img
+    className="hidden dark:block"
+    src="/images/font-size-comparison-dark.png"
+    alt="Font sizes"
   />
 </Frame>
 
@@ -105,9 +101,9 @@ Adjust the editor font size:
 | Option | Description |
 |--------|-------------|
 | **On** | Show line numbers (default) |
-| **Off** | Hide line numbers for minimal interface |
+| **Off** | Hide for a minimal look |
 
-Line numbers help with:
+Line numbers are useful for:
 
 - Referencing specific lines
 - Error messages that mention line numbers
@@ -116,15 +112,15 @@ Line numbers help with:
 
 {/* Screenshot: Editor with and without line numbers */}
 <Frame caption="Line numbers on/off">
-  <img 
-    className="block dark:hidden" 
-    src="/images/line-numbers.png" 
-    alt="Line numbers" 
+  <img
+    className="block dark:hidden"
+    src="/images/line-numbers.png"
+    alt="Line numbers"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/line-numbers-dark.png" 
-    alt="Line numbers" 
+  <img
+    className="hidden dark:block"
+    src="/images/line-numbers-dark.png"
+    alt="Line numbers"
   />
 </Frame>
 
@@ -135,7 +131,7 @@ Line numbers help with:
 | **On** | Subtly highlight the line with cursor (default) |
 | **Off** | No highlight on current line |
 
-This helps track your cursor position, especially in long queries.
+Helps track your cursor position in long queries.
 
 {/* Screenshot: Current line highlight */}
 <Frame caption="Current line highlighting in the editor">
@@ -158,17 +154,17 @@ This helps track your cursor position, especially in long queries.
 | **Off** | Long lines scroll horizontally (default) |
 | **On** | Long lines wrap to next line |
 
-**When to enable word wrap**:
+**Enable word wrap when**:
 
 - Working on narrow screens
 - Queries have long lines
-- Prefer not to scroll horizontally
+- You want to avoid horizontal scrolling
 
-**When to disable word wrap**:
+**Disable word wrap when**:
 
-- Prefer consistent line lengths
-- Working with formatted queries
-- Need to see query structure clearly
+- You prefer consistent line lengths
+- Working with pre-formatted queries
+- You need to see query structure clearly
 
 {/* Screenshot: Word wrap */}
 <Frame caption="Word wrap: wrapped vs horizontal scrolling">
@@ -188,8 +184,6 @@ This helps track your cursor position, especially in long queries.
 
 ### Tab Width
 
-Set how many spaces a tab represents:
-
 | Setting | Options | Default |
 |---------|---------|---------|
 | Tab Width | 1-16 spaces | 4 |
@@ -198,9 +192,9 @@ Common choices:
 
 | Width | Usage |
 |-------|-------|
-| 2 spaces | Compact code, JavaScript style |
+| 2 spaces | Compact, JavaScript-style |
 | 4 spaces | Standard SQL formatting (recommended) |
-| 8 spaces | Traditional, Unix-style |
+| 8 spaces | Traditional Unix-style |
 
 {/* Screenshot: Tab width setting */}
 <Frame caption="Tab width setting for indentation">
@@ -222,8 +216,6 @@ Common choices:
 |--------|-------------|
 | **On** | New lines match previous indentation (default) |
 | **Off** | New lines start at column 1 |
-
-Auto indent helps maintain consistent formatting:
 
 ```sql
 SELECT
@@ -253,23 +245,19 @@ SELECT
 The editor behaves like a standard macOS text editor:
 
 - Standard keyboard shortcuts work
-- Copy/paste functions normally
+- Copy/paste works normally
 - Undo/redo history is maintained
 - Selection works with mouse and keyboard
 
 ### Autocomplete
 
-Autocomplete cannot be disabled but can be dismissed with `Escape`.
+Autocomplete is always on but can be dismissed with `Escape`.
 
-See [Autocomplete](/features/autocomplete) for details on using this feature.
+See [Autocomplete](/features/autocomplete) for details.
 
 ## Applying Settings
 
-Settings apply immediately:
-
-1. Change a setting
-2. The editor updates in real-time
-3. No restart required
+All changes apply immediately. No restart required.
 
 ## Recommended Configurations
 
@@ -335,7 +323,7 @@ Word Wrap: On
 
 ## Syntax Highlighting
 
-The editor automatically highlights SQL syntax:
+SQL syntax is highlighted automatically:
 
 | Element | Color (Dark) | Color (Light) |
 |---------|--------------|---------------|
@@ -346,11 +334,11 @@ The editor automatically highlights SQL syntax:
 | Functions | Default | Default |
 | Identifiers | White | Black |
 
-Syntax colors automatically adapt to the current theme.
+Colors adapt to the current theme.
 
 ### Highlighted Keywords
 
-SQL keywords that are highlighted include:
+SQL keywords that are highlighted:
 
 - `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `DROP`
 - `FROM`, `WHERE`, `JOIN`, `ON`, `GROUP BY`, `ORDER BY`, `HAVING`
@@ -377,7 +365,7 @@ See [Keyboard Shortcuts](/features/keyboard-shortcuts) for the complete list.
 ### Font Not Appearing Correctly
 
 1. Verify the font is installed on your system
-2. Try selecting a different font
+2. Try a different font
 3. Restart TablePro
 
 ### Settings Not Saving
@@ -393,7 +381,7 @@ See [Keyboard Shortcuts](/features/keyboard-shortcuts) for the complete list.
 
 1. Reduce font size (larger fonts render slower)
 2. Disable word wrap for long queries
-3. Check for very large queries in editor
+3. Check for very large queries in the editor
 
 ## Related Pages
 

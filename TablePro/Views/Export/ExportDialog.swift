@@ -2,13 +2,14 @@
 //  ExportDialog.swift
 //  TablePro
 //
-//  Main export dialog for exporting tables to CSV, JSON, or SQL formats.
+//  Main export dialog for exporting tables using format plugins.
 //  Features a split layout with table selection tree on the left and format options on the right.
 //
 
 import AppKit
 import Observation
 import SwiftUI
+import TableProPluginKit
 import UniformTypeIdentifiers
 
 /// Main export dialog view
@@ -62,15 +63,15 @@ struct ExportDialog: View {
         .frame(width: dialogWidth)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
-            if connection.type == .mongodb && config.format == .sql {
-                config.format = .mql
+            let available = availableFormats
+            if !available.contains(where: { type(of: $0).formatId == config.formatId }) {
+                if let first = available.first {
+                    config.formatId = type(of: first).formatId
+                }
             }
-            if connection.type == .redis && config.format == .sql {
-                config.format = .json
-            }
-            if connection.type == .mssql && config.format == .mql {
-                config.format = .sql
-            }
+        }
+        .onChange(of: config.formatId) {
+            resetOptionValues()
         }
         .onExitCommand {
             if !isExporting {
@@ -108,10 +109,41 @@ struct ExportDialog: View {
         }
     }
 
+    // MARK: - Plugin Helpers
+
+    private var availableFormats: [any ExportFormatPlugin] {
+        let dbTypeId = connection.type.rawValue
+        return PluginManager.shared.exportPlugins.values
+            .filter { plugin in
+                let pluginType = type(of: plugin)
+                if !pluginType.supportedDatabaseTypeIds.isEmpty {
+                    return pluginType.supportedDatabaseTypeIds.contains(dbTypeId)
+                }
+                if pluginType.excludedDatabaseTypeIds.contains(dbTypeId) {
+                    return false
+                }
+                return true
+            }
+            .sorted { a, b in
+                let aIndex = Self.formatDisplayOrder.firstIndex(of: type(of: a).formatId) ?? Int.max
+                let bIndex = Self.formatDisplayOrder.firstIndex(of: type(of: b).formatId) ?? Int.max
+                return aIndex < bIndex
+            }
+    }
+
+    private var availableFormatIds: [String] {
+        availableFormats.map { type(of: $0).formatId }
+    }
+
+    private var currentPlugin: (any ExportFormatPlugin)? {
+        PluginManager.shared.exportPlugins[config.formatId]
+    }
+
     // MARK: - Layout Constants
 
     private var leftPanelWidth: CGFloat {
-        (config.format == .sql || config.format == .mql) ? 380 : 240
+        guard let plugin = currentPlugin else { return 240 }
+        return type(of: plugin).perTableOptionColumns.isEmpty ? 240 : 380
     }
 
     private var dialogWidth: CGFloat {
@@ -125,41 +157,18 @@ struct ExportDialog: View {
             // Header with title and selection count
             HStack {
                 Text("Items")
-                    .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
                     .foregroundStyle(.secondary)
 
                 Spacer()
 
-                if config.format == .sql {
-                    Text("Structure")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 56, alignment: .center)
-
-                    Text("Drop")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .center)
-
-                    Text("Data")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .center)
-                } else if config.format == .mql {
-                    Text("Drop")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .center)
-
-                    Text("Indexes")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .center)
-
-                    Text("Data")
-                        .font(.system(size: DesignConstants.FontSize.small, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .center)
+                if let plugin = currentPlugin {
+                    ForEach(type(of: plugin).perTableOptionColumns) { column in
+                        Text(column.label)
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: column.width, alignment: .center)
+                    }
                 }
             }
             .padding(.horizontal, 12)
@@ -175,7 +184,7 @@ struct ExportDialog: View {
                     ProgressView()
                         .scaleEffect(0.8)
                     Text("Loading databases...")
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                     Spacer()
@@ -183,7 +192,7 @@ struct ExportDialog: View {
             } else {
                 ExportTableTreeView(
                     databaseItems: $databaseItems,
-                    format: config.format
+                    formatId: config.formatId
                 )
                 .frame(minHeight: 300, maxHeight: .infinity)
             }
@@ -196,30 +205,42 @@ struct ExportDialog: View {
         VStack(alignment: .leading, spacing: 0) {
             // Format picker with selection count
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Spacer()
-
-                    Picker("", selection: $config.format) {
-                        ForEach(ExportFormat.availableCases(for: connection.type)) { format in
-                            Text(format.rawValue).tag(format)
-                        }
+                if availableFormats.isEmpty {
+                    HStack {
+                        Spacer()
+                        Text("No export formats available. Enable export plugins in Settings > Plugins.")
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .foregroundStyle(.secondary)
+                        Spacer()
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(width: 180)
+                } else {
+                    HStack {
+                        Spacer()
 
-                    Spacer()
+                        Picker("", selection: $config.formatId) {
+                            ForEach(availableFormatIds, id: \.self) { formatId in
+                                if let plugin = PluginManager.shared.exportPlugins[formatId] {
+                                    Text(type(of: plugin).formatDisplayName).tag(formatId)
+                                }
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 180)
+
+                        Spacer()
+                    }
                 }
 
-                // Selection count (shows exportable count for SQL format when some tables have no options)
+                // Selection count (shows exportable count when some tables have no options)
                 VStack(spacing: 2) {
                     Text("\(exportableCount) table\(exportableCount == 1 ? "" : "s") to export")
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
 
-                    if (config.format == .sql || config.format == .mql) && exportableCount < selectedCount {
+                    if let plugin = currentPlugin, !type(of: plugin).perTableOptionColumns.isEmpty, exportableCount < selectedCount {
                         Text("\(selectedCount - exportableCount) skipped (no options)")
-                            .font(.system(size: DesignConstants.FontSize.small))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                             .foregroundStyle(.orange)
                     }
                 }
@@ -234,17 +255,9 @@ struct ExportDialog: View {
             // Format-specific options
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    switch config.format {
-                    case .csv:
-                        ExportCSVOptionsView(options: $config.csvOptions)
-                    case .json:
-                        ExportJSONOptionsView(options: $config.jsonOptions)
-                    case .sql:
-                        ExportSQLOptionsView(options: $config.sqlOptions)
-                    case .mql:
-                        ExportMQLOptionsView(options: $config.mqlOptions)
-                    case .xlsx:
-                        ExportXLSXOptionsView(options: $config.xlsxOptions)
+                    if let settable = currentPlugin as? any SettablePluginDiscoverable,
+                       let optionsView = settable.settingsView() {
+                        optionsView
                     }
                 }
                 .padding(.horizontal, 16)
@@ -258,17 +271,17 @@ struct ExportDialog: View {
             // File name section
             VStack(alignment: .leading, spacing: 6) {
                 Text("File name")
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 4) {
                     TextField("export", text: $config.fileName)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: DesignConstants.FontSize.body))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
 
                     Text(".\(fileExtension)")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: DesignConstants.FontSize.body, design: .monospaced))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, design: .monospaced))
                         .lineLimit(1)
                         .fixedSize()
                 }
@@ -276,7 +289,7 @@ struct ExportDialog: View {
                 // Show validation error if filename is invalid
                 if let validationError = fileNameValidationError {
                     Text(validationError)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.red)
                 }
             }
@@ -301,7 +314,7 @@ struct ExportDialog: View {
                         .scaleEffect(0.7)
 
                     Text(currentExportTable)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -314,7 +327,7 @@ struct ExportDialog: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.return, modifiers: [])
-            .disabled(exportableCount == 0 || isExporting || !isFileNameValid)
+            .disabled(exportableCount == 0 || isExporting || !isFileNameValid || availableFormats.isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -332,13 +345,8 @@ struct ExportDialog: View {
 
     private var exportableTables: [ExportTableItem] {
         let tables = selectedTables
-        if config.format == .sql {
-            return tables.filter { $0.sqlOptions.hasAnyOption }
-        }
-        if config.format == .mql {
-            return tables.filter { $0.mqlOptions.hasAnyOption }
-        }
-        return tables
+        guard let plugin = currentPlugin else { return tables }
+        return tables.filter { plugin.isTableExportable(optionValues: $0.optionValues) }
     }
 
     /// Count of tables that will actually produce output
@@ -347,11 +355,10 @@ struct ExportDialog: View {
     }
 
     private var fileExtension: String {
-        if config.format == .sql && config.sqlOptions.compressWithGzip {
-            return "sql.gz"
-        }
-        return config.format.fileExtension
+        currentPlugin?.currentFileExtension ?? config.formatId
     }
+
+    private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "mql"]
 
     /// Windows reserved device names (case-insensitive)
     private static let windowsReservedNames: Set<String> = [
@@ -401,6 +408,15 @@ struct ExportDialog: View {
         fileNameValidationError == nil
     }
 
+    private func resetOptionValues() {
+        let defaults = currentPlugin?.defaultTableOptionValues() ?? []
+        for dbIndex in databaseItems.indices {
+            for tableIndex in databaseItems[dbIndex].tables.indices {
+                databaseItems[dbIndex].tables[tableIndex].optionValues = defaults
+            }
+        }
+    }
+
     // MARK: - Actions
 
     @MainActor
@@ -418,95 +434,12 @@ struct ExportDialog: View {
         do {
             var items: [ExportDatabaseItem] = []
 
-            switch connection.type {
-            case .postgresql, .redshift:
-                // PostgreSQL: fetch schemas within current database (can't query across databases)
-                let schemas = try await fetchPostgreSQLSchemas(driver: driver)
-                for schema in schemas {
-                    let tables = try await fetchTablesForSchema(schema, driver: driver)
-                    let tableItems = tables.map { table in
-                        ExportTableItem(
-                            name: table.name,
-                            databaseName: schema,  // schema name for PostgreSQL
-                            type: table.type,
-                            isSelected: schema == "public" && preselectedTables.contains(table.name)
-                        )
-                    }
-                    if !tableItems.isEmpty {
-                        items.append(ExportDatabaseItem(
-                            name: schema,
-                            tables: tableItems,
-                            isExpanded: schema == "public"
-                        ))
-                    }
-                }
-                // Sort: public schema first
-                items.sort { item1, item2 in
-                    if item1.name == "public" { return true }
-                    if item2.name == "public" { return false }
-                    return item1.name < item2.name
-                }
-
-            case .sqlite:
-                // SQLite: only one database, fetch tables directly
-                let tables = try await driver.fetchTables()
-                let tableItems = tables.map { table in
-                    ExportTableItem(
-                        name: table.name,
-                        databaseName: "",
-                        type: table.type,
-                        isSelected: preselectedTables.contains(table.name)
-                    )
-                }
-                if !tableItems.isEmpty {
-                    items.append(ExportDatabaseItem(
-                        name: connection.database.isEmpty ? "main" : connection.database,
-                        tables: tableItems,
-                        isExpanded: true
-                    ))
-                }
-
-            case .mongodb:
-                // MongoDB: similar to SQLite, fetch collections directly
-                let tables = try await driver.fetchTables()
-                let tableItems = tables.map { table in
-                    ExportTableItem(
-                        name: table.name,
-                        databaseName: "",
-                        type: table.type,
-                        isSelected: preselectedTables.contains(table.name)
-                    )
-                }
-                if !tableItems.isEmpty {
-                    items.append(ExportDatabaseItem(
-                        name: connection.database.isEmpty ? "main" : connection.database,
-                        tables: tableItems,
-                        isExpanded: true
-                    ))
-                }
-
-            case .redis:
-                // Redis: fetch keys as table items
-                let tables = try await driver.fetchTables()
-                let tableItems = tables.map { table in
-                    ExportTableItem(
-                        name: table.name,
-                        databaseName: "",
-                        type: table.type,
-                        isSelected: preselectedTables.contains(table.name)
-                    )
-                }
-                if !tableItems.isEmpty {
-                    items.append(ExportDatabaseItem(
-                        name: connection.database.isEmpty ? "db0" : connection.database,
-                        tables: tableItems,
-                        isExpanded: true
-                    ))
-                }
-
-            case .mssql:
-                // MSSQL: fetch schemas within current database
+            let dbType = connection.type
+            let grouping = PluginManager.shared.databaseGroupingStrategy(for: dbType)
+            switch grouping {
+            case .bySchema:
                 let schemas = try await driver.fetchSchemas()
+                let defaultSchema = PluginManager.shared.defaultSchemaName(for: dbType)
                 for schema in schemas {
                     let tables = try await fetchTablesForSchema(schema, driver: driver)
                     let tableItems = tables.map { table in
@@ -514,25 +447,31 @@ struct ExportDialog: View {
                             name: table.name,
                             databaseName: schema,
                             type: table.type,
-                            isSelected: schema == "dbo" && preselectedTables.contains(table.name)
+                            isSelected: schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
+                                && preselectedTables.contains(table.name)
                         )
                     }
                     if !tableItems.isEmpty {
                         items.append(ExportDatabaseItem(
                             name: schema,
                             tables: tableItems,
-                            isExpanded: schema == "dbo"
+                            isExpanded: schema.caseInsensitiveCompare(defaultSchema) == .orderedSame
                         ))
                     }
                 }
                 items.sort { item1, item2 in
-                    if item1.name == "dbo" { return true }
-                    if item2.name == "dbo" { return false }
+                    if item1.name.caseInsensitiveCompare(defaultSchema) == .orderedSame { return true }
+                    if item2.name.caseInsensitiveCompare(defaultSchema) == .orderedSame { return false }
                     return item1.name < item2.name
                 }
-
-            case .mysql, .mariadb:
-                // MySQL/MariaDB: fetch all databases and their tables
+            case .flat:
+                let fallbackName = PluginManager.shared.defaultGroupName(for: dbType)
+                let dbItem = try await buildFlatDatabaseItem(
+                    driver: driver,
+                    name: connection.database.isEmpty ? fallbackName : connection.database
+                )
+                if let dbItem { items.append(dbItem) }
+            case .byDatabase:
                 let databases = try await driver.fetchDatabases()
                 for dbName in databases {
                     let tables = try await fetchTablesForDatabase(dbName, driver: driver)
@@ -552,7 +491,6 @@ struct ExportDialog: View {
                         ))
                     }
                 }
-                // Sort: current database first
                 items.sort { item1, item2 in
                     if item1.name == connection.database { return true }
                     if item2.name == connection.database { return false }
@@ -579,19 +517,43 @@ struct ExportDialog: View {
         }
     }
 
-    private func fetchPostgreSQLSchemas(driver: DatabaseDriver) async throws -> [String] {
-        let query = """
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-            ORDER BY schema_name
-            """
-        let result = try await driver.execute(query: query)
-        return result.rows.compactMap { $0[0] }
+    private func buildFlatDatabaseItem(
+        driver: DatabaseDriver,
+        name: String
+    ) async throws -> ExportDatabaseItem? {
+        let tables = try await driver.fetchTables()
+        let tableItems = tables.map { table in
+            ExportTableItem(
+                name: table.name,
+                databaseName: "",
+                type: table.type,
+                isSelected: preselectedTables.contains(table.name)
+            )
+        }
+        guard !tableItems.isEmpty else { return nil }
+        return ExportDatabaseItem(name: name, tables: tableItems, isExpanded: true)
     }
 
     private func fetchTablesForSchema(_ schema: String, driver: DatabaseDriver) async throws -> [TableInfo] {
-        // Fetch tables from information_schema and filter by schema in Swift to avoid SQL interpolation.
+        // Oracle does not have information_schema — use ALL_TABLES/ALL_VIEWS
+        if connection.type.pluginTypeId == "Oracle" {
+            let escapedSchema = schema.replacingOccurrences(of: "'", with: "''")
+            let query = """
+                SELECT TABLE_NAME, 'BASE TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = '\(escapedSchema)'
+                UNION ALL
+                SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = '\(escapedSchema)'
+                ORDER BY 1
+                """
+            let result = try await driver.execute(query: query)
+            return result.rows.compactMap { row in
+                guard let name = row[safe: 0] ?? nil else { return nil }
+                let typeStr = (row[safe: 1] ?? nil) ?? "BASE TABLE"
+                let type: TableInfo.TableType = typeStr.uppercased().contains("VIEW") ? .view : .table
+                return TableInfo(name: name, type: type, rowCount: nil)
+            }
+        }
+
+        // MSSQL / PostgreSQL / Redshift: use information_schema
         let query = """
             SELECT table_schema, table_name, table_type
             FROM information_schema.tables
@@ -637,22 +599,24 @@ struct ExportDialog: View {
     }
 
     private func performExport() {
-        // Show save panel
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
         savePanel.showsTagField = false
 
-        // Configure allowed file types
-        if config.format == .sql && config.sqlOptions.compressWithGzip {
-            savePanel.allowedContentTypes = [UTType(filenameExtension: "gz") ?? .data]
-            savePanel.nameFieldStringValue = "\(config.fileName).sql.gz"
+        let ext = fileExtension
+        if ext.contains(".") {
+            // Compound extension like "sql.gz"
+            let lastComponent = ext.components(separatedBy: ".").last ?? ext
+            savePanel.allowedContentTypes = [UTType(filenameExtension: lastComponent) ?? .data]
+            savePanel.nameFieldStringValue = "\(config.fileName).\(ext)"
         } else {
-            let utType = UTType(filenameExtension: config.format.fileExtension) ?? .plainText
+            let utType = UTType(filenameExtension: ext) ?? .plainText
             savePanel.allowedContentTypes = [utType]
             savePanel.nameFieldStringValue = config.fullFileName
         }
 
-        savePanel.message = "Export \(exportableCount) table(s) to \(config.format.rawValue)"
+        let formatName = currentPlugin.map { type(of: $0).formatDisplayName } ?? config.formatId.uppercased()
+        savePanel.message = "Export \(exportableCount) table(s) to \(formatName)"
 
         savePanel.begin { response in
             guard response == .OK, let url = savePanel.url else { return }

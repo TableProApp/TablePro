@@ -5,46 +5,46 @@
 //  Sidebar transaction execution and discard handling.
 //
 
+import AppKit
 import Foundation
 
 extension MainContentCoordinator {
     // MARK: - Table Creation
 
     /// Execute sidebar changes immediately (single transaction)
-    func executeSidebarChanges(statements: [String]) async throws {
+    /// Respects safe mode levels that require confirmation for write operations.
+    func executeSidebarChanges(statements: [ParameterizedStatement]) async throws {
+        let sqlPreview = statements.map(\.sql).joined(separator: "\n")
+        let window = await MainActor.run { NSApp.keyWindow }
+        let permission = await SafeModeGuard.checkPermission(
+            level: safeModeLevel,
+            isWriteOperation: true,
+            sql: sqlPreview,
+            operationDescription: String(localized: "Save Sidebar Changes"),
+            window: window,
+            databaseType: connection.type
+        )
+        if case .blocked = permission {
+            return
+        }
+
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
             throw DatabaseError.notConnected
         }
 
-        let dbType = connection.type
-        var allStatements: [String] = []
+        try await driver.beginTransaction()
 
-        // Add database-specific BEGIN / START TRANSACTION
-        let beginStatement: String
-        switch dbType {
-        case .mysql, .mariadb:
-            beginStatement = "START TRANSACTION"
-        case .mssql:
-            beginStatement = "BEGIN TRANSACTION"
-        default:
-            beginStatement = "BEGIN"
-        }
-        allStatements.append(beginStatement)
-
-        // Add user statements
-        allStatements.append(contentsOf: statements)
-
-        // Add COMMIT
-        allStatements.append("COMMIT")
-
-        // Execute all statements sequentially
         do {
-            for sql in allStatements {
-                _ = try await driver.execute(query: sql)
+            for stmt in statements {
+                if stmt.parameters.isEmpty {
+                    _ = try await driver.execute(query: stmt.sql)
+                } else {
+                    _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
+                }
             }
+            try await driver.commitTransaction()
         } catch {
-            // Try to rollback on error
-            _ = try? await driver.execute(query: "ROLLBACK")
+            try? await driver.rollbackTransaction()
             throw error
         }
     }
@@ -79,6 +79,6 @@ extension MainContentCoordinator {
             tabManager.tabs[index].pendingChanges = TabPendingChanges()
         }
 
-        NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
+        reloadSidebar()
     }
 }

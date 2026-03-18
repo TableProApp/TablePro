@@ -15,7 +15,7 @@ extension MainContentCoordinator {
     /// Check if query needs confirmation and show alert if needed
     /// - Parameter sql: SQL query to check
     /// - Returns: true if safe to execute, false if user cancelled
-    func confirmDangerousQueryIfNeeded(_ sql: String) async -> Bool {
+    func confirmDangerousQueryIfNeeded(_ sql: String, window: NSWindow? = nil) async -> Bool {
         guard isDangerousQuery(sql) else { return true }
 
         let message = dangerousQueryMessage(for: sql)
@@ -23,7 +23,8 @@ extension MainContentCoordinator {
             title: String(localized: "Potentially Dangerous Query"),
             message: message,
             confirmButton: String(localized: "Execute"),
-            cancelButton: String(localized: "Cancel")
+            cancelButton: String(localized: "Cancel"),
+            window: window
         )
     }
 
@@ -45,13 +46,13 @@ extension MainContentCoordinator {
     /// Check multiple queries for dangerous operations and show a single batch confirmation
     /// - Parameter statements: Array of dangerous SQL statements
     /// - Returns: true if user confirmed, false if cancelled
-    func confirmDangerousQueries(_ statements: [String]) async -> Bool {
+    func confirmDangerousQueries(_ statements: [String], window: NSWindow? = nil) async -> Bool {
         guard !statements.isEmpty else { return true }
 
         let querySummaries = statements.map { stmt -> String in
             let trimmed = stmt.trimmingCharacters(in: .whitespacesAndNewlines)
             // Show first 80 chars of each query
-            if trimmed.count > 80 {
+            if (trimmed as NSString).length > 80 {
                 return String(trimmed.prefix(80)) + "..."
             }
             return trimmed
@@ -66,7 +67,8 @@ extension MainContentCoordinator {
             title: String(localized: "Potentially Dangerous Queries"),
             message: message,
             confirmButton: String(localized: "Execute All"),
-            cancelButton: String(localized: "Cancel")
+            cancelButton: String(localized: "Cancel"),
+            window: window
         )
     }
 
@@ -75,21 +77,32 @@ extension MainContentCoordinator {
     /// Confirm discarding unsaved changes
     /// - Parameter action: The action that requires discarding changes
     /// - Returns: true if user confirmed, false if cancelled
-    func confirmDiscardChanges(action: DiscardAction) async -> Bool {
+    func confirmDiscardChanges(action: DiscardAction, window: NSWindow? = nil) async -> Bool {
+        guard !isShowingConfirmAlert else { return false }
+        isShowingConfirmAlert = true
+        defer { isShowingConfirmAlert = false }
+
         let message = discardMessage(for: action)
         return await AlertHelper.confirmDestructive(
             title: String(localized: "Discard Unsaved Changes?"),
             message: message,
             confirmButton: String(localized: "Discard"),
-            cancelButton: String(localized: "Cancel")
+            cancelButton: String(localized: "Cancel"),
+            window: window
         )
     }
 
     /// Generate appropriate message for discard action type
     private func discardMessage(for action: DiscardAction) -> String {
         switch action {
-        case .refresh, .refreshAll:
+        case .refresh:
             return String(localized: "Refreshing will discard all unsaved changes.")
+        case .sort:
+            return String(localized: "Sorting will reload data and discard all unsaved changes.")
+        case .pagination:
+            return String(localized: "Navigating to another page will discard all unsaved changes.")
+        case .filter:
+            return String(localized: "Applying or clearing filters will reload data and discard all unsaved changes.")
         }
     }
 

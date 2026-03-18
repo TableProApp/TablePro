@@ -11,7 +11,7 @@ extension MainContentCoordinator {
     // MARK: - Row Operations
 
     func addNewRow(selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
-        guard !connection.isReadOnly,
+        guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
@@ -31,7 +31,7 @@ extension MainContentCoordinator {
     }
 
     func deleteSelectedRows(indices: Set<Int>, selectedRowIndices: inout Set<Int>) {
-        guard !connection.isReadOnly,
+        guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
               tabManager.tabs[tabIndex].isEditable,
@@ -53,7 +53,7 @@ extension MainContentCoordinator {
     }
 
     func duplicateSelectedRow(index: Int, selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
-        guard !connection.isReadOnly,
+        guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
@@ -137,8 +137,24 @@ extension MainContentCoordinator {
         )
     }
 
+    func copySelectedRowsAsJson(indices: Set<Int>) {
+        guard let index = tabManager.selectedTabIndex,
+              !indices.isEmpty else { return }
+        let tab = tabManager.tabs[index]
+        let rows = indices.sorted().compactMap { idx -> [String?]? in
+            guard idx < tab.resultRows.count else { return nil }
+            return tab.resultRows[idx].values
+        }
+        guard !rows.isEmpty else { return }
+        let converter = JsonRowConverter(
+            columns: tab.resultColumns,
+            columnTypes: tab.columnTypes
+        )
+        ClipboardService.shared.writeText(converter.generateJson(rows: rows))
+    }
+
     func pasteRows(selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
-        guard !connection.isReadOnly,
+        guard !safeModeLevel.blocksAllWrites,
               let index = tabManager.selectedTabIndex else { return }
 
         var tab = tabManager.tabs[index]

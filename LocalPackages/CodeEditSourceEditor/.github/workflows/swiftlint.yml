@@ -1,0 +1,11 @@
+name: SwiftLint
+on:
+  workflow_dispatch:
+  workflow_call:
+jobs:
+  SwiftLint:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v3
+      - name: GitHub Action for SwiftLint with --strict
+        run: swiftlint --reporter github-actions-logging --strict

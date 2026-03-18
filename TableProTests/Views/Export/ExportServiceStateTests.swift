@@ -9,6 +9,47 @@ import Foundation
 @testable import TablePro
 import Testing
 
+private final class StubDriver: DatabaseDriver {
+    let connection = TestFixtures.makeConnection(type: .sqlite)
+    var status: ConnectionStatus = .connected
+    var serverVersion: String?
+
+    func connect() async throws {}
+    func disconnect() {}
+    func testConnection() async throws -> Bool { true }
+    func applyQueryTimeout(_ seconds: Int) async throws {}
+    func execute(query: String) async throws -> QueryResult { .empty }
+    func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult { .empty }
+    func fetchRowCount(query: String) async throws -> Int { 0 }
+    func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult { .empty }
+    func fetchTables() async throws -> [TableInfo] { [] }
+    func fetchColumns(table: String) async throws -> [ColumnInfo] { [] }
+    func fetchAllColumns() async throws -> [String: [ColumnInfo]] { [:] }
+    func fetchIndexes(table: String) async throws -> [IndexInfo] { [] }
+    func fetchForeignKeys(table: String) async throws -> [ForeignKeyInfo] { [] }
+    func fetchApproximateRowCount(table: String) async throws -> Int? { nil }
+    func fetchTableDDL(table: String) async throws -> String { "" }
+    func fetchDependentSequences(forTable table: String) async throws -> [(name: String, ddl: String)] { [] }
+    func fetchDependentTypes(forTable table: String) async throws -> [(name: String, labels: [String])] { [] }
+    func fetchViewDefinition(view: String) async throws -> String { "" }
+    func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
+        TableMetadata(tableName: tableName, dataSize: nil, indexSize: nil, totalSize: nil,
+                      avgRowLength: nil, rowCount: nil, comment: nil, engine: nil,
+                      collation: nil, createTime: nil, updateTime: nil)
+    }
+    func fetchDatabases() async throws -> [String] { [] }
+    func fetchSchemas() async throws -> [String] { [] }
+    func fetchDatabaseMetadata(_ database: String) async throws -> DatabaseMetadata {
+        DatabaseMetadata(id: database, name: database, tableCount: nil, sizeBytes: nil,
+                         lastAccessed: nil, isSystemDatabase: false, icon: "cylinder")
+    }
+    func createDatabase(name: String, charset: String, collation: String?) async throws {}
+    func cancelQuery() throws {}
+    func beginTransaction() async throws {}
+    func commitTransaction() async throws {}
+    func rollbackTransaction() async throws {}
+}
+
 @MainActor
 @Suite("ExportServiceState")
 struct ExportServiceStateTests {
@@ -32,8 +73,7 @@ struct ExportServiceStateTests {
     @Test("Properties delegate to service state after setting service")
     func propertiesDelegateToService() {
         let state = ExportServiceState()
-        let connection = DatabaseConnection(name: "Test", type: .sqlite)
-        let driver = SQLiteDriver(connection: connection)
+        let driver = StubDriver()
         let service = ExportService(driver: driver, databaseType: .sqlite)
 
         service.state = ExportState(
@@ -60,8 +100,7 @@ struct ExportServiceStateTests {
     @Test("Wrapper reflects changes after mutating service state")
     func wrapperReflectsServiceStateMutation() {
         let state = ExportServiceState()
-        let connection = DatabaseConnection(name: "Test", type: .sqlite)
-        let driver = SQLiteDriver(connection: connection)
+        let driver = StubDriver()
         let service = ExportService(driver: driver, databaseType: .sqlite)
 
         state.setService(service)
@@ -85,8 +124,7 @@ struct ExportServiceStateTests {
     @Test("Setting a new service replaces the old one")
     func settingNewServiceReplacesOld() {
         let state = ExportServiceState()
-        let connection = DatabaseConnection(name: "Test", type: .sqlite)
-        let driver = SQLiteDriver(connection: connection)
+        let driver = StubDriver()
 
         let service1 = ExportService(driver: driver, databaseType: .sqlite)
         service1.state.currentTable = "old_table"

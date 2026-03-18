@@ -1,0 +1,218 @@
+---
+title: 快速入门
+description: 下载 TablePro，安装并在 5 分钟内连接到你的第一个数据库
+---
+
+# 快速入门指南
+
+下载、安装，然后运行你的第一条查询。
+
+## 步骤 1：下载 TablePro
+
+最快的方式是通过 [Homebrew](https://brew.sh)：
+
+```bash
+brew install --cask tablepro
+```
+
+<Tip>
+如果通过 Homebrew 安装，可以直接跳到[步骤 3](#步骤-3创建你的第一个连接)。
+</Tip>
+
+也可以手动下载：
+
+1. 访问 [GitHub Releases 页面](https://github.com/datlechin/tablepro/releases)
+2. 下载适合你 Mac 的 DMG 文件：
+   - **Apple Silicon** (M1/M2/M3/M4/M5): `TablePro-arm64.dmg`
+   - **Intel**: `TablePro-x86_64.dmg`
+
+<Note>
+不确定你的 Mac 使用哪种芯片？点击 Apple 菜单，选择 **About This Mac**。查看 "Chip"（Apple Silicon）或 "Processor"（Intel）。
+</Note>
+
+## 步骤 2：安装 TablePro
+
+1. 打开下载的 DMG 文件
+2. 将 **TablePro** 拖到 **Applications** 文件夹
+3. 推出 DMG
+4. 从 Applications 文件夹打开 TablePro
+
+{/* Screenshot: DMG installation window showing drag to Applications */}
+<Frame caption="将 TablePro 拖到 Applications">
+  <img
+    className="block dark:hidden"
+    src="/images/install-dmg.png"
+    alt="安装对话框"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/install-dmg-dark.png"
+    alt="安装对话框"
+  />
+</Frame>
+
+## 步骤 3：创建你的第一个连接
+
+启动后会显示欢迎界面。在这里创建新的数据库连接。
+
+### MySQL/MariaDB
+
+1. 点击 **New Connection**
+2. 选择 **MySQL** 或 **MariaDB** 作为数据库类型
+3. 填写连接信息：
+   - **Name**: 连接的名称（例如 "Local MySQL"）
+   - **Host**: `localhost`（或你的服务器地址）
+   - **Port**: `3306`（默认）
+   - **Username**: 数据库用户名（例如 `root`）
+   - **Password**: 数据库密码
+   - **Database**: （可选）默认连接的数据库
+
+{/* Screenshot: Connection form with MySQL selected and fields filled in */}
+<Frame caption="创建 MySQL 连接">
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-connection.png"
+    alt="MySQL 连接表单"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-connection-dark.png"
+    alt="MySQL 连接表单"
+  />
+</Frame>
+
+### PostgreSQL
+
+1. 点击 **New Connection**
+2. 选择 **PostgreSQL** 作为数据库类型
+3. 填写连接信息：
+   - **Name**: 连接的名称（例如 "Local PostgreSQL"）
+   - **Host**: `localhost`（或你的服务器地址）
+   - **Port**: `5432`（默认）
+   - **Username**: 数据库用户名（例如 `postgres`）
+   - **Password**: 数据库密码
+   - **Database**: 要连接的数据库名称
+
+### Amazon Redshift
+
+1. 点击 **New Connection**
+2. 选择 **Amazon Redshift** 作为数据库类型
+3. 填写连接信息：
+   - **Name**: 连接的名称（例如 "Redshift Warehouse"）
+   - **Host**: 你的集群端点（例如 `my-cluster.abc123.us-east-1.redshift.amazonaws.com`）
+   - **Port**: `5439`（默认）
+   - **Username**: Redshift 用户名（例如 `awsuser`）
+   - **Password**: 密码
+   - **Database**: 数据库名称（通常为 `dev`）
+
+### SQLite
+
+1. 点击 **New Connection**
+2. 选择 **SQLite** 作为数据库类型
+3. 点击 **Browse** 选择 SQLite 数据库文件
+4. 为连接命名
+
+<Tip>
+SQLite 数据库不需要认证。只需在 Mac 上选择 `.sqlite` 或 `.db` 文件即可。
+</Tip>
+
+### MongoDB
+
+1. 点击 **New Connection**
+2. 选择 **MongoDB** 作为数据库类型
+3. 填写连接信息：
+   - **Name**: 连接的名称（例如 "Local MongoDB"）
+   - **Host**: `localhost`（或你的服务器地址）
+   - **Port**: `27017`（默认）
+   - **Username**: 数据库用户名（如果启用了认证）
+   - **Password**: 数据库密码
+   - **Database**: 要连接的数据库名称
+   - **Auth Database**: 认证数据库（默认为 `admin`）
+
+<Tip>
+本地 MongoDB 实例如果没有启用认证，只需填写 host 和 port。连接内部使用 `mongodb://` URI 协议。
+</Tip>
+
+## 步骤 4：测试并连接
+
+1. 点击 **Test Connection** 验证你的设置
+2. 绿色勾号表示连接成功
+3. 点击 **Create** 保存并连接
+
+{/* Screenshot: Successful connection test showing green checkmark */}
+<Frame caption="连接测试成功">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-test.png"
+    alt="连接测试成功"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-test-dark.png"
+    alt="连接测试成功"
+  />
+</Frame>
+
+## 步骤 5：探索你的数据库
+
+主界面分为三个面板：
+
+- **侧边栏**: 你的数据库和表
+- **SQL 编辑器**: 编写和执行 SQL 查询
+- **数据网格**: 查看和编辑查询结果
+
+{/* Screenshot: Main interface after connecting, showing sidebar with tables */}
+<Frame caption="TablePro 主界面">
+  <img
+    className="block dark:hidden"
+    src="/images/main-interface.png"
+    alt="主界面"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/main-interface-dark.png"
+    alt="主界面"
+  />
+</Frame>
+
+### 尝试你的第一条查询
+
+1. 点击侧边栏中的表来查看其内容
+2. 或者在 SQL 编辑器中输入查询：
+
+```sql
+SELECT * FROM users LIMIT 10;
+```
+
+3. 按 `Cmd+Enter` 执行查询
+4. 在下方的数据网格中查看结果
+
+## 后续步骤
+
+一切就绪。接下来可以探索：
+
+<CardGroup cols={2}>
+  <Card title="数据库连接" icon="plug" href="/zh/databases/overview">
+    管理和组织你的连接。
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    语法高亮、自动补全和多光标编辑。
+  </Card>
+  <Card title="SSH 隧道" icon="lock" href="/zh/databases/ssh-tunneling">
+    通过 SSH 连接远程数据库。
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    用键盘快捷键提升你的工作效率。
+  </Card>
+  <Card title="AI SQL 助手" icon="sparkles" href="/zh/features/ai-chat">
+    用 AI 编写、解释和优化 SQL。
+  </Card>
+</CardGroup>
+
+## 需要帮助？
+
+如果遇到问题：
+
+- 查看[安装指南](/zh/installation)了解系统要求和故障排查
+- 参阅各数据库的专用指南解决连接问题
+- 在 GitHub 上[提交 issue](https://github.com/datlechin/tablepro/issues)

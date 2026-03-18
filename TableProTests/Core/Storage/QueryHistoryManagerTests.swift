@@ -78,8 +78,17 @@ struct QueryHistoryManagerTests {
 
     @Test("clearAllHistory clears and returns true")
     func clearAllHistoryReturnsTrue() async {
-        _ = await makeAndInsertEntry()
-        let result = await manager.clearAllHistory()
+        let isolatedStorage = QueryHistoryStorage(isolatedForTesting: true)
+        let isolatedManager = QueryHistoryManager(isolatedStorage: isolatedStorage)
+        _ = await isolatedStorage.addHistory(QueryHistoryEntry(
+            query: "SELECT clear_test",
+            connectionId: UUID(),
+            databaseName: "testdb",
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        ))
+        let result = await isolatedManager.clearAllHistory()
         #expect(result == true)
     }
 
@@ -105,7 +114,16 @@ struct QueryHistoryManagerTests {
 
     @Test("clearAllHistory posts queryHistoryDidUpdate notification")
     func clearAllHistoryPostsNotification() async {
-        _ = await makeAndInsertEntry()
+        let isolatedStorage = QueryHistoryStorage(isolatedForTesting: true)
+        let isolatedManager = QueryHistoryManager(isolatedStorage: isolatedStorage)
+        _ = await isolatedStorage.addHistory(QueryHistoryEntry(
+            query: "SELECT notify_test",
+            connectionId: UUID(),
+            databaseName: "testdb",
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        ))
 
         await confirmation("notification posted") { confirm in
             let observer = NotificationCenter.default.addObserver(
@@ -116,7 +134,7 @@ struct QueryHistoryManagerTests {
                 confirm()
             }
 
-            _ = await manager.clearAllHistory()
+            _ = await isolatedManager.clearAllHistory()
             try? await Task.sleep(for: .milliseconds(100))
 
             NotificationCenter.default.removeObserver(observer)

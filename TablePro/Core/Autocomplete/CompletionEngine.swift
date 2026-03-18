@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Completion context returned by the engine
 struct CompletionContext {
@@ -29,11 +30,26 @@ final class CompletionEngine {
 
     // MARK: - Initialization
 
-    init(schemaProvider: SQLSchemaProvider, databaseType: DatabaseType? = nil) {
-        self.provider = SQLCompletionProvider(schemaProvider: schemaProvider, databaseType: databaseType)
+    init(
+        schemaProvider: SQLSchemaProvider,
+        databaseType: DatabaseType? = nil,
+        dialect: SQLDialectDescriptor? = nil,
+        statementCompletions: [CompletionEntry] = []
+    ) {
+        self.provider = SQLCompletionProvider(
+            schemaProvider: schemaProvider,
+            databaseType: databaseType,
+            dialect: dialect,
+            statementCompletions: statementCompletions
+        )
     }
 
     // MARK: - Public API
+
+    /// Update favorite keywords for autocomplete expansion
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        provider.updateFavoriteKeywords(keywords)
+    }
 
     /// Get completions for the given text and cursor position
     /// This is a pure function - no side effects

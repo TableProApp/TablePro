@@ -1,0 +1,489 @@
+---
+title: 变更追踪
+description: 在本地队列中暂存单元格编辑、行插入和删除操作，提交前不会写入数据库
+---
+
+# 变更追踪
+
+TablePro 中的更改会暂存在内存中，不会立即应用。你可以编辑单元格、插入行、删除行，然后在提交前统一审查。在你明确确认之前，数据库不会发生任何变动。
+
+{/* Screenshot: Data grid with pending changes highlighted */}
+<Frame caption="数据网格中高亮显示的待提交更改">
+  <img
+    className="block dark:hidden"
+    src="/images/change-tracking.png"
+    alt="变更追踪"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/change-tracking-dark.png"
+    alt="变更追踪"
+  />
+</Frame>
+
+## 概述
+
+对数据或表结构的编辑会在本地排队并在网格中高亮显示。你可以一次性提交所有更改或整体丢弃。这样可以避免意外的数据丢失，让你完全掌控何时将修改提交到数据库。
+
+<Tip>
+变更追踪按标签页独立。每个标签页有自己独立的待提交更改集，切换标签页时不会丢失你的编辑。
+</Tip>
+
+## 数据变更
+
+TablePro 追踪三种数据变更：单元格编辑（更新）、行插入和行删除。所有查找都是 O(1) 的哈希结构，即使有大量待提交更改也能保持快速。
+
+### 编辑单元格
+
+要编辑现有单元格：
+
+1. 双击单元格
+2. 输入新值
+3. 按 `Enter` 确认或 `Escape` 取消
+
+已修改的单元格在数据网格中高亮显示。
+
+{/* Screenshot: Modified cell highlighted in the data grid */}
+<Frame caption="已修改的单元格高亮显示">
+  <img
+    className="block dark:hidden"
+    src="/images/change-tracking-modified.png"
+    alt="已修改的单元格"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/change-tracking-modified-dark.png"
+    alt="已修改的单元格"
+  />
+</Frame>
+
+<Note>
+如果你将值改回原始值，更改会自动从队列中移除。TablePro 能检测到互相抵消的编辑。
+</Note>
+
+### 新增行
+
+要插入新行：
+
+1. 点击工具栏中的 **+** 按钮或使用键盘快捷键
+2. 数据网格底部出现一行新行，标有插入指示器
+3. 为每列填入值
+4. 有默认值的列会预填 `DEFAULT`
+
+新行与更新分开追踪。对新插入行中单元格的编辑会合并到插入记录中，而非创建单独的更新记录。
+
+{/* Screenshot: Newly added row with insertion indicator */}
+<Frame caption="带插入指示器的新增行">
+  <img
+    className="block dark:hidden"
+    src="/images/change-new-row.png"
+    alt="带插入指示器的新增行"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/change-new-row-dark.png"
+    alt="带插入指示器的新增行"
+  />
+</Frame>
+
+### 删除行
+
+要删除行：
+
+1. 在数据网格中选择一行或多行
+2. 按 `Delete` 键或点击删除按钮
+3. 已删除的行会标有删除线指示器
+
+已删除的行在提交或丢弃之前仍可见，以便你需要时撤销删除。
+
+{/* Screenshot: Deleted row with deletion indicator */}
+<Frame caption="带删除指示器的已删除行">
+  <img
+    className="block dark:hidden"
+    src="/images/change-deleted-row.png"
+    alt="带删除指示器的已删除行"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/change-deleted-row-dark.png"
+    alt="带删除指示器的已删除行"
+  />
+</Frame>
+
+<Warning>
+批量删除多行被记录为单个撤销操作。撤销批量删除会一次恢复所有行。
+</Warning>
+
+## 提交与丢弃
+
+暂存更改后，你可以提交到数据库或全部丢弃。
+
+### 提交更改
+
+要应用所有待提交的更改：
+
+1. 点击工具栏中的 **Commit** 按钮，或按 `Cmd+S`
+2. TablePro 为所有排队的更改生成参数化 SQL 语句
+3. 语句在数据库上执行
+4. 成功后，更改队列清空并刷新网格
+
+提交生成的 SQL：
+
+| 变更类型 | 生成的 SQL |
+|----------|-----------|
+| 单元格编辑 | `UPDATE ... SET column = ? WHERE pk = ?` |
+| 行插入 | `INSERT INTO ... (columns) VALUES (?)` |
+| 行删除 | `DELETE FROM ... WHERE pk = ?` |
+
+<Note>
+UPDATE 语句需要表上有主键。如果没有定义主键，尝试提交更新时 TablePro 会报错。DELETE 语句可以通过匹配所有列值在没有主键的情况下工作。
+</Note>
+
+### 丢弃更改
+
+要撤销所有待提交的更改：
+
+1. 点击工具栏中的 **Discard** 按钮
+2. 所有排队的更改被移除
+3. 已修改的单元格恢复原始值
+4. 已插入的行从网格中移除
+5. 已删除的行取消标记
+
+丢弃操作还会清除当前标签页的撤销/重做栈。
+
+### 预览数据 SQL
+
+提交前预览将要执行的确切 SQL 语句：
+
+1. 在网格中进行数据更改（编辑单元格、插入/删除行）
+2. 点击工具栏中的 **Preview SQL** 按钮（眼睛图标），或按 `Cmd+Shift+P`
+3. 弹出窗口显示所有待提交的 SQL，带有语法高亮
+4. 使用 **Copy All** 将 SQL 复制到剪贴板
+
+{/* Screenshot: SQL Preview popover showing pending statements */}
+
+<Tip>
+预览显示的是实际 SQL，参数值已内联，让你可以准确验证将要执行的内容。破坏性操作（DROP、TRUNCATE、DELETE）会用警告横幅标记。
+</Tip>
+
+{/* Screenshot: Commit and Discard buttons with pending changes count */}
+<Frame caption="带待提交更改计数的提交和丢弃按钮">
+  <img
+    className="block dark:hidden"
+    src="/images/commit-discard-buttons.png"
+    alt="带待提交更改计数的提交和丢弃按钮"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/commit-discard-buttons-dark.png"
+    alt="带待提交更改计数的提交和丢弃按钮"
+  />
+</Frame>
+
+## 撤销与重做
+
+完整的撤销/重做栈用于数据编辑。可以在提交前前后回溯更改。
+
+### 工作原理
+
+每个数据更改都会推入撤销栈：
+
+- **单元格编辑**：存储先前值和新值
+- **行插入**：存储行索引
+- **行删除**：存储行索引和原始行数据
+- **批量删除**：将所有受影响的行存储为单个操作
+
+撤销将操作移到重做栈。重做将其移回。
+
+### 使用撤销与重做
+
+| 操作 | 快捷键 |
+|------|--------|
+| 撤销 | `Cmd+Z` |
+| 重做 | `Cmd+Shift+Z` |
+
+<Tip>
+撤销和重做具有上下文感知能力。当 SQL 编辑器获得焦点时，`Cmd+Z` 撤销文本编辑；当数据网格获得焦点时，撤销数据更改。
+</Tip>
+
+### 栈行为
+
+- 撤销/重做栈按标签页维护
+- 提交或丢弃更改会清除两个栈
+- 撤销后进行新更改会清除重做栈（标准撤销行为）
+
+## Schema 变更
+
+TablePro 也使用相同的队列方式追踪表结构（列、索引和外键）的变更。
+
+### 追踪的 Schema 操作
+
+| 操作 | 追踪内容 |
+|------|----------|
+| **添加列** | 新列定义（名称、类型、可空、默认值等） |
+| **修改列** | 旧的和新的列定义 |
+| **删除列** | 标记为待删除的列 |
+| **添加索引** | 新索引定义（名称、列、类型、唯一性） |
+| **修改索引** | 旧的和新的索引定义 |
+| **删除索引** | 标记为待删除的索引 |
+| **添加外键** | 新外键定义（列、引用、操作） |
+| **修改外键** | 旧的和新的外键定义 |
+| **删除外键** | 标记为待删除的外键 |
+| **修改主键** | 旧的和新的主键列 |
+
+### 视觉指示器
+
+在结构标签页中，待提交的更改会通过视觉指示器展示：
+
+- **新增项**（列、索引、外键）以插入颜色高亮
+- **已修改项**显示哪些字段发生了更改
+- **已删除项**标有删除指示器
+
+{/* Screenshot: Schema changes highlighted in Structure tab */}
+<Frame caption="结构标签页中高亮的 Schema 变更">
+  <img
+    className="block dark:hidden"
+    src="/images/schema-change-indicators.png"
+    alt="结构标签页中高亮的 Schema 变更"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/schema-change-indicators-dark.png"
+    alt="结构标签页中高亮的 Schema 变更"
+  />
+</Frame>
+
+### Schema 撤销与重做
+
+Schema 变更有自己独立的撤销/重做栈，与数据变更分开：
+
+- 最多 100 级撤销
+- 新操作清除重做栈
+- 支持所有 schema 操作类型
+
+### 预览 Schema SQL
+
+应用 schema 变更前预览生成的 SQL：
+
+<Steps>
+  <Step title="进行更改">
+    在结构标签页中添加、修改或删除列、索引或外键
+  </Step>
+  <Step title="点击提交">
+    点击 Commit 按钮或按 `Cmd+S`
+  </Step>
+  <Step title="审查 SQL">
+    预览面板显示所有将要执行的 ALTER TABLE 语句
+  </Step>
+  <Step title="应用或取消">
+    点击 **Apply Changes** 执行，或 **Cancel** 返回调整
+  </Step>
+</Steps>
+
+{/* Screenshot: Schema preview sheet showing ALTER TABLE statements */}
+<Frame caption="带生成 SQL 的 Schema 变更预览">
+  <img
+    className="block dark:hidden"
+    src="/images/schema-preview.png"
+    alt="Schema 预览"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/schema-preview-dark.png"
+    alt="Schema 预览"
+  />
+</Frame>
+
+<Tip>
+使用预览面板中每条语句旁的复制按钮复制单条 SQL 语句。
+</Tip>
+
+## SQL 生成
+
+TablePro 为数据和 schema 变更生成数据库专用的 SQL。
+
+### 数据 SQL（`SQLStatementGenerator`）
+
+数据变更生成参数化语句以防止 SQL 注入：
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    ```sql
+    -- UPDATE with LIMIT 1 for safety
+    UPDATE `users` SET `name` = ? WHERE `id` = ? LIMIT 1
+
+    -- INSERT
+    INSERT INTO `users` (`name`, `email`) VALUES (?, ?)
+
+    -- DELETE (with PK)
+    DELETE FROM `users` WHERE `id` = ? OR `id` = ?
+
+    -- DELETE (without PK, matches all columns)
+    DELETE FROM `users` WHERE `name` = ? AND `email` = ? LIMIT 1
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    ```sql
+    -- UPDATE with positional parameters
+    UPDATE "users" SET "name" = $1 WHERE "id" = $2
+
+    -- INSERT
+    INSERT INTO "users" ("name", "email") VALUES ($1, $2)
+
+    -- DELETE (with PK)
+    DELETE FROM "users" WHERE "id" = $1 OR "id" = $2
+    ```
+  </Tab>
+  <Tab title="SQLite">
+    ```sql
+    -- UPDATE
+    UPDATE "users" SET "name" = ? WHERE "id" = ?
+
+    -- INSERT
+    INSERT INTO "users" ("name", "email") VALUES (?, ?)
+
+    -- DELETE
+    DELETE FROM "users" WHERE "id" = ? OR "id" = ?
+    ```
+  </Tab>
+</Tabs>
+
+### Schema SQL（`SchemaStatementGenerator`）
+
+Schema 变更生成带数据库专用语法的 ALTER TABLE 语句：
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    ```sql
+    -- Add column
+    ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(20) NOT NULL
+
+    -- Modify column
+    ALTER TABLE `users` MODIFY COLUMN `name` VARCHAR(200) NOT NULL
+
+    -- Drop column
+    ALTER TABLE `users` DROP COLUMN `phone`
+
+    -- Add index
+    CREATE INDEX `idx_email` ON `users` (`email`) USING BTREE
+
+    -- Drop foreign key
+    ALTER TABLE `orders` DROP FOREIGN KEY `fk_orders_user`
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    ```sql
+    -- Add column
+    ALTER TABLE "users" ADD COLUMN "phone" VARCHAR(20) NOT NULL
+
+    -- Modify column (multiple statements)
+    ALTER TABLE "users" RENAME COLUMN "name" TO "full_name";
+    ALTER TABLE "users" ALTER COLUMN "full_name" TYPE VARCHAR(200);
+    ALTER TABLE "users" ALTER COLUMN "full_name" SET NOT NULL
+
+    -- Drop column
+    ALTER TABLE "users" DROP COLUMN "phone"
+
+    -- Add index
+    CREATE INDEX "idx_email" ON "users" ("email")
+
+    -- Drop constraint
+    ALTER TABLE "orders" DROP CONSTRAINT "fk_orders_user"
+    ```
+  </Tab>
+  <Tab title="SQLite">
+    ```sql
+    -- Add column
+    ALTER TABLE "users" ADD COLUMN "phone" TEXT
+
+    -- Drop column
+    ALTER TABLE "users" DROP COLUMN "phone"
+
+    -- Add index
+    CREATE INDEX "idx_email" ON "users" ("email")
+    ```
+
+    <Warning>
+    SQLite 的 ALTER TABLE 支持有限。修改列和删除外键需要重建表，可视化编辑器目前不支持此操作。请使用 SQL 编辑器完成这些操作。
+    </Warning>
+  </Tab>
+</Tabs>
+
+### SQL 函数支持
+
+编辑单元格时，TablePro 识别常见的 SQL 函数并将其作为字面量而非引号字符串插入：
+
+| 函数 | 数据库 |
+|------|--------|
+| `NOW()` | MySQL、MariaDB |
+| `CURRENT_TIMESTAMP` | 所有 |
+| `CURDATE()` | MySQL、MariaDB |
+| `CURRENT_DATE` | 所有 |
+| `SYSDATE()` | MySQL |
+| `UTC_TIMESTAMP()` | MySQL、MariaDB |
+
+### 依赖排序
+
+Schema 变更在执行前会按依赖顺序自动排序：
+
+1. 删除外键（必须先执行以避免约束冲突）
+2. 删除索引
+3. 删除/修改列
+4. 添加列
+5. 修改主键
+6. 添加索引
+7. 添加外键
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 提交更改 | `Cmd+S` |
+| 撤销 | `Cmd+Z` |
+| 重做 | `Cmd+Shift+Z` |
+| 删除选中行 | `Delete` 或 `Cmd+Delete` |
+| 编辑单元格 | `Enter` 或双击 |
+| 取消编辑 | `Escape` |
+
+## 最佳实践
+
+### 提交前审查
+
+提交前检查待提交的更改。数据网格中的视觉指示器可以帮你快速发现意外的编辑。
+
+### 充分利用撤销
+
+提交后撤销栈会清除，所以在编辑期间尽管使用撤销。工作中随时撤销和重做没有任何代价。
+
+### 频繁提交
+
+避免积累过多更改后再提交。更小、更频繁的提交更容易验证，出问题时风险也更低。
+
+### 预览 Schema 变更
+
+修改表结构时务必使用 SQL 预览。这可以在执行前显示确切的 ALTER TABLE 语句。
+
+### 破坏性更改前备份
+
+删除列或进行其他破坏性 schema 变更前，先备份你的表：
+
+```sql
+CREATE TABLE users_backup AS SELECT * FROM users;
+```
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    在网格中查看和编辑数据
+  </Card>
+  <Card title="表结构" icon="table-columns" href="/zh/features/table-structure">
+    可视化修改表结构
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写和执行原始 SQL
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    所有键盘快捷键
+  </Card>
+</CardGroup>

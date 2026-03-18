@@ -1,66 +1,66 @@
 ---
 title: Filtering
-description: Filter and search your data with visual tools
+description: Build WHERE clauses visually with 18 operators, quick search, and saved presets
 ---
 
 # Filtering
 
-TablePro provides a visual filter builder, quick search, and saved presets to help you find exactly the data you need. Build complex WHERE clauses without writing SQL, or drop into raw SQL mode for full control.
+The filter panel builds WHERE clauses without writing SQL. Pick columns, operators, and values visually, or switch to raw SQL mode for anything the builder can't express. Filters are per-tab, so each workspace keeps its own state.
 
 {/* Screenshot: Filter panel with multiple active filters */}
 <Frame caption="Filter panel with active filters">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-panel.png" 
-    alt="Filter Panel" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-panel.png"
+    alt="Filter Panel"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-panel-dark.png" 
-    alt="Filter Panel" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-panel-dark.png"
+    alt="Filter Panel"
   />
 </Frame>
 
 ## Overview
 
-The filtering system consists of several components:
+The filtering system has five parts:
 
-- **Filter Panel** — a visual builder for constructing WHERE clause conditions
+- **Filter Panel** — visual builder for WHERE clause conditions
 - **Quick Search** — instant search across all visible columns
 - **Filter Presets** — save and load named filter configurations
-- **SQL Preview** — see the generated WHERE clause before applying
+- **SQL Preview** — inspect the generated WHERE clause before applying
 - **Per-Tab State** — each tab remembers its own filters independently
 
 ## Filter Panel
 
 ### Opening the Filter Panel
 
-Toggle the filter panel visibility:
+Toggle the filter panel:
 
 - Click the **Filter** button in the toolbar
-- Or use the keyboard shortcut `Cmd+F`
+- Or press `Cmd+F`
 
-The panel appears above the data grid area, pushing it down. The quick search field is automatically focused when the panel opens.
+The panel appears above the data grid. The quick search field is automatically focused when the panel opens.
 
 ### Building Filters
 
-Each filter row consists of three parts:
+Each filter row has three parts:
 
-1. **Column** — select which column to filter on
-2. **Operator** — choose the comparison operator
-3. **Value** — enter the value to compare against
+1. **Column** — which column to filter on
+2. **Operator** — the comparison operator
+3. **Value** — the value to compare against
 
 {/* Screenshot: Single filter row showing column, operator, and value */}
 <Frame caption="A single filter row">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-row.png" 
-    alt="Filter row" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-row.png"
+    alt="Filter row"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-row-dark.png" 
-    alt="Filter row" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-row-dark.png"
+    alt="Filter row"
   />
 </Frame>
 
@@ -81,7 +81,7 @@ Toggle between AND and OR logic using the segmented control in the filter header
 - **OR** — any filter can match (union)
 
 <Tip>
-Use AND mode to narrow results progressively. Use OR mode when looking for rows that match any of several conditions.
+AND mode narrows results progressively. OR mode finds rows matching any of several conditions.
 </Tip>
 
 {/* Screenshot: AND/OR logic toggle in filter header */}
@@ -130,7 +130,7 @@ Only valid filters with complete column, operator, and value (where required) ca
 
 ## Operators
 
-The filter builder supports 18 operators to cover all common comparison needs.
+The filter builder supports 18 operators:
 
 | Operator | Display Name | Requires Value | Description |
 |----------|-------------|----------------|-------------|
@@ -155,23 +155,23 @@ The filter builder supports 18 operators to cover all common comparison needs.
 
 ### Operators Without Values
 
-When you select IS NULL, IS NOT NULL, IS EMPTY, or IS NOT EMPTY, the value field is hidden and replaced with a dash indicator. No input is needed.
+IS NULL, IS NOT NULL, IS EMPTY, and IS NOT EMPTY hide the value field and show a dash indicator instead. No input needed.
 
 ### BETWEEN Operator
 
-When BETWEEN is selected, two value fields appear with an "and" label between them. Both values are required.
+BETWEEN shows two value fields with an "and" label between them. Both values are required.
 
 {/* Screenshot: BETWEEN filter with two value fields */}
 <Frame caption="BETWEEN filter with two value fields">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-between.png" 
-    alt="BETWEEN filter" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-between.png"
+    alt="BETWEEN filter"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-between-dark.png" 
-    alt="BETWEEN filter" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-between-dark.png"
+    alt="BETWEEN filter"
   />
 </Frame>
 
@@ -185,7 +185,7 @@ value1, value2, value3
 
 ## Raw SQL Mode
 
-For conditions the visual builder cannot express, use Raw SQL mode.
+For conditions the visual builder can't express, switch to Raw SQL mode.
 
 ### Using Raw SQL
 
@@ -196,15 +196,15 @@ For conditions the visual builder cannot express, use Raw SQL mode.
 
 {/* Screenshot: Raw SQL filter with arbitrary WHERE clause */}
 <Frame caption="Raw SQL filter mode">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-raw-sql.png" 
-    alt="Raw SQL filter" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-raw-sql.png"
+    alt="Raw SQL filter"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-raw-sql-dark.png" 
-    alt="Raw SQL filter" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-raw-sql-dark.png"
+    alt="Raw SQL filter"
   />
 </Frame>
 
@@ -223,37 +223,37 @@ price * quantity > 1000
 ```
 
 <Warning>
-Raw SQL is injected directly into the WHERE clause. Ensure your syntax is correct for the connected database type.
+Raw SQL is injected directly into the WHERE clause. Make sure your syntax is correct for the connected database type.
 </Warning>
 
 ## Quick Search
 
-Quick Search provides instant filtering across all visible columns without building individual filter rows.
+Quick Search filters across all visible columns at once, without building individual filter rows.
 
 ### Using Quick Search
 
 1. Open the filter panel
 2. Type in the **Quick search across all columns...** field
-3. Press `Enter` to apply the search
+3. Press `Enter` to apply
 
 {/* Screenshot: Quick search field with search text */}
 <Frame caption="Quick search across all columns">
-  <img 
-    className="block dark:hidden" 
-    src="/images/quick-search.png" 
-    alt="Quick search" 
+  <img
+    className="block dark:hidden"
+    src="/images/quick-search.png"
+    alt="Quick search"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/quick-search-dark.png" 
-    alt="Quick search" 
+  <img
+    className="hidden dark:block"
+    src="/images/quick-search-dark.png"
+    alt="Quick search"
   />
 </Frame>
 
-Quick search is always visible when the filter panel is open. Click the **x** button to clear the search.
+Quick search is always visible when the filter panel is open. Click the **x** button to clear it.
 
 <Tip>
-Quick Search is ideal for ad-hoc lookups. For recurring filter patterns, save them as a preset instead.
+Quick Search works well for one-off lookups. For recurring filter patterns, save them as a preset instead.
 </Tip>
 
 ## Filter Presets
@@ -317,7 +317,7 @@ Presets save the filter definitions (column, operator, value) but not whether th
 
 ## SQL Preview
 
-Preview the exact WHERE clause that will be sent to the database before applying.
+See the exact WHERE clause that will be sent to the database before applying.
 
 ### Viewing the Preview
 
@@ -327,15 +327,15 @@ Preview the exact WHERE clause that will be sent to the database before applying
 
 {/* Screenshot: SQL preview sheet showing generated WHERE clause */}
 <Frame caption="SQL preview of generated filters">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-sql-preview.png" 
-    alt="SQL Preview" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-sql-preview.png"
+    alt="SQL Preview"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-sql-preview-dark.png" 
-    alt="SQL Preview" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-sql-preview-dark.png"
+    alt="SQL Preview"
   />
 </Frame>
 
@@ -351,7 +351,7 @@ If some (but not all) filters are selected, the preview shows only the selected 
 
 ### Handling Invalid Filters
 
-If filters exist but none are valid, the preview shows a helpful message indicating what needs to be completed:
+If filters exist but none are valid, the preview shows a message indicating what needs to be completed:
 
 - Select a column
 - Enter a value (if required by the operator)
@@ -359,14 +359,14 @@ If filters exist but none are valid, the preview shows a helpful message indicat
 
 ## Per-Tab Filter State
 
-Each tab in TablePro maintains its own independent filter state.
+Each tab maintains its own independent filter state.
 
 ### How It Works
 
 - Opening a table creates a fresh filter state for that tab
 - Switching between tabs preserves each tab's filters
 - Applied filters remain active when you switch away and return
-- The filter panel visibility is remembered per tab
+- Filter panel visibility is remembered per tab
 
 ### State Components
 
@@ -388,15 +388,15 @@ Click the **gear** icon in the filter panel header to open the settings popover.
 
 {/* Screenshot: Filter settings popover */}
 <Frame caption="Filter settings">
-  <img 
-    className="block dark:hidden" 
-    src="/images/filter-settings.png" 
-    alt="Filter settings" 
+  <img
+    className="block dark:hidden"
+    src="/images/filter-settings.png"
+    alt="Filter settings"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/filter-settings-dark.png" 
-    alt="Filter settings" 
+  <img
+    className="hidden dark:block"
+    src="/images/filter-settings-dark.png"
+    alt="Filter settings"
   />
 </Frame>
 
@@ -430,7 +430,7 @@ Controls the filter panel behavior when opening a table:
 | **Restore Last Filter** | Restores the last filters used on that specific table |
 
 <Tip>
-The "Restore Last Filter" option remembers filters per table name. If you frequently filter the same table with the same conditions, this saves setup time every session.
+"Restore Last Filter" remembers filters per table name. If you frequently filter the same table with the same conditions, this saves setup time every session.
 </Tip>
 
 ## Keyboard Shortcuts

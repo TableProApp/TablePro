@@ -1,0 +1,179 @@
+---
+title: iCloud Sync
+description: Sync connections, settings, and query history across Macs via iCloud (Pro feature)
+---
+
+# iCloud Sync
+
+TablePro syncs your connections, groups, settings, and query history across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
+
+## What syncs (and what doesn't)
+
+| Data | Synced | Notes |
+|------|--------|-------|
+| **Connections** | Yes | Host, port, username, database type, SSH/SSL config |
+| **Passwords** | No | Stay in each Mac's local Keychain |
+| **Groups & Tags** | Yes | Full connection organization |
+| **App Settings** | Yes | All 8 categories (General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, AI) |
+| **Query History** | Yes | Configurable limit: 100, 500, 1,000, or unlimited |
+
+<Warning>
+Passwords are never synced. They remain in your macOS Keychain on each machine. After syncing a connection to a new Mac, you need to enter the password once on that machine.
+</Warning>
+
+## Enabling iCloud Sync
+
+1. Open **Settings** (`Cmd+,`) and select the **Sync** tab
+2. Toggle **iCloud Sync** on
+3. Choose which categories to sync using the per-category toggles
+4. Click **Sync Now** or wait for the next automatic sync
+
+Sync is off by default. You must opt in explicitly.
+
+{/* Screenshot: Sync settings tab */}
+<Frame caption="iCloud Sync settings">
+  <img
+    className="block dark:hidden"
+    src="/images/settings-sync.png"
+    alt="iCloud Sync settings"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/settings-sync-dark.png"
+    alt="iCloud Sync settings"
+  />
+</Frame>
+
+## Sync categories
+
+Each data type has its own toggle. Sync connections but not history, or settings but not connections.
+
+| Category | What it includes |
+|----------|-----------------|
+| **Connections** | All connection details except passwords |
+| **Groups & Tags** | Connection groups and color tags |
+| **App Settings** | Preferences from all 8 settings categories |
+| **Query History** | Past queries up to the configured limit |
+
+### History limit
+
+Control how many history entries sync across devices:
+
+| Option | Description |
+|--------|-------------|
+| **100** | Last 100 queries |
+| **500** | Last 500 queries |
+| **1,000** | Last 1,000 queries |
+| **Unlimited** | All query history |
+
+<Tip>
+Start with 500. Unlimited history sync can slow down initial sync on large histories.
+</Tip>
+
+## Automatic sync
+
+TablePro auto-syncs in three situations:
+
+- **App launch** -- pulls the latest data from iCloud
+- **App foreground** -- syncs when you switch back to TablePro
+- **Local edits** -- pushes changes 2 seconds after you modify synced data (debounced to avoid excess writes)
+
+Use the **Sync Now** button in **Settings** > **Sync** to trigger a manual sync at any time.
+
+## Conflict resolution
+
+When the same record is modified on two Macs before syncing, TablePro prompts you to choose:
+
+| Option | Description |
+|--------|-------------|
+| **Keep This Mac's Version** | Discard the remote change, keep local |
+| **Keep Other Version** | Discard the local change, use the remote version |
+
+Conflicts are resolved per-record, not per-category. Editing a connection on Mac A and a different connection on Mac B causes no conflict.
+
+{/* Screenshot: Conflict resolution dialog */}
+<Frame caption="Sync conflict resolution">
+  <img
+    className="block dark:hidden"
+    src="/images/sync-conflict.png"
+    alt="Sync conflict resolution"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sync-conflict-dark.png"
+    alt="Sync conflict resolution"
+  />
+</Frame>
+
+## Sync status indicator
+
+The welcome window footer shows the current sync status:
+
+| Status | Meaning |
+|--------|---------|
+| **Synced** | All data is up to date |
+| **Syncing** | Sync in progress |
+| **Error** | Sync failed (hover for details) |
+| **Off** | iCloud Sync is disabled |
+
+{/* Screenshot: Sync status in welcome window footer */}
+<Frame caption="Sync status indicator in welcome window">
+  <img
+    className="block dark:hidden"
+    src="/images/sync-status.png"
+    alt="Sync status indicator"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sync-status-dark.png"
+    alt="Sync status indicator"
+  />
+</Frame>
+
+## Pro license requirement
+
+iCloud Sync requires an active Pro license. Without one, the Sync settings tab shows a "Pro required" overlay.
+
+When a license expires:
+
+- Sync stops immediately
+- All previously synced data stays on each Mac as local data
+- Re-activating a license resumes sync from where it left off
+
+## Troubleshooting
+
+### No records syncing
+
+1. Confirm iCloud is signed in: **System Settings** > **Apple Account** > **iCloud**
+2. Check that iCloud Drive is enabled
+3. Verify the specific category toggle is on in **Settings** > **Sync**
+4. Click **Sync Now** to force a sync attempt
+
+### Stale data on one Mac
+
+Click **Sync Now** on the Mac with outdated data. If the problem persists, toggle iCloud Sync off and on again. This forces a full re-sync.
+
+### "iCloud account unavailable" error
+
+TablePro requires an active iCloud account. Sign in via **System Settings** > **Apple Account**. Corporate Managed Apple IDs work as long as iCloud Drive is not restricted by MDM policy.
+
+### Sync stopped after license expired
+
+This is expected. Sync requires an active Pro license. Renew or re-activate your license to resume syncing.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Settings" icon="gear" href="/customization/settings">
+    All settings categories
+  </Card>
+  <Card title="License" icon="key" href="/customization/settings#license-settings">
+    License activation and management
+  </Card>
+  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
+    Browse previous queries
+  </Card>
+  <Card title="Safe Mode" icon="shield" href="/features/safe-mode">
+    Per-connection query execution controls
+  </Card>
+</CardGroup>

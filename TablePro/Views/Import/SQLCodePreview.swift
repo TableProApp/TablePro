@@ -39,7 +39,7 @@ struct SQLCodePreview: View {
         SourceEditorConfiguration(
             appearance: .init(
                 theme: TableProEditorTheme.make(),
-                font: SQLEditorTheme.font,
+                font: ThemeEngine.shared.editorFonts.font,
                 wrapLines: false
             ),
             behavior: .init(

@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Column type metadata for type-aware formatting and display.
-//  Extracted from database drivers and used throughout the app.
+//  Driver-specific type mapping lives in each plugin; this enum is display-only.
 //
 
 import Foundation
@@ -33,213 +33,6 @@ enum ColumnType: Equatable {
             return raw
         case .enumType(let raw, _), .set(let raw, _):
             return raw
-        }
-    }
-
-    // MARK: - MySQL Type Mapping
-
-    /// Initialize from MySQL MYSQL_TYPE_* enum value
-    /// Reference: https://dev.mysql.com/doc/c-api/8.0/en/c-api-data-structures.html
-    init(fromMySQLType type: UInt32, rawType: String? = nil) {
-        switch type {
-        // Integer types
-        case 1, 2, 3, 8, 9:  // TINY, SHORT, LONG, LONGLONG, INT24
-            self = .integer(rawType: rawType)
-
-        // Decimal types
-        case 4, 5, 246:  // FLOAT, DOUBLE, NEWDECIMAL
-            self = .decimal(rawType: rawType)
-
-        // Date/time types
-        case 10:  // DATE
-            self = .date(rawType: rawType)
-        case 7:   // TIMESTAMP
-            self = .timestamp(rawType: rawType)
-        case 12:  // DATETIME
-            self = .datetime(rawType: rawType)
-        case 11:  // TIME
-            self = .timestamp(rawType: rawType)  // Treat TIME as timestamp for formatting
-
-        // Boolean (TINYINT(1))
-        // Note: MySQL doesn't have a dedicated boolean type
-        // We detect TINYINT(1) in the driver itself
-
-        // JSON type
-        case 245:  // JSON
-            self = .json(rawType: rawType)
-
-        // Binary/blob types
-        case 249, 250, 251, 252:  // TINY_BLOB, MEDIUM_BLOB, LONG_BLOB, BLOB
-            self = .blob(rawType: rawType)
-
-        // Enum/Set types
-        case 247:  // ENUM
-            self = .enumType(rawType: rawType, values: nil)
-        case 248:  // SET
-            self = .set(rawType: rawType, values: nil)
-
-        // Geometry type
-        case 255:  // GEOMETRY
-            self = .spatial(rawType: rawType)
-
-        // Text types (default)
-        default:
-            self = .text(rawType: rawType)
-        }
-    }
-
-    /// Initialize from MySQL field metadata with size hint for boolean detection
-    init(fromMySQLType type: UInt32, length: UInt64, rawType: String? = nil) {
-        // Special case: TINYINT(1) is often used for boolean
-        if type == 1 && length == 1 {
-            self = .boolean(rawType: rawType)
-        } else {
-            self.init(fromMySQLType: type, rawType: rawType)
-        }
-    }
-
-    // MARK: - PostgreSQL Type Mapping
-
-    /// Initialize from PostgreSQL Oid
-    /// Reference: https://www.postgresql.org/docs/current/datatype-oid.html
-    init(fromPostgreSQLOid oid: UInt32, rawType: String? = nil) {
-        switch oid {
-        // Boolean
-        case 16:  // BOOLOID
-            self = .boolean(rawType: rawType)
-
-        // Integer types
-        case 20, 21, 23, 26:  // INT8, INT2, INT4, OID
-            self = .integer(rawType: rawType)
-
-        // Decimal types
-        case 700, 701, 1_700:  // FLOAT4, FLOAT8, NUMERIC
-            self = .decimal(rawType: rawType)
-
-        // Date/time types
-        case 1_082:  // DATE
-            self = .date(rawType: rawType)
-        case 1_083, 1_266:  // TIME, TIMETZ
-            self = .timestamp(rawType: rawType)
-        case 1_114, 1_184:  // TIMESTAMP, TIMESTAMPTZ
-            self = .timestamp(rawType: rawType)
-
-        // JSON types
-        case 114, 3_802:  // JSON, JSONB
-            self = .json(rawType: rawType)
-
-        // Binary types
-        case 17:  // BYTEA
-            self = .blob(rawType: rawType)
-
-        // Native geometry types
-        case 600, 601, 602, 603, 604, 628, 718:  // point, lseg, path, box, polygon, line, circle
-            self = .spatial(rawType: rawType)
-
-        // Text types (default)
-        default:
-            // Check for user-defined enum types (rawType formatted as "ENUM(typename)")
-            if let raw = rawType?.uppercased(), raw.hasPrefix("ENUM(") {
-                self = .enumType(rawType: rawType, values: nil)
-            } else {
-                self = .text(rawType: rawType)
-            }
-        }
-    }
-
-    // MARK: - SQLite Type Mapping
-
-    /// Initialize from SQLite declared type string
-    /// SQLite uses type affinity rules: https://www.sqlite.org/datatype3.html
-    init(fromSQLiteType declaredType: String?) {
-        guard let type = declaredType?.uppercased() else {
-            self = .text(rawType: declaredType)
-            return
-        }
-
-        // SQLite type affinity rules
-        if type.hasPrefix("ENUM(") {
-            self = .enumType(rawType: declaredType, values: nil)
-        } else if type.contains("INT") {
-            self = .integer(rawType: declaredType)
-        } else if type.contains("CHAR") || type.contains("CLOB") || type.contains("TEXT") {
-            self = .text(rawType: declaredType)
-        } else if type.contains("BLOB") || type.isEmpty {
-            self = .blob(rawType: declaredType)
-        } else if type.contains("REAL") || type.contains("FLOA") || type.contains("DOUB") {
-            self = .decimal(rawType: declaredType)
-        } else if type.contains("DATE") && !type.contains("TIME") {
-            self = .date(rawType: declaredType)
-        } else if type.contains("TIME") || type.contains("TIMESTAMP") {
-            self = .timestamp(rawType: declaredType)
-        } else if type.contains("BOOL") {
-            self = .boolean(rawType: declaredType)
-        } else if type.contains("JSON") {
-            self = .json(rawType: declaredType)
-        } else {
-            // Numeric affinity (catch-all for numeric types)
-            self = .text(rawType: declaredType)
-        }
-    }
-
-    // MARK: - MongoDB BSON Type Mapping
-
-    /// Initialize from BSON type integer code
-    /// Reference: https://www.mongodb.com/docs/manual/reference/bson-types/
-    init(fromBsonType type: Int32) {
-        switch type {
-        case 1:   // Double
-            self = .decimal(rawType: "Double")
-        case 2:   // String
-            self = .text(rawType: "String")
-        case 3:   // Document (embedded)
-            self = .json(rawType: "Object")
-        case 4:   // Array
-            self = .json(rawType: "Array")
-        case 5:   // Binary
-            self = .blob(rawType: "Binary")
-        case 7:   // ObjectId
-            self = .text(rawType: "ObjectId")
-        case 8:   // Boolean
-            self = .boolean(rawType: "Boolean")
-        case 9:   // Date
-            self = .datetime(rawType: "Date")
-        case 10:  // Null
-            self = .text(rawType: "Null")
-        case 16:  // Int32
-            self = .integer(rawType: "Int32")
-        case 17:  // Timestamp
-            self = .timestamp(rawType: "Timestamp")
-        case 18:  // Int64
-            self = .integer(rawType: "Int64")
-        case 19:  // Decimal128
-            self = .decimal(rawType: "Decimal128")
-        default:
-            self = .text(rawType: nil)
-        }
-    }
-
-    // MARK: - Redis Type Mapping
-
-    /// Initialize from Redis TYPE command result string
-    init(fromRedisType type: String) {
-        switch type.lowercased() {
-        case "string":
-            self = .text(rawType: "String")
-        case "list":
-            self = .json(rawType: "List")
-        case "set":
-            self = .json(rawType: "Set")
-        case "zset":
-            self = .json(rawType: "Sorted Set")
-        case "hash":
-            self = .json(rawType: "Hash")
-        case "stream":
-            self = .json(rawType: "Stream")
-        case "none":
-            self = .text(rawType: "None")
-        default:
-            self = .text(rawType: type)
         }
     }
 
@@ -326,6 +119,13 @@ enum ColumnType: Equatable {
     var isBooleanType: Bool {
         switch self {
         case .boolean: return true
+        default: return false
+        }
+    }
+
+    var isBlobType: Bool {
+        switch self {
+        case .blob: return true
         default: return false
         }
     }

@@ -1,0 +1,559 @@
+---
+title: 表结构
+description: 浏览列定义、索引、外键和 DDL，并使用可视化结构编辑器
+---
+
+# 表结构
+
+浏览列定义、索引、外键以及任意表的 DDL（CREATE TABLE 语句）。通过可视化方式或 SQL 编辑表结构。
+
+{/* Screenshot: Table structure view showing columns tab */}
+<Frame caption="表结构视图">
+  <img
+    className="block dark:hidden"
+    src="/images/table-structure.png"
+    alt="表结构"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/table-structure-dark.png"
+    alt="表结构"
+  />
+</Frame>
+
+## 访问表结构
+
+要查看表的结构：
+
+<Steps>
+  <Step title="选择一张表">
+    在侧边栏中点击表名
+  </Step>
+  <Step title="打开结构标签页">
+    点击数据网格下方的 **Structure** 标签页
+  </Step>
+  <Step title="浏览">
+    在列、索引、外键和 DDL 标签页之间切换
+  </Step>
+</Steps>
+
+或者右键点击表名并选择 **Show Structure**。
+
+## 列标签页
+
+列标签页列出所有列定义：
+
+{/* Screenshot: Columns tab with column list */}
+<Frame caption="列定义">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-columns.png"
+    alt="列标签页"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-columns-dark.png"
+    alt="列标签页"
+  />
+</Frame>
+
+### 列信息
+
+| 属性 | 说明 |
+|------|------|
+| **名称** | 列名 |
+| **类型** | 数据类型（VARCHAR、INT 等） |
+| **可空** | 是否允许 NULL 值 |
+| **默认值** | 未指定时的默认值 |
+| **附加属性** | 额外属性（AUTO_INCREMENT 等） |
+| **键** | 主键（PRI）、外键（FOR）等 |
+
+### 复制为 TSV
+
+右键点击结构网格可将列定义复制为 TSV（Tab 分隔值）。便于粘贴到电子表格或文档工具中。
+
+### 各数据库的数据类型
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    常见 MySQL 数据类型：
+
+    | 分类 | 类型 |
+    |------|------|
+    | 数值 | INT、BIGINT、DECIMAL、FLOAT、DOUBLE |
+    | 字符串 | VARCHAR、TEXT、CHAR、ENUM |
+    | 日期/时间 | DATE、DATETIME、TIMESTAMP、TIME |
+    | 二进制 | BLOB、BINARY、VARBINARY |
+    | JSON | JSON |
+  </Tab>
+  <Tab title="PostgreSQL">
+    常见 PostgreSQL 数据类型：
+
+    | 分类 | 类型 |
+    |------|------|
+    | 数值 | INTEGER、BIGINT、NUMERIC、REAL |
+    | 字符串 | VARCHAR、TEXT、CHAR |
+    | 日期/时间 | DATE、TIMESTAMP、TIMESTAMPTZ、TIME |
+    | 二进制 | BYTEA |
+    | 特殊 | JSON、JSONB、ARRAY、UUID、INET |
+  </Tab>
+  <Tab title="SQLite">
+    SQLite 类型亲和性：
+
+    | 亲和性 | 说明 |
+    |--------|------|
+    | TEXT | 字符串数据 |
+    | INTEGER | 有符号整数 |
+    | REAL | 浮点数 |
+    | NUMERIC | 数值或文本 |
+    | BLOB | 二进制数据 |
+  </Tab>
+</Tabs>
+
+## 索引标签页
+
+查看表上定义的所有索引：
+
+{/* Screenshot: Indexes tab showing index list */}
+<Frame caption="表索引">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-indexes.png"
+    alt="索引标签页"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-indexes-dark.png"
+    alt="索引标签页"
+  />
+</Frame>
+
+### 索引信息
+
+| 属性 | 说明 |
+|------|------|
+| **名称** | 索引名 |
+| **列** | 索引包含的列 |
+| **类型** | BTREE、HASH、FULLTEXT 等 |
+| **唯一** | 是否强制唯一性 |
+| **主键** | 是否为主键 |
+
+### 索引类型
+
+| 类型 | 用途 |
+|------|------|
+| **PRIMARY** | 主键约束 |
+| **UNIQUE** | 唯一约束/索引 |
+| **INDEX** | 用于性能优化的常规索引 |
+| **FULLTEXT** | 全文搜索（MySQL） |
+| **SPATIAL** | 地理空间数据（PostGIS） |
+
+## 外键标签页
+
+查看外键关系：
+
+{/* Screenshot: Foreign keys tab */}
+<Frame caption="外键关系">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-fk.png"
+    alt="外键标签页"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-fk-dark.png"
+    alt="外键标签页"
+  />
+</Frame>
+
+### 外键信息
+
+| 属性 | 说明 |
+|------|------|
+| **名称** | 约束名 |
+| **列** | 本地列 |
+| **引用** | 目标表和列 |
+| **删除时** | 引用行被删除时的操作 |
+| **更新时** | 引用行被更新时的操作 |
+
+### 引用操作
+
+| 操作 | 说明 |
+|------|------|
+| **RESTRICT** | 有引用时阻止删除/更新 |
+| **CASCADE** | 级联删除/更新引用行 |
+| **SET NULL** | 将引用列设为 NULL |
+| **SET DEFAULT** | 设为默认值 |
+| **NO ACTION** | 类似 RESTRICT（延迟检查） |
+
+## DDL 标签页
+
+查看表的 CREATE TABLE 语句：
+
+{/* Screenshot: DDL tab showing CREATE TABLE statement */}
+<Frame caption="DDL（CREATE TABLE）语句">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-ddl.png"
+    alt="DDL 标签页"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-ddl-dark.png"
+    alt="DDL 标签页"
+  />
+</Frame>
+
+### 复制 DDL
+
+1. 打开 DDL 标签页
+2. 全选（`Cmd+A`）
+3. 复制（`Cmd+C`）
+
+DDL 可用于：
+
+- 在其他数据库中重建表
+- 对 schema 变更进行版本控制
+- 编写文档
+- 创建类似的表
+
+### DDL 示例
+
+<Tabs>
+  <Tab title="MySQL">
+    ```sql
+    CREATE TABLE `users` (
+      `id` int NOT NULL AUTO_INCREMENT,
+      `email` varchar(255) NOT NULL,
+      `name` varchar(100) DEFAULT NULL,
+      `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `email` (`email`),
+      KEY `created_at` (`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    ```sql
+    CREATE TABLE users (
+      id SERIAL PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      name VARCHAR(100),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE
+    );
+
+    CREATE INDEX idx_users_created_at ON users(created_at);
+    ```
+  </Tab>
+  <Tab title="SQLite">
+    ```sql
+    CREATE TABLE users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT
+    );
+
+    CREATE INDEX idx_users_created_at ON users(created_at);
+    ```
+  </Tab>
+</Tabs>
+
+## 表元数据
+
+还可能显示以下表信息：
+
+| 属性 | 说明 |
+|------|------|
+| **引擎** | 存储引擎（MySQL：InnoDB、MyISAM） |
+| **排序规则** | 字符排序规则 |
+| **行数** | 预估行数 |
+| **数据大小** | 表数据大小 |
+| **索引大小** | 索引数据大小 |
+| **注释** | 表注释/说明 |
+
+## 修改结构
+
+<Warning>
+修改结构会改变数据库 schema。进行变更前请务必备份重要数据。
+</Warning>
+
+### 可视化结构编辑器
+
+通过可视化方式编辑表结构，无需编写 SQL：
+
+#### 添加列
+
+1. 打开 **Structure** 标签页 > **Columns**
+2. 点击 **+** 按钮添加新列
+3. 设置列属性：名称、类型、可空、默认值、自增、注释
+   - 点击 **Type** 单元格打开类型选择器。按分类浏览数据库专有类型，或按名称搜索。
+   - 对于参数化类型（如 `VARCHAR(255)`、`DECIMAL(10,2)`），直接在自由输入框中输入
+4. 点击 **Apply** 预览并执行更改
+
+{/* Screenshot: Adding a new column in Structure editor */}
+<Frame caption="在结构编辑器中添加新列">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-add-column.png"
+    alt="在结构编辑器中添加新列"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-add-column-dark.png"
+    alt="在结构编辑器中添加新列"
+  />
+</Frame>
+
+#### 修改列
+
+1. 在列标签页中点击某列
+2. 在详情面板中编辑属性
+3. 更改支持撤销/重做
+4. 点击 **Apply** 预览 ALTER TABLE SQL
+
+#### 删除列
+
+1. 选择要删除的列
+2. 点击 **-** 按钮或按 Delete
+3. 确认删除
+4. 应用更改
+
+#### 类型选择器
+
+编辑 **Type** 列时，会弹出一个可搜索的面板，按分类展示数据库专有数据类型：
+
+| 分类 | 示例 |
+|------|------|
+| **数值** | INT、BIGINT、DECIMAL、FLOAT、DOUBLE |
+| **字符串** | VARCHAR、TEXT、CHAR、ENUM |
+| **日期和时间** | DATE、DATETIME、TIMESTAMP、TIME |
+| **二进制** | BLOB、BINARY、BYTEA |
+| **其他** | JSON、JSONB、UUID、BOOLEAN |
+
+可用类型与当前连接的数据库（MySQL、PostgreSQL 或 SQLite）匹配。对于参数化类型如 `VARCHAR(255)` 或 `NUMERIC(10,2)`，直接输入自定义类型。
+
+{/* Screenshot: Type picker popover in Structure editor */}
+<Frame caption="带搜索和分类的类型选择器">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-type-picker.png"
+    alt="类型选择器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-type-picker-dark.png"
+    alt="类型选择器"
+  />
+</Frame>
+
+### Schema 变更预览
+
+在应用结构变更之前，TablePro 会显示生成的 ALTER TABLE SQL。查看确切的 SQL 语句，验证更改是否符合预期，必要时可取消。
+
+{/* Screenshot: Schema change preview with ALTER TABLE statements */}
+<Frame caption="带 ALTER TABLE 语句的 Schema 变更预览">
+  <img
+    className="block dark:hidden"
+    src="/images/schema-change-preview.png"
+    alt="带 ALTER TABLE 语句的 Schema 变更预览"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/schema-change-preview-dark.png"
+    alt="带 ALTER TABLE 语句的 Schema 变更预览"
+  />
+</Frame>
+
+### 撤销/重做
+
+结构变更完整支持撤销/重做：
+
+- 按 `Cmd+Z` 撤销更改
+- 按 `Cmd+Shift+Z` 重做更改
+- 在应用到数据库之前均可追踪变更
+- 详情参见[变更追踪](/zh/features/change-tracking)
+
+{/* Screenshot: Undo and redo for structure changes */}
+<Frame caption="结构变更的撤销和重做">
+  <img
+    className="block dark:hidden"
+    src="/images/structure-undo-redo.png"
+    alt="结构变更的撤销和重做"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/structure-undo-redo-dark.png"
+    alt="结构变更的撤销和重做"
+  />
+</Frame>
+
+### 通过 SQL 添加列
+
+直接用 SQL 添加列：
+
+```sql
+-- MySQL
+ALTER TABLE users ADD COLUMN phone VARCHAR(20) AFTER email;
+
+-- PostgreSQL
+ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+
+-- SQLite (limited ALTER TABLE)
+ALTER TABLE users ADD COLUMN phone TEXT;
+```
+
+### 通过 SQL 修改列
+
+```sql
+-- MySQL
+ALTER TABLE users MODIFY COLUMN name VARCHAR(200) NOT NULL;
+
+-- PostgreSQL
+ALTER TABLE users ALTER COLUMN name TYPE VARCHAR(200);
+ALTER TABLE users ALTER COLUMN name SET NOT NULL;
+
+-- SQLite (requires table recreation)
+-- See SQLite documentation for workarounds
+```
+
+### 通过 SQL 删除列
+
+```sql
+-- MySQL/PostgreSQL
+ALTER TABLE users DROP COLUMN phone;
+
+-- SQLite (requires table recreation)
+```
+
+### 管理索引
+
+```sql
+-- Create index
+CREATE INDEX idx_users_email ON users(email);
+
+-- Create unique index
+CREATE UNIQUE INDEX idx_users_username ON users(username);
+
+-- Drop index
+DROP INDEX idx_users_email ON users;  -- MySQL
+DROP INDEX idx_users_email;  -- PostgreSQL
+```
+
+### 管理外键
+
+```sql
+-- Add foreign key
+ALTER TABLE orders
+ADD CONSTRAINT fk_orders_user
+FOREIGN KEY (user_id) REFERENCES users(id)
+ON DELETE CASCADE;
+
+-- Drop foreign key
+ALTER TABLE orders DROP FOREIGN KEY fk_orders_user;  -- MySQL
+ALTER TABLE orders DROP CONSTRAINT fk_orders_user;  -- PostgreSQL
+```
+
+## 刷新结构
+
+进行 schema 变更后：
+
+1. **通过侧边栏**：右键点击表 > Refresh
+2. **通过菜单**：View > Refresh
+3. **自动刷新**：在 TablePro 中进行的变更会自动刷新
+
+## 最佳实践
+
+### Schema 设计
+
+1. **选择合适的数据类型**：使用能容纳数据的最小类型
+2. **为查询添加索引**：对 WHERE 和 JOIN 中使用的列建索引
+3. **定义外键**：维护引用完整性
+4. **使用 NOT NULL**：当列必须有值时
+5. **设置默认值**：为可选列提供合理的默认值
+
+### 命名规范
+
+| 元素 | 规范 | 示例 |
+|------|------|------|
+| 表 | 复数，snake_case | `users`、`order_items` |
+| 列 | 单数，snake_case | `user_id`、`created_at` |
+| 索引 | `idx_table_columns` | `idx_users_email` |
+| 外键 | `fk_table_reference` | `fk_orders_user` |
+| 主键 | `id` 或 `table_id` | `id`、`user_id` |
+
+### 性能考量
+
+1. **主键**：每张表都应有主键
+2. **外键索引**：为外键列建索引
+3. **组合索引**：按选择性排列列的顺序
+4. **避免过多索引**：索引会降低写入速度
+
+## MongoDB 集合
+
+MongoDB 集合的结构模型与 SQL 表不同。
+
+### Schema 视图
+
+MongoDB 集合的结构标签页为**只读**。由于 MongoDB 是无 schema 的，TablePro 通过抽样文档推断 schema。结构视图显示三列：
+
+- **名称**：字段名（包括点号表示的嵌套路径）
+- **类型**：BSON 类型（ObjectId、String、Int32、Int64、Double、Boolean、Date、Array、Object 等）
+- **可空**：该字段是否在所有抽样文档中都存在
+
+### 索引
+
+索引标签页显示集合索引。MongoDB 索引显示为可复制并在 `mongosh` 中运行的 `createIndex()` 命令。
+
+### DDL 标签页
+
+MongoDB 的 DDL 标签页显示：
+- **索引定义**，以 `db.collection.createIndex()` 语句形式
+- **集合验证器**，以 `db.runCommand({collMod: ...})` 语句形式
+- **集合选项**（capped、size、max），如果适用
+
+<Note>
+MongoDB 集合不支持结构修改（添加/删除字段），因为 MongoDB 是无 schema 的。要修改 schema，请直接在数据网格中编辑文档。
+</Note>
+
+## 故障排除
+
+### 结构未加载
+
+1. 检查数据库连接
+2. 确认用户有查看 schema 的权限
+3. 刷新连接
+
+### 缺少列
+
+1. 刷新表结构
+2. 检查列是否在未提交的事务中添加
+3. 确认正在查看的是正确的数据库/schema
+
+### DDL 语法错误
+
+将 DDL 复制到其他数据库时：
+
+1. 检查数据库之间的语法差异
+2. 为目标数据库调整数据类型
+3. 移除不支持的特性（如 PostgreSQL 不支持 MySQL 的 ENGINE）
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写 ALTER TABLE 查询
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看表数据
+  </Card>
+  <Card title="导入与导出" icon="file-import" href="/zh/features/import-export">
+    导出 schema 和数据
+  </Card>
+  <Card title="连接管理" icon="plug" href="/zh/databases/overview">
+    管理数据库连接
+  </Card>
+</CardGroup>

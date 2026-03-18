@@ -7,10 +7,13 @@
 
 import os
 import SwiftUI
+import TableProPluginKit
 import UniformTypeIdentifiers
 
+// swiftlint:disable file_length
+
 /// Form for creating or editing a database connection
-struct ConnectionFormView: View {
+struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormView")
     @Environment(\.openWindow) private var openWindow
 
@@ -23,6 +26,23 @@ struct ConnectionFormView: View {
     // Computed property for isNew
     private var isNew: Bool { connectionId == nil }
 
+    private var availableDatabaseTypes: [DatabaseType] {
+        PluginManager.shared.availableDatabaseTypes
+    }
+
+    private var additionalConnectionFields: [ConnectionField] {
+        PluginManager.shared.additionalConnectionFields(for: type)
+    }
+
+    private var authSectionFields: [ConnectionField] {
+        PluginManager.shared.additionalConnectionFields(for: type)
+            .filter { $0.section == .authentication }
+    }
+
+    private var hidePasswordField: Bool {
+        authSectionFields.contains { $0.hidesPassword && additionalFieldValues[$0.id] == "true" }
+    }
+
     @State private var name: String = ""
     @State private var host: String = ""
     @State private var port: String = ""
@@ -33,6 +53,7 @@ struct ConnectionFormView: View {
     @State private var connectionURL: String = ""
     @State private var urlParseError: String?
     @State private var showURLImport = false
+    @State private var hasLoadedData = false
 
     // SSH Configuration
     @State private var sshEnabled: Bool = false
@@ -42,9 +63,17 @@ struct ConnectionFormView: View {
     @State private var sshPassword: String = ""
     @State private var sshAuthMethod: SSHAuthMethod = .password
     @State private var sshPrivateKeyPath: String = ""
+    @State private var sshAgentSocketOption: SSHAgentSocketOption = .systemDefault
+    @State private var customSSHAgentSocketPath: String = ""
     @State private var keyPassphrase: String = ""
     @State private var sshConfigEntries: [SSHConfigEntry] = []
     @State private var selectedSSHConfigHost: String = ""
+    @State private var jumpHosts: [SSHJumpHost] = []
+    @State private var totpMode: TOTPMode = .none
+    @State private var totpSecret: String = ""
+    @State private var totpAlgorithm: TOTPAlgorithm = .sha1
+    @State private var totpDigits: Int = 6
+    @State private var totpPeriod: Int = 30
 
     // SSL Configuration
     @State private var sslMode: SSLMode = .disabled
@@ -57,21 +86,32 @@ struct ConnectionFormView: View {
     @State private var selectedTagId: UUID?
     @State private var selectedGroupId: UUID?
 
-    // Read-only mode
-    @State private var isReadOnly: Bool = false
+    // Safe mode level
+    @State private var safeModeLevel: SafeModeLevel = .silent
 
     // AI policy
     @State private var aiPolicy: AIConnectionPolicy?
 
-    // MongoDB-specific settings
-    @State private var mongoReadPreference: String = ""
-    @State private var mongoWriteConcern: String = ""
+    // Plugin-driven additional connection fields
+    @State private var additionalFieldValues: [String: String] = [:]
 
-    // MSSQL-specific settings
-    @State private var mssqlSchema: String = "dbo"
+    // Startup commands
+    @State private var startupCommands: String = ""
+
+    // Pgpass
+    @State private var pgpassStatus: PgpassStatus = .notChecked
+
+    private var usePgpass: Bool {
+        additionalFieldValues["usePgpass"] == "true"
+    }
+
+    // Pre-connect script
+    @State private var preConnectScript: String = ""
 
     @State private var isTesting: Bool = false
-    @State private var testResult: TestResult?
+    @State private var testSucceeded: Bool = false
+
+    @State private var pluginInstallConnection: DatabaseConnection?
 
     // Tab selection
     @State private var selectedTab: FormTab = .general
@@ -80,11 +120,6 @@ struct ConnectionFormView: View {
     @State private var originalConnection: DatabaseConnection?
 
     // MARK: - Enums
-
-    enum TestResult {
-        case success
-        case failure(String)
-    }
 
     private enum FormTab: String, CaseIterable {
         case general = "General"
@@ -116,26 +151,53 @@ struct ConnectionFormView: View {
             footer
         }
         .frame(width: 480, height: 520)
-        .navigationTitle(isNew ? String(localized: "New Connection") : String(localized: "Edit Connection"))
+        .navigationTitle(
+            isNew ? String(localized: "New Connection") : String(localized: "Edit Connection")
+        )
         .onAppear {
             loadConnectionData()
             loadSSHConfig()
         }
-        .onChange(of: type) {
-            port = String(type.defaultPort)
-            if type == .sqlite && (selectedTab == .ssh || selectedTab == .ssl) {
+        .onChange(of: type) { _, newType in
+            if hasLoadedData {
+                port = String(newType.defaultPort)
+            }
+            if !visibleTabs.contains(selectedTab) {
                 selectedTab = .general
             }
+            additionalFieldValues = [:]
+            for field in PluginManager.shared.additionalConnectionFields(for: newType) {
+                if let defaultValue = field.defaultValue {
+                    additionalFieldValues[field.id] = defaultValue
+                }
+            }
         }
+        .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
+            connectAfterInstall(connection)
+        }
+        .onChange(of: additionalFieldValues) { _, _ in updatePgpassStatus() }
+        .onChange(of: host) { _, _ in updatePgpassStatus() }
+        .onChange(of: port) { _, _ in updatePgpassStatus() }
+        .onChange(of: database) { _, _ in updatePgpassStatus() }
+        .onChange(of: username) { _, _ in updatePgpassStatus() }
     }
 
     // MARK: - Tab Picker Helpers
 
     private var visibleTabs: [FormTab] {
-        if type == .sqlite {
-            return [.general, .advanced]
+        var tabs: [FormTab] = [.general]
+        if PluginManager.shared.supportsSSH(for: type) {
+            tabs.append(.ssh)
         }
-        return FormTab.allCases
+        if PluginManager.shared.supportsSSL(for: type) {
+            tabs.append(.ssl)
+        }
+        tabs.append(.advanced)
+        return tabs
+    }
+
+    private var resolvedSSHAgentSocketPath: String {
+        sshAgentSocketOption.resolvedPath(customPath: customSSHAgentSocketPath)
     }
 
     // MARK: - Tab Form Content
@@ -160,8 +222,23 @@ struct ConnectionFormView: View {
         Form {
             Section {
                 Picker(String(localized: "Type"), selection: $type) {
-                    ForEach(DatabaseType.allCases) { t in
-                        Text(t.rawValue).tag(t)
+                    ForEach(availableDatabaseTypes) { t in
+                        Label {
+                            HStack {
+                                Text(t.rawValue)
+                                if t.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: t) {
+                                    Image(systemName: "arrow.down.circle")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                }
+                            }
+                        } icon: {
+                            t.iconImage
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 20, height: 20)
+                        }
+                        .tag(t)
                     }
                 }
                 TextField(
@@ -176,13 +253,13 @@ struct ConnectionFormView: View {
                 }
             }
 
-            if type == .sqlite {
+            if PluginManager.shared.connectionMode(for: type) == .fileBased {
                 Section(String(localized: "Database File")) {
                     HStack {
                         TextField(
                             String(localized: "File Path"),
                             text: $database,
-                            prompt: Text("/path/to/database.sqlite")
+                            prompt: Text(filePathPrompt)
                         )
                         Button(String(localized: "Browse...")) { browseForFile() }
                             .controlSize(.small)
@@ -200,7 +277,7 @@ struct ConnectionFormView: View {
                         text: $port,
                         prompt: Text(defaultPort)
                     )
-                    if type != .redis {
+                    if PluginManager.shared.requiresAuthentication(for: type) {
                         TextField(
                             String(localized: "Database"),
                             text: $database,
@@ -209,17 +286,34 @@ struct ConnectionFormView: View {
                     }
                 }
                 Section(String(localized: "Authentication")) {
-                    if type != .redis {
+                    if PluginManager.shared.requiresAuthentication(for: type) {
                         TextField(
                             String(localized: "Username"),
                             text: $username,
                             prompt: Text("root")
                         )
                     }
-                    SecureField(
-                        String(localized: "Password"),
-                        text: $password
-                    )
+                    ForEach(authSectionFields, id: \.id) { field in
+                        ConnectionFieldRow(
+                            field: field,
+                            value: Binding(
+                                get: {
+                                    additionalFieldValues[field.id]
+                                        ?? field.defaultValue ?? ""
+                                },
+                                set: { additionalFieldValues[field.id] = $0 }
+                            )
+                        )
+                    }
+                    if !hidePasswordField {
+                        SecureField(
+                            String(localized: "Password"),
+                            text: $password
+                        )
+                    }
+                    if additionalFieldValues["usePgpass"] == "true" {
+                        pgpassStatusView
+                    }
                 }
             }
 
@@ -233,8 +327,11 @@ struct ConnectionFormView: View {
                 LabeledContent(String(localized: "Group")) {
                     ConnectionGroupPicker(selectedGroupId: $selectedGroupId)
                 }
-                Toggle(String(localized: "Read-Only"), isOn: $isReadOnly)
-                    .help("Prevent write operations (INSERT, UPDATE, DELETE, DROP, etc.)")
+                Picker(String(localized: "Safe Mode"), selection: $safeModeLevel) {
+                    ForEach(SafeModeLevel.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
             }
         }
         .formStyle(.grouped)
@@ -292,6 +389,42 @@ struct ConnectionFormView: View {
         .frame(width: 420)
     }
 
+    @ViewBuilder
+    private var pgpassStatusView: some View {
+        switch pgpassStatus {
+        case .notChecked:
+            EmptyView()
+        case .fileNotFound:
+            Label(
+                String(localized: "~/.pgpass not found"),
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(.yellow)
+            .font(.caption)
+        case .badPermissions:
+            Label(
+                String(localized: "~/.pgpass has incorrect permissions (needs chmod 0600)"),
+                systemImage: "xmark.circle.fill"
+            )
+            .foregroundStyle(.red)
+            .font(.caption)
+        case .matchFound:
+            Label(
+                String(localized: "~/.pgpass found — matching entry exists"),
+                systemImage: "checkmark.circle.fill"
+            )
+            .foregroundStyle(.green)
+            .font(.caption)
+        case .noMatch:
+            Label(
+                String(localized: "~/.pgpass found — no matching entry"),
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .foregroundStyle(.yellow)
+            .font(.caption)
+        }
+    }
+
     // MARK: - SSH Tunnel Tab
 
     private var sshForm: some View {
@@ -303,7 +436,8 @@ struct ConnectionFormView: View {
             if sshEnabled {
                 Section(String(localized: "Server")) {
                     if !sshConfigEntries.isEmpty {
-                        Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost) {
+                        Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost)
+                        {
                             Text(String(localized: "Manual")).tag("")
                             ForEach(sshConfigEntries) { entry in
                                 Text(entry.displayName).tag(entry.host)
@@ -339,15 +473,162 @@ struct ConnectionFormView: View {
                     }
                     if sshAuthMethod == .password {
                         SecureField(String(localized: "Password"), text: $sshPassword)
+                    } else if sshAuthMethod == .sshAgent {
+                        Picker("Agent Socket", selection: $sshAgentSocketOption) {
+                            ForEach(SSHAgentSocketOption.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        if sshAgentSocketOption == .custom {
+                            TextField(
+                                "Custom Path",
+                                text: $customSSHAgentSocketPath,
+                                prompt: Text("/path/to/agent.sock")
+                            )
+                        }
+                        Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if sshAuthMethod == .keyboardInteractive {
+                        SecureField(String(localized: "Password"), text: $sshPassword)
+                        Text(
+                            String(localized: "Password is sent via keyboard-interactive challenge-response.")
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     } else {
                         LabeledContent(String(localized: "Key File")) {
                             HStack {
-                                TextField("", text: $sshPrivateKeyPath, prompt: Text("~/.ssh/id_rsa"))
+                                TextField(
+                                    "", text: $sshPrivateKeyPath, prompt: Text("~/.ssh/id_rsa"))
                                 Button(String(localized: "Browse")) { browseForPrivateKey() }
                                     .controlSize(.small)
                             }
                         }
                         SecureField(String(localized: "Passphrase"), text: $keyPassphrase)
+                    }
+                }
+
+                if sshAuthMethod == .keyboardInteractive || sshAuthMethod == .password {
+                    Section(String(localized: "Two-Factor Authentication")) {
+                        Picker(String(localized: "TOTP"), selection: $totpMode) {
+                            ForEach(TOTPMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+
+                        if totpMode == .autoGenerate {
+                            SecureField(String(localized: "TOTP Secret"), text: $totpSecret)
+                                .help(String(localized: "Base32-encoded secret from your authenticator setup"))
+
+                            Picker(String(localized: "Algorithm"), selection: $totpAlgorithm) {
+                                ForEach(TOTPAlgorithm.allCases) { algo in
+                                    Text(algo.rawValue).tag(algo)
+                                }
+                            }
+
+                            Picker(String(localized: "Digits"), selection: $totpDigits) {
+                                Text("6").tag(6)
+                                Text("8").tag(8)
+                            }
+
+                            Picker(String(localized: "Period"), selection: $totpPeriod) {
+                                Text("30s").tag(30)
+                                Text("60s").tag(60)
+                            }
+                        } else if totpMode == .promptAtConnect {
+                            Text(
+                                String(
+                                    localized:
+                                        "You will be prompted for a verification code each time you connect."
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Section {
+                    DisclosureGroup(String(localized: "Jump Hosts")) {
+                        ForEach($jumpHosts) { $jumpHost in
+                            DisclosureGroup {
+                                TextField(
+                                    String(localized: "Host"),
+                                    text: $jumpHost.host,
+                                    prompt: Text("bastion.example.com")
+                                )
+                                HStack {
+                                    TextField(
+                                        String(localized: "Port"),
+                                        text: Binding(
+                                            get: { String(jumpHost.port) },
+                                            set: { jumpHost.port = Int($0) ?? 22 }
+                                        ),
+                                        prompt: Text("22")
+                                    )
+                                    .frame(width: 80)
+                                    TextField(
+                                        String(localized: "Username"),
+                                        text: $jumpHost.username,
+                                        prompt: Text("admin")
+                                    )
+                                }
+                                Picker(String(localized: "Auth"), selection: $jumpHost.authMethod) {
+                                    ForEach(SSHJumpAuthMethod.allCases) { method in
+                                        Text(method.rawValue).tag(method)
+                                    }
+                                }
+                                if jumpHost.authMethod == .privateKey {
+                                    LabeledContent(String(localized: "Key File")) {
+                                        HStack {
+                                            TextField(
+                                                "", text: $jumpHost.privateKeyPath,
+                                                prompt: Text("~/.ssh/id_rsa"))
+                                            Button(String(localized: "Browse")) {
+                                                browseForJumpHostKey(jumpHost: $jumpHost)
+                                            }
+                                            .controlSize(.small)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(
+                                        jumpHost.host.isEmpty
+                                            ? String(localized: "New Jump Host")
+                                            : "\(jumpHost.username)@\(jumpHost.host)"
+                                    )
+                                    .foregroundStyle(jumpHost.host.isEmpty ? .secondary : .primary)
+                                    Spacer()
+                                    Button {
+                                        let idToRemove = jumpHost.id
+                                        withAnimation {
+                                            jumpHosts.removeAll { $0.id == idToRemove }
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .onMove { indices, destination in
+                            jumpHosts.move(fromOffsets: indices, toOffset: destination)
+                        }
+
+                        Button {
+                            jumpHosts.append(SSHJumpHost())
+                        } label: {
+                            Label(String(localized: "Add Jump Host"), systemImage: "plus")
+                        }
+
+                        Text(
+                            "Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -378,7 +659,8 @@ struct ConnectionFormView: View {
                     Section(String(localized: "CA Certificate")) {
                         LabeledContent(String(localized: "CA Cert")) {
                             HStack {
-                                TextField("", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
+                                TextField(
+                                    "", text: $sslCaCertPath, prompt: Text("/path/to/ca-cert.pem"))
                                 Button(String(localized: "Browse")) {
                                     browseForCertificate(binding: $sslCaCertPath)
                                 }
@@ -391,7 +673,9 @@ struct ConnectionFormView: View {
                 Section(String(localized: "Client Certificates (Optional)")) {
                     LabeledContent(String(localized: "Client Cert")) {
                         HStack {
-                            TextField("", text: $sslClientCertPath, prompt: Text(String(localized: "(optional)")))
+                            TextField(
+                                "", text: $sslClientCertPath,
+                                prompt: Text(String(localized: "(optional)")))
                             Button(String(localized: "Browse")) {
                                 browseForCertificate(binding: $sslClientCertPath)
                             }
@@ -400,7 +684,9 @@ struct ConnectionFormView: View {
                     }
                     LabeledContent(String(localized: "Client Key")) {
                         HStack {
-                            TextField("", text: $sslClientKeyPath, prompt: Text(String(localized: "(optional)")))
+                            TextField(
+                                "", text: $sslClientKeyPath,
+                                prompt: Text(String(localized: "(optional)")))
                             Button(String(localized: "Browse")) {
                                 browseForCertificate(binding: $sslClientKeyPath)
                             }
@@ -418,48 +704,54 @@ struct ConnectionFormView: View {
 
     private var advancedForm: some View {
         Form {
-            if type == .mongodb {
-                Section("MongoDB") {
-                    Picker(String(localized: "Read Preference"), selection: $mongoReadPreference) {
-                        Text(String(localized: "Default")).tag("")
-                        Text("Primary").tag("primary")
-                        Text("Primary Preferred").tag("primaryPreferred")
-                        Text("Secondary").tag("secondary")
-                        Text("Secondary Preferred").tag("secondaryPreferred")
-                        Text("Nearest").tag("nearest")
-                    }
-                    Picker(String(localized: "Write Concern"), selection: $mongoWriteConcern) {
-                        Text(String(localized: "Default")).tag("")
-                        Text("Majority").tag("majority")
-                        Text("1").tag("1")
-                        Text("2").tag("2")
-                        Text("3").tag("3")
+            let advancedFields = additionalConnectionFields.filter { $0.section == .advanced }
+            if !advancedFields.isEmpty {
+                Section(type.displayName) {
+                    ForEach(advancedFields, id: \.id) { field in
+                        ConnectionFieldRow(
+                            field: field,
+                            value: Binding(
+                                get: {
+                                    additionalFieldValues[field.id]
+                                        ?? field.defaultValue ?? ""
+                                },
+                                set: { additionalFieldValues[field.id] = $0 }
+                            )
+                        )
                     }
                 }
             }
 
-            if type == .redis {
-                Section("Redis") {
-                    Stepper(
-                        value: Binding(
-                            get: { Int(database) ?? 0 },
-                            set: { database = String($0) }
-                        ),
-                        in: 0...15
-                    ) {
-                        Text(String(localized: "Database Index: \(Int(database) ?? 0)"))
-                    }
-                }
+            Section(String(localized: "Startup Commands")) {
+                StartupCommandsEditor(text: $startupCommands)
+                    .frame(height: 80)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
+                Text(
+                    "SQL commands to run after connecting, e.g. SET time_zone = 'Asia/Ho_Chi_Minh'. One per line or separated by semicolons."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
-            if type == .mssql {
-                Section("SQL Server") {
-                    TextField(String(localized: "Schema"), text: Binding(
-                        get: { mssqlSchema },
-                        set: { mssqlSchema = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
-                }
+            Section(String(localized: "Pre-Connect Script")) {
+                StartupCommandsEditor(text: $preConnectScript)
+                    .frame(height: 80)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    )
+                Text(
+                    "Shell script to run before connecting. Non-zero exit aborts connection."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section(String(localized: "AI")) {
@@ -481,20 +773,6 @@ struct ConnectionFormView: View {
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Error message
-            if case .failure(let message) = testResult {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            }
-
             HStack {
                 // Test connection
                 Button(action: testConnection) {
@@ -503,8 +781,8 @@ struct ConnectionFormView: View {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: testResultIcon)
-                                .foregroundStyle(testResultColor)
+                            Image(systemName: testSucceeded ? "checkmark.circle.fill" : "bolt.horizontal")
+                                .foregroundStyle(testSucceeded ? .green : .secondary)
                         }
                         Text("Test Connection")
                     }
@@ -516,7 +794,17 @@ struct ConnectionFormView: View {
                 // Delete button (edit mode only)
                 if !isNew {
                     Button("Delete", role: .destructive) {
-                        deleteConnection()
+                        Task {
+                            let confirmed = await AlertHelper.confirmDestructive(
+                                title: String(localized: "Delete Connection"),
+                                message: String(localized: "Are you sure you want to delete this connection? This cannot be undone."),
+                                confirmButton: String(localized: "Delete"),
+                                window: NSApp.keyWindow
+                            )
+                            if confirmed {
+                                deleteConnection()
+                            }
+                        }
                     }
                 }
 
@@ -540,53 +828,69 @@ struct ConnectionFormView: View {
         .onExitCommand {
             NSApplication.shared.closeWindows(withId: "connection-form")
         }
+        .onChange(of: host) { _, _ in testSucceeded = false }
+        .onChange(of: port) { _, _ in testSucceeded = false }
+        .onChange(of: username) { _, _ in testSucceeded = false }
+        .onChange(of: password) { _, _ in testSucceeded = false }
+        .onChange(of: database) { _, _ in testSucceeded = false }
+        .onChange(of: type) { _, _ in testSucceeded = false }
+        .onChange(of: sshEnabled) { _, _ in testSucceeded = false }
+        .onChange(of: sshHost) { _, _ in testSucceeded = false }
+        .onChange(of: sshPort) { _, _ in testSucceeded = false }
+        .onChange(of: sshUsername) { _, _ in testSucceeded = false }
+        .onChange(of: sshAuthMethod) { _, _ in testSucceeded = false }
+        .onChange(of: sslMode) { _, _ in testSucceeded = false }
     }
 
     // MARK: - Helpers
 
     private var defaultPort: String {
-        switch type {
-        case .mysql, .mariadb: return "3306"
-        case .postgresql: return "5432"
-        case .redshift: return "5439"
-        case .sqlite: return ""
-        case .mongodb: return "27017"
-        case .redis: return "6379"
-        case .mssql: return "1433"
-        }
+        let port = type.defaultPort
+        return port == 0 ? "" : String(port)
+    }
+
+    private var filePathPrompt: String {
+        let extensions = PluginManager.shared.fileExtensions(for: type)
+        let ext = (extensions.first ?? "db")
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        guard !ext.isEmpty else { return "/path/to/database.db" }
+        return "/path/to/database.\(ext)"
     }
 
     private var isValid: Bool {
         // Host and port can be empty (will use defaults: localhost and default port)
-        let basicValid = !name.isEmpty && (type == .sqlite ? !database.isEmpty : true)
+        let isFileBased = PluginManager.shared.connectionMode(for: type) == .fileBased
+        let basicValid = !name.isEmpty && (isFileBased ? !database.isEmpty : true)
         if sshEnabled {
-            let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty
-            let authValid = sshAuthMethod == .password || !sshPrivateKeyPath.isEmpty
-            return basicValid && sshValid && authValid
+            let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)
+            let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty && sshPortValid
+            let authValid =
+                sshAuthMethod == .password || sshAuthMethod == .sshAgent
+                || sshAuthMethod == .keyboardInteractive || !sshPrivateKeyPath.isEmpty
+            let jumpValid = jumpHosts.allSatisfy(\.isValid)
+            return basicValid && sshValid && authValid && jumpValid
         }
         return basicValid
     }
 
-    private var testResultIcon: String {
-        switch testResult {
-        case .success: return "checkmark.circle.fill"
-        case .failure: return "xmark.circle.fill"
-        case .none: return "bolt.horizontal"
+    private func updatePgpassStatus() {
+        guard additionalFieldValues["usePgpass"] == "true" else {
+            pgpassStatus = .notChecked
+            return
         }
-    }
-
-    private var testResultColor: Color {
-        switch testResult {
-        case .success: return .green
-        case .failure: return .red
-        case .none: return .secondary
-        }
+        pgpassStatus = PgpassStatus.check(
+            host: host.isEmpty ? "localhost" : host,
+            port: Int(port) ?? type.defaultPort,
+            database: database,
+            username: username.isEmpty ? "root" : username
+        )
     }
 
     private func loadConnectionData() {
         // If editing, load from storage
         if let id = connectionId,
-           let existing = storage.loadConnections().first(where: { $0.id == id }) {
+            let existing = storage.loadConnections().first(where: { $0.id == id })
+        {
             originalConnection = existing
             name = existing.name
             host = existing.host
@@ -602,6 +906,12 @@ struct ConnectionFormView: View {
             sshUsername = existing.sshConfig.username
             sshAuthMethod = existing.sshConfig.authMethod
             sshPrivateKeyPath = existing.sshConfig.privateKeyPath
+            applySSHAgentSocketPath(existing.sshConfig.agentSocketPath)
+            jumpHosts = existing.sshConfig.jumpHosts
+            totpMode = existing.sshConfig.totpMode
+            totpAlgorithm = existing.sshConfig.totpAlgorithm
+            totpDigits = existing.sshConfig.totpDigits
+            totpPeriod = existing.sshConfig.totpPeriod
 
             // Load SSL configuration
             sslMode = existing.sslConfig.mode
@@ -613,15 +923,27 @@ struct ConnectionFormView: View {
             connectionColor = existing.color
             selectedTagId = existing.tagId
             selectedGroupId = existing.groupId
-            isReadOnly = existing.isReadOnly
+            safeModeLevel = existing.safeModeLevel
             aiPolicy = existing.aiPolicy
 
-            // Load MongoDB settings
-            mongoReadPreference = existing.mongoReadPreference ?? ""
-            mongoWriteConcern = existing.mongoWriteConcern ?? ""
+            // Load additional fields from connection
+            additionalFieldValues = existing.additionalFields
 
-            // Load MSSQL settings
-            mssqlSchema = existing.mssqlSchema ?? "dbo"
+            // Migrate legacy redisDatabase to additionalFields
+            if additionalFieldValues["redisDatabase"] == nil,
+               let rdb = existing.redisDatabase {
+                additionalFieldValues["redisDatabase"] = String(rdb)
+            }
+
+            for field in PluginManager.shared.additionalConnectionFields(for: existing.type) {
+                if additionalFieldValues[field.id] == nil, let defaultValue = field.defaultValue {
+                    additionalFieldValues[field.id] = defaultValue
+                }
+            }
+
+            // Load startup commands
+            startupCommands = existing.startupCommands ?? ""
+            preConnectScript = existing.preConnectScript ?? ""
 
             // Load passwords from Keychain
             if let savedSSHPassword = storage.loadSSHPassword(for: existing.id) {
@@ -633,6 +955,12 @@ struct ConnectionFormView: View {
             if let savedPassword = storage.loadPassword(for: existing.id) {
                 password = savedPassword
             }
+            if let savedTOTPSecret = storage.loadTOTPSecret(for: existing.id) {
+                totpSecret = savedTOTPSecret
+            }
+        }
+        Task { @MainActor in
+            hasLoadedData = true
         }
     }
 
@@ -644,7 +972,13 @@ struct ConnectionFormView: View {
             username: sshUsername,
             authMethod: sshAuthMethod,
             privateKeyPath: sshPrivateKeyPath,
-            useSSHConfig: !selectedSSHConfigHost.isEmpty
+            useSSHConfig: !selectedSSHConfigHost.isEmpty,
+            agentSocketPath: resolvedSSHAgentSocketPath,
+            jumpHosts: jumpHosts,
+            totpMode: totpMode,
+            totpAlgorithm: totpAlgorithm,
+            totpDigits: totpDigits,
+            totpPeriod: totpPeriod
         )
 
         let sslConfig = SSLConfiguration(
@@ -654,12 +988,20 @@ struct ConnectionFormView: View {
             clientKeyPath: sslClientKeyPath
         )
 
-        // Apply defaults: localhost for empty host, default port for empty/invalid port, root for empty username
-        // MongoDB and SQLite commonly run without authentication, so skip the "root" default
         let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
         let finalPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
-        let finalUsername = trimmedUsername.isEmpty && type.requiresAuthentication ? "root" : trimmedUsername
+        let finalUsername =
+            trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
+                ? "root" : trimmedUsername
+
+        var finalAdditionalFields = additionalFieldValues
+        let trimmedScript = preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedScript.isEmpty {
+            finalAdditionalFields["preConnectScript"] = preConnectScript
+        } else {
+            finalAdditionalFields.removeValue(forKey: "preConnectScript")
+        }
 
         let connectionToSave = DatabaseConnection(
             id: connectionId ?? UUID(),
@@ -674,22 +1016,30 @@ struct ConnectionFormView: View {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            isReadOnly: isReadOnly,
+            safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
-            mongoReadPreference: mongoReadPreference.isEmpty ? nil : mongoReadPreference,
-            mongoWriteConcern: mongoWriteConcern.isEmpty ? nil : mongoWriteConcern,
-            mssqlSchema: mssqlSchema.isEmpty ? nil : mssqlSchema
+            redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
+            startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : startupCommands,
+            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
 
         // Save passwords to Keychain
         if !password.isEmpty {
             storage.savePassword(password, for: connectionToSave.id)
         }
-        if sshEnabled && sshAuthMethod == .password && !sshPassword.isEmpty {
+        if sshEnabled && (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
+            && !sshPassword.isEmpty
+        {
             storage.saveSSHPassword(sshPassword, for: connectionToSave.id)
         }
         if sshEnabled && sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
             storage.saveKeyPassphrase(keyPassphrase, for: connectionToSave.id)
+        }
+        if sshEnabled && totpMode == .autoGenerate && !totpSecret.isEmpty {
+            storage.saveTOTPSecret(totpSecret, for: connectionToSave.id)
+        } else {
+            storage.deleteTOTPSecret(for: connectionToSave.id)
         }
 
         // Save to storage
@@ -697,6 +1047,7 @@ struct ConnectionFormView: View {
         if isNew {
             savedConnections.append(connectionToSave)
             storage.saveConnections(savedConnections)
+            SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             // Close and connect to database
             NSApplication.shared.closeWindows(withId: "connection-form")
             connectToDatabase(connectionToSave)
@@ -707,6 +1058,7 @@ struct ConnectionFormView: View {
                 updated.sortOrder = savedConnections[index].sortOrder
                 savedConnections[index] = updated
                 storage.saveConnections(savedConnections)
+                SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             }
             NSApplication.shared.closeWindows(withId: "connection-form")
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
@@ -714,10 +1066,9 @@ struct ConnectionFormView: View {
     }
 
     private func deleteConnection() {
-        guard let id = connectionId else { return }
-        var savedConnections = storage.loadConnections()
-        savedConnections.removeAll { $0.id == id }
-        storage.saveConnections(savedConnections)
+        guard let id = connectionId,
+              let connection = storage.loadConnections().first(where: { $0.id == id }) else { return }
+        storage.deleteConnection(connection)
         NSApplication.shared.closeWindows(withId: "connection-form")
         NotificationCenter.default.post(name: .connectionUpdated, object: nil)
     }
@@ -730,14 +1081,55 @@ struct ConnectionFormView: View {
             do {
                 try await dbManager.connectToSession(connection)
             } catch {
-                Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+                if case PluginError.pluginNotInstalled = error {
+                    Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
+                    handleMissingPlugin(connection: connection)
+                } else {
+                    Self.logger.error(
+                        "Failed to connect: \(error.localizedDescription, privacy: .public)")
+                    NSApplication.shared.closeWindows(withId: "main")
+                    openWindow(id: "welcome")
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "Connection Failed"),
+                        message: error.localizedDescription,
+                        window: nil
+                    )
+                }
+            }
+        }
+    }
+
+    private func handleMissingPlugin(connection: DatabaseConnection) {
+        NSApplication.shared.closeWindows(withId: "main")
+        openWindow(id: "welcome")
+        pluginInstallConnection = connection
+    }
+
+    private func connectAfterInstall(_ connection: DatabaseConnection) {
+        openWindow(id: "main", value: EditorTabPayload(connectionId: connection.id))
+        NSApplication.shared.closeWindows(withId: "welcome")
+
+        Task {
+            do {
+                try await dbManager.connectToSession(connection)
+            } catch {
+                Self.logger.error(
+                    "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
+                NSApplication.shared.closeWindows(withId: "main")
+                openWindow(id: "welcome")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Connection Failed"),
+                    message: error.localizedDescription,
+                    window: nil
+                )
             }
         }
     }
 
     func testConnection() {
         isTesting = true
-        testResult = nil
+        testSucceeded = false
+        let window = NSApp.keyWindow
 
         // Build SSH config
         let sshConfig = SSHConfiguration(
@@ -747,7 +1139,13 @@ struct ConnectionFormView: View {
             username: sshUsername,
             authMethod: sshAuthMethod,
             privateKeyPath: sshPrivateKeyPath,
-            useSSHConfig: !selectedSSHConfigHost.isEmpty
+            useSSHConfig: !selectedSSHConfigHost.isEmpty,
+            agentSocketPath: resolvedSSHAgentSocketPath,
+            jumpHosts: jumpHosts,
+            totpMode: totpMode,
+            totpAlgorithm: totpAlgorithm,
+            totpDigits: totpDigits,
+            totpPeriod: totpPeriod
         )
 
         let sslConfig = SSLConfiguration(
@@ -757,14 +1155,21 @@ struct ConnectionFormView: View {
             clientKeyPath: sslClientKeyPath
         )
 
-        // Apply defaults: localhost for empty host, default port for empty/invalid port, root for empty username
-        // MongoDB and SQLite commonly run without authentication, so skip the "root" default
         let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
         let finalPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
-        let finalUsername = trimmedUsername.isEmpty && type.requiresAuthentication ? "root" : trimmedUsername
+        let finalUsername =
+            trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
+                ? "root" : trimmedUsername
 
-        // Build connection from form values
+        var finalAdditionalFields = additionalFieldValues
+        let trimmedScript = preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedScript.isEmpty {
+            finalAdditionalFields["preConnectScript"] = preConnectScript
+        } else {
+            finalAdditionalFields.removeValue(forKey: "preConnectScript")
+        }
+
         let testConn = DatabaseConnection(
             name: name,
             host: finalHost,
@@ -777,9 +1182,10 @@ struct ConnectionFormView: View {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            mongoReadPreference: mongoReadPreference.isEmpty ? nil : mongoReadPreference,
-            mongoWriteConcern: mongoWriteConcern.isEmpty ? nil : mongoWriteConcern,
-            mssqlSchema: mssqlSchema.isEmpty ? nil : mssqlSchema
+            redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
+            startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : startupCommands,
+            additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
 
         Task {
@@ -788,23 +1194,48 @@ struct ConnectionFormView: View {
                 if !password.isEmpty {
                     ConnectionStorage.shared.savePassword(password, for: testConn.id)
                 }
-                if sshEnabled && sshAuthMethod == .password && !sshPassword.isEmpty {
+                if sshEnabled
+                    && (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
+                    && !sshPassword.isEmpty
+                {
                     ConnectionStorage.shared.saveSSHPassword(sshPassword, for: testConn.id)
                 }
                 if sshEnabled && sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
                     ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: testConn.id)
                 }
+                if sshEnabled && totpMode == .autoGenerate && !totpSecret.isEmpty {
+                    ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: testConn.id)
+                }
 
                 let success = try await DatabaseManager.shared.testConnection(
                     testConn, sshPassword: sshPassword)
+                ConnectionStorage.shared.deleteTOTPSecret(for: testConn.id)
                 await MainActor.run {
                     isTesting = false
-                    testResult = success ? .success : .failure(String(localized: "Connection test failed"))
+                    if success {
+                        testSucceeded = true
+                    } else {
+                        AlertHelper.showErrorSheet(
+                            title: String(localized: "Connection Test Failed"),
+                            message: String(localized: "Connection test failed"),
+                            window: window
+                        )
+                    }
                 }
             } catch {
+                ConnectionStorage.shared.deleteTOTPSecret(for: testConn.id)
                 await MainActor.run {
                     isTesting = false
-                    testResult = .failure(error.localizedDescription)
+                    testSucceeded = false
+                    if case PluginError.pluginNotInstalled = error {
+                        pluginInstallConnection = testConn
+                    } else {
+                        AlertHelper.showErrorSheet(
+                            title: String(localized: "Connection Test Failed"),
+                            message: error.localizedDescription,
+                            window: window
+                        )
+                    }
                 }
             }
         }
@@ -816,8 +1247,10 @@ struct ConnectionFormView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
-        if panel.runModal() == .OK, let url = panel.url {
-            database = url.path(percentEncoded: false)
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                database = url.path(percentEncoded: false)
+            }
         }
     }
 
@@ -825,11 +1258,29 @@ struct ConnectionFormView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            ".ssh")
         panel.showsHiddenFiles = true
 
-        if panel.runModal() == .OK, let url = panel.url {
-            sshPrivateKeyPath = url.path(percentEncoded: false)
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                sshPrivateKeyPath = url.path(percentEncoded: false)
+            }
+        }
+    }
+
+    private func browseForJumpHostKey(jumpHost: Binding<SSHJumpHost>) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
+            ".ssh")
+        panel.showsHiddenFiles = true
+
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                jumpHost.wrappedValue.privateKeyPath = url.path(percentEncoded: false)
+            }
         }
     }
 
@@ -840,8 +1291,10 @@ struct ConnectionFormView: View {
         panel.allowedContentTypes = [.data]
         panel.showsHiddenFiles = true
 
-        if panel.runModal() == .OK, let url = panel.url {
-            binding.wrappedValue = url.path(percentEncoded: false)
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                binding.wrappedValue = url.path(percentEncoded: false)
+            }
         }
     }
 
@@ -874,6 +1327,16 @@ struct ConnectionFormView: View {
                 if parsed.usePrivateKey == true {
                     sshAuthMethod = .privateKey
                 }
+                if parsed.useSSHAgent == true {
+                    sshAuthMethod = .sshAgent
+                    applySSHAgentSocketPath(parsed.agentSocket ?? "")
+                }
+            }
+            if let authSourceValue = parsed.authSource, !authSourceValue.isEmpty {
+                additionalFieldValues["mongoAuthSource"] = authSourceValue
+            }
+            if parsed.type.pluginTypeId == "Redis", !parsed.database.isEmpty {
+                additionalFieldValues["redisDatabase"] = parsed.database
             }
             if let connectionName = parsed.connectionName, !connectionName.isEmpty {
                 name = connectionName
@@ -897,17 +1360,99 @@ struct ConnectionFormView: View {
         if let user = entry.user {
             sshUsername = user
         }
-        if let keyPath = entry.identityFile {
+        if let agentPath = entry.identityAgent {
+            applySSHAgentSocketPath(agentPath)
+            sshAuthMethod = .sshAgent
+        } else if let keyPath = entry.identityFile {
             sshPrivateKeyPath = keyPath
             sshAuthMethod = .privateKey
+        }
+        if let proxyJump = entry.proxyJump {
+            jumpHosts = SSHConfigParser.parseProxyJump(proxyJump)
+        }
+    }
+
+    private func applySSHAgentSocketPath(_ socketPath: String) {
+        let option = SSHAgentSocketOption(socketPath: socketPath)
+        sshAgentSocketOption = option
+
+        if option == .custom {
+            customSSHAgentSocketPath = socketPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            customSSHAgentSocketPath = ""
         }
     }
 }
 
-// MARK: - Notification Names
+// MARK: - Pgpass Status
 
-extension Notification.Name {
-    static let connectionUpdated = Notification.Name("connectionUpdated")
+private enum PgpassStatus {
+    case notChecked
+    case fileNotFound
+    case badPermissions
+    case matchFound
+    case noMatch
+
+    static func check(host: String, port: Int, database: String, username: String) -> PgpassStatus {
+        guard PgpassReader.fileExists() else { return .fileNotFound }
+        guard PgpassReader.filePermissionsAreValid() else { return .badPermissions }
+        if PgpassReader.resolve(host: host, port: port, database: database, username: username) != nil {
+            return .matchFound
+        }
+        return .noMatch
+    }
+}
+
+// MARK: - Startup Commands Editor
+
+private struct StartupCommandsEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+
+        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+        textView.isRichText = false
+        textView.string = text
+        textView.textContainerInset = NSSize(width: 2, height: 6)
+        textView.drawsBackground = false
+        textView.delegate = context.coordinator
+
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        private var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            text.wrappedValue = textView.string
+        }
+    }
 }
 
 #Preview("New Connection") {

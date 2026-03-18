@@ -1,11 +1,11 @@
 ---
 title: Tổng quan Cài đặt
-description: Cấu hình TablePro để phù hợp với quy trình làm việc và sở thích của bạn
+description: Tất cả danh mục cài đặt - Chung, Giao diện, Editor, Bảng dữ liệu, Tab, Bàn phím, AI, Lịch sử, Plugin, Giấy phép
 ---
 
 # Tổng quan Cài đặt
 
-TablePro cung cấp nhiều cài đặt để tùy chỉnh trải nghiệm của bạn. Truy cập cài đặt qua **TablePro** > **Settings** hoặc nhấn `Cmd+,`.
+Mở cài đặt qua **TablePro** > **Settings** hoặc `Cmd+,`.
 
 {/* Screenshot: Settings window showing all categories */}
 <Frame caption="Cài đặt TablePro">
@@ -25,13 +25,13 @@ TablePro cung cấp nhiều cài đặt để tùy chỉnh trải nghiệm của
 
 <CardGroup cols={2}>
   <Card title="Chung" icon="gear">
-    Ngôn ngữ, hành vi khởi động, cập nhật phần mềm và các tùy chọn cơ bản
+    Ngôn ngữ, hành vi khởi động, cập nhật phần mềm và tùy chọn cơ bản
   </Card>
   <Card title="Giao diện" icon="palette" href="/vi/customization/appearance">
-    Chủ đề, màu sắc và tùy chọn trực quan
+    Theme engine với 9 preset, theme tùy chỉnh, màu sắc và phông chữ
   </Card>
   <Card title="Trình soạn thảo" icon="code" href="/vi/customization/editor-settings">
-    Font, kích thước và hành vi của trình soạn thảo SQL
+    Font, kích thước và hành vi SQL editor
   </Card>
   <Card title="Bảng Dữ liệu" icon="table">
     Chiều cao hàng, định dạng ngày và hiển thị
@@ -48,6 +48,9 @@ TablePro cung cấp nhiều cài đặt để tùy chỉnh trải nghiệm của
   <Card title="Lịch sử" icon="clock-rotate-left">
     Cài đặt lưu giữ lịch sử truy vấn
   </Card>
+  <Card title="Plugin" icon="puzzle-piece">
+    Quản lý plugin driver database
+  </Card>
   <Card title="Giấy phép" icon="key">
     Kích hoạt và quản lý giấy phép
   </Card>
@@ -57,50 +60,45 @@ TablePro cung cấp nhiều cài đặt để tùy chỉnh trải nghiệm của
 
 ### Ngôn ngữ
 
-Chọn ngôn ngữ hiển thị cho giao diện TablePro:
-
 | Tùy chọn | Mô tả |
 |-----------|-------|
-| **Hệ thống** | Theo ngôn ngữ hệ thống macOS (mặc định) |
+| **Hệ thống** | Theo ngôn ngữ macOS (mặc định) |
 | **English** | Tiếng Anh |
 | **Tiếng Việt** | Tiếng Việt |
+| **Türkçe** | Tiếng Thổ Nhĩ Kỳ |
 
 <Note>
-Thay đổi ngôn ngữ yêu cầu khởi động lại TablePro để có hiệu lực hoàn toàn.
+Đổi ngôn ngữ cần khởi động lại TablePro.
 </Note>
 
 ### Hành vi Khởi động
 
-Kiểm soát điều gì xảy ra khi TablePro khởi chạy:
-
 | Tùy chọn | Mô tả |
 |--------|-------------|
-| **Show Welcome Screen** | Hiển thị màn hình chào mừng với các kết nối gần đây |
-| **Reopen Last Session** | Tự động kết nối lại với cơ sở dữ liệu cuối cùng của bạn |
+| **Show Welcome Screen** | Hiện màn hình chào mừng với kết nối gần đây |
+| **Reopen Last Session** | Tự động kết nối lại database cuối |
 
-### Thời Gian Chờ Thực Thi Truy Vấn
-
-Đặt thời gian tối đa cho truy vấn chạy trước khi bị hủy:
+### Thời Gian Chờ Truy Vấn
 
 | Cài đặt | Mặc định | Phạm vi | Mô tả |
 |---------|---------|-------|-------------|
-| **Query timeout** | 60 giây | 0 -- 600 | Số giây tối đa chờ truy vấn. Đặt 0 để không giới hạn. |
+| **Query timeout** | 60 giây | 0 -- 600 | Số giây tối đa chờ. 0 là không giới hạn. |
 
-Thời gian chờ được thực thi ở cấp cơ sở dữ liệu để đảm bảo độ tin cậy tối đa:
+Timeout được thực thi ở cấp database:
 
-| Cơ sở dữ liệu | Cơ chế |
+| Database | Cơ chế |
 |----------|-----------|
-| PostgreSQL | `SET statement_timeout` (áp dụng cho tất cả câu lệnh) |
-| MySQL | `SET SESSION max_execution_time` (áp dụng cho truy vấn SELECT) |
-| MariaDB | `SET SESSION max_statement_time` (áp dụng cho truy vấn SELECT) |
-| SQLite | `sqlite3_busy_timeout` (áp dụng cho xung đột khóa) |
+| PostgreSQL | `SET statement_timeout` (mọi câu lệnh) |
+| MySQL | `SET SESSION max_execution_time` (SELECT) |
+| MariaDB | `SET SESSION max_statement_time` (SELECT) |
+| SQLite | `sqlite3_busy_timeout` (xung đột khóa) |
 
 <Note>
-Thời gian chờ được áp dụng khi thiết lập kết nối mới. Thay đổi giá trị thời gian chờ cần kết nối lại để có hiệu lực.
+Timeout áp dụng khi thiết lập kết nối mới. Thay đổi cần kết nối lại.
 </Note>
 
 {/* Screenshot: Cài đặt thời gian chờ truy vấn */}
-<Frame caption="Cấu hình thời gian chờ thực thi truy vấn">
+<Frame caption="Cấu hình thời gian chờ truy vấn">
   <img
     className="block dark:hidden"
     src="/images/settings-query-timeout.png"
@@ -115,26 +113,22 @@ Thời gian chờ được áp dụng khi thiết lập kết nối mới. Thay 
 
 ### Cập nhật Phần mềm
 
-Kiểm soát cách TablePro kiểm tra và cài đặt cập nhật:
-
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Automatically check for updates** | Bật | Định kỳ kiểm tra phiên bản mới trong nền |
-| **Check for Updates...** | — | Kiểm tra cập nhật thủ công ngay bây giờ |
+| **Automatically check for updates** | Bật | Kiểm tra phiên bản mới trong nền |
+| **Check for Updates...** | -- | Kiểm tra ngay |
 
-TablePro sử dụng [Sparkle](https://sparkle-project.org/) để cập nhật an toàn và liền mạch. Khi có bản cập nhật, bạn sẽ thấy hộp thoại với ghi chú phát hành và tùy chọn cài đặt.
+TablePro dùng [Sparkle](https://sparkle-project.org/) cho cập nhật. Khi có bản mới, hiện hộp thoại với ghi chú phát hành và tùy chọn cài đặt.
 
-Bạn cũng có thể kiểm tra cập nhật từ menu **TablePro** > **Check for Updates...**.
+Cũng có trong menu **TablePro** > **Check for Updates...**.
 
 ### Quyền riêng tư
 
-Kiểm soát việc thu thập dữ liệu sử dụng ẩn danh:
-
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Share anonymous usage data** | Bật | Gửi thống kê sử dụng ẩn danh (phiên bản OS, kiến trúc, ngôn ngữ, loại cơ sở dữ liệu) mỗi 24 giờ |
+| **Share anonymous usage data** | Bật | Gửi thống kê ẩn danh (phiên bản OS, kiến trúc, locale, loại database) mỗi 24 giờ |
 
-Dữ liệu thu thập hoàn toàn ẩn danh — không có thông tin cá nhân, truy vấn hoặc nội dung cơ sở dữ liệu nào được truyền đi. Bạn có thể tắt bất cứ lúc nào bằng cách tắt cài đặt này.
+Hoàn toàn ẩn danh: không gửi thông tin cá nhân, truy vấn hay nội dung database. Tắt bất cứ lúc nào.
 
 {/* Screenshot: General settings panel */}
 <Frame caption="Cài đặt chung">
@@ -152,20 +146,29 @@ Dữ liệu thu thập hoàn toàn ẩn danh — không có thông tin cá nhân
 
 ## Cài đặt Bảng Dữ liệu
 
-Cấu hình cách dữ liệu được hiển thị trong bảng kết quả.
+### Phông chữ
+
+| Cài đặt | Mặc định | Phạm vi | Mô tả |
+|---------|---------|-------|-------------|
+| **Phông chữ** | System Mono | System Mono, SF Mono, Menlo, Monaco, Courier New | Phông chữ đơn cách cho ô bảng dữ liệu |
+| **Cỡ chữ** | 13 pt | 10-18 pt | Cỡ chữ trong ô bảng dữ liệu |
+
+Cài đặt phông chữ ảnh hưởng đến tất cả ô bảng dữ liệu, bao gồm placeholder NULL và overlay chỉnh sửa ô. Bản xem trước trực tiếp được hiển thị trong bảng cài đặt.
+
+<Tip>
+Phông chữ bảng dữ liệu độc lập với phông chữ SQL editor. Bạn có thể dùng phông chữ và cỡ chữ khác nhau cho mỗi loại.
+</Tip>
 
 ### Chiều cao Hàng
 
-| Tùy chọn | Chiều cao | Tốt nhất cho |
+| Tùy chọn | Chiều cao | Phù hợp |
 |--------|--------|----------|
 | **Compact** | 20px | Dữ liệu dày đặc, xem nhiều hàng hơn |
-| **Normal** | 24px | Chế độ xem cân bằng (mặc định) |
-| **Comfortable** | 28px | Khả năng đọc tốt hơn |
+| **Normal** | 24px | Cân bằng (mặc định) |
+| **Comfortable** | 28px | Dễ đọc hơn |
 | **Spacious** | 32px | Khả năng tiếp cận |
 
 ### Định dạng Ngày
-
-Chọn cách hiển thị ngày:
 
 | Định dạng | Ví dụ |
 |--------|---------|
@@ -177,39 +180,35 @@ Chọn cách hiển thị ngày:
 | EU Short | 31/12/2024 |
 
 <Tip>
-Định dạng ISO 8601 được khuyến nghị để đảm bảo tính nhất quán, đặc biệt khi làm việc với các nhóm quốc tế.
+ISO 8601 được khuyến nghị cho tính nhất quán, đặc biệt khi làm việc với nhóm quốc tế.
 </Tip>
 
 ### Hiển thị NULL
-
-Tùy chỉnh cách giá trị NULL xuất hiện:
 
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
 | **NULL Display** | "NULL" | Văn bản hiển thị cho giá trị NULL |
 
-Giá trị hợp lệ:
-- `NULL` - Ký hiệu cơ sở dữ liệu tiêu chuẩn
+Các lựa chọn:
+- `NULL` - Ký hiệu database chuẩn
 - `(null)` - Trong ngoặc đơn
 - `∅` - Ký hiệu tập rỗng
 - Văn bản tùy chỉnh (tối đa 20 ký tự)
 
 ### Kích thước Trang
 
-Đặt số hàng mặc định được tải mỗi trang:
-
 | Phạm vi | Tối thiểu | Tối đa | Mặc định |
 |-------|---------|---------|---------|
 | Kích thước Trang | 10 | 100,000 | 1,000 |
 
 <Note>
-Kích thước trang lớn hơn sử dụng nhiều bộ nhớ hơn nhưng hiển thị nhiều dữ liệu hơn cùng một lúc.
+Trang lớn hơn dùng nhiều bộ nhớ hơn nhưng hiện nhiều dữ liệu hơn.
 </Note>
 
 <Note>
 **Phạm vi xác thực:**
-- **Kích thước Trang**: 10 -- 100,000 hàng (giá trị ngoài phạm vi này sẽ được giới hạn)
-- **Hiển thị NULL**: Tối đa 20 ký tự, không cho phép xuống dòng hoặc tab
+- **Kích thước Trang**: 10 -- 100,000 hàng (giá trị ngoài phạm vi bị giới hạn)
+- **Hiển thị NULL**: Tối đa 20 ký tự, không xuống dòng hay tab
 </Note>
 
 ### Màu Hàng Xen kẽ
@@ -223,7 +222,7 @@ Kích thước trang lớn hơn sử dụng nhiều bộ nhớ hơn nhưng hiể
 
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Tự động hiện inspector khi chọn hàng** | Tắt | Tự động mở thanh bên phải khi chọn hàng trong tab bảng |
+| **Tự động hiện inspector khi chọn hàng** | Tắt | Tự động mở sidebar phải khi chọn hàng trong tab bảng |
 
 {/* Screenshot: Cài đặt Bảng Dữ liệu */}
 <Frame caption="Cài đặt Bảng Dữ liệu: chiều cao hàng, định dạng ngày, hiển thị NULL">
@@ -241,25 +240,23 @@ Kích thước trang lớn hơn sử dụng nhiều bộ nhớ hơn nhưng hiể
 
 ## Cài đặt Tab
 
-Cấu hình hành vi tab khi mở bảng từ sidebar.
-
 ### Tái Sử Dụng Tab Bảng Sạch
 
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Reuse clean table tab** | Tắt | Khi bật, click vào bảng mới trong sidebar sẽ thay thế tab bảng hiện tại thay vì mở tab mới |
+| **Reuse clean table tab** | Tắt | Click bảng mới trong sidebar thay thế tab hiện tại thay vì mở tab mới |
 
-Một tab được coi là "sạch" khi tất cả các điều kiện sau đều đúng:
+Tab "sạch" khi thỏa tất cả:
 
-- Đó là tab bảng (không phải tab truy vấn hoặc tạo bảng)
-- Không được ghim
+- Là tab bảng (không phải query hay tạo bảng)
+- Không ghim
 - Không có thay đổi chưa lưu
-- Bạn chưa tương tác với nó (chưa sắp xếp, lọc, chọn hàng, v.v.)
+- Chưa tương tác (chưa sắp xếp, lọc, chọn hàng, v.v.)
 
-Khi cài đặt này tắt (mặc định), mỗi lần click bảng sẽ mở tab mới.
+Khi tắt (mặc định), mỗi click bảng mở tab mới.
 
 <Tip>
-Bật tính năng này nếu bạn thích quy trình làm việc một tab khi duyệt bảng, tương tự hành vi mặc định của TablePlus.
+Bật nếu thích duyệt bảng một tab, giống hành vi mặc định của TablePlus.
 </Tip>
 
 {/* Screenshot: Cài đặt Tab */}
@@ -276,24 +273,34 @@ Bật tính năng này nếu bạn thích quy trình làm việc một tab khi d
   />
 </Frame>
 
+### Tab Xem Trước
+
+| Cài đặt | Mặc định | Mô tả |
+|---------|---------|-------------|
+| **Enable preview tabs** | Bật | Click đơn bảng mở tab tạm thời, bị thay thế khi click bảng khác |
+
+Khi bật, click đơn bảng trong sidebar mở tab xem trước. Tab xem trước bị thay thế khi click bảng khác. Click đúp bảng hoặc tương tác với tab (sắp xếp, lọc, chỉnh sửa) biến nó thành tab cố định.
+
+Tab xem trước hiển thị "Preview" trong subtitle cửa sổ và không được lưu qua các lần khởi động lại.
+
 ## Cài đặt Bàn phím
 
-Tùy chỉnh phím tắt cho các hành động menu. Xem [Phím tắt](/vi/features/keyboard-shortcuts#tùy-chỉnh-phím-tắt) để biết chi tiết đầy đủ.
+Tùy chỉnh phím tắt menu. Xem [Phím tắt](/vi/features/keyboard-shortcuts#tùy-chỉnh-phím-tắt) để biết chi tiết.
 
 ### Gán lại Phím tắt
 
 1. Mở **Settings** > **Keyboard**
-2. Click vào ô phím tắt bên cạnh bất kỳ hành động nào
+2. Click ô phím tắt bên cạnh hành động
 3. Nhấn tổ hợp phím mới
-4. Phím tắt được cập nhật ngay lập tức
+4. Cập nhật ngay
 
 ### Phát hiện Xung đột
 
-Gán phím tắt đã được sử dụng sẽ hiển thị hộp thoại với tùy chọn **Cancel** hoặc **Reassign**. Các phím tắt hệ thống (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) không thể gán lại.
+Gán phím tắt đã dùng sẽ hiện hộp thoại **Cancel** hoặc **Reassign**. Phím tắt hệ thống (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) không gán lại được.
 
 ### Đặt lại về Mặc định
 
-Nhấp **Reset to Defaults** để khôi phục tất cả phím tắt về giá trị ban đầu.
+Nhấp **Reset to Defaults** để khôi phục.
 
 {/* Screenshot: Cài đặt Keyboard */}
 <Frame caption="Cài đặt bàn phím: tùy chỉnh phím tắt">
@@ -311,42 +318,38 @@ Nhấp **Reset to Defaults** để khôi phục tất cả phím tắt về giá
 
 ## Cài đặt Lịch sử
 
-Kiểm soát lưu giữ lịch sử truy vấn.
-
 ### Số Mục Tối đa
 
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Max Entries** | 10,000 | Số truy vấn tối đa được giữ |
+| **Max Entries** | 10,000 | Số truy vấn tối đa |
 
-Đặt thành `0` cho lịch sử không giới hạn.
+Đặt `0` cho không giới hạn.
 
 ### Số Ngày Tối đa
 
 | Cài đặt | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **Max Days** | 90 | Xóa các truy vấn cũ hơn số này |
+| **Max Days** | 90 | Xóa truy vấn cũ hơn |
 
-Đặt thành `0` để giữ lịch sử mãi mãi.
+Đặt `0` để giữ mãi.
 
 ### Tự động Dọn dẹp
 
 | Tùy chọn | Mô tả |
 |--------|-------------|
-| **On** | Tự động xóa các mục cũ (mặc định) |
-| **Off** | Chỉ dọn dẹp thủ công |
+| **On** | Tự động xóa mục cũ (mặc định) |
+| **Off** | Chỉ dọn thủ công |
 
 <Warning>
-Tắt tự động dọn dẹp với các mục không giới hạn có thể khiến cơ sở dữ liệu lịch sử phát triển rất lớn theo thời gian.
+Tắt tự động dọn với mục không giới hạn có thể khiến database lịch sử phình rất lớn.
 </Warning>
 
 ### Xóa Lịch sử
 
-Để xóa toàn bộ lịch sử truy vấn:
-
 1. Mở Settings > History
 2. Nhấp **Clear All History**
-3. Xác nhận hành động
+3. Xác nhận
 
 {/* Screenshot: Cài đặt Lịch sử */}
 <Frame caption="Cài đặt Lịch sử: lưu giữ và dọn dẹp">
@@ -362,33 +365,88 @@ Tắt tự động dọn dẹp với các mục không giới hạn có thể kh
   />
 </Frame>
 
+## Cài đặt Plugin
+
+Quản lý plugin driver database từ tab **Plugins** trong Settings.
+
+### Plugin Đã cài
+
+Tab **Installed** hiển thị plugin theo bố cục chia đôi: danh sách bên trái, chi tiết bên phải. Mỗi dòng cho thấy phiên bản, khả năng và nguồn gốc (tích hợp sẵn hay do người dùng cài). Lọc theo tên bằng ô tìm kiếm phía trên danh sách.
+
+TablePro đi kèm 3 plugin driver database tích hợp sẵn (MySQL, PostgreSQL, SQLite) và 3 plugin export tích hợp sẵn (CSV, JSON, SQL). Các plugin bổ sung có sẵn trên registry và có thể cài từ tab Browse hoặc tự động tải khi bạn chọn loại database:
+
+| Plugin | Loại Database | Cổng Mặc định | Phân phối |
+|--------|---------------|----------------|-----------|
+| MySQL | MySQL, MariaDB | 3306 | Tích hợp sẵn |
+| PostgreSQL | PostgreSQL, Redshift | 5432 | Tích hợp sẵn |
+| SQLite | SQLite | -- | Tích hợp sẵn |
+| ClickHouse | ClickHouse | 8123 | Registry |
+| SQL Server | SQL Server | 1433 | Registry |
+| MongoDB | MongoDB | 27017 | Registry |
+| Redis | Redis | 6379 | Registry |
+| DuckDB | DuckDB | -- | Registry |
+| Oracle | Oracle | 1521 | Registry |
+
+Chọn plugin để bật/tắt bằng công tắc trong khung chi tiết. Plugin bị tắt sẽ ẩn loại database khỏi hộp thoại kết nối và ngăn kết nối đến loại database đó.
+
+### Chi tiết Plugin
+
+Chọn plugin trong danh sách để xem chi tiết ở khung bên phải: phiên bản, bundle ID, khả năng hỗ trợ, loại database và cổng mặc định. Driver plugin có thể cung cấp panel cài đặt tùy chỉnh riêng, hiển thị trong phần chi tiết plugin.
+
+### Duyệt plugin
+
+Tab **Browse** cũng dùng bố cục chia đôi. Mỗi dòng cho thấy phiên bản, tác giả, lượt tải và trạng thái cài đặt. Lọc theo tên hoặc danh mục bằng các điều khiển phía trên. Nhấn vào plugin để xem chi tiết, hoặc bấm Install ngay từ danh sách.
+
+### Cài đặt Plugin Bên thứ ba
+
+1. Nhấp nút **+** bên dưới danh sách plugin
+2. Chọn file `.zip` chứa bundle `.tableplugin`
+3. TablePro xác minh chữ ký mã và cài đặt plugin
+
+Bạn cũng có thể kéo thả file `.tableplugin` hoặc `.zip` vào cửa sổ cài đặt Plugins để cài đặt.
+
+<Warning>
+Chỉ cài plugin từ nguồn đáng tin cậy. TablePro kiểm tra chữ ký mã của plugin sideload nhưng không đảm bảo hành vi của chúng.
+</Warning>
+
+### Gỡ cài đặt Plugin
+
+Chọn plugin do người dùng cài và nhấp nút **-** bên dưới danh sách, hoặc dùng nút **Uninstall** trong khung chi tiết. Plugin tích hợp sẵn không thể gỡ, chỉ có thể tắt.
+
+### Cài Đặt Nâng Cao
+
+Một số cài đặt có sẵn qua `defaults write` cho người dùng nâng cao:
+
+| Cài đặt | Lệnh | Mô tả |
+|---------|------|-------|
+| Registry plugin tùy chỉnh | `defaults write com.TablePro com.TablePro.customRegistryURL <url>` | Sử dụng registry plugin riêng |
+| Xóa registry tùy chỉnh | `defaults delete com.TablePro com.TablePro.customRegistryURL` | Quay lại registry mặc định |
+
 ## Cài đặt Giấy phép
 
-Quản lý giấy phép TablePro từ tab **License** trong Settings.
+Quản lý giấy phép từ tab **License** trong Settings.
 
 ### Kích hoạt Giấy phép
 
 1. Mở **Settings** (`Cmd+,`) và chọn tab **License**
-2. Nhập mã giấy phép vào ô văn bản
+2. Nhập mã giấy phép
 3. Nhấp **Activate**
 
-Sau khi kích hoạt, tab hiển thị email đã đăng ký và mã giấy phép.
+Sau khi kích hoạt, tab hiện email đăng ký và mã giấy phép.
 
 ### Hủy kích hoạt Giấy phép
 
-Để xóa giấy phép khỏi máy này:
-
 1. Mở **Settings** > **License**
 2. Nhấp **Deactivate...**
-3. Xác nhận hành động
+3. Xác nhận
 
 <Note>
-Hủy kích hoạt sẽ giải phóng slot kích hoạt để bạn có thể sử dụng giấy phép trên máy khác.
+Hủy kích hoạt giải phóng slot để dùng giấy phép trên máy khác.
 </Note>
 
 ### Sử dụng Ngoại tuyến
 
-TablePro xác thực giấy phép cục bộ bằng chữ ký mã hóa. Không cần kết nối internet cho việc sử dụng hàng ngày sau khi kích hoạt. Ứng dụng định kỳ xác thực lại với máy chủ (mỗi 7 ngày) để kiểm tra cập nhật.
+TablePro xác thực giấy phép cục bộ bằng chữ ký mã hóa. Không cần internet sau khi kích hoạt. App xác thực lại với server mỗi 7 ngày.
 
 {/* Screenshot: Cài đặt Giấy phép */}
 <Frame caption="Kích hoạt và quản lý giấy phép">
@@ -406,28 +464,24 @@ TablePro xác thực giấy phép cục bộ bằng chữ ký mã hóa. Không c
 
 ## Lưu trữ Cài đặt
 
-Cài đặt được lưu trữ trong:
-
 ```
 ~/Library/Preferences/com.TablePro.plist
 ```
 
 ### Đặt lại Cài đặt
 
-Để đặt lại tất cả cài đặt về mặc định:
-
 ```bash
 # Xóa file preferences
 rm ~/Library/Preferences/com.TablePro.plist
 
-# Xóa cài đặt đã cache
+# Xóa cache
 rm -rf ~/Library/Caches/com.TablePro
 ```
 
-Sau đó khởi động lại TablePro.
+Khởi động lại TablePro.
 
 <Warning>
-Đặt lại preferences sẽ không ảnh hưởng đến các kết nối đã lưu hoặc lịch sử truy vấn của bạn.
+Đặt lại preferences không ảnh hưởng kết nối đã lưu hay lịch sử truy vấn.
 </Warning>
 
 ## Cài đặt theo Tính năng
@@ -436,57 +490,59 @@ Sau đó khởi động lại TablePro.
 
 | Cài đặt | Vị trí | Mô tả |
 |---------|----------|-------------|
+| Ngôn ngữ | General | Ngôn ngữ hiển thị app |
 | Hành vi khởi động | General | Làm gì khi khởi chạy |
-| Thời gian chờ truy vấn | General | Thời gian thực thi truy vấn tối đa |
-| Tự động kiểm tra cập nhật | General | Tự động kiểm tra bản cập nhật |
-| Tự động kết nối lại | Connections | Kết nối lại khi ngắt kết nối |
-| Ngôn ngữ | Tổng quát | Ngôn ngữ hiển thị ứng dụng |
-| Chia sẻ phân tích | General | Chia sẻ dữ liệu sử dụng ẩn danh |
+| Thời gian chờ truy vấn | General | Thời gian thực thi tối đa |
+| Tự động kiểm tra cập nhật | General | Kiểm tra bản cập nhật tự động |
+| Chia sẻ phân tích | General | Chia sẻ dữ liệu ẩn danh |
+| Tự động kết nối lại | Connections | Kết nối lại khi ngắt |
+| Safe Mode | Kết nối | Kiểm soát thực thi query theo kết nối |
 
-### Liên quan đến Trình soạn thảo
+### Liên quan đến Editor
 
 | Cài đặt | Vị trí | Mô tả |
 |---------|----------|-------------|
-| Họ font | Editor | Lựa chọn font monospace |
-| Kích thước font | Editor | Kích thước văn bản (11--18 pt, được giới hạn trong phạm vi) |
+| Họ font | Editor | Font monospace |
+| Kích thước font | Editor | Kích thước (11--18 pt, giới hạn trong phạm vi) |
 | Số dòng | Editor | Hiện/ẩn số dòng |
 | Xuống dòng | Editor | Tự động xuống dòng dài |
 | Độ rộng tab | Editor | Số khoảng trắng mỗi tab (1--16) |
-| Chế độ Vim | Editor | Bật phím tắt Vim (chế độ Normal/Insert/Visual) trong trình soạn thảo SQL |
+| Chế độ Vim | Editor | Phím tắt Vim (Normal/Insert/Visual) trong SQL editor |
 
-Xem [Cài đặt Trình soạn thảo](/vi/customization/editor-settings) để biết chi tiết.
+Xem [Cài đặt Editor](/vi/customization/editor-settings).
 
 ### Liên quan đến Hiển thị
 
 | Cài đặt | Vị trí | Mô tả |
 |---------|----------|-------------|
-| Chủ đề | Appearance | Light/Dark/System |
-| Màu nhấn | Appearance | Màu nhấn UI |
+| Chủ đề | Appearance | 9 preset có sẵn + theme tùy chỉnh |
+| Màu theme | Appearance | Màu cú pháp editor, bảng dữ liệu, UI, sidebar, toolbar |
+| Phông chữ theme | Appearance | Họ font và cỡ chữ editor/bảng dữ liệu (chuyển từ tab Editor/Data Grid) |
 | Chiều cao hàng | Data Grid | Chiều cao hàng bảng |
 | Định dạng ngày | Data Grid | Định dạng hiển thị ngày |
+| Phông chữ | Data Grid | Phông chữ đơn cách cho ô dữ liệu |
+| Cỡ chữ | Data Grid | Cỡ chữ ô dữ liệu (10-18 pt) |
 
-Xem [Giao diện](/vi/customization/appearance) để biết chi tiết.
+Xem [Giao diện](/vi/customization/appearance).
 
 ### Liên quan đến Bàn phím
 
 | Cài đặt | Vị trí | Mô tả |
 |---------|----------|-------------|
 | Gán phím tắt | Keyboard | Tùy chỉnh phím tắt menu |
-| Đặt lại về Mặc định | Keyboard | Khôi phục tất cả phím tắt về giá trị ban đầu |
+| Đặt lại về Mặc định | Keyboard | Khôi phục tất cả phím tắt |
 
 ### Liên quan đến Bộ lọc
 
 | Cài đặt | Vị trí | Mô tả |
 |---------|----------|-------------|
-| Cột mặc định | Filters | Cột được chọn trước cho bộ lọc mới (Raw SQL, Primary Key, Any Column) |
-| Toán tử mặc định | Filters | Toán tử được chọn trước cho bộ lọc mới |
+| Cột mặc định | Filters | Cột chọn trước cho bộ lọc mới (Raw SQL, Primary Key, Any Column) |
+| Toán tử mặc định | Filters | Toán tử chọn trước cho bộ lọc mới |
 | Trạng thái panel | Filters | Hành vi panel lọc khi mở (Hidden, Always Show, Restore Last) |
 
-Xem [Lọc](/vi/features/filtering) để biết chi tiết.
+Xem [Lọc](/vi/features/filtering).
 
 ## Phím tắt
-
-Mở cài đặt nhanh chóng:
 
 | Hành động | Phím tắt |
 |--------|----------|
@@ -498,8 +554,8 @@ Mở cài đặt nhanh chóng:
   <Card title="Giao diện" icon="palette" href="/vi/customization/appearance">
     Cài đặt chủ đề và màu sắc
   </Card>
-  <Card title="Cài đặt Trình soạn thảo" icon="code" href="/vi/customization/editor-settings">
-    Cấu hình trình soạn thảo SQL
+  <Card title="Cài đặt Editor" icon="code" href="/vi/customization/editor-settings">
+    Cấu hình SQL editor
   </Card>
   <Card title="Lịch sử Truy vấn" icon="clock-rotate-left" href="/vi/features/query-history">
     Chi tiết tính năng lịch sử

@@ -1,0 +1,387 @@
+---
+title: SQLite
+description: 直接打开和查询 .sqlite、.db 和 .sqlite3 文件，无需服务器
+---
+
+# SQLite 数据库
+
+SQLite 是一个自包含的、基于文件的数据库引擎。无需服务器，整个数据库存储在 Mac 上的一个文件中。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 SQLite">
+    从数据库类型选择器中选择 **SQLite**
+  </Step>
+  <Step title="选择数据库文件">
+    点击 **Browse** 选择你的 `.sqlite`、`.db` 或 `.sqlite3` 文件
+  </Step>
+  <Step title="创建连接">
+    为连接命名并点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+SQLite 连接很简单，因为不涉及服务器：
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Name** | 此连接的名称 |
+| **File Path** | SQLite 数据库文件的完整路径 |
+
+{/* Screenshot: SQLite connection form with file browser */}
+<Frame caption="SQLite 连接表单">
+  <img
+    className="block dark:hidden"
+    src="/images/sqlite-connection.png"
+    alt="SQLite 连接"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sqlite-connection-dark.png"
+    alt="SQLite 连接"
+  />
+</Frame>
+
+<Note>
+SQLite 数据库不需要用户名、密码或网络设置。
+</Note>
+
+## 常见 SQLite 文件位置
+
+### 应用数据库
+
+许多 macOS 应用使用 SQLite：
+
+| 应用 | 数据库位置 |
+|-------------|-------------------|
+| Safari | `~/Library/Safari/History.db` |
+| Photos | `~/Pictures/Photos Library.photoslibrary/database/Photos.sqlite` |
+| Messages | `~/Library/Messages/chat.db` |
+| Notes | `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite` |
+
+<Warning>
+系统数据库在其父应用运行时可能被锁定。打开数据库前请先退出对应应用。
+</Warning>
+
+### 开发数据库
+
+常见的开发数据库位置：
+
+```
+# Ruby on Rails
+./db/development.sqlite3
+
+# Django
+./db.sqlite3
+
+# iOS 模拟器
+~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Data/Application/*/Documents/*.sqlite
+
+# Core Data
+*.sqlite（在应用容器中）
+```
+
+### 创建新数据库
+
+创建新的 SQLite 数据库：
+
+1. 创建新连接
+2. 输入一个尚不存在的文件路径
+3. TablePro 会在连接时创建该文件
+
+或者通过命令行：
+
+```bash
+sqlite3 ~/Documents/newdatabase.sqlite "SELECT 1;"
+```
+
+## 功能
+
+### 数据库浏览器
+
+侧栏显示 SQLite 数据库中的所有表和视图：
+
+{/* Screenshot: Sidebar with SQLite tables expanded */}
+<Frame caption="SQLite 表浏览器">
+  <img
+    className="block dark:hidden"
+    src="/images/sqlite-browser.png"
+    alt="SQLite 浏览器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sqlite-browser-dark.png"
+    alt="SQLite 浏览器"
+  />
+</Frame>
+
+### 表信息
+
+每个表显示以下内容：
+
+- **Structure**：列名、类型和约束
+- **Indexes**：所有索引，包括 UNIQUE 约束
+- **DDL**：CREATE TABLE 语句
+
+### SQLite 系统表
+
+TablePro 可以显示 SQLite 的内部表：
+
+| 表 | 用途 |
+|-------|---------|
+| `sqlite_master` | schema 信息 |
+| `sqlite_sequence` | AUTOINCREMENT 追踪 |
+
+### 查询执行
+
+完整支持 SQLite 语法：
+
+```sql
+-- JSON 函数（SQLite 3.38+）
+SELECT json_extract(data, '$.name') as name
+FROM users
+WHERE json_extract(data, '$.active') = true;
+
+-- Window functions
+SELECT
+    category,
+    product,
+    price,
+    rank() OVER (PARTITION BY category ORDER BY price DESC) as rank
+FROM products;
+
+-- CTEs
+WITH RECURSIVE
+    cnt(x) AS (
+        SELECT 1
+        UNION ALL
+        SELECT x+1 FROM cnt WHERE x < 10
+    )
+SELECT x FROM cnt;
+
+-- 全文搜索（如果启用了 FTS）
+SELECT * FROM documents WHERE documents MATCH 'sqlite AND database';
+
+-- UPSERT（INSERT OR REPLACE）
+INSERT INTO settings (key, value)
+VALUES ('theme', 'dark')
+ON CONFLICT(key) DO UPDATE SET value = excluded.value;
+```
+
+## SQLite 数据类型
+
+SQLite 使用动态类型系统和类型亲和性：
+
+| 亲和性 | 描述 | 示例 |
+|----------|-------------|----------|
+| TEXT | 字符串数据 | `VARCHAR`、`TEXT`、`CLOB` |
+| INTEGER | 有符号整数 | `INT`、`INTEGER`、`BIGINT` |
+| REAL | 浮点数 | `REAL`、`DOUBLE`、`FLOAT` |
+| NUMERIC | 数值或文本 | `DECIMAL`、`BOOLEAN`、`DATE` |
+| BLOB | 二进制数据 | `BLOB`、原始字节 |
+
+<Note>
+SQLite 接受在任何列中存储任何数据类型（INTEGER PRIMARY KEY 除外）。类型只是一个提示，不是约束。
+</Note>
+
+## 处理大文件
+
+### 文件大小
+
+SQLite 数据库可以很大。TablePro 可以处理：
+
+- 数 GB 大小的数据库
+- 有数百万行的表
+- BLOB 数据（图片、文件）
+
+### 性能建议
+
+1. **使用分页**：在设置中为大表启用分页
+2. **添加索引**：为经常查询的列创建索引
+3. **使用 LIMIT**：探索时始终限制结果集
+4. **定期 VACUUM**：使用 `VACUUM` 回收空间
+
+```sql
+-- 检查数据库大小
+SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();
+
+-- 分析表以优化查询
+ANALYZE;
+
+-- 回收未使用的空间
+VACUUM;
+```
+
+## 故障排除
+
+### 数据库被锁定
+
+**症状**："database is locked" 或 "database table is locked"
+
+**原因**：
+- 另一个应用打开了该数据库
+- 前一个查询仍在运行
+- WAL 模式冲突
+
+**解决方案**：
+
+1. 关闭使用该数据库的其他应用
+2. 等待运行中的查询完成
+3. 检查 WAL 文件：
+   ```bash
+   ls -la /path/to/database.sqlite*
+   # 你可能会看到：database.sqlite-wal、database.sqlite-shm
+   ```
+
+### 无法打开数据库
+
+**症状**："unable to open database file"
+
+**原因及解决方案**：
+
+1. **文件不存在**：验证路径是否正确
+2. **权限不足**：检查文件权限
+   ```bash
+   ls -la /path/to/database.sqlite
+   chmod 644 /path/to/database.sqlite
+   ```
+3. **路径包含特殊字符**：使用不含空格的绝对路径
+
+### 数据库损坏
+
+**症状**："database disk image is malformed"
+
+**恢复选项**：
+
+1. **检查完整性**：
+   ```sql
+   PRAGMA integrity_check;
+   ```
+
+2. **尝试恢复**：
+   ```bash
+   sqlite3 corrupt.sqlite ".recover" | sqlite3 recovered.sqlite
+   ```
+
+3. **从备份恢复**（如果有的话）
+
+### Schema 变更不可见
+
+**症状**：创建的表或列没有显示
+
+**解决方案**：刷新连接：
+1. 右键点击连接
+2. 选择 **Refresh**
+
+或者断开后重新连接。
+
+## SQLite Pragmas
+
+TablePro 支持 SQLite PRAGMA 命令进行配置：
+
+```sql
+-- 检查 SQLite 版本
+SELECT sqlite_version();
+
+-- 显示表信息
+PRAGMA table_info(users);
+
+-- 检查外键是否启用
+PRAGMA foreign_keys;
+
+-- 启用外键约束
+PRAGMA foreign_keys = ON;
+
+-- 检查日志模式
+PRAGMA journal_mode;
+
+-- 使用 WAL 模式提高并发性
+PRAGMA journal_mode = WAL;
+```
+
+{/* Screenshot: SQLite PRAGMA results */}
+<Frame caption="SQLite PRAGMA 查询结果">
+  <img
+    className="block dark:hidden"
+    src="/images/sqlite-pragma-results.png"
+    alt="SQLite PRAGMA 结果"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/sqlite-pragma-results-dark.png"
+    alt="SQLite PRAGMA 结果"
+  />
+</Frame>
+
+## 备份与恢复
+
+### 手动备份
+
+SQLite 数据库就是文件。备份方法：
+
+```bash
+# 简单复制（确保数据库没有正在写入）
+cp database.sqlite database-backup.sqlite
+
+# SQLite 备份命令（更安全，可处理锁）
+sqlite3 database.sqlite ".backup backup.sqlite"
+```
+
+### 导出为 SQL
+
+将数据库导出为 SQL 语句：
+
+```bash
+sqlite3 database.sqlite .dump > backup.sql
+```
+
+### 从 SQL 恢复
+
+```bash
+sqlite3 newdatabase.sqlite < backup.sql
+```
+
+## 与服务器数据库的区别
+
+| 特性 | SQLite | MySQL/PostgreSQL |
+|---------|--------|------------------|
+| 需要服务器 | 否 | 是 |
+| 多连接 | 有限 | 无限制 |
+| 用户认证 | 否 | 是 |
+| 网络访问 | 基于文件 | TCP/IP |
+| 并发写入 | 有限 | 完整支持 |
+| 存储过程 | 否 | 是 |
+| 数据类型 | 动态 | 静态 |
+
+## 常见用途
+
+SQLite 适用于：
+
+- **本地开发**：快速原型开发
+- **嵌入式应用**：移动应用、桌面应用
+- **单用户应用**：个人数据库
+- **数据分析**：快速数据探索
+- **测试**：使用隔离数据库的单元测试
+- **原型验证**：迁移到服务器数据库之前的验证
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写和执行 SQL 查询
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看和编辑数据
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 SQLite 数据
+  </Card>
+  <Card title="表结构" icon="table-columns" href="/zh/features/table-structure">
+    查看和修改表结构
+  </Card>
+</CardGroup>

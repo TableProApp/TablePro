@@ -28,6 +28,63 @@
 				<string>com.tablepro.sql</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>tableplugin</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>TablePro Plugin</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.plugin</string>
+			</array>
+			<key>LSTypeIsPackage</key>
+			<true/>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>sqlite</string>
+				<string>sqlite3</string>
+				<string>db3</string>
+				<string>s3db</string>
+				<string>sl3</string>
+				<string>sqlitedb</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>SQLite Database</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.apple.sqlite3</string>
+				<string>com.tablepro.sqlite-db</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>DuckDB Database</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>duckdb</string>
+				<string>ddb</string>
+			</array>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.duckdb</string>
+			</array>
+		</dict>
 	</array>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
@@ -47,6 +104,68 @@
 				<key>public.filename-extension</key>
 				<array>
 					<string>sql</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.sqlite-db</string>
+			<key>UTTypeDescription</key>
+			<string>SQLite Database</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.database</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sqlite</string>
+					<string>sqlite3</string>
+					<string>db3</string>
+					<string>s3db</string>
+					<string>sl3</string>
+					<string>sqlitedb</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>DuckDB Database</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.duckdb</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>duckdb</string>
+					<string>ddb</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.plugin</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Plugin</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>com.apple.bundle</string>
+				<string>com.apple.package</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tableplugin</string>
 				</array>
 			</dict>
 		</dict>
@@ -77,6 +196,14 @@
 				<string>redis</string>
 				<string>rediss</string>
 				<string>redshift</string>
+				<string>mongodb+srv</string>
+				<string>mssql</string>
+				<string>sqlserver</string>
+				<string>duckdb</string>
+				<string>cassandra</string>
+				<string>cql</string>
+				<string>scylladb</string>
+				<string>scylla</string>
 			</array>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

@@ -830,4 +830,44 @@ struct ConnectionURLParserTests {
         let color = ConnectionURLParser.connectionColor(fromHex: "invalid")
         #expect(color == .none)
     }
+
+    @Test("SSH URL with useSSHAgent=true")
+    func testSSHURLWithUseSSHAgent() {
+        let result = ConnectionURLParser.parse(
+            "mysql+ssh://admin@jump.example.com/root:pass@127.0.0.1/mydb?useSSHAgent=true"
+        )
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.useSSHAgent == true)
+        #expect(parsed.agentSocket == nil)
+        #expect(parsed.sshHost == "jump.example.com")
+        #expect(parsed.sshUsername == "admin")
+    }
+
+    @Test("SSH URL with useSSHAgent and custom agentSocket")
+    func testSSHURLWithAgentSocket() {
+        let result = ConnectionURLParser.parse(
+            "postgresql+ssh://deploy@bastion:2222/admin:secret@db.internal/prod?useSSHAgent=true&agentSocket=~/Library/Group%20Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+        )
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.useSSHAgent == true)
+        #expect(parsed.agentSocket == SSHAgentSocketOption.onePasswordSocketPath)
+        #expect(parsed.sshHost == "bastion")
+        #expect(parsed.sshPort == 2222)
+    }
+
+    @Test("SSH URL with both usePrivateKey and useSSHAgent prefers last")
+    func testSSHURLWithBothPrivateKeyAndAgent() {
+        let result = ConnectionURLParser.parse(
+            "mysql+ssh://admin@jump.example.com/root:pass@127.0.0.1/mydb?usePrivateKey=true&useSSHAgent=true"
+        )
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.usePrivateKey == true)
+        #expect(parsed.useSSHAgent == true)
+    }
 }

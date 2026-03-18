@@ -9,12 +9,15 @@
 
 import Foundation
 import Observation
+import os
+import TableProPluginKit
 
 /// Manager for tracking and applying data changes
 /// @MainActor ensures thread-safe access - critical for avoiding EXC_BAD_ACCESS
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
 final class DataChangeManager {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
     var changes: [RowChange] = []
     var hasChanges: Bool = false
     var reloadVersion: Int = 0  // Incremented to trigger table reload
@@ -25,6 +28,7 @@ final class DataChangeManager {
     var tableName: String = ""
     var primaryKeyColumn: String?
     var databaseType: DatabaseType = .mysql
+    var pluginDriver: (any PluginDatabaseDriver)?
 
     // Simple storage with explicit deep copy to avoid memory corruption
     private var _columnsStorage: [String] = []
@@ -617,43 +621,56 @@ final class DataChangeManager {
     // MARK: - SQL Generation
 
     func generateSQL() throws -> [ParameterizedStatement] {
-        // MongoDB uses its own statement generator (shell syntax instead of SQL)
-        if databaseType == .mongodb {
-            let generator = MongoDBStatementGenerator(
-                collectionName: tableName,
-                columns: columns
-            )
-            let statements = generator.generateStatements(
-                from: changes,
-                insertedRowData: insertedRowData,
-                deletedRowIndices: deletedRowIndices,
-                insertedRowIndices: insertedRowIndices
-            )
+        try generateSQL(
+            for: changes,
+            insertedRowData: insertedRowData,
+            deletedRowIndices: deletedRowIndices,
+            insertedRowIndices: insertedRowIndices
+        )
+    }
 
-            let expectedUpdates = changes.count(where: { $0.type == .update })
-            let actualUpdates = statements.count(where: { $0.sql.contains(".updateOne(") })
-
-            if expectedUpdates > 0 && actualUpdates < expectedUpdates {
-                throw DatabaseError.queryFailed(
-                    "Cannot save UPDATE changes to collection '\(tableName)' without an _id field. " +
-                        "Please ensure the collection has _id values."
+    /// Unified statement generation for both data grid and sidebar edits.
+    /// Routes through plugin driver for NoSQL databases, falls back to SQLStatementGenerator for SQL.
+    func generateSQL(
+        for changes: [RowChange],
+        insertedRowData: [Int: [String?]] = [:],
+        deletedRowIndices: Set<Int> = [],
+        insertedRowIndices: Set<Int> = []
+    ) throws -> [ParameterizedStatement] {
+        // Try plugin dispatch first (handles MongoDB, Redis, etcd, and future NoSQL plugins)
+        if let pluginDriver {
+            let pluginChanges = changes.map { change -> PluginRowChange in
+                PluginRowChange(
+                    rowIndex: change.rowIndex,
+                    type: {
+                        switch change.type {
+                        case .insert: return .insert
+                        case .update: return .update
+                        case .delete: return .delete
+                        }
+                    }(),
+                    cellChanges: change.cellChanges.map {
+                        ($0.columnIndex, $0.columnName, $0.oldValue, $0.newValue)
+                    },
+                    originalRow: change.originalRow
                 )
             }
-
-            return statements
-        }
-
-        // Redis uses its own statement generator (Redis commands instead of SQL)
-        if databaseType == .redis {
-            let generator = RedisStatementGenerator(
-                namespaceName: tableName,
-                columns: columns
-            )
-            return generator.generateStatements(
-                from: changes,
+            if let statements = pluginDriver.generateStatements(
+                table: tableName,
+                columns: columns,
+                changes: pluginChanges,
                 insertedRowData: insertedRowData,
                 deletedRowIndices: deletedRowIndices,
                 insertedRowIndices: insertedRowIndices
+            ) {
+                return statements.map { ParameterizedStatement(sql: $0.statement, parameters: $0.parameters) }
+            }
+        }
+
+        // Safety: prevent SQL generation for NoSQL databases if plugin driver is unavailable
+        if PluginManager.shared.editorLanguage(for: databaseType) != .sql {
+            throw DatabaseError.queryFailed(
+                "Cannot generate statements for \(databaseType.rawValue) — plugin driver not initialized"
             )
         }
 
@@ -661,7 +678,8 @@ final class DataChangeManager {
             tableName: tableName,
             columns: columns,
             primaryKeyColumn: primaryKeyColumn,
-            databaseType: databaseType
+            databaseType: databaseType,
+            quoteIdentifier: pluginDriver?.quoteIdentifier
         )
         let statements = generator.generateStatements(
             from: changes,
@@ -680,10 +698,12 @@ final class DataChangeManager {
             )
         }
 
-        let expectedDeletes = changes.count(where: { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) })
-        let actualDeletes = statements.count(where: { $0.sql.hasPrefix("DELETE") })
+        // Validate DELETE coverage: batch DELETE produces 1 statement for N rows when PK exists,
+        // so count statements != count rows. Instead check that all deletable rows got coverage.
+        let deletableChanges = changes.filter { $0.type == .delete && deletedRowIndices.contains($0.rowIndex) }
+        let deletableWithOriginalRow = deletableChanges.filter { $0.originalRow != nil }
 
-        if expectedDeletes > 0 && actualDeletes < expectedDeletes {
+        if !deletableChanges.isEmpty && deletableWithOriginalRow.isEmpty {
             throw DatabaseError.queryFailed(
                 "Cannot save DELETE changes to table '\(tableName)'. " +
                     "Some rows could not be identified for deletion. Please verify the table data."

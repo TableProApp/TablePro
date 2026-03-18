@@ -1,0 +1,101 @@
+---
+title: DuckDB
+description: Connect to DuckDB databases with TablePro
+---
+
+# DuckDB
+
+DuckDB is an embedded analytical database, optimized for OLAP workloads. TablePro supports connecting to DuckDB database files for browsing tables, running queries, and managing schemas.
+
+## Connecting to a DuckDB database
+
+<Steps>
+  <Step title="Create a new connection">
+    Open TablePro and click **New Connection** or press <kbd>⌘N</kbd>.
+  </Step>
+  <Step title="Select DuckDB">
+    Choose **DuckDB** from the database type list.
+  </Step>
+  <Step title="Choose your database file">
+    Click **Browse** to select an existing `.duckdb` file, or enter the path to create a new database.
+  </Step>
+  <Step title="Connect">
+    Click **Connect** to open the database.
+  </Step>
+</Steps>
+
+## Opening DuckDB files from Finder
+
+Double-click any `.duckdb` file in Finder to open it directly in TablePro.
+
+## Querying files directly
+
+DuckDB can query CSV, Parquet, and JSON files directly with SQL:
+
+```sql
+-- Query a CSV file
+SELECT * FROM 'data.csv';
+
+-- Query a Parquet file
+SELECT * FROM read_parquet('analytics.parquet');
+
+-- Query a JSON file
+SELECT * FROM read_json('config.json');
+```
+
+## Schema support
+
+DuckDB supports multiple schemas within a single database. The default schema is `main`. Use the schema switcher in the toolbar to navigate between schemas.
+
+```sql
+-- Create a new schema
+CREATE SCHEMA analytics;
+
+-- Create a table in a specific schema
+CREATE TABLE analytics.events (
+    id INTEGER PRIMARY KEY,
+    event_name VARCHAR,
+    created_at TIMESTAMP
+);
+```
+
+## DuckDB extensions
+
+DuckDB has a rich extension ecosystem. Install and load extensions using SQL:
+
+```sql
+-- Install an extension
+INSTALL httpfs;
+
+-- Load an extension
+LOAD httpfs;
+
+-- Query remote Parquet files
+SELECT * FROM read_parquet('https://example.com/data.parquet');
+```
+
+## Data types
+
+DuckDB supports a wide range of data types:
+
+| Category | Types |
+|----------|-------|
+| Numeric | `INTEGER`, `BIGINT`, `HUGEINT`, `DOUBLE`, `FLOAT`, `DECIMAL` |
+| String | `VARCHAR`, `TEXT`, `CHAR` |
+| Date/Time | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL` |
+| Complex | `LIST`, `MAP`, `STRUCT`, `UNION`, `ENUM` |
+| Other | `BOOLEAN`, `BLOB`, `UUID`, `JSON`, `BIT` |
+
+## Limitations
+
+- DuckDB is an embedded database. There is no server to connect to over the network.
+- Only one process can write to a DuckDB file at a time.
+
+<CardGroup cols={2}>
+  <Card title="Keyboard shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
+    Learn keyboard shortcuts for faster navigation
+  </Card>
+  <Card title="Query editor" icon="code" href="/features/query-editor">
+    Write and execute SQL queries
+  </Card>
+</CardGroup>

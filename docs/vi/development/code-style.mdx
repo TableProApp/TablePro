@@ -1,28 +1,26 @@
 ---
-title: Phong cách code
-description: Quy ước code và hướng dẫn phong cách cho TablePro
+title: Code Style
+description: Quy ước Swift, rules SwiftLint/SwiftFormat, đặt tên, access control và tổ chức file
 ---
 
 # Hướng dẫn Code Style
 
-Hướng dẫn này bao gồm các quy ước code được sử dụng trong TablePro. Tuân theo các quy ước này đảm bảo code nhất quán, dễ đọc trong toàn bộ dự án.
+Các quy ước giúp codebase TablePro nhất quán và dễ đọc.
 
 ## Công cụ
-
-TablePro sử dụng các công cụ tự động cho chất lượng code:
 
 | Công cụ | Mục đích | File cấu hình |
 |------|---------|-------------|
 | **SwiftLint** | Linting và phân tích tĩnh | `.swiftlint.yml` |
 | **SwiftFormat** | Code formatting | `.swiftformat` |
 
-### Chạy các công cụ
+### Chạy công cụ
 
 ```bash
-# Kiểm tra các vấn đề linting
+# Kiểm tra linting
 swiftlint lint
 
-# Tự động sửa các vấn đề linting
+# Tự động sửa linting
 swiftlint --fix
 
 # Format code
@@ -33,15 +31,15 @@ swiftformat --lint .
 ```
 
 <Tip>
-Chạy các công cụ này trước khi commit. SwiftLint cũng chạy tự động trong quá trình build Xcode.
+Chạy trước khi commit. SwiftLint cũng chạy tự động khi build Xcode.
 </Tip>
 
 ## Nguyên tắc kiến trúc
 
 ### Separation of Concerns
 
-- Giữ logic nghiệp vụ trong models/view models, không trong views
-- Views chỉ nên xử lý presentation
+- Logic nghiệp vụ thuộc models/view models, không thuộc views
+- Views chỉ xử lý presentation
 
 ```swift
 // Tốt: Logic trong ViewModel
@@ -55,7 +53,7 @@ class ConnectionViewModel: ObservableObject {
 struct ConnectionView: View {
     var body: some View {
         Button("Connect") {
-            // Không đặt logic validation ở đây
+            // Không đặt validation ở đây
         }
         .disabled(host.isEmpty || port <= 0)
     }
@@ -83,14 +81,14 @@ class DatabaseManager: ObservableObject {
 
 ### Immutability
 
-Sử dụng `let` mặc định; chỉ dùng `var` khi cần mutation:
+Mặc định `let`. Chỉ `var` khi cần mutation:
 
 ```swift
 // Tốt
 let connection = DatabaseConnection(...)
 let results = try await driver.execute(query: sql)
 
-// Chỉ dùng var khi cần
+// Chỉ var khi cần
 var currentPage = 1
 currentPage += 1
 ```
@@ -117,7 +115,7 @@ currentPage += 1
 
 ### Boolean Properties
 
-Sử dụng prefix `is`/`has`/`can`:
+Prefix `is`/`has`/`can`:
 
 ```swift
 var isConnected: Bool
@@ -127,7 +125,7 @@ var canExecuteQuery: Bool
 
 ### Factory Methods
 
-Sử dụng prefix `make`:
+Prefix `make`:
 
 ```swift
 func makeConnection() -> DatabaseConnection
@@ -138,28 +136,28 @@ func makeDriver(for type: DatabaseType) -> DatabaseDriver
 
 ### Indentation
 
-- **4 spaces** (không bao giờ dùng tabs)
-- Cấu hình editor để chuyển tabs thành spaces
+- **4 spaces** (không bao giờ tabs)
+- Cấu hình editor chuyển tabs thành spaces
 
 ### Độ dài dòng
 
-- **Tối đa 120 ký tự** mỗi dòng
-- Ngắt dòng dài để dễ đọc
+- **Tối đa 120 ký tự**
+- Ngắt dòng dài cho dễ đọc
 
 ```swift
-// Tốt: Ngắt dòng để dễ đọc
+// Tốt: Ngắt dòng
 let result = try await driver.executeParameterized(
     query: "SELECT * FROM users WHERE email = ?",
     parameters: [email]
 )
 
-// Tránh: Dòng dài đơn
+// Tránh: Dòng đơn dài
 let result = try await driver.executeParameterized(query: "SELECT * FROM users WHERE email = ?", parameters: [email])
 ```
 
 ### Braces
 
-K&R style - opening brace trên cùng dòng:
+K&R style -- opening brace cùng dòng:
 
 ```swift
 // Tốt
@@ -179,11 +177,11 @@ if condition
 ### Spacing
 
 ```swift
-// Khoảng trắng xung quanh operators
+// Khoảng trắng quanh operators
 let sum = a + b
 let isValid = count > 0 && name.isEmpty == false
 
-// Không có khoảng trắng cho ranges
+// Không khoảng trắng cho ranges
 for i in 0..<10 { }
 
 // Khoảng trắng sau colon trong khai báo type
@@ -209,7 +207,7 @@ var connectionPool: [Connection] = []  // Implicit internal
 
 ### Ưu tiên Private
 
-Sử dụng access hạn chế nhất có thể:
+Dùng access hạn chế nhất:
 
 ```swift
 class DatabaseManager {
@@ -224,7 +222,7 @@ class DatabaseManager {
 
 ### Extension Access
 
-Chỉ định access trên extension, không phải các thành viên riêng lẻ:
+Chỉ định access trên extension, không trên thành viên:
 
 ```swift
 // Tốt
@@ -240,9 +238,9 @@ extension NSEvent {
 
 ## Optionals
 
-### Tránh Force Unwrapping
+### Không Force Unwrapping
 
-Không bao giờ dùng `!` để unwrap:
+Không dùng `!`:
 
 ```swift
 // Tốt
@@ -258,7 +256,7 @@ let connection = connection!  // Crash nếu nil
 
 ### Safe Casting
 
-Sử dụng conditional casting:
+Dùng conditional casting:
 
 ```swift
 // Tốt
@@ -272,7 +270,7 @@ let value = param as! SQLFunctionLiteral  // Crash nếu sai type
 
 ### Guard cho Early Exit
 
-Sử dụng `guard` để giảm nesting:
+Dùng `guard` để giảm nesting:
 
 ```swift
 // Tốt
@@ -310,14 +308,14 @@ if items.filter({ $0 == target }).count > 0 { }
 if let first = items.filter({ $0.isValid }).first { }
 ```
 
-### Xóa Unused Enumeration
+### Bỏ Unused Enumeration
 
 ```swift
 // Tốt
 items.map { item in item.value }
 items.map(\.value)
 
-// Tránh (nếu index không được dùng)
+// Tránh (nếu index không dùng)
 items.enumerated().map { _, item in item.value }
 ```
 
@@ -325,7 +323,7 @@ items.enumerated().map { _, item in item.value }
 
 ### Trailing Closure Syntax
 
-Sử dụng trailing closures khi tham số cuối là closure:
+Dùng trailing closures khi tham số cuối là closure:
 
 ```swift
 // Tốt
@@ -339,14 +337,14 @@ items.filter({ $0.isActive })
 
 ### Implicit Returns
 
-Sử dụng implicit returns cho single-expression closures:
+Dùng implicit returns cho single-expression closures:
 
 ```swift
 // Tốt
 items.map { $0.name }
 items.filter { $0.isActive }
 
-// Cũng tốt khi rõ ràng hơn
+// Cũng tốt khi rõ hơn
 items.map { item in
     item.name
 }
@@ -354,7 +352,7 @@ items.map { item in
 
 ### Unused Closure Arguments
 
-Sử dụng `_` cho các tham số không dùng:
+Dùng `_` cho tham số không dùng:
 
 ```swift
 // Tốt
@@ -363,7 +361,7 @@ button.onTap { _ in
 }
 
 // Tránh
-button.onTap { event in  // event không được dùng
+button.onTap { event in  // event không dùng
     handleTap()
 }
 ```
@@ -373,8 +371,8 @@ button.onTap { event in  // event không được dùng
 ### Khi nào Comment
 
 ```swift
-// Tốt: Giải thích "tại sao", không phải "cái gì"
-// Chúng ta dùng delay 1.5 giây để đảm bảo SSH tunnel được thiết lập
+// Tốt: Giải thích "tại sao"
+// Delay 1.5s đảm bảo SSH tunnel thiết lập xong
 // trước khi thử kết nối database
 try await Task.sleep(nanoseconds: 1_500_000_000)
 
@@ -385,7 +383,7 @@ let name = user.name
 
 ### Documentation Comments
 
-Sử dụng `///` cho public APIs:
+Dùng `///` cho public APIs:
 
 ```swift
 /// Thực thi SQL query và trả về kết quả.
@@ -398,7 +396,7 @@ func execute(query: String) async throws -> QueryResult
 
 ### MARK Comments
 
-Tổ chức code với MARK comments:
+Tổ chức code với MARK:
 
 ```swift
 // MARK: - Properties
@@ -421,7 +419,7 @@ func connect() async throws { ... }
 private func validateConnection() -> Bool { ... }
 ```
 
-## Đặc Thù SwiftUI
+## SwiftUI
 
 ### Cấu trúc View
 
@@ -480,14 +478,14 @@ struct MyView: View {
 
 | Metric | Warning | Error |
 |--------|---------|-------|
-| Độ dài Function body | 160 dòng | 250 dòng |
-| Độ dài Type body | 1100 dòng | 1500 dòng |
-| Độ dài File | 1200 dòng | 1800 dòng |
+| Function body | 160 dòng | 250 dòng |
+| Type body | 1100 dòng | 1500 dòng |
+| File | 1200 dòng | 1800 dòng |
 | Cyclomatic complexity | 40 | 60 |
 
 ### Xử lý File dài
 
-Trích xuất extensions vào các file riêng:
+Trích extensions vào file riêng:
 
 <Tree>
   <Tree.File name="MainContentCoordinator.swift" />
@@ -508,7 +506,7 @@ Trích xuất extensions vào các file riêng:
 
 <CardGroup cols={2}>
   <Card title="Kiến trúc" icon="sitemap" href="/vi/development/architecture">
-    Hiểu về cấu trúc codebase
+    Hiểu cấu trúc codebase
   </Card>
   <Card title="Build" icon="hammer" href="/vi/development/building">
     Quy trình build và release

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Provides cached database schema information for autocomplete
 actor SQLSchemaProvider {
@@ -100,6 +101,21 @@ actor SQLSchemaProvider {
         cachedDriver = nil
     }
 
+    func invalidateTables() {
+        tables.removeAll()
+    }
+
+    func updateTables(_ newTables: [TableInfo]) {
+        tables = newTables
+    }
+
+    func fetchFreshTables() async throws -> [TableInfo]? {
+        guard let driver = cachedDriver else { return nil }
+        let fresh = try await driver.fetchTables()
+        tables = fresh
+        return fresh
+    }
+
     /// Find table name from alias
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
         // First check if it's an alias
@@ -139,16 +155,26 @@ actor SQLSchemaProvider {
             }
         }
 
-        return AISchemaContext.buildSystemPrompt(
-            databaseType: connection.type,
-            databaseName: connection.database,
-            tables: tables,
-            columnsByTable: columnsByTable,
-            foreignKeys: [:],
-            currentQuery: nil,
-            queryResults: nil,
-            settings: settings
-        )
+        let dbType = connection.type
+        let dbName = connection.database
+        let capturedTables = tables
+        let idQuote = await MainActor.run {
+            PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
+        }
+
+        return await MainActor.run {
+            AISchemaContext.buildSystemPrompt(
+                databaseType: dbType,
+                databaseName: dbName,
+                tables: capturedTables,
+                columnsByTable: columnsByTable,
+                foreignKeys: [:],
+                currentQuery: nil,
+                queryResults: nil,
+                settings: settings,
+                identifierQuote: idQuote
+            )
+        }
     }
 
     // MARK: - Completion Items

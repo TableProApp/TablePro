@@ -1,0 +1,357 @@
+---
+title: Cassandra / ScyllaDB
+description: Kết nối Cassandra và ScyllaDB cluster, duyệt keyspace và chạy truy vấn CQL
+---
+
+# Kết nối Cassandra / ScyllaDB
+
+TablePro hỗ trợ Apache Cassandra 3.11+ và ScyllaDB 4.0+ qua giao thức CQL native. Duyệt keyspace, xem cấu trúc bảng, materialized view và chạy truy vấn CQL từ editor.
+
+## Thiết lập Nhanh
+
+<Steps>
+  <Step title="Mở Form Kết nối">
+    Nhấp **New Connection** từ màn hình Chào mừng hoặc **File** > **New Connection**
+  </Step>
+  <Step title="Chọn Cassandra hoặc ScyllaDB">
+    Chọn **Cassandra** hoặc **ScyllaDB** từ trình chọn loại database
+  </Step>
+  <Step title="Nhập Thông tin Kết nối">
+    Điền host, port, username, password và keyspace
+  </Step>
+  <Step title="Kiểm tra và Kết nối">
+    Nhấp **Test Connection**, rồi **Create**
+  </Step>
+</Steps>
+
+## Cài đặt Kết nối
+
+### Trường Bắt buộc
+
+| Trường | Mô tả | Mặc định |
+|-------|-------------|---------|
+| **Name** | Tên định danh kết nối | - |
+| **Host** | Hostname hoặc IP contact point | `localhost` |
+| **Port** | Cổng CQL native transport | `9042` |
+
+### Trường Tùy chọn
+
+| Trường | Mô tả |
+|-------|-------------|
+| **Username** | Tên đăng nhập |
+| **Password** | Mật khẩu |
+| **Keyspace** | Keyspace mặc định sau khi kết nối |
+
+<Tip>
+Cassandra cài local thường tắt xác thực. Để trống username và password cho dev local.
+</Tip>
+
+## Định dạng URL
+
+Import kết nối bằng Cassandra hoặc ScyllaDB URL.
+
+Xem [Tham chiếu URL kết nối](/vi/databases/connection-urls#cassandra--scylladb) để biết format đầy đủ.
+
+## Ví dụ Cấu hình
+
+### Server Dev Local
+
+```text
+Name:     Local Cassandra
+Host:     localhost
+Port:     9042
+Username: (để trống)
+Password: (để trống)
+Keyspace: my_keyspace
+```
+
+### Docker Cassandra Container
+
+```text
+Name:     Docker Cassandra
+Host:     localhost
+Port:     9042 (hoặc cổng mapped)
+Username: cassandra
+Password: cassandra
+Keyspace: (để trống)
+```
+
+### DataStax Astra DB (Cloud)
+
+```text
+Name:     Astra DB
+Host:     <your-cluster-id>-<region>.apps.astra.datastax.com
+Port:     29042
+Username: (Client ID từ token)
+Password: (Client Secret từ token)
+Keyspace: my_keyspace
+```
+
+<Note>
+Astra DB yêu cầu Secure Connect Bundle cho TLS. Tải bundle từ Astra dashboard và cấu hình trong phần SSL/TLS.
+</Note>
+
+### Server Từ xa
+
+```text
+Name:     Production Cassandra
+Host:     cassandra.example.com
+Port:     9042
+Username: app_user
+Password: (mật khẩu bảo mật)
+Keyspace: production
+```
+
+<Warning>
+Cho Cassandra cluster production, nên dùng [SSH tunneling](/vi/databases/ssh-tunneling) để kết nối an toàn.
+</Warning>
+
+## Kết nối SSL/TLS
+
+Cấu hình SSL trong phần **SSL/TLS** của form kết nối.
+
+| Chế độ SSL | Mô tả |
+|----------|-------------|
+| **Disabled** | Không mã hóa SSL |
+| **Required** | Bắt buộc SSL |
+| **Verify CA** | Bắt buộc SSL và xác minh chứng chỉ server với CA |
+
+Với **Verify CA**, cung cấp file chứng chỉ CA. Tùy chọn thêm file chứng chỉ client và key cho mutual TLS.
+
+<Note>
+Nếu không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/databases/ssh-tunneling) mã hóa toàn bộ traffic qua tunnel SSH.
+</Note>
+
+## Hỗ trợ SSH Tunnel
+
+Kết nối Cassandra qua SSH tunnel để truy cập an toàn cluster từ xa. Xem [SSH Tunneling](/vi/databases/ssh-tunneling) để biết cách cài đặt.
+
+## Tính năng
+
+### Duyệt Keyspace
+
+Sau khi kết nối, sidebar liệt kê tất cả keyspace. Mở rộng keyspace để xem bảng, materialized view, user-defined type (UDT) và secondary index.
+
+1. Nhấp tên kết nối trong sidebar
+2. Mở rộng keyspace để xem các đối tượng
+3. Nhấp bảng để xem dữ liệu
+
+### Cấu trúc Bảng
+
+Xem schema đầy đủ cho bất kỳ bảng nào:
+
+- **Cột**: tên, kiểu CQL, thứ tự clustering
+- **Partition key**: cột xác định phân phối dữ liệu
+- **Clustering column**: cột xác định thứ tự hàng trong partition
+- **Secondary index**: tên index, cột đích, lớp index
+- **Tùy chọn bảng**: chiến lược compaction, compression, TTL mặc định, gc_grace_seconds
+
+### Materialized View
+
+Duyệt materialized view cạnh bảng trong sidebar. Xem định nghĩa, bảng gốc và ánh xạ cột.
+
+### Data Grid
+
+Duyệt dữ liệu bảng với phân trang. Giá trị hiển thị theo kiểu CQL:
+
+- **text/varchar** hiển thị văn bản thuần
+- **int/bigint/varint** hiển thị số
+- **uuid/timeuuid** hiển thị UUID đã format
+- **timestamp** hiển thị với format ngày tùy chỉnh
+- **map/set/list/tuple** hiển thị collection đã format
+- **blob** hiển thị dạng hex
+
+### CQL Editor
+
+Chạy lệnh CQL trực tiếp trong editor tab:
+
+```sql
+-- Select với partition key
+SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Thêm dữ liệu
+INSERT INTO users (user_id, name, email, created_at)
+VALUES (uuid(), 'Alice', 'alice@example.com', toTimestamp(now()));
+
+-- Cập nhật với TTL
+UPDATE users USING TTL 86400
+SET email = 'new@example.com'
+WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Xóa
+DELETE FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- Tạo bảng
+CREATE TABLE IF NOT EXISTS events (
+    event_id timeuuid,
+    user_id uuid,
+    event_type text,
+    payload text,
+    PRIMARY KEY ((user_id), event_id)
+) WITH CLUSTERING ORDER BY (event_id DESC);
+
+-- Tạo index
+CREATE INDEX ON users (email);
+
+-- Mô tả bảng
+DESCRIBE TABLE users;
+```
+
+## Lưu ý CQL
+
+Cassandra Query Language (CQL) giống SQL nhưng có các khác biệt quan trọng:
+
+### Không có JOIN
+
+CQL không hỗ trợ JOIN. Thiết kế data model theo query pattern, denormalize dữ liệu qua nhiều bảng khi cần.
+
+### Không có Subquery
+
+CQL không hỗ trợ subquery. Tách truy vấn phức tạp thành nhiều lệnh tuần tự.
+
+### Hạn chế Partition Key
+
+Mọi truy vấn SELECT phải có đầy đủ partition key trong WHERE, trừ khi dùng `ALLOW FILTERING` (quét toàn bộ cluster, nên tránh trong production).
+
+```sql
+-- Tốt: có partition key
+SELECT * FROM orders WHERE customer_id = 42;
+
+-- Không tốt: thiếu partition key, cần ALLOW FILTERING
+SELECT * FROM orders WHERE total > 100 ALLOW FILTERING;
+```
+
+### ALLOW FILTERING
+
+`ALLOW FILTERING` buộc quét toàn bộ cluster. Dùng được cho dev và dataset nhỏ nhưng gây timeout trên cluster production. TablePro hiển thị cảnh báo khi truy vấn có `ALLOW FILTERING`.
+
+### Lightweight Transaction
+
+Cassandra hỗ trợ ghi có điều kiện dùng mệnh đề `IF` (lightweight transaction / compare-and-set):
+
+```sql
+INSERT INTO users (user_id, email) VALUES (uuid(), 'alice@example.com') IF NOT EXISTS;
+UPDATE users SET email = 'new@example.com' WHERE user_id = ? IF email = 'old@example.com';
+```
+
+### TTL và Writetime
+
+Đặt TTL (thời gian sống) theo giây cho mỗi hàng hoặc cột:
+
+```sql
+INSERT INTO cache (key, value) VALUES ('k1', 'v1') USING TTL 3600;
+SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';
+```
+
+## Khắc phục sự cố
+
+### Kết nối Bị từ chối
+
+**Triệu chứng**: "Connection refused" hoặc timeout
+
+**Nguyên nhân và Giải pháp**:
+
+1. **Cassandra không chạy**
+   ```bash
+   # Kiểm tra Cassandra
+   nodetool status
+
+   # Khởi động (macOS Homebrew)
+   brew services start cassandra
+
+   # Khởi động (Docker)
+   docker run -d -p 9042:9042 cassandra:latest
+   ```
+
+2. **Sai cổng**
+   - Kiểm tra `native_transport_port` trong `cassandra.yaml`
+   - Cổng CQL mặc định là `9042`, không phải `9160` (Thrift, đã deprecated)
+
+3. **Cassandra không lắng nghe đúng địa chỉ**
+   - Kiểm tra `rpc_address` và `listen_address` trong `cassandra.yaml`
+   - Cho kết nối remote, đặt `rpc_address` thành `0.0.0.0`
+
+### Xác thực Thất bại
+
+**Triệu chứng**: "Provided username and/or password are incorrect"
+
+**Giải pháp**:
+
+1. Kiểm tra thông tin đăng nhập khớp role cấu hình trong Cassandra
+2. Kiểm tra xác thực đã bật:
+   ```yaml
+   # cassandra.yaml
+   authenticator: PasswordAuthenticator
+   ```
+3. Superuser mặc định là `cassandra` / `cassandra` (đổi trong production)
+
+### Hết thời gian Kết nối
+
+**Triệu chứng**: Kết nối treo hoặc timeout
+
+**Giải pháp**:
+
+1. Kiểm tra host và port đúng
+2. Kiểm tra mạng và firewall (cổng 9042)
+3. Cho Cassandra cloud, đảm bảo IP nằm trong danh sách cho phép
+4. Tăng timeout kết nối trong tab Advanced
+
+### Read Timeout
+
+**Triệu chứng**: "Read timed out" khi truy vấn
+
+**Giải pháp**:
+
+1. Thêm đầy đủ partition key vào WHERE
+2. Bỏ `ALLOW FILTERING` và thiết kế lại truy vấn
+3. Kiểm tra sức khỏe cluster bằng `nodetool status`
+4. Giảm tập kết quả bằng `LIMIT`
+
+## Hạn chế
+
+- **Multi-datacenter**: chưa hỗ trợ cấu hình datacenter cụ thể. TablePro kết nối đến node mà contact point phân giải.
+- **User-Defined Function (UDF)**: UDF và UDA không hiển thị trong sidebar nhưng dùng được trong truy vấn CQL.
+- **BATCH**: hỗ trợ trong CQL editor nhưng change tracking không tạo BATCH.
+- **Counter table**: cột counter chỉ đọc trong data grid. Dùng CQL editor để cập nhật counter.
+- **Partition lớn**: partition có hàng triệu hàng được phân trang tự động để tránh vấn đề bộ nhớ.
+
+## Mẹo Hiệu suất
+
+### Hiệu suất Truy vấn
+
+Cho Cassandra cluster có dataset lớn:
+
+1. Luôn có partition key trong WHERE
+2. Tránh `ALLOW FILTERING` trong production
+3. Dùng `LIMIT` để giới hạn kết quả
+4. Dùng `TOKEN()` cho range scan qua nhiều partition
+
+### Giám sát
+
+Kiểm tra sức khỏe và hiệu suất cluster:
+
+```sql
+-- Kiểm tra trạng thái cluster (qua nodetool, không phải CQL)
+-- nodetool status
+-- nodetool info
+
+-- Kiểm tra thống kê bảng
+SELECT * FROM system.size_estimates WHERE keyspace_name = 'my_keyspace';
+```
+
+## Các bước tiếp theo
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/vi/databases/ssh-tunneling">
+    Kết nối an toàn đến Cassandra cluster từ xa
+  </Card>
+  <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
+    Các tính năng query editor
+  </Card>
+  <Card title="Nhập/Xuất" icon="file-import" href="/vi/features/import-export">
+    Import và export dữ liệu Cassandra
+  </Card>
+  <Card title="Data Grid" icon="table" href="/vi/features/data-grid">
+    Duyệt và chỉnh sửa dữ liệu trong data grid
+  </Card>
+</CardGroup>

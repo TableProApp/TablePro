@@ -12,31 +12,31 @@ struct AboutView: View {
     @State private var hoveredLink: String?
 
     var body: some View {
-        VStack(spacing: DesignConstants.Spacing.md) {
+        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.md) {
             Spacer()
 
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 80, height: 80)
 
-            VStack(spacing: DesignConstants.Spacing.xxs) {
+            VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxs) {
                 Text("TablePro")
                     .font(
                         .system(
-                            size: DesignConstants.IconSize.extraLarge, weight: .semibold,
+                            size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge, weight: .semibold,
                             design: .rounded))
 
                 Text("Version \(Bundle.main.appVersion) (Build \(Bundle.main.buildNumber))")
-                    .font(.system(size: DesignConstants.FontSize.medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                     .foregroundStyle(.secondary)
             }
 
             Text("© 2026 Ngo Quoc Dat.\n\(String(localized: "All rights reserved."))")
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: DesignConstants.Spacing.lg) {
+            HStack(spacing: ThemeEngine.shared.activeTheme.spacing.lg) {
                 linkButton(
                     title: String(localized: "Website"),
                     icon: "globe",
@@ -52,6 +52,11 @@ struct AboutView: View {
                     icon: "book",
                     url: "https://docs.tablepro.app"
                 )
+                linkButton(
+                    title: String(localized: "Sponsor"),
+                    icon: "heart",
+                    url: "https://github.com/sponsors/datlechin"
+                )
             }
 
             Spacer()
@@ -65,11 +70,11 @@ struct AboutView: View {
                 NSWorkspace.shared.open(link)
             }
         } label: {
-            VStack(spacing: DesignConstants.Spacing.xxxs) {
+            VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxxs) {
                 Image(systemName: icon)
-                    .font(.system(size: DesignConstants.FontSize.body))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 Text(title)
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .underline(hoveredLink == title)
             }
             .foregroundStyle(.secondary)

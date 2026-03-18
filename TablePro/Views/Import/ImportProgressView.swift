@@ -2,21 +2,20 @@
 //  ImportProgressView.swift
 //  TablePro
 //
-//  Progress dialog shown during SQL import.
+//  Progress dialog shown during import.
 //
 
 import SwiftUI
 
 struct ImportProgressView: View {
-    let currentStatement: String
-    let statementIndex: Int
-    let totalStatements: Int
+    let processedStatements: Int
+    let estimatedTotalStatements: Int
     let statusMessage: String
     let onStop: () -> Void
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Import SQL")
+            Text("Importing...")
                 .font(.system(size: 15, weight: .semibold))
 
             VStack(spacing: 8) {
@@ -26,16 +25,10 @@ struct ImportProgressView: View {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Executed \(statementIndex) statements")
+                        Text("Executed \(processedStatements) statements")
                             .font(.system(size: 13))
 
                         Spacer()
-
-                        Text(currentStatement)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
                     }
                 }
 
@@ -59,7 +52,7 @@ struct ImportProgressView: View {
     }
 
     private var progressValue: Double {
-        guard totalStatements > 0 else { return 0 }
-        return min(1.0, Double(statementIndex) / Double(totalStatements))
+        guard estimatedTotalStatements > 0 else { return 0 }
+        return min(1.0, Double(processedStatements) / Double(estimatedTotalStatements))
     }
 }

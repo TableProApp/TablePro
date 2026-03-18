@@ -7,6 +7,233 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.1] - 2026-03-17
+
+### Fixed
+
+- Plugin registry compatibility with PluginKit version 2
+
+## [0.20.0] - 2026-03-17
+
+### Added
+
+- Turkish language in Settings > General (Türkçe) with Turkish translations for UI strings
+- etcd v3 plugin with prefix-tree key browsing, etcdctl syntax editor, lease management, watch, mTLS, auth, and cluster info
+- Save Changes button in toolbar for committing pending data edits
+- Confirmation dialog before deleting a connection
+- Confirmation dialog before sort, pagination, filter, or search discards unsaved edits
+
+### Fixed
+
+- SSH tunnel crashes caused by concurrent libssh2 calls on the same session
+- Unsaved cell edits lost when switching tabs, sorting, paginating, filtering, or switching apps
+- Auto-reconnect and health monitor silently discarding unsaved changes
+- SSH tunnel recovery failing after tunnel death due to stale driver state
+- Health monitor ping interfering with active user queries
+- Connection test not cleaning up SSH tunnel on completion
+- Test connection success indicator not resetting after field changes
+- SSH port field accepting invalid values
+- DROP TABLE and TRUNCATE TABLE sidebar operations producing no SQL for plugin-based drivers
+- Foreign key navigation arrows not appearing after switching databases with Cmd+K on MySQL
+- Sidebar not refreshing after creating or dropping tables
+- Dropping a table disconnecting the database when the dropped table's tab was active
+
+## [0.19.1] - 2026-03-16
+
+### Fixed
+
+- SSH tunnel connections timing out due to relay deadlock
+- Plugin metadata dispatch failing for externally installed plugins
+- SSH public key authentication error messages now include detailed failure reason
+
+## [0.19.0] - 2026-03-15
+
+### Added
+
+- iCloud Sync (Pro): sync connections, groups, tags, settings, and query history across Macs with per-category toggles, conflict resolution, and real-time status indicator
+- SQL Favorites: save frequently used queries with optional keyword bindings for autocomplete expansion
+- Copy selected rows as JSON from context menu and Edit menu
+- Help menu and welcome screen links to website, documentation, GitHub, and sponsor page
+- Display BLOB data as hex dump in detail view sidebar
+
+### Fixed
+
+- SSH agent connections failing when socket path contains `~` (e.g., 1Password agent)
+- Keychain authorization prompt no longer appears on every table open
+
+## [0.18.1] - 2026-03-14
+
+### Fixed
+
+- Plugin download counts now accumulate across all versions instead of only counting the current release
+
+## [0.18.0] - 2026-03-14
+
+### Added
+
+- Theme engine: 4 built-in themes (Default Light/Dark, Dracula, Nord), custom themes with full color/font/layout customization, import/export as JSON
+- Theme registry: browse, install, and update community themes from the plugin registry
+- App-level appearance mode: Light, Dark, or Auto (follow system), independent of theme
+- Cassandra and ScyllaDB database support (downloadable plugin)
+- SSH TOTP/two-factor authentication with auto-generate and prompt modes
+- SSH host key verification with fingerprint confirmation
+- Keyboard Interactive SSH authentication
+- Column visibility: toggle columns on/off via status bar or header context menu
+- Copy as INSERT/UPDATE SQL from data grid context menu
+- `~/.pgpass` support for PostgreSQL/Redshift connections
+- Pre-connect script: run a shell command before each connection
+- MSSQL query cancellation and lock timeout support
+- Custom plugin registry URL for enterprise/private registries
+
+### Changed
+
+- Extracted MSSQL, MongoDB, Redis, XLSX export, MQL export, and SQL import into downloadable plugins. MySQL, PostgreSQL, SQLite, CSV, JSON, and SQL export remain built-in
+- Redesigned Plugins settings with master-detail layout and download counts
+- All database-specific behavior now driven by plugin metadata instead of hardcoded switches, enabling third-party database plugins
+- Connection form fields, sidebar labels, and SQL dialect features are now fully plugin-driven
+
+### Fixed
+
+- Plugin icon rendering now supports custom asset images alongside SF Symbols
+
+## [0.17.0] - 2026-03-11
+
+### Added
+
+- DuckDB database support — connect to `.duckdb` files, query CSV/Parquet/JSON files via SQL, schema navigation, and DuckDB extension management
+- MongoDB configurable auth database (`authSource`) — authenticate against any database instead of hardcoded `admin`
+
+### Fixed
+
+- MongoDB Read Preference, Write Concern, and Redis Database not persisted across app restarts
+
+- Result truncation at 100K rows now reported to UI via `PluginQueryResult.isTruncated` instead of being silently discarded
+- DELETE and UPDATE queries using all columns in WHERE clause instead of just the primary key for PostgreSQL, Redshift, MSSQL, and ClickHouse
+- SSL/TLS always being enabled for MongoDB, Redis, and ClickHouse connections due to case mismatch in SSL mode string comparison (#249)
+- Redis sidebar click showing data briefly then going empty due to double-navigation race condition (#251)
+- MongoDB showing "Invalid database name: ''" when connecting without a database name
+
+### Changed
+
+- Namespaced `disabledPlugins` UserDefaults key to `com.TablePro.disabledPlugins` with automatic migration
+- Removed unused plugin capability types (sqlDialect, aiProvider, cellRenderer, sidebarPanel)
+- SQLite driver extracted from built-in bundle to downloadable plugin, reducing app size
+- Unified error formatting across all database drivers via default `PluginDriverError.errorDescription`, removing 10 per-driver implementations
+- Standardized async bridging: 5 queue-based drivers (MySQL, PostgreSQL, MongoDB, Redis, MSSQL) now use shared `pluginDispatchAsync` helper
+- Added localization to remaining driver error messages (MySQL, PostgreSQL, ClickHouse, Oracle, Redis, MongoDB)
+- NoSQL query building moved from Core to MongoDB/Redis plugins via optional `PluginDatabaseDriver` protocol methods
+- Standardized parameter binding across all database drivers with improved default escaping (type-aware numeric handling, NUL byte stripping, NULL literal support)
+
+### Added
+
+- Open SQLite database files directly from Finder by double-clicking `.sqlite`, `.sqlite3`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files (#262)
+- Export plugin options (CSV, XLSX, JSON, SQL, MQL) now persist across app restarts
+- Plugins can declare settings views rendered in Settings > Plugins
+- True prepared statements for MSSQL (`sp_executesql`) and ClickHouse (HTTP query parameters), eliminating string interpolation for parameterized queries
+- Batch query operations for MSSQL, Oracle, and ClickHouse, eliminating N+1 query patterns for column, foreign key, and database metadata fetching; SQLite adds a batched `fetchAllForeignKeys` override within PRAGMA limitations
+- `PluginDriverError` protocol in TableProPluginKit for structured error reporting from driver plugins, with richer connection error messages showing error codes and SQL states
+- `pluginDispatchAsync` concurrency helper in TableProPluginKit for standardized async bridging in plugins
+- Shared `PluginRowLimits` constant in TableProPluginKit with 100K row default, enforced across all 8 driver plugins (ClickHouse, MSSQL, Oracle previously had no cap)
+- `driverVariant(for:)` method on `DriverPlugin` protocol for dynamic multi-type plugin dispatch, replacing hardcoded variant mapping
+- Safe mode levels: per-connection setting with 6 levels (Silent, Alert, Alert Full, Safe Mode, Safe Mode Full, Read-Only) replacing the boolean read-only toggle, with confirmation dialogs and Touch ID/password authentication for stricter levels
+- Preview tabs: single-click opens a temporary preview tab, double-click or editing promotes it to a permanent tab
+- Import plugin system: SQL import extracted into a `.tableplugin` bundle, matching the export plugin architecture
+- `ImportFormatPlugin` protocol in TableProPluginKit for building custom import format plugins
+- SQLImportPlugin as the first import format plugin (SQL files and .gz compressed SQL)
+- Oracle and ClickHouse shipped as downloadable plugins, reducing app bundle size for most users
+- Plugin install prompt when connecting to a database whose driver plugin is not installed
+- `databaseTypeIds` field on registry plugins for mapping registry entries to database types
+- `build-plugin.sh` script and `build-plugin.yml` CI workflow for building standalone plugin releases
+
+## [0.16.1] - 2026-03-09
+
+### Fixed
+
+- Stale filter causing repeated errors when restoring tabs after schema/database switch (#237)
+- Sidebar showing old tables during database/schema switch instead of loading state
+- Sidebar search field disappearing when no tables match filter on macOS 15 and earlier (#235)
+- Disabled plugin database types still appearing in connection form picker
+- Main window not closing before reopening welcome screen on connection failure
+
+## [0.16.0] - 2026-03-09
+
+### Fixed
+
+- Inspector separator no longer bleeds into toolbar area with default connection color (#228)
+- Inspector toggle no longer lags due to synchronous UserDefaults writes during animation (#229)
+
+### Added
+
+- Direct `.tableplugin` bundle installation via file picker, Finder double-click, and drag-and-drop
+- Plugin capability enforcement — registration now gated on declared capabilities, with validation warnings for mismatches
+- Plugin dependency declarations — plugins can declare required dependencies via `TableProPlugin.dependencies`, validated at load time
+- Plugin state change notification (`pluginStateDidChange`) posted when plugins are enabled/disabled
+- Restart recommendation banner in Settings > Plugins after uninstalling a plugin
+- Startup commands — run custom SQL after connecting (e.g., SET time_zone) in Connection > Advanced tab
+- Plugin system architecture — all 8 database drivers (MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, MongoDB, Redis, Oracle) extracted into `.tableplugin` bundles loaded at runtime
+- Export format plugins — all 5 export formats (CSV, JSON, SQL, XLSX, MQL) extracted into `.tableplugin` bundles with plugin-provided option views and per-table option columns
+- Settings > Plugins tab for plugin management — list installed plugins, enable/disable, install from file, uninstall user plugins, view plugin details
+- Plugin marketplace — browse, search, and install plugins from the GitHub-hosted registry with SHA-256 checksum verification, ETag caching, and offline fallback
+- TableProPluginKit framework — shared protocols and types for driver and export plugins
+- ClickHouse database support with query progress tracking, EXPLAIN variants, TLS/HTTPS, server-side cancellation, and Parts view
+
+### Changed
+
+- Reduce memory: eliminate dedicated ping driver (~30-50 MB per connection), use main driver for health checks
+- Reduce memory: evict inactive native window-tab row data after 5s, re-fetch on focus
+- Reduce memory: lazy-load plugin bundles on first use instead of at startup (~20-30 MB saved)
+- Reduce memory: remove duplicate sourceQuery string from RowBuffer
+- Reduce memory: InMemoryRowProvider references RowBuffer directly instead of copying rows (~3-10 MB per tab)
+- Reduce memory: eliminate metadata driver entirely, multiplex all queries on main driver (~30-50 MB per connection)
+- Reduce memory: lazy AIChatViewModel initialization (deferred until AI panel is first opened)
+- Reduce memory: remove duplicate connections array from ContentView (use ConnectionStorage.shared directly)
+- Reduce CPU: consolidate per-editor NSEvent monitors into shared EditorEventRouter singleton (O(n) → O(1) per event)
+- Fix tab persistence: aggregate tabs from all windows at quit time instead of last-write-wins per-coordinator save
+- Split DatabaseManager.sessionVersion into fine-grained connectionListVersion and connectionStatusVersion to reduce cascade re-renders
+- Extract AppState property reads into local lets in view bodies for explicit granular observation tracking
+- Reorganized project directory structure: Services, Utilities, Models split into domain-specific subdirectories
+- Database driver code moved from monolithic app binary into independent plugin bundles under `Plugins/`
+
+## [0.15.0] - 2026-03-08
+
+### Added
+
+- Oracle Database support via OCI (Oracle Call Interface)
+- Add database URL scheme support — open connections directly from terminal with `open "mysql://user@host/db" -a TablePro` (supports MySQL, PostgreSQL, SQLite, MongoDB, Redis, MSSQL, Oracle)
+- SSH Agent authentication method for SSH tunnels (compatible with 1Password SSH Agent, Secretive, ssh-agent)
+- Multi-jump SSH support — chain multiple SSH hops (ProxyJump) to reach databases through bastion hosts
+
+### Changed
+
+- Replace CodeEditLanguages xcframework (38 grammars) with local package compiling only SQL, Bash, and JavaScript, reducing app binary size by ~55%
+
+### Fixed
+
+- Fix memory leak where session state objects were recreated on every tab open due to SwiftUI `@State` init trap, causing 785MB usage at 5 tabs with 734MB retained after closing
+- Fix per-cell field editor allocation in DataGrid creating 180+ NSTextView instances instead of sharing one
+- Fix NSEvent monitor not removed on all popover dismissal paths in connection switcher
+- Fix race condition in FreeTDS `disconnect()` where `dbproc` was set to nil without holding the lock
+- Fix data race in `MainContentCoordinator.deinit` reading `nonisolated(unsafe)` flags from arbitrary threads
+- Fix JSON encoding and file I/O blocking the main thread in TabStateStorage
+- Fix MySQL/MariaDB getting `BEGIN` instead of `START TRANSACTION` in table operations and SQL preview
+- Fix port resetting to default value when editing a connection with a custom port
+- Replace `.onTapGesture` with `Button` in color pickers, section headers, group headers, and connection switcher for VoiceOver accessibility
+- Fix data race on `isAppTerminating` static var in `MainContentCoordinator` using `OSAllocatedUnfairLock`
+- Fix `MainActor.assumeIsolated` crash risk in `VimKeyInterceptor` notification observer
+- Fix data race on `conn` pointer in `LibPQConnection` during disconnect and cancel
+- Fix SSH askpass script written with world-readable permissions; now uses atomic `0o700` creation and immediate cleanup
+- Fix potential dict mutation during iteration in `DatabaseManager.disconnectAll()`
+- Fix welcome screen showing blank panel when connections have orphaned group IDs
+- Fix multiple tabs auto-executing queries simultaneously on connection restore, causing lag
+- Fix welcome window becoming oversized after closing main windows due to AppKit scene restoration
+- Fix unescaped identifiers in MySQL `SHOW CREATE TABLE`/`VIEW` queries allowing SQL injection via table names
+- Fix `QueryResultRow` equality ignoring cell values, preventing SwiftUI from re-rendering updated rows
+- Fix status bar row info text rendering off-center due to duplicate spacer
+- Fix `Cmd+Delete` in sidebar search or right sidebar clearing the query editor
+- Fix SSH tunnel processes not terminated when closing connection window or quitting the app
+
+## [0.14.1] - 2026-03-06
+
 ### Added
 
 - Connection groups: organize connections into named, color-coded folders with support for nested subgroups, drag-and-drop reordering, expand/collapse state persistence, multi-selection (bulk delete, bulk move to group), and context menus for group and connection management
@@ -53,7 +280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Copy as URL" context menu action on connections to copy connection details as a URL string (e.g., `mysql://user:pass@host/db`)
 - Auto-show inspector option: automatically open the right sidebar when selecting a row (Settings > Data Grid)
 - ENUM and SET columns now open their picker on single click with a chevron indicator, matching boolean column behavior
-- Homebrew Cask installation via `brew install datlechin/tap/tablepro`
+- Homebrew Cask installation via `brew install --cask tablepro`
 
 ### Fixed
 
@@ -672,7 +899,18 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/datlechin/tablepro/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/datlechin/tablepro/compare/v0.20.1...HEAD
+[0.20.1]: https://github.com/datlechin/tablepro/compare/v0.20.0...v0.20.1
+[0.20.0]: https://github.com/datlechin/tablepro/compare/v0.19.1...v0.20.0
+[0.19.1]: https://github.com/datlechin/tablepro/compare/v0.19.0...v0.19.1
+[0.19.0]: https://github.com/datlechin/tablepro/compare/v0.18.1...v0.19.0
+[0.18.1]: https://github.com/datlechin/tablepro/compare/v0.18.0...v0.18.1
+[0.18.0]: https://github.com/datlechin/tablepro/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/datlechin/tablepro/compare/v0.16.1...v0.17.0
+[0.16.1]: https://github.com/datlechin/tablepro/compare/v0.16.0...v0.16.1
+[0.16.0]: https://github.com/datlechin/tablepro/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/datlechin/tablepro/compare/v0.14.1...v0.15.0
+[0.14.1]: https://github.com/datlechin/tablepro/compare/v0.14.0...v0.14.1
 [0.14.0]: https://github.com/datlechin/tablepro/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/datlechin/tablepro/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/datlechin/tablepro/compare/v0.11.1...v0.12.0

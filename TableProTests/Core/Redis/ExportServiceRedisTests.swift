@@ -2,55 +2,40 @@
 //  ExportServiceRedisTests.swift
 //  TableProTests
 //
-//  Tests for Redis-specific export behavior beyond ExportFormat.availableCases
-//  (which is covered in ExportModelsRedisTests).
-//
-//  NOTE: ExportService.fetchAllQuery is private and cannot be tested directly.
-//  The Redis SCAN query generation is internal to ExportService and would require
-//  either making it internal or extracting it into a testable helper.
-//
 
 import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Export Service Redis")
+@Suite("Export service state")
 struct ExportServiceRedisTests {
-    @Test("Redis format count is three")
-    func redisFormatCount() {
-        let formats = ExportFormat.availableCases(for: .redis)
-        #expect(formats.count == 3)
+
+    @Test("ExportState initializes with correct defaults")
+    func exportStateDefaults() {
+        let state = ExportState()
+        #expect(state.isExporting == false)
+        #expect(state.progress == 0.0)
+        #expect(state.currentTable == "")
+        #expect(state.totalTables == 0)
+        #expect(state.processedRows == 0)
+        #expect(state.totalRows == 0)
+        #expect(state.errorMessage == nil)
     }
 
-    @Test("MongoDB formats differ from Redis formats")
-    func mongoDBFormatsDifferFromRedis() {
-        let redisFormats = ExportFormat.availableCases(for: .redis)
-        let mongoFormats = ExportFormat.availableCases(for: .mongodb)
-        #expect(redisFormats != mongoFormats)
+    @MainActor @Test("ExportConfiguration uses formatId string")
+    func exportConfigFormatId() {
+        var config = ExportConfiguration()
+        #expect(config.formatId == "csv")
+        config.formatId = "json"
+        #expect(config.formatId == "json")
     }
 
-    @Test("SQL databases include SQL format unlike Redis")
-    func sqlDatabasesIncludeSQL() {
-        let mysqlFormats = ExportFormat.availableCases(for: .mysql)
-        #expect(mysqlFormats.contains(.sql))
+    @Test("ExportError descriptions are localized")
+    func exportErrorDescriptions() {
+        let error = ExportError.noTablesSelected
+        #expect(error.errorDescription != nil)
 
-        let redisFormats = ExportFormat.availableCases(for: .redis)
-        #expect(!redisFormats.contains(.sql))
-    }
-
-    @Test("Redis and MySQL share CSV and JSON formats")
-    func redisAndMysqlShareCsvJson() {
-        let redisFormats = ExportFormat.availableCases(for: .redis)
-        let mysqlFormats = ExportFormat.availableCases(for: .mysql)
-        #expect(redisFormats.contains(.csv))
-        #expect(redisFormats.contains(.json))
-        #expect(mysqlFormats.contains(.csv))
-        #expect(mysqlFormats.contains(.json))
-    }
-
-    @Test("Redis includes XLSX format")
-    func redisIncludesXlsx() {
-        let formats = ExportFormat.availableCases(for: .redis)
-        #expect(formats.contains(.xlsx))
+        let formatError = ExportError.formatNotFound("parquet")
+        #expect(formatError.errorDescription?.contains("parquet") == true)
     }
 }

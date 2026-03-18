@@ -1,11 +1,9 @@
 ---
 title: Installation
-description: Detailed installation instructions and system requirements for TablePro
+description: Install TablePro via Homebrew or DMG on macOS 14.0+
 ---
 
 # Installation
-
-This guide covers detailed installation instructions, system requirements, and troubleshooting common installation issues.
 
 ## System Requirements
 
@@ -16,28 +14,28 @@ This guide covers detailed installation instructions, system requirements, and t
 | **macOS Version** | macOS 14.0 (Sonoma) or later |
 | **Processor** | Apple Silicon (M1/M2/M3/M4/M5) or Intel x86_64 |
 | **Memory** | 4 GB RAM minimum |
-| **Storage** | ~200 MB free disk space |
+| **Storage** | ~200 MB free disk space (app is ~50 MB; extra space for query history, tab state, and plugins) |
 
 ### Recommended
 
 - **macOS**: Latest version for best performance
 - **Memory**: 8 GB RAM or more for large databases
-- **Storage**: SSD for optimal performance
+- **Storage**: SSD for faster query history and tab persistence
 
 <Note>
-TablePro is built using native Apple frameworks and does not require any additional runtime environments like Java or .NET.
+TablePro uses native Apple frameworks only. No Java, .NET, or other runtimes needed.
 </Note>
 
 ## Install via Homebrew
 
-The fastest way to install TablePro is with [Homebrew](https://brew.sh):
+The fastest option:
 
 ```bash
-brew install datlechin/tap/tablepro
+brew install --cask tablepro
 ```
 
 <Tip>
-The cask formula automatically removes the macOS quarantine attribute after installation, so you won't need to run `xattr -cr` on first launch.
+Homebrew handles installation and updates in one place.
 </Tip>
 
 To update:
@@ -62,9 +60,9 @@ brew zap tablepro
 
 ### From GitHub Releases
 
-1. Navigate to the [TablePro Releases](https://github.com/datlechin/tablepro/releases) page
+1. Go to the [TablePro Releases](https://github.com/datlechin/tablepro/releases) page
 2. Find the latest release
-3. Download the appropriate DMG for your Mac:
+3. Download the right DMG for your Mac:
 
 | Architecture | File | For Macs with |
 |--------------|------|---------------|
@@ -85,7 +83,7 @@ brew zap tablepro
 
 1. **Open the DMG file**
    - Double-click the downloaded `.dmg` file
-   - A new Finder window will appear
+   - A new Finder window appears
 
 2. **Drag to Applications**
    - Drag the TablePro icon to the Applications folder shortcut
@@ -93,15 +91,15 @@ brew zap tablepro
 
 {/* Screenshot: DMG window with drag-to-Applications illustration */}
 <Frame caption="Drag TablePro to Applications">
-  <img 
-    className="block dark:hidden" 
-    src="/images/install-dmg.png" 
-    alt="Drag to Applications" 
+  <img
+    className="block dark:hidden"
+    src="/images/install-dmg.png"
+    alt="Drag to Applications"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/install-dmg-dark.png" 
-    alt="Drag to Applications" 
+  <img
+    className="hidden dark:block"
+    src="/images/install-dmg-dark.png"
+    alt="Drag to Applications"
   />
 </Frame>
 
@@ -113,65 +111,31 @@ brew zap tablepro
    - Open **Finder** > **Applications**
    - Double-click **TablePro**
 
-### First Launch Security
-
-Since TablePro is not signed with an Apple Developer certificate, macOS will show a **"TablePro is damaged and can't be opened"** error on first launch. This is expected — you need to remove the quarantine attribute that macOS adds to downloaded apps.
-
-<Warning>
-This is normal for unsigned applications downloaded from the internet. TablePro is safe to use — the source code is source-available and publicly viewable for inspection.
-</Warning>
-
-#### Remove the quarantine attribute
-
-Open **Terminal** and run:
-
-```bash
-xattr -cr /Applications/TablePro.app
-```
-
-Then open TablePro normally from Applications.
-
-<Tip>
-You only need to do this once. After removing the quarantine attribute, TablePro will open normally on all future launches.
-</Tip>
-
-#### Alternative: System Settings
-
-If you still see a security warning after running the command above:
-
-1. Open **System Settings** > **Privacy & Security**
-2. Scroll down to the **Security** section
-3. You should see a message about TablePro being blocked
-4. Click **Open Anyway**
-5. Enter your password if prompted
-
 ## Updating TablePro
 
 ### Automatic Updates
 
-TablePro includes built-in automatic updates powered by [Sparkle](https://sparkle-project.org/). The app periodically checks for new versions in the background and notifies you when an update is available.
+TablePro checks for updates in the background via [Sparkle](https://sparkle-project.org/) and notifies you when a new version is available.
 
 ### Manual Update Check
 
-To manually check for updates:
+To check manually:
 
 1. Open **TablePro** menu in the menu bar
 2. Click **Check for Updates...**
 
 ### Update Settings
 
-You can configure update behavior in **Settings** > **General** > **Software Update**:
+Configure update behavior in **Settings** > **General** > **Software Update**:
 
 - Enable or disable automatic update checks
-- Choose how often to check for updates
+- Set the check frequency
 
 <Tip>
-Your connections and settings are stored separately from the application and will be preserved when updating.
+Connections and settings are stored separately from the app binary and persist across updates.
 </Tip>
 
 ### Data Storage Locations
-
-TablePro stores data in the following locations:
 
 | Data | Location | Storage Type |
 |------|----------|--------------|
@@ -190,7 +154,7 @@ TablePro stores data in the following locations:
 
 ### Remove Application Data (Optional)
 
-To completely remove all TablePro data:
+To delete all TablePro data:
 
 ```bash
 # Remove application support data
@@ -204,23 +168,15 @@ rm ~/Library/Preferences/com.TablePro.plist
 ```
 
 <Warning>
-Removing application data will delete all your saved connections and query history. Make sure to export any important data first.
+This deletes all saved connections and query history. Export anything important first.
 </Warning>
 
 ## Troubleshooting
 
-### "TablePro is damaged and can't be opened"
-
-Follow the [First Launch Security](#first-launch-security) instructions above to remove the macOS quarantine attribute.
-
-### "TablePro can't be opened because it is from an unidentified developer"
-
-Follow the [First Launch Security](#first-launch-security) instructions above.
-
 ### Application crashes on launch
 
 1. Check that you downloaded the correct architecture version
-2. Ensure you're running macOS 14.0 or later
+2. Verify you're running macOS 14.0 or later
 3. Try removing and reinstalling the application
 4. Check Console.app for crash logs
 
@@ -230,7 +186,7 @@ If TablePro opens but can't connect to databases:
 
 1. Verify your database server is running
 2. Check firewall settings (System Settings > Network > Firewall)
-3. Ensure the database server allows connections from localhost
+3. Make sure the database server accepts connections from localhost
 
 ## Building from Source
 
@@ -260,6 +216,6 @@ See the [Development Setup](/development/setup) guide for detailed instructions.
     Connect to your first database
   </Card>
   <Card title="Database Connections" icon="database" href="/databases/overview">
-    Learn about connection management
+    Connection management and organization
   </Card>
 </CardGroup>

@@ -1,0 +1,727 @@
+---
+title: 数据网格
+description: 电子表格式数据网格，支持行内编辑、类型专用编辑器，以及 TSV/CSV/JSON 格式复制
+---
+
+# 数据网格
+
+查询结果和表内容以电子表格式网格呈现。支持行内编辑单元格、列排序、多格式复制，以及大数据集分页浏览。
+
+{/* Screenshot: Data grid showing query results with multiple columns */}
+<Frame caption="数据网格展示查询结果">
+  <img
+    className="block dark:hidden"
+    src="/images/data-grid.png"
+    alt="数据网格"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/data-grid-dark.png"
+    alt="数据网格"
+  />
+</Frame>
+
+## 查看数据
+
+### 打开表
+
+要查看表的内容：
+
+1. 在侧边栏中展开数据库
+2. 点击表名
+3. 数据网格加载表的内容
+
+或者执行查询：
+
+```sql
+SELECT * FROM users;
+```
+
+### 结果信息
+
+数据网格头部显示：
+
+- **行数**：返回的行数
+- **执行时间**：查询耗时
+- **影响行数**：UPDATE/DELETE 查询影响的行数
+
+## 列功能
+
+### 调整列宽
+
+- 拖拽列边框调整宽度
+- 双击边框自动适应列宽
+- 列宽按表记忆
+
+### 排序数据
+
+点击列标题排序：
+
+- **第一次点击**：升序排列（A-Z、0-9）
+- **第二次点击**：降序排列（Z-A、9-0）
+- **第三次点击**：取消排序
+
+<Tip>
+排序针对已加载的数据在本地执行。如需服务端排序，请在查询中使用 `ORDER BY`。
+</Tip>
+
+{/* Screenshot: Column header with sort indicator */}
+<Frame caption="带排序指示器的列标题">
+  <img
+    className="block dark:hidden"
+    src="/images/column-sorting.png"
+    alt="带排序指示器的列标题"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/column-sorting-dark.png"
+    alt="带排序指示器的列标题"
+  />
+</Frame>
+
+### 列类型
+
+每种数据类型有相应的渲染方式：
+
+| 类型 | 显示方式 |
+|------|----------|
+| Text/Varchar | 纯文本 |
+| Integer | 右对齐数字 |
+| Decimal/Float | 格式化数字 |
+| Boolean | True/False |
+| Date/Time | 格式化日期字符串 |
+| NULL | 带样式的 "NULL" 指示器 |
+| JSON | 格式化 JSON（可展开） |
+| ENUM | 下拉弹出编辑器 |
+| SET | 复选框弹出编辑器 |
+| Binary/BLOB | 二进制指示器 |
+
+## 数据编辑
+
+### 行内编辑
+
+要编辑单元格：
+
+1. 双击单元格
+2. 输入新值
+3. 按 `Enter` 确认或 `Escape` 取消
+
+{/* Screenshot: Cell being edited with cursor */}
+<Frame caption="行内编辑单元格">
+  <img
+    className="block dark:hidden"
+    src="/images/cell-editing.png"
+    alt="单元格编辑"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/cell-editing-dark.png"
+    alt="单元格编辑"
+  />
+</Frame>
+
+### 编辑模式
+
+| 模式 | 触发方式 | 说明 |
+|------|----------|------|
+| 查看 | 默认 | 只读展示 |
+| 编辑 | 双击 | 修改单元格值 |
+
+### 日期/时间选择器
+
+编辑 date、datetime、timestamp 或 time 列时，会弹出原生日期选择器，而非纯文本输入框。选择器会根据列类型自动调整：
+
+| 列类型 | 选择器元素 |
+|--------|-----------|
+| `DATE` | 年、月、日 |
+| `DATETIME` / `TIMESTAMP` | 年、月、日、时、分、秒 |
+| `TIME` | 时、分、秒 |
+
+选择器能处理常见的数据库日期格式，并以标准格式（`YYYY-MM-DD HH:MM:SS`）输出值。你可以使用步进控件或直接在选择器字段中输入。
+
+<Tip>
+日期选择器会自动解析现有的单元格值。如果无法解析，则默认为当前日期/时间。
+</Tip>
+
+{/* Screenshot: Date picker for editing date columns */}
+<Frame caption="用于编辑日期列的日期选择器">
+  <img
+    className="block dark:hidden"
+    src="/images/date-picker-editor.png"
+    alt="用于编辑日期列的日期选择器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/date-picker-editor-dark.png"
+    alt="用于编辑日期列的日期选择器"
+  />
+</Frame>
+
+### 外键查找
+
+编辑外键列时，会弹出一个可搜索的下拉列表，显示来自关联表的有效值：
+
+- 下拉列表同时显示外键值和描述文本列（例如 `1 — John Doe`）
+- 在搜索框中输入以筛选值
+- 单击高亮选中；双击或按 `Enter` 确认
+- 弹出窗口自动检测关联表中最合适的显示列
+
+<Tip>
+外键查找最多获取关联表中的 1,000 条值。对于更多记录的表，使用搜索框缩小范围。
+</Tip>
+
+{/* Screenshot: Foreign key lookup with search */}
+<Frame caption="带搜索的外键查找">
+  <img
+    className="block dark:hidden"
+    src="/images/fk-lookup-popover.png"
+    alt="带搜索的外键查找"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/fk-lookup-popover-dark.png"
+    alt="带搜索的外键查找"
+  />
+</Frame>
+
+### 布尔值编辑器
+
+双击 BOOLEAN、BIT 或 TINYINT(1) 单元格会弹出复选框，方便快速切换 true/false：
+
+- **复选框**：点击切换 true 和 false
+- **确定/取消**：点击 **OK** 或按 `Enter` 确认；点击 **Cancel** 或按 `Escape` 取消
+- **可空列**：第三种不确定状态表示 NULL
+
+不同数据库的行为：
+
+| 数据库 | 列类型 | 值 |
+|--------|--------|-----|
+| MySQL/MariaDB | `TINYINT(1)`、`BIT(1)` | `0` / `1` |
+| PostgreSQL | `BOOLEAN` | `TRUE` / `FALSE` |
+| SQLite | `INTEGER` | `0` / `1` |
+
+<Tip>
+对于可空的布尔列，复选框支持三种状态：选中（true）、未选中（false）和不确定（NULL）。
+</Tip>
+
+{/* Screenshot: Boolean cell checkbox editor */}
+<Frame caption="布尔值复选框编辑器">
+  <img
+    className="block dark:hidden"
+    src="/images/boolean-cell-editor.png"
+    alt="布尔值复选框编辑器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/boolean-cell-editor-dark.png"
+    alt="布尔值复选框编辑器"
+  />
+</Frame>
+
+### ENUM 列编辑器
+
+双击 ENUM 单元格会弹出一个可搜索的下拉列表，显示所有允许的值：
+
+- **搜索框**：输入以筛选列表
+- **NULL 选项**：可空列时显示在顶部（斜体显示）
+- **当前值**：以强调色高亮
+- 单击值即可选中并立即确认
+- 按 `Escape` 取消
+
+支持所有数据库：
+
+| 数据库 | ENUM 来源 |
+|--------|-----------|
+| MySQL/MariaDB | 列定义中的原生 `ENUM` 类型 |
+| PostgreSQL | 用户定义的枚举类型（通过 `pg_enum` 目录） |
+| SQLite | `CHECK(column IN ('val1','val2'))` 约束 |
+
+{/* Screenshot: ENUM value selector */}
+<Frame caption="ENUM 值选择器">
+  <img
+    className="block dark:hidden"
+    src="/images/enum-editor-popover.png"
+    alt="ENUM 值选择器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/enum-editor-popover-dark.png"
+    alt="ENUM 值选择器"
+  />
+</Frame>
+
+### SET 列编辑器
+
+双击 SET 单元格（MySQL/MariaDB）会弹出复选框面板：
+
+- 每个允许的值显示为一个复选框
+- 当前选中的值已预勾选（从逗号分隔的单元格值中解析）
+- 点击 **OK** 或按 `Enter` 确认选中的值（以逗号连接）
+- 点击 **Cancel** 或按 `Escape` 放弃更改
+
+<Tip>
+如果 ENUM/SET 值不可用（例如来自复杂查询结果而非直接浏览表），单元格将回退到行内文本编辑。
+</Tip>
+
+{/* Screenshot: SET value multi-select editor */}
+<Frame caption="SET 值多选编辑器">
+  <img
+    className="block dark:hidden"
+    src="/images/set-editor-popover.png"
+    alt="SET 值多选编辑器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/set-editor-popover-dark.png"
+    alt="SET 值多选编辑器"
+  />
+</Frame>
+
+### JSON 编辑器
+
+编辑 JSON 或 JSONB 单元格会弹出专用的 JSON 编辑器：
+
+- **实时验证**：输入时显示 JSON 是否有效
+- **保存/取消**：明确的按钮用于确认或放弃更改
+
+编辑器在保存前会验证 JSON。无效的 JSON 会在保存前触发确认对话框。
+
+<Tip>
+JSON 值在保存到数据库时会自动压缩（最小化）。
+</Tip>
+
+{/* Screenshot: JSON editor with validation */}
+<Frame caption="带验证的 JSON 编辑器">
+  <img
+    className="block dark:hidden"
+    src="/images/json-editor-popover.png"
+    alt="带验证的 JSON 编辑器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/json-editor-popover-dark.png"
+    alt="带验证的 JSON 编辑器"
+  />
+</Frame>
+
+### 多行编辑
+
+一次操作多行：
+
+- **选择多行**：按住 `Cmd` 点击行号（不连续选择）或按住 `Shift`（范围选择）
+- **删除多行**：选中行后，点击 **Delete** 或按 `Delete` 键
+- **多行操作**：使用工具栏按钮操作当前选区
+
+{/* Screenshot: Multiple rows selected for editing */}
+<Frame caption="选中多行进行编辑">
+  <img
+    className="block dark:hidden"
+    src="/images/multi-row-selection.png"
+    alt="选中多行进行编辑"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/multi-row-selection-dark.png"
+    alt="选中多行进行编辑"
+  />
+</Frame>
+
+### 保存更改
+
+更改会排入队列，不会立即应用。通过以下方式管理待提交的更改：
+
+- **预览 SQL**：点击 **Preview SQL** 按钮（眼睛图标）或按 `Cmd+Shift+P`，在提交前查看待执行的 SQL 语句
+- **提交**：点击 **Commit** 按钮（或按 `Cmd+S`）应用所有待提交的更改
+- **丢弃**：点击 **Discard** 按钮撤销所有待提交的更改
+- **撤销/重做**：提交前按 `Cmd+Z` 撤销或 `Cmd+Shift+Z` 重做单个编辑
+
+详情参见[变更追踪](/zh/features/change-tracking)。
+
+<Warning>
+编辑功能仅适用于简单的 `SELECT * FROM table` 查询。包含 JOIN 或聚合的复杂查询为只读模式。
+</Warning>
+
+### 新增行
+
+要新增一行：
+
+1. 点击工具栏中的 **+** 按钮（或使用键盘快捷键）
+2. 为每列填入值
+3. 应用更改以保存
+
+### 删除行
+
+要删除行：
+
+1. 选择要删除的行
+2. 点击 **Delete** 按钮或按 `Delete` 键
+3. 确认删除
+4. 应用更改以执行
+
+## 变更指示器
+
+待提交的更改会有视觉反馈：
+
+- **已修改的单元格**以特殊背景色高亮
+- **新增行**显示插入指示器
+- **已删除行**显示删除指示器
+- **工具栏**显示待提交更改的计数
+
+在提交到数据库前查看所有修改。详情参见[变更追踪](/zh/features/change-tracking)。
+
+## 单元格检查器
+
+单元格检查器是一个右侧边栏面板，显示选中行或当前表的详细信息。使用 `Cmd+Shift+B` 或通过 **View** > **Toggle Cell Inspector** 切换。
+
+{/* Screenshot: Cell Inspector showing row details */}
+<Frame caption="单元格检查器展示行详情">
+  <img
+    className="block dark:hidden"
+    src="/images/cell-inspector.png"
+    alt="单元格检查器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/cell-inspector-dark.png"
+    alt="单元格检查器"
+  />
+</Frame>
+
+### 行详情模式
+
+选中某行时，单元格检查器显示该行的所有列值：
+
+- **可搜索的列列表**：在搜索框中输入即可查找列
+- **列名和数据类型**：每项显示列名及其数据类型
+- **完整单元格值**：值完整显示，不截断
+- **多行文本编辑**：TEXT/VARCHAR 列提供多行文本框编辑长文本
+- **只读指示**：不可编辑的单元格标记为只读
+
+可以直接在检查器中编辑值。更改与网格行内编辑一样排入队列，提交前不会生效。
+
+### 表信息模式
+
+未选中行时，单元格检查器显示表的元数据：
+
+| 元数据 | 说明 |
+|--------|------|
+| 表名 | 当前表名 |
+| 行数 | 总行数 |
+| 存储大小 | 表使用的磁盘空间 |
+| 创建日期 | 表的创建时间 |
+| 引擎 | 存储引擎（如 InnoDB、MyISAM） |
+| 字符集 | 表的字符集 |
+| 排序规则 | 排序使用的 collation |
+
+<Note>
+安全模式设为只读的连接以及复杂查询结果不可编辑。在这些情况下，单元格检查器中的编辑功能被禁用。详情参见[安全模式](/zh/features/safe-mode)。
+</Note>
+
+## 导航
+
+### 键盘导航
+
+| 按键 | 操作 |
+|------|------|
+| 方向键 | 在单元格间移动 |
+| `Tab` | 移到下一个单元格 |
+| `Shift+Tab` | 移到上一个单元格 |
+| `Enter` | 编辑选中的单元格 |
+| `Escape` | 取消编辑 / 取消选择 |
+| `Home` | 移到行首单元格 |
+| `End` | 移到行尾单元格 |
+| `Cmd+Home` | 移到第一行 |
+| `Cmd+End` | 移到最后一行 |
+| `Page Up` | 向上翻页 |
+| `Page Down` | 向下翻页 |
+
+### 鼠标导航
+
+- **点击**：选中单元格
+- **双击**：编辑单元格
+- **点击拖拽**：选择多个单元格
+- **滚轮**：垂直滚动
+- **Shift + 滚动**：水平滚动
+
+## 选择
+
+### 选择单元格
+
+- **单个单元格**：点击单元格
+- **单元格范围**：点击拖拽，或点击第一个单元格后 Shift+点击最后一个
+- **整行**：点击行号
+- **多行**：点击行号并拖拽，或 Cmd+点击不连续选择
+
+### 复制数据
+
+1. 选择要复制的单元格或行
+2. 按 `Cmd+C`
+3. 粘贴到其他应用程序
+
+多种复制格式：
+
+| 格式 | 快捷键 | 说明 |
+|------|--------|------|
+| Tab 分隔 | `Cmd+C` | 默认复制格式，兼容电子表格 |
+| CSV | `Cmd+Shift+C` | 逗号分隔值 |
+| JSON | `Cmd+Option+C` | JSON 对象数组 |
+| TSV | 右键菜单中可用 | 带表头的 Tab 分隔值 |
+
+默认的 Tab 分隔格式兼容：
+- Excel
+- Numbers
+- Google Sheets
+- 文本编辑器
+
+{/* Screenshot: Copy options in context menu */}
+<Frame caption="右键菜单中的复制选项">
+  <img
+    className="block dark:hidden"
+    src="/images/copy-context-menu.png"
+    alt="右键菜单中的复制选项"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/copy-context-menu-dark.png"
+    alt="右键菜单中的复制选项"
+  />
+</Frame>
+
+## 分页
+
+大数据集会自动分页。
+
+### 分页控件
+
+- **第一页**：跳到开头
+- **上一页**：返回上一页
+- **页码**：当前页 / 总页数
+- **下一页**：前进一页
+- **最后一页**：跳到末尾
+
+### 每页行数
+
+在 **Settings** > **Data Grid** 中配置默认每页行数：
+
+| 选项 | 每页行数 |
+|------|----------|
+| 小 | 100 |
+| 中 | 500 |
+| 大 | 1,000 |
+| 自定义 | 10 - 100,000 |
+
+<Tip>
+较小的页面大小加载更快且占用更少内存。需要一次查看更多数据时再使用较大值。
+</Tip>
+
+{/* Screenshot: Pagination controls with page navigation */}
+<Frame caption="分页导航控件">
+  <img
+    className="block dark:hidden"
+    src="/images/pagination-controls.png"
+    alt="分页导航控件"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/pagination-controls-dark.png"
+    alt="分页导航控件"
+  />
+</Frame>
+
+## NULL 值
+
+NULL 值有明显的视觉区分：
+
+- 显示带样式的 "NULL" 文本（可自定义）
+- 与普通值颜色不同
+- 不会与字符串 "NULL" 混淆
+
+{/* Screenshot: Data grid showing NULL values */}
+<Frame caption="NULL 值显示">
+  <img
+    className="block dark:hidden"
+    src="/images/null-values.png"
+    alt="NULL 值"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/null-values-dark.png"
+    alt="NULL 值"
+  />
+</Frame>
+
+### 自定义 NULL 显示
+
+在 **Settings** > **Data Grid** 中：
+
+| 设置 | 默认值 | 说明 |
+|------|--------|------|
+| **NULL 显示** | "NULL" | NULL 值显示的文本 |
+
+## 日期格式
+
+配置日期的显示格式：
+
+| 格式 | 示例 |
+|------|------|
+| ISO 8601 | 2024-12-31 23:59:59 |
+| ISO Date | 2024-12-31 |
+| US Long | 12/31/2024 11:59:59 PM |
+| US Short | 12/31/2024 |
+| EU Long | 31/12/2024 23:59:59 |
+| EU Short | 31/12/2024 |
+
+在 **Settings** > **Data Grid** > **Date Format** 中配置。
+
+## 行高
+
+调整行高以提高可读性：
+
+| 选项 | 高度 | 适用场景 |
+|------|------|----------|
+| 紧凑 | 20px | 密集数据，可见更多行 |
+| 正常 | 24px | 常规查看 |
+| 舒适 | 28px | 更好的可读性 |
+| 宽敞 | 32px | 无障碍、触控 |
+
+在 **Settings** > **Data Grid** > **Row Height** 中配置。
+
+{/* Screenshot: Row height comparison: Compact, Normal, Comfortable, Spacious */}
+<Frame caption="行高对比：紧凑、正常、舒适、宽敞">
+  <img
+    className="block dark:hidden"
+    src="/images/row-height-options.png"
+    alt="行高对比：紧凑、正常、舒适、宽敞"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/row-height-options-dark.png"
+    alt="行高对比：紧凑、正常、舒适、宽敞"
+  />
+</Frame>
+
+## 交替行颜色
+
+交替行颜色让浏览更轻松：
+
+- **开启**：每隔一行显示淡色背景
+- **关闭**：所有行背景相同
+
+在 **Settings** > **Data Grid** > **Show Alternate Rows** 中配置。
+
+{/* Screenshot: Data grid with alternate row colors */}
+<Frame caption="带交替行颜色的数据网格">
+  <img
+    className="block dark:hidden"
+    src="/images/alternate-row-colors.png"
+    alt="带交替行颜色的数据网格"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/alternate-row-colors-dark.png"
+    alt="带交替行颜色的数据网格"
+  />
+</Frame>
+
+## MongoDB 集合
+
+MongoDB 集合在数据网格中与 SQL 数据库有一些区别。
+
+### 文档模式
+
+MongoDB 集合没有固定的 schema。TablePro 通过抽样最多 500 个文档来推断列结构。如果文档结构不一致，缺少对应字段的文档会显示 NULL。
+
+### 不可变的 _id 列
+
+`_id` 列不可编辑。MongoDB 不允许修改现有文档的 `_id`。要更改文档的 `_id`，需删除后重新插入。
+
+### BSON 类型显示
+
+MongoDB 的 BSON 类型以适当的格式显示：
+- **ObjectId**：显示为 `ObjectId("...")`
+- **Date**：格式化为 ISO 8601 日期时间
+- **Binary**：显示为 `BinData(subtype, "base64...")`
+- **Decimal128**：显示为十进制字符串
+- **DBRef**：显示为 `DBRef("collection", id)`
+
+### MQL 语句预览
+
+在数据网格中进行变更（插入、更新、删除）时，预览显示 MongoDB shell 命令而非 SQL：
+- 插入生成 `db.collection.insertMany([...])`
+- 更新生成 `db.collection.updateOne({filter}, {$set: {...}})`
+- 删除生成 `db.collection.deleteMany({_id: {$in: [...]}})`
+
+## 处理大数据集
+
+### 性能建议
+
+1. **使用 LIMIT**：浏览数据时始终限制结果数
+   ```sql
+   SELECT * FROM large_table LIMIT 100;
+   ```
+
+2. **选择特定列**：多列表避免使用 `SELECT *`
+   ```sql
+   SELECT id, name, email FROM users;
+   ```
+
+3. **使用分页**：利用数据网格的分页功能
+
+4. **在数据库端过滤**：使用 WHERE 子句代替加载全部数据
+   ```sql
+   SELECT * FROM orders WHERE status = 'pending';
+   ```
+
+### 内存使用
+
+数据网格按页加载数据以管理内存：
+
+- 仅可见页保留在内存中
+- 滚动时按需加载新页
+- 大型 BLOB/TEXT 列按需加载
+
+## 导出选项
+
+直接从数据网格导出数据：
+
+1. 运行查询或打开表
+2. 点击 **Export** 按钮
+3. 选择格式：CSV、JSON、SQL
+4. 选择导出位置
+
+详情参见[导入与导出](/zh/features/import-export)。
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 复制选中内容 | `Cmd+C` |
+| 复制为 CSV | `Cmd+Shift+C` |
+| 复制为 JSON | `Cmd+Option+C` |
+| 全选 | `Cmd+A` |
+| 删除行 | `Delete` |
+| 编辑单元格 | `Enter` |
+| 取消编辑 | `Escape` |
+| 撤销 | `Cmd+Z` |
+| 重做 | `Cmd+Shift+Z` |
+| 提交更改 | `Cmd+S` |
+| 导航 | 方向键 |
+| 下一个单元格 | `Tab` |
+| 上一个单元格 | `Shift+Tab` |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写查询
+  </Card>
+  <Card title="导入与导出" icon="file-import" href="/zh/features/import-export">
+    从网格导出数据
+  </Card>
+  <Card title="表结构" icon="table-columns" href="/zh/features/table-structure">
+    查看表定义
+  </Card>
+  <Card title="设置" icon="gear" href="/zh/customization/settings">
+    配置数据网格选项
+  </Card>
+</CardGroup>

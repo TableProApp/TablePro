@@ -34,7 +34,7 @@ struct ConnectionSidebarHeader: View {
                                 onSelectSession(session.id)
                             }) {
                                 HStack {
-                                    Image(session.connection.type.iconName)
+                                    session.connection.type.iconImage
                                         .renderingMode(.template)
                                         .foregroundStyle(session.connection.displayColor)
 
@@ -67,7 +67,7 @@ struct ConnectionSidebarHeader: View {
                                 onOpenConnection(connection)
                             }) {
                                 HStack {
-                                    Image(connection.type.iconName)
+                                    connection.type.iconImage
                                         .renderingMode(.template)
                                         .foregroundStyle(connection.displayColor)
 
@@ -90,19 +90,19 @@ struct ConnectionSidebarHeader: View {
                 HStack(spacing: 8) {
                     // Database icon
                     if let session = currentSession {
-                        Image(session.connection.type.iconName)
+                        session.connection.type.iconImage
                             .renderingMode(.template)
-                            .font(.system(size: DesignConstants.IconSize.medium))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
                             .foregroundStyle(session.connection.displayColor)
                     } else {
                         Image(systemName: "cylinder")
-                            .font(.system(size: DesignConstants.IconSize.medium))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
                             .foregroundStyle(.secondary)
                     }
 
                     // Connection name
                     Text(currentSession?.connection.name ?? "No Connection")
-                        .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
                         .lineLimit(1)
 
                     Spacer()
@@ -113,17 +113,17 @@ struct ConnectionSidebarHeader: View {
                             Circle()
                                 .fill(statusColor(for: session))
                                 .frame(
-                                    width: DesignConstants.IconSize.tinyDot,
-                                    height: DesignConstants.IconSize.tinyDot)
+                                    width: ThemeEngine.shared.activeTheme.iconSizes.tinyDot,
+                                    height: ThemeEngine.shared.activeTheme.iconSizes.tinyDot)
                         }
 
                         Image(systemName: "chevron.down")
-                            .font(.system(size: DesignConstants.FontSize.tiny, weight: .medium))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, DesignConstants.Spacing.sm)
+                .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.sm)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -144,8 +144,8 @@ struct ConnectionSidebarHeader: View {
             Circle()
                 .fill(statusColor(for: session))
                 .frame(
-                    width: DesignConstants.IconSize.tinyDot,
-                    height: DesignConstants.IconSize.tinyDot)
+                    width: ThemeEngine.shared.activeTheme.iconSizes.tinyDot,
+                    height: ThemeEngine.shared.activeTheme.iconSizes.tinyDot)
 
             if case .connecting = session.status {
                 ProgressView()

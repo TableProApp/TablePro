@@ -17,8 +17,8 @@ extension MainContentCoordinator {
         tableOperationOptions: [String: TableOperationOptions]
     ) {
         if tabManager.selectedTab?.showStructure == true {
-            // Structure view handles its own preview via notification
-            NotificationCenter.default.post(name: .previewStructureSQL, object: nil)
+            // Structure view handles its own preview via direct call
+            structureActions?.previewSQL?()
         } else {
             generatePreviewSQL(
                 pendingTruncates: pendingTruncates,
@@ -51,6 +51,7 @@ extension MainContentCoordinator {
 
     /// Assembles all pending SQL statements (cell edits + table operations) in execution order.
     /// Used by both `saveChanges()` and `generatePreviewSQL()` to ensure consistency.
+    /// Transaction wrapping is handled by the caller using driver protocol methods.
     func assemblePendingStatements(
         pendingTruncates: Set<String>,
         pendingDeletes: Set<String>,
@@ -59,11 +60,10 @@ extension MainContentCoordinator {
         var allStatements: [ParameterizedStatement] = []
         let dbType = connection.type
 
-        let hasEditedCells = changeManager.hasChanges
         let hasPendingTableOps = !pendingTruncates.isEmpty || !pendingDeletes.isEmpty
 
         // Check if any table operation needs FK disabled (must be outside transaction)
-        let needsDisableFK = dbType != .postgresql && pendingTruncates.union(pendingDeletes).contains { tableName in
+        let needsDisableFK = PluginManager.shared.supportsForeignKeyDisable(for: dbType) && pendingTruncates.union(pendingDeletes).contains { tableName in
             tableOperationOptions[tableName]?.ignoreForeignKeys == true
         }
 
@@ -74,34 +74,21 @@ extension MainContentCoordinator {
             })
         }
 
-        // Wrap all operations in a single transaction when we have multiple operations
-        let needsTransaction = hasEditedCells && hasPendingTableOps
-        if needsTransaction {
-            let beginSQL = dbType == .mssql ? "BEGIN TRANSACTION" : "BEGIN"
-            allStatements.append(ParameterizedStatement(sql: beginSQL, parameters: []))
-        }
-
-        if hasEditedCells {
+        if changeManager.hasChanges {
             let editStatements = try changeManager.generateSQL()
             allStatements.append(contentsOf: editStatements)
         }
 
         if hasPendingTableOps {
-            // Generate table operation SQL WITHOUT FK handling (already done above)
             let tableOpStatements = generateTableOperationSQL(
                 truncates: pendingTruncates,
                 deletes: pendingDeletes,
                 options: tableOperationOptions,
-                wrapInTransaction: !needsTransaction,
                 includeFKHandling: false
             )
             allStatements.append(contentsOf: tableOpStatements.map {
                 ParameterizedStatement(sql: $0, parameters: [])
             })
-        }
-
-        if needsTransaction {
-            allStatements.append(ParameterizedStatement(sql: "COMMIT", parameters: []))
         }
 
         // FK re-enable must be LAST, after transaction commits

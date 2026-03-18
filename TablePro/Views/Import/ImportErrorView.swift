@@ -2,13 +2,14 @@
 //  ImportErrorView.swift
 //  TablePro
 //
-//  Error dialog shown when SQL import fails.
+//  Error dialog shown when import fails.
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct ImportErrorView: View {
-    let error: ImportError?
+    let error: (any Error)?
     let onClose: () -> Void
 
     var body: some View {
@@ -21,7 +22,9 @@ struct ImportErrorView: View {
                 Text("Import Failed")
                     .font(.system(size: 15, weight: .semibold))
 
-                if case .importFailed(let statement, let line, let errorMsg) = error {
+                if let pluginError = error as? PluginImportError,
+                   case .statementFailed(let statement, let line, let underlyingError) = pluginError
+                {
                     Text("Failed at line \(line)")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
@@ -38,7 +41,7 @@ struct ImportErrorView: View {
                             Text("Error:")
                                 .font(.system(size: 12, weight: .medium))
                                 .padding(.top, 8)
-                            Text(errorMsg)
+                            Text(underlyingError.localizedDescription)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.red)
                                 .frame(maxWidth: .infinity, alignment: .leading)

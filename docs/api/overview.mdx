@@ -1,11 +1,9 @@
 ---
 title: Overview
-description: The TablePro License API manages license activations, validations, and deactivations for the TablePro macOS app.
+description: REST API for license activation, validation, and deactivation with RSA-SHA256 signed responses
 ---
 
 ## Base URL
-
-All API requests are made to the following base URL:
 
 ```
 https://api.tablepro.app/v1
@@ -13,7 +11,7 @@ https://api.tablepro.app/v1
 
 ## Endpoints
 
-The API provides three endpoints for license lifecycle management:
+Three endpoints for license lifecycle management:
 
 | Method | Endpoint | Description |
 | ------ | -------- | ----------- |
@@ -23,7 +21,7 @@ The API provides three endpoints for license lifecycle management:
 
 ## Request Format
 
-All requests must be sent as JSON with the `Content-Type: application/json` header.
+All requests must be JSON with the `Content-Type: application/json` header.
 
 ### Common Parameters
 
@@ -49,30 +47,30 @@ Successful activation and validation responses return signed license data:
 }
 ```
 
-The `signature` field contains an RSA-SHA256 cryptographic signature of the `data` object, which can be verified client-side using the public key to ensure response integrity.
+The `signature` field is an RSA-SHA256 cryptographic signature of the `data` object. Verify it client-side with the public key to ensure response integrity.
 
 ## Response Signing
 
 All successful activate and validate responses are cryptographically signed:
 
-1. The `data` object fields are sorted alphabetically by key
+1. `data` object fields are sorted alphabetically by key
 2. The sorted object is JSON-encoded
-3. The JSON string is signed using RSA with SHA-256
-4. The signature is returned as a Base64-encoded string
+3. The JSON string is signed with RSA-SHA256
+4. The signature is returned as Base64
 
-This allows the client to verify that the license data has not been tampered with.
+This lets the client verify that license data hasn't been tampered with.
 
 ## Rate Limiting
 
-All endpoints are rate-limited. Rate limit information is included in response headers:
+All endpoints are rate-limited. Rate limit info is in the response headers:
 
 | Header | Description |
 | ------ | ----------- |
-| `X-RateLimit-Limit` | Maximum number of requests allowed in the current window |
-| `X-RateLimit-Remaining` | Number of requests remaining in the current window |
-| `X-RateLimit-Reset` | Unix timestamp when the rate limit window resets |
+| `X-RateLimit-Limit` | Max requests allowed in the current window |
+| `X-RateLimit-Remaining` | Requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the window resets |
 
-When the rate limit is exceeded, the API returns a `429` status code:
+When exceeded, the API returns `429`:
 
 ```json
 {
@@ -83,7 +81,7 @@ When the rate limit is exceeded, the API returns a `429` status code:
 
 ## Error Handling
 
-Error responses follow a consistent format:
+Error responses use a consistent format:
 
 ```json
 {
@@ -104,7 +102,7 @@ Error responses follow a consistent format:
 
 ### Validation Errors
 
-Validation errors (`422`) include field-level details:
+`422` responses include field-level details:
 
 ```json
 {
@@ -120,5 +118,5 @@ Validation errors (`422`) include field-level details:
 
 | Status | Description |
 | ------ | ----------- |
-| `active` | License is valid and can be used |
-| `suspended` | License has been suspended and cannot be activated or validated |
+| `active` | License is valid and usable |
+| `suspended` | License is suspended and cannot be activated or validated |

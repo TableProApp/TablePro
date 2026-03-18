@@ -3,10 +3,11 @@
 //  TablePro
 //
 //  Generates ALTER TABLE SQL statements from schema changes.
-//  Supports MySQL, PostgreSQL, and SQLite with database-specific syntax.
+//  Delegates all DDL generation to the plugin driver.
 //
 
 import Foundation
+import TableProPluginKit
 
 /// A schema SQL statement with metadata
 struct SchemaStatement {
@@ -15,32 +16,41 @@ struct SchemaStatement {
     let isDestructive: Bool
 }
 
-/// Generates SQL statements for schema modifications
+/// Generates SQL statements for schema modifications by delegating to the plugin driver.
 struct SchemaStatementGenerator {
-    private let databaseType: DatabaseType
     private let tableName: String
 
     /// Actual primary key constraint name (queried from database).
-    /// Used by PostgreSQL which requires the constraint name for DROP CONSTRAINT.
-    /// Falls back to `{table}_pkey` convention if nil.
+    /// Passed to plugin for databases that require it (e.g. PostgreSQL DROP CONSTRAINT).
     private let primaryKeyConstraintName: String?
 
-    init(tableName: String, databaseType: DatabaseType, primaryKeyConstraintName: String? = nil) {
+    /// Plugin driver for database-specific DDL generation.
+    private let pluginDriver: any PluginDatabaseDriver
+
+    init(
+        tableName: String,
+        primaryKeyConstraintName: String? = nil,
+        pluginDriver: any PluginDatabaseDriver
+    ) {
         self.tableName = tableName
-        self.databaseType = databaseType
         self.primaryKeyConstraintName = primaryKeyConstraintName
+        self.pluginDriver = pluginDriver
     }
 
     /// Generate all SQL statements from schema changes
     func generate(changes: [SchemaChange]) throws -> [SchemaStatement] {
         var statements: [SchemaStatement] = []
 
-        // Sort changes by dependency order
         let sortedChanges = sortByDependency(changes)
 
         for change in sortedChanges {
-            let stmt = try generateStatement(for: change)
-            // Ensure every statement ends with a semicolon
+            guard let stmt = try generateStatement(for: change) else {
+                throw NSError(
+                    domain: "SchemaStatementGenerator",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "Unsupported schema operation: \(change.description)")]
+                )
+            }
             let sql = stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";"
             statements.append(SchemaStatement(sql: sql, description: stmt.description, isDestructive: stmt.isDestructive))
         }
@@ -60,8 +70,8 @@ struct SchemaStatementGenerator {
         // 6. Add indexes
         // 7. Add foreign keys
 
-        var fkDeletes: [SchemaChange] = []  // Includes modifyForeignKey (drop+recreate)
-        var indexDeletes: [SchemaChange] = []  // Includes modifyIndex (drop+recreate)
+        var fkDeletes: [SchemaChange] = []
+        var indexDeletes: [SchemaChange] = []
         var columnDeletes: [SchemaChange] = []
         var columnModifies: [SchemaChange] = []
         var columnAdds: [SchemaChange] = []
@@ -72,10 +82,8 @@ struct SchemaStatementGenerator {
         for change in changes {
             switch change {
             case .deleteForeignKey, .modifyForeignKey:
-                // Modify FK is handled as drop+recreate, so group with deletes
                 fkDeletes.append(change)
             case .deleteIndex, .modifyIndex:
-                // Modify index is handled as drop+recreate, so group with deletes
                 indexDeletes.append(change)
             case .deleteColumn:
                 columnDeletes.append(change)
@@ -97,246 +105,77 @@ struct SchemaStatementGenerator {
 
     // MARK: - Statement Generation
 
-    private func generateStatement(for change: SchemaChange) throws -> SchemaStatement {
+    private func generateStatement(for change: SchemaChange) throws -> SchemaStatement? {
         switch change {
         case .addColumn(let column):
-            return try generateAddColumn(column)
+            return generateAddColumn(column)
         case .modifyColumn(let old, let new):
-            return try generateModifyColumn(old: old, new: new)
+            return generateModifyColumn(old: old, new: new)
         case .deleteColumn(let column):
             return generateDeleteColumn(column)
         case .addIndex(let index):
-            return try generateAddIndex(index)
+            return generateAddIndex(index)
         case .modifyIndex(let old, let new):
-            return try generateModifyIndex(old: old, new: new)
+            return generateModifyIndex(old: old, new: new)
         case .deleteIndex(let index):
             return generateDeleteIndex(index)
         case .addForeignKey(let fk):
-            return try generateAddForeignKey(fk)
+            return generateAddForeignKey(fk)
         case .modifyForeignKey(let old, let new):
-            return try generateModifyForeignKey(old: old, new: new)
+            return generateModifyForeignKey(old: old, new: new)
         case .deleteForeignKey(let fk):
-            return try generateDeleteForeignKey(fk)
+            return generateDeleteForeignKey(fk)
         case .modifyPrimaryKey(let old, let new):
-            return try generateModifyPrimaryKey(old: old, new: new)
+            return generateModifyPrimaryKey(old: old, new: new)
         }
     }
 
     // MARK: - Column Operations
 
-    private func generateAddColumn(_ column: EditableColumnDefinition) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let columnDef = try buildEditableColumnDefinition(column)
+    private func generateAddColumn(_ column: EditableColumnDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateAddColumnSQL(table: tableName, column: toPluginColumnDefinition(column)) else {
+            return nil
+        }
+        return SchemaStatement(sql: sql, description: "Add column '\(column.name)'", isDestructive: false)
+    }
 
-        let keyword = databaseType == .mssql ? "ADD" : "ADD COLUMN"
-        let sql = "ALTER TABLE \(tableQuoted) \(keyword) \(columnDef)"
+    private func generateModifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateModifyColumnSQL(
+            table: tableName,
+            oldColumn: toPluginColumnDefinition(old),
+            newColumn: toPluginColumnDefinition(new)
+        ) else {
+            return nil
+        }
         return SchemaStatement(
             sql: sql,
-            description: "Add column '\(column.name)'",
-            isDestructive: false
+            description: "Modify column '\(old.name)' to '\(new.name)'",
+            isDestructive: old.dataType != new.dataType
         )
     }
 
-    private func generateModifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-
-        switch databaseType {
-        case .mysql, .mariadb:
-            let columnDef = try buildEditableColumnDefinition(new)
-            let sql: String
-            if old.name != new.name {
-                // CHANGE COLUMN is required for renames: ALTER TABLE t CHANGE COLUMN old_name new_name definition
-                let oldQuoted = databaseType.quoteIdentifier(old.name)
-                sql = "ALTER TABLE \(tableQuoted) CHANGE COLUMN \(oldQuoted) \(columnDef)"
-            } else {
-                // MODIFY COLUMN when name is unchanged: ALTER TABLE t MODIFY COLUMN col definition
-                sql = "ALTER TABLE \(tableQuoted) MODIFY COLUMN \(columnDef)"
-            }
-            return SchemaStatement(
-                sql: sql,
-                description: "Modify column '\(old.name)' to '\(new.name)'",
-                isDestructive: old.dataType != new.dataType
-            )
-
-        case .postgresql, .redshift:
-            // PostgreSQL: Multiple ALTER COLUMN statements
-            var statements: [String] = []
-            let oldQuoted = databaseType.quoteIdentifier(old.name)
-            let newQuoted = databaseType.quoteIdentifier(new.name)
-
-            // Rename if needed
-            if old.name != new.name {
-                statements.append("ALTER TABLE \(tableQuoted) RENAME COLUMN \(oldQuoted) TO \(newQuoted)")
-            }
-
-            // Change type if needed
-            if old.dataType != new.dataType {
-                statements.append("ALTER TABLE \(tableQuoted) ALTER COLUMN \(newQuoted) TYPE \(new.dataType)")
-            }
-
-            // Change nullable if needed
-            if old.isNullable != new.isNullable {
-                let constraint = new.isNullable ? "DROP NOT NULL" : "SET NOT NULL"
-                statements.append("ALTER TABLE \(tableQuoted) ALTER COLUMN \(newQuoted) \(constraint)")
-            }
-
-            // Change default if needed
-            if old.defaultValue != new.defaultValue {
-                if let defaultVal = new.defaultValue, !defaultVal.isEmpty {
-                    statements.append("ALTER TABLE \(tableQuoted) ALTER COLUMN \(newQuoted) SET DEFAULT \(defaultVal)")
-                } else {
-                    statements.append("ALTER TABLE \(tableQuoted) ALTER COLUMN \(newQuoted) DROP DEFAULT")
-                }
-            }
-
-            let sql = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n")
-            return SchemaStatement(
-                sql: sql,
-                description: "Modify column '\(old.name)' to '\(new.name)'",
-                isDestructive: old.dataType != new.dataType
-            )
-
-        case .mssql:
-            var statements: [String] = []
-            let newQuoted = databaseType.quoteIdentifier(new.name)
-
-            if old.name != new.name {
-                let tableAndOld = "\(tableName).\(old.name)"
-                statements.append("EXEC sp_rename '\(tableAndOld)', '\(new.name)', 'COLUMN'")
-            }
-
-            if old.dataType != new.dataType || old.isNullable != new.isNullable {
-                let nullClause = new.isNullable ? "NULL" : "NOT NULL"
-                statements.append("ALTER TABLE \(tableQuoted) ALTER COLUMN \(newQuoted) \(new.dataType) \(nullClause)")
-            }
-
-            let sql = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n")
-            return SchemaStatement(
-                sql: sql,
-                description: "Modify column '\(old.name)' to '\(new.name)'",
-                isDestructive: old.dataType != new.dataType
-            )
-
-        case .sqlite, .mongodb, .redis:
-            // SQLite doesn't support ALTER COLUMN - requires table recreation
-            // MongoDB/Redis don't use SQL ALTER TABLE
-            throw DatabaseError.unsupportedOperation
+    private func generateDeleteColumn(_ column: EditableColumnDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateDropColumnSQL(table: tableName, columnName: column.name) else {
+            return nil
         }
-    }
-
-    private func generateDeleteColumn(_ column: EditableColumnDefinition) -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let columnQuoted = databaseType.quoteIdentifier(column.name)
-
-        let sql = "ALTER TABLE \(tableQuoted) DROP COLUMN \(columnQuoted)"
-        return SchemaStatement(
-            sql: sql,
-            description: "Drop column '\(column.name)'",
-            isDestructive: true
-        )
-    }
-
-    // MARK: - Column Definition Builder
-
-    private func buildEditableColumnDefinition(_ column: EditableColumnDefinition) throws -> String {
-        var parts: [String] = []
-
-        parts.append(databaseType.quoteIdentifier(column.name))
-        parts.append(column.dataType)
-
-        // Unsigned (MySQL/MariaDB only)
-        if (databaseType == .mysql || databaseType == .mariadb) && column.unsigned {
-            parts.append("UNSIGNED")
-        }
-
-        // Nullable
-        if !column.isNullable {
-            parts.append("NOT NULL")
-        }
-
-        // Default value
-        if let defaultValue = column.defaultValue, !defaultValue.isEmpty {
-            parts.append("DEFAULT \(defaultValue)")
-        }
-
-        // Auto increment
-        if column.autoIncrement {
-            switch databaseType {
-            case .mysql, .mariadb:
-                parts.append("AUTO_INCREMENT")
-            case .postgresql, .redshift:
-                // PostgreSQL uses SERIAL or IDENTITY
-                // For simplicity, we'll use SERIAL
-                parts[1] = "SERIAL"
-            case .sqlite:
-                parts.append("AUTOINCREMENT")
-            case .mongodb, .redis:
-                break  // MongoDB/Redis auto-generate IDs
-            case .mssql:
-                parts[1] = "INT IDENTITY(1,1)"
-            }
-        }
-
-        // On update (MySQL/MariaDB only for timestamp columns)
-        if databaseType == .mysql || databaseType == .mariadb,
-           let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            parts.append("ON UPDATE \(onUpdate)")
-        }
-
-        // Comment
-        if let comment = column.comment, !comment.isEmpty {
-            switch databaseType {
-            case .mysql, .mariadb:
-                let escapedComment = comment.replacingOccurrences(of: "'", with: "''")
-                parts.append("COMMENT '\(escapedComment)'")
-            case .postgresql, .redshift:
-                // PostgreSQL comments are set via separate COMMENT statement
-                break
-            case .sqlite, .mongodb, .redis, .mssql:
-                // SQLite/MongoDB/Redis/MSSQL don't support inline column comments
-                break
-            }
-        }
-
-        return parts.joined(separator: " ")
+        return SchemaStatement(sql: sql, description: "Drop column '\(column.name)'", isDestructive: true)
     }
 
     // MARK: - Index Operations
 
-    private func generateAddIndex(_ index: EditableIndexDefinition) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let indexQuoted = databaseType.quoteIdentifier(index.name)
-        let columnsQuoted = index.columns.map { databaseType.quoteIdentifier($0) }.joined(separator: ", ")
-
-        let uniqueKeyword = index.isUnique ? "UNIQUE " : ""
-
-        let sql: String
-        switch databaseType {
-        case .mysql, .mariadb:
-            let indexType = index.type.rawValue
-            sql = "CREATE \(uniqueKeyword)INDEX \(indexQuoted) ON \(tableQuoted) (\(columnsQuoted)) USING \(indexType)"
-
-        case .postgresql, .redshift:
-            let indexTypeClause = index.type == .btree ? "" : "USING \(index.type.rawValue)"
-            sql = "CREATE \(uniqueKeyword)INDEX \(indexQuoted) ON \(tableQuoted) \(indexTypeClause) (\(columnsQuoted))"
-
-        case .sqlite, .mongodb, .redis, .mssql:
-            sql = "CREATE \(uniqueKeyword)INDEX \(indexQuoted) ON \(tableQuoted) (\(columnsQuoted))"
+    private func generateAddIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateAddIndexSQL(table: tableName, index: toPluginIndexDefinition(index)) else {
+            return nil
         }
-
-        return SchemaStatement(
-            sql: sql,
-            description: "Add index '\(index.name)'",
-            isDestructive: false
-        )
+        return SchemaStatement(sql: sql, description: "Add index '\(index.name)'", isDestructive: false)
     }
 
-    private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) throws -> SchemaStatement {
-        // All databases require drop + recreate for index modification
-        let dropStmt = generateDeleteIndex(old)
-        let addStmt = try generateAddIndex(new)
-
-        let sql = "\(dropStmt.sql);\n\(addStmt.sql);"
+    private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) -> SchemaStatement? {
+        guard let dropSql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: old.name),
+              let addSql = pluginDriver.generateAddIndexSQL(table: tableName, index: toPluginIndexDefinition(new)) else {
+            return nil
+        }
+        let sql = "\(dropSql);\n\(addSql);"
         return SchemaStatement(
             sql: sql,
             description: "Modify index '\(old.name)' to '\(new.name)'",
@@ -344,60 +183,31 @@ struct SchemaStatementGenerator {
         )
     }
 
-    private func generateDeleteIndex(_ index: EditableIndexDefinition) -> SchemaStatement {
-        let indexQuoted = databaseType.quoteIdentifier(index.name)
-
-        let sql: String
-        switch databaseType {
-        case .mysql, .mariadb:
-            let tableQuoted = databaseType.quoteIdentifier(tableName)
-            sql = "DROP INDEX \(indexQuoted) ON \(tableQuoted)"
-
-        case .postgresql, .redshift, .sqlite, .mongodb, .redis:
-            sql = "DROP INDEX \(indexQuoted)"
-        case .mssql:
-            let tableQuoted = databaseType.quoteIdentifier(tableName)
-            sql = "DROP INDEX \(indexQuoted) ON \(tableQuoted)"
+    private func generateDeleteIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: index.name) else {
+            return nil
         }
-
-        return SchemaStatement(
-            sql: sql,
-            description: "Drop index '\(index.name)'",
-            isDestructive: false
-        )
+        return SchemaStatement(sql: sql, description: "Drop index '\(index.name)'", isDestructive: false)
     }
 
     // MARK: - Foreign Key Operations
 
-    private func generateAddForeignKey(_ fk: EditableForeignKeyDefinition) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let fkQuoted = databaseType.quoteIdentifier(fk.name)
-        let columnsQuoted = fk.columns.map { databaseType.quoteIdentifier($0) }.joined(separator: ", ")
-        let refTableQuoted = databaseType.quoteIdentifier(fk.referencedTable)
-        let refColumnsQuoted = fk.referencedColumns.map { databaseType.quoteIdentifier($0) }.joined(separator: ", ")
-
-        let sql = """
-        ALTER TABLE \(tableQuoted)
-        ADD CONSTRAINT \(fkQuoted)
-        FOREIGN KEY (\(columnsQuoted))
-        REFERENCES \(refTableQuoted) (\(refColumnsQuoted))
-        ON DELETE \(fk.onDelete.rawValue)
-        ON UPDATE \(fk.onUpdate.rawValue)
-        """
-
-        return SchemaStatement(
-            sql: sql,
-            description: "Add foreign key '\(fk.name)'",
-            isDestructive: false
-        )
+    private func generateAddForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateAddForeignKeySQL(
+            table: tableName,
+            fk: toPluginForeignKeyDefinition(fk)
+        ) else {
+            return nil
+        }
+        return SchemaStatement(sql: sql, description: "Add foreign key '\(fk.name)'", isDestructive: false)
     }
 
-    private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) throws -> SchemaStatement {
-        // Modifying FK requires drop + recreate
-        let dropStmt = try generateDeleteForeignKey(old)
-        let addStmt = try generateAddForeignKey(new)
-
-        let sql = "\(dropStmt.sql);\n\(addStmt.sql);"
+    private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) -> SchemaStatement? {
+        guard let dropSql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: old.name),
+              let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, fk: toPluginForeignKeyDefinition(new)) else {
+            return nil
+        }
+        let sql = "\(dropSql);\n\(addSql);"
         return SchemaStatement(
             sql: sql,
             description: "Modify foreign key '\(old.name)' to '\(new.name)'",
@@ -405,66 +215,62 @@ struct SchemaStatementGenerator {
         )
     }
 
-    private func generateDeleteForeignKey(_ fk: EditableForeignKeyDefinition) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let fkQuoted = databaseType.quoteIdentifier(fk.name)
-
-        let sql: String
-        switch databaseType {
-        case .mysql, .mariadb:
-            sql = "ALTER TABLE \(tableQuoted) DROP FOREIGN KEY \(fkQuoted)"
-
-        case .postgresql, .redshift, .mssql:
-            sql = "ALTER TABLE \(tableQuoted) DROP CONSTRAINT \(fkQuoted)"
-        case .sqlite, .mongodb, .redis:
-            throw DatabaseError.unsupportedOperation
+    private func generateDeleteForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
+        guard let sql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: fk.name) else {
+            return nil
         }
-        return SchemaStatement(
-            sql: sql,
-            description: "Drop foreign key '\(fk.name)'",
-            isDestructive: false
-        )
+        return SchemaStatement(sql: sql, description: "Drop foreign key '\(fk.name)'", isDestructive: false)
     }
 
     // MARK: - Primary Key Operations
 
-    private func generateModifyPrimaryKey(old: [String], new: [String]) throws -> SchemaStatement {
-        let tableQuoted = databaseType.quoteIdentifier(tableName)
-        let newColumnsQuoted = new.map { databaseType.quoteIdentifier($0) }.joined(separator: ", ")
-
-        let sql: String
-        switch databaseType {
-        case .mysql, .mariadb:
-            sql = """
-            ALTER TABLE \(tableQuoted) DROP PRIMARY KEY;
-            ALTER TABLE \(tableQuoted) ADD PRIMARY KEY (\(newColumnsQuoted));
-            """
-
-        case .postgresql, .redshift:
-            // Use actual constraint name if available, otherwise fall back to convention
-            let pkName = primaryKeyConstraintName ?? "\(tableName)_pkey"
-            sql = """
-            ALTER TABLE \(tableQuoted) DROP CONSTRAINT \(databaseType.quoteIdentifier(pkName));
-            ALTER TABLE \(tableQuoted) ADD PRIMARY KEY (\(newColumnsQuoted));
-            """
-
-        case .mssql:
-            let pkName = primaryKeyConstraintName ?? "PK_\(tableName)"
-            sql = """
-            ALTER TABLE \(tableQuoted) DROP CONSTRAINT \(databaseType.quoteIdentifier(pkName));
-            ALTER TABLE \(tableQuoted) ADD PRIMARY KEY (\(newColumnsQuoted));
-            """
-
-        case .sqlite, .mongodb, .redis:
-            // SQLite doesn't support modifying primary keys - requires table recreation
-            // MongoDB/Redis don't use SQL ALTER TABLE
-            throw DatabaseError.unsupportedOperation
+    private func generateModifyPrimaryKey(old: [String], new: [String]) -> SchemaStatement? {
+        guard let sqls = pluginDriver.generateModifyPrimaryKeySQL(
+            table: tableName, oldColumns: old, newColumns: new, constraintName: primaryKeyConstraintName
+        ) else {
+            return nil
         }
-
+        let joined = sqls.joined(separator: ";\n")
         return SchemaStatement(
-            sql: sql,
+            sql: joined,
             description: "Modify primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]",
             isDestructive: true
+        )
+    }
+
+    // MARK: - Plugin Type Converters
+
+    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
+        PluginColumnDefinition(
+            name: col.name,
+            dataType: col.dataType,
+            isNullable: col.isNullable,
+            defaultValue: col.defaultValue,
+            isPrimaryKey: col.isPrimaryKey,
+            autoIncrement: col.autoIncrement,
+            comment: col.comment,
+            unsigned: col.unsigned,
+            onUpdate: col.onUpdate
+        )
+    }
+
+    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
+        PluginIndexDefinition(
+            name: index.name,
+            columns: index.columns,
+            isUnique: index.isUnique,
+            indexType: index.type.rawValue
+        )
+    }
+
+    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
+        PluginForeignKeyDefinition(
+            name: fk.name,
+            columns: fk.columns,
+            referencedTable: fk.referencedTable,
+            referencedColumns: fk.referencedColumns,
+            onDelete: fk.onDelete.rawValue,
+            onUpdate: fk.onUpdate.rawValue
         )
     }
 }

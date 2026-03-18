@@ -96,7 +96,7 @@ final class VimCursorManager {
         }
 
         // Calculate character width from the editor font
-        let font = SQLEditorTheme.font
+        let font = ThemeEngine.shared.editorFonts.font
         let charWidth = (NSString(" ").size(withAttributes: [.font: font])).width
 
         guard charWidth > 0 else {
@@ -122,7 +122,7 @@ final class VimCursorManager {
             // Create new layer
             let layer = CALayer()
             layer.contentsScale = textView.window?.backingScaleFactor ?? 2.0
-            layer.backgroundColor = SQLEditorTheme.insertionPoint.withAlphaComponent(0.4).cgColor
+            layer.backgroundColor = ThemeEngine.shared.colors.editor.cursor.withAlphaComponent(0.4).cgColor
             layer.frame = frame
 
             // Add blink animation

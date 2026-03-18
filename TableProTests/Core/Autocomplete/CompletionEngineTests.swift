@@ -9,7 +9,7 @@ import Foundation
 import Testing
 @testable import TablePro
 
-@Suite("Completion Engine")
+@Suite("Completion Engine", .serialized)
 struct CompletionEngineTests {
     private let schemaProvider: SQLSchemaProvider
     private let engine: CompletionEngine

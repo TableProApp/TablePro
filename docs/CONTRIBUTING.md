@@ -32,3 +32,11 @@ For more details on local development, see our [development guide](development.m
 - **Lead with the goal**: Start instructions with what the user wants to accomplish
 - **Use consistent terminology**: Don't alternate between synonyms for the same concept
 - **Include examples**: Show, don't just tell
+
+## Contributor License Agreement (CLA)
+
+All contributors must sign the Contributor License Agreement (CLA) before their contributions can be merged. This is required to ensure that contributions can be distributed under the project's AGPLv3 license.
+
+When you open your first pull request, the CLA bot will automatically comment with instructions to sign the agreement. The process is quick: you only need to sign once, and it covers all future contributions to the project.
+
+Pull requests from contributors who have not signed the CLA will not be merged.

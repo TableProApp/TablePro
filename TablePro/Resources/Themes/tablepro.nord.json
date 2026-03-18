@@ -1,0 +1,131 @@
+{
+    "id": "tablepro.nord",
+    "name": "Nord",
+    "version": 1,
+    "appearance": "dark",
+    "author": "TablePro",
+    "editor": {
+        "background": "#2E3440",
+        "text": "#D8DEE9",
+        "cursor": "#88C0D0",
+        "currentLineHighlight": "#3B4252",
+        "selection": "#434C5E",
+        "lineNumber": "#4C566A",
+        "invisibles": "#3B4252",
+        "syntax": {
+            "keyword": "#81A1C1",
+            "string": "#A3BE8C",
+            "number": "#B48EAD",
+            "comment": "#616E88",
+            "null": "#D08770",
+            "operator": "#81A1C1",
+            "function": "#88C0D0",
+            "type": "#EBCB8B"
+        }
+    },
+    "dataGrid": {
+        "background": "#2E3440",
+        "text": "#D8DEE9",
+        "alternateRow": "#3B4252",
+        "nullValue": "#4C566A",
+        "boolTrue": "#A3BE8C",
+        "boolFalse": "#BF616A",
+        "rowNumber": "#4C566A",
+        "modified": "#EBCB8B4D",
+        "inserted": "#A3BE8C26",
+        "deleted": "#BF616A26",
+        "deletedText": "#BF616A80",
+        "focusBorder": "#88C0D0"
+    },
+    "ui": {
+        "windowBackground": "#2E3440",
+        "controlBackground": "#3B4252",
+        "cardBackground": "#3B4252",
+        "border": "#434C5E",
+        "primaryText": "#D8DEE9",
+        "secondaryText": "#9DA5B4",
+        "tertiaryText": "#616E88",
+        "accentColor": "#88C0D0",
+        "selectionBackground": "#434C5E",
+        "hoverBackground": "#88C0D00D",
+        "status": {
+            "success": "#A3BE8C",
+            "warning": "#D08770",
+            "error": "#BF616A",
+            "info": "#5E81AC"
+        },
+        "badges": {
+            "background": "#434C5E",
+            "primaryKey": "#5E81AC26",
+            "autoIncrement": "#B48EAD26"
+        }
+    },
+    "sidebar": {
+        "background": "#3B4252",
+        "text": "#D8DEE9",
+        "selectedItem": "#434C5E",
+        "hover": "#434C5E80",
+        "sectionHeader": "#4C566A"
+    },
+    "toolbar": {
+        "secondaryText": "#9DA5B4",
+        "tertiaryText": "#616E88"
+    },
+    "fonts": {
+        "editorFontFamily": "System Mono",
+        "editorFontSize": 13,
+        "dataGridFontFamily": "System Mono",
+        "dataGridFontSize": 13
+    },
+    "spacing": {
+        "xxxs": 2,
+        "xxs": 4,
+        "xs": 8,
+        "sm": 12,
+        "md": 16,
+        "lg": 20,
+        "xl": 24,
+        "listRowInsets": {
+            "top": 4,
+            "leading": 8,
+            "bottom": 4,
+            "trailing": 8
+        }
+    },
+    "typography": {
+        "tiny": 9,
+        "caption": 10,
+        "small": 11,
+        "medium": 12,
+        "body": 13,
+        "title3": 15,
+        "title2": 17
+    },
+    "iconSizes": {
+        "tinyDot": 6,
+        "statusDot": 8,
+        "small": 12,
+        "default": 14,
+        "medium": 16,
+        "large": 20,
+        "extraLarge": 24,
+        "huge": 32,
+        "massive": 64
+    },
+    "cornerRadius": {
+        "small": 4,
+        "medium": 6,
+        "large": 8
+    },
+    "rowHeights": {
+        "compact": 24,
+        "table": 32,
+        "comfortable": 44
+    },
+    "animations": {
+        "fast": 0.1,
+        "normal": 0.15,
+        "smooth": 0.2,
+        "slow": 0.3
+    }
+}

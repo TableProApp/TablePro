@@ -3,46 +3,24 @@
 //  TablePro
 //
 //  Thread-safe coordinator for query history
-//  Communicates via NotificationCenter (NOT ObservableObject)
 //
 
-import Combine
 import Foundation
-
-/// Notification names for query history updates
-extension Notification.Name {
-    static let queryHistoryDidUpdate = Notification.Name("queryHistoryDidUpdate")
-    static let loadQueryIntoEditor = Notification.Name("loadQueryIntoEditor")
-    static let insertQueryFromAI = Notification.Name("insertQueryFromAI")
-}
 
 /// Thread-safe manager for query history
 /// NOT an ObservableObject - uses NotificationCenter for UI communication
 final class QueryHistoryManager {
     static let shared = QueryHistoryManager()
 
-    private let storage = QueryHistoryStorage.shared
+    private let storage: QueryHistoryStorage
 
-    // Settings observer for immediate cleanup when settings change
-    private var settingsObserver: AnyCancellable?
+    /// Creates an isolated manager with its own storage. For testing only.
+    init(isolatedStorage: QueryHistoryStorage) {
+        self.storage = isolatedStorage
+    }
 
     private init() {
-        // Subscribe to history settings changes for immediate cleanup
-        settingsObserver = NotificationCenter.default.publisher(for: .historySettingsDidChange)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-
-                MainActor.assumeIsolated {
-                    // Update settings cache
-                    self.storage.updateSettingsCache()
-
-                    // Perform cleanup if auto-cleanup is enabled
-                    if AppSettingsManager.shared.history.autoCleanup {
-                        self.storage.cleanup()
-                    }
-                }
-            }
+        self.storage = QueryHistoryStorage.shared
     }
 
     /// Perform cleanup if auto-cleanup is enabled in settings
@@ -57,6 +35,15 @@ final class QueryHistoryManager {
 
         // Perform cleanup
         storage.cleanup()
+    }
+
+    /// Apply settings changes directly (called by AppSettingsManager)
+    @MainActor
+    func applySettingsChange() {
+        storage.updateSettingsCache()
+        if AppSettingsManager.shared.history.autoCleanup {
+            storage.cleanup()
+        }
     }
 
     // MARK: - History Capture

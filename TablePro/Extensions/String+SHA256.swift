@@ -16,11 +16,3 @@ extension String {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 }
-
-extension Data {
-    /// Returns the SHA256 hash of this data as a lowercase hex string
-    var sha256Hex: String {
-        let digest = SHA256.hash(data: self)
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-}

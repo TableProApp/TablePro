@@ -115,12 +115,6 @@ struct ConnectionHealthMonitorTests {
         #expect(count == 0)
     }
 
-    @Test("connectionHealthStateChanged notification name exists")
-    func notificationNameExists() {
-        let name = Notification.Name.connectionHealthStateChanged
-        #expect(name.rawValue == "connectionHealthStateChanged")
-    }
-
     @Test("Staggered initial delay — no ping fires immediately")
     func staggeredInitialDelay() async {
         var pingCount = 0

@@ -12,6 +12,8 @@ import SwiftUI
 struct ExecutionIndicatorView: View {
     let isExecuting: Bool
     let lastDuration: TimeInterval?
+    let clickHouseProgress: ClickHouseQueryProgress?
+    let lastClickHouseProgress: ClickHouseQueryProgress?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -20,25 +22,34 @@ struct ExecutionIndicatorView: View {
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
                     .help("Query executing...")
+                if let progress = clickHouseProgress {
+                    Text(progress.formattedLive)
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+                        .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
+                }
+            } else if let chProgress = lastClickHouseProgress {
+                Text(chProgress.formattedSummary)
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+                    .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
+                    .accessibilityLabel(String(localized: "Last query: \(chProgress.formattedSummary)"))
+                    .help("Last query execution summary")
             } else if let duration = lastDuration {
-                // Show last query duration when not executing
                 Text(formattedDuration(duration))
-                    .font(ToolbarDesignTokens.Typography.executionTime)
-                    .foregroundStyle(ToolbarDesignTokens.Colors.tertiaryText)
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+                    .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                     .accessibilityLabel(
                         String(localized: "Last query took \(formattedDuration(duration))")
                     )
                     .help("Last query execution time")
             } else {
                 Text("--")
-                    .font(ToolbarDesignTokens.Typography.executionTime)
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
                     .foregroundStyle(.quaternary)
                     .accessibilityLabel(String(localized: "No query executed yet"))
                     .help("Run a query to see execution time")
             }
         }
-        .padding(.trailing, DesignConstants.Spacing.xs)
-        .animation(.easeInOut(duration: DesignConstants.AnimationDuration.normal), value: isExecuting)
+        .padding(.trailing, ThemeEngine.shared.activeTheme.spacing.xs)
     }
 
     // MARK: - Helpers
@@ -64,25 +75,25 @@ struct ExecutionIndicatorView: View {
 // MARK: - Preview
 
 #Preview("Executing") {
-    ExecutionIndicatorView(isExecuting: true, lastDuration: nil)
+    ExecutionIndicatorView(isExecuting: true, lastDuration: nil, clickHouseProgress: nil, lastClickHouseProgress: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("Completed Fast") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: 0.023)
+    ExecutionIndicatorView(isExecuting: false, lastDuration: 0.023, clickHouseProgress: nil, lastClickHouseProgress: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("Completed Slow") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: 2.456)
+    ExecutionIndicatorView(isExecuting: false, lastDuration: 2.456, clickHouseProgress: nil, lastClickHouseProgress: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }
 
 #Preview("No Duration") {
-    ExecutionIndicatorView(isExecuting: false, lastDuration: nil)
+    ExecutionIndicatorView(isExecuting: false, lastDuration: nil, clickHouseProgress: nil, lastClickHouseProgress: nil)
         .padding()
         .background(Color(nsColor: .windowBackgroundColor))
 }

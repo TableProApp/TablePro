@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 struct DatabaseSwitcherSheet: View {
     @Binding var isPresented: Bool
@@ -58,11 +59,11 @@ struct DatabaseSwitcherSheet: View {
             Text(isSchemaMode
                 ? String(localized: "Open Schema")
                 : String(localized: "Open Database"))
-                .font(.system(size: DesignConstants.FontSize.body, weight: .semibold))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
                 .padding(.vertical, 12)
 
             // Databases / Schemas toggle (PostgreSQL only)
-            if databaseType == .postgresql {
+            if PluginManager.shared.supportsSchemaSwitching(for: databaseType) {
                 Picker("", selection: $viewModel.mode) {
                     Text(String(localized: "Databases"))
                         .tag(DatabaseSwitcherViewModel.Mode.database)
@@ -90,7 +91,7 @@ struct DatabaseSwitcherSheet: View {
                 loadingView
             } else if let error = viewModel.errorMessage {
                 errorView(error)
-            } else if databaseType == .sqlite {
+            } else if PluginManager.shared.connectionMode(for: databaseType) == .fileBased {
                 sqliteEmptyState
             } else if viewModel.filteredDatabases.isEmpty {
                 emptyState
@@ -138,7 +139,7 @@ struct DatabaseSwitcherSheet: View {
             // Search
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: DesignConstants.FontSize.body))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                     .foregroundStyle(.tertiary)
 
                 TextField(isSchemaMode
@@ -146,7 +147,7 @@ struct DatabaseSwitcherSheet: View {
                     : String(localized: "Search databases..."),
                     text: $viewModel.searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: DesignConstants.FontSize.body))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
 
                 if !viewModel.searchText.isEmpty {
                     Button(action: { viewModel.searchText = "" }) {
@@ -199,7 +200,7 @@ struct DatabaseSwitcherSheet: View {
                     } header: {
                         Text("RECENT")
                             .font(
-                                .system(size: DesignConstants.FontSize.caption, weight: .semibold)
+                                .system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold)
                             )
                             .foregroundStyle(.secondary)
                     }
@@ -216,7 +217,7 @@ struct DatabaseSwitcherSheet: View {
                             ? String(localized: "ALL SCHEMAS")
                             : String(localized: "ALL DATABASES"))
                             .font(
-                                .system(size: DesignConstants.FontSize.caption, weight: .semibold)
+                                .system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold)
                             )
                             .foregroundStyle(.secondary)
                     }
@@ -275,7 +276,7 @@ struct DatabaseSwitcherSheet: View {
                 .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
                 .padding(.horizontal, 4)
         )
-        .listRowInsets(DesignConstants.swiftUIListRowInsets)
+        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
         .listRowSeparator(.hidden)
         .id(database.name)
         .tag(database.name)
@@ -296,7 +297,7 @@ struct DatabaseSwitcherSheet: View {
             Text(isSchemaMode
                 ? String(localized: "Loading schemas...")
                 : String(localized: "Loading databases..."))
-                .font(.system(size: DesignConstants.FontSize.medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -305,16 +306,16 @@ struct DatabaseSwitcherSheet: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: DesignConstants.IconSize.extraLarge))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
                 .foregroundStyle(.orange)
 
             Text(isSchemaMode
                 ? String(localized: "Failed to load schemas")
                 : String(localized: "Failed to load databases"))
-                .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
 
             Text(message)
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -331,16 +332,16 @@ struct DatabaseSwitcherSheet: View {
     private var sqliteEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.fill")
-                .font(.system(size: DesignConstants.IconSize.extraLarge))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
                 .foregroundStyle(.secondary)
 
             Text("SQLite is file-based")
-                .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
 
             Text(
                 "Each SQLite file is a separate database.\nTo open a different database, create a new connection."
             )
-            .font(.system(size: DesignConstants.FontSize.small))
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal)
@@ -351,24 +352,24 @@ struct DatabaseSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: DesignConstants.IconSize.extraLarge))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {
                 Text(isSchemaMode
                     ? String(localized: "No schemas found")
                     : String(localized: "No databases found"))
-                    .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
             } else {
                 Text(isSchemaMode
                     ? String(localized: "No matching schemas")
                     : String(localized: "No matching databases"))
-                    .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
 
                 Text(isSchemaMode
                     ? String(localized: "No schemas match \"\(viewModel.searchText)\"")
                     : String(localized: "No databases match \"\(viewModel.searchText)\""))
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
             }
         }
@@ -434,7 +435,7 @@ struct DatabaseSwitcherSheet: View {
         viewModel.trackAccess(database: database)
 
         // Call appropriate callback
-        if viewModel.isSchemaMode, databaseType == .postgresql, let onSelectSchema {
+        if viewModel.isSchemaMode, PluginManager.shared.supportsSchemaSwitching(for: databaseType), let onSelectSchema {
             onSelectSchema(database)
         } else {
             onSelect(database)

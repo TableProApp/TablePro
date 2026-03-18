@@ -1,11 +1,11 @@
 ---
 title: Amazon Redshift
-description: Connect to Amazon Redshift data warehouses with TablePro
+description: Connect to Redshift clusters and Serverless via the PostgreSQL wire protocol, with DISTKEY/SORTKEY metadata display
 ---
 
 # Amazon Redshift Connections
 
-TablePro supports Amazon Redshift, AWS's columnar data warehouse based on PostgreSQL 8.0.2. Redshift uses the PostgreSQL wire protocol, so connections work through the same libpq driver with Redshift-specific metadata queries.
+TablePro connects to Amazon Redshift, AWS's columnar data warehouse based on PostgreSQL 8.0.2. Connections use the same libpq driver as PostgreSQL, with Redshift-specific metadata queries for distribution style, sort keys, and table size.
 
 ## Quick Setup
 
@@ -38,7 +38,7 @@ TablePro supports Amazon Redshift, AWS's columnar data warehouse based on Postgr
 | **Database** | Database name to connect to | `dev` |
 
 <Warning>
-Redshift requires specifying a database name to connect. The default database created with every cluster is `dev`.
+Redshift requires a database name. The default database created with every cluster is `dev`.
 </Warning>
 
 ## Example Configurations
@@ -81,7 +81,7 @@ Redshift organizes tables into schemas, just like PostgreSQL. TablePro displays:
 
 ### Schema Switching
 
-Switch between Redshift schemas using the database switcher (**Cmd+K**):
+Switch between Redshift schemas with the database switcher (**Cmd+K**):
 
 1. Press **Cmd+K** to open the switcher
 2. Select the target schema
@@ -93,11 +93,11 @@ The default schema is `public`. System schemas like `pg_catalog` and `informatio
 
 ### Table Browsing and Data Viewing
 
-Browse tables, views, and late-binding views. The data grid supports pagination for large warehouse tables. Redshift-specific metadata from `svv_table_info` is available in the table info panel, including distribution style, sort keys, and table size.
+Browse tables, views, and late-binding views. The data grid paginates large warehouse tables. Redshift-specific metadata from `svv_table_info` is available in the table info panel: distribution style, sort keys, and table size.
 
 ### Query Execution
 
-Execute queries with Redshift SQL syntax support. The SQL editor provides syntax highlighting for Redshift-specific functions and keywords.
+Execute queries with Redshift SQL syntax. The editor highlights Redshift-specific functions and keywords.
 
 ```sql
 -- Window functions
@@ -138,11 +138,11 @@ Import data from CSV, JSON, SQL, and XLSX files into Redshift tables.
 
 ### DDL Generation
 
-View the DDL (CREATE TABLE statement) for any table, including Redshift-specific clauses like DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives.
+View the DDL (CREATE TABLE statement) for any table, including Redshift-specific clauses: DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives.
 
 ### Foreign Key Navigation
 
-Redshift supports foreign key definitions, though they are informational only and not enforced by the engine. TablePro displays these relationships and allows navigation between related tables.
+Redshift supports foreign key definitions, though they are informational only (not enforced by the engine). TablePro displays these relationships and allows navigation between related tables.
 
 ## SSL/TLS
 
@@ -157,12 +157,12 @@ Redshift connections support SSL/TLS encryption, using the same configuration as
 | **Verify Identity** | Require SSL, verify CA, and verify the server hostname |
 
 <Tip>
-AWS Redshift endpoints support SSL by default. Use **Required** or **Verify CA** mode for production connections.
+AWS Redshift endpoints support SSL by default. Use **Required** or **Verify CA** for production connections.
 </Tip>
 
 ## SSH Tunnel Support
 
-You can connect to Redshift through an SSH tunnel if your cluster is in a private VPC. Configure the SSH tunnel in the connection form's SSH tab, then TablePro routes the Redshift connection through the tunnel.
+Connect to Redshift through an SSH tunnel if your cluster is in a private VPC. Configure the SSH tunnel in the connection form's SSH tab. TablePro routes the Redshift connection through the tunnel.
 
 ## Limitations
 
@@ -170,7 +170,7 @@ Redshift is a columnar data warehouse, not a general-purpose RDBMS. Several Post
 
 | Feature | Redshift Behavior |
 |---------|------------------|
-| **Indexes** | No traditional B-tree indexes. Uses DISTKEY and SORTKEY for data distribution and sort order. These columns are displayed in the Structure tab. |
+| **Indexes** | No traditional B-tree indexes. Uses DISTKEY and SORTKEY for data distribution and sort order. These columns appear in the Structure tab. |
 | **ALTER TABLE** | Limited support. Cannot rename columns. Type changes restricted to widening VARCHAR or changing numeric precision. |
 | **Enum types** | Not supported. No CREATE TYPE for custom enums. |
 | **Sequences** | Not supported. Use IDENTITY columns instead. |
@@ -180,7 +180,7 @@ Redshift is a columnar data warehouse, not a general-purpose RDBMS. Several Post
 
 ### DISTKEY and SORTKEY
 
-Instead of traditional indexes, Redshift distributes data across nodes using distribution keys and sorts data within each node using sort keys. TablePro displays DISTKEY and SORTKEY designations in the Structure tab for each table, so you can see how your data is physically organized.
+Instead of traditional indexes, Redshift distributes data across nodes using distribution keys and sorts data within each node using sort keys. TablePro displays DISTKEY and SORTKEY designations in the Structure tab for each table, showing how your data is physically organized.
 
 ## Troubleshooting
 
@@ -191,7 +191,7 @@ Instead of traditional indexes, Redshift distributes data across nodes using dis
 **Common causes**:
 
 1. **Security group not configured**: Your IP must be allowed in the Redshift cluster's VPC security group (inbound rule on port 5439).
-2. **Cluster not publicly accessible**: If `Publicly Accessible` is set to No in the cluster properties, you need an SSH tunnel or VPN.
+2. **Cluster not publicly accessible**: If `Publicly Accessible` is No in the cluster properties, you need an SSH tunnel or VPN.
 3. **Cluster paused**: Redshift clusters can be paused to save costs. Resume the cluster in the AWS Console.
 
 ### Authentication Failed
@@ -208,10 +208,10 @@ Instead of traditional indexes, Redshift distributes data across nodes using dis
 
 Redshift is optimized for analytical queries on large datasets. If queries are slow:
 
-1. Check your table's distribution style with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
+1. Check your table's distribution style: `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
 2. Run `ANALYZE` to update table statistics
 3. Use `EXPLAIN` to review the query plan
-4. Ensure your SORTKEY columns match your common WHERE and JOIN predicates
+4. Ensure SORTKEY columns match your common WHERE and JOIN predicates
 
 ## Differences from PostgreSQL
 

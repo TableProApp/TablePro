@@ -4,6 +4,195 @@ description: "Cập nhật sản phẩm và thông báo cho TablePro"
 rss: true
 ---
 
+<Update label="17 tháng 3, 2026" description="v0.20.1">
+  ### Sửa lỗi
+
+  - Sửa lỗi tương thích plugin registry với PluginKit phiên bản 2
+</Update>
+
+<Update label="17 tháng 3, 2026" description="v0.20.0">
+  ### Tính năng mới
+
+  - **Ngôn ngữ Thổ Nhĩ Kỳ**: Thêm tiếng Thổ Nhĩ Kỳ (Türkçe) làm tuỳ chọn ngôn ngữ mới trong Cài đặt > Chung
+  - **Hỗ trợ etcd v3**: Plugin cơ sở dữ liệu mới với duyệt khoá dạng cây tiền tố, trình soạn thảo cú pháp etcdctl, quản lý lease, watch, mTLS, xác thực và thông tin cluster
+  - **Nút Lưu thay đổi**: Nút mới trên thanh công cụ để xác nhận các chỉnh sửa dữ liệu đang chờ
+  - **Xác nhận xoá kết nối**: Hộp thoại xác nhận trước khi xoá kết nối
+  - **Bảo vệ chỉnh sửa chưa lưu**: Hộp thoại xác nhận trước khi sắp xếp, phân trang, lọc hoặc tìm kiếm huỷ bỏ các chỉnh sửa chưa lưu
+
+  ### Sửa lỗi
+
+  - Sửa lỗi SSH tunnel bị crash do các lệnh gọi libssh2 đồng thời trên cùng một phiên
+  - Sửa lỗi mất chỉnh sửa ô chưa lưu khi chuyển tab, sắp xếp, phân trang, lọc hoặc chuyển ứng dụng
+  - Sửa lỗi tự động kết nối lại và health monitor âm thầm huỷ bỏ các thay đổi chưa lưu
+  - Sửa lỗi khôi phục SSH tunnel thất bại sau khi tunnel ngắt do trạng thái driver cũ
+  - Sửa lỗi health monitor ping can thiệp vào truy vấn đang hoạt động của người dùng
+  - Sửa lỗi kiểm tra kết nối không dọn dẹp SSH tunnel khi hoàn thành
+  - Sửa lỗi chỉ báo kết nối thành công không đặt lại sau khi thay đổi trường
+  - Sửa lỗi trường SSH port chấp nhận giá trị không hợp lệ
+  - Sửa lỗi thao tác DROP TABLE và TRUNCATE TABLE trên thanh bên không tạo SQL cho driver dựa trên plugin
+  - Sửa lỗi mũi tên điều hướng khoá ngoại không hiển thị sau khi chuyển cơ sở dữ liệu bằng Cmd+K trên MySQL
+  - Sửa lỗi thanh bên không làm mới sau khi tạo hoặc xoá bảng
+  - Sửa lỗi xoá bảng làm ngắt kết nối cơ sở dữ liệu khi tab của bảng bị xoá đang hoạt động
+</Update>
+
+<Update label="16 tháng 3, 2026" description="v0.19.1">
+  ### Sửa lỗi
+
+  - Sửa lỗi kết nối SSH tunnel bị timeout khi kết nối qua SSH
+  - Sửa lỗi plugin metadata dispatch thất bại với plugin cài đặt bên ngoài
+  - Cải thiện thông báo lỗi xác thực SSH public key với thông tin chi tiết hơn
+</Update>
+
+<Update label="15 tháng 3, 2026" description="v0.19.0">
+  ### Tính năng mới
+
+  - **iCloud Sync (Pro)**: Đồng bộ kết nối, nhóm, tag, cài đặt và lịch sử truy vấn giữa các máy Mac với tuỳ chọn theo danh mục, giải quyết xung đột và chỉ báo trạng thái thời gian thực
+  - **SQL Favorites**: Lưu truy vấn thường dùng với tuỳ chọn gán từ khoá cho tự động hoàn thành
+  - **Sao chép dưới dạng JSON**: Sao chép hàng đã chọn dưới dạng JSON từ menu ngữ cảnh và menu Edit
+  - **Menu Trợ giúp**: Liên kết nhanh đến website, tài liệu, GitHub và trang tài trợ
+  - **Hiển thị BLOB dạng hex**: Xem dữ liệu BLOB dưới dạng hex dump trong thanh chi tiết
+
+  ### Sửa lỗi
+
+  - Sửa lỗi kết nối SSH agent thất bại khi đường dẫn socket chứa `~` (ví dụ: 1Password agent)
+  - Sửa lỗi hộp thoại xác thực Keychain xuất hiện mỗi khi mở bảng
+</Update>
+
+<Update label="14 tháng 3, 2026" description="v0.18.1">
+  ### Sửa lỗi
+
+  - Sửa lỗi số lượt tải plugin bị đặt lại về 0 khi phát hành phiên bản plugin mới
+</Update>
+
+<Update label="14 tháng 3, 2026" description="v0.18.0">
+  ### Tính năng mới
+
+  - **Theme Engine**: 4 theme tích hợp (Default Light/Dark, Dracula, Nord) với tuỳ chỉnh đầy đủ màu sắc, phông chữ và bố cục — nhập/xuất theme dưới dạng JSON
+  - **Theme Registry**: Duyệt, cài đặt và cập nhật theme cộng đồng từ registry plugin
+  - **Hỗ trợ Cassandra & ScyllaDB**: Kết nối tới cơ sở dữ liệu Cassandra và ScyllaDB qua plugin tải xuống
+  - **Xác thực hai yếu tố SSH**: Hỗ trợ TOTP với chế độ tự động tạo và nhắc nhở cho kết nối SSH
+  - **Xác minh khoá máy chủ SSH**: Hộp thoại xác nhận fingerprint cho khoá máy chủ mới và đã thay đổi
+  - **Keyboard Interactive SSH**: Hỗ trợ phương thức xác thực keyboard-interactive
+  - **Ẩn/hiện cột**: Bật/tắt cột qua nút thanh trạng thái hoặc menu ngữ cảnh tiêu đề
+  - **Sao chép dưới dạng SQL**: Sao chép hàng đã chọn dưới dạng câu lệnh INSERT hoặc UPDATE từ menu ngữ cảnh bảng dữ liệu
+  - **Hỗ trợ `.pgpass` PostgreSQL**: Tự động tra cứu mật khẩu từ `~/.pgpass` cho kết nối PostgreSQL và Redshift
+  - **Script trước kết nối**: Chạy lệnh shell trước mỗi kết nối qua Connection > Advanced
+  - **URL registry plugin tuỳ chỉnh**: Cấu hình URL registry riêng/doanh nghiệp cho phân phối plugin
+
+  ### Cải tiến
+
+  - MSSQL, MongoDB, Redis, XLSX export, MQL export và SQL import được tách thành plugin tải xuống — MySQL, PostgreSQL, SQLite, CSV, JSON và SQL export vẫn tích hợp sẵn
+  - Thiết kế lại cài đặt Plugin với bố cục master-detail và số lượt tải
+  - Tất cả hành vi theo loại cơ sở dữ liệu giờ dựa trên metadata plugin thay vì mã cứng, cho phép plugin cơ sở dữ liệu bên thứ ba
+  - Các trường biểu mẫu kết nối, nhãn thanh bên và tính năng SQL dialect giờ hoàn toàn do plugin điều khiển
+  - Chế độ giao diện ứng dụng (Sáng, Tối, Tự động) độc lập với lựa chọn theme
+  - Hỗ trợ huỷ truy vấn MSSQL và thời gian chờ khoá
+
+  ### Sửa lỗi
+
+  - Sửa lỗi hiển thị biểu tượng plugin không hỗ trợ hình ảnh asset tuỳ chỉnh bên cạnh SF Symbols
+</Update>
+
+<Update label="11 tháng 3, 2026" description="v0.17.0">
+  ### Tính năng mới
+
+  - **Hỗ trợ DuckDB**: Kết nối tới tập tin `.duckdb`, truy vấn CSV/Parquet/JSON qua SQL, điều hướng schema và quản lý extension
+  - **MongoDB Auth Database**: Cấu hình `authSource` để xác thực với bất kỳ cơ sở dữ liệu nào thay vì mặc định `admin`
+  - **Chế độ an toàn**: 6 cấp độ cho mỗi kết nối (Silent, Alert, Alert Full, Safe Mode, Safe Mode Full, Read-Only) thay thế nút bật/tắt chỉ đọc, với hộp thoại xác nhận và xác thực Touch ID/mật khẩu
+  - **Tab xem trước**: Nhấp một lần mở tab xem trước tạm thời, nhấp đúp hoặc chỉnh sửa chuyển thành tab cố định
+  - **Hệ thống plugin nhập**: SQL import được tách thành gói `.tableplugin` với hỗ trợ tập tin `.sql` và `.gz` nén
+  - **Mở SQLite từ Finder**: Nhấp đúp tập tin `.sqlite`, `.sqlite3`, `.db3`, `.s3db`, `.sl3` và `.sqlitedb` để mở trực tiếp
+  - **Nhắc cài đặt plugin**: Tự động nhắc cài đặt plugin driver khi kết nối tới loại cơ sở dữ liệu chưa có plugin
+
+  ### Cải tiến
+
+  - Oracle và ClickHouse chuyển thành plugin tải xuống, giảm kích thước ứng dụng
+  - Trình điều khiển SQLite tách từ gói tích hợp thành plugin tải xuống
+  - Tuỳ chọn plugin xuất (CSV, XLSX, JSON, SQL, MQL) được lưu giữ qua các lần khởi động lại
+  - Plugin có thể khai báo giao diện cài đặt hiển thị trong Cài đặt > Plugin
+  - Prepared statements thực sự cho MSSQL và ClickHouse, loại bỏ nội suy chuỗi
+  - Truy vấn hàng loạt cho MSSQL, Oracle, ClickHouse và SQLite, loại bỏ mẫu N+1
+  - Định dạng lỗi thống nhất và thông báo lỗi bản địa hoá cho tất cả trình điều khiển
+  - Ràng buộc tham số chuẩn hoá với xử lý số theo kiểu và hỗ trợ NULL literal
+
+  ### Sửa lỗi
+
+  - Sửa lỗi MongoDB Read Preference, Write Concern và Redis Database không lưu giữ qua các lần khởi động lại
+  - Sửa lỗi truy vấn DELETE và UPDATE dùng tất cả cột trong WHERE thay vì chỉ khoá chính cho PostgreSQL, Redshift, MSSQL và ClickHouse
+  - Sửa lỗi SSL/TLS luôn bật cho kết nối MongoDB, Redis và ClickHouse
+  - Sửa lỗi thanh bên Redis hiển thị dữ liệu rồi trống ngay sau khi nhấp
+  - Sửa lỗi MongoDB hiển thị "Invalid database name" khi kết nối không có tên cơ sở dữ liệu
+  - Sửa lỗi cắt ngắn kết quả tại 100K hàng bị bỏ qua thay vì báo cho giao diện
+</Update>
+
+<Update label="9 tháng 3, 2026" description="v0.16.1">
+  ### Sửa lỗi
+
+  - Sửa lỗi bộ lọc cũ gây ra lỗi lặp lại khi khôi phục tab sau khi chuyển cơ sở dữ liệu hoặc schema
+  - Sửa lỗi thanh bên hiển thị bảng cũ khi chuyển cơ sở dữ liệu/schema thay vì hiển thị trạng thái đang tải
+  - Sửa lỗi ô tìm kiếm thanh bên biến mất khi không có bảng nào khớp bộ lọc trên macOS 15 trở về trước
+  - Sửa lỗi loại cơ sở dữ liệu plugin đã tắt vẫn hiển thị trong bộ chọn biểu mẫu kết nối
+  - Sửa lỗi cửa sổ chính không đóng trước khi mở lại màn hình chào mừng khi kết nối thất bại
+</Update>
+
+<Update label="9 tháng 3, 2026" description="v0.16.0">
+  ### Tính năng mới
+
+  - **Hệ thống Plugin**: Tất cả 8 trình điều khiển cơ sở dữ liệu và 5 định dạng xuất được tách thành gói `.tableplugin` tải lúc chạy — hỗ trợ plugin bên thứ ba
+  - **Chợ Plugin**: Duyệt, tìm kiếm và cài đặt plugin từ registry trên GitHub với xác minh checksum
+  - **Cài đặt > Plugin**: Quản lý plugin đã cài — bật/tắt, cài từ tập tin hoặc chợ, xem chi tiết
+  - **Hỗ trợ ClickHouse**: Truy vấn cơ sở dữ liệu ClickHouse với theo dõi tiến độ, EXPLAIN variants, TLS/HTTPS, huỷ phía server và xem Parts
+  - **Lệnh khởi động**: Chạy SQL tuỳ chỉnh sau khi kết nối (ví dụ `SET time_zone`) qua Connection > Advanced
+  - **Bản địa hoá Tiếng Trung Giản thể**: Dịch toàn bộ giao diện ứng dụng sang zh-Hans
+
+  ### Cải tiến
+
+  - Giảm bộ nhớ ~80-130 MB mỗi kết nối: loại bỏ driver ping riêng, tải plugin lười, loại bỏ trùng lặp RowBuffer, gộp metadata driver
+  - Gộp NSEvent monitor theo editor thành singleton chia sẻ (O(n) thành O(1) mỗi sự kiện)
+  - Tổ chức lại dự án thành thư mục con theo miền
+
+  ### Sửa lỗi
+
+  - Sửa lỗi đường phân cách inspector tràn vào vùng toolbar với màu kết nối mặc định
+  - Sửa lỗi nút bật/tắt inspector bị lag do ghi UserDefaults đồng bộ trong animation
+</Update>
+
+<Update label="8 tháng 3, 2026" description="v0.15.0">
+  ### Tính năng mới
+
+  - **Hỗ trợ Oracle Database**: Kết nối đến cơ sở dữ liệu Oracle qua OCI (Oracle Call Interface)
+  - **URL Scheme cho cơ sở dữ liệu**: Mở kết nối trực tiếp từ terminal với `open "mysql://user@host/db" -a TablePro` — hỗ trợ MySQL, PostgreSQL, SQLite, MongoDB, Redis, MSSQL và Oracle
+  - **Xác thực SSH Agent**: Sử dụng SSH Agent để xác thực tunnel, tương thích với 1Password SSH Agent, Secretive và ssh-agent
+  - **SSH đa bước nhảy**: Chuỗi nhiều bước nhảy SSH (ProxyJump) để kết nối đến cơ sở dữ liệu qua các bastion host — cấu hình jump host trong biểu mẫu kết nối hoặc nhập từ `~/.ssh/config`
+
+  ### Cải tiến
+
+  - Giảm ~55% kích thước ứng dụng bằng cách thay thế CodeEditLanguages xcframework (38 grammar) bằng package cục bộ chỉ biên dịch SQL, Bash và JavaScript
+
+  ### Sửa lỗi
+
+  - Sửa lỗi rò rỉ bộ nhớ khi đối tượng trạng thái phiên được tạo lại mỗi lần mở tab, gây sử dụng 785MB ở 5 tab
+  - Sửa lỗi cấp phát field editor cho từng ô trong DataGrid tạo 180+ NSTextView thay vì dùng chung một
+  - Sửa lỗi NSEvent monitor không được gỡ trên tất cả đường đóng popover trong connection switcher
+  - Sửa lỗi race condition trong FreeTDS `disconnect()` khi `dbproc` được đặt nil mà không giữ lock
+  - Sửa lỗi JSON encoding và file I/O chặn main thread trong TabStateStorage
+  - Sửa lỗi MySQL/MariaDB nhận `BEGIN` thay vì `START TRANSACTION` trong thao tác bảng
+  - Sửa lỗi port bị reset về giá trị mặc định khi chỉnh sửa kết nối có port tùy chỉnh
+  - Sửa lỗi data race trong `MainContentCoordinator`, `LibPQConnection` và `VimKeyInterceptor`
+  - Sửa lỗi script SSH askpass được ghi với quyền đọc toàn cục
+  - Sửa lỗi màn hình chào hiển thị panel trống khi kết nối có group ID mồ côi
+  - Sửa lỗi nhiều tab tự động thực thi truy vấn đồng thời khi khôi phục kết nối
+  - Sửa lỗi identifier không được escape trong MySQL `SHOW CREATE TABLE` cho phép SQL injection qua tên bảng
+  - Sửa lỗi `QueryResultRow` equality bỏ qua giá trị ô, ngăn SwiftUI render lại hàng đã cập nhật
+  - Sửa lỗi `Cmd+Delete` trong tìm kiếm sidebar xóa nội dung query editor
+</Update>
+
+<Update label="6 tháng 3, 2026" description="v0.14.1">
+  ### Tính năng mới
+
+  - **Chuyển đổi database và schema PostgreSQL**: Chuyển đổi database và schema cho kết nối PostgreSQL qua ⌘K
+</Update>
+
 <Update label="5 tháng 3, 2026" description="v0.14.0">
   ### Tính năng mới
 
@@ -41,7 +230,7 @@ rss: true
   - **Deep Link**: Mở kết nối, bảng, truy vấn và nhập kết nối qua URL `tablepro://`
   - **Sao chép dưới dạng URL**: Nhấp chuột phải vào kết nối để sao chép chi tiết dưới dạng chuỗi kết nối (ví dụ: `mysql://user:pass@host/db`)
   - **Tự động hiện Inspector**: Tự động mở thanh bên phải khi chọn một hàng (Cài đặt > Data Grid)
-  - **Homebrew Cask**: Cài đặt qua `brew install datlechin/tap/tablepro`
+  - **Homebrew Cask**: Cài đặt qua `brew install --cask tablepro`
 
   ### Cải tiến
 

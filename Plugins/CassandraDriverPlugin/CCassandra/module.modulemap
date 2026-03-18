@@ -1,0 +1,4 @@
+module CCassandra [system] {
+    header "CCassandra.h"
+    export *
+}

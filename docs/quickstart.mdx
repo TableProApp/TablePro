@@ -1,22 +1,22 @@
 ---
 title: Quick Start
-description: Get up and running with TablePro in minutes
+description: Download TablePro, install it, and connect to your first database in under 5 minutes
 ---
 
 # Quick Start Guide
 
-This guide will help you download TablePro, install it, and connect to your first database.
+Download, install, and run your first query.
 
 ## Step 1: Download TablePro
 
 The fastest way is via [Homebrew](https://brew.sh):
 
 ```bash
-brew install datlechin/tap/tablepro
+brew install --cask tablepro
 ```
 
 <Tip>
-If you installed via Homebrew, skip to [Step 3](#step-3-create-your-first-connection). The cask formula handles installation and removes the macOS quarantine attribute automatically.
+If you installed via Homebrew, skip to [Step 3](#step-3-create-your-first-connection).
 </Tip>
 
 Alternatively, download manually:
@@ -39,31 +39,21 @@ Not sure which chip your Mac has? Click the Apple menu and select **About This M
 
 {/* Screenshot: DMG installation window showing drag to Applications */}
 <Frame caption="Drag TablePro to Applications">
-  <img 
-    className="block dark:hidden" 
-    src="/images/install-dmg.png" 
-    alt="Installation dialog" 
+  <img
+    className="block dark:hidden"
+    src="/images/install-dmg.png"
+    alt="Installation dialog"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/install-dmg-dark.png" 
-    alt="Installation dialog" 
+  <img
+    className="hidden dark:block"
+    src="/images/install-dmg-dark.png"
+    alt="Installation dialog"
   />
 </Frame>
 
-<Warning>
-On first launch, macOS will show a **"TablePro is damaged and can't be opened"** error because TablePro is not signed with an Apple Developer certificate. To fix this, open **Terminal** and run:
-
-```bash
-xattr -cr /Applications/TablePro.app
-```
-
-Then open TablePro again. You only need to do this once. See the [Installation guide](/installation#first-launch-security) for more details.
-</Warning>
-
 ## Step 3: Create Your First Connection
 
-When TablePro launches, you'll see the Welcome screen. Let's create a new database connection.
+The Welcome screen appears on launch. Create a new database connection from here.
 
 ### For MySQL/MariaDB
 
@@ -79,15 +69,15 @@ When TablePro launches, you'll see the Welcome screen. Let's create a new databa
 
 {/* Screenshot: Connection form with MySQL selected and fields filled in */}
 <Frame caption="Creating a MySQL connection">
-  <img 
-    className="block dark:hidden" 
-    src="/images/mysql-connection.png" 
-    alt="MySQL connection form" 
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-connection.png"
+    alt="MySQL connection form"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/mysql-connection-dark.png" 
-    alt="MySQL connection form" 
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-connection-dark.png"
+    alt="MySQL connection form"
   />
 </Frame>
 
@@ -123,7 +113,7 @@ When TablePro launches, you'll see the Welcome screen. Let's create a new databa
 4. Give your connection a name
 
 <Tip>
-SQLite databases don't require authentication - just select the `.sqlite` or `.db` file on your Mac.
+SQLite databases don't require authentication. Just select the `.sqlite` or `.db` file on your Mac.
 </Tip>
 
 ### For MongoDB
@@ -140,32 +130,32 @@ SQLite databases don't require authentication - just select the `.sqlite` or `.d
    - **Auth Database**: Authentication database (defaults to `admin`)
 
 <Tip>
-For local MongoDB instances without authentication, you only need the host and port. MongoDB connections use the `mongodb://` URI protocol internally.
+For local MongoDB instances without authentication, you only need the host and port. Connections use the `mongodb://` URI protocol internally.
 </Tip>
 
 ## Step 4: Test and Connect
 
 1. Click **Test Connection** to verify your settings
-2. If successful, you'll see a green checkmark
-3. Click **Create** to save the connection and connect
+2. A green checkmark confirms the connection works
+3. Click **Create** to save and connect
 
 {/* Screenshot: Successful connection test showing green checkmark */}
 <Frame caption="Successful connection test">
-  <img 
-    className="block dark:hidden" 
-    src="/images/connection-test.png" 
-    alt="Connection test success" 
+  <img
+    className="block dark:hidden"
+    src="/images/connection-test.png"
+    alt="Connection test success"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/connection-test-dark.png" 
-    alt="Connection test success" 
+  <img
+    className="hidden dark:block"
+    src="/images/connection-test-dark.png"
+    alt="Connection test success"
   />
 </Frame>
 
 ## Step 5: Explore Your Database
 
-Once connected, you'll see the main interface with:
+The main interface has three panels:
 
 - **Sidebar**: Your databases and tables
 - **SQL Editor**: Write and execute SQL queries
@@ -173,15 +163,15 @@ Once connected, you'll see the main interface with:
 
 {/* Screenshot: Main interface after connecting, showing sidebar with tables */}
 <Frame caption="TablePro main interface">
-  <img 
-    className="block dark:hidden" 
-    src="/images/main-interface.png" 
-    alt="Main interface" 
+  <img
+    className="block dark:hidden"
+    src="/images/main-interface.png"
+    alt="Main interface"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/main-interface-dark.png" 
-    alt="Main interface" 
+  <img
+    className="hidden dark:block"
+    src="/images/main-interface-dark.png"
+    alt="Main interface"
   />
 </Frame>
 
@@ -199,30 +189,30 @@ SELECT * FROM users LIMIT 10;
 
 ## Next Steps
 
-Congratulations! You've successfully set up TablePro. Here's what to explore next:
+You're all set. Here's what to explore next:
 
 <CardGroup cols={2}>
   <Card title="Database Connections" icon="plug" href="/databases/overview">
-    Learn more about managing and organizing your connections.
+    Manage and organize your connections.
   </Card>
   <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the SQL editor with syntax highlighting and autocomplete.
+    Syntax highlighting, autocomplete, and multi-cursor editing.
   </Card>
   <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote databases through SSH.
+    Connect to remote databases through SSH.
   </Card>
   <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
     Speed up your workflow with keyboard shortcuts.
   </Card>
   <Card title="AI SQL Assistant" icon="sparkles" href="/features/ai-chat">
-    Use AI to write, explain, and optimize SQL queries.
+    Write, explain, and optimize SQL with AI.
   </Card>
 </CardGroup>
 
 ## Need Help?
 
-If you encounter any issues:
+If you run into issues:
 
-- Check the [Installation guide](/installation) for detailed system requirements
+- Check the [Installation guide](/installation) for system requirements and troubleshooting
 - Review the database-specific guides for connection troubleshooting
 - [Open an issue](https://github.com/datlechin/tablepro/issues) on GitHub

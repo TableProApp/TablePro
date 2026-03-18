@@ -1,0 +1,356 @@
+---
+title: Cassandra / ScyllaDB
+description: 连接 Cassandra 和 ScyllaDB 集群，浏览 keyspace，执行 CQL 查询
+---
+
+# Cassandra / ScyllaDB 连接
+
+TablePro 通过 CQL 原生协议支持 Apache Cassandra 3.11+ 和 ScyllaDB 4.0+。浏览 keyspace、查看表结构、查看物化视图，并在编辑器中执行 CQL 查询。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 Cassandra 或 ScyllaDB">
+    从数据库类型选择器中选择 **Cassandra** 或 **ScyllaDB**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password 和 keyspace
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | Contact point 主机名或 IP | `localhost` |
+| **Port** | CQL 原生传输端口 | `9042` |
+
+### 可选字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Username** | 认证用户名 |
+| **Password** | 认证密码 |
+| **Keyspace** | 连接后使用的默认 keyspace |
+
+<Tip>
+本地 Cassandra 安装通常未启用认证。本地开发时可以留空 username 和 password。
+</Tip>
+
+## 连接 URL 格式
+
+使用 Cassandra 或 ScyllaDB URL 导入连接。
+
+参阅 [连接 URL 参考](/zh/databases/connection-urls#cassandra--scylladb) 了解完整的 URL 格式。
+
+## 配置示例
+
+### 本地开发服务器
+
+```text
+Name:     Local Cassandra
+Host:     localhost
+Port:     9042
+Username: （留空）
+Password: （留空）
+Keyspace: my_keyspace
+```
+
+### Docker Cassandra 容器
+
+```text
+Name:     Docker Cassandra
+Host:     localhost
+Port:     9042（或你映射的端口）
+Username: cassandra
+Password: cassandra
+Keyspace: （留空）
+```
+
+### DataStax Astra DB（云）
+
+```text
+Name:     Astra DB
+Host:     <your-cluster-id>-<region>.apps.astra.datastax.com
+Port:     29042
+Username: （来自 token 的 Client ID）
+Password: （来自 token 的 Client Secret）
+Keyspace: my_keyspace
+```
+
+<Note>
+Astra DB 需要 Secure Connect Bundle 进行 TLS 连接。从 Astra 控制面板下载 bundle 并在 SSL/TLS 部分配置。
+</Note>
+
+### 远程服务器
+
+```text
+Name:     Production Cassandra
+Host:     cassandra.example.com
+Port:     9042
+Username: app_user
+Password: （安全密码）
+Keyspace: production
+```
+
+<Warning>
+对于生产环境的 Cassandra 集群，建议使用 [SSH tunneling](/zh/databases/ssh-tunneling) 进行安全连接。
+</Warning>
+
+## SSL/TLS 连接
+
+在连接表单的 **SSL/TLS** 部分配置 SSL。
+
+| SSL 模式 | 描述 |
+|----------|-------------|
+| **Disabled** | 不使用 SSL 加密 |
+| **Required** | 要求 SSL 加密 |
+| **Verify CA** | 要求 SSL 并验证服务器证书是否由 CA 签发 |
+
+对于 **Verify CA** 模式，需要提供 CA 证书文件路径。也可以提供可选的客户端证书和密钥文件以实现 mutual TLS。
+
+<Note>
+如果不想配置 SSL 证书，[SSH tunneling](/zh/databases/ssh-tunneling) 可以通过 SSH tunnel 加密所有流量。
+</Note>
+
+## SSH Tunnel 支持
+
+通过 SSH tunnel 连接 Cassandra 以安全访问远程集群。设置方法请参阅 [SSH Tunneling](/zh/databases/ssh-tunneling)。
+
+## 功能
+
+### Keyspace 浏览
+
+连接后，侧栏会列出所有 keyspace。展开 keyspace 可以查看其表、物化视图、用户自定义类型（UDT）和二级索引。
+
+1. 点击侧栏中的连接名称
+2. 展开 keyspace 查看其对象
+3. 点击表查看数据
+
+### 表结构
+
+查看任意表的完整 schema：
+
+- **列**：名称、CQL 类型、聚簇排序
+- **分区键**：决定数据分布的列
+- **聚簇列**：决定分区内行排序的列
+- **二级索引**：索引名称、目标列、索引类
+- **表选项**：压缩策略、压缩方式、TTL 默认值、gc_grace_seconds
+
+### 物化视图
+
+在侧栏中可以与表一起浏览物化视图。查看视图定义、基表和列映射。
+
+### 数据网格
+
+带分页的表数据浏览。单元格值以 CQL 类型感知的格式显示：
+
+- **text/varchar** 值显示为纯文本
+- **int/bigint/varint** 显示为数字
+- **uuid/timeuuid** 显示为格式化的 UUID
+- **timestamp** 值以可配置的日期格式显示
+- **map/set/list/tuple** 显示为格式化的集合
+- **blob** 值显示为十六进制
+
+### CQL 编辑器
+
+在编辑器标签页中直接执行 CQL 语句：
+
+```sql
+-- 使用分区键限制查询
+SELECT * FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- 插入数据
+INSERT INTO users (user_id, name, email, created_at)
+VALUES (uuid(), 'Alice', 'alice@example.com', toTimestamp(now()));
+
+-- 带 TTL 的更新
+UPDATE users USING TTL 86400
+SET email = 'new@example.com'
+WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- 删除
+DELETE FROM users WHERE user_id = 123e4567-e89b-12d3-a456-426614174000;
+
+-- 创建表
+CREATE TABLE IF NOT EXISTS events (
+    event_id timeuuid,
+    user_id uuid,
+    event_type text,
+    payload text,
+    PRIMARY KEY ((user_id), event_id)
+) WITH CLUSTERING ORDER BY (event_id DESC);
+
+-- 创建索引
+CREATE INDEX ON users (email);
+
+-- 描述表
+DESCRIBE TABLE users;
+```
+
+## CQL 特殊说明
+
+Cassandra Query Language (CQL) 看起来像 SQL，但有重要区别：
+
+### 不支持 JOIN
+CQL 不支持 JOIN 操作。请围绕查询模式设计数据模型，按需在多个表中反规范化数据。
+
+### 不支持子查询
+
+CQL 不支持子查询。将复杂查询拆分为多条顺序执行的语句。
+
+### 分区键限制
+
+每个 SELECT 查询的 WHERE 子句中必须包含完整的分区键，除非使用 `ALLOW FILTERING`（这会扫描整个集群，在生产环境中应避免使用）。
+
+```sql
+-- 正确：包含分区键
+SELECT * FROM orders WHERE customer_id = 42;
+
+-- 错误：缺少分区键，需要 ALLOW FILTERING
+SELECT * FROM orders WHERE total > 100 ALLOW FILTERING;
+```
+
+### ALLOW FILTERING
+
+`ALLOW FILTERING` 子句会强制执行全集群扫描。它适用于开发和小型数据集，但在生产集群上会导致超时和性能问题。当查询包含 `ALLOW FILTERING` 时，TablePro 会显示警告。
+
+### 轻量级事务
+
+Cassandra 支持使用 `IF` 子句的条件写入（轻量级事务 / compare-and-set）：
+
+```sql
+INSERT INTO users (user_id, email) VALUES (uuid(), 'alice@example.com') IF NOT EXISTS;
+UPDATE users SET email = 'new@example.com' WHERE user_id = ? IF email = 'old@example.com';
+```
+
+### TTL 和 Writetime
+
+设置每行或每列的 TTL（生存时间），单位为秒：
+
+```sql
+INSERT INTO cache (key, value) VALUES ('k1', 'v1') USING TTL 3600;
+SELECT TTL(value), WRITETIME(value) FROM cache WHERE key = 'k1';
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或超时
+
+**原因及解决方案**：
+
+1. **Cassandra 未运行**
+   ```bash
+   # 检查 Cassandra 是否运行
+   nodetool status
+
+   # 启动 Cassandra（macOS Homebrew）
+   brew services start cassandra
+
+   # 启动 Cassandra（Docker）
+   docker run -d -p 9042:9042 cassandra:latest
+   ```
+
+2. **端口错误**
+   - 检查 `cassandra.yaml` 中的 `native_transport_port`
+   - 默认 CQL 端口是 `9042`，不是 `9160`（Thrift，已废弃）
+
+3. **Cassandra 未监听预期地址**
+   - 检查 `cassandra.yaml` 中的 `rpc_address` 和 `listen_address`
+   - 对于远程连接，将 `rpc_address` 设为 `0.0.0.0`
+
+### 认证失败
+
+**症状**："Provided username and/or password are incorrect"
+
+**解决方案**：
+
+1. 验证凭据是否匹配 Cassandra 中配置的角色
+2. 检查认证是否已启用：
+   ```yaml
+   # cassandra.yaml
+   authenticator: PasswordAuthenticator
+   ```
+3. 默认超级用户为 `cassandra` / `cassandra`（生产环境中请更改）
+
+### 连接超时
+
+**症状**：连接挂起或超时
+
+**解决方案**：
+
+1. 验证 host 和 port 是否正确
+2. 检查网络连通性和防火墙规则（端口 9042）
+3. 对于云托管的 Cassandra，确保你的 IP 已加入白名单
+4. 在 Advanced 标签页中增加连接超时时间
+
+### 读取超时
+
+**症状**："Read timed out"
+
+**解决方案**：
+
+1. 在 WHERE 子句中添加完整的分区键
+2. 移除 `ALLOW FILTERING` 并重新设计查询
+3. 使用 `nodetool status` 检查集群健康状况
+4. 使用 `LIMIT` 限制结果集大小
+
+## 已知限制
+
+- **多数据中心**：尚不支持连接到特定数据中心。TablePro 连接到 contact point 解析到的节点。
+- **User-Defined Functions (UDFs)**：UDF 和 UDA 不会显示在侧栏中，但可以在 CQL 查询中使用。
+- **BATCH 语句**：在 CQL 编辑器中支持，但不会由变更跟踪系统生成。
+- **Counter 表**：counter 列在数据网格中为只读。使用 CQL 编辑器更新 counter。
+- **大分区**：包含数百万行的分区会自动分页以防止内存问题。
+
+## 性能建议
+
+### 查询性能
+
+对于大数据集的 Cassandra 集群：
+
+1. 始终在 WHERE 子句中包含分区键
+2. 在生产环境中避免使用 `ALLOW FILTERING`
+3. 使用 `LIMIT` 限制结果集大小
+4. 使用 `TOKEN()` 进行跨分区的范围扫描
+
+### 监控
+
+检查集群健康状况和性能：
+
+```sql
+-- 检查集群状态（通过 nodetool，非 CQL）
+-- nodetool status
+-- nodetool info
+
+-- 检查表统计信息
+SELECT * FROM system.size_estimates WHERE keyspace_name = 'my_keyspace';
+```
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 Cassandra 集群
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握查询编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 Cassandra 数据
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    在数据网格中浏览和编辑数据
+  </Card>
+</CardGroup>

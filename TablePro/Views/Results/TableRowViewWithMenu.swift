@@ -33,9 +33,79 @@ final class TableRowViewWithMenu: NSTableRowView {
             ).target = self
         }
 
-        // Normal row menu (or additional items for inserted rows)
         if !coordinator.changeManager.isRowDeleted(rowIndex) {
-            // Edit actions (if editable)
+            // Copy
+            let copyItem = NSMenuItem(
+                title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "c")
+            copyItem.keyEquivalentModifierMask = .command
+            copyItem.target = self
+            menu.addItem(copyItem)
+
+            // "Copy as" submenu — always includes Cell Value + With Headers, conditionally adds SQL statements
+            let copyAsMenu = NSMenu()
+
+            if dataColumnIndex >= 0 {
+                let copyCellItem = NSMenuItem(
+                    title: String(localized: "Cell Value"), action: #selector(copyCellValue(_:)),
+                    keyEquivalent: "")
+                copyCellItem.representedObject = dataColumnIndex
+                copyCellItem.target = self
+                copyAsMenu.addItem(copyCellItem)
+            }
+
+            let copyWithHeadersItem = NSMenuItem(
+                title: String(localized: "With Headers"),
+                action: #selector(copySelectedOrCurrentRowWithHeaders),
+                keyEquivalent: "c")
+            copyWithHeadersItem.keyEquivalentModifierMask = [.command, .shift]
+            copyWithHeadersItem.target = self
+            copyAsMenu.addItem(copyWithHeadersItem)
+
+            let jsonItem = NSMenuItem(
+                title: String(localized: "JSON"),
+                action: #selector(copyAsJson),
+                keyEquivalent: "")
+            jsonItem.target = self
+            copyAsMenu.addItem(jsonItem)
+
+            if let dbType = coordinator.databaseType,
+               dbType != .mongodb && dbType != .redis,
+               coordinator.tableName != nil {
+                copyAsMenu.addItem(NSMenuItem.separator())
+
+                let insertItem = NSMenuItem(
+                    title: String(localized: "INSERT Statement(s)"),
+                    action: #selector(copyAsInsert),
+                    keyEquivalent: "")
+                insertItem.target = self
+                copyAsMenu.addItem(insertItem)
+
+                let updateItem = NSMenuItem(
+                    title: String(localized: "UPDATE Statement(s)"),
+                    action: #selector(copyAsUpdate),
+                    keyEquivalent: "")
+                updateItem.target = self
+                copyAsMenu.addItem(updateItem)
+            }
+
+            let copyAsItem = NSMenuItem(title: String(localized: "Copy as"), action: nil, keyEquivalent: "")
+            copyAsItem.submenu = copyAsMenu
+            menu.addItem(copyAsItem)
+
+            // Paste
+            if coordinator.isEditable {
+                let pasteItem = NSMenuItem(
+                    title: String(localized: "Paste"), action: #selector(pasteRows), keyEquivalent: "v")
+                pasteItem.keyEquivalentModifierMask = .command
+                pasteItem.target = self
+                menu.addItem(pasteItem)
+            }
+
+            if coordinator.isEditable {
+                menu.addItem(NSMenuItem.separator())
+            }
+
+            // Set Value (editable + column clicked)
             if coordinator.isEditable && dataColumnIndex >= 0 {
                 let setValueMenu = NSMenu()
 
@@ -60,43 +130,10 @@ final class TableRowViewWithMenu: NSTableRowView {
                 let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
                 setValueItem.submenu = setValueMenu
                 menu.addItem(setValueItem)
-
-                menu.addItem(NSMenuItem.separator())
             }
 
-            // Copy actions
-            if dataColumnIndex >= 0 {
-                let copyCellItem = NSMenuItem(
-                    title: String(localized: "Copy Cell Value"), action: #selector(copyCellValue(_:)),
-                    keyEquivalent: "")
-                copyCellItem.representedObject = dataColumnIndex
-                copyCellItem.target = self
-                menu.addItem(copyCellItem)
-            }
-
-            let copyItem = NSMenuItem(
-                title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "c")
-            copyItem.keyEquivalentModifierMask = .command
-            copyItem.target = self
-            menu.addItem(copyItem)
-
-            let copyWithHeadersItem = NSMenuItem(
-                title: String(localized: "Copy with Headers"),
-                action: #selector(copySelectedOrCurrentRowWithHeaders),
-                keyEquivalent: "c")
-            copyWithHeadersItem.keyEquivalentModifierMask = [.command, .shift]
-            copyWithHeadersItem.target = self
-            menu.addItem(copyWithHeadersItem)
-
+            // Duplicate & Delete
             if coordinator.isEditable {
-                let pasteItem = NSMenuItem(
-                    title: String(localized: "Paste"), action: #selector(pasteRows), keyEquivalent: "v")
-                pasteItem.keyEquivalentModifierMask = .command
-                pasteItem.target = self
-                menu.addItem(pasteItem)
-
-                menu.addItem(NSMenuItem.separator())
-
                 let duplicateItem = NSMenuItem(
                     title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "d")
                 duplicateItem.keyEquivalentModifierMask = .command
@@ -193,5 +230,29 @@ final class TableRowViewWithMenu: NSTableRowView {
     @objc private func setDefaultValue(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
         coordinator?.setCellValueAtColumn("__DEFAULT__", at: rowIndex, columnIndex: columnIndex)
+    }
+
+    @objc private func copyAsInsert() {
+        guard let coordinator else { return }
+        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
+            ? coordinator.selectedRowIndices
+            : [rowIndex]
+        coordinator.copyRowsAsInsert(at: indices)
+    }
+
+    @objc private func copyAsUpdate() {
+        guard let coordinator else { return }
+        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
+            ? coordinator.selectedRowIndices
+            : [rowIndex]
+        coordinator.copyRowsAsUpdate(at: indices)
+    }
+
+    @objc private func copyAsJson() {
+        guard let coordinator else { return }
+        let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
+            ? coordinator.selectedRowIndices
+            : [rowIndex]
+        coordinator.copyRowsAsJson(at: indices)
     }
 }

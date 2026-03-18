@@ -1,0 +1,303 @@
+---
+title: Oracle Database
+description: 使用 TablePro 连接 Oracle Database
+---
+
+# Oracle Database 连接
+
+TablePro 通过 Oracle Call Interface（OCI）支持 Oracle Database 12c 及更高版本。涵盖本地部署、Docker 和 Oracle Cloud 上的 Oracle Database 实例。
+
+<Warning>
+连接 Oracle Database 之前必须安装 Oracle Instant Client。从 [Oracle 官网](https://www.oracle.com/database/technologies/instant-client.html) 下载并确保库文件可被访问。
+</Warning>
+
+## 安装插件
+
+Oracle 驱动以可下载插件的形式提供。当你在连接表单中选择 Oracle 时，TablePro 会提示你自动安装。你也可以手动安装：
+
+1. 打开 **Settings** > **Plugins** > **Browse**
+2. 找到 **Oracle Driver** 并点击 **Install**
+3. 插件会立即下载和加载，无需重启
+
+## 快速设置
+
+<Steps>
+  <Step title="安装 Oracle Instant Client">
+    下载并安装适用于 macOS 的 Oracle Instant Client Basic 包
+  </Step>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 Oracle">
+    从数据库类型选择器中选择 **Oracle**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password 和 service name
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP 地址 | `localhost` |
+| **Port** | Oracle listener 端口 | `1521` |
+| **Username** | Oracle 用户名 | - |
+| **Password** | 用户密码 | - |
+| **Service Name** | Oracle service name（如 `ORCL`、`XEPDB1`） | - |
+
+<Note>
+TablePro 使用 Oracle service name 连接，而非 SID。如果你有 SID，请查看 `tnsnames.ora` 获取对应的 service name，或者直接用 SID 作为 service name（在大多数配置下可行）。
+</Note>
+
+## 配置示例
+
+### 本地开发（Oracle XE）
+
+```
+Name:         Local Oracle XE
+Host:         localhost
+Port:         1521
+Username:     system
+Password:     （你的密码）
+Service Name: XEPDB1
+```
+
+### Docker Oracle 容器
+
+启动一个 Oracle XE 21c 容器用于本地测试：
+
+```bash
+docker run \
+  -e ORACLE_PASSWORD=YourStrong@Passw0rd \
+  -p 1521:1521 \
+  --name oracle-xe \
+  -d gvenzl/oracle-xe:21-slim
+```
+
+然后用以下信息连接：
+
+```
+Name:         Docker Oracle XE
+Host:         localhost
+Port:         1521
+Username:     system
+Password:     YourStrong@Passw0rd
+Service Name: XEPDB1
+```
+
+<Tip>
+`gvenzl/oracle-xe` Docker 镜像是社区维护的轻量级 Oracle XE 镜像，非常适合本地开发和测试。
+</Tip>
+
+### 远程服务器
+
+```
+Name:         Production Oracle
+Host:         oracle.example.com
+Port:         1521
+Username:     app_user
+Password:     （安全密码）
+Service Name: PRODDB
+```
+
+### Oracle Cloud（Autonomous Database）
+
+```
+Name:         Oracle Cloud ADB
+Host:         adb.region.oraclecloud.com
+Port:         1522
+Username:     ADMIN
+Password:     （你的密码）
+Service Name: mydb_tp
+```
+
+<Note>
+Oracle Autonomous Database 默认使用 1522 端口并要求 TLS。从 Oracle Cloud Console 下载 wallet 用于 mTLS 连接。
+</Note>
+
+## 功能
+
+### Schema 选择
+
+Oracle 将对象组织到 schema 中，每个 schema 对应一个数据库用户。TablePro 列出所有可访问的 schema 及其对象。
+
+使用数据库切换器（**Cmd+K**）切换 schema，它会显示当前连接可用的 schema。
+
+### 表浏览
+
+每个表显示以下内容：
+
+- **Structure**：列及其 Oracle 数据类型、可空性和默认值
+- **Indexes**：B-tree 和 bitmap 索引
+- **Foreign Keys**：与其他表的关系
+- **DDL**：通过 DBMS_METADATA 生成的表定义
+
+### 查询编辑器
+
+在编辑器中编写和执行 SQL 及 PL/SQL。分页使用 Oracle 12c 的行限制语法：
+
+```sql
+-- 分页结果
+SELECT *
+FROM hr.employees
+ORDER BY employee_id
+OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY;
+
+-- 近似行数（快速，使用统计信息）
+SELECT num_rows
+FROM all_tables
+WHERE owner = 'HR' AND table_name = 'EMPLOYEES';
+
+-- 查看视图定义
+SELECT text
+FROM all_views
+WHERE owner = 'HR' AND view_name = 'EMP_DETAILS';
+
+-- 列出当前 schema 中的所有表
+SELECT table_name
+FROM user_tables
+ORDER BY table_name;
+```
+
+### Schema 编辑
+
+通过 ALTER TABLE 语句修改表结构。Oracle 使用双引号表示大小写敏感的标识符：
+
+```sql
+-- 添加列
+ALTER TABLE "HR"."EMPLOYEES" ADD ("LAST_LOGIN" TIMESTAMP);
+
+-- 重命名列
+ALTER TABLE "HR"."EMPLOYEES" RENAME COLUMN "OLD_NAME" TO "NEW_NAME";
+
+-- 修改列
+ALTER TABLE "HR"."EMPLOYEES" MODIFY ("SALARY" NUMBER(12,2));
+
+-- 删除列
+ALTER TABLE "HR"."EMPLOYEES" DROP COLUMN "LEGACY_FIELD";
+
+-- 添加索引
+CREATE INDEX "IX_EMP_EMAIL" ON "HR"."EMPLOYEES" ("EMAIL");
+```
+
+### 外键
+
+TablePro 在表结构视图中显示外键关系。手动查看外键：
+
+```sql
+SELECT
+    c.constraint_name,
+    cc.column_name,
+    r.table_name AS referenced_table,
+    rc.column_name AS referenced_column
+FROM all_constraints c
+JOIN all_cons_columns cc
+    ON c.constraint_name = cc.constraint_name AND c.owner = cc.owner
+JOIN all_constraints r
+    ON c.r_constraint_name = r.constraint_name AND c.r_owner = r.owner
+JOIN all_cons_columns rc
+    ON r.constraint_name = rc.constraint_name AND r.owner = rc.owner
+WHERE c.constraint_type = 'R'
+    AND c.owner = 'HR'
+ORDER BY c.constraint_name;
+```
+
+## 认证
+
+TablePro 使用 Oracle 数据库认证（username 和 password）。不支持 OS 认证和基于 wallet 的认证。
+
+创建 Oracle 用户：
+
+```sql
+-- 创建用户（schema）
+CREATE USER app_user IDENTIFIED BY "StrongPassword1!";
+
+-- 授予基本权限
+GRANT CREATE SESSION TO app_user;
+GRANT SELECT ANY TABLE TO app_user;
+GRANT INSERT ANY TABLE TO app_user;
+GRANT UPDATE ANY TABLE TO app_user;
+GRANT DELETE ANY TABLE TO app_user;
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Unable to connect" 或超时
+
+**原因及解决方案**：
+
+1. **Oracle listener 未运行**
+
+   检查并启动 listener：
+   ```bash
+   lsnrctl status
+   lsnrctl start
+   ```
+
+2. **1521 端口被防火墙阻止**
+   - 检查 TCP 端口 1521 的防火墙规则
+   - 对于云 VM，验证安全组设置
+
+3. **Docker 容器未启动**
+   ```bash
+   docker start oracle-xe
+   docker logs oracle-xe
+   ```
+
+### Service Name 无效
+
+**症状**："ORA-12514: TNS:listener does not currently know of service requested"
+
+**解决方案**：
+
+1. 验证 service name：
+   ```sql
+   SELECT value FROM v$parameter WHERE name = 'service_names';
+   ```
+2. 检查 listener 上已注册的服务：
+   ```bash
+   lsnrctl services
+   ```
+
+### 未找到 Oracle Instant Client
+
+**症状**："Oracle Instant Client not found" 或库加载错误
+
+**解决方案**：安装 Oracle Instant Client：
+
+1. 从 [Oracle Instant Client](https://www.oracle.com/database/technologies/instant-client.html) 下载 Basic 包
+2. 解压到某个目录（如 `/usr/local/oracle/instantclient`）
+3. 设置 `DYLD_LIBRARY_PATH` 或将库文件复制到系统路径
+
+## 已知限制
+
+- **不支持 OS 认证。** 仅 username/password 认证可用。
+- **不支持基于 wallet 的认证**（Oracle Cloud 的 mTLS）。
+- **LONG 和 LONG RAW 列**（已弃用）编辑支持有限。在新的 schema 中请使用 CLOB 和 BLOB。
+- **PL/SQL 执行** 仅限于单个匿名块。包/过程的创建应使用查询编辑器。
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 Oracle 实例
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握 SQL 编辑器功能
+  </Card>
+  <Card title="变更追踪" icon="pen" href="/zh/features/change-tracking">
+    编辑行并通过 SQL 预览保存更改
+  </Card>
+  <Card title="表结构" icon="table" href="/zh/features/table-structure">
+    查看和修改表结构
+  </Card>
+</CardGroup>

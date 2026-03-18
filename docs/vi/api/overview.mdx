@@ -1,11 +1,9 @@
 ---
 title: Tổng quan
-description: API Giấy phép TablePro quản lý việc kích hoạt, xác thực và hủy kích hoạt giấy phép cho ứng dụng TablePro trên macOS.
+description: REST API kích hoạt, xác thực và hủy kích hoạt giấy phép với chữ ký RSA-SHA256
 ---
 
 ## URL Cơ sở
-
-Tất cả yêu cầu API được gửi đến URL cơ sở sau:
 
 ```
 https://api.tablepro.app/v1
@@ -13,7 +11,7 @@ https://api.tablepro.app/v1
 
 ## Endpoints
 
-API cung cấp ba endpoint để quản lý vòng đời giấy phép:
+Ba endpoint quản lý vòng đời giấy phép:
 
 | Phương thức | Endpoint | Mô tả |
 | ----------- | -------- | ----- |
@@ -23,14 +21,14 @@ API cung cấp ba endpoint để quản lý vòng đời giấy phép:
 
 ## Định dạng Yêu cầu
 
-Tất cả yêu cầu phải được gửi dưới dạng JSON với header `Content-Type: application/json`.
+Tất cả yêu cầu phải là JSON với header `Content-Type: application/json`.
 
 ### Tham số Chung
 
 | Tham số | Kiểu | Mô tả |
 | ------- | ---- | ----- |
-| `license_key` | `string` | Khóa giấy phép theo định dạng `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX` (chữ và số) |
-| `machine_id` | `string` | Mã SHA-256 của định danh máy (64 ký tự hex) |
+| `license_key` | `string` | Khóa giấy phép định dạng `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX` (chữ và số) |
+| `machine_id` | `string` | SHA-256 hash định danh máy (64 ký tự hex) |
 
 ## Định dạng Phản hồi
 
@@ -49,30 +47,30 @@ Phản hồi kích hoạt và xác thực thành công trả về dữ liệu gi
 }
 ```
 
-Trường `signature` chứa chữ ký mật mã RSA-SHA256 của đối tượng `data`, có thể được xác minh phía client bằng khóa công khai để đảm bảo tính toàn vẹn của phản hồi.
+Trường `signature` là chữ ký RSA-SHA256 của đối tượng `data`. Xác minh phía client bằng public key để đảm bảo tính toàn vẹn.
 
 ## Ký Phản hồi
 
-Tất cả phản hồi kích hoạt và xác thực thành công đều được ký mật mã:
+Mọi phản hồi kích hoạt và xác thực thành công đều được ký mật mã:
 
-1. Các trường trong đối tượng `data` được sắp xếp theo thứ tự bảng chữ cái
-2. Đối tượng đã sắp xếp được mã hóa thành JSON
-3. Chuỗi JSON được ký bằng RSA với SHA-256
-4. Chữ ký được trả về dưới dạng chuỗi Base64
+1. Các trường `data` sắp xếp theo bảng chữ cái
+2. Đối tượng đã sắp xếp được mã hóa JSON
+3. Chuỗi JSON được ký bằng RSA-SHA256
+4. Chữ ký trả về dạng Base64
 
-Điều này cho phép client xác minh rằng dữ liệu giấy phép không bị giả mạo.
+Client có thể xác minh dữ liệu giấy phép chưa bị giả mạo.
 
 ## Giới hạn Tốc độ
 
-Tất cả endpoint đều có giới hạn tốc độ. Thông tin giới hạn được bao gồm trong header phản hồi:
+Tất cả endpoint đều bị giới hạn. Thông tin trong header phản hồi:
 
 | Header | Mô tả |
 | ------ | ----- |
-| `X-RateLimit-Limit` | Số yêu cầu tối đa được phép trong cửa sổ hiện tại |
-| `X-RateLimit-Remaining` | Số yêu cầu còn lại trong cửa sổ hiện tại |
-| `X-RateLimit-Reset` | Thời gian Unix khi cửa sổ giới hạn được đặt lại |
+| `X-RateLimit-Limit` | Số yêu cầu tối đa trong cửa sổ hiện tại |
+| `X-RateLimit-Remaining` | Số yêu cầu còn lại |
+| `X-RateLimit-Reset` | Unix timestamp khi cửa sổ reset |
 
-Khi vượt quá giới hạn tốc độ, API trả về mã trạng thái `429`:
+Khi vượt quá, API trả về `429`:
 
 ```json
 {
@@ -83,7 +81,7 @@ Khi vượt quá giới hạn tốc độ, API trả về mã trạng thái `429
 
 ## Xử lý Lỗi
 
-Phản hồi lỗi tuân theo định dạng nhất quán:
+Phản hồi lỗi theo định dạng nhất quán:
 
 ```json
 {
@@ -96,15 +94,15 @@ Phản hồi lỗi tuân theo định dạng nhất quán:
 | Mã | Mô tả |
 | -- | ----- |
 | `200` | Thành công |
-| `403` | Giấy phép bị đình chỉ, hết hạn, hoặc máy chưa được kích hoạt |
+| `403` | Giấy phép bị đình chỉ, hết hạn, hoặc máy chưa kích hoạt |
 | `404` | Không tìm thấy khóa giấy phép |
-| `409` | Đã đạt giới hạn kích hoạt |
-| `422` | Lỗi xác thực (tham số yêu cầu không hợp lệ) |
+| `409` | Đạt giới hạn kích hoạt |
+| `422` | Lỗi xác thực (tham số không hợp lệ) |
 | `429` | Vượt quá giới hạn tốc độ |
 
 ### Lỗi Xác thực
 
-Lỗi xác thực (`422`) bao gồm chi tiết theo từng trường:
+Phản hồi `422` có chi tiết theo trường:
 
 ```json
 {
@@ -120,5 +118,5 @@ Lỗi xác thực (`422`) bao gồm chi tiết theo từng trường:
 
 | Trạng thái | Mô tả |
 | ---------- | ----- |
-| `active` | Giấy phép hợp lệ và có thể sử dụng |
-| `suspended` | Giấy phép đã bị đình chỉ và không thể kích hoạt hoặc xác thực |
+| `active` | Giấy phép hợp lệ và dùng được |
+| `suspended` | Giấy phép bị đình chỉ, không thể kích hoạt hay xác thực |

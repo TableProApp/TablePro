@@ -34,7 +34,25 @@ final class DataGridCellFactory {
     private var nullDisplayString: String = AppSettingsManager.shared.dataGrid.nullDisplay
     private var settingsObserver: NSObjectProtocol?
 
+    // MARK: - Cached VoiceOver State
+
+    private static var cachedVoiceOverEnabled: Bool = NSWorkspace.shared.isVoiceOverEnabled
+    // Observer lives for app lifetime — no removal needed since DataGridCellFactory is a static singleton cache
+    private static let voiceOverObserver: NSObjectProtocol? = {
+        NotificationCenter.default.addObserver(
+            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                DataGridCellFactory.cachedVoiceOverEnabled = NSWorkspace.shared.isVoiceOverEnabled
+            }
+        }
+    }()
+
     init() {
+        _ = Self.voiceOverObserver
+
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .dataGridSettingsDidChange,
             object: nil,
@@ -50,34 +68,6 @@ final class DataGridCellFactory {
         if let observer = settingsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-    }
-
-    // MARK: - Cached Fonts (avoid recreation per cell render)
-
-    private enum CellFonts {
-        static let regular = NSFont.monospacedSystemFont(
-            ofSize: DesignConstants.FontSize.body,
-            weight: .regular
-        )
-        static let italic = regular.withTraits(.italic)
-        static let medium = NSFont.monospacedSystemFont(
-            ofSize: DesignConstants.FontSize.body,
-            weight: .medium
-        )
-        static let rowNumber = NSFont.monospacedDigitSystemFont(
-            ofSize: DesignConstants.FontSize.medium,
-            weight: .regular
-        )
-    }
-
-    // MARK: - Cached Colors (avoid allocation per cell render)
-
-    private enum CellColors {
-        static let deletedBackground = NSColor.systemRed.withAlphaComponent(0.15).cgColor
-        static let insertedBackground = NSColor.systemGreen.withAlphaComponent(0.15).cgColor
-        static let modifiedBackground = NSColor.systemYellow.withAlphaComponent(0.3).cgColor
-        static let deletedText = NSColor.systemRed.withAlphaComponent(0.5)
-        static let focusBorder = NSColor.selectedControlColor.cgColor
     }
 
     // MARK: - Row Number Cell
@@ -96,13 +86,15 @@ final class DataGridCellFactory {
            let textField = reused.textField {
             cellView = reused
             cell = textField
+            cell.font = ThemeEngine.shared.dataGridFonts.rowNumber
         } else {
             cellView = NSTableCellView()
             cellView.identifier = cellViewId
 
             cell = NSTextField(labelWithString: "")
             cell.alignment = .right
-            cell.font = CellFonts.rowNumber
+            cell.font = ThemeEngine.shared.dataGridFonts.rowNumber
+            cell.tag = DataGridFontVariant.rowNumber
             cell.textColor = .secondaryLabelColor
             cell.translatesAutoresizingMaskIntoConstraints = false
 
@@ -122,8 +114,8 @@ final class DataGridCellFactory {
         }
 
         cell.stringValue = "\(row + 1)"
-        cell.textColor = visualState.isDeleted ? CellColors.deletedText : .secondaryLabelColor
-        if NSWorkspace.shared.isVoiceOverEnabled {
+        cell.textColor = visualState.isDeleted ? ThemeEngine.shared.colors.dataGrid.deletedText : .secondaryLabelColor
+        if Self.cachedVoiceOverEnabled {
             cellView.setAccessibilityLabel(String(localized: "Row \(row + 1)"))
         }
 
@@ -176,7 +168,7 @@ final class DataGridCellFactory {
             cellView.canDrawSubviewsIntoLayer = true
 
             cell = CellTextField()
-            cell.font = CellFonts.regular
+            cell.font = ThemeEngine.shared.dataGridFonts.regular
             cell.drawsBackground = false
             cell.isBordered = false
             cell.focusRingType = .none
@@ -273,11 +265,11 @@ final class DataGridCellFactory {
 
         // Update background color
         if isDeleted {
-            cellView.layer?.backgroundColor = CellColors.deletedBackground
+            cellView.layer?.backgroundColor = ThemeEngine.shared.colors.dataGrid.deletedCG
         } else if isInserted {
-            cellView.layer?.backgroundColor = CellColors.insertedBackground
+            cellView.layer?.backgroundColor = ThemeEngine.shared.colors.dataGrid.insertedCG
         } else if isModified {
-            cellView.layer?.backgroundColor = CellColors.modifiedBackground
+            cellView.layer?.backgroundColor = ThemeEngine.shared.colors.dataGrid.modifiedCG
         } else {
             cellView.layer?.backgroundColor = nil
         }
@@ -287,7 +279,7 @@ final class DataGridCellFactory {
             cellView.layer?.borderWidth = 0
         } else if isFocused {
             cellView.layer?.borderWidth = 2
-            cellView.layer?.borderColor = CellColors.focusBorder
+            cellView.layer?.borderColor = ThemeEngine.shared.colors.dataGrid.focusBorderCG
         } else {
             cellView.layer?.borderWidth = 0
         }
@@ -295,7 +287,7 @@ final class DataGridCellFactory {
         CATransaction.commit()
 
         // Accessibility: describe cell content for VoiceOver
-        if !isLargeDataset && NSWorkspace.shared.isVoiceOverEnabled {
+        if !isLargeDataset && Self.cachedVoiceOverEnabled {
             let displayValue = value ?? String(localized: "NULL")
             cell.setAccessibilityLabel(
                 String(localized: "Row \(row + 1), column \(columnIndex + 1): \(displayValue)")
@@ -312,41 +304,38 @@ final class DataGridCellFactory {
 
         if value == nil {
             cell.stringValue = ""
+            cell.font = ThemeEngine.shared.dataGridFonts.italic
+            cell.tag = DataGridFontVariant.italic
             if !isLargeDataset {
                 cell.placeholderString = nullDisplayString
-                cell.textColor = .secondaryLabelColor
-                if cell.font !== CellFonts.italic {
-                    cell.font = CellFonts.italic
-                }
-            } else {
-                cell.textColor = .secondaryLabelColor
             }
+            cell.textColor = .secondaryLabelColor
         } else if value == "__DEFAULT__" {
             cell.stringValue = ""
+            cell.font = ThemeEngine.shared.dataGridFonts.medium
+            cell.tag = DataGridFontVariant.medium
             if !isLargeDataset {
                 cell.placeholderString = "DEFAULT"
-                cell.textColor = .systemBlue
-                cell.font = CellFonts.medium
-            } else {
-                cell.textColor = .systemBlue
             }
+            cell.textColor = .systemBlue
         } else if value == "" {
             cell.stringValue = ""
+            cell.font = ThemeEngine.shared.dataGridFonts.italic
+            cell.tag = DataGridFontVariant.italic
             if !isLargeDataset {
                 cell.placeholderString = "Empty"
-                cell.textColor = .secondaryLabelColor
-                if cell.font !== CellFonts.italic {
-                    cell.font = CellFonts.italic
-                }
-            } else {
-                cell.textColor = .secondaryLabelColor
             }
+            cell.textColor = .secondaryLabelColor
         } else {
             var displayValue = value ?? ""
 
-            if let columnType = columnType, columnType.isDateType, !displayValue.isEmpty {
-                if let formattedDate = DateFormattingService.shared.format(dateString: displayValue) {
-                    displayValue = formattedDate
+            if let columnType = columnType, !displayValue.isEmpty {
+                if columnType.isDateType {
+                    if let formattedDate = DateFormattingService.shared.format(dateString: displayValue) {
+                        displayValue = formattedDate
+                    }
+                } else if BlobFormattingService.shared.requiresFormatting(columnType: columnType) {
+                    displayValue = BlobFormattingService.shared.formatIfNeeded(displayValue, columnType: columnType, for: .grid)
                 }
             }
 
@@ -360,9 +349,8 @@ final class DataGridCellFactory {
             cell.stringValue = displayValue
             (cell as? CellTextField)?.originalValue = value
             cell.textColor = .labelColor
-            if cell.font !== CellFonts.regular {
-                cell.font = CellFonts.regular
-            }
+            cell.font = ThemeEngine.shared.dataGridFonts.regular
+            cell.tag = DataGridFontVariant.regular
         }
     }
 
@@ -376,19 +364,14 @@ final class DataGridCellFactory {
     private static let sampleRowCount = 30
     /// Maximum characters to consider per cell for width estimation
     private static let maxMeasureChars = 50
-    /// Font for measuring cell content (monospaced — all glyphs have equal advance)
-    private static let measureFont = NSFont.monospacedSystemFont(ofSize: DesignConstants.FontSize.body, weight: .regular)
-    /// Pre-computed advance width of a single monospaced glyph (avoids per-row CoreText calls)
-    private static let monoCharWidth: CGFloat = {
-        let attrs: [NSAttributedString.Key: Any] = [.font: measureFont]
-        return ("M" as NSString).size(withAttributes: attrs).width
-    }()
     /// Font for measuring header
-    private static let headerFont = NSFont.systemFont(ofSize: DesignConstants.FontSize.body, weight: .semibold)
+    private var headerFont: NSFont {
+        NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold)
+    }
 
     /// Calculate column width based on header name only (used for initial display)
     func calculateColumnWidth(for columnName: String) -> CGFloat {
-        let attributes: [NSAttributedString.Key: Any] = [.font: Self.headerFont]
+        let attributes: [NSAttributedString.Key: Any] = [.font: headerFont]
         let size = (columnName as NSString).size(withAttributes: attributes)
         let width = size.width + 48 // padding for sort indicator + margins
         return min(max(width, Self.minColumnWidth), Self.maxColumnWidth)
@@ -410,28 +393,26 @@ final class DataGridCellFactory {
         columnIndex: Int,
         rowProvider: InMemoryRowProvider
     ) -> CGFloat {
-        let headerAttributes: [NSAttributedString.Key: Any] = [.font: Self.headerFont]
+        // For header: use character count * average proportional char width
+        // instead of CoreText measurement. ~0.6 of mono width is a good estimate
+        // for proportional system font.
+        let headerCharCount = (columnName as NSString).length
+        var maxWidth = CGFloat(headerCharCount) * ThemeEngine.shared.dataGridFonts.monoCharWidth * 0.75 + 48
 
-        // Start with header width (proportional font — needs CoreText, but only once)
-        let headerSize = (columnName as NSString).size(withAttributes: headerAttributes)
-        var maxWidth = headerSize.width + 48 // padding for sort indicator + margins
-
-        // Sample cell content to find max width
         let totalRows = rowProvider.totalRowCount
-        let step = max(1, totalRows / Self.sampleRowCount)
-        let charWidth = Self.monoCharWidth
+        let columnCount = rowProvider.columns.count
+        // Reduce sample count for wide tables to keep total work bounded
+        let effectiveSampleCount = columnCount > 50 ? 10 : Self.sampleRowCount
+        let step = max(1, totalRows / effectiveSampleCount)
+        let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let row = rowProvider.row(at: i),
-                  let value = row.value(at: columnIndex) else { continue }
+            guard let value = rowProvider.value(atRow: i, column: columnIndex) else { continue }
 
-            // Use O(1) NSString length, capped for width estimation.
-            // Monospaced font: width = charCount * glyphAdvance (no CoreText needed).
             let charCount = min((value as NSString).length, Self.maxMeasureChars)
-            let cellWidth = CGFloat(charCount) * charWidth + 16 // 16 = cell padding
+            let cellWidth = CGFloat(charCount) * charWidth + 16
             maxWidth = max(maxWidth, cellWidth)
 
-            // Early exit if already at max
             if maxWidth >= Self.maxColumnWidth {
                 return Self.maxColumnWidth
             }

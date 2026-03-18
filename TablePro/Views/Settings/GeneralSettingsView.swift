@@ -11,6 +11,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     var updaterBridge: UpdaterBridge
+    @Bindable private var settingsManager = AppSettingsManager.shared
     @State private var initialLanguage: AppLanguage?
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
@@ -70,6 +71,14 @@ struct GeneralSettingsView: View {
                 Toggle("Share anonymous usage data", isOn: $settings.shareAnalytics)
 
                 Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Tabs") {
+                Toggle("Enable preview tabs", isOn: $settingsManager.tabs.enablePreviewTabs)
+
+                Text("Single-clicking a table opens a temporary tab that gets replaced on next click.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

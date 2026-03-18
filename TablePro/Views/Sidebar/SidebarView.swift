@@ -9,27 +9,20 @@ import SwiftUI
 
 // MARK: - SidebarView
 
-/// Sidebar view displaying list of database tables
+/// Sidebar view with segmented tab picker for Tables and Favorites
 struct SidebarView: View {
     @State private var viewModel: SidebarViewModel
-    /// Local search text for responsive typing; synced to/from shared state
-    @State private var localSearchText: String = ""
-    /// Debounce task for writing local search text to the shared state
-    @State private var searchSyncTask: Task<Void, Never>?
 
-    // Keep @Binding on the view for SwiftUI change tracking.
-    // The ViewModel stores the same bindings for write access.
     @Binding var tables: [TableInfo]
     var sidebarState: SharedSidebarState
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
 
     var activeTableName: String?
-    var onShowAllTables: (() -> Void)?
+    var onDoubleClick: ((TableInfo) -> Void)?
     var connectionId: UUID
+    private weak var coordinator: MainContentCoordinator?
 
-    /// Computed on the view (not ViewModel) so SwiftUI tracks both
-    /// `@Binding var tables` and `@Published var searchText` as dependencies.
     private var filteredTables: [TableInfo] {
         guard !viewModel.debouncedSearchText.isEmpty else { return tables }
         return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
@@ -46,17 +39,18 @@ struct SidebarView: View {
         tables: Binding<[TableInfo]>,
         sidebarState: SharedSidebarState,
         activeTableName: String? = nil,
-        onShowAllTables: (() -> Void)? = nil,
+        onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
         databaseType: DatabaseType,
         connectionId: UUID,
-        schemaProvider: SQLSchemaProvider? = nil
+        schemaProvider: SQLSchemaProvider? = nil,
+        coordinator: MainContentCoordinator? = nil
     ) {
         _tables = tables
         self.sidebarState = sidebarState
-        _localSearchText = State(initialValue: sidebarState.searchText)
+        self.onDoubleClick = onDoubleClick
         _pendingTruncates = pendingTruncates
         _pendingDeletes = pendingDeletes
         let selectedBinding = Binding(
@@ -76,36 +70,47 @@ struct SidebarView: View {
         vm.debouncedSearchText = sidebarState.searchText
         _viewModel = State(wrappedValue: vm)
         self.activeTableName = activeTableName
-        self.onShowAllTables = onShowAllTables
         self.connectionId = connectionId
+        self.coordinator = coordinator
     }
 
     // MARK: - Body
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !tables.isEmpty {
-                searchField
+        ZStack(alignment: .top) {
+            tablesContent
+                .opacity(sidebarState.selectedSidebarTab == .tables ? 1 : 0)
+                .frame(maxHeight: sidebarState.selectedSidebarTab == .tables ? .infinity : 0)
+                .clipped()
+                .allowsHitTesting(sidebarState.selectedSidebarTab == .tables)
+
+            FavoritesTabView(
+                connectionId: connectionId,
+                searchText: viewModel.debouncedSearchText,
+                coordinator: coordinator
+            )
+            .opacity(sidebarState.selectedSidebarTab == .favorites ? 1 : 0)
+            .frame(maxHeight: sidebarState.selectedSidebarTab == .favorites ? .infinity : 0)
+            .clipped()
+            .allowsHitTesting(sidebarState.selectedSidebarTab == .favorites)
+        }
+        .animation(.easeInOut(duration: 0.18), value: sidebarState.selectedSidebarTab)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("", selection: Binding(
+                get: { sidebarState.selectedSidebarTab },
+                set: { sidebarState.selectedSidebarTab = $0 }
+            )) {
+                Text("Tables").tag(SidebarTab.tables)
+                Text("Favorites").tag(SidebarTab.favorites)
             }
-            content
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
         }
         .frame(minWidth: 280)
-        .onChange(of: localSearchText) { _, newValue in
-            viewModel.debouncedSearchText = newValue
-            searchSyncTask?.cancel()
-            searchSyncTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 150_000_000)
-                guard !Task.isCancelled else { return }
-                if sidebarState.searchText != newValue {
-                    sidebarState.searchText = newValue
-                }
-            }
-        }
         .onChange(of: sidebarState.searchText) { _, newValue in
-            if localSearchText != newValue {
-                localSearchText = newValue
-                viewModel.debouncedSearchText = newValue
-            }
+            viewModel.debouncedSearchText = newValue
         }
         .onChange(of: tables) { _, newTables in
             let hasSession = DatabaseManager.shared.activeSessions[connectionId] != nil
@@ -114,8 +119,8 @@ struct SidebarView: View {
             }
         }
         .onAppear {
-            viewModel.setupNotifications()
             viewModel.onAppear()
+            coordinator?.sidebarViewModel = viewModel
         }
         .sheet(isPresented: $viewModel.showOperationDialog) {
             if let operationType = viewModel.pendingOperationType {
@@ -135,49 +140,16 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Search Field
-
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .font(.system(size: DesignConstants.FontSize.medium))
-
-            TextField("Filter", text: $localSearchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: DesignConstants.FontSize.body))
-
-            if !localSearchText.isEmpty {
-                Button(action: { localSearchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: DesignConstants.FontSize.medium))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Clear table filter"))
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, DesignConstants.Spacing.xxs)
-        .background(Color(nsColor: .quaternaryLabelColor))
-        .cornerRadius(6)
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-    }
-
-    // MARK: - Content States
+    // MARK: - Tables Content
 
     @ViewBuilder
-    private var content: some View {
+    private var tablesContent: some View {
         if let error = viewModel.errorMessage {
             errorState(message: error)
         } else if tables.isEmpty && viewModel.isLoading {
             loadingState
         } else if tables.isEmpty {
             emptyState
-        } else if filteredTables.isEmpty {
-            noMatchState
         } else {
             tableList
         }
@@ -203,34 +175,21 @@ struct SidebarView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 6) {
+        let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        let noItemsLabel = String(localized: "No \(entityName)")
+        let noItemsDetail = String(localized: "This database has no \(entityName.lowercased()) yet.")
+        return VStack(spacing: 6) {
             Image(systemName: "tablecells")
                 .font(.system(size: 28, weight: .thin))
                 .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
 
-            Text(sidebarLabel(mongodb: "No Collections", redis: "No Databases", default: "No Tables"))
+            Text(noItemsLabel)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
 
-            Text(sidebarLabel(
-                mongodb: "This database has no collections yet.",
-                redis: "All databases are empty.",
-                default: "This database has no tables yet."
-            ))
+            Text(noItemsDetail)
                 .font(.system(size: 11))
                 .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var noMatchState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.title)
-                .foregroundStyle(.tertiary)
-            Text(sidebarLabel(mongodb: "No matching collections", redis: "No matching databases", default: "No matching tables"))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -238,42 +197,53 @@ struct SidebarView: View {
     // MARK: - Table List
 
     private var tableList: some View {
-        List(selection: selectedTablesBinding) {
-            Section(isExpanded: $viewModel.isTablesExpanded) {
-                ForEach(filteredTables) { table in
-                    TableRow(
-                        table: table,
-                        isActive: activeTableName == table.name,
-                        isPendingTruncate: pendingTruncates.contains(table.name),
-                        isPendingDelete: pendingDeletes.contains(table.name)
-                    )
-                    .tag(table)
-                    .contextMenu {
-                        SidebarContextMenu(
-                            clickedTable: table,
-                            selectedTables: selectedTablesBinding,
-                            isReadOnly: AppState.shared.isReadOnly,
-                            onBatchToggleTruncate: { viewModel.batchToggleTruncate() },
-                            onBatchToggleDelete: { viewModel.batchToggleDelete() }
+        let entityLabel = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
+        let noMatchLabel = String(localized: "No matching \(entityLabel.lowercased())")
+        let helpLabel = String(localized: "Right-click to show all \(entityLabel.lowercased())")
+        let showAllLabel = String(localized: "Show All \(entityLabel)")
+        return List(selection: selectedTablesBinding) {
+            if filteredTables.isEmpty {
+                ContentUnavailableView(
+                    noMatchLabel,
+                    systemImage: "magnifyingglass"
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+            } else {
+                Section(isExpanded: $viewModel.isTablesExpanded) {
+                    ForEach(filteredTables) { table in
+                        TableRow(
+                            table: table,
+                            isActive: activeTableName == table.name,
+                            isPendingTruncate: pendingTruncates.contains(table.name),
+                            isPendingDelete: pendingDeletes.contains(table.name)
                         )
-                    }
-                }
-            } header: {
-                Text(sidebarLabel(mongodb: "Collections", redis: "Databases", default: "Tables"))
-                    .help(sidebarLabel(
-                        mongodb: "Right-click to show all collections",
-                        redis: "Right-click to show all databases",
-                        default: "Right-click to show all tables"
-                    ))
-                    .contextMenu {
-                        Button(sidebarLabel(
-                            mongodb: String(localized: "Show All Collections"),
-                            redis: String(localized: "Show All Databases"),
-                            default: String(localized: "Show All Tables")
-                        )) {
-                            onShowAllTables?()
+                        .tag(table)
+                        .overlay {
+                            DoubleClickDetector {
+                                onDoubleClick?(table)
+                            }
+                        }
+                        .contextMenu {
+                            SidebarContextMenu(
+                                clickedTable: table,
+                                selectedTables: selectedTablesBinding,
+                                isReadOnly: AppState.shared.safeModeLevel.blocksAllWrites,
+                                onBatchToggleTruncate: { viewModel.batchToggleTruncate() },
+                                onBatchToggleDelete: { viewModel.batchToggleDelete() },
+                                coordinator: coordinator
+                            )
                         }
                     }
+                } header: {
+                    Text(entityLabel)
+                        .help(helpLabel)
+                        .contextMenu {
+                            Button(showAllLabel) {
+                                coordinator?.showAllTablesMetadata()
+                            }
+                        }
+                }
             }
         }
         .listStyle(.sidebar)
@@ -282,23 +252,14 @@ struct SidebarView: View {
             SidebarContextMenu(
                 clickedTable: nil,
                 selectedTables: selectedTablesBinding,
-                isReadOnly: AppState.shared.isReadOnly,
+                isReadOnly: AppState.shared.safeModeLevel.blocksAllWrites,
                 onBatchToggleTruncate: { viewModel.batchToggleTruncate() },
-                onBatchToggleDelete: { viewModel.batchToggleDelete() }
+                onBatchToggleDelete: { viewModel.batchToggleDelete() },
+                coordinator: coordinator
             )
         }
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func sidebarLabel(mongodb: String, redis: String, default defaultLabel: String) -> String {
-        switch viewModel.databaseType {
-        case .mongodb: return mongodb
-        case .redis: return redis
-        default: return defaultLabel
         }
     }
 }

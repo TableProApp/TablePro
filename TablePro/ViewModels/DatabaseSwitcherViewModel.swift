@@ -12,7 +12,7 @@ import os
 import SwiftUI
 
 @MainActor @Observable
-class DatabaseSwitcherViewModel {
+final class DatabaseSwitcherViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseSwitcherViewModel")
 
     // MARK: - Mode
@@ -77,7 +77,7 @@ class DatabaseSwitcherViewModel {
         self.currentDatabase = currentDatabase
         self.currentSchema = currentSchema
         self.databaseType = databaseType
-        self.mode = databaseType == .redshift ? .schema : .database
+        self.mode = PluginManager.shared.supportsSchemaSwitching(for: databaseType) ? .schema : .database
         self.recentDatabases = UserDefaults.standard.recentDatabases(for: connectionId)
     }
 
@@ -168,26 +168,12 @@ class DatabaseSwitcherViewModel {
         }
     }
 
-    /// Determine if a database or schema is a system item
     private func isSystemItem(_ name: String) -> Bool {
         if isSchemaMode {
-            return name.hasPrefix("pg_")
+            let schemaNames = PluginManager.shared.systemSchemaNames(for: databaseType)
+            return schemaNames.contains(name)
         }
-        switch databaseType {
-        case .mysql, .mariadb:
-            return ["information_schema", "mysql", "performance_schema", "sys"].contains(name)
-        case .postgresql:
-            return ["postgres", "template0", "template1"].contains(name)
-        case .redshift:
-            return ["dev", "padb_harvest"].contains(name)
-        case .sqlite:
-            return false
-        case .mongodb:
-            return false
-        case .redis:
-            return false
-        case .mssql:
-            return ["master", "tempdb", "model", "msdb"].contains(name)
-        }
+        let dbNames = PluginManager.shared.systemDatabaseNames(for: databaseType)
+        return dbNames.contains(name)
     }
 }

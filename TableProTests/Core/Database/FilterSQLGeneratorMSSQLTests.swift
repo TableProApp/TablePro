@@ -6,12 +6,19 @@
 //
 
 import Foundation
+import TableProPluginKit
 @testable import TablePro
 import Testing
 
 @Suite("Filter SQL Generator MSSQL")
 struct FilterSQLGeneratorMSSQLTests {
-    private let generator = FilterSQLGenerator(databaseType: .mssql)
+    private static let mssqlDialect = SQLDialectDescriptor(
+        identifierQuote: "[", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch
+    )
+
+    private let generator = FilterSQLGenerator(dialect: Self.mssqlDialect)
 
     // MARK: - Helpers
 

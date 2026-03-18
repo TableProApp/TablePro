@@ -1,11 +1,9 @@
 ---
 title: Cài đặt
-description: Hướng dẫn cài đặt chi tiết và yêu cầu hệ thống cho TablePro
+description: Cài TablePro qua Homebrew hoặc DMG trên macOS 14.0+
 ---
 
 # Cài đặt
-
-Hướng dẫn này bao gồm hướng dẫn cài đặt chi tiết, yêu cầu hệ thống và khắc phục các vấn đề cài đặt phổ biến.
 
 ## Yêu cầu Hệ thống
 
@@ -16,43 +14,43 @@ Hướng dẫn này bao gồm hướng dẫn cài đặt chi tiết, yêu cầu 
 | **Phiên bản macOS** | macOS 14.0 (Sonoma) hoặc mới hơn |
 | **Bộ xử lý** | Apple Silicon (M1/M2/M3/M4/M5) hoặc Intel x86_64 |
 | **Bộ nhớ** | Tối thiểu 4 GB RAM |
-| **Dung lượng** | ~200 MB dung lượng trống |
+| **Dung lượng** | ~200 MB dung lượng trống (ứng dụng ~50 MB; phần còn lại cho lịch sử truy vấn, trạng thái tab và plugin) |
 
 ### Khuyến nghị
 
-- **macOS**: Phiên bản mới nhất để có hiệu suất tốt nhất
-- **Bộ nhớ**: 8 GB RAM hoặc nhiều hơn cho cơ sở dữ liệu lớn
-- **Dung lượng**: SSD để có hiệu suất tối ưu
+- **macOS**: Phiên bản mới nhất
+- **Bộ nhớ**: 8 GB RAM trở lên cho database lớn
+- **Dung lượng**: SSD để query history và tab persistence nhanh hơn
 
 <Note>
-TablePro được xây dựng bằng các framework gốc của Apple và không yêu cầu bất kỳ môi trường runtime bổ sung nào như Java hay .NET.
+TablePro dùng framework gốc Apple. Không cần Java, .NET hay runtime nào khác.
 </Note>
 
 ## Cài đặt qua Homebrew
 
-Cách nhanh nhất để cài đặt TablePro là dùng [Homebrew](https://brew.sh):
+Cách nhanh nhất:
 
 ```bash
-brew install datlechin/tap/tablepro
+brew install --cask tablepro
 ```
 
 <Tip>
-Công thức cask tự động xóa thuộc tính quarantine của macOS sau khi cài đặt, nên bạn không cần chạy `xattr -cr` khi khởi chạy lần đầu.
+Homebrew xử lý cài đặt và cập nhật tại một nơi.
 </Tip>
 
-Để cập nhật:
+Cập nhật:
 
 ```bash
 brew upgrade tablepro
 ```
 
-Để gỡ cài đặt:
+Gỡ cài đặt:
 
 ```bash
 brew uninstall tablepro
 ```
 
-Để xóa cả dữ liệu ứng dụng:
+Xóa cả dữ liệu ứng dụng:
 
 ```bash
 brew zap tablepro
@@ -64,16 +62,16 @@ brew zap tablepro
 
 1. Truy cập trang [TablePro Releases](https://github.com/datlechin/tablepro/releases)
 2. Tìm bản phát hành mới nhất
-3. Tải xuống DMG phù hợp cho Mac của bạn:
+3. Tải DMG phù hợp:
 
 | Kiến trúc | File | Dành cho Mac với |
 |--------------|------|---------------|
 | Apple Silicon | `TablePro-arm64.dmg` | Chip M1, M2, M3, M4, M5 |
 | Intel | `TablePro-x86_64.dmg` | Bộ xử lý Intel |
 
-### Kiểm tra Kiến trúc Mac của bạn
+### Kiểm tra Kiến trúc Mac
 
-1. Nhấp vào **menu Apple** () trên thanh menu
+1. Nhấp **menu Apple** () trên thanh menu
 2. Chọn **About This Mac**
 3. Tìm:
    - **Chip**: Apple M1/M2/M3/M4/M5 = Apple Silicon
@@ -84,12 +82,12 @@ brew zap tablepro
 ### Cài đặt Tiêu chuẩn
 
 1. **Mở file DMG**
-   - Nhấp đúp vào file `.dmg` đã tải xuống
-   - Một cửa sổ Finder mới sẽ xuất hiện
+   - Nhấp đúp file `.dmg` đã tải
+   - Cửa sổ Finder mới hiện ra
 
 2. **Kéo vào Applications**
-   - Kéo biểu tượng TablePro vào shortcut thư mục Applications
-   - Đợi quá trình sao chép hoàn tất
+   - Kéo icon TablePro vào shortcut thư mục Applications
+   - Đợi copy xong
 
 {/* Screenshot: DMG window with drag-to-Applications illustration */}
 <Frame caption="Kéo TablePro vào Applications">
@@ -105,73 +103,39 @@ brew zap tablepro
   />
 </Frame>
 
-3. **Đẩy DMG ra**
-   - Nhấp chuột phải vào DMG đã mount trong sidebar Finder
+3. **Eject DMG**
+   - Chuột phải vào DMG đã mount trong sidebar Finder
    - Chọn **Eject**
 
 4. **Khởi chạy TablePro**
    - Mở **Finder** > **Applications**
-   - Nhấp đúp vào **TablePro**
-
-### Bảo mật Khởi chạy Lần đầu
-
-Vì TablePro không được ký với chứng chỉ Apple Developer, macOS sẽ hiển thị lỗi **"TablePro is damaged and can't be opened"** khi khởi chạy lần đầu. Điều này là bình thường — bạn cần xóa thuộc tính quarantine mà macOS thêm vào các ứng dụng tải xuống.
-
-<Warning>
-Đây là hành vi bình thường đối với các ứng dụng không được ký tải xuống từ internet. TablePro an toàn để sử dụng — mã nguồn hoàn toàn mở và có thể kiểm tra.
-</Warning>
-
-#### Xóa thuộc tính quarantine
-
-Mở **Terminal** và chạy:
-
-```bash
-xattr -cr /Applications/TablePro.app
-```
-
-Sau đó mở TablePro bình thường từ Applications.
-
-<Tip>
-Bạn chỉ cần làm điều này một lần. Sau khi xóa thuộc tính quarantine, TablePro sẽ mở bình thường trong tất cả các lần khởi chạy sau.
-</Tip>
-
-#### Thay thế: System Settings
-
-Nếu bạn vẫn thấy cảnh báo bảo mật sau khi chạy lệnh trên:
-
-1. Mở **System Settings** > **Privacy & Security**
-2. Cuộn xuống phần **Security**
-3. Bạn sẽ thấy thông báo về TablePro bị chặn
-4. Nhấp **Open Anyway**
-5. Nhập mật khẩu nếu được yêu cầu
+   - Nhấp đúp **TablePro**
 
 ## Cập nhật TablePro
 
 ### Cập nhật Tự động
 
-TablePro tích hợp tính năng cập nhật tự động được hỗ trợ bởi [Sparkle](https://sparkle-project.org/). Ứng dụng định kỳ kiểm tra phiên bản mới trong nền và thông báo cho bạn khi có bản cập nhật.
+TablePro kiểm tra bản mới trong nền qua [Sparkle](https://sparkle-project.org/) và thông báo khi có cập nhật.
 
 ### Kiểm tra Cập nhật Thủ công
 
-Để kiểm tra cập nhật thủ công:
+Kiểm tra thủ công:
 
 1. Mở menu **TablePro** trên thanh menu
 2. Nhấp **Check for Updates...**
 
 ### Cài đặt Cập nhật
 
-Bạn có thể cấu hình hành vi cập nhật trong **Settings** > **General** > **Software Update**:
+Cấu hình trong **Settings** > **General** > **Software Update**:
 
-- Bật hoặc tắt kiểm tra cập nhật tự động
-- Chọn tần suất kiểm tra cập nhật
+- Bật/tắt kiểm tra cập nhật tự động
+- Chọn tần suất kiểm tra
 
 <Tip>
-Các kết nối và cài đặt của bạn được lưu trữ riêng biệt với ứng dụng và sẽ được giữ nguyên khi cập nhật.
+Kết nối và cài đặt lưu riêng biệt với app, không bị mất khi cập nhật.
 </Tip>
 
 ### Vị trí Lưu trữ Dữ liệu
-
-TablePro lưu trữ dữ liệu ở các vị trí sau:
 
 | Dữ liệu | Vị trí | Loại lưu trữ |
 |------|----------|--------------|
@@ -190,51 +154,43 @@ TablePro lưu trữ dữ liệu ở các vị trí sau:
 
 ### Xóa Dữ liệu Ứng dụng (Tùy chọn)
 
-Để xóa hoàn toàn tất cả dữ liệu TablePro:
+Xóa toàn bộ dữ liệu TablePro:
 
 ```bash
-# Xóa dữ liệu hỗ trợ ứng dụng
+# Xóa dữ liệu application support
 rm -rf ~/Library/Application\ Support/TablePro
 
 # Xóa preferences
 rm ~/Library/Preferences/com.TablePro.plist
 
-# Xóa các mục Keychain (thông qua ứng dụng Keychain Access)
-# Tìm kiếm "TablePro" và xóa các mục liên quan
+# Xóa Keychain items (qua app Keychain Access)
+# Tìm "TablePro" và xóa các mục liên quan
 ```
 
 <Warning>
-Xóa dữ liệu ứng dụng sẽ xóa tất cả các kết nối đã lưu và lịch sử truy vấn của bạn. Đảm bảo xuất bất kỳ dữ liệu quan trọng nào trước.
+Thao tác này xóa toàn bộ kết nối đã lưu và lịch sử truy vấn. Xuất dữ liệu quan trọng trước.
 </Warning>
 
 ## Khắc phục Sự cố
 
-### "TablePro is damaged and can't be opened"
-
-Làm theo hướng dẫn [Bảo mật Khởi chạy Lần đầu](#bảo-mật-khởi-chạy-lần-đầu) ở trên để xóa thuộc tính quarantine của macOS.
-
-### "TablePro can't be opened because it is from an unidentified developer"
-
-Làm theo hướng dẫn [Bảo mật Khởi chạy Lần đầu](#bảo-mật-khởi-chạy-lần-đầu) ở trên.
-
 ### Ứng dụng crash khi khởi chạy
 
-1. Kiểm tra xem bạn đã tải xuống phiên bản kiến trúc đúng chưa
-2. Đảm bảo bạn đang chạy macOS 14.0 hoặc mới hơn
-3. Thử xóa và cài đặt lại ứng dụng
+1. Kiểm tra đã tải đúng phiên bản kiến trúc chưa
+2. Đảm bảo đang chạy macOS 14.0 trở lên
+3. Thử xóa và cài lại
 4. Kiểm tra Console.app để xem crash logs
 
 ### Vấn đề kết nối sau khi cài đặt
 
-Nếu TablePro mở nhưng không thể kết nối với cơ sở dữ liệu:
+Nếu TablePro mở được nhưng không kết nối được database:
 
-1. Xác minh máy chủ cơ sở dữ liệu của bạn đang chạy
-2. Kiểm tra cài đặt tường lửa (System Settings > Network > Firewall)
-3. Đảm bảo máy chủ cơ sở dữ liệu cho phép kết nối từ localhost
+1. Kiểm tra database server đang chạy
+2. Kiểm tra firewall (System Settings > Network > Firewall)
+3. Đảm bảo database server cho phép kết nối từ localhost
 
 ## Build từ Source
 
-Đối với các nhà phát triển muốn build TablePro từ source:
+Dành cho developer muốn build TablePro từ source:
 
 1. Clone repository:
 ```bash
@@ -251,15 +207,15 @@ open TablePro.xcodeproj
    - Chọn scheme **TablePro**
    - Nhấn `Cmd+R` để build và chạy
 
-Xem hướng dẫn [Development Setup](/vi/development/setup) để biết hướng dẫn chi tiết.
+Xem hướng dẫn [Development Setup](/vi/development/setup) chi tiết hơn.
 
 ## Các bước tiếp theo
 
 <CardGroup cols={2}>
   <Card title="Bắt đầu Nhanh" icon="rocket" href="/vi/quickstart">
-    Kết nối với cơ sở dữ liệu đầu tiên của bạn
+    Kết nối database đầu tiên
   </Card>
   <Card title="Kết nối Cơ sở dữ liệu" icon="database" href="/vi/databases/overview">
-    Tìm hiểu về quản lý kết nối
+    Quản lý và tổ chức kết nối
   </Card>
 </CardGroup>

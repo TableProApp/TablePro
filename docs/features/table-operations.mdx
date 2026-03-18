@@ -1,11 +1,11 @@
 ---
 title: Table Operations
-description: Modify and manage database tables
+description: Drop, truncate, duplicate tables, create views, and switch databases from the sidebar
 ---
 
 # Table Operations
 
-TablePro provides tools for modifying and managing database tables through a visual interface. Perform common operations like drop, truncate, and duplicate — all without writing SQL by hand.
+Right-click tables in the sidebar to drop, truncate, or duplicate them. Create and manage views. Switch between databases on the same connection.
 
 ## Table Operations
 
@@ -22,15 +22,15 @@ Permanently deletes a table and all its data.
 
 {/* Screenshot: Drop table confirmation dialog */}
 <Frame caption="Drop table confirmation with options">
-  <img 
-    className="block dark:hidden" 
-    src="/images/drop-table-dialog.png" 
-    alt="Drop table dialog" 
+  <img
+    className="block dark:hidden"
+    src="/images/drop-table-dialog.png"
+    alt="Drop table dialog"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/drop-table-dialog-dark.png" 
-    alt="Drop table dialog" 
+  <img
+    className="hidden dark:block"
+    src="/images/drop-table-dialog-dark.png"
+    alt="Drop table dialog"
   />
 </Frame>
 
@@ -63,7 +63,7 @@ Dropping a table is irreversible. Always backup important data before dropping t
 
 ### Truncate Table
 
-Removes all rows from a table while keeping the table structure.
+Removes all rows while keeping the table structure intact.
 
 1. Right-click the table (or select multiple tables)
 2. Select **Truncate**
@@ -94,7 +94,7 @@ Removes all rows from a table while keeping the table structure.
 </Tabs>
 
 <Note>
-Truncate is faster than `DELETE FROM table` because it does not generate individual row delete logs. However, it resets auto-increment counters.
+Truncate is faster than `DELETE FROM table` because it skips per-row delete logs. It also resets auto-increment counters.
 </Note>
 
 {/* Screenshot: Truncate table confirmation with options */}
@@ -113,7 +113,7 @@ Truncate is faster than `DELETE FROM table` because it does not generate individ
 
 ### Batch Operations
 
-You can select multiple tables in the sidebar and apply Drop or Truncate to all of them at once. The same options are applied to every selected table.
+Select multiple tables and apply Drop or Truncate to all at once. The same options apply to every selected table.
 
 1. Hold `Cmd` and click to select multiple tables
 2. Right-click and choose **Delete** or **Truncate**
@@ -122,7 +122,7 @@ You can select multiple tables in the sidebar and apply Drop or Truncate to all 
 
 ## View Management
 
-Database views are virtual tables defined by SQL queries. TablePro displays views in the sidebar with a distinctive eye icon and purple color.
+Database views are virtual tables defined by SQL queries. TablePro shows views in the sidebar with a distinctive eye icon and purple color.
 
 ### Create View
 
@@ -183,11 +183,11 @@ Modify an existing view's SQL definition:
 
 1. Right-click the view in the sidebar
 2. Select **Edit View Definition**
-3. The current view definition is fetched and opened in a new SQL editor tab
+3. The current view definition opens in a new SQL editor tab
 4. Modify the query and execute to update the view
 
 <Note>
-For MySQL/MariaDB, you can use `ALTER VIEW` to modify a view. For PostgreSQL, use `CREATE OR REPLACE VIEW`. SQLite does not support ALTER VIEW — you must drop and recreate the view.
+For MySQL/MariaDB, use `ALTER VIEW` to modify a view. For PostgreSQL, use `CREATE OR REPLACE VIEW`. SQLite does not support ALTER VIEW. Drop and recreate the view instead.
 </Note>
 
 ### Drop View
@@ -199,12 +199,12 @@ Remove a view from the database:
 3. Confirm the deletion
 
 <Tip>
-Views don't store data themselves, so dropping a view only removes the view definition — the underlying table data remains intact.
+Views don't store data. Dropping a view only removes the view definition. The underlying table data stays intact.
 </Tip>
 
 ### Context Menu Differences
 
-The sidebar context menu adapts when you right-click a view:
+The sidebar context menu adapts for views:
 
 | Action | Tables | Views |
 |--------|--------|-------|
@@ -233,7 +233,7 @@ The sidebar context menu adapts when you right-click a view:
 
 ### Create Database
 
-Create a new database directly from the UI (MySQL/MariaDB):
+Create a new database from the UI (MySQL/MariaDB):
 
 <Steps>
   <Step title="Open Database Switcher">
@@ -252,15 +252,15 @@ Create a new database directly from the UI (MySQL/MariaDB):
 
 {/* Screenshot: Create database dialog */}
 <Frame caption="Create database dialog">
-  <img 
-    className="block dark:hidden" 
-    src="/images/create-database.png" 
-    alt="Create Database" 
+  <img
+    className="block dark:hidden"
+    src="/images/create-database.png"
+    alt="Create Database"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/create-database-dark.png" 
-    alt="Create Database" 
+  <img
+    className="hidden dark:block"
+    src="/images/create-database-dark.png"
+    alt="Create Database"
   />
 </Frame>
 
@@ -275,14 +275,14 @@ Available character sets and collations:
 
 ### Database Switcher
 
-Quickly switch between databases on the same connection:
+Switch between databases on the same connection:
 
 1. Click the database name in the toolbar
-2. Browse the list of available databases with metadata
+2. Browse available databases with metadata
 3. Search by name to filter
 4. Double-click or select and click **Open** to switch
 
-The database switcher shows recent databases for quick access and supports refreshing the database list.
+The switcher shows recent databases for quick access and supports refreshing the database list.
 
 {/* Screenshot: Database switcher with search and recent databases */}
 <Frame caption="Database switcher with search and recent databases">
@@ -300,7 +300,7 @@ The database switcher shows recent databases for quick access and supports refre
 
 ## MongoDB Collection Operations
 
-MongoDB collection operations differ from SQL table operations in several ways.
+MongoDB collection operations differ from SQL table operations.
 
 ### Create Collection
 
@@ -316,7 +316,7 @@ db.createCollection("myCollection", {
 
 ### Drop Collection
 
-Right-click a collection in the sidebar and select **Drop Table** to drop it. This executes `db.collection.drop()` and removes all documents and indexes.
+Right-click a collection in the sidebar and select **Drop Table**. This executes `db.collection.drop()` and removes all documents and indexes.
 
 ### Show All Collections
 

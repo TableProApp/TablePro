@@ -1,0 +1,458 @@
+---
+title: 筛选
+description: 通过可视化方式构建 WHERE 子句，支持 18 种运算符、快速搜索和保存预设
+---
+
+# 筛选
+
+筛选面板让你无需编写 SQL 即可构建 WHERE 子句。选择列、运算符和值，通过可视化方式操作，也可切换到原始 SQL 模式来表达构建器无法实现的条件。筛选器按标签页独立，每个工作区保持各自的状态。
+
+{/* Screenshot: Filter panel with multiple active filters */}
+<Frame caption="带活跃筛选条件的筛选面板">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-panel.png"
+    alt="筛选面板"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-panel-dark.png"
+    alt="筛选面板"
+  />
+</Frame>
+
+## 概述
+
+筛选系统包含五个部分：
+
+- **筛选面板** — 可视化构建 WHERE 子句条件
+- **快速搜索** — 即时搜索所有可见列
+- **筛选预设** — 保存和加载命名的筛选配置
+- **SQL 预览** — 在应用前查看生成的 WHERE 子句
+- **标签页独立状态** — 每个标签页独立记忆自己的筛选条件
+
+## 筛选面板
+
+### 打开筛选面板
+
+切换筛选面板：
+
+- 点击工具栏中的 **Filter** 按钮
+- 或按 `Cmd+F`
+
+面板显示在数据网格上方。打开面板时快速搜索框会自动获得焦点。
+
+### 构建筛选条件
+
+每个筛选行有三部分：
+
+1. **列** — 要筛选的列
+2. **运算符** — 比较运算符
+3. **值** — 要比较的值
+
+{/* Screenshot: Single filter row showing column, operator, and value */}
+<Frame caption="单个筛选行">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-row.png"
+    alt="筛选行"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-row-dark.png"
+    alt="筛选行"
+  />
+</Frame>
+
+### 添加和管理筛选条件
+
+| 操作 | 方法 |
+|------|------|
+| 添加筛选条件 | 点击头部的 **+** 按钮 |
+| 复制筛选条件 | 点击筛选行上的复制图标 |
+| 删除筛选条件 | 点击筛选行上的 **x** 按钮 |
+| 聚焦筛选条件 | 点击行的任意位置 |
+
+### AND / OR 逻辑
+
+使用筛选头部的分段控件在 AND 和 OR 逻辑之间切换：
+
+- **AND** — 所有条件必须匹配（交集）
+- **OR** — 任一条件匹配即可（并集）
+
+<Tip>
+AND 模式逐步缩小结果范围。OR 模式查找符合任一条件的行。
+</Tip>
+
+{/* Screenshot: AND/OR logic toggle in filter header */}
+<Frame caption="筛选头部的 AND/OR 逻辑切换">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-and-or-toggle.png"
+    alt="筛选头部的 AND/OR 逻辑切换"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-and-or-toggle-dark.png"
+    alt="筛选头部的 AND/OR 逻辑切换"
+  />
+</Frame>
+
+### 选择和应用筛选条件
+
+每个筛选行有一个复选框用于选择性应用：
+
+| 操作 | 说明 |
+|------|------|
+| **选中/取消选中** | 切换单个筛选条件的复选框 |
+| **全选** | 使用底部的"全选"复选框 |
+| **应用单个** | 点击筛选行上的播放按钮仅应用该条件 |
+| **应用全部** | 点击底部的 **Apply All** 应用所有选中的条件 |
+| **取消设置** | 点击 **Unset** 清除所有已应用的筛选并重新加载未筛选的数据 |
+
+<Note>
+只有完整填写了列、运算符和值（如需要）的有效筛选条件才能应用。无效条件的播放按钮会被禁用。
+</Note>
+
+{/* Screenshot: Select All checkbox and Apply All button */}
+<Frame caption="全选复选框和应用全部按钮">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-select-all.png"
+    alt="全选复选框和应用全部按钮"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-select-all-dark.png"
+    alt="全选复选框和应用全部按钮"
+  />
+</Frame>
+
+## 运算符
+
+筛选构建器支持 18 种运算符：
+
+| 运算符 | 显示名称 | 需要值 | 说明 |
+|--------|----------|--------|------|
+| `=` | 等于 | 是 | 精确匹配 |
+| `!=` | 不等于 | 是 | 排除精确匹配 |
+| CONTAINS | 包含 | 是 | 子串匹配（LIKE %value%） |
+| NOT CONTAINS | 不包含 | 是 | 排除子串 |
+| STARTS WITH | 开头是 | 是 | 前缀匹配（LIKE value%） |
+| ENDS WITH | 结尾是 | 是 | 后缀匹配（LIKE %value） |
+| `>` | 大于 | 是 | 大于比较 |
+| `>=` | 大于等于 | 是 | 大于等于比较 |
+| `<` | 小于 | 是 | 小于比较 |
+| `<=` | 小于等于 | 是 | 小于等于比较 |
+| IS NULL | 为 NULL | 否 | 列值为 NULL |
+| IS NOT NULL | 不为 NULL | 否 | 列值不为 NULL |
+| IS EMPTY | 为空 | 否 | 列值为空字符串 |
+| IS NOT EMPTY | 不为空 | 否 | 列值不为空字符串 |
+| IN | 在列表中 | 是 | 值在逗号分隔的列表中 |
+| NOT IN | 不在列表中 | 是 | 值不在逗号分隔的列表中 |
+| BETWEEN | 介于 | 是（两个值） | 值在两个边界之间 |
+| REGEX | 匹配正则 | 是 | 正则表达式匹配 |
+
+### 无需值的运算符
+
+IS NULL、IS NOT NULL、IS EMPTY 和 IS NOT EMPTY 会隐藏值输入框，显示一个破折号指示器代替。无需输入。
+
+### BETWEEN 运算符
+
+BETWEEN 显示两个值输入框，中间有"and"标签。两个值都必须填写。
+
+{/* Screenshot: BETWEEN filter with two value fields */}
+<Frame caption="BETWEEN 筛选器的两个值输入框">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-between.png"
+    alt="BETWEEN 筛选器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-between-dark.png"
+    alt="BETWEEN 筛选器"
+  />
+</Frame>
+
+### IN / NOT IN 运算符
+
+输入逗号分隔的值以匹配列表：
+
+```
+value1, value2, value3
+```
+
+## 原始 SQL 模式
+
+对于可视化构建器无法表达的条件，可切换到原始 SQL 模式。
+
+### 使用原始 SQL
+
+1. 点击筛选行的列下拉列表
+2. 选择列表顶部的 **Raw SQL**
+3. 运算符下拉消失，值输入框变为自由文本 SQL 输入
+4. 直接输入 WHERE 子句条件
+
+{/* Screenshot: Raw SQL filter with arbitrary WHERE clause */}
+<Frame caption="原始 SQL 筛选模式">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-raw-sql.png"
+    alt="原始 SQL 筛选"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-raw-sql-dark.png"
+    alt="原始 SQL 筛选"
+  />
+</Frame>
+
+**示例：**
+
+```sql
+created_at > NOW() - INTERVAL 7 DAY
+```
+
+```sql
+LOWER(name) LIKE '%smith%' AND status IN ('active', 'pending')
+```
+
+```sql
+price * quantity > 1000
+```
+
+<Warning>
+原始 SQL 会直接注入 WHERE 子句。请确保语法与连接的数据库类型一致。
+</Warning>
+
+## 快速搜索
+
+快速搜索可同时在所有可见列中筛选，无需构建单独的筛选行。
+
+### 使用快速搜索
+
+1. 打开筛选面板
+2. 在 **Quick search across all columns...** 输入框中输入
+3. 按 `Enter` 应用
+
+{/* Screenshot: Quick search field with search text */}
+<Frame caption="跨所有列的快速搜索">
+  <img
+    className="block dark:hidden"
+    src="/images/quick-search.png"
+    alt="快速搜索"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/quick-search-dark.png"
+    alt="快速搜索"
+  />
+</Frame>
+
+筛选面板打开时快速搜索始终可见。点击 **x** 按钮清除。
+
+<Tip>
+快速搜索适合一次性查找。对于反复使用的筛选模式，建议保存为预设。
+</Tip>
+
+## 筛选预设
+
+将当前筛选配置保存为命名预设，方便快速复用。
+
+### 保存预设
+
+1. 在筛选面板中构建筛选条件
+2. 点击筛选头部的**文件夹**图标
+3. 选择 **Save as Preset...**
+4. 输入名称并点击 **Save**
+
+{/* Screenshot: Save filter preset dialog */}
+<Frame caption="保存筛选预设对话框">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-preset-save.png"
+    alt="保存筛选预设对话框"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-preset-save-dark.png"
+    alt="保存筛选预设对话框"
+  />
+</Frame>
+
+### 加载预设
+
+1. 点击筛选头部的**文件夹**图标
+2. 从下拉菜单中选择预设
+3. 保存的筛选条件替换当前筛选列表
+
+{/* Screenshot: Load saved filter presets */}
+<Frame caption="加载已保存的筛选预设">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-preset-load.png"
+    alt="加载已保存的筛选预设"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-preset-load-dark.png"
+    alt="加载已保存的筛选预设"
+  />
+</Frame>
+
+### 管理预设
+
+| 操作 | 方法 |
+|------|------|
+| 加载 | 在文件夹菜单中点击预设名称 |
+| 删除 | 选择 **Delete Preset** > 点击预设名称 |
+| 覆盖 | 使用相同名称保存新预设 |
+
+预设通过 UserDefaults 存储，跨会话持久化。
+
+<Note>
+预设保存筛选定义（列、运算符、值），但不保存是否已应用。加载预设后，点击 **Apply All** 激活筛选条件。
+</Note>
+
+## SQL 预览
+
+在应用之前查看将发送到数据库的确切 WHERE 子句。
+
+### 查看预览
+
+1. 构建筛选条件
+2. 点击筛选底部的 **SQL** 按钮
+3. 弹出窗口显示生成的 WHERE 子句
+
+{/* Screenshot: SQL preview sheet showing generated WHERE clause */}
+<Frame caption="筛选条件的 SQL 预览">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-sql-preview.png"
+    alt="SQL 预览"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-sql-preview-dark.png"
+    alt="SQL 预览"
+  />
+</Frame>
+
+### 预览内容
+
+- 完整的 WHERE 子句，包含与数据库类型匹配的正确引号
+- MySQL 使用反引号（`` `column` ``）
+- PostgreSQL 使用双引号（`"column"`）
+- 基于当前模式的 AND/OR 逻辑
+- "Copy" 按钮可将 SQL 复制到剪贴板
+
+如果部分（非全部）筛选条件被选中，预览只显示选中的条件。否则显示所有有效条件。
+
+### 处理无效筛选
+
+如果筛选条件存在但没有有效的，预览会提示需要完成的内容：
+
+- 选择一列
+- 输入值（如果运算符需要）
+- 为 BETWEEN 填写第二个值
+
+## 标签页独立的筛选状态
+
+每个标签页维护独立的筛选状态。
+
+### 工作原理
+
+- 打开表时为该标签页创建全新的筛选状态
+- 切换标签页时保留各自的筛选条件
+- 已应用的筛选在切换离开和返回时保持活跃
+- 筛选面板的可见性按标签页记忆
+
+### 状态组成
+
+每个标签页存储：
+
+| 组成部分 | 说明 |
+|----------|------|
+| **筛选列表** | 所有筛选行（已应用或未应用） |
+| **已应用的筛选** | 当前影响查询的活跃筛选条件 |
+| **面板可见性** | 筛选面板是显示还是隐藏 |
+
+## 筛选设置
+
+在设置弹出窗口中配置默认筛选行为。
+
+### 访问设置
+
+点击筛选面板头部的**齿轮**图标打开设置弹窗。
+
+{/* Screenshot: Filter settings popover */}
+<Frame caption="筛选设置">
+  <img
+    className="block dark:hidden"
+    src="/images/filter-settings.png"
+    alt="筛选设置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/filter-settings-dark.png"
+    alt="筛选设置"
+  />
+</Frame>
+
+### 默认列
+
+控制新增筛选条件时预选的列：
+
+| 选项 | 说明 |
+|------|------|
+| **Raw SQL** | 新筛选条件默认为原始 SQL 模式 |
+| **主键** | 新筛选条件默认为表的主键列 |
+| **任意列** | 新筛选条件默认为第一个可用列 |
+
+### 默认运算符
+
+控制新增筛选条件时预选的运算符：
+
+| 选项 | 说明 |
+|------|------|
+| **等于 (=)** | 默认精确匹配 |
+| **包含** | 默认子串匹配 |
+
+### 打开时的面板状态
+
+控制打开表时筛选面板的行为：
+
+| 选项 | 说明 |
+|------|------|
+| **始终隐藏** | 筛选面板初始隐藏（默认） |
+| **始终显示** | 打开表时始终显示筛选面板 |
+| **恢复上次筛选** | 恢复该表上次使用的筛选条件 |
+
+<Tip>
+"恢复上次筛选"按表名记忆筛选条件。如果你经常用相同条件筛选同一张表，每次打开都能节省设置时间。
+</Tip>
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 切换筛选面板 / 快速搜索 | `Cmd+F` |
+| 应用筛选条件（在值输入框中） | `Enter` |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看和浏览筛选结果
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    手动编写 WHERE 子句
+  </Card>
+  <Card title="导入与导出" icon="file-import" href="/zh/features/import-export">
+    导出筛选后的数据
+  </Card>
+  <Card title="设置" icon="gear" href="/zh/customization/settings">
+    配置应用偏好
+  </Card>
+</CardGroup>

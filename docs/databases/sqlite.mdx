@@ -1,11 +1,11 @@
 ---
 title: SQLite
-description: Work with SQLite databases in TablePro
+description: Open and query .sqlite, .db, and .sqlite3 files directly - no server needed
 ---
 
 # SQLite Databases
 
-SQLite is a self-contained, file-based database engine. Unlike MySQL or PostgreSQL, SQLite doesn't require a server - the entire database is stored in a single file on your Mac.
+SQLite is a self-contained, file-based database engine. No server required. The entire database lives in a single file on your Mac.
 
 ## Quick Setup
 
@@ -35,15 +35,15 @@ SQLite connections are simple since no server is involved:
 
 {/* Screenshot: SQLite connection form with file browser */}
 <Frame caption="SQLite connection form">
-  <img 
-    className="block dark:hidden" 
-    src="/images/sqlite-connection.png" 
-    alt="SQLite connection" 
+  <img
+    className="block dark:hidden"
+    src="/images/sqlite-connection.png"
+    alt="SQLite connection"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/sqlite-connection-dark.png" 
-    alt="SQLite connection" 
+  <img
+    className="hidden dark:block"
+    src="/images/sqlite-connection-dark.png"
+    alt="SQLite connection"
   />
 </Frame>
 
@@ -92,9 +92,9 @@ To create a new SQLite database:
 
 1. Create a new connection
 2. Enter a path for a file that doesn't exist yet
-3. TablePro will create the file when you connect
+3. TablePro creates the file when you connect
 
-Or use the command line:
+Or from the command line:
 
 ```bash
 sqlite3 ~/Documents/newdatabase.sqlite "SELECT 1;"
@@ -108,21 +108,21 @@ The sidebar shows all tables and views in your SQLite database:
 
 {/* Screenshot: Sidebar with SQLite tables expanded */}
 <Frame caption="SQLite table browser">
-  <img 
-    className="block dark:hidden" 
-    src="/images/sqlite-browser.png" 
-    alt="SQLite browser" 
+  <img
+    className="block dark:hidden"
+    src="/images/sqlite-browser.png"
+    alt="SQLite browser"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/sqlite-browser-dark.png" 
-    alt="SQLite browser" 
+  <img
+    className="hidden dark:block"
+    src="/images/sqlite-browser-dark.png"
+    alt="SQLite browser"
   />
 </Frame>
 
 ### Table Information
 
-For each table, TablePro provides:
+For each table, TablePro shows:
 
 - **Structure**: Column names, types, and constraints
 - **Indexes**: All indexes including UNIQUE constraints
@@ -139,7 +139,7 @@ TablePro can display SQLite's internal tables:
 
 ### Query Execution
 
-Execute queries with full SQLite syntax support:
+Execute queries with full SQLite syntax:
 
 ```sql
 -- JSON functions (SQLite 3.38+)
@@ -193,7 +193,7 @@ SQLite accepts any data type in any column (except INTEGER PRIMARY KEY). The typ
 
 ### File Size
 
-SQLite databases can grow quite large. TablePro handles:
+SQLite databases can grow large. TablePro handles:
 
 - Databases up to several GB
 - Tables with millions of rows

@@ -9,6 +9,7 @@ import AppKit
 import CodeEditLanguages
 import CodeEditSourceEditor
 import SwiftUI
+import TableProPluginKit
 
 /// Popover view that displays SQL statements with tree-sitter syntax highlighting for review before commit.
 struct SQLReviewPopover: View {
@@ -23,7 +24,7 @@ struct SQLReviewPopover: View {
     /// All statements joined for display
     private var combinedSQL: String {
         let joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if databaseType == .mongodb {
+        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
             return Self.convertExtendedJsonToShellSyntax(joined)
         }
         return joined
@@ -47,7 +48,7 @@ struct SQLReviewPopover: View {
     private var contentHeight: CGFloat {
         let lineHeight: CGFloat = 18
         let headerHeight: CGFloat = 30
-        let padding: CGFloat = DesignConstants.Spacing.md * 2 + DesignConstants.Spacing.sm
+        let padding: CGFloat = ThemeEngine.shared.activeTheme.spacing.md * 2 + ThemeEngine.shared.activeTheme.spacing.sm
         let editorInsets: CGFloat = 16 // top + bottom content insets
 
         // Count lines directly from statements to avoid recomputing combinedSQL.
@@ -71,7 +72,7 @@ struct SQLReviewPopover: View {
     }
 
     var body: some View {
-        VStack(spacing: DesignConstants.Spacing.sm) {
+        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.sm) {
             headerView
             if statements.isEmpty {
                 emptyState
@@ -79,7 +80,7 @@ struct SQLReviewPopover: View {
                 editorView
             }
         }
-        .padding(DesignConstants.Spacing.md)
+        .padding(ThemeEngine.shared.activeTheme.spacing.md)
         .frame(width: 520, height: contentHeight)
         .onExitCommand {
             dismiss()
@@ -99,23 +100,19 @@ struct SQLReviewPopover: View {
 
     private var headerView: some View {
         HStack {
-            Text(databaseType == .mongodb
-                ? String(localized: "MQL Preview")
-                : databaseType == .redis
-                    ? String(localized: "Command Preview")
-                    : String(localized: "SQL Preview"))
-                .font(.system(size: DesignConstants.FontSize.body, weight: .semibold))
+            Text("\(PluginManager.shared.queryLanguageName(for: databaseType)) Preview")
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
             if !statements.isEmpty {
                 Text(
                     "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
                 )
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .foregroundStyle(.secondary)
             }
             Spacer()
             if !statements.isEmpty {
                 Button(action: copyAllToClipboard) {
-                    HStack(spacing: DesignConstants.Spacing.xxs) {
+                    HStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxs) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         Text(copied ? String(localized: "Copied!") : String(localized: "Copy All"))
                     }
@@ -129,13 +126,13 @@ struct SQLReviewPopover: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: DesignConstants.Spacing.xs) {
+        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xs) {
             Spacer()
             Image(systemName: "doc.plaintext")
-                .font(.system(size: DesignConstants.IconSize.huge))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
                 .foregroundStyle(.tertiary)
             Text(String(localized: "No pending changes"))
-                .font(.system(size: DesignConstants.FontSize.body))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 .foregroundStyle(.secondary)
             Spacer()
         }
@@ -149,21 +146,21 @@ struct SQLReviewPopover: View {
         if isEditorReady {
             SourceEditor(
                 .constant(combinedSQL),
-                language: databaseType == .mongodb ? .javascript : databaseType == .redis ? .bash : .sql,
+                language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
                 configuration: Self.makeConfiguration(),
                 state: $editorState
             )
-            .clipShape(RoundedRectangle(cornerRadius: DesignConstants.CornerRadius.medium))
+            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
             .overlay(
-                RoundedRectangle(cornerRadius: DesignConstants.CornerRadius.medium)
+                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
         } else {
             // Lightweight placeholder while SourceEditor loads
             Color(nsColor: .textBackgroundColor)
-                .clipShape(RoundedRectangle(cornerRadius: DesignConstants.CornerRadius.medium))
+                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
                 .overlay(
-                    RoundedRectangle(cornerRadius: DesignConstants.CornerRadius.medium)
+                    RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
                         .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 )
         }
@@ -176,7 +173,7 @@ struct SQLReviewPopover: View {
             appearance: .init(
                 theme: TableProEditorTheme.make(),
                 font: NSFont.monospacedSystemFont(
-                    ofSize: DesignConstants.FontSize.medium, weight: .regular),
+                    ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular),
                 wrapLines: true
             ),
             behavior: .init(
@@ -197,13 +194,13 @@ struct SQLReviewPopover: View {
 
     private func copyAllToClipboard() {
         var joined = statements.map { $0.hasSuffix(";") ? $0 : $0 + ";" }.joined(separator: "\n\n")
-        if databaseType == .mongodb {
+        if PluginManager.shared.editorLanguage(for: databaseType) == .javascript {
             joined = Self.convertExtendedJsonToShellSyntax(joined)
         }
         ClipboardService.shared.writeText(joined)
         copied = true
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             copied = false
         }
     }

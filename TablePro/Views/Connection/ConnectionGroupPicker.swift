@@ -187,3 +187,48 @@ struct ConnectionGroupPicker: View {
         allGroups = groupStorage.loadGroups()
     }
 }
+
+// MARK: - Group Color Picker
+
+private struct GroupColorPicker: View {
+    @Binding var selectedColor: ConnectionColor
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(ConnectionColor.allCases) { color in
+                Button(action: { selectedColor = color }) {
+                    Circle()
+                        .fill(color == .none ? Color(nsColor: .quaternaryLabelColor) : color.color)
+                        .frame(width: ThemeEngine.shared.activeTheme.iconSizes.medium, height: ThemeEngine.shared.activeTheme.iconSizes.medium)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.primary, lineWidth: selectedColor == color ? 2 : 0)
+                                .frame(
+                                    width: ThemeEngine.shared.activeTheme.iconSizes.large,
+                                    height: ThemeEngine.shared.activeTheme.iconSizes.large
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Color \(color.rawValue)"))
+            }
+        }
+    }
+}
+
+#Preview {
+    struct PreviewWrapper: View {
+        @State private var groupId: UUID?
+
+        var body: some View {
+            VStack(spacing: 20) {
+                ConnectionGroupPicker(selectedGroupId: $groupId)
+                Text("Selected: \(groupId?.uuidString ?? "none")")
+            }
+            .padding()
+            .frame(width: 400)
+        }
+    }
+
+    return PreviewWrapper()
+}

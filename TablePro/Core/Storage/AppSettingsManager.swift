@@ -23,24 +23,32 @@ final class AppSettingsManager {
         didSet {
             general.language.apply()
             storage.saveGeneral(general)
-            notifyChange(domain: "general", notification: .generalSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "general")
         }
     }
 
     var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            appearance.theme.apply()
-            notifyChange(domain: "appearance", notification: .appearanceSettingsDidChange)
+            ThemeEngine.shared.activateTheme(id: appearance.activeThemeId)
+            ThemeEngine.shared.updateAppearanceMode(appearance.appearanceMode)
+            SyncChangeTracker.shared.markDirty(.settings, id: "appearance")
         }
     }
 
     var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
-            // Update cached theme values for thread-safe access
-            SQLEditorTheme.reloadFromSettings(editor)
-            notifyChange(domain: "editor", notification: .editorSettingsDidChange)
+            // Update behavioral settings in ThemeEngine
+            ThemeEngine.shared.updateEditorSettings(
+                highlightCurrentLine: editor.highlightCurrentLine,
+                showLineNumbers: editor.showLineNumbers,
+                tabWidth: editor.clampedTabWidth,
+                autoIndent: editor.autoIndent,
+                wordWrap: editor.wordWrap
+            )
+            notifyChange(.editorSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "editor")
         }
     }
 
@@ -62,7 +70,8 @@ final class AppSettingsManager {
             storage.saveDataGrid(validated)
             // Update date formatting service with new format
             DateFormattingService.shared.updateFormat(validated.dateFormat)
-            notifyChange(domain: "dataGrid", notification: .dataGridSettingsDidChange)
+            notifyChange(.dataGridSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "dataGrid")
         }
     }
 
@@ -84,28 +93,28 @@ final class AppSettingsManager {
             storage.saveHistory(validated)
             // Apply history settings immediately (cleanup if auto-cleanup enabled)
             Task { await applyHistorySettingsImmediately() }
-            notifyChange(domain: "history", notification: .historySettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "history")
         }
     }
 
     var tabs: TabSettings {
         didSet {
             storage.saveTabs(tabs)
-            notifyChange(domain: "tabs", notification: .tabSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "tabs")
         }
     }
 
     var keyboard: KeyboardSettings {
         didSet {
             storage.saveKeyboard(keyboard)
-            notifyChange(domain: "keyboard", notification: .keyboardSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "keyboard")
         }
     }
 
     var ai: AISettings {
         didSet {
             storage.saveAI(ai)
-            notifyChange(domain: "ai", notification: .aiSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "ai")
         }
     }
 
@@ -131,12 +140,21 @@ final class AppSettingsManager {
         self.keyboard = storage.loadKeyboard()
         self.ai = storage.loadAI()
 
-        // Apply appearance settings immediately
-        appearance.theme.apply()
+        // Apply language immediately
         general.language.apply()
 
-        // Load editor theme settings into cache (pass settings directly to avoid circular dependency)
-        SQLEditorTheme.reloadFromSettings(editor)
+        // ThemeEngine initializes itself from persisted theme ID
+        // Apply app-level appearance mode
+        ThemeEngine.shared.updateAppearanceMode(appearance.appearanceMode)
+
+        // Sync editor behavioral settings to ThemeEngine
+        ThemeEngine.shared.updateEditorSettings(
+            highlightCurrentLine: editor.highlightCurrentLine,
+            showLineNumbers: editor.showLineNumbers,
+            tabWidth: editor.clampedTabWidth,
+            autoIndent: editor.autoIndent,
+            wordWrap: editor.wordWrap
+        )
 
         // Initialize DateFormattingService with current format
         DateFormattingService.shared.updateFormat(dataGrid.dateFormat)
@@ -147,24 +165,8 @@ final class AppSettingsManager {
 
     // MARK: - Notification Propagation
 
-    /// Notify listeners that settings have changed
-    /// Posts both domain-specific and generic notifications
-    private func notifyChange(domain: String, notification: Notification.Name) {
-        let changeInfo = SettingsChangeInfo(domain: domain, changedKeys: nil)
-
-        // Post domain-specific notification
-        NotificationCenter.default.post(
-            name: notification,
-            object: self,
-            userInfo: [SettingsChangeInfo.userInfoKey: changeInfo]
-        )
-
-        // Post generic notification for listeners that want all settings changes
-        NotificationCenter.default.post(
-            name: .settingsDidChange,
-            object: self,
-            userInfo: [SettingsChangeInfo.userInfoKey: changeInfo]
-        )
+    private func notifyChange(_ notification: Notification.Name) {
+        NotificationCenter.default.post(name: notification, object: self)
     }
 
     // MARK: - Accessibility Text Size
@@ -175,7 +177,7 @@ final class AppSettingsManager {
     /// Uses NSWorkspace.accessibilityDisplayOptionsDidChangeNotification which fires when the user
     /// changes settings in System Settings > Accessibility > Display (including the Text Size slider).
     private func observeAccessibilityTextSizeChanges() {
-        lastAccessibilityScale = SQLEditorTheme.accessibilityScaleFactor
+        lastAccessibilityScale = EditorFontCache.computeAccessibilityScale()
         accessibilityTextSizeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil,
@@ -183,25 +185,18 @@ final class AppSettingsManager {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let newScale = SQLEditorTheme.accessibilityScaleFactor
-                // Only reload if the text size scale actually changed (this notification
-                // also fires for contrast, reduce motion, etc.)
+                let newScale = EditorFontCache.computeAccessibilityScale()
                 guard abs(newScale - lastAccessibilityScale) > 0.01 else { return }
                 lastAccessibilityScale = newScale
                 Self.logger.debug("Accessibility text size changed, scale: \(newScale, format: .fixed(precision: 2))")
-                // Re-apply editor fonts with the updated accessibility scale factor
-                SQLEditorTheme.reloadFromSettings(editor)
-                // Notify the editor view to rebuild its configuration
+                ThemeEngine.shared.reloadFontCaches()
                 NotificationCenter.default.post(name: .accessibilityTextSizeDidChange, object: self)
             }
         }
     }
 
-    /// Apply history settings immediately (triggered on settings change)
     private func applyHistorySettingsImmediately() async {
-        // This will be called by QueryHistoryManager
-        // We post a notification and let the manager handle the actual cleanup
-        // This keeps the settings manager decoupled from history storage implementation
+        QueryHistoryManager.shared.applySettingsChange()
     }
 
     // MARK: - Actions

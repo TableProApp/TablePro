@@ -1,11 +1,11 @@
 ---
 title: Keyboard Shortcuts
-description: Master TablePro with keyboard shortcuts for faster workflow
+description: Complete list of keyboard shortcuts for the SQL editor, data grid, tabs, Vim mode, and customization
 ---
 
 # Keyboard Shortcuts
 
-TablePro supports extensive keyboard shortcuts to help you work faster without reaching for the mouse. Learn these shortcuts to significantly speed up your database workflow.
+TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcuts are rebindable.
 
 ## Quick Reference
 
@@ -17,6 +17,7 @@ TablePro supports extensive keyboard shortcuts to help you work faster without r
 | New connection | `Cmd+N` |
 | Open history | `Cmd+Y` |
 | Settings | `Cmd+,` |
+| Quick Switcher | `Cmd+P` |
 | Close window | `Cmd+W` |
 | Quit | `Cmd+Q` |
 
@@ -31,7 +32,7 @@ TablePro supports extensive keyboard shortcuts to help you work faster without r
 | Format SQL | `Option+Cmd+F` | Format SQL query (beautify and standardize SQL syntax) |
 
 <Tip>
-`Cmd+Enter` is the most important shortcut. It runs the query your cursor is in, or executes only the selected text. If your selection contains multiple statements, they are executed sequentially within a transaction.
+`Cmd+Enter` is the most important shortcut. It runs the query your cursor is in, or executes only the selected text. If your selection contains multiple statements, they run sequentially in a transaction.
 </Tip>
 
 ### Text Editing
@@ -51,7 +52,6 @@ TablePro supports extensive keyboard shortcuts to help you work faster without r
 
 | Action | Shortcut |
 |--------|----------|
-| Go to line | `Cmd+Shift+L` |
 | Go to beginning | `Cmd+Up` |
 | Go to end | `Cmd+Down` |
 | Move line up | `Option+Up` |
@@ -125,7 +125,7 @@ TablePro supports extensive keyboard shortcuts to help you work faster without r
 |--------|----------|
 | Copy selection | `Cmd+C` |
 | Copy as CSV | `Cmd+Shift+C` |
-| Copy as JSON | `Cmd+Option+C` |
+| Copy as JSON | `Cmd+Option+J` |
 | Copy as TSV | Available from context menu |
 
 ## Application
@@ -236,7 +236,7 @@ When Vim mode is enabled (**Settings** > **Editor** > **Editing** > **Vim mode**
 Prefix motions and operators with a number: `3j` (down 3 lines), `2dd` (delete 2 lines), `5x` (delete 5 characters).
 
 <Note>
-Vim mode keybindings are only active in the SQL editor and do not affect the data grid or other panels. Standard shortcuts like `Cmd+Enter` remain available in all modes.
+Vim mode keybindings only apply in the SQL editor. They don't affect the data grid or other panels. Standard shortcuts like `Cmd+Enter` work in all modes.
 </Note>
 
 ## Filtering
@@ -265,6 +265,19 @@ Vim mode keybindings are only active in the SQL editor and do not affect the dat
 | Export data | `Cmd+Shift+E` |
 | Import data | `Cmd+Shift+I` |
 
+## Quick switcher
+
+The Quick Switcher (`Cmd+P`) lets you search and jump to any table, view, database, schema, or recent query. It uses fuzzy matching, so typing `usr` finds `users`, `user_settings`, etc.
+
+| Action | Shortcut |
+|--------|----------|
+| Open Quick Switcher | `Cmd+P` |
+| Navigate results | `Up` / `Down` arrows |
+| Open selected item | `Return` |
+| Dismiss | `Escape` |
+
+Results are grouped by type (tables, views, system tables, databases, schemas, recent queries) and ranked by match quality when searching.
+
 ## Global Shortcuts
 
 ### Standard macOS
@@ -285,7 +298,7 @@ Vim mode keybindings are only active in the SQL editor and do not affect the dat
 
 ## Customizing Shortcuts
 
-TablePro allows you to customize most menu keyboard shortcuts from **Settings** > **Keyboard**.
+Most menu shortcuts are rebindable in **Settings** > **Keyboard**.
 
 {/* Screenshot: Keyboard settings */}
 <Frame caption="Keyboard shortcut customization">
@@ -304,28 +317,26 @@ TablePro allows you to customize most menu keyboard shortcuts from **Settings** 
 ### Rebinding a Shortcut
 
 1. Open **Settings** (`Cmd+,`) and select the **Keyboard** tab
-2. Find the action you want to rebind (use the search field to filter)
+2. Find the action (use the search field to filter)
 3. Click the shortcut field next to the action
-4. Press the new key combination you want to assign
+4. Press the new key combination
 5. The shortcut updates immediately in the menu bar
 
 ### Clearing a Shortcut
 
-To remove a shortcut entirely:
-
 1. Click the shortcut field for the action
 2. Press `Delete` or `Backspace`
-3. The shortcut is cleared — the menu item will have no keyboard shortcut
+3. The shortcut is removed
 
 ### Conflict Detection
 
-When you assign a shortcut that is already used by another action, TablePro shows a confirmation dialog:
+If you assign a shortcut already in use, TablePro shows a confirmation dialog:
 
-- **Cancel** — keep the existing assignment
-- **Reassign** — move the shortcut to the new action (the previous action's shortcut is cleared)
+- **Cancel** -- keep the existing assignment
+- **Reassign** -- move the shortcut to the new action (clears the previous action's shortcut)
 
 <Warning>
-System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassigned. TablePro will show a warning if you attempt to use one.
+System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassigned. TablePro warns if you try.
 </Warning>
 
 ### Resetting to Defaults
@@ -333,8 +344,6 @@ System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassig
 Click **Reset to Defaults** at the bottom of the Keyboard settings to restore all shortcuts to their original values.
 
 ### Shortcut Categories
-
-Shortcuts are organized into categories:
 
 | Category | Examples |
 |----------|----------|
@@ -352,7 +361,7 @@ Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS conventi
 
 ### Most Used Shortcuts
 
-Focus on learning these first:
+Start with these five:
 
 1. `Cmd+Enter` - Execute query
 2. `Cmd+N` - New connection
@@ -385,7 +394,7 @@ Focus on learning these first:
 
 **Group by context**:
 - All `Cmd+` shortcuts are primary actions
-- Add `Shift` for variations (e.g., `Cmd+Z` undo → `Cmd+Shift+Z` redo)
+- Add `Shift` for variations (e.g., `Cmd+Z` undo -> `Cmd+Shift+Z` redo)
 - Add `Option` for alternatives
 
 **Common patterns**:
@@ -395,8 +404,6 @@ Focus on learning these first:
 - `Tab` / `Shift+Tab` - Next/Previous
 
 ## Cheat Sheet
-
-Print or save this quick reference:
 
 ```
 === SQL Editor ===
@@ -445,6 +452,7 @@ Cmd+Shift+L    Toggle AI Chat
 Cmd+L          Explain with AI
 Cmd+Opt+L      Optimize with AI
 Cmd+,          Settings
+Cmd+P          Quick Switcher
 Cmd+W          Close window
 Cmd+Q          Quit
 ```
@@ -461,7 +469,7 @@ TablePro works with macOS VoiceOver:
 
 ### Keyboard-Only Navigation
 
-You can use TablePro entirely without a mouse:
+TablePro is fully usable without a mouse:
 
 1. `Tab` moves between major UI sections
 2. Arrow keys navigate within sections
@@ -472,9 +480,9 @@ You can use TablePro entirely without a mouse:
 
 ### Shortcut Not Working
 
-1. **Check focus**: Ensure the correct panel has focus
+1. **Check focus**: Make sure the correct panel has focus
 2. **Check conflicts**: Another app may be capturing the shortcut
-3. **Check modifiers**: Make sure you're pressing the right modifier keys
+3. **Check modifiers**: Verify you're pressing the right modifier keys
 
 ### System-Wide Conflicts
 

@@ -1,0 +1,221 @@
+---
+title: 安装
+description: 在 macOS 14.0+ 上通过 Homebrew 或 DMG 安装 TablePro
+---
+
+# 安装
+
+## 系统要求
+
+### 最低要求
+
+| 要求 | 规格 |
+|-------------|---------------|
+| **macOS 版本** | macOS 14.0 (Sonoma) 或更高版本 |
+| **处理器** | Apple Silicon (M1/M2/M3/M4/M5) 或 Intel x86_64 |
+| **内存** | 最低 4 GB RAM |
+| **存储空间** | 约 200 MB 可用磁盘空间（应用约 50 MB；额外空间用于查询历史、标签页状态和插件） |
+
+### 推荐配置
+
+- **macOS**: 最新版本以获得最佳性能
+- **内存**: 8 GB RAM 或更多，适用于大型数据库
+- **存储**: SSD 硬盘，提升查询历史和标签页持久化的速度
+
+<Note>
+TablePro 仅使用 Apple 原生框架。无需 Java、.NET 或其他运行时环境。
+</Note>
+
+## 通过 Homebrew 安装
+
+最快的安装方式：
+
+```bash
+brew install --cask tablepro
+```
+
+<Tip>
+Homebrew 可以在同一个地方管理安装和更新。
+</Tip>
+
+更新：
+
+```bash
+brew upgrade tablepro
+```
+
+卸载：
+
+```bash
+brew uninstall tablepro
+```
+
+同时删除应用数据：
+
+```bash
+brew zap tablepro
+```
+
+## 下载
+
+### 从 GitHub Releases 下载
+
+1. 前往 [TablePro Releases](https://github.com/datlechin/tablepro/releases) 页面
+2. 找到最新版本
+3. 下载适合你 Mac 的 DMG 文件：
+
+| 架构 | 文件 | 适用于 |
+|--------------|------|---------------|
+| Apple Silicon | `TablePro-arm64.dmg` | M1、M2、M3、M4、M5 芯片 |
+| Intel | `TablePro-x86_64.dmg` | Intel 处理器 |
+
+### 查看你的 Mac 架构
+
+1. 点击菜单栏中的 **Apple 菜单** ()
+2. 选择 **About This Mac**
+3. 查看：
+   - **Chip**: Apple M1/M2/M3/M4/M5 = Apple Silicon
+   - **Processor**: Intel = x86_64
+
+## 安装步骤
+
+### 标准安装
+
+1. **打开 DMG 文件**
+   - 双击下载的 `.dmg` 文件
+   - 会出现一个新的 Finder 窗口
+
+2. **拖到 Applications 文件夹**
+   - 将 TablePro 图标拖到 Applications 文件夹快捷方式上
+   - 等待复制完成
+
+{/* Screenshot: DMG window with drag-to-Applications illustration */}
+<Frame caption="将 TablePro 拖到 Applications">
+  <img
+    className="block dark:hidden"
+    src="/images/install-dmg.png"
+    alt="拖到 Applications"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/install-dmg-dark.png"
+    alt="拖到 Applications"
+  />
+</Frame>
+
+3. **推出 DMG**
+   - 在 Finder 侧边栏中右键点击已挂载的 DMG
+   - 选择 **Eject**
+
+4. **启动 TablePro**
+   - 打开 **Finder** > **Applications**
+   - 双击 **TablePro**
+
+## 更新 TablePro
+
+### 自动更新
+
+TablePro 通过 [Sparkle](https://sparkle-project.org/) 在后台检查更新，有新版本时会通知你。
+
+### 手动检查更新
+
+手动检查：
+
+1. 打开菜单栏中的 **TablePro** 菜单
+2. 点击 **Check for Updates...**
+
+### 更新设置
+
+在 **Settings** > **General** > **Software Update** 中配置更新行为：
+
+- 启用或禁用自动检查更新
+- 设置检查频率
+
+<Tip>
+连接和设置与应用程序本体分开存储，更新不会丢失。
+</Tip>
+
+### 数据存储位置
+
+| 数据 | 位置 | 存储类型 |
+|------|----------|--------------|
+| **连接** | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
+| **设置** | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
+| **密码** | macOS 钥匙串（安全存储） | Keychain |
+| **查询历史** | `~/Library/Application Support/TablePro/query_history.db` | SQLite |
+
+## 卸载
+
+### 移除应用
+
+1. 如果 TablePro 正在运行，先退出
+2. 打开 **Finder** > **Applications**
+3. 将 **TablePro** 拖到废纸篓
+
+### 删除应用数据（可选）
+
+删除所有 TablePro 数据：
+
+```bash
+# 删除 Application Support 数据
+rm -rf ~/Library/Application\ Support/TablePro
+
+# 删除偏好设置
+rm ~/Library/Preferences/com.TablePro.plist
+
+# 删除钥匙串项目（通过 Keychain Access 应用）
+# 搜索 "TablePro" 并删除相关项目
+```
+
+<Warning>
+此操作将删除所有已保存的连接和查询历史。请先导出重要数据。
+</Warning>
+
+## 故障排查
+
+### 应用启动时崩溃
+
+1. 检查是否下载了正确架构版本的安装包
+2. 确认你正在运行 macOS 14.0 或更高版本
+3. 尝试删除并重新安装应用
+4. 在 Console.app 中查看崩溃日志
+
+### 安装后的连接问题
+
+如果 TablePro 可以打开但无法连接数据库：
+
+1. 确认数据库服务器正在运行
+2. 检查防火墙设置（System Settings > Network > Firewall）
+3. 确保数据库服务器接受来自 localhost 的连接
+
+## 从源码构建
+
+适用于希望从源码构建 TablePro 的开发者：
+
+1. 克隆仓库：
+```bash
+git clone https://github.com/datlechin/tablepro.git
+cd tablepro
+```
+
+2. 打开 Xcode 项目：
+```bash
+open TablePro.xcodeproj
+```
+
+3. 构建并运行：
+   - 选择 **TablePro** scheme
+   - 按 `Cmd+R` 构建并运行
+
+更多详细说明请参阅 [Development Setup](/zh/development/setup) 指南。
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="快速入门" icon="rocket" href="/zh/quickstart">
+    连接到你的第一个数据库
+  </Card>
+  <Card title="数据库连接" icon="database" href="/zh/databases/overview">
+    连接管理与组织
+  </Card>
+</CardGroup>

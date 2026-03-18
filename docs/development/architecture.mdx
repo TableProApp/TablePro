@@ -1,20 +1,16 @@
 ---
 title: Architecture
-description: Understand TablePro's codebase structure and design patterns
+description: MVVM structure, database driver protocol, actor-based SSH tunnels, and autocomplete engine internals
 ---
 
 # Architecture
 
-This guide explains TablePro's architecture, design patterns, and how different components work together.
-
-## Overview
-
 TablePro is built with:
 
-- **SwiftUI** for the user interface
+- **SwiftUI** for the UI
 - **AppKit** for low-level macOS integration
 - **Swift Concurrency** (async/await, actors) for concurrent operations
-- **Native database libraries** for database connectivity
+- **Native C libraries** for database connectivity
 
 ```mermaid
 block-beta
@@ -47,68 +43,55 @@ block-beta
 
 ## Dependencies
 
-TablePro uses Swift Package Manager (SPM) for third-party dependencies:
+SPM dependencies:
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| **CodeEditSourceEditor** | 0.15.2+ | Tree-sitter-powered code editor component for the SQL editor |
+| **CodeEditSourceEditor** | 0.15.2+ | Tree-sitter-powered code editor for the SQL editor |
 | **Sparkle** | 2.x | Auto-update framework with EdDSA signing |
 
 <Note>
-CodeEditSourceEditor bundles a SwiftLint plugin that requires `-skipPackagePluginValidation` for CLI builds. See the [Building](/development/building) guide for details.
+CodeEditSourceEditor bundles a SwiftLint plugin that requires `-skipPackagePluginValidation` for CLI builds. See [Building](/development/building).
 </Note>
 
 ## Directory Structure
 
 <Tree>
   <Tree.Folder name="TablePro" defaultOpen>
-    <Tree.Folder name="Models">
-      <Tree.File name="DatabaseConnection.swift" />
-      <Tree.File name="QueryResult.swift" />
-      <Tree.File name="TableInfo.swift" />
-      <Tree.File name="AppSettings.swift" />
-    </Tree.Folder>
-    <Tree.Folder name="Views">
-      <Tree.Folder name="Main" />
-      <Tree.Folder name="Connection" />
-      <Tree.Folder name="Editor" />
-      <Tree.Folder name="Results" />
-      <Tree.Folder name="Structure" />
-      <Tree.Folder name="Settings" />
-      <Tree.Folder name="Welcome" />
-    </Tree.Folder>
-    <Tree.Folder name="ViewModels">
-      <Tree.File name="DatabaseManager.swift" />
-    </Tree.Folder>
     <Tree.Folder name="Core">
       <Tree.Folder name="Database">
         <Tree.File name="DatabaseDriver.swift" />
-        <Tree.File name="MySQLDriver.swift" />
-        <Tree.File name="PostgreSQLDriver.swift" />
-        <Tree.File name="SQLiteDriver.swift" />
+        <Tree.File name="DatabaseManager.swift" />
       </Tree.Folder>
-      <Tree.Folder name="Autocomplete">
-        <Tree.File name="CompletionEngine.swift" />
-        <Tree.File name="SQLContextAnalyzer.swift" />
-        <Tree.File name="SQLKeywords.swift" />
+      <Tree.Folder name="Plugins">
+        <Tree.File name="PluginManager.swift" />
+        <Tree.File name="PluginDriverAdapter.swift" />
       </Tree.Folder>
-      <Tree.Folder name="SSH">
-        <Tree.File name="SSHTunnelManager.swift" />
-      </Tree.Folder>
+      <Tree.Folder name="Autocomplete" />
+      <Tree.Folder name="Services" />
+      <Tree.Folder name="SSH" />
     </Tree.Folder>
+    <Tree.Folder name="Views" />
+    <Tree.Folder name="Models" />
+    <Tree.Folder name="ViewModels" />
     <Tree.Folder name="Extensions" />
-    <Tree.Folder name="Theme">
-      <Tree.File name="Theme.swift" />
-    </Tree.Folder>
+    <Tree.Folder name="Theme" />
     <Tree.Folder name="Resources" />
   </Tree.Folder>
+  <Tree.Folder name="Plugins" defaultOpen>
+    <Tree.Folder name="TableProPluginKit" />
+    <Tree.Folder name="MySQLDriverPlugin" />
+    <Tree.Folder name="PostgreSQLDriverPlugin" />
+    <Tree.File name="..." />
+  </Tree.Folder>
+  <Tree.Folder name="Libs" />
+  <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="scripts" />
 </Tree>
 
 ## Design Patterns
 
 ### MVVM Architecture
-
-TablePro uses Model-View-ViewModel (MVVM):
 
 ```mermaid
 flowchart LR
@@ -139,7 +122,7 @@ class DatabaseManager: ObservableObject {
 }
 ```
 
-**Views**: SwiftUI declarative UI
+**Views**: Declarative SwiftUI
 ```swift
 struct ConnectionFormView: View {
     @StateObject private var dbManager = DatabaseManager.shared
@@ -154,7 +137,7 @@ struct ConnectionFormView: View {
 
 ### Protocol-Oriented Design
 
-Database drivers follow a protocol:
+All database drivers conform to a single protocol:
 
 ```swift
 protocol DatabaseDriver: AnyObject {
@@ -169,13 +152,7 @@ protocol DatabaseDriver: AnyObject {
 }
 ```
 
-Implementations:
-
-```swift
-class MySQLDriver: DatabaseDriver { ... }
-class PostgreSQLDriver: DatabaseDriver { ... }
-class SQLiteDriver: DatabaseDriver { ... }
-```
+Database drivers are implemented as `.tableplugin` bundles loaded at runtime. Each plugin implements `DriverPlugin` and `PluginDatabaseDriver` from the shared `TableProPluginKit` framework. `PluginDriverAdapter` bridges `PluginDatabaseDriver` to the core `DatabaseDriver` protocol.
 
 ### Actor Isolation
 
@@ -197,30 +174,15 @@ actor SSHTunnelManager {
 }
 ```
 
-### Factory Pattern
+### Plugin System
 
-Driver creation uses a factory:
-
-```swift
-enum DatabaseDriverFactory {
-    static func createDriver(for connection: DatabaseConnection) -> DatabaseDriver {
-        switch connection.type {
-        case .mysql, .mariadb:
-            return MySQLDriver(connection: connection)
-        case .postgresql:
-            return PostgreSQLDriver(connection: connection)
-        case .sqlite:
-            return SQLiteDriver(connection: connection)
-        }
-    }
-}
-```
+Driver creation uses a plugin-based factory. `PluginManager` discovers and loads `.tableplugin` bundles at runtime. `DatabaseDriverFactory` looks up plugins via `DatabaseType.pluginTypeId` and wraps them with `PluginDriverAdapter` to conform to the core `DatabaseDriver` protocol. No switch statement or hardcoded driver list is needed.
 
 ## Key Components
 
 ### DatabaseManager
 
-Central manager for database operations:
+Central manager for all database operations:
 
 - Manages active sessions
 - Coordinates connections/disconnections
@@ -241,19 +203,23 @@ class DatabaseManager: ObservableObject {
 }
 ```
 
-### Database Drivers
+### Database Driver Plugins
 
-Each driver encapsulates database-specific logic:
+Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, and SQLite are built into the app bundle; the rest are distributed via the plugin registry and downloaded on demand.
 
-| Driver | Library | Protocol |
-|--------|---------|----------|
-| MySQLDriver | libmariadb | MySQL wire protocol |
-| PostgreSQLDriver | libpq | PostgreSQL protocol |
-| SQLiteDriver | Built-in SQLite3 | File-based |
+| Plugin | Database Types | C Bridge | Distribution |
+|--------|---------------|----------|--------------|
+| MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) | Built-in |
+| PostgreSQLDriverPlugin | PostgreSQL, Redshift | CLibPQ (libpq) | Built-in |
+| SQLiteDriverPlugin | SQLite | Foundation sqlite3 | Built-in |
+| ClickHouseDriverPlugin | ClickHouse | URLSession HTTP | Registry |
+| MSSQLDriverPlugin | SQL Server | CFreeTDS | Registry |
+| MongoDBDriverPlugin | MongoDB | CLibMongoc | Registry |
+| RedisDriverPlugin | Redis | CRedis | Registry |
+| DuckDBDriverPlugin | DuckDB | CDuckDB | Registry |
+| OracleDriverPlugin | Oracle | OracleNIO (SPM) | Registry |
 
 ### Autocomplete Engine
-
-The autocomplete system:
 
 ```mermaid
 flowchart TB
@@ -272,7 +238,7 @@ flowchart TB
 
 ### SSH Tunnel Manager
 
-Manages SSH tunnels as an actor:
+Actor-based SSH tunnel management:
 
 ```swift
 actor SSHTunnelManager {
@@ -301,11 +267,10 @@ flowchart TB
     Form --> Manager["DatabaseManager<br>.connectToSession"]
     Manager --> SSH["SSHTunnelManager"]
     Manager --> Factory["DatabaseDriverFactory"]
-    Factory --> MySQL["MySQL Driver"]
-    Factory --> Postgres["Postgres Driver"]
+    Factory --> Plugin["PluginManager<br>(loads .tableplugin)"]
+    Plugin --> Adapter["PluginDriverAdapter"]
     SSH --> Connected["Connection Established"]
-    MySQL --> Connected
-    Postgres --> Connected
+    Adapter --> Connected
 
     subgraph optional ["if SSH enabled"]
         SSH
@@ -328,7 +293,7 @@ flowchart TB
 
 ### Published Properties
 
-UI state is managed with `@Published`:
+UI state uses `@Published`:
 
 ```swift
 @MainActor
@@ -341,7 +306,7 @@ class DatabaseManager: ObservableObject {
 
 ### App Storage
 
-Settings use `@AppStorage` for persistence:
+Settings persist via `@AppStorage`:
 
 ```swift
 @AppStorage("appearance.theme") var theme: AppTheme = .system
@@ -390,7 +355,7 @@ enum MySQLError: Error, LocalizedError {
 
 ### Error Propagation
 
-Errors propagate up through async/await:
+Errors propagate through async/await:
 
 ```swift
 func executeQuery(_ query: String) async throws -> QueryResult {
@@ -405,7 +370,7 @@ func executeQuery(_ query: String) async throws -> QueryResult {
 
 ### Unit Tests
 
-Tests are in `TableProTests/`:
+Tests live in `TableProTests/`:
 
 ```swift
 final class MySQLDriverTests: XCTestCase {
@@ -418,8 +383,6 @@ final class MySQLDriverTests: XCTestCase {
 ```
 
 ### Integration Tests
-
-For database tests:
 
 ```swift
 func testExecuteQuery() async throws {

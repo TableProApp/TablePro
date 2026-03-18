@@ -47,28 +47,28 @@ struct TableRow: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: table.type == .view ? "eye" : "tablecells")
                     .foregroundStyle(TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
-                    .frame(width: DesignConstants.IconSize.default)
+                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.default)
 
                 // Pending operation indicator
                 if isPendingDelete {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: DesignConstants.FontSize.caption))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption))
                         .foregroundStyle(.red)
                         .offset(x: 4, y: 4)
                 } else if isPendingTruncate {
                     Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: DesignConstants.FontSize.caption))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption))
                         .foregroundStyle(.orange)
                         .offset(x: 4, y: 4)
                 }
             }
 
             Text(table.name)
-                .font(.system(size: DesignConstants.FontSize.medium, design: .monospaced))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
                 .lineLimit(1)
                 .foregroundStyle(TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
         }
-        .padding(.vertical, DesignConstants.Spacing.xxs)
+        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TableRowLogic.accessibilityLabel(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
     }

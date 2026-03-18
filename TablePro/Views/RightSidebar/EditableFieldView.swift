@@ -28,6 +28,7 @@ struct EditableFieldView: View {
     @FocusState private var isFocused: Bool
     @State private var isHovered = false
     @State private var isSetPopoverPresented = false
+    @State private var hexEditText = ""
 
     private var placeholderText: String {
         if hasMultipleValues {
@@ -50,13 +51,13 @@ struct EditableFieldView: View {
                 }
 
                 Text(columnName)
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .lineLimit(1)
 
                 Spacer()
 
                 Text(columnTypeEnum.badgeLabel)
-                    .font(.system(size: DesignConstants.FontSize.tiny, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -82,7 +83,7 @@ struct EditableFieldView: View {
         if isPendingNull || isPendingDefault {
             TextField(isPendingNull ? "NULL" : "DEFAULT", text: .constant(""))
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .disabled(true)
         } else if columnTypeEnum.isEnumType,
                   let values = columnTypeEnum.enumValues, !values.isEmpty {
@@ -92,10 +93,57 @@ struct EditableFieldView: View {
             setPicker(values: values)
         } else if columnTypeEnum.isBooleanType {
             booleanPicker
+        } else if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {
+            blobHexEditor
         } else if isLongText || columnTypeEnum.isJsonType {
             multiLineEditor
         } else {
             singleLineEditor
+        }
+    }
+
+    private var blobHexEditor: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            TextField("Hex bytes", text: $hexEditText, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, design: .monospaced))
+                .lineLimit(3...8)
+                .focused($isFocused)
+                .onAppear {
+                    hexEditText = BlobFormattingService.shared.format(value, for: .edit) ?? ""
+                }
+                .onChange(of: value) {
+                    if !isFocused {
+                        hexEditText = BlobFormattingService.shared.format(value, for: .edit) ?? ""
+                    }
+                }
+                .onChange(of: isFocused) {
+                    if !isFocused {
+                        commitHexEdit()
+                    }
+                }
+
+            HStack(spacing: 4) {
+                if let byteCount = value.data(using: .isoLatin1)?.count, byteCount > 0 {
+                    Text("\(byteCount) bytes")
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                        .foregroundStyle(.tertiary)
+                }
+
+                if BlobFormattingService.shared.parseHex(hexEditText) == nil, !hexEditText.isEmpty {
+                    Text("Invalid hex")
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+    }
+
+    private func commitHexEdit() {
+        if let raw = BlobFormattingService.shared.parseHex(hexEditText) {
+            value = raw
+        } else {
+            hexEditText = BlobFormattingService.shared.format(value, for: .edit) ?? ""
         }
     }
 
@@ -121,7 +169,7 @@ struct EditableFieldView: View {
             isSetPopoverPresented = true
         } label: {
             Text(displayLabel)
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
@@ -160,7 +208,7 @@ struct EditableFieldView: View {
             content()
         } label: {
             Text(label)
-                .font(.system(size: DesignConstants.FontSize.small))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }
@@ -175,7 +223,7 @@ struct EditableFieldView: View {
     private var multiLineEditor: some View {
         TextField(placeholderText, text: $value, axis: .vertical)
             .textFieldStyle(.roundedBorder)
-            .font(.system(size: DesignConstants.FontSize.small))
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
             .lineLimit(3...6)
             .focused($isFocused)
     }
@@ -183,7 +231,7 @@ struct EditableFieldView: View {
     private var singleLineEditor: some View {
         TextField(placeholderText, text: $value)
             .textFieldStyle(.roundedBorder)
-            .font(.system(size: DesignConstants.FontSize.small))
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
             .focused($isFocused)
     }
 
@@ -209,6 +257,14 @@ struct EditableFieldView: View {
                 Button("Pretty Print") {
                     if let formatted = value.prettyPrintedAsJson() {
                         value = formatted
+                    }
+                }
+            }
+
+            if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {
+                Button("Copy as Hex") {
+                    if let hex = BlobFormattingService.shared.format(value, for: .detail) {
+                        ClipboardService.shared.writeText(hex)
                     }
                 }
             }
@@ -268,13 +324,13 @@ struct ReadOnlyFieldView: View {
             // Line 1: field name + type badge
             HStack(spacing: 4) {
                 Text(columnName)
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .lineLimit(1)
 
                 Spacer()
 
                 Text(columnTypeEnum.badgeLabel)
-                    .font(.system(size: DesignConstants.FontSize.tiny, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
@@ -284,21 +340,29 @@ struct ReadOnlyFieldView: View {
 
             // Line 2: value in disabled native text field
             if let value {
-                if isLongText {
+                if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {
+                    ScrollView {
+                        Text(BlobFormattingService.shared.formatIfNeeded(value, columnType: columnTypeEnum, for: .detail))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(maxHeight: 120)
+                } else if isLongText {
                     Text(value)
-                        .font(.system(size: DesignConstants.FontSize.small, design: .monospaced))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, maxHeight: 80, alignment: .topLeading)
                 } else {
                     TextField("", text: .constant(value))
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .disabled(true)
                 }
             } else {
                 TextField("NULL", text: .constant(""))
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .disabled(true)
             }
         }
@@ -306,6 +370,14 @@ struct ReadOnlyFieldView: View {
             if let value {
                 Button("Copy Value") {
                     ClipboardService.shared.writeText(value)
+                }
+
+                if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {
+                    Button("Copy as Hex") {
+                        if let hex = BlobFormattingService.shared.format(value, for: .detail) {
+                            ClipboardService.shared.writeText(hex)
+                        }
+                    }
                 }
             }
         }

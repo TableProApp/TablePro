@@ -30,23 +30,23 @@ struct EmptyStateView: View {
     }
 
     var body: some View {
-        VStack(spacing: DesignConstants.Spacing.sm) {
+        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.sm) {
             // Icon
             Image(systemName: icon)
-                .font(.system(size: DesignConstants.IconSize.huge))
-                .foregroundStyle(DesignConstants.Colors.tertiaryText)
-                .padding(.bottom, DesignConstants.Spacing.xxs)
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
+                .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
+                .padding(.bottom, ThemeEngine.shared.activeTheme.spacing.xxs)
 
             // Title
             Text(title)
-                .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
-                .foregroundStyle(DesignConstants.Colors.secondaryText)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                .foregroundStyle(ThemeEngine.shared.colors.ui.secondaryTextSwiftUI)
 
             // Description (optional)
             if let description = description {
                 Text(description)
-                    .font(.system(size: DesignConstants.FontSize.small))
-                    .foregroundStyle(DesignConstants.Colors.tertiaryText)
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -56,13 +56,13 @@ struct EmptyStateView: View {
                 Button(action: action) {
                     HStack(spacing: 4) {
                         Image(systemName: "plus")
-                            .font(.system(size: DesignConstants.FontSize.small))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         Text(actionTitle)
-                            .font(.system(size: DesignConstants.FontSize.small))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     }
                 }
                 .buttonStyle(.borderless)
-                .padding(.top, DesignConstants.Spacing.xxs)
+                .padding(.top, ThemeEngine.shared.activeTheme.spacing.xxs)
             }
         }
         .frame(maxWidth: .infinity)

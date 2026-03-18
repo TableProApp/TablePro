@@ -127,8 +127,11 @@ final class KeyHandlingTableView: NSTableView {
 
     /// Copy selected rows to clipboard
     @objc func copy(_ sender: Any?) {
+        let indices = Set(selectedRowIndexes)
         if let callback = coordinator?.onCopyRows {
-            callback(Set(selectedRowIndexes))
+            callback(indices)
+        } else {
+            coordinator?.copyRows(at: indices)
         }
     }
 
@@ -235,7 +238,7 @@ final class KeyHandlingTableView: NSTableView {
 
         // Multiline values use overlay editor instead of field editor
         let columnIndex = focusedColumn - 1
-        if let value = coordinator?.rowProvider.row(at: row)?.value(at: columnIndex),
+        if let value = coordinator?.rowProvider.value(atRow: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
             return

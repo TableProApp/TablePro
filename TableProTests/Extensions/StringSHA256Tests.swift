@@ -2,7 +2,7 @@
 //  StringSHA256Tests.swift
 //  TableProTests
 //
-//  Tests for String and Data SHA256 extensions
+//  Tests for String SHA256 extension
 //
 
 import CryptoKit
@@ -52,15 +52,6 @@ struct StringSHA256Tests {
         let hash2 = input2.sha256
 
         #expect(hash1 != hash2)
-    }
-
-    @Test("Data.sha256Hex matches String.sha256")
-    func testDataSHA256Hex() {
-        let input = "hello"
-        let stringHash = input.sha256
-        let dataHash = Data(input.utf8).sha256Hex
-
-        #expect(stringHash == dataHash)
     }
 
     @Test("Unicode string hashes consistently")

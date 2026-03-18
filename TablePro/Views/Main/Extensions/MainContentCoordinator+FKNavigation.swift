@@ -52,12 +52,20 @@ extension MainContentCoordinator {
 
         // If current tab has unsaved changes, open in a new native tab instead of replacing
         if changeManager.hasChanges {
+            let fkFilterState = TabFilterState(
+                filters: [filter],
+                appliedFilters: [filter],
+                isVisible: true,
+                quickSearchText: "",
+                filterLogicMode: .and
+            )
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .table,
                 tableName: referencedTable,
                 databaseName: currentDatabase,
-                isView: false
+                isView: false,
+                initialFilterState: fkFilterState
             )
             WindowOpener.shared.openNativeTab(payload)
             return
@@ -80,6 +88,7 @@ extension MainContentCoordinator {
             let tab = tabManager.tabs[tabIndex]
             AppState.shared.isCurrentTabEditable = tab.isEditable && !tab.isView && tab.tableName != nil
             toolbarState.isTableTab = tab.tabType == .table
+            AppState.shared.isTableTab = tab.tabType == .table
         }
 
         if needsQuery {

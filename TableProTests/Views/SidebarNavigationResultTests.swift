@@ -274,4 +274,66 @@ struct SidebarNavigationResultTests {
         )
         #expect(result == .openInPlace)
     }
+
+    // MARK: - Preview tab mode
+
+    @Test("Preview mode disabled returns existing behavior")
+    func previewModeDisabledReturnsExistingBehavior() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isPreviewTabMode: false,
+            hasPreviewTab: false
+        )
+        #expect(result == .revertAndOpenNewWindow)
+    }
+
+    @Test("Preview mode enabled with existing preview tab returns replacePreviewTab")
+    func previewModeWithExistingPreviewTab() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isPreviewTabMode: true,
+            hasPreviewTab: true
+        )
+        #expect(result == .replacePreviewTab)
+    }
+
+    @Test("Preview mode enabled without preview tab returns openNewPreviewTab")
+    func previewModeWithoutPreviewTab() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isPreviewTabMode: true,
+            hasPreviewTab: false
+        )
+        #expect(result == .openNewPreviewTab)
+    }
+
+    @Test("Preview mode skip still works when table matches")
+    func previewModeSkipWhenTableMatches() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "users",
+            currentTabTableName: "users",
+            hasExistingTabs: true,
+            isPreviewTabMode: true,
+            hasPreviewTab: true
+        )
+        #expect(result == .skip)
+    }
+
+    @Test("Preview mode with no existing tabs still opens in-place")
+    func previewModeNoExistingTabsOpensInPlace() {
+        let result = SidebarNavigationResult.resolve(
+            clickedTableName: "orders",
+            currentTabTableName: nil,
+            hasExistingTabs: false,
+            isPreviewTabMode: true,
+            hasPreviewTab: false
+        )
+        #expect(result == .openInPlace)
+    }
 }

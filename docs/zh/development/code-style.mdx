@@ -1,0 +1,520 @@
+---
+title: 代码风格
+description: Swift 编码规范、SwiftLint/SwiftFormat 规则、命名、访问控制和文件组织
+---
+
+# 代码风格指南
+
+这些规范使 TablePro 的代码库保持一致且易读。
+
+## 工具
+
+| 工具 | 用途 | 配置文件 |
+|------|---------|-------------|
+| **SwiftLint** | 代码检查和静态分析 | `.swiftlint.yml` |
+| **SwiftFormat** | 代码格式化 | `.swiftformat` |
+
+### 运行工具
+
+```bash
+# 检查代码问题
+swiftlint lint
+
+# 自动修复代码问题
+swiftlint --fix
+
+# 格式化代码
+swiftformat .
+
+# 仅检查格式不应用更改
+swiftformat --lint .
+```
+
+<Tip>
+提交前运行这些工具。SwiftLint 也会在 Xcode 构建时自动运行。
+</Tip>
+
+## 架构原则
+
+### 关注点分离
+
+- 业务逻辑应放在 models/view models 中，而非 views
+- Views 只负责展示
+
+```swift
+// Good: Logic in ViewModel
+class ConnectionViewModel: ObservableObject {
+    func validateConnection() -> Bool {
+        return !host.isEmpty && port > 0
+    }
+}
+
+// Bad: Logic in View
+struct ConnectionView: View {
+    var body: some View {
+        Button("Connect") {
+            // Don't put validation logic here
+        }
+        .disabled(host.isEmpty || port <= 0)
+    }
+}
+```
+
+### 值类型优先
+
+除非需要引用语义，否则优先使用 `struct` 而非 `class`：
+
+```swift
+// Good: Value type for data
+struct DatabaseConnection: Codable {
+    let id: UUID
+    var name: String
+    var host: String
+}
+
+// When to use class: shared state, identity matters
+@MainActor
+class DatabaseManager: ObservableObject {
+    static let shared = DatabaseManager()
+}
+```
+
+### 不可变性
+
+默认使用 `let`，只在需要修改时使用 `var`：
+
+```swift
+// Good
+let connection = DatabaseConnection(...)
+let results = try await driver.execute(query: sql)
+
+// Only var when needed
+var currentPage = 1
+currentPage += 1
+```
+
+## 命名规范
+
+### 类型
+
+| 元素 | 规范 | 示例 |
+|---------|------------|---------|
+| 类/结构体 | UpperCamelCase | `DatabaseConnection` |
+| 枚举 | UpperCamelCase | `DatabaseType` |
+| 枚举值 | lowerCamelCase | `.postgresql` |
+| 协议 | UpperCamelCase | `DatabaseDriver` |
+
+### 函数和变量
+
+| 元素 | 规范 | 示例 |
+|---------|------------|---------|
+| 函数 | lowerCamelCase | `executeQuery()` |
+| 变量 | lowerCamelCase | `connectionString` |
+| 常量 | lowerCamelCase | `maxRetryAttempts` |
+| 参数 | lowerCamelCase | `tableName: String` |
+
+### 布尔属性
+
+使用 `is`/`has`/`can` 前缀：
+
+```swift
+var isConnected: Bool
+var hasValidCredentials: Bool
+var canExecuteQuery: Bool
+```
+
+### 工厂方法
+
+使用 `make` 前缀：
+
+```swift
+func makeConnection() -> DatabaseConnection
+func makeDriver(for type: DatabaseType) -> DatabaseDriver
+```
+
+## 格式化
+
+### 缩进
+
+- **4 个空格**（不使用制表符）
+- 配置编辑器将制表符转换为空格
+
+### 行长度
+
+- 每行最多 **120 个字符**
+- 过长的行应换行以提高可读性
+
+```swift
+// Good: Line breaks for readability
+let result = try await driver.executeParameterized(
+    query: "SELECT * FROM users WHERE email = ?",
+    parameters: [email]
+)
+
+// Avoid: Long single line
+let result = try await driver.executeParameterized(query: "SELECT * FROM users WHERE email = ?", parameters: [email])
+```
+
+### 花括号
+
+K&R 风格 - 左花括号在同一行：
+
+```swift
+// Good
+if condition {
+    doSomething()
+} else {
+    doSomethingElse()
+}
+
+// Bad
+if condition
+{
+    doSomething()
+}
+```
+
+### 空格
+
+```swift
+// Space around operators
+let sum = a + b
+let isValid = count > 0 && name.isEmpty == false
+
+// No space for ranges
+for i in 0..<10 { }
+
+// Space after colon in type declarations
+var name: String
+func connect(host: String, port: Int)
+```
+
+## 访问控制
+
+### 显式声明
+
+始终显式指定访问修饰符：
+
+```swift
+// Good: Explicit access
+private var connectionPool: [Connection] = []
+internal func processResult(_ result: QueryResult)
+public func connect() async throws
+
+// Avoid: Implicit internal
+var connectionPool: [Connection] = []  // Implicit internal
+```
+
+### 倾向私有
+
+使用尽可能严格的访问级别：
+
+```swift
+class DatabaseManager {
+    // Public API
+    public func connect() async throws { ... }
+
+    // Internal helpers
+    private func validateConnection() -> Bool { ... }
+    private var activeDriver: DatabaseDriver?
+}
+```
+
+### Extension 访问控制
+
+在 extension 上指定访问修饰符，而非单独的成员：
+
+```swift
+// Good
+public extension NSEvent {
+    var semanticKeyCode: KeyCode? { ... }
+}
+
+// Avoid
+extension NSEvent {
+    public var semanticKeyCode: KeyCode? { ... }
+}
+```
+
+## Optional 处理
+
+### 避免强制解包
+
+不要使用 `!` 解包：
+
+```swift
+// Good
+if let connection = connection {
+    use(connection)
+}
+
+guard let result = result else { return }
+
+// Bad
+let connection = connection!  // Crash if nil
+```
+
+### 安全类型转换
+
+使用条件类型转换：
+
+```swift
+// Good
+if let value = param as? SQLFunctionLiteral {
+    return value.property
+}
+
+// Bad
+let value = param as! SQLFunctionLiteral  // Crash if wrong type
+```
+
+### 使用 guard 提前退出
+
+使用 `guard` 减少嵌套：
+
+```swift
+// Good
+func processResult(_ result: QueryResult?) -> [Row] {
+    guard let result = result else { return [] }
+    guard result.rowCount > 0 else { return [] }
+
+    return result.rows.map { transform($0) }
+}
+
+// Avoid deep nesting
+func processResult(_ result: QueryResult?) -> [Row] {
+    if let result = result {
+        if result.rowCount > 0 {
+            return result.rows.map { transform($0) }
+        }
+    }
+    return []
+}
+```
+
+## 集合
+
+### 使用语义化方法
+
+```swift
+// Good
+if items.isEmpty { }
+if items.contains(target) { }
+if let first = items.first(where: { $0.isValid }) { }
+
+// Avoid
+if items.count == 0 { }
+if items.filter({ $0 == target }).count > 0 { }
+if let first = items.filter({ $0.isValid }).first { }
+```
+
+### 移除不必要的枚举
+
+```swift
+// Good
+items.map { item in item.value }
+items.map(\.value)
+
+// Avoid (if index not used)
+items.enumerated().map { _, item in item.value }
+```
+
+## 闭包
+
+### 尾随闭包语法
+
+当最后一个参数是闭包时使用尾随闭包：
+
+```swift
+// Good
+items.filter { $0.isActive }
+    .map { $0.name }
+
+// Avoid
+items.filter({ $0.isActive })
+    .map({ $0.name })
+```
+
+### 隐式返回
+
+单表达式闭包使用隐式返回：
+
+```swift
+// Good
+items.map { $0.name }
+items.filter { $0.isActive }
+
+// Also good when clearer
+items.map { item in
+    item.name
+}
+```
+
+### 未使用的闭包参数
+
+未使用的参数用 `_` 代替：
+
+```swift
+// Good
+button.onTap { _ in
+    handleTap()
+}
+
+// Avoid
+button.onTap { event in  // event not used
+    handleTap()
+}
+```
+
+## 注释
+
+### 何时需要注释
+
+```swift
+// Good: Explain "why", not "what"
+// 1.5s delay ensures the SSH tunnel is established
+// before attempting the database connection
+try await Task.sleep(nanoseconds: 1_500_000_000)
+
+// Avoid: Obvious comments
+// Get the user's name
+let name = user.name
+```
+
+### 文档注释
+
+公共 API 使用 `///`：
+
+```swift
+/// Executes a SQL query and returns the results.
+///
+/// - Parameter query: The SQL query to execute
+/// - Returns: A `QueryResult` containing rows and columns
+/// - Throws: `DatabaseError` if the query fails
+func execute(query: String) async throws -> QueryResult
+```
+
+### MARK 注释
+
+使用 MARK 注释组织代码：
+
+```swift
+// MARK: - Properties
+
+private var connection: DatabaseConnection
+private var driver: DatabaseDriver?
+
+// MARK: - Lifecycle
+
+init(connection: DatabaseConnection) {
+    self.connection = connection
+}
+
+// MARK: - Public Methods
+
+func connect() async throws { ... }
+
+// MARK: - Private Helpers
+
+private func validateConnection() -> Bool { ... }
+```
+
+## SwiftUI 相关
+
+### View 结构
+
+```swift
+struct ContentView: View {
+    // MARK: - Properties
+
+    @StateObject private var viewModel = ContentViewModel()
+    @State private var isLoading = false
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack {
+            headerView
+            contentView
+            footerView
+        }
+    }
+
+    // MARK: - Subviews
+
+    private var headerView: some View {
+        Text("Header")
+    }
+
+    private var contentView: some View {
+        // ...
+    }
+}
+```
+
+### 属性包装器顺序
+
+```swift
+struct MyView: View {
+    // Environment
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var appState: AppState
+
+    // State Objects
+    @StateObject private var viewModel = MyViewModel()
+
+    // State
+    @State private var isEditing = false
+    @Binding var selection: Item?
+
+    // Regular properties
+    let title: String
+}
+```
+
+## 限制
+
+### SwiftLint 限制
+
+| 指标 | 警告 | 错误 |
+|--------|---------|-------|
+| 函数体长度 | 160 行 | 250 行 |
+| 类型体长度 | 1100 行 | 1500 行 |
+| 文件长度 | 1200 行 | 1800 行 |
+| 圈复杂度 | 40 | 60 |
+
+### 处理过长文件
+
+将 extension 提取到单独的文件中：
+
+<Tree>
+  <Tree.File name="MainContentCoordinator.swift" />
+  <Tree.Folder name="Extensions" defaultOpen>
+    <Tree.File name="MainContentCoordinator+RowOperations.swift" />
+    <Tree.File name="MainContentCoordinator+Pagination.swift" />
+    <Tree.File name="MainContentCoordinator+Filtering.swift" />
+  </Tree.Folder>
+</Tree>
+
+## 参考资料
+
+- [Swift.org API Design Guidelines](https://swift.org/documentation/api-design-guidelines/)
+- [SwiftLint Rules](https://realm.github.io/SwiftLint/rule-directory.html)
+- [SwiftFormat Options](https://github.com/nicklockwood/SwiftFormat#options)
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="架构" icon="sitemap" href="/zh/development/architecture">
+    了解代码库结构
+  </Card>
+  <Card title="构建" icon="hammer" href="/zh/development/building">
+    构建和发布流程
+  </Card>
+  <Card title="环境搭建" icon="wrench" href="/zh/development/setup">
+    开发环境搭建
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/datlechin/tablepro">
+    查看源代码
+  </Card>
+</CardGroup>

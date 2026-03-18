@@ -5,21 +5,23 @@
 //  Intercepts key events for Vim mode via NSEvent local monitor
 //
 
-import AppKit
+@preconcurrency import AppKit
 import CodeEditSourceEditor
+import os
 
 /// Intercepts keyboard events and routes them through the Vim engine
 @MainActor
 final class VimKeyInterceptor {
     private let engine: VimEngine
     private weak var inlineSuggestionManager: InlineSuggestionManager?
-    nonisolated(unsafe) private var monitor: Any?
+    private let _monitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private weak var controller: TextViewController?
-    nonisolated(unsafe) private var popupCloseObserver: NSObjectProtocol?
+    private let _popupCloseObserver = OSAllocatedUnfairLock<Any?>(initialState: nil)
+    private(set) var isEditorFocused = false
 
     deinit {
-        if let monitor { NSEvent.removeMonitor(monitor) }
-        if let popupCloseObserver { NotificationCenter.default.removeObserver(popupCloseObserver) }
+        if let monitor = _monitor.withLock({ $0 }) { NSEvent.removeMonitor(monitor) }
+        if let observer = _popupCloseObserver.withLock({ $0 }) { NotificationCenter.default.removeObserver(observer) }
     }
 
     init(engine: VimEngine, inlineSuggestionManager: InlineSuggestionManager?) {
@@ -27,24 +29,15 @@ final class VimKeyInterceptor {
         self.inlineSuggestionManager = inlineSuggestionManager
     }
 
-    /// Install the key event monitor
+    /// Install the interceptor on a controller (does not install the event monitor until editor is focused)
     func install(controller: TextViewController) {
         self.controller = controller
         uninstall()
 
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self else { return event }
-            return self.handleKeyEvent(event)
-        }
-
-        // Observe autocomplete popup close. When SuggestionController's popup
-        // consumes Escape (closes itself), we also need to exit Insert/Visual mode.
-        // queue: nil → handler runs synchronously during close(), so NSApp.currentEvent
-        // is still the Escape keyDown event.
-        popupCloseObserver = NotificationCenter.default.addObserver(
+        _popupCloseObserver.withLock { $0 = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
-            queue: nil
+            queue: .main
         ) { [weak self] notification in
             MainActor.assumeIsolated {
                 guard let self,
@@ -62,18 +55,48 @@ final class VimKeyInterceptor {
                 _ = self.engine.process("\u{1B}", shift: false)
             }
         }
+        }
     }
 
-    /// Remove the key event monitor
+    func editorDidFocus() {
+        guard !isEditorFocused else { return }
+        isEditorFocused = true
+        installMonitor()
+    }
+
+    func editorDidBlur() {
+        guard isEditorFocused else { return }
+        isEditorFocused = false
+        removeMonitor()
+    }
+
+    /// Remove all monitors and observers
     func uninstall() {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
+        isEditorFocused = false
+        removeMonitor()
+        _popupCloseObserver.withLock {
+            if let observer = $0 { NotificationCenter.default.removeObserver(observer) }
+            $0 = nil
         }
-        monitor = nil
-        if let popupCloseObserver {
-            NotificationCenter.default.removeObserver(popupCloseObserver)
+    }
+
+    private func installMonitor() {
+        _monitor.withLock {
+            $0 = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
+                nonisolated(unsafe) let event = nsEvent
+                return MainActor.assumeIsolated {
+                    guard let self, self.isEditorFocused else { return event }
+                    return self.handleKeyEvent(event)
+                }
+            }
         }
-        popupCloseObserver = nil
+    }
+
+    private func removeMonitor() {
+        _monitor.withLock {
+            if let monitor = $0 { NSEvent.removeMonitor(monitor) }
+            $0 = nil
+        }
     }
 
     /// Arrow key Unicode scalars → Vim motion characters

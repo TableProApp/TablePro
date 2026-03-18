@@ -1,0 +1,168 @@
+---
+title: 深度链接
+description: 通过终端或其他应用使用数据库 URL 或 tablepro:// 链接打开连接、表和查询
+---
+
+TablePro 支持两种基于 URL 的入口：标准数据库 URL（`mysql://`、`postgresql://` 等）和自定义的 `tablepro://` scheme。
+
+## 数据库 URL
+
+使用标准 URL 直接打开任意数据库连接。可从终端、脚本、Alfred、Raycast 或任何能打开 URL 的应用使用。
+
+### 支持的 Scheme
+
+| Scheme | 数据库 |
+|--------|--------|
+| `mysql://` | MySQL / MariaDB |
+| `postgresql://`、`postgres://` | PostgreSQL |
+| `mongodb://`、`mongodb+srv://` | MongoDB |
+| `redis://`、`rediss://` | Redis |
+| `mssql://`、`sqlserver://` | SQL Server |
+| `sqlite://` | SQLite（本地文件路径） |
+
+### URL 格式
+
+```
+scheme://[username[:password]@]host[:port][/database][?param=value]
+```
+
+### 示例
+
+```bash
+# MySQL
+open "mysql://root@localhost/mydb" -a TablePro
+
+# PostgreSQL with port and database
+open "postgresql://admin@db.example.com:5432/analytics" -a TablePro
+
+# MongoDB
+open "mongodb://localhost:27017/mydb" -a TablePro
+
+# Redis
+open "redis://localhost:6379" -a TablePro
+
+# SQLite (local file)
+open "sqlite:///Users/me/data/app.db" -a TablePro
+```
+
+### 工作原理
+
+1. **匹配已保存的连接：**TablePro 检查已保存的连接中是否有与 URL 的 host、port、database 和 username 匹配的。如果找到，会复用该连接（包括其存储的密码）。
+2. **匹配活跃会话：**如果该连接已处于打开状态，TablePro 将现有窗口前置而非创建重复的连接。
+3. **创建临时连接：**如果没有匹配的连接，TablePro 创建一个临时连接并立即连接。URL 中的密码用于初次连接但不会被保存。
+
+### 查询参数
+
+通过查询参数传递附加选项：
+
+| 参数 | 说明 |
+|------|------|
+| `table` | 连接后打开指定的表 |
+| `filter_column`、`filter_operation`、`filter_value` | 对打开的表应用筛选条件 |
+| `condition` | 应用原始 SQL WHERE 条件 |
+| `schema` | 连接后切换到指定的 schema（PostgreSQL）或数据库（MySQL） |
+
+```bash
+# Open a table with a filter
+open "mysql://root@localhost/mydb?table=users&filter_column=status&filter_operation=equal&filter_value=active" -a TablePro
+
+# Open with a raw SQL condition
+open "postgresql://admin@localhost/mydb?table=orders&condition=total%20%3E%20100" -a TablePro
+
+# Switch schema on connect
+open "postgresql://admin@localhost/mydb?schema=reporting" -a TablePro
+```
+
+<Warning>
+密码可以包含在 URL 中（`mysql://user:pass@host/db`），但避免分享包含密码的 URL。推荐使用已保存的连接配合钥匙串存储的密码。
+</Warning>
+
+## 自定义深度链接（tablepro://）
+
+TablePro 注册了 `tablepro://` URL scheme，可以从浏览器、终端、Slack 消息或任何支持链接的应用中打开连接、表和查询。
+
+## URL 模式
+
+### 打开连接
+
+```
+tablepro://connect/{name}
+```
+
+打开名称匹配 `{name}` 的已保存连接。如果未找到匹配项，会显示错误提示。
+
+```bash
+open "tablepro://connect/Production"
+```
+
+### 打开表
+
+```
+tablepro://connect/{name}/table/{table}
+tablepro://connect/{name}/database/{db}/table/{table}
+```
+
+连接并打开指定的表。第二种形式指定连接上的特定数据库。
+
+```bash
+open "tablepro://connect/Production/table/users"
+open "tablepro://connect/Production/database/analytics/table/events"
+```
+
+### 打开查询
+
+```
+tablepro://connect/{name}/query?sql={encoded_sql}
+```
+
+连接并打开一个新的查询标签页，SQL 已预填充。SQL 必须经过 URL 编码。
+
+```bash
+open "tablepro://connect/Production/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010"
+```
+
+### 导入连接
+
+```
+tablepro://import?name={n}&host={h}&port={p}&type={t}&username={u}&database={db}
+```
+
+创建新的已保存连接并打开连接表单供审查。你可以在连接前添加密码。
+
+```bash
+open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
+```
+
+**必填参数：**`name`、`host`、`type`
+**可选参数：**`port`（默认为数据库类型的标准端口）、`username`、`database`
+
+支持的 `type` 值：`MySQL`、`MariaDB`、`PostgreSQL`、`SQLite`、`MongoDB`（不区分大小写）。
+
+## 行为细节
+
+- **连接名称匹配**不区分大小写。`Production`、`production` 和 `PRODUCTION` 都匹配同一个连接。
+- **空格和特殊字符**会被浏览器和 macOS 自动进行 URL 编码。
+- **已连接：**如果连接已处于活跃状态，TablePro 跳过重新连接，直接打开请求的标签页。
+- **应用未运行：**macOS 会先启动 TablePro，然后传递 URL。
+
+<Warning>
+深度链接 URL 中永远不包含密码。对于导入的连接，用户必须在连接表单中手动输入密码。
+</Warning>
+
+## 终端使用
+
+使用 `open` 命令在终端中触发深度链接：
+
+```bash
+# Connect
+open "tablepro://connect/Production"
+
+# Open a specific table
+open "tablepro://connect/Production/table/users"
+
+# Run a query
+open "tablepro://connect/Production/query?sql=SELECT%20count(*)%20FROM%20orders"
+
+# Import a new connection for review
+open "tablepro://import?name=Dev&host=localhost&port=3306&type=mysql&username=root&database=app"
+```

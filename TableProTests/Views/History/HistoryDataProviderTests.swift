@@ -131,13 +131,21 @@ struct HistoryDataProviderTests {
         #expect(!entries.contains { $0.id == entry.id })
     }
 
-    @Test("clearAll returns true")
+    @Test("clearAll returns true and updates provider state")
+    @MainActor
     func clearAllRemovesAllHistory() async {
-        _ = await insertEntry()
+        let marker = UUID().uuidString
+        _ = await insertEntry(query: "SELECT clear_\(marker)")
 
         let provider = HistoryDataProvider()
+        provider.searchText = marker
+        await provider.loadData()
+        #expect(provider.count >= 1)
+
         let result = await provider.clearAll()
         #expect(result == true)
+        #expect(provider.count == 0)
+        #expect(provider.isEmpty == true)
     }
 
     @Test("scheduleSearch debounces then loads data")

@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("SSH Config Parser")
 struct SSHConfigParserTests {
-
     @Test("Empty content returns empty array")
     func testEmptyContent() {
         let result = SSHConfigParser.parseContent("")
@@ -34,7 +33,7 @@ struct SSHConfigParserTests {
         let entry = result[0]
         #expect(entry.host == "myserver")
         #expect(entry.hostname == "example.com")
-        #expect(entry.port == 2222)
+        #expect(entry.port == 2_222)
         #expect(entry.user == "admin")
         #expect(entry.identityFile != nil)
         #expect(entry.identityFile?.contains(".ssh/id_rsa") == true)
@@ -61,7 +60,7 @@ struct SSHConfigParserTests {
         #expect(result[1].host == "server2")
         #expect(result[2].host == "server3")
         #expect(result[0].port == 22)
-        #expect(result[1].port == 2222)
+        #expect(result[1].port == 2_222)
     }
 
     @Test("Comments are skipped")
@@ -80,7 +79,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
         #expect(result[0].host == "myserver")
         #expect(result[0].hostname == "example.com")
-        #expect(result[0].port == 2222)
+        #expect(result[0].port == 2_222)
     }
 
     @Test("Wildcard hosts with asterisk are skipped")
@@ -146,7 +145,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
         #expect(result[0].host == "myserver")
         #expect(result[0].hostname == nil)
-        #expect(result[0].port == 2222)
+        #expect(result[0].port == 2_222)
         #expect(result[0].user == "admin")
     }
 
@@ -178,7 +177,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
         #expect(result[0].host == "myserver")
         #expect(result[0].hostname == "example.com")
-        #expect(result[0].port == 2222)
+        #expect(result[0].port == 2_222)
         #expect(result[0].user == nil)
     }
 
@@ -227,9 +226,9 @@ struct SSHConfigParserTests {
         let result = SSHConfigParser.parseContent(content)
         #expect(result.count == 2)
         #expect(result[0].hostname == "example1.com")
-        #expect(result[0].port == 2222)
+        #expect(result[0].port == 2_222)
         #expect(result[1].hostname == "example2.com")
-        #expect(result[1].port == 3333)
+        #expect(result[1].port == 3_333)
         #expect(result[1].user == "admin")
     }
 
@@ -246,7 +245,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
         #expect(result[0].host == "myserver")
         #expect(result[0].hostname == "example.com")
-        #expect(result[0].port == 2222)
+        #expect(result[0].port == 2_222)
         #expect(result[0].user == "admin")
     }
 
@@ -272,5 +271,177 @@ struct SSHConfigParserTests {
         let result = SSHConfigParser.parseContent(content)
         #expect(result.count == 1)
         #expect(result[0].displayName == "myserver")
+    }
+
+    @Test("IdentityAgent directive is parsed with tilde expansion")
+    func testIdentityAgentWithTildeExpansion() {
+        let content = """
+        Host myserver
+            HostName example.com
+            IdentityAgent ~/.1password/agent.sock
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+
+        let homeDir = NSHomeDirectory()
+        #expect(result[0].identityAgent?.contains(homeDir) == true)
+        #expect(result[0].identityAgent?.contains(".1password/agent.sock") == true)
+    }
+
+    @Test("IdentityAgent with absolute path")
+    func testIdentityAgentAbsolutePath() {
+        let content = """
+        Host myserver
+            HostName example.com
+            IdentityAgent /run/user/1000/ssh-agent.sock
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].identityAgent == "/run/user/1000/ssh-agent.sock")
+    }
+
+    @Test("Entry without IdentityAgent has nil")
+    func testNoIdentityAgent() {
+        let content = """
+        Host myserver
+            HostName example.com
+            User admin
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].identityAgent == nil)
+    }
+
+    @Test("IdentityAgent resets between host entries")
+    func testIdentityAgentResetsBetweenEntries() {
+        let content = """
+        Host server1
+            HostName host1.com
+            IdentityAgent ~/.1password/agent.sock
+
+        Host server2
+            HostName host2.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 2)
+        #expect(result[0].identityAgent != nil)
+        #expect(result[1].identityAgent == nil)
+    }
+
+    @Test("ProxyJump directive is parsed")
+    func testProxyJumpParsed() {
+        let content = """
+        Host myserver
+            HostName example.com
+            ProxyJump admin@bastion.com:2222
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].proxyJump == "admin@bastion.com:2222")
+    }
+
+    @Test("ProxyJump with multiple hops")
+    func testProxyJumpMultipleHops() {
+        let content = """
+        Host myserver
+            HostName example.com
+            ProxyJump user1@hop1.com,user2@hop2.com:2222
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].proxyJump == "user1@hop1.com,user2@hop2.com:2222")
+    }
+
+    @Test("ProxyJump resets between host entries")
+    func testProxyJumpResetsBetweenEntries() {
+        let content = """
+        Host server1
+            HostName host1.com
+            ProxyJump admin@bastion.com
+
+        Host server2
+            HostName host2.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 2)
+        #expect(result[0].proxyJump == "admin@bastion.com")
+        #expect(result[1].proxyJump == nil)
+    }
+
+    @Test("Entry without ProxyJump has nil")
+    func testNoProxyJump() {
+        let content = """
+        Host myserver
+            HostName example.com
+            User admin
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].proxyJump == nil)
+    }
+
+    @Test("parseProxyJump single hop with user and port")
+    func testParseProxyJumpSingleHop() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("admin@bastion.com:2222")
+        #expect(jumpHosts.count == 1)
+        #expect(jumpHosts[0].username == "admin")
+        #expect(jumpHosts[0].host == "bastion.com")
+        #expect(jumpHosts[0].port == 2_222)
+    }
+
+    @Test("parseProxyJump multi-hop")
+    func testParseProxyJumpMultiHop() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("user1@hop1.com,user2@hop2.com:2222")
+        #expect(jumpHosts.count == 2)
+        #expect(jumpHosts[0].username == "user1")
+        #expect(jumpHosts[0].host == "hop1.com")
+        #expect(jumpHosts[0].port == 22)
+        #expect(jumpHosts[1].username == "user2")
+        #expect(jumpHosts[1].host == "hop2.com")
+        #expect(jumpHosts[1].port == 2_222)
+    }
+
+    @Test("parseProxyJump without user")
+    func testParseProxyJumpWithoutUser() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("bastion.com:2222")
+        #expect(jumpHosts.count == 1)
+        #expect(jumpHosts[0].username == "")
+        #expect(jumpHosts[0].host == "bastion.com")
+        #expect(jumpHosts[0].port == 2_222)
+    }
+
+    @Test("parseProxyJump without port")
+    func testParseProxyJumpWithoutPort() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("admin@bastion.com")
+        #expect(jumpHosts.count == 1)
+        #expect(jumpHosts[0].username == "admin")
+        #expect(jumpHosts[0].host == "bastion.com")
+        #expect(jumpHosts[0].port == 22)
+    }
+
+    @Test("parseProxyJump with bracketed IPv6 and port")
+    func testParseProxyJumpIPv6WithPort() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("admin@[::1]:2222")
+        #expect(jumpHosts.count == 1)
+        #expect(jumpHosts[0].username == "admin")
+        #expect(jumpHosts[0].host == "::1")
+        #expect(jumpHosts[0].port == 2_222)
+    }
+
+    @Test("parseProxyJump with bracketed IPv6 without port")
+    func testParseProxyJumpIPv6WithoutPort() {
+        let jumpHosts = SSHConfigParser.parseProxyJump("admin@[fe80::1]")
+        #expect(jumpHosts.count == 1)
+        #expect(jumpHosts[0].username == "admin")
+        #expect(jumpHosts[0].host == "fe80::1")
+        #expect(jumpHosts[0].port == 22)
     }
 }

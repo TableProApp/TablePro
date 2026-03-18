@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
@@ -59,19 +60,19 @@ struct SidebarContextMenuLogicTests {
 
     // MARK: - Import Visibility
 
-    @Test("Import visible for table, not MongoDB")
+    @Test("Import visible for table with import support")
     func importVisibleForTable() {
-        #expect(SidebarContextMenuLogic.importVisible(isView: false, isMongoDB: false))
+        #expect(SidebarContextMenuLogic.importVisible(isView: false, supportsImport: true))
     }
 
     @Test("Import hidden for view")
     func importHiddenForView() {
-        #expect(!SidebarContextMenuLogic.importVisible(isView: true, isMongoDB: false))
+        #expect(!SidebarContextMenuLogic.importVisible(isView: true, supportsImport: true))
     }
 
-    @Test("Import hidden for MongoDB")
-    func importHiddenForMongoDB() {
-        #expect(!SidebarContextMenuLogic.importVisible(isView: false, isMongoDB: true))
+    @Test("Import hidden when import not supported")
+    func importHiddenWhenNotSupported() {
+        #expect(!SidebarContextMenuLogic.importVisible(isView: false, supportsImport: false))
     }
 
     // MARK: - Truncate Visibility

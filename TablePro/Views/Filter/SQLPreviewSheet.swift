@@ -20,11 +20,11 @@ struct SQLPreviewSheet: View {
         VStack(spacing: 16) {
             HStack {
                 Text("Generated WHERE Clause")
-                    .font(.system(size: DesignConstants.FontSize.body, weight: .semibold))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
                 Spacer()
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: DesignConstants.IconSize.default))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.default))
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.borderless)
@@ -32,7 +32,7 @@ struct SQLPreviewSheet: View {
 
             ScrollView {
                 Text(sql.isEmpty ? "(no conditions)" : sql)
-                    .font(.system(size: DesignConstants.FontSize.medium, design: .monospaced))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
@@ -49,9 +49,9 @@ struct SQLPreviewSheet: View {
                 Button(action: copyToClipboard) {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: DesignConstants.FontSize.small))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         Text(copied ? "Copied!" : "Copy")
-                            .font(.system(size: DesignConstants.FontSize.medium))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                     }
                 }
                 .buttonStyle(.bordered)
@@ -79,7 +79,7 @@ struct SQLPreviewSheet: View {
         copied = true
 
         // Reset after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             copied = false
         }
     }

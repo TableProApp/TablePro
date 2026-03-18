@@ -24,12 +24,6 @@ struct DatabaseManagerSessionTests {
         #expect(DatabaseManager.shared.session(for: unknownId) == nil)
     }
 
-    @Test("metadataDriver(for:) returns nil for unknown connection ID")
-    func metadataDriverReturnsNilForUnknown() {
-        let unknownId = UUID()
-        #expect(DatabaseManager.shared.metadataDriver(for: unknownId) == nil)
-    }
-
     @Test("activeSessions is accessible and starts empty for unknown IDs")
     func activeSessionsAccessible() {
         let unknownId = UUID()

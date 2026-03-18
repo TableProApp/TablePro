@@ -1,11 +1,11 @@
 ---
 title: SSH Tunneling
-description: Securely connect to remote databases through SSH tunnels
+description: Route database connections through an encrypted SSH tunnel to reach servers in private networks
 ---
 
 # SSH Tunneling
 
-SSH tunneling allows you to securely connect to databases on remote servers that aren't directly accessible from your Mac. TablePro creates an encrypted tunnel through an SSH server to reach your database.
+SSH tunneling routes your database connection through an encrypted tunnel to reach servers that aren't directly accessible from your Mac. TablePro manages the tunnel lifecycle, including keep-alive and auto-reconnect.
 
 ## How SSH Tunneling Works
 
@@ -26,16 +26,16 @@ flowchart LR
     TablePro -->|"Encrypted<br>Tunnel"| Jump -->|"Internal<br>Network"| Database
 ```
 
-1. TablePro creates an SSH connection to your jump server
+1. TablePro opens an SSH connection to your jump server
 2. A local port (e.g., 60000) forwards through the tunnel
-3. Traffic is encrypted between your Mac and the SSH server
+3. All traffic between your Mac and the SSH server is encrypted
 4. The SSH server connects to the database on your behalf
 
 ## When to Use SSH Tunneling
 
 - Database server is in a private network
 - Database server only accepts local connections
-- You need to encrypt connections to the database
+- You need to encrypt the database connection
 - You want to access databases through a bastion/jump host
 
 ## Setting Up SSH Tunneling
@@ -57,15 +57,15 @@ flowchart LR
 
 {/* Screenshot: Connection form with SSH section expanded */}
 <Frame caption="SSH tunnel configuration">
-  <img 
-    className="block dark:hidden" 
-    src="/images/ssh-tunnel-config.png" 
-    alt="SSH tunnel settings" 
+  <img
+    className="block dark:hidden"
+    src="/images/ssh-tunnel-config.png"
+    alt="SSH tunnel settings"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/ssh-tunnel-config-dark.png" 
-    alt="SSH tunnel settings" 
+  <img
+    className="hidden dark:block"
+    src="/images/ssh-tunnel-config-dark.png"
+    alt="SSH tunnel settings"
   />
 </Frame>
 
@@ -81,7 +81,7 @@ flowchart LR
 
 ### Authentication Methods
 
-TablePro supports two SSH authentication methods:
+TablePro supports three SSH authentication methods:
 
 <Tabs>
   <Tab title="Password">
@@ -92,11 +92,11 @@ TablePro supports two SSH authentication methods:
     | **SSH Pass** | Your SSH password |
 
     <Warning>
-    Password authentication is less secure than key-based authentication. Consider using SSH keys for production servers.
+    Password authentication is less secure than key-based authentication. Use SSH keys for production servers.
     </Warning>
   </Tab>
   <Tab title="Private Key">
-    More secure key-based authentication:
+    Key-based authentication (more secure):
 
     | Field | Description |
     |-------|-------------|
@@ -105,6 +105,21 @@ TablePro supports two SSH authentication methods:
 
     <Tip>
     Click **Browse** to select your private key file. TablePro looks in `~/.ssh/` by default.
+    </Tip>
+  </Tab>
+  <Tab title="SSH Agent">
+    Delegates signing to an SSH agent process (1Password, Secretive, macOS `ssh-agent`). Keys stay in the agent and are never read by TablePro.
+
+    | Field | Description |
+    |-------|-------------|
+    | **Agent Socket** | Dropdown with `SSH_AUTH_SOCK`, `1Password`, or `Custom Path` |
+
+    - **SSH_AUTH_SOCK**: Uses the system `SSH_AUTH_SOCK` environment variable.
+    - **1Password**: Uses 1Password's default socket path, `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`.
+    - **Custom Path**: Shows a text field so you can enter another agent socket path.
+
+    <Tip>
+    1Password also documents `~/.1password/agent.sock` as an easier alias to type, but that shortcut only works if you created it yourself. TablePro's **1Password** option uses the default path in `~/Library/Group Containers/...`.
     </Tip>
   </Tab>
 </Tabs>
@@ -123,11 +138,53 @@ TablePro supports two SSH authentication methods:
   />
 </Frame>
 
+### Two-Factor Authentication (TOTP)
+
+If your SSH server requires two-factor authentication via PAM (e.g., `google-authenticator`, `duo_unix`), TablePro can handle TOTP (Time-based One-Time Password) codes during login.
+
+The TOTP option appears under **Two-Factor Authentication** when you select **Password** or **Keyboard Interactive** as your auth method.
+
+<Tabs>
+  <Tab title="Auto Generate">
+    TablePro generates the TOTP code automatically at connect time using a secret you provide. No need to open an authenticator app.
+
+    | Field | Description |
+    |-------|-------------|
+    | **TOTP Secret** | Your base32-encoded secret (the same key you used when setting up your authenticator app) |
+    | **Algorithm** | Hash algorithm: SHA1 (default), SHA256, or SHA512 |
+    | **Digits** | Code length: 6 (default) or 8 |
+    | **Period** | Code rotation interval: 30 seconds (default) or 60 seconds |
+
+    <Tip>
+    The TOTP secret is the base32 string you got when first enrolling in 2FA. If you only have a QR code, most authenticator apps let you view the underlying secret.
+    </Tip>
+  </Tab>
+  <Tab title="Prompt at Connect">
+    TablePro shows a dialog asking for your verification code each time you connect. Use this if you prefer entering codes from your authenticator app manually.
+
+    No additional configuration needed. Just select this mode and TablePro will prompt you when it needs the code.
+  </Tab>
+</Tabs>
+
+**Setup steps:**
+
+1. In the SSH tab of your connection settings, select **Password** or **Keyboard Interactive** as the auth method
+2. Under **Two-Factor Authentication**, choose your TOTP mode
+3. For Auto Generate: paste your base32-encoded TOTP secret
+
+TOTP works with common PAM configurations including `google-authenticator`, `duo_unix`, and similar modules.
+
+### Host Key Verification
+
+TablePro verifies SSH host keys to protect against man-in-the-middle attacks. On first connection to a server, you'll see the server's fingerprint and can choose to trust it. The key is then stored locally.
+
+If a previously trusted server's host key changes, TablePro shows a warning. This could mean the server was reinstalled, or it could indicate a security issue. You can choose to accept the new key or abort the connection.
+
 ### Using SSH Config
 
-If you have entries in your `~/.ssh/config` file, TablePro can use them:
+If you have entries in `~/.ssh/config`, TablePro reads them automatically:
 
-1. TablePro reads your SSH config automatically
+1. TablePro reads your SSH config on launch
 2. Select a host from the **SSH Host** dropdown
 3. Settings are auto-filled from your config
 
@@ -211,6 +268,82 @@ Database Host:  mydb.abc123.us-east-1.rds.amazonaws.com
 Database Port:  5432
 ```
 
+## Multi-Jump SSH (ProxyJump)
+
+When a database server sits behind multiple bastion hosts, TablePro can chain SSH hops using OpenSSH's `-J` (ProxyJump) flag. A single `ssh` process handles all intermediate jumps.
+
+```mermaid
+flowchart LR
+    subgraph mac ["Your Mac"]
+        TablePro["TablePro"]
+    end
+
+    subgraph hop1 ["Bastion 1"]
+        B1["Jump Host 1"]
+    end
+
+    subgraph hop2 ["Bastion 2"]
+        B2["Jump Host 2"]
+    end
+
+    subgraph db ["Database Server"]
+        Database["MySQL<br>PostgreSQL"]
+    end
+
+    TablePro -->|"Jump 1"| B1 -->|"Jump 2"| B2 -->|"Final Hop"| Database
+```
+
+### Setting Up Multi-Jump
+
+1. Open the connection form and switch to the **SSH Tunnel** tab
+2. Enable SSH and configure the **final SSH server** (the one that can reach the database)
+3. Expand the **Jump Hosts** section below the authentication settings
+4. Click **Add Jump Host** and fill in each intermediate bastion host in order
+5. Hosts are connected in sequence: first jump host is reached from your Mac, each subsequent host is reached through the previous one
+
+### Jump Host Settings
+
+Each jump host has:
+
+| Field | Description |
+|-------|-------------|
+| **Host** | Hostname or IP of the jump host |
+| **Port** | SSH port (default `22`) |
+| **Username** | SSH username for this hop |
+| **Auth Method** | **Private Key** or **SSH Agent** (password auth is not supported for jump hosts) |
+| **Key File** | Path to private key (if using Private Key auth) |
+
+### Example: Two Bastion Hosts
+
+```
+Jump Host 1:    admin@bastion1.example.com:22    (SSH Agent)
+Jump Host 2:    tunnel@bastion2.internal:2222     (Private Key)
+
+SSH Server:     deploy@final-ssh.internal:22
+Database Host:  db.internal:5432
+```
+
+This produces the equivalent of:
+```bash
+ssh -J admin@bastion1.example.com:22,tunnel@bastion2.internal:2222 deploy@final-ssh.internal
+```
+
+### SSH Config Integration
+
+TablePro reads `ProxyJump` directives from `~/.ssh/config`. When you select a config host that has `ProxyJump` set, the jump hosts are auto-filled.
+
+```
+# ~/.ssh/config
+Host production-db
+    HostName final-ssh.internal
+    User deploy
+    ProxyJump admin@bastion1.example.com,tunnel@bastion2.internal:2222
+```
+
+<Note>
+Jump hosts only support **Private Key** and **SSH Agent** authentication. Password authentication is not available for intermediate hops because OpenSSH's `-J` flag does not support interactive password prompts for jump hosts.
+</Note>
+
 ## SSH Key Setup
 
 ### Generating SSH Keys
@@ -261,9 +394,9 @@ chmod 644 ~/.ssh/config
 
 ## Import from URL
 
-You can import SSH tunnel connections from a URL instead of filling in each field manually. TablePro supports `+ssh` URL schemes that encode both SSH and database credentials in a single string.
+Import SSH tunnel connections from a URL instead of filling in each field. TablePro supports `+ssh` URL schemes that encode both SSH and database credentials in a single string.
 
-For the full URL specification including all query parameters, see [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format).
+For the full URL specification, see [Connection URL Reference](/databases/connection-urls#ssh-tunnel-format).
 
 **Format:**
 
@@ -290,6 +423,8 @@ This fills in:
 |-----------|-------------|
 | `name` | Sets the connection name |
 | `usePrivateKey` | Set to `true` to select Private Key authentication |
+| `useSSHAgent` | Set to `true` to select SSH Agent authentication |
+| `agentSocket` | Optional SSH agent socket path override (for example, `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`) |
 
 To import, open **New Connection**, click **Import from URL**, and paste the URL.
 
@@ -355,7 +490,7 @@ chmod 600 ~/.ssh/your_key
 
 ### Tunnel Established but Database Fails
 
-If SSH tunnel connects but database connection fails:
+If the SSH tunnel connects but the database connection fails:
 
 1. **Verify database host is correct** (relative to SSH server)
    ```bash
@@ -371,10 +506,10 @@ If SSH tunnel connects but database connection fails:
 
 ### Tunnel Drops Periodically
 
-TablePro includes keep-alive settings to prevent tunnel drops:
+TablePro uses keep-alive settings to maintain tunnels:
 
-- `ServerAliveInterval=60` - Send keep-alive every 60 seconds
-- `ServerAliveCountMax=3` - Disconnect after 3 missed responses
+- `ServerAliveInterval=60`: send keep-alive every 60 seconds
+- `ServerAliveCountMax=3`: disconnect after 3 missed responses
 
 If tunnels still drop:
 1. Check network stability
@@ -421,17 +556,37 @@ If tunnels still drop:
 - Don't store SSH passwords in plain text
 - Don't expose database ports directly to the internet
 
-## Advanced: SSH Agent
+## SSH Agent Authentication
 
-If you use SSH Agent for key management:
+With SSH Agent auth, your private keys never leave the agent process — 1Password, Secretive, or the built-in macOS `ssh-agent` hold the keys and sign on behalf of TablePro.
 
-1. Add your key to the agent:
-   ```bash
-   ssh-add ~/.ssh/id_ed25519
-   ```
+### Setup
 
-2. TablePro can use keys from SSH Agent automatically
-3. You won't need to enter passphrases repeatedly
+1. Pick **SSH Agent** as the authentication method
+2. Choose an **Agent Socket** option from the dropdown
+3. Select **SSH_AUTH_SOCK** to use the system default
+4. Select **1Password** to use `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`
+5. Select **Custom Path** to enter another socket path manually
+
+### Verify Your Agent
+
+Confirm the agent has keys loaded:
+
+```bash
+# List keys in the agent
+ssh-add -l
+
+# If empty, add a key
+ssh-add ~/.ssh/id_ed25519
+```
+
+### Agent Socket Options
+
+| Option | Behavior |
+|--------|----------|
+| `SSH_AUTH_SOCK` | Uses the current `SSH_AUTH_SOCK` environment variable |
+| `1Password` | Uses `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock` |
+| `Custom Path` | Lets you enter another socket path, such as the one shown in Secretive preferences |
 
 ## Next Steps
 

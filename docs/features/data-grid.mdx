@@ -1,23 +1,23 @@
 ---
 title: Data Grid
-description: View, edit, and manage your data in a spreadsheet-like interface
+description: Spreadsheet-style grid with inline editing, type-specific editors, and copy in TSV/CSV/JSON formats
 ---
 
 # Data Grid
 
-The data grid displays query results and table contents in a spreadsheet-like interface. It supports viewing, editing, sorting, and exporting data with high performance even for large datasets.
+Query results and table contents render in a spreadsheet-style grid. Edit cells inline, sort columns, copy in multiple formats, and paginate through large result sets.
 
 {/* Screenshot: Data grid showing query results with multiple columns */}
 <Frame caption="Data grid displaying query results">
-  <img 
-    className="block dark:hidden" 
-    src="/images/data-grid.png" 
-    alt="Data Grid" 
+  <img
+    className="block dark:hidden"
+    src="/images/data-grid.png"
+    alt="Data Grid"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/data-grid-dark.png" 
-    alt="Data Grid" 
+  <img
+    className="hidden dark:block"
+    src="/images/data-grid-dark.png"
+    alt="Data Grid"
   />
 </Frame>
 
@@ -51,7 +51,7 @@ The data grid header shows:
 
 - Drag column borders to resize
 - Double-click a border to auto-fit column width
-- Column widths are remembered for each table
+- Column widths are remembered per table
 
 ### Sorting Data
 
@@ -81,7 +81,7 @@ Sorting is done locally on the loaded data. For server-side sorting, use `ORDER 
 
 ### Column Types
 
-The data grid displays different data types appropriately:
+Each data type gets appropriate rendering:
 
 | Type | Display |
 |------|---------|
@@ -108,15 +108,15 @@ To edit a cell:
 
 {/* Screenshot: Cell being edited with cursor */}
 <Frame caption="Inline cell editing">
-  <img 
-    className="block dark:hidden" 
-    src="/images/cell-editing.png" 
-    alt="Cell editing" 
+  <img
+    className="block dark:hidden"
+    src="/images/cell-editing.png"
+    alt="Cell editing"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/cell-editing-dark.png" 
-    alt="Cell editing" 
+  <img
+    className="hidden dark:block"
+    src="/images/cell-editing-dark.png"
+    alt="Cell editing"
   />
 </Frame>
 
@@ -129,7 +129,7 @@ To edit a cell:
 
 ### Date/Time Picker
 
-When you edit a cell in a date, datetime, timestamp, or time column, a native date picker popover appears instead of a plain text field. The picker automatically adapts to the column type:
+Editing a date, datetime, timestamp, or time column opens a native date picker popover instead of a plain text field. The picker adapts to the column type:
 
 | Column Type | Picker Elements |
 |-------------|----------------|
@@ -137,10 +137,10 @@ When you edit a cell in a date, datetime, timestamp, or time column, a native da
 | `DATETIME` / `TIMESTAMP` | Year, month, day, hour, minute, second |
 | `TIME` | Hour, minute, second |
 
-The picker supports common database date formats and outputs values in the standard format (`YYYY-MM-DD HH:MM:SS`). Use the stepper controls or type directly in the picker fields to change the date.
+The picker handles common database date formats and outputs values in standard format (`YYYY-MM-DD HH:MM:SS`). Use the stepper controls or type directly in the picker fields.
 
 <Tip>
-The date picker automatically parses the existing cell value. If the value cannot be parsed, it defaults to the current date/time.
+The date picker automatically parses the existing cell value. If it cannot be parsed, it defaults to the current date/time.
 </Tip>
 
 {/* Screenshot: Date picker for editing date columns */}
@@ -159,11 +159,11 @@ The date picker automatically parses the existing cell value. If the value canno
 
 ### Foreign Key Lookup
 
-When you edit a cell in a foreign key column, a searchable dropdown popover appears showing valid values from the referenced table:
+Editing a foreign key column opens a searchable dropdown showing valid values from the referenced table:
 
-- The dropdown displays both the FK value and a descriptive text column (e.g., `1 — John Doe`)
+- The dropdown shows both the FK value and a descriptive text column (e.g., `1 — John Doe`)
 - Type in the search field to filter values
-- Single-click a value to highlight it; double-click or press `Enter` to commit the selection
+- Single-click to highlight; double-click or press `Enter` to commit
 - The popover auto-detects the best display column from the referenced table
 
 <Tip>
@@ -186,7 +186,7 @@ Foreign key lookups fetch up to 1,000 values from the referenced table. For tabl
 
 ### Boolean Cell Editor
 
-When you double-click a cell in a BOOLEAN, BIT, or TINYINT(1) column, a checkbox popover appears for quick true/false toggling:
+Double-clicking a BOOLEAN, BIT, or TINYINT(1) cell opens a checkbox popover for quick true/false toggling:
 
 - **Checkbox**: Click to toggle between true and false
 - **OK/Cancel**: Click **OK** or press `Enter` to commit; click **Cancel** or press `Escape` to discard
@@ -220,15 +220,15 @@ For nullable boolean columns, the checkbox supports three states: checked (true)
 
 ### ENUM Column Editor
 
-When you double-click a cell in an ENUM column, a searchable dropdown popover appears showing all allowed values:
+Double-clicking an ENUM cell opens a searchable dropdown with all allowed values:
 
-- **Search field**: Type to filter the list of values
+- **Search field**: Type to filter the list
 - **NULL option**: Shown at the top for nullable columns (displayed in italic)
 - **Current value**: Highlighted in the accent color
 - Single-click a value to select and commit immediately
-- Press `Escape` to cancel without changes
+- Press `Escape` to cancel
 
-This works across all supported databases:
+Works across all supported databases:
 
 | Database | ENUM Source |
 |----------|------------|
@@ -252,7 +252,7 @@ This works across all supported databases:
 
 ### SET Column Editor
 
-When you double-click a cell in a SET column (MySQL/MariaDB), a checkbox popover appears:
+Double-clicking a SET cell (MySQL/MariaDB) opens a checkbox popover:
 
 - Each allowed value is shown as a checkbox
 - Currently selected values are pre-checked (parsed from the comma-separated cell value)
@@ -279,15 +279,15 @@ If ENUM/SET values are not available (e.g., from a complex query result rather t
 
 ### JSON Editor
 
-When you edit a cell in a JSON or JSONB column, a dedicated JSON editor popover appears:
+Editing a JSON or JSONB cell opens a dedicated JSON editor popover:
 
 - **Real-time validation**: Shows whether the JSON is valid as you type
 - **Save/Cancel**: Explicit buttons to commit or discard changes
 
-The editor validates JSON before saving. If the text is not valid JSON, you'll see a confirmation dialog before the value is saved.
+The editor validates JSON before saving. Invalid JSON triggers a confirmation dialog before the value is saved.
 
 <Tip>
-JSON values are automatically compacted (minified) when saved to the database for efficient storage.
+JSON values are automatically compacted (minified) when saved to the database.
 </Tip>
 
 {/* Screenshot: JSON editor with validation */}
@@ -306,7 +306,7 @@ JSON values are automatically compacted (minified) when saved to the database fo
 
 ### Multi-Row Editing
 
-You can perform operations on multiple rows at once:
+Operate on multiple rows at once:
 
 - **Select multiple rows**: Click row numbers while holding `Cmd` (non-contiguous) or `Shift` (range)
 - **Delete multiple rows**: Select rows, then click **Delete** or press the `Delete` key
@@ -328,10 +328,10 @@ You can perform operations on multiple rows at once:
 
 ### Saving Changes
 
-Changes are queued and not applied to the database immediately. Use the following actions to manage pending changes:
+Changes are queued, not applied immediately. Manage pending changes with:
 
 - **Preview SQL**: Click the **Preview SQL** button (eye icon) or press `Cmd+Shift+P` to review pending SQL statements before committing
-- **Commit**: Click the **Commit** button (or press `Cmd+S`) to apply all pending changes to the database
+- **Commit**: Click the **Commit** button (or press `Cmd+S`) to apply all pending changes
 - **Discard**: Click the **Discard** button to revert all pending changes
 - **Undo/Redo**: Press `Cmd+Z` to undo or `Cmd+Shift+Z` to redo individual edits before committing
 
@@ -360,18 +360,18 @@ To delete rows:
 
 ## Change Indicators
 
-When you make edits, TablePro provides visual feedback on pending changes:
+Pending changes get visual feedback:
 
 - **Modified cells** are highlighted with a distinct background color
 - **New rows** display an insertion indicator
 - **Deleted rows** display a deletion indicator
 - The **toolbar** shows the count of pending changes
 
-These indicators help you review all modifications before committing them to the database. See [Change Tracking](/features/change-tracking) for details on how change tracking works.
+Review all modifications before committing them to the database. See [Change Tracking](/features/change-tracking) for details.
 
 ## Cell Inspector
 
-The Cell Inspector is a right sidebar panel that provides detailed information about the selected row or the current table. Toggle it with `Cmd+Shift+B` or via **View** > **Toggle Cell Inspector**.
+The Cell Inspector is a right sidebar panel showing detailed information about the selected row or current table. Toggle with `Cmd+Shift+B` or via **View** > **Toggle Cell Inspector**.
 
 {/* Screenshot: Cell Inspector showing row details */}
 <Frame caption="Cell Inspector showing row details">
@@ -389,19 +389,19 @@ The Cell Inspector is a right sidebar panel that provides detailed information a
 
 ### Row Details Mode
 
-When a row is selected, the Cell Inspector displays all column values for that row:
+When a row is selected, the Cell Inspector shows all column values for that row:
 
-- **Searchable column list**: Quickly find a column by typing in the search field
+- **Searchable column list**: Find a column by typing in the search field
 - **Column name and data type**: Each entry shows the column name alongside its data type
-- **Full cell value**: Values are displayed without truncation, so you can see the complete content
-- **Multi-line text editing**: TEXT/VARCHAR columns provide a multi-line text area for editing long values
-- **Read-only indicator**: Non-editable cells are clearly marked as read-only
+- **Full cell value**: Values display without truncation
+- **Multi-line text editing**: TEXT/VARCHAR columns get a multi-line text area for editing long values
+- **Read-only indicator**: Non-editable cells are marked as read-only
 
-You can edit values directly in the inspector. Changes are queued just like inline editing in the data grid — they are not applied until you commit.
+Edit values directly in the inspector. Changes are queued just like inline grid edits and are not applied until you commit.
 
 ### Table Info Mode
 
-When no row is selected, the Cell Inspector switches to Table Info mode and displays metadata about the current table:
+When no row is selected, the Cell Inspector shows table metadata:
 
 | Metadata | Description |
 |----------|-------------|
@@ -414,7 +414,7 @@ When no row is selected, the Cell Inspector switches to Table Info mode and disp
 | Collation | Collation used for sorting |
 
 <Note>
-Read-only connections and query results respect the read-only state — editing is disabled in the Cell Inspector for those contexts.
+Connections with Safe Mode set to Read-Only and complex query results are not editable. Editing is disabled in the Cell Inspector for those contexts. See [Safe Mode](/features/safe-mode) for details.
 </Note>
 
 ## Navigation
@@ -454,20 +454,20 @@ Read-only connections and query results respect the read-only state — editing 
 
 ### Copying Data
 
-1. Select the cells or rows you want to copy
+1. Select the cells or rows to copy
 2. Press `Cmd+C`
 3. Paste into another application
 
-TablePro supports multiple copy formats:
+Multiple copy formats:
 
 | Format | Shortcut | Description |
 |--------|----------|-------------|
 | Tab-separated | `Cmd+C` | Default copy, compatible with spreadsheets |
 | CSV | `Cmd+Shift+C` | Comma-separated values |
-| JSON | `Cmd+Option+C` | JSON array of objects |
+| JSON | `Cmd+Option+J` | JSON array of objects |
 | TSV | Available from context menu | Tab-separated with header |
 
-The default tab-separated format is compatible with:
+The default tab-separated format works with:
 - Excel
 - Numbers
 - Google Sheets
@@ -489,7 +489,7 @@ The default tab-separated format is compatible with:
 
 ## Pagination
 
-For large result sets, the data grid uses pagination:
+Large result sets are paginated.
 
 ### Page Controls
 
@@ -530,7 +530,7 @@ Smaller page sizes load faster and use less memory. Use larger sizes when you ne
 
 ## NULL Values
 
-NULL values are displayed distinctively:
+NULL values are visually distinct:
 
 - Styled text showing "NULL" (customizable)
 - Different color from regular values
@@ -538,15 +538,15 @@ NULL values are displayed distinctively:
 
 {/* Screenshot: Data grid showing NULL values */}
 <Frame caption="NULL value display">
-  <img 
-    className="block dark:hidden" 
-    src="/images/null-values.png" 
-    alt="NULL values" 
+  <img
+    className="block dark:hidden"
+    src="/images/null-values.png"
+    alt="NULL values"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/null-values-dark.png" 
-    alt="NULL values" 
+  <img
+    className="hidden dark:block"
+    src="/images/null-values-dark.png"
+    alt="NULL values"
   />
 </Frame>
 
@@ -575,7 +575,7 @@ Configure in **Settings** > **Data Grid** > **Date Format**.
 
 ## Row Height
 
-Adjust row height for better readability:
+Adjust row height for readability:
 
 | Option | Height | Best For |
 |--------|--------|----------|
@@ -602,7 +602,7 @@ Configure in **Settings** > **Data Grid** > **Row Height**.
 
 ## Alternate Row Colors
 
-Enable alternating row colors for easier scanning:
+Alternating row colors make scanning easier:
 
 - **On**: Every other row has a subtle background color
 - **Off**: All rows have the same background
@@ -625,15 +625,15 @@ Configure in **Settings** > **Data Grid** > **Show Alternate Rows**.
 
 ## MongoDB Collections
 
-When viewing MongoDB collections, the data grid has some differences from SQL databases:
+MongoDB collections have some differences from SQL databases in the data grid.
 
 ### Document Schema
 
-MongoDB collections don't have a fixed schema. TablePro infers column structure by sampling up to 500 documents. If your collection has varied document shapes, some columns may show NULL for documents that don't contain those fields.
+MongoDB collections have no fixed schema. TablePro infers column structure by sampling up to 500 documents. If documents vary in shape, some columns show NULL for documents missing those fields.
 
 ### Immutable _id Column
 
-The `_id` column cannot be edited inline or via double-click. MongoDB does not allow modifying the `_id` field of an existing document. To change a document's `_id`, you must delete and re-insert it.
+The `_id` column cannot be edited. MongoDB does not allow modifying `_id` on existing documents. To change a document's `_id`, delete and re-insert it.
 
 ### BSON Type Display
 
@@ -646,7 +646,7 @@ MongoDB BSON types are displayed with appropriate formatting:
 
 ### MQL Statement Preview
 
-When you make changes (insert, update, delete) in the data grid, the SQL preview shows MongoDB shell commands instead of SQL:
+When you make changes (insert, update, delete) in the data grid, the preview shows MongoDB shell commands instead of SQL:
 - Inserts generate `db.collection.insertMany([...])`
 - Updates generate `db.collection.updateOne({filter}, {$set: {...}})`
 - Deletes generate `db.collection.deleteMany({_id: {$in: [...]}})`
@@ -697,7 +697,7 @@ See [Import & Export](/features/import-export) for detailed export options.
 |--------|----------|
 | Copy selection | `Cmd+C` |
 | Copy as CSV | `Cmd+Shift+C` |
-| Copy as JSON | `Cmd+Option+C` |
+| Copy as JSON | `Cmd+Option+J` |
 | Select all | `Cmd+A` |
 | Delete row | `Delete` |
 | Edit cell | `Enter` |

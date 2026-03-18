@@ -18,6 +18,7 @@ enum SQLCompletionKind: String, CaseIterable {
     case schema     // Database/schema names
     case alias      // Table aliases
     case `operator` // Operators (=, <>, LIKE, etc.)
+    case favorite   // Saved SQL favorite (keyword expansion)
 
     /// SF Symbol for display
     var iconName: String {
@@ -30,6 +31,7 @@ enum SQLCompletionKind: String, CaseIterable {
         case .schema: return "s.circle.fill"
         case .alias: return "a.circle.fill"
         case .operator: return "equal.circle.fill"
+        case .favorite: return "star.circle.fill"
         }
     }
 
@@ -44,12 +46,14 @@ enum SQLCompletionKind: String, CaseIterable {
         case .schema: return .systemGreen
         case .alias: return .systemGray
         case .operator: return .systemIndigo
+        case .favorite: return .systemYellow
         }
     }
 
     /// Base sort priority (lower = higher priority in same context)
     var basePriority: Int {
         switch self {
+        case .favorite: return 50
         case .column: return 100
         case .table: return 200
         case .view: return 210
@@ -257,6 +261,17 @@ extension SQLCompletionItem {
             kind: .operator,
             insertText: op,
             documentation: documentation
+        )
+    }
+
+    /// Create a favorite keyword expansion item
+    static func favorite(keyword: String, name: String, query: String) -> SQLCompletionItem {
+        SQLCompletionItem(
+            label: keyword,
+            kind: .favorite,
+            insertText: query,
+            detail: name,
+            documentation: String(query.prefix(200))
         )
     }
 }

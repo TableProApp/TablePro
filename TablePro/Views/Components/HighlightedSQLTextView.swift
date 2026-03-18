@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 /// Read-only text view that applies SQL/MQL syntax highlighting via regex
 struct HighlightedSQLTextView: NSViewRepresentable {
@@ -172,17 +173,22 @@ struct HighlightedSQLTextView: NSViewRepresentable {
 
         // Apply pre-compiled patterns
         let activePatterns: [(regex: NSRegularExpression, color: NSColor)]
-        switch databaseType {
-        case .mongodb:
+        switch PluginManager.shared.editorLanguage(for: databaseType) {
+        case .javascript:
             activePatterns = Self.mqlPatterns
-        case .redis:
-            activePatterns = Self.syntaxPatterns
         default:
             activePatterns = Self.syntaxPatterns
         }
         let text = textStorage.string
+        let maxHighlightLength = 10_000
+        let highlightRange: NSRange
+        if textStorage.length > maxHighlightLength {
+            highlightRange = NSRange(location: 0, length: maxHighlightLength)
+        } else {
+            highlightRange = fullRange
+        }
         for (regex, color) in activePatterns {
-            let matches = regex.matches(in: text, options: [], range: fullRange)
+            let matches = regex.matches(in: text, options: [], range: highlightRange)
             for match in matches {
                 textStorage.addAttribute(.foregroundColor, value: color, range: match.range)
             }

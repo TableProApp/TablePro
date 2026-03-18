@@ -6,17 +6,55 @@
 //
 
 import Foundation
+import TableProPluginKit
 import Testing
 @testable import TablePro
 
 @Suite("Filter SQL Generator")
 struct FilterSQLGeneratorTests {
 
+    private static let mysqlDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexp, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .implicit, paginationStyle: .limit
+    )
+
+    private static let postgresqlDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .tilde, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .limit
+    )
+
+    private static let sqliteDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .unsupported, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .limit
+    )
+
+    private static let clickhouseDialect = SQLDialectDescriptor(
+        identifierQuote: "`", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .match, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .implicit, paginationStyle: .limit
+    )
+
+    private static let duckdbDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpMatches, booleanLiteralStyle: .truefalse,
+        likeEscapeStyle: .explicit, paginationStyle: .limit
+    )
+
+    private static let oracleDialect = SQLDialectDescriptor(
+        identifierQuote: "\"", keywords: [], functions: [], dataTypes: [],
+        regexSyntax: .regexpLike, booleanLiteralStyle: .numeric,
+        likeEscapeStyle: .explicit, paginationStyle: .offsetFetch,
+        offsetFetchOrderBy: "ORDER BY 1"
+    )
+
     // MARK: - Per-Operator Tests (MySQL)
 
     @Test("Equal operator generates correct condition")
     func testEqualOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -33,7 +71,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Not equal operator generates correct condition")
     func testNotEqualOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -50,7 +88,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Contains operator generates correct LIKE condition")
     func testContainsOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -67,7 +105,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Not contains operator generates correct NOT LIKE condition")
     func testNotContainsOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -84,7 +122,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Starts with operator generates correct LIKE condition")
     func testStartsWithOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -101,7 +139,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Ends with operator generates correct LIKE condition")
     func testEndsWithOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -118,7 +156,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Greater than operator generates correct condition")
     func testGreaterThanOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -135,7 +173,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Greater or equal operator generates correct condition")
     func testGreaterOrEqualOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -152,7 +190,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Less than operator generates correct condition")
     func testLessThanOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -169,7 +207,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Less or equal operator generates correct condition")
     func testLessOrEqualOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -186,7 +224,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Is null operator generates correct condition")
     func testIsNullOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -203,7 +241,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Is not null operator generates correct condition")
     func testIsNotNullOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -220,7 +258,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Is empty operator generates correct condition")
     func testIsEmptyOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -237,7 +275,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Is not empty operator generates correct condition")
     func testIsNotEmptyOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -254,7 +292,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("In list operator generates correct IN condition")
     func testInListOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "status",
@@ -271,7 +309,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Not in list operator generates correct NOT IN condition")
     func testNotInListOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "status",
@@ -288,7 +326,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Between operator generates correct BETWEEN condition")
     func testBetweenOperator() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -305,7 +343,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Regex operator generates correct REGEXP condition for MySQL")
     func testRegexOperatorMySQL() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "email",
@@ -324,7 +362,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("NULL literal generates unquoted NULL")
     func testNullLiteral() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -341,7 +379,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("TRUE literal generates 1 for MySQL")
     func testTrueLiteralMySQL() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -358,7 +396,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("FALSE literal generates 0 for MySQL")
     func testFalseLiteralMySQL() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -375,7 +413,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Numeric value generates unquoted number")
     func testNumericValue() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -392,7 +430,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("String value generates quoted string")
     func testStringValue() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -411,7 +449,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("AND mode with 2 filters generates AND clause")
     func testAndMode() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -440,7 +478,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("OR mode with 2 filters generates OR clause")
     func testOrMode() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -469,7 +507,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Empty filters generates empty string")
     func testEmptyFilters() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters: [TableFilter] = []
         let result = generator.generateWhereClause(from: filters, logicMode: .and)
         #expect(result == "")
@@ -477,7 +515,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Single filter generates no AND/OR")
     func testSingleFilter() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -496,7 +534,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Invalid filter is skipped")
     func testInvalidFilterSkipped() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -527,7 +565,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Single quote in value is escaped")
     func testSingleQuoteEscaping() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -544,7 +582,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Column with special chars is quoted properly")
     func testColumnQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "user name",
@@ -561,7 +599,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Raw SQL mode generates condition from rawSQL")
     func testRawSQLMode() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "__RAW__",
@@ -580,7 +618,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("MySQL uses backtick quoting")
     func testMySQLQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -597,7 +635,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("PostgreSQL uses double quote quoting")
     func testPostgreSQLQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .postgresql)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -614,7 +652,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("SQLite uses backtick quoting")
     func testSQLiteQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .sqlite)
+        let generator = FilterSQLGenerator(dialect: Self.sqliteDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -631,7 +669,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("MariaDB uses backtick quoting")
     func testMariaDBQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .mariadb)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -650,7 +688,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Contains with percent in value escapes percent")
     func testPercentEscaping() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -667,7 +705,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Contains with underscore in value escapes underscore")
     func testUnderscoreEscaping() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -684,7 +722,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Starts with escapes special chars")
     func testStartsWithSpecialChars() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -703,7 +741,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("MySQL regex uses REGEXP")
     func testMySQLRegex() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "email",
@@ -720,7 +758,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("PostgreSQL regex uses tilde operator")
     func testPostgreSQLRegex() {
-        let generator = FilterSQLGenerator(databaseType: .postgresql)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "email",
@@ -737,7 +775,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("SQLite regex falls back to LIKE")
     func testSQLiteRegex() {
-        let generator = FilterSQLGenerator(databaseType: .sqlite)
+        let generator = FilterSQLGenerator(dialect: Self.sqliteDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "email",
@@ -756,7 +794,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Preview SQL includes SELECT FROM WHERE LIMIT")
     func testPreviewSQL() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -778,7 +816,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Preview SQL without filters has no WHERE")
     func testPreviewSQLNoFilters() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filters: [TableFilter] = []
         let result = generator.generatePreviewSQL(tableName: "users", filters: filters, limit: 1000)
         #expect(result.contains("SELECT * FROM"))
@@ -791,7 +829,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Between with missing secondValue returns nil")
     func testBetweenMissingSecondValue() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "age",
@@ -808,7 +846,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("InList with empty value returns nil")
     func testInListEmptyValue() {
-        let generator = FilterSQLGenerator(databaseType: .mysql)
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "status",
@@ -825,7 +863,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("TRUE literal generates TRUE for PostgreSQL")
     func testTrueLiteralPostgreSQL() {
-        let generator = FilterSQLGenerator(databaseType: .postgresql)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -842,7 +880,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("FALSE literal generates FALSE for PostgreSQL")
     func testFalseLiteralPostgreSQL() {
-        let generator = FilterSQLGenerator(databaseType: .postgresql)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -861,7 +899,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift uses double-quote identifier quoting")
     func testRedshiftQuoting() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -878,7 +916,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift regex uses tilde operator")
     func testRedshiftRegex() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "email",
@@ -895,7 +933,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift TRUE literal generates TRUE")
     func testTrueLiteralRedshift() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -912,7 +950,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift FALSE literal generates FALSE")
     func testFalseLiteralRedshift() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "active",
@@ -929,7 +967,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift LIKE uses ESCAPE clause")
     func testRedshiftLikeEscape() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filter = TableFilter(
             id: UUID(),
             columnName: "name",
@@ -946,7 +984,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift AND mode with 2 filters generates AND clause")
     func testRedshiftAndMode() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),
@@ -975,7 +1013,7 @@ struct FilterSQLGeneratorTests {
 
     @Test("Redshift OR mode with 2 filters generates OR clause")
     func testRedshiftOrMode() {
-        let generator = FilterSQLGenerator(databaseType: .redshift)
+        let generator = FilterSQLGenerator(dialect: Self.postgresqlDialect)
         let filters = [
             TableFilter(
                 id: UUID(),

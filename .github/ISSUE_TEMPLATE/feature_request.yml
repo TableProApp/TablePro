@@ -3,11 +3,43 @@ description: Suggest a new feature or improvement
 labels: ["enhancement"]
 body:
   - type: textarea
-    id: description
+    id: problem
     attributes:
-      label: What would you like?
-      description: Describe the feature and the problem it solves. Include mockups or examples if you have them.
-      placeholder: |
-        I'd like TablePro to support X because...
+      label: Problem
+      description: What problem does this feature solve? What's frustrating or missing today?
+      placeholder: "I often need to X but currently have to Y, which is slow/tedious."
     validations:
       required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work? Include mockups or examples if you have them.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds or alternative approaches you've tried or considered.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Related database type
+      options:
+        - MySQL / MariaDB
+        - PostgreSQL
+        - SQLite
+        - SQL Server
+        - MongoDB
+        - Redis
+        - ClickHouse
+        - Oracle
+        - N/A / General
+    validations:
+      required: false

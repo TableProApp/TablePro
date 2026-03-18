@@ -1,23 +1,23 @@
 ---
 title: Thao tác với Bảng
-description: Chỉnh sửa và quản lý các bảng trong cơ sở dữ liệu
+description: Drop, truncate, nhân bản bảng, tạo view, và chuyển database từ sidebar
 ---
 
 # Thao tác với Bảng
 
-TablePro cung cấp bộ công cụ để chỉnh sửa và quản lý các bảng cơ sở dữ liệu thông qua giao diện trực quan. Thực hiện các thao tác phổ biến như xóa, truncate và sao chép — tất cả mà không cần viết SQL thủ công.
+Chuột phải bảng trong sidebar để drop, truncate hoặc nhân bản. Tạo và quản lý view. Chuyển đổi giữa các database trên cùng kết nối.
 
 ## Các Thao Tác với Bảng
 
-Click chuột phải vào bảng trong sidebar để truy cập các thao tác này.
+Chuột phải bảng trong sidebar để truy cập các thao tác.
 
 ### Xóa Bảng (Drop Table)
 
-Xóa vĩnh viễn một bảng và toàn bộ dữ liệu của nó.
+Xóa vĩnh viễn bảng và toàn bộ dữ liệu.
 
-1. Click chuột phải vào bảng (hoặc chọn nhiều bảng)
+1. Chuột phải bảng (hoặc chọn nhiều bảng)
 2. Chọn **Delete**
-3. Cấu hình các tùy chọn trong hộp thoại xác nhận
+3. Cấu hình tùy chọn trong hộp thoại xác nhận
 4. Click **OK** để thực thi
 
 {/* Screenshot: Drop table confirmation dialog */}
@@ -34,70 +34,70 @@ Xóa vĩnh viễn một bảng và toàn bộ dữ liệu của nó.
   />
 </Frame>
 
-**Các tùy chọn theo database:**
+**Tùy chọn theo database:**
 
 <Tabs>
   <Tab title="MySQL/MariaDB">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Tạm thời vô hiệu hóa kiểm tra foreign key |
-    | **Cascade** | Không được hỗ trợ |
+    | **Ignore foreign key checks** | Tạm tắt kiểm tra foreign key |
+    | **Cascade** | Không hỗ trợ |
   </Tab>
   <Tab title="PostgreSQL">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Không được hỗ trợ (sử dụng CASCADE thay thế) |
-    | **Cascade** | Xóa tất cả các đối tượng phụ thuộc (views, foreign keys) |
+    | **Ignore foreign key checks** | Không hỗ trợ (dùng CASCADE thay thế) |
+    | **Cascade** | Xóa tất cả đối tượng phụ thuộc (view, foreign key) |
   </Tab>
   <Tab title="SQLite">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Tạm thời vô hiệu hóa kiểm tra foreign key |
-    | **Cascade** | Không được hỗ trợ |
+    | **Ignore foreign key checks** | Tạm tắt kiểm tra foreign key |
+    | **Cascade** | Không hỗ trợ |
   </Tab>
 </Tabs>
 
 <Warning>
-Xóa bảng là không thể hoàn tác. Luôn sao lưu dữ liệu quan trọng trước khi xóa bảng.
+Xóa bảng không thể hoàn tác. Luôn backup dữ liệu quan trọng trước khi xóa.
 </Warning>
 
 ### Truncate Bảng
 
-Xóa tất cả các hàng khỏi bảng trong khi vẫn giữ cấu trúc bảng.
+Xóa toàn bộ hàng, giữ nguyên cấu trúc bảng.
 
-1. Click chuột phải vào bảng (hoặc chọn nhiều bảng)
+1. Chuột phải bảng (hoặc chọn nhiều bảng)
 2. Chọn **Truncate**
-3. Cấu hình các tùy chọn trong hộp thoại xác nhận
+3. Cấu hình tùy chọn trong hộp thoại
 4. Click **OK** để thực thi
 
-**Các tùy chọn theo database:**
+**Tùy chọn theo database:**
 
 <Tabs>
   <Tab title="MySQL/MariaDB">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Tạm thời vô hiệu hóa kiểm tra foreign key |
-    | **Cascade** | Không được hỗ trợ cho TRUNCATE |
+    | **Ignore foreign key checks** | Tạm tắt kiểm tra foreign key |
+    | **Cascade** | Không hỗ trợ cho TRUNCATE |
   </Tab>
   <Tab title="PostgreSQL">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Không được hỗ trợ (sử dụng CASCADE thay thế) |
-    | **Cascade** | Truncate tất cả các bảng được liên kết bởi foreign keys |
+    | **Ignore foreign key checks** | Không hỗ trợ (dùng CASCADE) |
+    | **Cascade** | Truncate tất cả bảng liên kết qua foreign key |
   </Tab>
   <Tab title="SQLite">
     | Tùy chọn | Mô tả |
     |----------|-------|
-    | **Ignore foreign key checks** | Tạm thời vô hiệu hóa kiểm tra foreign key |
-    | **Cascade** | Không được hỗ trợ |
+    | **Ignore foreign key checks** | Tạm tắt kiểm tra foreign key |
+    | **Cascade** | Không hỗ trợ |
   </Tab>
 </Tabs>
 
 <Note>
-Truncate nhanh hơn `DELETE FROM table` vì nó không tạo các log xóa từng hàng riêng lẻ. Tuy nhiên, nó reset các bộ đếm auto-increment.
+Truncate nhanh hơn `DELETE FROM table` vì bỏ qua log xóa từng hàng. Đồng thời reset auto-increment counter.
 </Note>
 
-{/* Screenshot: Xác nhận truncate bảng với các tùy chọn */}
+{/* Screenshot: Xác nhận truncate */}
 <Frame caption="Xác nhận truncate bảng với các tùy chọn">
   <img
     className="block dark:hidden"
@@ -113,28 +113,28 @@ Truncate nhanh hơn `DELETE FROM table` vì nó không tạo các log xóa từn
 
 ### Thao Tác Hàng Loạt
 
-Bạn có thể chọn nhiều bảng trong sidebar và áp dụng Drop hoặc Truncate cho tất cả cùng một lúc. Các tùy chọn giống nhau được áp dụng cho mọi bảng được chọn.
+Chọn nhiều bảng và Drop hoặc Truncate tất cả cùng lúc. Tùy chọn áp dụng cho mọi bảng được chọn.
 
-1. Giữ `Cmd` và click để chọn nhiều bảng
-2. Click chuột phải và chọn **Delete** hoặc **Truncate**
-3. Cấu hình các tùy chọn một lần trong hộp thoại
-4. Tất cả các bảng được chọn sẽ được xử lý
+1. Giữ `Cmd` và click chọn nhiều bảng
+2. Chuột phải chọn **Delete** hoặc **Truncate**
+3. Cấu hình tùy chọn một lần
+4. Tất cả bảng được xử lý
 
 ## Quản Lý View
 
-Database view là các bảng ảo được định nghĩa bởi câu lệnh SQL. TablePro hiển thị view trong sidebar với biểu tượng mắt và màu tím.
+View là bảng ảo định nghĩa bằng SQL. TablePro hiển thị view trong sidebar với biểu tượng mắt và màu tím.
 
 ### Tạo View
 
-Tạo view mới bằng cách mở tab SQL editor với template:
+Tạo view bằng cách mở tab SQL editor với template:
 
-1. Click chuột phải trong sidebar và chọn **Create New View...**
-2. Hoặc vào **File** > **New View...**
-3. Tab SQL editor mới mở với template CREATE VIEW
-4. Sửa tên view và câu lệnh SELECT
-5. Thực thi query để tạo view
+1. Chuột phải sidebar và chọn **Create New View...**
+2. Hoặc **File** > **New View...**
+3. Tab editor mới mở với template CREATE VIEW
+4. Sửa tên view và query SELECT
+5. Thực thi để tạo view
 
-Template tự động thích ứng với loại database:
+Template tự điều chỉnh theo database:
 
 <Tabs>
   <Tab title="MySQL/MariaDB">
@@ -163,7 +163,7 @@ Template tự động thích ứng với loại database:
   </Tab>
 </Tabs>
 
-{/* Screenshot: Tạo View với template SQL */}
+{/* Screenshot: Tạo View */}
 <Frame caption="Tạo View với template SQL">
   <img
     className="block dark:hidden"
@@ -179,43 +179,43 @@ Template tự động thích ứng với loại database:
 
 ### Chỉnh Sửa Định Nghĩa View
 
-Sửa đổi định nghĩa SQL của view hiện có:
+Sửa SQL của view hiện có:
 
-1. Click chuột phải vào view trong sidebar
+1. Chuột phải view trong sidebar
 2. Chọn **Edit View Definition**
-3. Định nghĩa view hiện tại được tải và mở trong tab SQL editor mới
-4. Sửa đổi query và thực thi để cập nhật view
+3. Định nghĩa hiện tại mở trong tab editor mới
+4. Sửa query và thực thi để cập nhật
 
 <Note>
-Với MySQL/MariaDB, bạn có thể dùng `ALTER VIEW` để sửa view. Với PostgreSQL, dùng `CREATE OR REPLACE VIEW`. SQLite không hỗ trợ ALTER VIEW — bạn phải drop và tạo lại view.
+MySQL/MariaDB dùng `ALTER VIEW`. PostgreSQL dùng `CREATE OR REPLACE VIEW`. SQLite không hỗ trợ ALTER VIEW, phải drop và tạo lại.
 </Note>
 
 ### Xóa View
 
 Xóa view khỏi database:
 
-1. Click chuột phải vào view trong sidebar
+1. Chuột phải view trong sidebar
 2. Chọn **Drop View**
 3. Xác nhận xóa
 
 <Tip>
-View không lưu trữ dữ liệu, nên xóa view chỉ xóa định nghĩa view — dữ liệu bảng gốc vẫn nguyên vẹn.
+View không lưu dữ liệu. Xóa view chỉ xóa định nghĩa. Dữ liệu bảng gốc không bị ảnh hưởng.
 </Tip>
 
 ### Khác Biệt Context Menu
 
-Context menu sidebar thay đổi khi bạn click chuột phải vào view:
+Context menu sidebar thay đổi cho view:
 
 | Hành động | Bảng | View |
 |--------|--------|-------|
-| Show Structure | Có | Có |
-| Export | Có | Có |
-| Import | Có | Không |
-| Truncate | Có | Không |
-| Edit Definition | Không | Có |
-| Delete / Drop | Có | Có |
+| Show Structure | Co | Co |
+| Export | Co | Co |
+| Import | Co | Khong |
+| Truncate | Co | Khong |
+| Edit Definition | Khong | Co |
+| Delete / Drop | Co | Co |
 
-{/* Screenshot: Tùy chọn context menu riêng cho View */}
+{/* Screenshot: Context menu View */}
 <Frame caption="Tùy chọn context menu riêng cho View">
   <img
     className="block dark:hidden"
@@ -233,14 +233,14 @@ Context menu sidebar thay đổi khi bạn click chuột phải vào view:
 
 ### Tạo Database
 
-Tạo database mới trực tiếp từ UI (MySQL/MariaDB):
+Tạo database mới từ UI (MySQL/MariaDB):
 
 <Steps>
   <Step title="Mở Database Switcher">
-    Click tên database trong thanh công cụ hoặc nhấn `Cmd+K` để mở database switcher
+    Click tên database trong toolbar hoặc `Cmd+K`
   </Step>
   <Step title="Click Create">
-    Click nút **Create** trong thanh công cụ của database switcher
+    Click **Create** trong toolbar của switcher
   </Step>
   <Step title="Cấu hình">
     Nhập tên, chọn character set và collation
@@ -264,7 +264,7 @@ Tạo database mới trực tiếp từ UI (MySQL/MariaDB):
   />
 </Frame>
 
-Các character sets và collations có sẵn:
+Character set và collation có sẵn:
 
 | Charset | Collations |
 |---------|------------|
@@ -275,16 +275,16 @@ Các character sets và collations có sẵn:
 
 ### Database Switcher
 
-Chuyển đổi nhanh giữa các database trên cùng một kết nối:
+Chuyển giữa các database trên cùng kết nối:
 
-1. Click tên database trong thanh công cụ
-2. Duyệt danh sách các database có sẵn với metadata
-3. Tìm kiếm theo tên để lọc
-4. Double-click hoặc chọn và click **Open** để chuyển
+1. Click tên database trong toolbar
+2. Duyệt database có sẵn với metadata
+3. Tìm theo tên để lọc
+4. Nhấp đúp hoặc chọn rồi click **Open**
 
-Database switcher hiển thị các database gần đây để truy cập nhanh và hỗ trợ làm mới danh sách database.
+Switcher hiển thị database gần đây để truy cập nhanh và hỗ trợ refresh danh sách.
 
-{/* Screenshot: Bộ chuyển đổi database với tìm kiếm và database gần đây */}
+{/* Screenshot: Database switcher */}
 <Frame caption="Bộ chuyển đổi database với tìm kiếm và database gần đây">
   <img
     className="block dark:hidden"
@@ -300,11 +300,11 @@ Database switcher hiển thị các database gần đây để truy cập nhanh 
 
 ## Thao tác Collection MongoDB
 
-Các thao tác collection MongoDB khác với thao tác bảng SQL ở một số điểm.
+Thao tác MongoDB khác SQL ở một số điểm.
 
 ### Tạo Collection
 
-Tạo collection MongoDB bằng trình soạn MQL. Để tạo collection trống hoặc có tùy chọn cụ thể (capped, validator):
+Tạo collection bằng MQL editor. Với tùy chọn cụ thể (capped, validator):
 
 ```javascript
 db.createCollection("myCollection", {
@@ -316,18 +316,14 @@ db.createCollection("myCollection", {
 
 ### Xóa Collection
 
-Nhấp chuột phải vào collection trong thanh bên và chọn **Drop Table** để xóa. Thao tác này thực thi `db.collection.drop()` và xóa tất cả tài liệu và index.
-
-### Nhân bản Collection
-
-TablePro nhân bản collection MongoDB bằng aggregation pipeline với giai đoạn `$out`, sau đó tạo lại tất cả index trên collection mới.
+Chuột phải collection trong sidebar, chọn **Drop Table**. Thực thi `db.collection.drop()`, xóa tất cả tài liệu và index.
 
 ### Hiển thị Tất cả Collections
 
-Chọn **Show All Tables** từ thanh bên để tự động thực thi `listCollections` và hiển thị tất cả collection trong cơ sở dữ liệu hiện tại.
+Chọn **Show All Tables** từ sidebar để thực thi `listCollections` và hiển thị tất cả collection trong database hiện tại.
 
 <Note>
-**Truncate** không khả dụng cho các collection MongoDB. Để xóa tất cả tài liệu mà vẫn giữ collection, sử dụng `db.collection.deleteMany({})` trong trình soạn MQL.
+**Truncate** không khả dụng cho MongoDB. Để xóa tất cả tài liệu mà giữ collection, dùng `db.collection.deleteMany({})` trong MQL editor.
 </Note>
 
 ## Phím Tắt
@@ -343,15 +339,15 @@ Chọn **Show All Tables** từ thanh bên để tự động thực thi `listCo
 
 <CardGroup cols={2}>
   <Card title="Cấu trúc Bảng" icon="table-columns" href="/vi/features/table-structure">
-    Xem và chỉnh sửa schema của bảng hiện có
+    Xem và chỉnh sửa schema bảng
   </Card>
   <Card title="Bảng Dữ Liệu" icon="table" href="/vi/features/data-grid">
-    Xem và chỉnh sửa dữ liệu bảng
+    Xem và chỉnh sửa dữ liệu
   </Card>
   <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Viết các truy vấn DDL và DML
+    Viết query DDL và DML
   </Card>
   <Card title="Import & Export" icon="file-import" href="/vi/features/import-export">
-    Import và export dữ liệu bảng
+    Import và export dữ liệu
   </Card>
 </CardGroup>

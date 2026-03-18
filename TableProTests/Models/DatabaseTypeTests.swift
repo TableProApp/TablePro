@@ -37,43 +37,18 @@ struct DatabaseTypeTests {
         #expect(DatabaseType.mongodb.defaultPort == 27_017)
     }
 
-    @Test("MySQL identifier quote is backtick")
-    func testMySQLIdentifierQuote() {
-        #expect(DatabaseType.mysql.identifierQuote == "`")
+    @Test("allKnownTypes contains all built-in types")
+    func testAllKnownTypesContainsBuiltIns() {
+        let knownTypes = DatabaseType.allKnownTypes
+        #expect(knownTypes.contains(.mysql))
+        #expect(knownTypes.contains(.postgresql))
+        #expect(knownTypes.contains(.sqlite))
+        #expect(knownTypes.count >= 5)
     }
 
-    @Test("PostgreSQL identifier quote is double quote")
-    func testPostgreSQLIdentifierQuote() {
-        #expect(DatabaseType.postgresql.identifierQuote == "\"")
-    }
-
-    @Test("Quote identifier simple name for MySQL")
-    func testQuoteIdentifierSimpleNameMySQL() {
-        let result = DatabaseType.mysql.quoteIdentifier("users")
-        #expect(result == "`users`")
-    }
-
-    @Test("Quote identifier simple name for PostgreSQL")
-    func testQuoteIdentifierSimpleNamePostgreSQL() {
-        let result = DatabaseType.postgresql.quoteIdentifier("users")
-        #expect(result == "\"users\"")
-    }
-
-    @Test("Quote identifier with embedded backtick for MySQL")
-    func testQuoteIdentifierWithEmbeddedBacktickMySQL() {
-        let result = DatabaseType.mysql.quoteIdentifier("user`s")
-        #expect(result == "`user``s`")
-    }
-
-    @Test("Quote identifier with embedded double quote for PostgreSQL")
-    func testQuoteIdentifierWithEmbeddedDoubleQuotePostgreSQL() {
-        let result = DatabaseType.postgresql.quoteIdentifier("user\"s")
-        #expect(result == "\"user\"\"s\"")
-    }
-
-    @Test("CaseIterable count is 7")
-    func testCaseIterableCount() {
-        #expect(DatabaseType.allCases.count == 7)
+    @Test("allCases shim matches allKnownTypes")
+    func testAllCasesShim() {
+        #expect(DatabaseType.allCases == DatabaseType.allKnownTypes)
     }
 
     @Test("Raw value matches display name", arguments: [
@@ -82,9 +57,107 @@ struct DatabaseTypeTests {
         (DatabaseType.postgresql, "PostgreSQL"),
         (DatabaseType.sqlite, "SQLite"),
         (DatabaseType.mongodb, "MongoDB"),
-        (DatabaseType.redis, "Redis")
+        (DatabaseType.redis, "Redis"),
+        (DatabaseType.redshift, "Redshift"),
+        (DatabaseType.mssql, "SQL Server"),
+        (DatabaseType.oracle, "Oracle"),
+        (DatabaseType.clickhouse, "ClickHouse"),
+        (DatabaseType.duckdb, "DuckDB"),
+        (DatabaseType.cassandra, "Cassandra"),
+        (DatabaseType.scylladb, "ScyllaDB")
     ])
     func testRawValueMatchesDisplayName(dbType: DatabaseType, expectedRawValue: String) {
         #expect(dbType.rawValue == expectedRawValue)
+    }
+
+    // MARK: - ClickHouse Tests
+
+    @Test("ClickHouse default port is 8123")
+    func testClickHouseDefaultPort() {
+        #expect(DatabaseType.clickhouse.defaultPort == 8_123)
+    }
+
+    @Test("ClickHouse requires authentication")
+    func testClickHouseRequiresAuth() {
+        #expect(DatabaseType.clickhouse.requiresAuthentication == true)
+    }
+
+    @Test("ClickHouse does not support foreign keys")
+    func testClickHouseSupportsForeignKeys() {
+        #expect(DatabaseType.clickhouse.supportsForeignKeys == false)
+    }
+
+    @Test("ClickHouse supports schema editing")
+    func testClickHouseSupportsSchemaEditing() {
+        #expect(DatabaseType.clickhouse.supportsSchemaEditing == true)
+    }
+
+    @Test("ClickHouse icon name is clickhouse-icon")
+    func testClickHouseIconName() {
+        #expect(DatabaseType.clickhouse.iconName == "clickhouse-icon")
+    }
+
+    // MARK: - Plugin Type ID Alias Tests
+
+    @Test("MariaDB pluginTypeId maps to MySQL plugin")
+    func testMariaDBPluginTypeId() {
+        #expect(DatabaseType.mariadb.pluginTypeId == "MySQL")
+    }
+
+    @Test("Redshift pluginTypeId maps to PostgreSQL plugin")
+    func testRedshiftPluginTypeId() {
+        #expect(DatabaseType.redshift.pluginTypeId == "PostgreSQL")
+    }
+
+    @Test("Unknown type pluginTypeId falls back to rawValue")
+    func testUnknownPluginTypeIdFallback() {
+        #expect(DatabaseType(rawValue: "FutureDB").pluginTypeId == "FutureDB")
+    }
+
+    // MARK: - Struct Behavior Tests
+
+    @Test("Struct equality via rawValue")
+    func testStructEquality() {
+        #expect(DatabaseType(rawValue: "MySQL") == .mysql)
+    }
+
+    @Test("Unknown type round-trips via rawValue")
+    func testUnknownTypeRoundTrip() {
+        #expect(DatabaseType(rawValue: "FutureDB").rawValue == "FutureDB")
+    }
+
+    @Test("Validating init rejects unknown type")
+    func testValidatingInitRejectsUnknown() {
+        #expect(DatabaseType(validating: "FutureDB") == nil)
+    }
+
+    @Test("Validating init accepts known type")
+    func testValidatingInitAcceptsKnown() {
+        #expect(DatabaseType(validating: "MySQL") == .mysql)
+    }
+
+    @Test("Codable round-trip for known type")
+    func testCodableRoundTrip() throws {
+        let original = DatabaseType.postgresql
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: data)
+        #expect(decoded == original)
+    }
+
+    @Test("Codable round-trip for unknown type")
+    func testCodableUnknownRoundTrip() throws {
+        let original = DatabaseType(rawValue: "FutureDB")
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(DatabaseType.self, from: data)
+        #expect(decoded == original)
+        #expect(decoded.rawValue == "FutureDB")
+    }
+
+    @Test("Hashable set membership works")
+    func testHashableSetMembership() {
+        let types: Set<DatabaseType> = [.mysql, .postgresql, .sqlite]
+        #expect(types.contains(.mysql))
+        #expect(types.contains(.postgresql))
+        #expect(!types.contains(.redis))
     }
 }

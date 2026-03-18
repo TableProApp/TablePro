@@ -1,0 +1,448 @@
+---
+title: PostgreSQL
+description: 通过 libpq 驱动连接 PostgreSQL 12+，支持 schema 浏览、JSONB 显示等功能
+---
+
+# PostgreSQL 连接
+
+TablePro 通过 libpq C connector 支持 PostgreSQL 12 及更高版本。Schema 浏览、丰富的类型显示（JSONB、数组、UUID、inet）以及所有标准 PostgreSQL 查询功能均可开箱即用。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 PostgreSQL">
+    从数据库类型选择器中选择 **PostgreSQL**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password 和数据库名称
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP | `localhost` |
+| **Port** | PostgreSQL 服务器端口 | `5432` |
+| **Username** | PostgreSQL 用户名 | `postgres` |
+| **Password** | 用户密码 | - |
+| **Database** | 要连接的数据库名称 | - |
+
+<Warning>
+与 MySQL 不同，PostgreSQL 需要指定数据库名称才能连接。
+</Warning>
+
+<Tip>
+你也可以通过在浏览器或终端中打开 `postgresql://` URL 来连接。详见 [连接 URL 参考](/zh/databases/connection-urls)。
+</Tip>
+
+{/* Screenshot: PostgreSQL connection form */}
+<Frame caption="PostgreSQL 连接表单">
+  <img
+    className="block dark:hidden"
+    src="/images/postgresql-connection-form.png"
+    alt="PostgreSQL 连接表单"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/postgresql-connection-form-dark.png"
+    alt="PostgreSQL 连接表单"
+  />
+</Frame>
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local PostgreSQL
+Host:     localhost
+Port:     5432
+Username: postgres
+Password: （你的密码）
+Database: postgres
+```
+
+### Docker PostgreSQL 容器
+
+```
+Name:     Docker Postgres
+Host:     localhost
+Port:     5432（或你映射的端口）
+Username: postgres
+Password: （来自 POSTGRES_PASSWORD 的密码）
+Database: postgres
+```
+
+### Homebrew PostgreSQL
+
+```
+Name:     Homebrew Postgres
+Host:     localhost
+Port:     5432
+Username: （你的 macOS 用户名）
+Password: （本地 trust 认证可留空）
+Database: postgres
+```
+
+<Tip>
+Homebrew 安装的 PostgreSQL 通常对本地连接使用 "trust" 认证，意味着不需要密码。
+</Tip>
+
+### 远程服务器
+
+```
+Name:     Production DB
+Host:     db.example.com
+Port:     5432
+Username: app_user
+Password: （安全密码）
+Database: myapp_production
+```
+
+### 云数据库
+
+#### Amazon RDS
+
+```
+Name:     AWS RDS Postgres
+Host:     mydb.abc123.us-east-1.rds.amazonaws.com
+Port:     5432
+Username: postgres
+Password: （你的 RDS 密码）
+Database: postgres
+```
+
+#### Heroku Postgres
+
+```
+Name:     Heroku Postgres
+Host:     ec2-xx-xxx-xxx-xxx.compute-1.amazonaws.com
+Port:     5432
+Username: （来自 DATABASE_URL）
+Password: （来自 DATABASE_URL）
+Database: （来自 DATABASE_URL）
+```
+
+<Note>
+解析 Heroku 的 `DATABASE_URL` 以提取 host、port、username、password 和数据库名称。
+</Note>
+
+## 功能
+
+### Schema 支持
+
+PostgreSQL 将表组织到 schema 中。TablePro 显示：
+
+1. 当前用户可访问的所有 schema
+2. 每个 schema 中的表
+3. search path 顺序
+
+{/* Screenshot: Sidebar showing PostgreSQL schemas and tables */}
+<Frame caption="PostgreSQL schema 浏览器">
+  <img
+    className="block dark:hidden"
+    src="/images/postgresql-schema-browser.png"
+    alt="Schema 浏览器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/postgresql-schema-browser-dark.png"
+    alt="Schema 浏览器"
+  />
+</Frame>
+
+### 切换数据库
+
+使用数据库切换器（**Cmd+K**）在 PostgreSQL 数据库和 schema 之间切换：
+
+1. 按 **Cmd+K** 打开切换器。它会列出 PostgreSQL 连接的数据库
+2. 选择目标数据库（例如 `app`、`analytics` 或 `postgres`）
+3. 侧栏、查询和工具栏会在重新连接后更新
+
+<Tip>
+系统数据库（`postgres`、`template0`、`template1`）会标记为系统条目。
+</Tip>
+
+<Note>
+切换数据库会将 PostgreSQL 会话重新连接到所选数据库。
+</Note>
+
+### 表信息
+
+每个表显示以下内容：
+
+- **Structure**：包含 PostgreSQL 特有类型的列信息
+- **Indexes**：包括部分索引和表达式索引
+- **Constraints**：主键、外键、检查约束
+- **DDL**：CREATE TABLE 语句
+
+### 查询执行
+
+完整支持 PostgreSQL 语法：
+
+```sql
+-- JSONB 查询
+SELECT data->>'name' as name, data->'address'->>'city' as city
+FROM customers
+WHERE data @> '{"active": true}'::jsonb;
+
+-- 数组操作
+SELECT name, tags
+FROM products
+WHERE 'electronics' = ANY(tags);
+
+-- Window functions
+SELECT
+    department,
+    employee,
+    salary,
+    salary - LAG(salary) OVER (PARTITION BY department ORDER BY hire_date) as salary_change
+FROM employees;
+
+-- CTEs with RETURNING
+WITH inserted AS (
+    INSERT INTO orders (customer_id, total)
+    VALUES (1, 99.99)
+    RETURNING *
+)
+SELECT * FROM inserted;
+
+-- 全文搜索
+SELECT title, ts_rank(search_vector, query) as rank
+FROM articles, to_tsquery('english', 'database & performance') query
+WHERE search_vector @@ query
+ORDER BY rank DESC;
+```
+
+### PostgreSQL 特有类型
+
+TablePro 正确渲染 PostgreSQL 丰富的类型系统：
+
+| 类型 | 显示方式 |
+|------|---------|
+| `jsonb` | 格式化的 JSON |
+| `array` | 数组表示法 |
+| `uuid` | UUID 字符串 |
+| `inet` | IP 地址 |
+| `timestamp with time zone` | 本地化时间戳 |
+| `interval` | 可读的时间间隔 |
+| `bytea` | 二进制数据指示器 |
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或 "could not connect to server"
+
+**原因及解决方案**：
+
+1. **PostgreSQL 服务器未运行**
+   ```bash
+   # 检查 PostgreSQL 是否运行
+   pg_isready -h localhost -p 5432
+
+   # 启动 PostgreSQL（macOS Homebrew）
+   brew services start postgresql@16
+   ```
+
+2. **PostgreSQL 未接受连接**
+   - 检查 `postgresql.conf` 中的 `listen_addresses`
+   - 对于远程连接，设置 `listen_addresses = '*'`
+
+3. **防火墙阻止连接**
+   - 检查 macOS 防火墙设置
+   - 验证 5432 端口是否可访问
+
+### 认证失败
+
+**症状**："password authentication failed" 或 "Peer authentication failed"
+
+**理解 pg_hba.conf**：
+
+PostgreSQL 使用 `pg_hba.conf` 控制认证。常见配置：
+
+```
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            md5
+host    all             all             ::1/128                 md5
+```
+
+**解决方案**：
+
+1. **密码认证**：确保设置了 `md5` 或 `scram-sha-256`
+2. **本地开发**：使用 `trust`（不需要密码）
+3. **忘记密码时重置**：
+   ```sql
+   ALTER USER postgres WITH PASSWORD 'newpassword';
+   ```
+
+### 数据库不存在
+
+**症状**："database 'xyz' does not exist"
+
+**解决方案**：先连接到已有的数据库（通常是 `postgres`），然后创建你的数据库：
+
+```sql
+CREATE DATABASE myapp;
+```
+
+### 权限不足
+
+**症状**："permission denied for table" 或 "permission denied for schema"
+
+**解决方案**：
+
+1. 检查当前权限：
+   ```sql
+   SELECT * FROM information_schema.role_table_grants
+   WHERE grantee = 'username';
+   ```
+
+2. 授予必要权限：
+   ```sql
+   GRANT ALL ON DATABASE mydb TO username;
+   GRANT ALL ON SCHEMA public TO username;
+   GRANT ALL ON ALL TABLES IN SCHEMA public TO username;
+   ```
+
+### SSL/TLS 连接
+
+在连接表单的 **SSL/TLS** 部分配置 SSL。
+
+| SSL 模式 | PostgreSQL `sslmode` | 描述 |
+|----------|---------------------|-------------|
+| **Disabled** | `disable` | 不使用 SSL 加密 |
+| **Preferred** | `prefer` | 如果可用则使用 SSL，否则回退到非加密连接 |
+| **Required** | `require` | 要求 SSL，但不验证证书 |
+| **Verify CA** | `verify-ca` | 要求 SSL 并验证服务器证书是否由 CA 签发 |
+| **Verify Identity** | `verify-full` | 要求 SSL，验证 CA 和服务器主机名 |
+
+对于 **Verify CA** 和 **Verify Identity** 模式，需要提供 CA 证书（根证书）路径。也可以提供可选的客户端证书和密钥文件以实现 mutual TLS。
+
+<Tip>
+AWS RDS、Heroku 和 Supabase 等云服务商通常要求 SSL。根据你的安全需求使用 **Required** 或 **Verify CA**。
+</Tip>
+
+<Note>
+如果不想配置 SSL 证书，[SSH tunneling](/zh/databases/ssh-tunneling) 可以通过 SSH tunnel 加密所有流量。
+</Note>
+
+{/* Screenshot: PostgreSQL SSL/TLS configuration */}
+<Frame caption="PostgreSQL SSL/TLS 配置">
+  <img
+    className="block dark:hidden"
+    src="/images/postgresql-ssl-config.png"
+    alt="PostgreSQL SSL/TLS 配置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/postgresql-ssl-config-dark.png"
+    alt="PostgreSQL SSL/TLS 配置"
+  />
+</Frame>
+
+## 启动命令
+
+设置每次连接时自动应用的会话变量。在连接表单的 **Advanced** 标签页中配置。
+
+常用的 PostgreSQL 启动命令：
+
+```sql
+SET timezone = 'UTC';
+SET search_path TO myschema, public;
+SET statement_timeout = '30s';
+SET work_mem = '256MB';
+SET client_encoding = 'UTF8';
+```
+
+设置 `search_path` 在表位于非默认 schema 时很有用。无需每次都写全限定名（`myschema.users`），设置一次 search path 后就可以直接用表名查询。
+
+设置 `timezone` 可以确保所有 `timestamptz` 查询返回相同时区的结果，不受服务器或客户端操作系统时区的影响。
+
+详见 [启动命令](/zh/databases/overview#启动命令)。
+
+## PostgreSQL 扩展
+
+TablePro 可以使用常见扩展的数据库：
+
+| 扩展 | 支持情况 |
+|-----------|---------|
+| `postgis` | 显示 geometry/geography 类型 |
+| `pg_trgm` | 完整查询支持 |
+| `uuid-ossp` | UUID 显示 |
+| `hstore` | 键值显示 |
+| `ltree` | 树路径显示 |
+
+查看已安装的扩展：
+
+```sql
+SELECT * FROM pg_extension;
+```
+
+## 性能建议
+
+### 查询分析
+
+使用 `EXPLAIN ANALYZE` 了解查询性能：
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM users WHERE email LIKE '%@example.com';
+```
+
+### 连接限制
+
+PostgreSQL 有默认的连接数限制。监控连接数：
+
+```sql
+SELECT count(*) FROM pg_stat_activity;
+```
+
+### 大表
+
+对于有数百万行的表：
+
+1. 在探索性查询中始终使用 `LIMIT`
+2. 创建适当的索引
+3. 在数据网格中使用分页
+
+## 从 MySQL 迁移
+
+如果你从 MySQL 转到 PostgreSQL：
+
+| MySQL | PostgreSQL |
+|-------|------------|
+| `SHOW DATABASES` | `\l` 或查询 `pg_database` |
+| `SHOW TABLES` | `\dt` 或查询 `information_schema.tables` |
+| `DESCRIBE table` | `\d table` 或查询 `information_schema.columns` |
+| `AUTO_INCREMENT` | `SERIAL` 或 `GENERATED AS IDENTITY` |
+| `LIMIT x, y` | `LIMIT y OFFSET x` |
+| 反引号引用 | 双引号引用标识符 |
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 PostgreSQL 服务器
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握 SQL 编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 PostgreSQL 数据
+  </Card>
+  <Card title="表结构" icon="table" href="/zh/features/table-structure">
+    查看和修改表结构
+  </Card>
+</CardGroup>

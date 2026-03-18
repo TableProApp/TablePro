@@ -16,6 +16,7 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
     // MARK: - Properties
 
     private var completionEngine: CompletionEngine?
+    private var favoriteKeywords: [String: (name: String, query: String)] = [:]
     private var suppressNextCompletion = false
     private var currentCompletionContext: CompletionContext?
     private var debounceGeneration: UInt64 = 0
@@ -25,13 +26,30 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
     init(schemaProvider: SQLSchemaProvider?, databaseType: DatabaseType? = nil) {
         if let provider = schemaProvider {
-            self.completionEngine = CompletionEngine(schemaProvider: provider, databaseType: databaseType)
+            let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
+            let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
+            self.completionEngine = CompletionEngine(
+                schemaProvider: provider, databaseType: databaseType,
+                dialect: dialect, statementCompletions: completions
+            )
         }
     }
 
     /// Update the schema provider (e.g. when connection changes)
     func updateSchemaProvider(_ provider: SQLSchemaProvider, databaseType: DatabaseType? = nil) {
-        self.completionEngine = CompletionEngine(schemaProvider: provider, databaseType: databaseType)
+        let dialect = databaseType.flatMap { PluginManager.shared.sqlDialect(for: $0) }
+        let completions = databaseType.flatMap { PluginManager.shared.statementCompletions(for: $0) } ?? []
+        self.completionEngine = CompletionEngine(
+            schemaProvider: provider, databaseType: databaseType,
+            dialect: dialect, statementCompletions: completions
+        )
+        completionEngine?.updateFavoriteKeywords(favoriteKeywords)
+    }
+
+    /// Update favorite keywords for autocomplete expansion
+    func updateFavoriteKeywords(_ keywords: [String: (name: String, query: String)]) {
+        favoriteKeywords = keywords
+        completionEngine?.updateFavoriteKeywords(keywords)
     }
 
     // MARK: - CodeSuggestionDelegate
@@ -160,19 +178,18 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
     // MARK: - Fuzzy Matching
 
-    /// Fuzzy matching: checks if all pattern characters appear in target in order
-    private static func fuzzyMatch(pattern: String, target: String) -> Bool {
-        var patternIndex = pattern.startIndex
-        var targetIndex = target.startIndex
-
-        while patternIndex < pattern.endIndex && targetIndex < target.endIndex {
-            if pattern[patternIndex] == target[targetIndex] {
-                patternIndex = pattern.index(after: patternIndex)
+    nonisolated static func fuzzyMatch(pattern: String, target: String) -> Bool {
+        let nsPattern = pattern as NSString
+        let nsTarget = target as NSString
+        var patternIndex = 0
+        var targetIndex = 0
+        while patternIndex < nsPattern.length && targetIndex < nsTarget.length {
+            if nsPattern.character(at: patternIndex) == nsTarget.character(at: targetIndex) {
+                patternIndex += 1
             }
-            targetIndex = target.index(after: targetIndex)
+            targetIndex += 1
         }
-
-        return patternIndex == pattern.endIndex
+        return patternIndex == nsPattern.length
     }
 }
 

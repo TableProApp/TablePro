@@ -1,0 +1,101 @@
+---
+title: DuckDB
+description: Kết nối với cơ sở dữ liệu DuckDB bằng TablePro
+---
+
+# DuckDB
+
+DuckDB là một cơ sở dữ liệu phân tích nhúng, được tối ưu hóa cho khối lượng công việc OLAP. TablePro hỗ trợ kết nối với các tệp cơ sở dữ liệu DuckDB để duyệt bảng, chạy truy vấn và quản lý schema.
+
+## Kết nối với cơ sở dữ liệu DuckDB
+
+<Steps>
+  <Step title="Tạo kết nối mới">
+    Mở TablePro và nhấp **New Connection** hoặc nhấn <kbd>⌘N</kbd>.
+  </Step>
+  <Step title="Chọn DuckDB">
+    Chọn **DuckDB** từ danh sách loại cơ sở dữ liệu.
+  </Step>
+  <Step title="Chọn tệp cơ sở dữ liệu">
+    Nhấp **Browse** để chọn tệp `.duckdb` hiện có, hoặc nhập đường dẫn để tạo cơ sở dữ liệu mới.
+  </Step>
+  <Step title="Kết nối">
+    Nhấp **Connect** để mở cơ sở dữ liệu.
+  </Step>
+</Steps>
+
+## Mở tệp DuckDB từ Finder
+
+Nhấp đúp vào bất kỳ tệp `.duckdb` nào trong Finder để mở trực tiếp trong TablePro.
+
+## Truy vấn tệp trực tiếp
+
+DuckDB có thể truy vấn trực tiếp các tệp CSV, Parquet và JSON bằng SQL:
+
+```sql
+-- Truy vấn tệp CSV
+SELECT * FROM 'data.csv';
+
+-- Truy vấn tệp Parquet
+SELECT * FROM read_parquet('analytics.parquet');
+
+-- Truy vấn tệp JSON
+SELECT * FROM read_json('config.json');
+```
+
+## Hỗ trợ schema
+
+DuckDB hỗ trợ nhiều schema trong một cơ sở dữ liệu. Schema mặc định là `main`. Sử dụng bộ chuyển đổi schema trên thanh công cụ để di chuyển giữa các schema.
+
+```sql
+-- Tạo schema mới
+CREATE SCHEMA analytics;
+
+-- Tạo bảng trong schema cụ thể
+CREATE TABLE analytics.events (
+    id INTEGER PRIMARY KEY,
+    event_name VARCHAR,
+    created_at TIMESTAMP
+);
+```
+
+## Extension DuckDB
+
+DuckDB có hệ sinh thái extension phong phú. Cài đặt và tải extension bằng SQL:
+
+```sql
+-- Cài đặt extension
+INSTALL httpfs;
+
+-- Tải extension
+LOAD httpfs;
+
+-- Truy vấn tệp Parquet từ xa
+SELECT * FROM read_parquet('https://example.com/data.parquet');
+```
+
+## Kiểu dữ liệu
+
+DuckDB hỗ trợ nhiều kiểu dữ liệu:
+
+| Danh mục | Kiểu |
+|----------|------|
+| Số | `INTEGER`, `BIGINT`, `HUGEINT`, `DOUBLE`, `FLOAT`, `DECIMAL` |
+| Chuỗi | `VARCHAR`, `TEXT`, `CHAR` |
+| Ngày/Giờ | `DATE`, `TIME`, `TIMESTAMP`, `INTERVAL` |
+| Phức hợp | `LIST`, `MAP`, `STRUCT`, `UNION`, `ENUM` |
+| Khác | `BOOLEAN`, `BLOB`, `UUID`, `JSON`, `BIT` |
+
+## Giới hạn
+
+- DuckDB là cơ sở dữ liệu nhúng. Không có máy chủ để kết nối qua mạng.
+- Chỉ một tiến trình có thể ghi vào tệp DuckDB cùng một lúc.
+
+<CardGroup cols={2}>
+  <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
+    Tìm hiểu phím tắt để điều hướng nhanh hơn
+  </Card>
+  <Card title="Trình soạn thảo truy vấn" icon="code" href="/vi/features/query-editor">
+    Viết và thực thi truy vấn SQL
+  </Card>
+</CardGroup>

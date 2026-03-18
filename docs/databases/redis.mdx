@@ -1,11 +1,11 @@
 ---
 title: Redis
-description: Connect to Redis databases with TablePro
+description: Browse keys by namespace, manage TTLs, and run Redis commands directly from the editor
 ---
 
 # Redis Connections
 
-TablePro provides support for Redis 6.0 and later versions. Redis is an in-memory key-value data store used as a database, cache, and message broker. Keys are grouped by colon-separated namespaces in the sidebar, and values are displayed with type-aware formatting in the data grid.
+TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated namespaces in the sidebar. Values display with type-aware formatting in the data grid (strings, hashes, lists, sets, sorted sets, JSON).
 
 ## Quick Setup
 
@@ -42,12 +42,12 @@ TablePro provides support for Redis 6.0 and later versions. Redis is an in-memor
 | **Database** | Database index (0-15, default `0`) |
 
 <Tip>
-For local development without authentication enabled, you can leave the password field empty. Redis uses database index `0` by default.
+For local development without authentication, leave the password field empty. Redis defaults to database index `0`.
 </Tip>
 
 ## Connection URL Format
 
-You can import connections using a Redis URL.
+Import connections using a Redis URL.
 
 The `rediss://` scheme (note the double `s`) indicates a TLS-encrypted connection.
 
@@ -86,7 +86,7 @@ Database: 0
 ```
 
 <Note>
-For managed Redis services, SSL/TLS is typically required. Enable it in the SSL/TLS section of the connection form.
+Managed Redis services typically require SSL/TLS. Enable it in the SSL/TLS section of the connection form.
 </Note>
 
 ### Remote Server
@@ -105,7 +105,7 @@ For production Redis instances, consider using [SSH tunneling](/databases/ssh-tu
 
 ## SSL/TLS Connections
 
-TablePro supports SSL/TLS encryption for Redis connections. Configure SSL in the **SSL/TLS** section of the connection form.
+Configure SSL in the **SSL/TLS** section of the connection form.
 
 | SSL Mode | Description |
 |----------|-------------|
@@ -113,25 +113,25 @@ TablePro supports SSL/TLS encryption for Redis connections. Configure SSL in the
 | **Required** | Require SSL encryption |
 | **Verify CA** | Require SSL and verify the server certificate against a CA |
 
-For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS authentication.
+For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS.
 
 <Tip>
 Use the `rediss://` URL scheme when importing connections that require TLS.
 </Tip>
 
 <Note>
-If you prefer not to configure SSL certificates, [SSH tunneling](/databases/ssh-tunneling) is an alternative that encrypts all traffic through an SSH tunnel.
+If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
 </Note>
 
 ## SSH Tunnel Support
 
-You can connect to Redis through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for detailed setup instructions.
+Connect to Redis through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for setup instructions.
 
 ## Features
 
 ### Namespace Browsing
 
-After connecting, the sidebar groups keys by their colon-separated prefix. For example, keys named `user:1`, `user:2`, and `session:abc` appear under `user` and `session` namespaces:
+After connecting, the sidebar groups keys by their colon-separated prefix. Keys named `user:1`, `user:2`, and `session:abc` appear under `user` and `session` namespaces:
 
 1. Click the connection name in the sidebar
 2. Expand a namespace to see its keys
@@ -141,13 +141,13 @@ Keys without a colon separator are grouped under a root namespace.
 
 ### Key-Value Viewing
 
-Values are displayed in the data grid with type-aware formatting:
+Values display in the data grid with type-aware formatting:
 
-- **String** values are shown as plain text
-- **Hash** fields are displayed as key-value pairs in rows
-- **List** elements are displayed with their index
-- **Set** members are shown as individual rows
-- **Sorted Set** members are displayed with their scores
+- **String** values show as plain text
+- **Hash** fields display as key-value pairs in rows
+- **List** elements display with their index
+- **Set** members show as individual rows
+- **Sorted Set** members display with their scores
 - **JSON** values are syntax-highlighted
 
 ### TTL Management
@@ -161,7 +161,7 @@ View and manage the time-to-live (TTL) for keys:
 
 ### Redis CLI
 
-Execute Redis commands directly in the editor tab using standard Redis command syntax:
+Execute Redis commands directly in the editor tab:
 
 ```redis
 -- Key operations
@@ -201,7 +201,7 @@ DBSIZE
 
 ### Supported Commands
 
-TablePro supports the full set of Redis commands, including:
+TablePro supports the full set of Redis commands:
 
 | Category | Commands |
 |----------|----------|
@@ -213,7 +213,7 @@ TablePro supports the full set of Redis commands, including:
 | **Key** | DEL, EXISTS, EXPIRE, TTL, TYPE, RENAME, KEYS, SCAN |
 | **Server** | PING, INFO, DBSIZE, FLUSHDB, SELECT |
 
-Commands not explicitly listed above are still sent to the server and their responses are displayed in the results pane.
+Commands not listed above are still sent to the server and their responses display in the results pane.
 
 ## Troubleshooting
 
@@ -267,8 +267,8 @@ Commands not explicitly listed above are still sent to the server and their resp
 
 - **Cluster mode**: Redis Cluster with automatic sharding is not supported. Connect to individual nodes directly.
 - **Pub/Sub**: Real-time Pub/Sub subscriptions are not supported in the current version.
-- **Streams**: Redis Streams (XADD, XREAD, etc.) are not supported in the data grid, but commands can be executed in the CLI.
-- **Modules**: RedisJSON, RediSearch, and other module commands can be executed via the CLI but may not have specialized UI support.
+- **Streams**: Redis Streams (XADD, XREAD, etc.) are not supported in the data grid, but commands work in the CLI.
+- **Modules**: RedisJSON, RediSearch, and other module commands work via the CLI but may lack specialized UI support.
 - **Large keys**: Keys with millions of elements (large lists, sets, or hashes) are paginated to prevent memory issues.
 
 ## Performance Tips

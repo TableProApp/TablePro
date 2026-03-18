@@ -11,6 +11,7 @@ import SwiftUI
 
 /// Query history panel with master-detail layout
 struct HistoryPanelView: View {
+    let connectionId: UUID
     // MARK: - State
 
     @State private var selectedEntryID: UUID?
@@ -21,6 +22,8 @@ struct HistoryPanelView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var copyButtonTitle = "Copy Query"
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var favoriteDialogQuery: FavoriteDialogQuery?
+    @FocusedValue(\.commandActions) private var actions
 
     private let dataProvider = HistoryDataProvider()
 
@@ -47,6 +50,14 @@ struct HistoryPanelView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .queryHistoryDidUpdate)) { _ in
             loadData()
+        }
+        .sheet(item: $favoriteDialogQuery) { item in
+            FavoriteEditDialog(
+                connectionId: connectionId,
+                favorite: nil,
+                initialQuery: item.query,
+                forceGlobal: true
+            )
         }
     }
 }
@@ -104,7 +115,7 @@ private extension HistoryPanelView {
                         }
                 }
                 .listStyle(.plain)
-                .environment(\.defaultMinListRowHeight, DesignConstants.RowHeight.comfortable)
+                .environment(\.defaultMinListRowHeight, ThemeEngine.shared.activeTheme.rowHeights.comfortable)
                 .onDeleteCommand {
                     deleteSelectedEntry()
                 }
@@ -117,8 +128,9 @@ private extension HistoryPanelView {
         .alert(String(localized: "Clear All History?"), isPresented: $showClearAllAlert) {
             Button(String(localized: "Cancel"), role: .cancel) {}
             Button(String(localized: "Clear All"), role: .destructive) {
-                Task {
+                Task { @MainActor in
                     _ = await dataProvider.clearAll()
+                    entries = dataProvider.historyEntries
                 }
             }
         } message: {
@@ -143,24 +155,24 @@ private extension HistoryPanelView {
         VStack(spacing: 8) {
             if !searchText.isEmpty || dateFilter != .all {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: DesignConstants.IconSize.huge))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
                     .foregroundStyle(.tertiary)
                 Text("No Matching Queries")
-                    .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
                     .foregroundStyle(.secondary)
                 Text("Try adjusting your search terms\nor date filter.")
-                    .font(.system(size: DesignConstants.FontSize.medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             } else {
                 Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: DesignConstants.IconSize.huge))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
                     .foregroundStyle(.tertiary)
                 Text("No Query History Yet")
-                    .font(.system(size: DesignConstants.FontSize.body, weight: .medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
                     .foregroundStyle(.secondary)
                 Text("Your executed queries will\nappear here for quick access.")
-                    .font(.system(size: DesignConstants.FontSize.medium))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
@@ -184,6 +196,12 @@ private extension HistoryPanelView {
             Label(String(localized: "Run in New Tab"), systemImage: "play")
         }
 
+        Button {
+            favoriteDialogQuery = FavoriteDialogQuery(query: entry.query)
+        } label: {
+            Label(String(localized: "Save as Favorite"), systemImage: "star")
+        }
+
         Divider()
 
         Button(role: .destructive) {
@@ -205,19 +223,19 @@ private extension HistoryPanelView {
                 HighlightedSQLTextView(
                     sql: entry.query.hasSuffix(";") ? entry.query : entry.query + ";",
                     databaseType: entry.query.trimmingCharacters(in: .whitespaces)
-                        .hasPrefix("db.") ? .mongodb : .mysql // Redis commands use SQL patterns for highlighting
+                        .hasPrefix("db.") ? .mongodb : .mysql
                 )
-                .background(Color(nsColor: SQLEditorTheme.background))
+                .background(Color(nsColor: ThemeEngine.shared.colors.editor.background))
 
                 Divider()
 
                 // Metadata
                 VStack(alignment: .leading, spacing: 4) {
                     Text(buildPrimaryMetadata(entry))
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                     Text(buildSecondaryMetadata(entry))
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -250,13 +268,13 @@ private extension HistoryPanelView {
     var previewEmptyState: some View {
         VStack(spacing: 8) {
             Image(systemName: "doc.text")
-                .font(.system(size: DesignConstants.IconSize.huge))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
                 .foregroundStyle(.tertiary)
             Text("Select a Query")
-                .font(.system(size: DesignConstants.FontSize.title3, weight: .medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .medium))
                 .foregroundStyle(.secondary)
             Text("Choose a query from the list\nto see its full content here.")
-                .font(.system(size: DesignConstants.FontSize.medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -319,8 +337,9 @@ private extension HistoryPanelView {
     }
 
     func deleteEntry(_ entry: QueryHistoryEntry) {
-        Task {
+        Task { @MainActor in
             _ = await dataProvider.deleteEntry(id: entry.id)
+            entries = dataProvider.historyEntries
         }
     }
 
@@ -329,7 +348,7 @@ private extension HistoryPanelView {
         let currentIndex = entries.firstIndex(of: entry)
         deleteEntry(entry)
 
-        // After deletion notification triggers reload, select adjacent entry
+        // After deletion triggers reload, select adjacent entry
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             if let idx = currentIndex, !entries.isEmpty {
                 let newIndex = min(idx, entries.count - 1)
@@ -361,14 +380,11 @@ private extension HistoryPanelView {
     }
 
     func loadInEditor(_ entry: QueryHistoryEntry) {
-        NotificationCenter.default.post(
-            name: .loadQueryIntoEditor,
-            object: entry.query
-        )
+        actions?.loadQueryIntoEditor(entry.query)
     }
 
     func runInNewTab(_ entry: QueryHistoryEntry) {
-        NotificationCenter.default.post(name: .newQueryTab, object: entry.query)
+        actions?.newTab(initialQuery: entry.query)
     }
 
     // MARK: - Filter State Persistence
@@ -395,25 +411,25 @@ private struct HistoryRowSwiftUI: View {
         HStack(spacing: 8) {
             Image(systemName: entry.wasSuccessful ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(entry.wasSuccessful ? .green : .red)
-                .font(.system(size: DesignConstants.IconSize.default))
+                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.default))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.queryPreview)
-                    .font(.system(size: DesignConstants.FontSize.medium, design: .monospaced))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
                     .lineLimit(1)
 
                 Text(entry.databaseName)
-                    .font(.system(size: DesignConstants.FontSize.small))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 HStack {
                     Text(relativeTime(entry.executedAt))
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text(entry.formattedExecutionTime)
-                        .font(.system(size: DesignConstants.FontSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -431,7 +447,7 @@ private struct HistoryRowSwiftUI: View {
 #if DEBUG
 struct HistoryPanelView_Previews: PreviewProvider {
     static var previews: some View {
-        HistoryPanelView()
+        HistoryPanelView(connectionId: UUID())
             .frame(width: 600, height: 300)
     }
 }

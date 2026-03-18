@@ -661,6 +661,7 @@ final class StructureChangeManager {
         case .indexes: tabIndex = 1
         case .foreignKeys: tabIndex = 2
         case .ddl: tabIndex = 3
+        case .parts: tabIndex = 4
         }
         let cacheKey = tabIndex * 10_000 + row
         if let cached = visualStateCache[cacheKey] {
@@ -716,6 +717,8 @@ final class StructureChangeManager {
             )
 
         case .ddl:
+            state = .empty
+        case .parts:
             state = .empty
         }
 

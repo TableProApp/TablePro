@@ -3,56 +3,28 @@
     <channel>
         <title>TablePro</title>
         <item>
-            <title>0.14.0</title>
-            <pubDate>Thu, 05 Mar 2026 14:39:43 +0000</pubDate>
-            <sparkle:version>26</sparkle:version>
-            <sparkle:shortVersionString>0.14.0</sparkle:shortVersionString>
+            <title>0.20.1</title>
+            <pubDate>Tue, 17 Mar 2026 10:07:02 +0000</pubDate>
+            <sparkle:version>37</sparkle:version>
+            <sparkle:shortVersionString>0.20.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Fixed</h3>
 <ul>
-<li>Microsoft SQL Server (MSSQL) database support via FreeTDS</li>
-<li>Support for editing and deleting rows in tables without a primary key</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li>Fix MSSQL connection losing selected database after disconnect and reconnect when no default database is configured</li>
-<li>DELETE operations on tables without a primary key now show an error if row data is missing instead of being silently dropped</li>
-<li>SQLite and MSSQL now use safe single-row limits for DELETE and UPDATE on tables without a primary key</li>
-<li>Fix high CPU/RAM on app launch from blocking storage init, unsynchronized health monitors, and excessive retry loops</li>
-<li>Fix O(n log n) row cache eviction in RowProvider by replacing sorted eviction with O(n) distance-threshold filter</li>
-<li>Fix O(n) string operations in GeometryWKBParser, RedisDriver, and autocomplete scoring by switching to NSString O(1) indexing</li>
-<li>Fix slow database switcher loading by replacing N+1 metadata queries with single batched queries (MySQL, PostgreSQL, Redshift)</li>
-<li>Fix slow Redis key browsing by pipelining TYPE and TTL commands in a single round trip instead of 3 sequential commands per key</li>
-<li>Fix slow SQL export startup by batching COUNT(*) queries via UNION ALL and batching dependent sequence/type lookups</li>
-<li>Fix slow AI Chat schema loading by fetching all foreign keys in a single bulk query instead of per-table</li>
+<li>Plugin registry compatibility with PluginKit version 2</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.14.0/TablePro-0.14.0-arm64.zip" length="22510110" type="application/octet-stream" sparkle:edSignature="IU91PHObpPpk4JMT0kMIupTSG7Rx93qptC8ZkHoEFATyGtEwI6hAZnZZhinmtdstoLgUM/sj9BiMauzfslBVDA==" sparkle:architectures="arm64"/>
+            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.20.1/TablePro-0.20.1-arm64.zip" length="20045593" type="application/octet-stream" sparkle:edSignature="sKyq7Vz32qpG7yg0uNtQK/e09mGbw/9ZUAOvxS8MCbBUmYCQL0BKWpXmfgYm0pT9r5ORbETmj9/quenydh8eCw==" sparkle:architectures="arm64"/>
         </item>
         <item>
-            <title>0.14.0</title>
-            <pubDate>Thu, 05 Mar 2026 14:39:43 +0000</pubDate>
-            <sparkle:version>26</sparkle:version>
-            <sparkle:shortVersionString>0.14.0</sparkle:shortVersionString>
+            <title>0.20.1</title>
+            <pubDate>Tue, 17 Mar 2026 10:07:02 +0000</pubDate>
+            <sparkle:version>37</sparkle:version>
+            <sparkle:shortVersionString>0.20.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Fixed</h3>
 <ul>
-<li>Microsoft SQL Server (MSSQL) database support via FreeTDS</li>
-<li>Support for editing and deleting rows in tables without a primary key</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li>Fix MSSQL connection losing selected database after disconnect and reconnect when no default database is configured</li>
-<li>DELETE operations on tables without a primary key now show an error if row data is missing instead of being silently dropped</li>
-<li>SQLite and MSSQL now use safe single-row limits for DELETE and UPDATE on tables without a primary key</li>
-<li>Fix high CPU/RAM on app launch from blocking storage init, unsynchronized health monitors, and excessive retry loops</li>
-<li>Fix O(n log n) row cache eviction in RowProvider by replacing sorted eviction with O(n) distance-threshold filter</li>
-<li>Fix O(n) string operations in GeometryWKBParser, RedisDriver, and autocomplete scoring by switching to NSString O(1) indexing</li>
-<li>Fix slow database switcher loading by replacing N+1 metadata queries with single batched queries (MySQL, PostgreSQL, Redshift)</li>
-<li>Fix slow Redis key browsing by pipelining TYPE and TTL commands in a single round trip instead of 3 sequential commands per key</li>
-<li>Fix slow SQL export startup by batching COUNT(*) queries via UNION ALL and batching dependent sequence/type lookups</li>
-<li>Fix slow AI Chat schema loading by fetching all foreign keys in a single bulk query instead of per-table</li>
+<li>Plugin registry compatibility with PluginKit version 2</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.14.0/TablePro-0.14.0-x86_64.zip" length="23112947" type="application/octet-stream" sparkle:edSignature="z85G0KR/iGmQrV2+WroLVQAHdf+/yfIeGw3dgbrTV7+205x6ng4D4l7jibU95nCHEoMmb3BBG189uJB24ddhBA==" sparkle:architectures="x86_64"/>
+            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.20.1/TablePro-0.20.1-x86_64.zip" length="19506448" type="application/octet-stream" sparkle:edSignature="SrRnlVBPE2NOqZQEEq1/2d+YtBnfyo5XHNSw7xFsR8alnBz0JA5xvGxU0vEHvc6NW4E40732zmCfoghM3VFODQ==" sparkle:architectures="x86_64"/>
         </item>
     </channel>
 </rss>

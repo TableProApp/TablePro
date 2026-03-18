@@ -1,0 +1,60 @@
+---
+title: SQL Favorites
+description: Lưu các truy vấn thường dùng với phím tắt keyword để mở rộng qua autocomplete
+---
+
+# SQL Favorites
+
+Lưu những query bạn hay chạy thành favorite. Sắp xếp vào thư mục, gán keyword shortcut, và chèn từ sidebar hoặc gõ keyword để mở rộng qua autocomplete.
+
+## Lưu favorite
+
+Ba cách để lưu query:
+
+- **Click chuột phải trong editor** và chọn **Save as Favorite...**
+- **Click chuột phải một mục lịch sử** trong panel Query History và chọn **Save as Favorite**
+- Nhấn **+ New Favorite** trong tab Favorites ở sidebar
+
+Hộp thoại có bốn trường:
+
+| Trường | Mô tả |
+|--------|-------|
+| Name | Tên ngắn cho query |
+| Keyword | Alias tùy chọn, gõ vào sẽ mở rộng thành query đầy đủ qua autocomplete |
+| Query | Nội dung SQL |
+| Global | Khi bật, favorite hiện trong mọi kết nối |
+
+## Tab sidebar
+
+Sidebar có segmented control **Tables / Favorites** ở trên cùng. Chuyển sang tab **Favorites** để xem các query đã lưu.
+
+Tab Favorites hỗ trợ:
+
+- **Thư mục** với nhiều cấp lồng nhau (click chuột phải để đổi tên, thêm thư mục con, hoặc xóa)
+- **Tìm kiếm** lọc theo tên, keyword, và nội dung query
+- **Double-click** để chèn query vào editor hiện tại
+- **Menu ngữ cảnh** để sửa, sao chép, chèn, chạy trong tab mới, di chuyển vào thư mục, hoặc xóa
+- **Chọn nhiều** bằng Cmd+click, rồi nhấn Delete để xóa
+
+### Thư mục
+
+Tạo thư mục bằng nút **+ folder** ở cuối sidebar, hoặc từ menu ngữ cảnh của thư mục. Xóa thư mục sẽ chuyển các mục con lên cấp cha thay vì xóa chúng.
+
+Để di chuyển favorite giữa các thư mục, click chuột phải và dùng submenu **Move to**.
+
+## Mở rộng keyword
+
+Gán keyword cho favorite và nó sẽ xuất hiện như gợi ý autocomplete với biểu tượng ngôi sao. Chọn nó sẽ thay thế keyword đã gõ bằng toàn bộ query.
+
+Keyword phải duy nhất trong phạm vi (global hoặc theo kết nối). Hộp thoại cảnh báo nếu keyword trùng với từ khóa SQL như `SELECT` hay `WHERE`, nhưng không chặn lưu.
+
+### Phạm vi
+
+- Favorite **Global** hiện trong mọi kết nối.
+- Favorite **theo kết nối** chỉ hiện trong kết nối đã tạo.
+
+Favorite tạo từ sidebar mặc định theo kết nối. Favorite lưu từ panel lịch sử luôn là global.
+
+## Lưu trữ
+
+Favorites lưu trong database SQLite (`sql_favorites.db`) tại `~/Library/Application Support/TablePro/`, tách biệt với lịch sử query. Tìm kiếm dùng FTS5 full-text indexing trên tên, keyword, và nội dung query.

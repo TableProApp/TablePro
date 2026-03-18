@@ -1,0 +1,401 @@
+---
+title: 编辑器设置
+description: SQL 编辑器字体、大小、行号、自动换行、缩进和 Vim 模式配置
+---
+
+# 编辑器设置
+
+在 **Settings** > **Editor** 中配置 SQL 编辑器。
+
+{/* Screenshot: Editor settings panel */}
+<Frame caption="编辑器设置">
+  <img
+    className="block dark:hidden"
+    src="/images/settings-editor.png"
+    alt="编辑器设置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/settings-editor-dark.png"
+    alt="编辑器设置"
+  />
+</Frame>
+
+## 字体设置
+
+### 字体系列
+
+可用的等宽字体：
+
+| 字体 | 描述 |
+|------|-------------|
+| **System Mono** | macOS 默认等宽字体（推荐） |
+| **SF Mono** | San Francisco Mono |
+| **Menlo** | 经典 macOS 等宽字体 |
+| **Monaco** | 传统 Mac 编程字体 |
+| **Courier New** | 跨平台标准字体 |
+
+<Tip>
+**System Mono** 会自动使用系统最佳的等宽字体。
+</Tip>
+
+### 字体可用性
+
+| 字体 | 可用性 |
+|------|--------------|
+| System Mono | 始终可用 |
+| SF Mono | macOS 10.12+ |
+| Menlo | macOS 10.6+ |
+| Monaco | macOS Classic |
+| Courier New | 系统标准字体 |
+
+如果所选字体不可用，TablePro 会自动回退到 System Mono。
+
+{/* Screenshot: Font family selector */}
+<Frame caption="字体系列选择器">
+  <img
+    className="block dark:hidden"
+    src="/images/editor-font-family.png"
+    alt="字体系列选择器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/editor-font-family-dark.png"
+    alt="字体系列选择器"
+  />
+</Frame>
+
+### 字体大小
+
+| 设置 | 范围 | 默认值 |
+|---------|-------|---------|
+| 字体大小 | 11-18 pt | 13 pt |
+
+{/* Screenshot: Editor with different font sizes */}
+<Frame caption="字体大小对比">
+  <img
+    className="block dark:hidden"
+    src="/images/font-size-comparison.png"
+    alt="字体大小"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/font-size-comparison-dark.png"
+    alt="字体大小"
+  />
+</Frame>
+
+**建议**：
+
+| 大小 | 适用场景 |
+|------|----------|
+| 11-12 pt | 小屏幕，查看更多代码 |
+| 13-14 pt | 常规使用（默认） |
+| 15-16 pt | 更好的可读性 |
+| 17-18 pt | 大屏幕，无障碍需求 |
+
+## 显示设置
+
+### 行号
+
+| 选项 | 描述 |
+|--------|-------------|
+| **开启** | 显示行号（默认） |
+| **关闭** | 隐藏行号，获得更简洁的界面 |
+
+行号的用途：
+
+- 引用特定行
+- 定位错误信息中提到的行号
+- 在大型查询中导航
+- 与他人讨论代码
+
+{/* Screenshot: Editor with and without line numbers */}
+<Frame caption="行号开启/关闭">
+  <img
+    className="block dark:hidden"
+    src="/images/line-numbers.png"
+    alt="行号"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/line-numbers-dark.png"
+    alt="行号"
+  />
+</Frame>
+
+### 当前行高亮
+
+| 选项 | 描述 |
+|--------|-------------|
+| **开启** | 轻微高亮光标所在行（默认） |
+| **关闭** | 不高亮当前行 |
+
+在长查询中帮助你追踪光标位置。
+
+{/* Screenshot: Current line highlight */}
+<Frame caption="编辑器中的当前行高亮">
+  <img
+    className="block dark:hidden"
+    src="/images/current-line-highlight.png"
+    alt="当前行高亮"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/current-line-highlight-dark.png"
+    alt="当前行高亮"
+  />
+</Frame>
+
+### 自动换行
+
+| 选项 | 描述 |
+|--------|-------------|
+| **关闭** | 长行水平滚动（默认） |
+| **开启** | 长行自动换行到下一行 |
+
+**建议开启自动换行的场景**：
+
+- 在较窄的屏幕上工作
+- 查询语句行较长
+- 不想使用水平滚动
+
+**建议关闭自动换行的场景**：
+
+- 偏好一致的行长度
+- 使用预格式化的查询
+- 需要清楚地看到查询结构
+
+{/* Screenshot: Word wrap */}
+<Frame caption="自动换行：换行模式 vs 水平滚动">
+  <img
+    className="block dark:hidden"
+    src="/images/editor-word-wrap.png"
+    alt="自动换行对比"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/editor-word-wrap-dark.png"
+    alt="自动换行对比"
+  />
+</Frame>
+
+## 缩进设置
+
+### 制表符宽度
+
+| 设置 | 选项 | 默认值 |
+|---------|---------|---------|
+| 制表符宽度 | 1-16 个空格 | 4 |
+
+常见选择：
+
+| 宽度 | 用法 |
+|-------|-------|
+| 2 个空格 | 紧凑，JavaScript 风格 |
+| 4 个空格 | 标准 SQL 格式（推荐） |
+| 8 个空格 | 传统 Unix 风格 |
+
+{/* Screenshot: Tab width setting */}
+<Frame caption="制表符宽度设置">
+  <img
+    className="block dark:hidden"
+    src="/images/editor-tab-width.png"
+    alt="制表符宽度设置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/editor-tab-width-dark.png"
+    alt="制表符宽度设置"
+  />
+</Frame>
+
+### 自动缩进
+
+| 选项 | 描述 |
+|--------|-------------|
+| **开启** | 新行与上一行的缩进保持一致（默认） |
+| **关闭** | 新行从第 1 列开始 |
+
+```sql
+SELECT
+    u.id,
+    u.name,
+    |  -- 光标在此处，下一行自动缩进
+```
+
+{/* Screenshot: Auto-indent */}
+<Frame caption="SQL 子句后的自动缩进">
+  <img
+    className="block dark:hidden"
+    src="/images/editor-auto-indent.png"
+    alt="编辑器中的自动缩进"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/editor-auto-indent-dark.png"
+    alt="编辑器中的自动缩进"
+  />
+</Frame>
+
+## 编辑器行为
+
+### 文本输入
+
+编辑器的行为与标准 macOS 文本编辑器一致：
+
+- 标准键盘快捷键正常使用
+- 复制/粘贴正常工作
+- 维护撤销/重做历史
+- 支持鼠标和键盘选择文本
+
+### 自动补全
+
+自动补全始终开启，但可以按 `Escape` 关闭。
+
+详见[自动补全](/zh/features/autocomplete)。
+
+## 应用设置
+
+所有更改即时生效，无需重启。
+
+## 推荐配置
+
+### 默认（均衡）
+
+```
+Font Family: System Mono
+Font Size: 13 pt
+Line Numbers: On
+Current Line: On
+Tab Width: 4
+Auto Indent: On
+Word Wrap: Off
+```
+
+### 紧凑（显示更多代码）
+
+```
+Font Family: SF Mono
+Font Size: 11 pt
+Line Numbers: On
+Current Line: On
+Tab Width: 2
+Auto Indent: On
+Word Wrap: Off
+```
+
+### 舒适（易于阅读）
+
+```
+Font Family: Menlo
+Font Size: 15 pt
+Line Numbers: On
+Current Line: On
+Tab Width: 4
+Auto Indent: On
+Word Wrap: On
+```
+
+### 极简（简洁界面）
+
+```
+Font Family: Monaco
+Font Size: 13 pt
+Line Numbers: Off
+Current Line: Off
+Tab Width: 4
+Auto Indent: On
+Word Wrap: Off
+```
+
+### 无障碍
+
+```
+Font Family: System Mono
+Font Size: 18 pt
+Line Numbers: On
+Current Line: On
+Tab Width: 4
+Auto Indent: On
+Word Wrap: On
+```
+
+## 语法高亮
+
+SQL 语法自动高亮显示：
+
+| 元素 | 深色主题颜色 | 浅色主题颜色 |
+|---------|--------------|---------------|
+| 关键字 | 粉色 | 粉色 |
+| 字符串 | 绿色 | 绿色 |
+| 数字 | 蓝色 | 蓝色 |
+| 注释 | 灰色 | 灰色 |
+| 函数 | 默认 | 默认 |
+| 标识符 | 白色 | 黑色 |
+
+颜色会随当前主题自动调整。
+
+### 高亮的关键字
+
+被高亮显示的 SQL 关键字：
+
+- `SELECT`、`INSERT`、`UPDATE`、`DELETE`、`CREATE`、`ALTER`、`DROP`
+- `FROM`、`WHERE`、`JOIN`、`ON`、`GROUP BY`、`ORDER BY`、`HAVING`
+- `AND`、`OR`、`NOT`、`IN`、`LIKE`、`BETWEEN`、`IS NULL`
+- `INNER`、`LEFT`、`RIGHT`、`OUTER`、`CROSS`、`UNION`
+- 以及更多 SQL 标准关键字
+
+## 编辑器键盘快捷键
+
+| 操作 | 快捷键 |
+|--------|----------|
+| 执行查询 | `Cmd+Enter` |
+| 撤销 | `Cmd+Z` |
+| 重做 | `Cmd+Shift+Z` |
+| 查找 | `Cmd+F` |
+| 替换 | `Cmd+Option+F` |
+| 全选 | `Cmd+A` |
+| 跳转到行 | `Cmd+G` |
+
+查看[键盘快捷键](/zh/features/keyboard-shortcuts)获取完整列表。
+
+## 故障排除
+
+### 字体显示不正确
+
+1. 确认字体已安装到系统中
+2. 尝试其他字体
+3. 重启 TablePro
+
+### 设置未保存
+
+1. 检查磁盘权限
+2. 确认偏好设置文件可写：
+   ```bash
+   ls -la ~/Library/Preferences/com.TablePro.plist
+   ```
+3. 尝试重置偏好设置
+
+### 编辑器响应缓慢
+
+1. 减小字体大小（较大字体渲染更慢）
+2. 对于长查询关闭自动换行
+3. 检查编辑器中是否有超大查询
+
+## 相关页面
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编辑器功能和用法
+  </Card>
+  <Card title="自动补全" icon="wand-magic-sparkles" href="/zh/features/autocomplete">
+    自动补全功能
+  </Card>
+  <Card title="外观" icon="palette" href="/zh/customization/appearance">
+    主题和颜色
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    所有键盘快捷键
+  </Card>
+</CardGroup>

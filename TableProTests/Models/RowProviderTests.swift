@@ -213,14 +213,6 @@ struct InMemoryRowProviderTests {
         #expect(provider.row(at: 100) == nil)
     }
 
-    @Test("row(at:) returns cached instance on second call")
-    func rowAtCachedIdentity() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let first = provider.row(at: 1)
-        let second = provider.row(at: 1)
-        #expect(first === second)
-    }
-
     // MARK: - fetchRows
 
     @Test("fetchRows returns full range")
@@ -289,21 +281,18 @@ struct InMemoryRowProviderTests {
 
     // MARK: - updateValue
 
-    @Test("updateValue changes source and cache")
+    @Test("updateValue changes value")
     func updateValueChanges() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let _ = provider.row(at: 1)
         provider.updateValue("updated", at: 1, columnIndex: 0)
-        let row = provider.row(at: 1)
-        #expect(row?.value(at: 0) == "updated")
+        #expect(provider.value(atRow: 1, column: 0) == "updated")
     }
 
     @Test("updateValue sets value to nil")
     func updateValueNil() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let _ = provider.row(at: 0)
         provider.updateValue(nil, at: 0, columnIndex: 1)
-        #expect(provider.row(at: 0)?.value(at: 1) == nil)
+        #expect(provider.value(atRow: 0, column: 1) == nil)
     }
 
     @Test("updateValue out-of-bounds row is no-op")
@@ -313,14 +302,12 @@ struct InMemoryRowProviderTests {
         #expect(provider.totalRowCount == 3)
     }
 
-    @Test("updateValue refreshes cached row")
-    func updateValueRefreshesCache() {
+    @Test("updateValue reflects in direct access")
+    func updateValueReflectsInDirectAccess() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let before = provider.row(at: 0)
-        #expect(before?.value(at: 0) == "id_0")
+        #expect(provider.value(atRow: 0, column: 0) == "id_0")
         provider.updateValue("changed", at: 0, columnIndex: 0)
-        let after = provider.row(at: 0)
-        #expect(after?.value(at: 0) == "changed")
+        #expect(provider.value(atRow: 0, column: 0) == "changed")
     }
 
     // MARK: - appendRow
@@ -339,13 +326,12 @@ struct InMemoryRowProviderTests {
         #expect(index == 5)
     }
 
-    @Test("Appended row is accessible via row(at:)")
+    @Test("Appended row is accessible via value(atRow:column:)")
     func appendRowAccessible() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 1)
         let index = provider.appendRow(values: ["x", "y", "z"])
-        let row = provider.row(at: index)
-        #expect(row?.value(at: 0) == "x")
-        #expect(row?.value(at: 2) == "z")
+        #expect(provider.value(atRow: index, column: 0) == "x")
+        #expect(provider.value(atRow: index, column: 2) == "z")
     }
 
     @Test("Multiple appends work correctly")
@@ -366,7 +352,7 @@ struct InMemoryRowProviderTests {
         let index = provider.appendRow(values: ["val"])
         #expect(index == 0)
         #expect(provider.totalRowCount == 1)
-        #expect(provider.row(at: 0)?.value(at: 0) == "val")
+        #expect(provider.value(atRow: 0, column: 0) == "val")
     }
 
     // MARK: - removeRow
@@ -390,15 +376,6 @@ struct InMemoryRowProviderTests {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
         provider.removeRow(at: -1)
         #expect(provider.totalRowCount == 3)
-    }
-
-    @Test("removeRow invalidates cache")
-    func removeRowInvalidatesCache() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let before = provider.row(at: 0)
-        provider.removeRow(at: 1)
-        let after = provider.row(at: 0)
-        #expect(before !== after)
     }
 
     // MARK: - removeRows
@@ -433,21 +410,11 @@ struct InMemoryRowProviderTests {
 
     // MARK: - invalidateCache
 
-    @Test("invalidateCache clears cache - new ref identity")
-    func invalidateCacheClearsCache() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let before = provider.row(at: 0)
-        provider.invalidateCache()
-        let after = provider.row(at: 0)
-        #expect(before !== after)
-    }
-
     @Test("invalidateCache preserves data")
     func invalidateCachePreservesData() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
         provider.invalidateCache()
-        let row = provider.row(at: 0)
-        #expect(row?.value(at: 0) == "id_0")
+        #expect(provider.value(atRow: 0, column: 0) == "id_0")
         #expect(provider.totalRowCount == 3)
     }
 
@@ -459,7 +426,7 @@ struct InMemoryRowProviderTests {
         let newRows = [QueryResultRow(id: 0, values: ["new_a", "new_b", "new_c"])]
         provider.updateRows(newRows)
         #expect(provider.totalRowCount == 1)
-        #expect(provider.row(at: 0)?.value(at: 0) == "new_a")
+        #expect(provider.value(atRow: 0, column: 0) == "new_a")
     }
 
     @Test("updateRows with empty array sets count to 0")
@@ -469,75 +436,64 @@ struct InMemoryRowProviderTests {
         #expect(provider.totalRowCount == 0)
     }
 
-    @Test("updateRows invalidates cache")
-    func updateRowsInvalidatesCache() {
+    // MARK: - Direct Access Methods
+
+    @Test("value(atRow:column:) returns correct value")
+    func valueAtRowColumn() {
         let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
-        let before = provider.row(at: 0)
-        let newRows = TestFixtures.makeQueryResultRows(count: 3)
-        provider.updateRows(newRows)
-        let after = provider.row(at: 0)
-        #expect(before !== after)
+        #expect(provider.value(atRow: 0, column: 0) == "id_0")
+        #expect(provider.value(atRow: 1, column: 1) == "name_1")
+        #expect(provider.value(atRow: 2, column: 2) == "email_2")
     }
 
-    // MARK: - Cache eviction
-
-    @Test("6000 rows can be accessed without crash")
-    func largeRowCountNoCrash() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 6000)
-        for i in 0..<6000 {
-            let _ = provider.row(at: i)
-        }
-        #expect(provider.totalRowCount == 6000)
+    @Test("value(atRow:column:) returns nil for out-of-bounds row")
+    func valueAtRowOutOfBounds() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
+        #expect(provider.value(atRow: -1, column: 0) == nil)
+        #expect(provider.value(atRow: 3, column: 0) == nil)
     }
 
-    @Test("Recent rows are accessible after eviction")
-    func recentRowsAccessible() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 6000)
-        for i in 0..<6000 {
-            let _ = provider.row(at: i)
-        }
-        let row = provider.row(at: 5999)
-        #expect(row != nil)
-        #expect(row?.value(at: 0) == "id_5999")
+    @Test("value(atRow:column:) returns nil for out-of-bounds column")
+    func valueAtColumnOutOfBounds() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
+        #expect(provider.value(atRow: 0, column: -1) == nil)
+        #expect(provider.value(atRow: 0, column: 100) == nil)
     }
 
-    @Test("Data integrity preserved after cache eviction")
-    func dataIntegrityAfterEviction() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 6000)
-        for i in 0..<6000 {
-            let _ = provider.row(at: i)
-        }
-        let row = provider.row(at: 0)
-        #expect(row != nil)
-        #expect(row?.value(at: 0) == "id_0")
+    @Test("rowValues(at:) returns correct array")
+    func rowValuesAt() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
+        let values = provider.rowValues(at: 1)
+        #expect(values == ["id_1", "name_1", "email_1"])
     }
 
-    @Test("Eviction keeps rows closest to access point")
-    func evictionKeepsClosestRows() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 6000)
-        for i in 0 ..< 6000 {
-            let _ = provider.row(at: i)
-        }
-        let _ = provider.row(at: 4000)
-        let nearby = provider.row(at: 4001)
-        #expect(nearby != nil)
-        #expect(nearby?.value(at: 0) == "id_4001")
+    @Test("rowValues(at:) returns nil for out-of-bounds")
+    func rowValuesAtOutOfBounds() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
+        #expect(provider.rowValues(at: -1) == nil)
+        #expect(provider.rowValues(at: 3) == nil)
     }
 
-    @Test("Eviction preserves data integrity across multiple eviction cycles")
-    func evictionMultipleCycles() {
-        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 12000)
-        for i in 0 ..< 6000 {
-            let _ = provider.row(at: i)
-        }
-        for i in 6000 ..< 12000 {
-            let _ = provider.row(at: i)
-        }
-        let early = provider.row(at: 100)
-        #expect(early != nil)
-        #expect(early?.value(at: 0) == "id_100")
-        let late = provider.row(at: 11999)
-        #expect(late != nil)
-        #expect(late?.value(at: 0) == "id_11999")
+    @Test("value(atRow:column:) reflects updateValue")
+    func valueReflectsUpdate() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 3)
+        provider.updateValue("changed", at: 1, columnIndex: 0)
+        #expect(provider.value(atRow: 1, column: 0) == "changed")
+    }
+
+    @Test("rowValues(at:) reflects appendRow")
+    func rowValuesReflectsAppend() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 2)
+        let index = provider.appendRow(values: ["a", "b", "c"])
+        let values = provider.rowValues(at: index)
+        #expect(values == ["a", "b", "c"])
+    }
+
+    @Test("Large row count direct access works")
+    func largeRowCountDirectAccess() {
+        let provider = TestFixtures.makeInMemoryRowProvider(rowCount: 10000)
+        #expect(provider.value(atRow: 0, column: 0) == "id_0")
+        #expect(provider.value(atRow: 9999, column: 0) == "id_9999")
+        #expect(provider.totalRowCount == 10000)
     }
 }

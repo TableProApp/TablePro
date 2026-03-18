@@ -1,23 +1,23 @@
 ---
 title: Table Structure
-description: View and modify table schemas, columns, indexes, and foreign keys
+description: Browse column definitions, indexes, foreign keys, and DDL with a visual structure editor
 ---
 
 # Table Structure
 
-TablePro provides a visual interface for exploring and modifying database table structures. View column definitions, indexes, foreign keys, and the DDL (CREATE TABLE statement) for any table.
+Browse column definitions, indexes, foreign keys, and the DDL (CREATE TABLE statement) for any table. Edit structure visually or with SQL.
 
 {/* Screenshot: Table structure view showing columns tab */}
 <Frame caption="Table structure view">
-  <img 
-    className="block dark:hidden" 
-    src="/images/table-structure.png" 
-    alt="Table Structure" 
+  <img
+    className="block dark:hidden"
+    src="/images/table-structure.png"
+    alt="Table Structure"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/table-structure-dark.png" 
-    alt="Table Structure" 
+  <img
+    className="hidden dark:block"
+    src="/images/table-structure-dark.png"
+    alt="Table Structure"
   />
 </Frame>
 
@@ -41,19 +41,19 @@ Or right-click a table and select **Show Structure**.
 
 ## Columns Tab
 
-The Columns tab displays all column definitions:
+The Columns tab lists all column definitions:
 
 {/* Screenshot: Columns tab with column list */}
 <Frame caption="Column definitions">
-  <img 
-    className="block dark:hidden" 
-    src="/images/structure-columns.png" 
-    alt="Columns tab" 
+  <img
+    className="block dark:hidden"
+    src="/images/structure-columns.png"
+    alt="Columns tab"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/structure-columns-dark.png" 
-    alt="Columns tab" 
+  <img
+    className="hidden dark:block"
+    src="/images/structure-columns-dark.png"
+    alt="Columns tab"
   />
 </Frame>
 
@@ -70,7 +70,7 @@ The Columns tab displays all column definitions:
 
 ### Copy as TSV
 
-Right-click the structure grid to copy column definitions as TSV (tab-separated values). This is useful for pasting into spreadsheets or documentation tools.
+Right-click the structure grid to copy column definitions as TSV (tab-separated values). Useful for pasting into spreadsheets or documentation tools.
 
 ### Data Types by Database
 
@@ -116,15 +116,15 @@ View all indexes defined on the table:
 
 {/* Screenshot: Indexes tab showing index list */}
 <Frame caption="Table indexes">
-  <img 
-    className="block dark:hidden" 
-    src="/images/structure-indexes.png" 
-    alt="Indexes tab" 
+  <img
+    className="block dark:hidden"
+    src="/images/structure-indexes.png"
+    alt="Indexes tab"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/structure-indexes-dark.png" 
-    alt="Indexes tab" 
+  <img
+    className="hidden dark:block"
+    src="/images/structure-indexes-dark.png"
+    alt="Indexes tab"
   />
 </Frame>
 
@@ -154,15 +154,15 @@ View foreign key relationships:
 
 {/* Screenshot: Foreign keys tab */}
 <Frame caption="Foreign key relationships">
-  <img 
-    className="block dark:hidden" 
-    src="/images/structure-fk.png" 
-    alt="Foreign Keys tab" 
+  <img
+    className="block dark:hidden"
+    src="/images/structure-fk.png"
+    alt="Foreign Keys tab"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/structure-fk-dark.png" 
-    alt="Foreign Keys tab" 
+  <img
+    className="hidden dark:block"
+    src="/images/structure-fk-dark.png"
+    alt="Foreign Keys tab"
   />
 </Frame>
 
@@ -192,15 +192,15 @@ View the CREATE TABLE statement for the table:
 
 {/* Screenshot: DDL tab showing CREATE TABLE statement */}
 <Frame caption="DDL (CREATE TABLE) statement">
-  <img 
-    className="block dark:hidden" 
-    src="/images/structure-ddl.png" 
-    alt="DDL tab" 
+  <img
+    className="block dark:hidden"
+    src="/images/structure-ddl.png"
+    alt="DDL tab"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/structure-ddl-dark.png" 
-    alt="DDL tab" 
+  <img
+    className="hidden dark:block"
+    src="/images/structure-ddl-dark.png"
+    alt="DDL tab"
   />
 </Frame>
 
@@ -283,14 +283,14 @@ Structure modifications alter your database schema. Always backup important data
 
 ### Visual Structure Editor
 
-TablePro provides a visual interface for modifying table structure directly -- no SQL required:
+Edit table structure visually, no SQL required:
 
 #### Adding Columns
 
 1. Open the **Structure** tab > **Columns**
 2. Click the **+** button to add a new column
 3. Set column properties: name, type, nullable, default, auto-increment, comment
-   - Click the **Type** cell to open the type picker popover — browse database-specific types grouped by category or search by name
+   - Click the **Type** cell to open the type picker popover. Browse database-specific types grouped by category, or search by name.
    - For parametric types (e.g., `VARCHAR(255)`, `DECIMAL(10,2)`), type directly in the freeform input field
 4. Click **Apply** to preview and execute the changes
 
@@ -334,7 +334,7 @@ When editing the **Type** column, a searchable popover appears with database-spe
 | **Binary** | BLOB, BINARY, BYTEA |
 | **Other** | JSON, JSONB, UUID, BOOLEAN |
 
-The available types are tailored to your connected database (MySQL, PostgreSQL, or SQLite). You can also type a custom type directly, which is useful for parametric types like `VARCHAR(255)` or `NUMERIC(10,2)`.
+The available types match your connected database (MySQL, PostgreSQL, or SQLite). Type a custom type directly for parametric types like `VARCHAR(255)` or `NUMERIC(10,2)`.
 
 {/* Screenshot: Type picker popover in Structure editor */}
 <Frame caption="Type picker popover with searchable, categorized data types">
@@ -352,11 +352,7 @@ The available types are tailored to your connected database (MySQL, PostgreSQL, 
 
 ### Schema Change Preview
 
-Before applying structure changes, TablePro shows a preview of the generated ALTER TABLE SQL. This allows you to:
-
-- Review the exact SQL that will be executed
-- Verify the changes match your intent
-- Cancel if the changes are not what you expected
+Before applying structure changes, TablePro shows the generated ALTER TABLE SQL. Review the exact SQL, verify the changes match your intent, and cancel if needed.
 
 {/* Screenshot: Schema change preview with ALTER TABLE statements */}
 <Frame caption="Schema change preview with ALTER TABLE statements">
@@ -397,7 +393,7 @@ Structure changes support full undo/redo:
 
 ### Adding Columns via SQL
 
-You can also add columns directly with SQL:
+Add columns directly with SQL:
 
 ```sql
 -- MySQL
@@ -502,7 +498,7 @@ MongoDB collections have a different structure model compared to SQL tables.
 
 ### Schema View
 
-The structure tab for MongoDB collections is **read-only**. Since MongoDB is schema-less, TablePro infers the schema by sampling documents. The structure view shows only three columns:
+The structure tab for MongoDB collections is **read-only**. Since MongoDB is schema-less, TablePro infers the schema by sampling documents. The structure view shows three columns:
 
 - **Name**: Field name (including nested paths with dot notation)
 - **Type**: BSON type (ObjectId, String, Int32, Int64, Double, Boolean, Date, Array, Object, etc.)

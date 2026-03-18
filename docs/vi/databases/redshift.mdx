@@ -1,47 +1,47 @@
 ---
 title: Amazon Redshift
-description: Kết nối đến kho dữ liệu Amazon Redshift với TablePro
+description: Kết nối Redshift cluster và Serverless qua giao thức PostgreSQL wire, hiển thị metadata DISTKEY/SORTKEY
 ---
 
 # Kết nối Amazon Redshift
 
-TablePro hỗ trợ Amazon Redshift, kho dữ liệu dạng cột của AWS dựa trên PostgreSQL 8.0.2. Redshift sử dụng giao thức PostgreSQL wire, nên các kết nối hoạt động qua cùng driver libpq với các truy vấn metadata riêng cho Redshift.
+TablePro kết nối Amazon Redshift, kho dữ liệu dạng cột của AWS dựa trên PostgreSQL 8.0.2. Kết nối dùng cùng driver libpq như PostgreSQL, với truy vấn metadata riêng cho distribution style, sort keys và kích thước bảng.
 
 ## Thiết lập nhanh
 
 <Steps>
   <Step title="Mở Form kết nối">
-    Click **New Connection** từ màn hình Welcome hoặc **File** > **New Connection**
+    Nhấp **New Connection** từ màn hình Chào mừng hoặc **File** > **New Connection**
   </Step>
   <Step title="Chọn Redshift">
-    Chọn **Amazon Redshift** từ danh sách loại cơ sở dữ liệu
+    Chọn **Amazon Redshift** từ danh sách loại database
   </Step>
   <Step title="Nhập thông tin kết nối">
     Điền cluster endpoint, port, username, password và tên database
   </Step>
   <Step title="Kiểm tra và kết nối">
-    Click **Test Connection**, sau đó **Create**
+    Nhấp **Test Connection**, rồi **Create**
   </Step>
 </Steps>
 
 ## Cài đặt kết nối
 
-### Các trường bắt buộc
+### Trường bắt buộc
 
 | Trường | Mô tả | Mặc định |
 |-------|-------------|---------|
 | **Name** | Tên định danh kết nối | - |
-| **Host** | Cluster endpoint của Redshift | - |
-| **Port** | Cổng server Redshift | `5439` |
-| **Username** | Tên người dùng Redshift | - |
-| **Password** | Mật khẩu người dùng | - |
-| **Database** | Tên database để kết nối | `dev` |
+| **Host** | Cluster endpoint Redshift | - |
+| **Port** | Cổng Redshift | `5439` |
+| **Username** | Người dùng Redshift | - |
+| **Password** | Mật khẩu | - |
+| **Database** | Tên database | `dev` |
 
 <Warning>
-Redshift yêu cầu chỉ định tên database để kết nối. Database mặc định được tạo với mỗi cluster là `dev`.
+Redshift bắt buộc tên database. Database mặc định mỗi cluster là `dev`.
 </Warning>
 
-## Các cấu hình ví dụ
+## Ví dụ cấu hình
 
 ### Redshift Cluster
 
@@ -50,7 +50,7 @@ Name:     Production Warehouse
 Host:     my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com
 Port:     5439
 Username: awsuser
-Password: (mật khẩu của bạn)
+Password: (mật khẩu)
 Database: dev
 ```
 
@@ -61,43 +61,43 @@ Name:     Serverless Warehouse
 Host:     my-workgroup.123456789012.us-west-2.redshift-serverless.amazonaws.com
 Port:     5439
 Username: admin
-Password: (mật khẩu của bạn)
+Password: (mật khẩu)
 Database: dev
 ```
 
 <Tip>
-Tìm cluster endpoint trong AWS Console tại Amazon Redshift > Clusters > cluster của bạn > Properties. Endpoint bao gồm port, nhưng hãy nhập host và port riêng biệt trong TablePro.
+Tìm cluster endpoint trong AWS Console tại Amazon Redshift > Clusters > cluster > Properties. Endpoint gồm port, nhưng nhập host và port riêng trong TablePro.
 </Tip>
 
 ## Tính năng
 
 ### Hỗ trợ Schema
 
-Redshift tổ chức các bảng thành schemas, giống như PostgreSQL. TablePro hiển thị:
+Redshift tổ chức bảng thành schemas giống PostgreSQL. TablePro hiển thị:
 
-1. Tất cả schemas có thể truy cập bởi người dùng của bạn
+1. Tất cả schemas user có quyền truy cập
 2. Các bảng trong mỗi schema
 3. Thứ tự search path
 
 ### Chuyển đổi Schema
 
-Chuyển đổi giữa các schema Redshift bằng trình chuyển đổi database (**Cmd+K**):
+Chuyển schema Redshift bằng switcher (**Cmd+K**):
 
-1. Nhấn **Cmd+K** để mở trình chuyển đổi
+1. Nhấn **Cmd+K** để mở switcher
 2. Chọn schema đích
-3. Sidebar, truy vấn và toolbar sẽ cập nhật theo schema đã chọn
+3. Sidebar, truy vấn và toolbar cập nhật theo schema đã chọn
 
 <Tip>
-Schema mặc định là `public`. Các schema hệ thống như `pg_catalog` và `information_schema` được lọc khỏi danh sách.
+Schema mặc định là `public`. Schema hệ thống (`pg_catalog`, `information_schema`) được lọc khỏi danh sách.
 </Tip>
 
 ### Duyệt bảng và xem dữ liệu
 
-Duyệt bảng, views và late-binding views. Data grid hỗ trợ phân trang cho các bảng warehouse lớn. Metadata riêng của Redshift từ `svv_table_info` có sẵn trong panel thông tin bảng, bao gồm distribution style, sort keys và kích thước bảng.
+Duyệt bảng, views và late-binding views. Data grid phân trang cho bảng warehouse lớn. Metadata Redshift từ `svv_table_info` có trong panel thông tin bảng: distribution style, sort keys và kích thước.
 
 ### Thực thi truy vấn
 
-Thực thi truy vấn với hỗ trợ cú pháp Redshift SQL. SQL editor cung cấp syntax highlighting cho các hàm và từ khóa riêng của Redshift.
+Hỗ trợ cú pháp Redshift SQL. Editor highlight các hàm và từ khóa riêng Redshift.
 
 ```sql
 -- Window functions
@@ -125,7 +125,7 @@ ANALYZE COMPRESSION sales;
 
 ### Xuất dữ liệu
 
-Xuất kết quả truy vấn hoặc dữ liệu bảng ở nhiều định dạng:
+Xuất kết quả truy vấn hoặc dữ liệu bảng nhiều định dạng:
 
 - CSV
 - JSON
@@ -134,53 +134,53 @@ Xuất kết quả truy vấn hoặc dữ liệu bảng ở nhiều định dạ
 
 ### Nhập dữ liệu
 
-Nhập dữ liệu từ file CSV, JSON, SQL và XLSX vào các bảng Redshift.
+Import từ CSV, JSON, SQL và XLSX vào bảng Redshift.
 
-### Tạo DDL
+### DDL
 
-Xem DDL (câu lệnh CREATE TABLE) cho bất kỳ bảng nào, bao gồm các mệnh đề riêng của Redshift như DISTKEY, SORTKEY, DISTSTYLE và các chỉ thị ENCODE.
+Xem DDL (CREATE TABLE) cho bất kỳ bảng nào, gồm mệnh đề Redshift: DISTKEY, SORTKEY, DISTSTYLE và ENCODE.
 
 ### Điều hướng Foreign Key
 
-Redshift hỗ trợ định nghĩa foreign key, mặc dù chúng chỉ mang tính thông tin và không được engine thực thi. TablePro hiển thị các mối quan hệ này và cho phép điều hướng giữa các bảng liên quan.
+Redshift hỗ trợ định nghĩa foreign key, nhưng chỉ mang tính thông tin (engine không thực thi). TablePro hiển thị quan hệ này và cho phép điều hướng giữa bảng liên quan.
 
 ## SSL/TLS
 
-Kết nối Redshift hỗ trợ mã hóa SSL/TLS, sử dụng cùng cấu hình như PostgreSQL:
+Kết nối Redshift hỗ trợ SSL/TLS, cấu hình giống PostgreSQL:
 
 | Chế độ SSL | Mô tả |
 |----------|-------------|
 | **Disabled** | Không mã hóa SSL |
-| **Preferred** | Sử dụng SSL nếu có sẵn, quay lại không mã hóa nếu không |
-| **Required** | Yêu cầu SSL, nhưng không xác minh chứng chỉ |
-| **Verify CA** | Yêu cầu SSL và xác minh chứng chỉ server với CA |
-| **Verify Identity** | Yêu cầu SSL, xác minh CA và xác minh hostname server |
+| **Preferred** | Dùng SSL nếu có, không thì kết nối thường |
+| **Required** | Bắt buộc SSL, không xác minh chứng chỉ |
+| **Verify CA** | Bắt buộc SSL và xác minh chứng chỉ server với CA |
+| **Verify Identity** | Bắt buộc SSL, xác minh CA và hostname server |
 
 <Tip>
-Các endpoint AWS Redshift hỗ trợ SSL theo mặc định. Sử dụng chế độ **Required** hoặc **Verify CA** cho kết nối production.
+AWS Redshift hỗ trợ SSL mặc định. Dùng **Required** hoặc **Verify CA** cho kết nối production.
 </Tip>
 
 ## Hỗ trợ SSH Tunnel
 
-Bạn có thể kết nối đến Redshift qua SSH tunnel nếu cluster của bạn nằm trong VPC private. Cấu hình SSH tunnel trong tab SSH của form kết nối, sau đó TablePro định tuyến kết nối Redshift qua tunnel.
+Kết nối Redshift qua SSH tunnel nếu cluster nằm trong VPC private. Cấu hình trong tab SSH của form kết nối. TablePro định tuyến kết nối qua tunnel.
 
 ## Hạn chế
 
-Redshift là kho dữ liệu dạng cột, không phải RDBMS đa năng. Một số tính năng PostgreSQL không có hoặc hoạt động khác:
+Redshift là kho dữ liệu dạng cột, không phải RDBMS đa năng. Một số tính năng PostgreSQL không có hoặc khác:
 
 | Tính năng | Hành vi Redshift |
 |---------|------------------|
-| **Indexes** | Không có index B-tree truyền thống. Sử dụng DISTKEY và SORTKEY để phân phối và sắp xếp dữ liệu. Các cột này được hiển thị trong tab Structure. |
-| **ALTER TABLE** | Hỗ trợ hạn chế. Không thể đổi tên cột. Thay đổi kiểu bị giới hạn ở mở rộng VARCHAR hoặc thay đổi độ chính xác số. |
-| **Enum types** | Không hỗ trợ. Không có CREATE TYPE cho enum tùy chỉnh. |
-| **Sequences** | Không hỗ trợ. Sử dụng cột IDENTITY thay thế. |
-| **Foreign keys** | Chỉ mang tính thông tin. Được định nghĩa trong DDL nhưng không được engine thực thi. |
+| **Indexes** | Không có B-tree. Dùng DISTKEY và SORTKEY. Hiển thị trong tab Structure. |
+| **ALTER TABLE** | Hạn chế. Không đổi tên cột. Thay đổi kiểu chỉ mở rộng VARCHAR hoặc đổi độ chính xác số. |
+| **Enum types** | Không hỗ trợ. |
+| **Sequences** | Không hỗ trợ. Dùng IDENTITY. |
+| **Foreign keys** | Chỉ thông tin. Định nghĩa DDL nhưng engine không thực thi. |
 | **Triggers** | Không hỗ trợ. |
-| **Stored procedures** | Hỗ trợ, nhưng với tập con PL/pgSQL bị giới hạn. |
+| **Stored procedures** | Hỗ trợ, nhưng PL/pgSQL giới hạn. |
 
 ### DISTKEY và SORTKEY
 
-Thay vì index truyền thống, Redshift phân phối dữ liệu qua các node bằng distribution keys và sắp xếp dữ liệu trong mỗi node bằng sort keys. TablePro hiển thị các chỉ định DISTKEY và SORTKEY trong tab Structure cho mỗi bảng, giúp bạn thấy cách dữ liệu được tổ chức vật lý.
+Thay vì index truyền thống, Redshift phân phối dữ liệu qua node bằng distribution keys và sắp xếp bằng sort keys. TablePro hiển thị DISTKEY và SORTKEY trong tab Structure, cho thấy cách dữ liệu tổ chức vật lý.
 
 ## Khắc phục sự cố
 
@@ -188,11 +188,11 @@ Thay vì index truyền thống, Redshift phân phối dữ liệu qua các node
 
 **Triệu chứng**: "Connection refused" hoặc timeout
 
-**Nguyên nhân phổ biến**:
+**Nguyên nhân**:
 
-1. **Security group chưa cấu hình**: IP của bạn phải được cho phép trong VPC security group của Redshift cluster (inbound rule trên port 5439).
-2. **Cluster không truy cập công khai**: Nếu `Publicly Accessible` được đặt là No trong thuộc tính cluster, bạn cần SSH tunnel hoặc VPN.
-3. **Cluster đã tạm dừng**: Redshift cluster có thể được tạm dừng để tiết kiệm chi phí. Resume cluster trong AWS Console.
+1. **Security group chưa cấu hình**: IP phải được phép trong VPC security group của cluster (inbound rule port 5439).
+2. **Cluster không public**: Nếu `Publicly Accessible` là No, cần SSH tunnel hoặc VPN.
+3. **Cluster tạm dừng**: Redshift cluster có thể pause để tiết kiệm. Resume trong AWS Console.
 
 ### Authentication Failed
 
@@ -200,31 +200,31 @@ Thay vì index truyền thống, Redshift phân phối dữ liệu qua các node
 
 **Giải pháp**:
 
-1. Xác minh master username và password trong AWS Console
-2. Đối với xác thực IAM, đảm bảo thông tin đăng nhập còn hiệu lực
-3. Kiểm tra người dùng đã được cấp quyền truy cập database được chỉ định
+1. Kiểm tra master username và password trong AWS Console
+2. Cho IAM auth, đảm bảo credentials còn hiệu lực
+3. Kiểm tra user được cấp quyền truy cập database
 
 ### Hiệu năng truy vấn
 
-Redshift được tối ưu cho truy vấn phân tích trên tập dữ liệu lớn. Nếu truy vấn chậm:
+Redshift tối ưu cho truy vấn phân tích trên dataset lớn. Nếu chậm:
 
-1. Kiểm tra distribution style của bảng với `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
-2. Chạy `ANALYZE` để cập nhật thống kê bảng
-3. Sử dụng `EXPLAIN` để xem query plan
-4. Đảm bảo các cột SORTKEY khớp với các predicate WHERE và JOIN thường dùng
+1. Kiểm tra distribution style: `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
+2. Chạy `ANALYZE` cập nhật thống kê
+3. Dùng `EXPLAIN` xem query plan
+4. Đảm bảo SORTKEY khớp predicate WHERE và JOIN thường dùng
 
 ## Khác biệt với PostgreSQL
 
-Nếu bạn đến từ PostgreSQL:
+Nếu bạn từ PostgreSQL:
 
 | PostgreSQL | Redshift |
 |------------|----------|
 | Cổng mặc định 5432 | Cổng mặc định 5439 |
 | Index B-tree, GIN, GiST | Chỉ DISTKEY + SORTKEY |
 | `CREATE INDEX` | Không hỗ trợ |
-| Thực thi constraint đầy đủ | Foreign key chỉ mang tính thông tin |
+| Constraint đầy đủ | Foreign key chỉ thông tin |
 | `SERIAL` / `GENERATED AS IDENTITY` | `IDENTITY(seed, step)` |
-| Hệ thống kiểu phong phú (JSONB, arrays, v.v.) | Kiểu hạn chế (không có arrays, JSON hạn chế qua kiểu SUPER) |
+| Kiểu phong phú (JSONB, arrays, v.v.) | Kiểu hạn chế (không arrays, JSON qua SUPER) |
 | `pg_stat_activity` | `stv_recents`, `svl_qlog` |
 | Lưu trữ theo dòng | Lưu trữ theo cột |
 
@@ -232,7 +232,7 @@ Nếu bạn đến từ PostgreSQL:
 
 <CardGroup cols={2}>
   <Card title="SSH Tunnel" icon="lock" href="/vi/databases/ssh-tunneling">
-    Kết nối đến Redshift cluster trong VPC private
+    Kết nối Redshift cluster trong VPC private
   </Card>
   <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
     Viết và thực thi truy vấn Redshift

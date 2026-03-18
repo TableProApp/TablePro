@@ -6,12 +6,11 @@
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("Settings Validation")
 struct SettingsValidationTests {
-
     // MARK: - String Sanitization Tests
 
     @Test("String sanitization removes newlines")
@@ -270,5 +269,21 @@ struct SettingsValidationTests {
     @Test("Validation rules min non-negative is correct")
     func validationRulesMinNonNegative() {
         #expect(SettingsValidationRules.minNonNegative == 0)
+    }
+
+    // MARK: - Unicode Length Tests
+
+    @Test("String validation handles multi-byte Unicode correctly")
+    func stringValidationHandlesUnicode() {
+        // NSString.length counts UTF-16 code units, not grapheme clusters
+        // A flag emoji like 🇻🇳 is 4 UTF-16 code units but 1 grapheme cluster
+        let input = String(repeating: "a", count: 9) + "🇻🇳"
+        // With .count this would be 10 (9 chars + 1 emoji)
+        // With NSString.length this is 13 (9 + 4 UTF-16 units for flag emoji)
+        let result = input.validated(maxLength: 12)
+        guard case .failure = result else {
+            Issue.record("Expected failure for string exceeding UTF-16 maxLength")
+            return
+        }
     }
 }

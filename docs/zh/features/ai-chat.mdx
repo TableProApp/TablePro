@@ -1,0 +1,355 @@
+---
+title: AI 聊天
+description: 内置 AI 聊天面板，支持 Claude、OpenAI、Gemini、OpenRouter、Ollama 及自定义端点
+---
+
+# AI 聊天
+
+TablePro 内置 AI 聊天面板，用于编写、解释和修复 SQL 查询。支持 Claude (Anthropic)、OpenAI、Gemini (Google)、OpenRouter、Ollama 以及自定义的 OpenAI 兼容端点。
+
+## 打开 AI 聊天面板
+
+| 方式 | 操作 |
+|------|------|
+| 键盘快捷键 | `Cmd+Shift+L` |
+| 工具栏 | 点击 AI 按钮（星火图标） |
+| 菜单 | **View** > **Toggle AI Chat** |
+
+面板出现在编辑器右侧，紧邻数据检查器。
+
+<Frame caption="AI 聊天面板">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-panel.png"
+    alt="AI 聊天面板"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-panel-dark.png"
+    alt="AI 聊天面板"
+  />
+</Frame>
+
+## 与 AI 对话
+
+1. 在底部输入框中输入问题
+2. 按 **Enter** 或点击发送
+3. AI 会根据当前数据库连接的上下文给出建议
+
+AI 自动接收以下信息：
+- 数据库类型（MySQL、PostgreSQL、SQLite）
+- 数据库 schema（表、列、类型、外键）
+- 编辑器中的当前查询（启用时）
+
+<Tip>
+AI 会生成匹配你特定数据库方言的 SQL，使用正确的标识符引号和语法。
+</Tip>
+
+### Markdown 响应
+
+AI 响应支持完整的 Markdown 渲染：
+- **格式化文本** — 标题、粗体、斜体、列表
+- **SQL 代码块** — 带语法高亮和操作按钮
+- **行内代码** — 用于表名、列名和 SQL 关键字
+
+## 代码块
+
+AI 响应中的 SQL 代码块有两个操作按钮：
+
+- **Copy** — 将 SQL 复制到剪贴板
+- **Insert to Editor** — 将 SQL 插入到活跃的编辑器标签页中
+
+<Frame caption="带代码块操作按钮的 AI 响应">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-code-block.png"
+    alt="带代码块操作按钮的 AI 响应"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-code-block-dark.png"
+    alt="带代码块操作按钮的 AI 响应"
+  />
+</Frame>
+
+## Token 用量
+
+每次响应后，助手消息下方显示 token 计数：
+
+- **输入 token** — 发送给 AI 的 token 数（你的消息 + 上下文）
+- **输出 token** — AI 生成的 token 数
+
+用于跟踪每条消息的 API 使用量和费用。
+
+<Frame caption="Token 用量显示">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-token-usage.png"
+    alt="Token 用量显示"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-token-usage-dark.png"
+    alt="Token 用量显示"
+  />
+</Frame>
+
+## 对话历史
+
+对话自动保存到磁盘并在重新启动时恢复。在聊天面板头部管理对话：
+
+| 按钮 | 操作 |
+|------|------|
+| **History**（时钟图标） | 浏览和切换历史对话 |
+| **New Chat**（铅笔图标） | 开始新对话 |
+| **Clear**（删除图标） | 删除当前对话 |
+
+对话以 JSON 文件形式存储在 `~/Library/Application Support/TablePro/ai_chats/`。
+
+<Tip>
+对话会根据你发送的第一条消息自动命名，方便日后查找。
+</Tip>
+
+<Frame caption="对话历史">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-conversation-history.png"
+    alt="对话历史"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-conversation-history-dark.png"
+    alt="对话历史"
+  />
+</Frame>
+
+## 重试与重新生成
+
+- **重试** — 如果生成失败（网络错误、频率限制等），最后一条用户消息下方会出现"Retry"按钮。点击重新发送相同请求。
+- **重新生成** — 成功响应后，助手消息下方出现"Regenerate"按钮。点击后丢弃当前响应并生成新的。
+
+## 流式响应
+
+响应以实时流式方式呈现：
+- 等待第一个 token 时显示三点打字指示器
+- 随时点击 **Stop** 取消
+- 可向上滚动阅读之前的消息而不会被强制拉回底部。仅当你已在查看最新内容时才自动滚动。
+- 在查看旧消息时也可以开始新对话
+
+<Frame caption="流式响应">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-streaming.png"
+    alt="流式响应"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-streaming-dark.png"
+    alt="流式响应"
+  />
+</Frame>
+
+## 支持的 AI 服务商
+
+六种服务商类型：
+
+| 服务商 | 端点 | 需要 API Key |
+|--------|------|-------------|
+| **Claude** (Anthropic) | `https://api.anthropic.com` | 是 |
+| **OpenAI** | `https://api.openai.com` | 是 |
+| **OpenRouter** | `https://openrouter.ai/api` | 是 |
+| **Gemini** (Google) | `https://generativelanguage.googleapis.com` | 是 |
+| **Ollama** | `http://localhost:11434` | 否 |
+| **自定义** | 任何 OpenAI 兼容端点 | 可选 |
+
+<Tip>
+**Ollama 自动检测**：如果 TablePro 启动时 Ollama 正在本地运行，它会自动注册为 AI 服务商并使用第一个可用模型。无需手动设置。
+</Tip>
+
+<Note>
+你可以同时配置多个服务商，并将不同的 AI 功能路由到不同的服务商。
+</Note>
+
+## 配置 AI 服务商
+
+在 **Settings**（`Cmd+,`）> **AI** 中设置服务商：
+
+### 添加服务商
+
+1. 在 Providers 部分点击 **Add Provider**
+2. 选择服务商类型（Claude、OpenAI、Gemini、OpenRouter、Ollama 或自定义）
+3. 输入 API key（端点根据服务商类型自动填充）
+4. 指定模型名称，或点击 **Fetch** 从服务商获取可用模型。更改服务商设置时模型会自动获取。
+5. 点击 **Test** 验证连接
+
+<Frame caption="AI 设置 - 服务商配置">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-settings-provider.png"
+    alt="AI 设置 - 服务商配置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-settings-provider-dark.png"
+    alt="AI 设置 - 服务商配置"
+  />
+</Frame>
+
+### API Key 安全
+
+API key 存储在 macOS 钥匙串中，不会接触纯文本文件或偏好设置。
+
+### 功能路由
+
+将特定 AI 功能路由到不同的服务商：
+
+| 功能 | 说明 |
+|------|------|
+| **聊天** | 通用 AI 聊天对话 |
+| **解释查询** | 查询解释请求 |
+| **优化查询** | 查询性能优化建议 |
+| **修复错误** | 错误诊断和修复建议 |
+| **行内建议** | 行内代码建议 |
+
+每个功能可以指定特定服务商，或回退到默认服务商（第一个启用的服务商）。
+
+<Frame caption="功能路由配置">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-feature-routing.png"
+    alt="功能路由配置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-feature-routing-dark.png"
+    alt="功能路由配置"
+  />
+</Frame>
+
+## 上下文设置
+
+控制发送给 AI 的数据库上下文：
+
+| 设置 | 默认值 | 说明 |
+|------|--------|------|
+| **包含数据库 schema** | 开 | 发送表和列定义 |
+| **包含当前查询** | 开 | 发送活跃编辑器标签页中的查询 |
+| **包含查询结果** | 关 | 发送最近的查询结果 |
+| **最大 schema 表数** | 20 | 上下文中包含的最大表数 |
+
+<Frame caption="上下文设置">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-context-settings.png"
+    alt="上下文设置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-context-settings-dark.png"
+    alt="上下文设置"
+  />
+</Frame>
+
+<Warning>
+更多上下文意味着更好的 AI 回答，但也意味着更多数据发送给服务商。在启用 schema 和查询共享前，请查看服务商的隐私政策。
+</Warning>
+
+## 按连接设置 AI 策略
+
+在连接表单中为每个连接控制 AI 访问权限：
+
+| 策略 | 说明 |
+|------|------|
+| **使用默认** | 遵循 AI 设置中的全局默认策略 |
+| **始终允许** | 此连接始终可用 AI 功能 |
+| **每次询问** | 发送数据给 AI 前提示确认 |
+| **禁止** | 此连接完全禁用 AI 功能 |
+
+适合锁定生产数据库连接上的 AI 访问。
+
+<Frame caption="按连接的 AI 策略">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-connection-policy.png"
+    alt="按连接的 AI 策略"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-connection-policy-dark.png"
+    alt="按连接的 AI 策略"
+  />
+</Frame>
+
+## 编辑器集成
+
+### 右键菜单
+
+在编辑器中右键点击选中的 SQL 可访问 AI 功能：
+
+- **Explain with AI** — 将选中的 SQL 发送给 AI 解释
+- **Optimize with AI** — 请求 AI 提供性能优化建议
+
+<Frame caption="SQL 编辑器右键菜单中的 AI 选项">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-context-menu.png"
+    alt="SQL 编辑器右键菜单中的 AI 选项"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-context-menu-dark.png"
+    alt="SQL 编辑器右键菜单中的 AI 选项"
+  />
+</Frame>
+
+### 键盘快捷键
+
+| 操作 | 快捷键 | 说明 |
+|------|--------|------|
+| 切换 AI 聊天 | `Cmd+Shift+L` | 打开或关闭 AI 聊天面板 |
+| AI 解释 | `Cmd+L` | 解释选中的 SQL（或当前查询） |
+| AI 优化 | `Cmd+Option+L` | 优化选中的 SQL（或当前查询） |
+
+所有 AI 快捷键可在 **Settings** > **Keyboard** 的 **AI** 分类中自定义。
+
+<Tip>
+未选中文本时，`Cmd+L` 和 `Cmd+Option+L` 使用活跃编辑器标签页中的完整查询。
+</Tip>
+
+### 让 AI 修复错误
+
+查询失败时，错误对话框中包含 **Ask AI to Fix** 按钮：
+
+1. 打开 AI 聊天面板（如果尚未打开）
+2. 将失败的查询和错误信息发送给 AI
+3. AI 分析错误并给出修正后的查询
+
+<Frame caption="带 Ask AI to Fix 按钮的查询错误对话框">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-fix-error.png"
+    alt="带 Ask AI to Fix 按钮的查询错误对话框"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-fix-error-dark.png"
+    alt="带 Ask AI to Fix 按钮的查询错误对话框"
+  />
+</Frame>
+
+## 相关页面
+
+<CardGroup cols={2}>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写和执行 SQL 查询
+  </Card>
+  <Card title="设置" icon="gear" href="/zh/customization/settings">
+    配置所有 TablePro 设置
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    所有键盘快捷键
+  </Card>
+  <Card title="查询历史" icon="clock-rotate-left" href="/zh/features/query-history">
+    浏览历史查询
+  </Card>
+</CardGroup>

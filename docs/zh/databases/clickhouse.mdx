@@ -1,0 +1,358 @@
+---
+title: ClickHouse
+description: 使用 TablePro 连接 ClickHouse 数据库
+---
+
+# ClickHouse 连接
+
+TablePro 通过 HTTP 接口连接 ClickHouse。ClickHouse 是一个面向列存储的 OLAP 数据库，专为大数据集的实时分析而设计。TablePro 通过 HTTP（默认端口 8123）连接，而非原生 TCP 协议。
+
+## 安装插件
+
+ClickHouse 驱动以可下载插件的形式提供。当你在连接表单中选择 ClickHouse 时，TablePro 会提示你自动安装。你也可以手动安装：
+
+1. 打开 **Settings** > **Plugins** > **Browse**
+2. 找到 **ClickHouse Driver** 并点击 **Install**
+3. 插件会立即下载和加载，无需重启
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 ClickHouse">
+    从数据库类型选择器中选择 **ClickHouse**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password 和数据库名称
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP 地址 | `localhost` |
+| **Port** | ClickHouse HTTP 端口 | `8123` |
+
+### 可选字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Username** | ClickHouse 用户名 | `default` |
+| **Password** | 用户密码（本地安装默认为空） |
+| **Database** | 要连接的数据库 | `default` |
+
+<Tip>
+ClickHouse 在全新安装时自带一个无密码的 `default` 用户。对于生产服务器，请务必设置密码或配置访问控制。
+</Tip>
+
+## HTTP 接口
+
+TablePro 通过 HTTP API 连接 ClickHouse，而非原生 TCP 协议（端口 9000）。HTTP 接口默认在 8123 端口启用，支持所有 SQL 操作。
+
+如果你的 ClickHouse 服务器使用 HTTPS，请在连接表单中启用 SSL/TLS。默认的 HTTPS 端口是 8443。
+
+<Note>
+部分 ClickHouse 云服务商只暴露 HTTP(S) 接口。由于 TablePro 原生使用 HTTP，因此可以开箱即用。
+</Note>
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local ClickHouse
+Host:     localhost
+Port:     8123
+Username: default
+Password: （留空）
+Database: default
+```
+
+### Docker ClickHouse 容器
+
+启动一个 ClickHouse 容器用于本地测试：
+
+```bash
+docker run -d \
+  --name clickhouse \
+  -p 8123:8123 \
+  -p 9000:9000 \
+  -e CLICKHOUSE_USER=default \
+  -e CLICKHOUSE_PASSWORD=secret \
+  clickhouse/clickhouse-server:latest
+```
+
+然后用以下信息连接：
+
+```
+Name:     Docker ClickHouse
+Host:     localhost
+Port:     8123
+Username: default
+Password: secret
+Database: default
+```
+
+### ClickHouse Cloud
+
+```
+Name:     ClickHouse Cloud
+Host:     abc123.us-east-1.aws.clickhouse.cloud
+Port:     8443
+Username: default
+Password: （你的云密码）
+Database: default
+```
+
+<Note>
+ClickHouse Cloud 要求 HTTPS（端口 8443）。请在连接表单中启用 SSL/TLS。
+</Note>
+
+### 远程服务器
+
+```
+Name:     Production ClickHouse
+Host:     clickhouse.example.com
+Port:     8123
+Username: app_user
+Password: （安全密码）
+Database: analytics
+```
+
+<Warning>
+对于生产环境的 ClickHouse 实例，如果 HTTP 端口未加密，建议使用 [SSH tunneling](/zh/databases/ssh-tunneling)。
+</Warning>
+
+## SSL/TLS 连接
+
+TablePro 支持 ClickHouse 连接的 SSL/TLS 加密。在连接表单的 **SSL/TLS** 部分配置。
+
+| SSL 模式 | 描述 |
+|----------|-------------|
+| **Disabled** | 不使用 SSL 加密（HTTP，端口 8123） |
+| **Required** | 要求 SSL 加密（HTTPS，通常使用端口 8443） |
+
+<Tip>
+ClickHouse Cloud 和大多数托管 ClickHouse 服务要求 HTTPS。将端口设为 8443 并启用 SSL。
+</Tip>
+
+## SSH Tunnel 支持
+
+你可以通过 SSH tunnel 连接 ClickHouse 以安全访问远程服务器。详细设置方法请参阅 [SSH Tunneling](/zh/databases/ssh-tunneling)。
+
+## 功能
+
+### 数据库浏览
+
+连接后，侧栏列出服务器上的所有数据库。展开数据库可以看到其表和视图。使用工具栏中的数据库切换器切换数据库。
+
+### 表浏览
+
+每个表显示以下内容：
+
+- **Structure**：列及其 ClickHouse 数据类型、默认表达式和注释
+- **Indexes**：数据跳跃索引（minmax、set、bloom_filter 等）
+- **DDL**：完整的 CREATE TABLE 语句，包括引擎和设置
+- **Parts**：来自 `system.parts` 的分区和 part 详情（行数、磁盘大小、活跃状态）
+
+### 引擎信息
+
+ClickHouse 表使用存储引擎来决定数据的存储和查询方式。TablePro 在表结构视图中显示引擎类型及其参数。常见引擎：
+
+| 引擎 | 用途 |
+|--------|----------|
+| **MergeTree** | 生产分析表的主要引擎 |
+| **ReplacingMergeTree** | 按排序键去重 |
+| **SummingMergeTree** | 数值列的预聚合 |
+| **AggregatingMergeTree** | 使用 AggregateFunction 列的增量聚合 |
+| **Log / TinyLog** | 小表、开发和测试 |
+| **Memory** | 临时数据的内存表 |
+| **Distributed** | 跨集群分片查询 |
+
+### 排序键和分区键
+
+ClickHouse 表按其排序键（表定义中的 ORDER BY 子句）排序。TablePro 在表结构视图中显示排序键、分区键和主键。这些对查询性能至关重要，因为 ClickHouse 按排序顺序读取数据。
+
+### 数据跳跃索引
+
+ClickHouse 支持在查询时跳过 granule 的二级索引。TablePro 在 Indexes 标签页中显示：
+
+```sql
+-- 示例：URL 列上的 bloom filter 索引
+ALTER TABLE hits ADD INDEX url_idx url TYPE bloom_filter GRANULARITY 4;
+```
+
+### 查询进度追踪
+
+查询执行期间，工具栏显示实时进度：已读取的行数和处理的字节数。完成后会显示总执行时间、已读取行数和字节数的汇总。这些数据从 `system.processes` 轮询获取。
+
+### EXPLAIN 模式
+
+ClickHouse 支持多种 EXPLAIN 模式。在查询编辑器中点击 Explain 下拉菜单选择：
+
+| 模式 | 描述 |
+|---------|-------------|
+| **Plan** | 逻辑查询计划（默认） |
+| **Pipeline** | 带线程/端口信息的物理执行管道 |
+| **AST** | 已解析查询的抽象语法树 |
+| **Syntax** | 语法优化后的查询 |
+| **Estimate** | 预计读取的行数、mark 数和 part 数 |
+
+### 服务端查询取消
+
+当你取消正在运行的查询时，TablePro 会向 ClickHouse 服务器发送 `KILL QUERY` 命令。这会在服务端停止查询，而不仅仅是断开 HTTP 连接。
+
+### 查询编辑器
+
+在编辑器中编写和执行 ClickHouse SQL 查询：
+
+```sql
+-- 聚合查询
+SELECT
+    toDate(event_time) AS date,
+    count() AS events,
+    uniqExact(user_id) AS unique_users
+FROM analytics.events
+WHERE event_time >= now() - INTERVAL 7 DAY
+GROUP BY date
+ORDER BY date;
+
+-- 系统表
+SELECT name, engine, total_rows, total_bytes
+FROM system.tables
+WHERE database = 'analytics';
+
+-- 表分区
+SELECT partition, sum(rows) AS rows, formatReadableSize(sum(bytes_on_disk)) AS size
+FROM system.parts
+WHERE table = 'events' AND active
+GROUP BY partition
+ORDER BY partition;
+```
+
+### 数据编辑
+
+TablePro 支持在 ClickHouse 表中编辑单元格值、插入行和删除行。编辑操作以标准的 INSERT、ALTER TABLE UPDATE 和 ALTER TABLE DELETE 语句提交。
+
+<Warning>
+ClickHouse 的 mutation（UPDATE 和 DELETE）是异步的。它们在后台执行，对于大表可能需要一些时间才能完成。详见「限制」部分。
+</Warning>
+
+### 导出与导入
+
+将查询结果或表数据导出为 CSV、JSON 等格式。从 CSV 文件导入数据到 ClickHouse 表中。
+
+## 系统数据库
+
+ClickHouse 包含内置的系统数据库：
+
+| 数据库 | 描述 |
+|----------|-------------|
+| **system** | 服务器指标、查询日志、part 信息、集群状态 |
+| **information_schema** | SQL 标准元数据视图（表、列、schema） |
+| **INFORMATION_SCHEMA** | `information_schema` 的别名（大小写敏感变体） |
+
+`system` 数据库在监控方面特别有用：
+
+```sql
+-- 最近的查询
+SELECT query, read_rows, elapsed, memory_usage
+FROM system.query_log
+WHERE type = 'QueryFinish'
+ORDER BY event_time DESC
+LIMIT 20;
+
+-- 按表统计磁盘使用量
+SELECT database, table, formatReadableSize(sum(bytes_on_disk)) AS size
+FROM system.parts
+WHERE active
+GROUP BY database, table
+ORDER BY sum(bytes_on_disk) DESC;
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或超时
+
+**原因及解决方案**：
+
+1. **ClickHouse 未运行或 HTTP 接口被禁用**
+   ```bash
+   # 检查 ClickHouse 是否在 8123 端口监听
+   curl http://localhost:8123/ping
+   # 预期响应："Ok."
+   ```
+
+2. **端口错误**
+   - HTTP 接口：8123（默认）
+   - HTTPS 接口：8443
+   - 原生 TCP：9000（TablePro 不使用）
+
+3. **配置中 HTTP 接口被禁用**
+   - 检查 `/etc/clickhouse-server/config.xml` 中的 `<http_port>`
+
+### 认证失败
+
+**症状**："Authentication failed" 或 HTTP 403
+
+**解决方案**：
+
+1. 验证 username 和 password
+2. 检查用户是否存在：
+   ```sql
+   SELECT name, auth_type FROM system.users;
+   ```
+3. 验证用户是否有目标数据库的访问权限：
+   ```sql
+   SHOW GRANTS FOR app_user;
+   ```
+
+### 连接超时
+
+**症状**：连接挂起或超时
+
+**解决方案**：
+
+1. 验证 host 和 port 是否正确
+2. 检查网络连通性和防火墙规则
+3. 对于云托管的 ClickHouse，确保你的 IP 在允许列表中
+
+## 已知限制
+
+- **无外键。** ClickHouse 不支持外键约束。引用完整性需要在应用层管理。
+- **无事务。** ClickHouse 没有多语句事务支持。每条语句独立执行。
+- **异步 mutation。** UPDATE 和 DELETE 操作通过 `ALTER TABLE UPDATE` 和 `ALTER TABLE DELETE` 作为后台 mutation 运行。它们不是即时的：对于大表，mutation 可能需要数秒到数分钟。检查 mutation 进度：
+  ```sql
+  SELECT * FROM system.mutations WHERE is_done = 0;
+  ```
+- **无自增。** ClickHouse 不支持自增列。
+- **主键不可变。** 表创建后不能更改主键和排序键。
+- **优化写入。** ClickHouse 为批量插入设计，不适合单行写入。逐行插入可以工作但效率不高。
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 ClickHouse 服务器
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握查询编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 ClickHouse 数据
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    在数据网格中浏览和编辑数据
+  </Card>
+</CardGroup>

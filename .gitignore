@@ -47,6 +47,7 @@ playground.xcworkspace
 .swiftpm/xcode
 
 .build/
+LocalPackages/*/Package.resolved
 
 # CocoaPods
 #
@@ -137,3 +138,7 @@ Sourcery/GeneratedMocks
 # Build artifacts
 build/
 *.xcarchive
+
+# Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
+Libs/*.a
+Libs/.downloaded

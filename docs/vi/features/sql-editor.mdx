@@ -1,11 +1,11 @@
 ---
 title: Trình soạn thảo SQL
-description: Viết và thực thi các truy vấn SQL với tô sáng cú pháp và tự động hoàn thành
+description: Tô sáng cú pháp tree-sitter, thực thi nhiều câu lệnh, chế độ Vim, và định dạng SQL tích hợp
 ---
 
 # Trình soạn thảo SQL
 
-Trình soạn thảo SQL là trung tâm của TablePro, cung cấp môi trường mạnh mẽ để viết và thực thi các truy vấn SQL với tô sáng cú pháp, tự động hoàn thành thông minh và hỗ trợ nhiều truy vấn.
+Viết và chạy SQL với tô sáng cú pháp tree-sitter, autocomplete theo schema, và thực thi nhiều câu lệnh trong cùng một editor.
 
 {/* Screenshot: SQL editor with syntax highlighting and autocomplete popup */}
 <Frame caption="Trình soạn thảo SQL với tô sáng cú pháp">
@@ -25,7 +25,7 @@ Trình soạn thảo SQL là trung tâm của TablePro, cung cấp môi trườn
 
 ### Tô sáng cú pháp
 
-Trình soạn thảo cung cấp tô sáng cú pháp theo thời gian thực cho:
+Tô sáng cú pháp theo thời gian thực:
 
 - **Từ khóa**: `SELECT`, `FROM`, `WHERE`, `JOIN`, v.v. (màu hồng)
 - **Chuỗi**: Chuỗi trong dấu nháy đơn và nháy kép (màu xanh lá)
@@ -36,11 +36,11 @@ Trình soạn thảo cung cấp tô sáng cú pháp theo thời gian thực cho:
 
 ### Số dòng
 
-Số dòng được hiển thị mặc định, giúp dễ dàng:
+Số dòng được bật mặc định. Hữu ích để:
 
-- Tham chiếu các dòng cụ thể trong thông báo lỗi
-- Điều hướng các truy vấn lớn
-- Giao tiếp về code với người khác
+- Đối chiếu thông báo lỗi với dòng cụ thể
+- Điều hướng query lớn
+- Tham chiếu code khi trao đổi
 
 <Tip>
 Bật/tắt số dòng trong **Settings** > **Editor** > **Show Line Numbers**.
@@ -48,13 +48,13 @@ Bật/tắt số dòng trong **Settings** > **Editor** > **Show Line Numbers**.
 
 ### Tô sáng dòng hiện tại
 
-Dòng hiện tại được tô sáng nhẹ nhàng để giúp bạn theo dõi vị trí con trỏ, đặc biệt hữu ích trong các truy vấn dài.
+Dòng hiện tại được tô sáng nhẹ để bạn theo dõi vị trí con trỏ trong những query dài.
 
 ## Viết truy vấn
 
 ### Truy vấn đơn
 
-Viết và thực thi một truy vấn đơn:
+Viết và thực thi một truy vấn:
 
 ```sql
 SELECT * FROM users WHERE active = true;
@@ -64,7 +64,7 @@ Nhấn `Cmd+Enter` để thực thi.
 
 ### Nhiều truy vấn
 
-Viết nhiều truy vấn được phân tách bằng dấu chấm phẩy:
+Phân tách nhiều truy vấn bằng dấu chấm phẩy:
 
 ```sql
 SELECT * FROM users LIMIT 10;
@@ -72,21 +72,21 @@ SELECT COUNT(*) FROM orders;
 SELECT name, email FROM customers WHERE country = 'US';
 ```
 
-Đặt con trỏ trong bất kỳ câu lệnh nào và nhấn `Cmd+Enter` để thực thi chỉ câu lệnh đó.
+Đặt con trỏ trong bất kỳ câu lệnh nào và nhấn `Cmd+Enter` để chỉ chạy câu lệnh đó.
 
 ### Chọn và thực thi
 
-Chọn văn bản trong trình soạn thảo và nhấn `Cmd+Enter` để chỉ thực thi phần đã chọn.
+Chọn văn bản và nhấn `Cmd+Enter` để chỉ chạy phần đã chọn.
 
-Nếu phần đã chọn chứa **nhiều câu lệnh** (phân tách bằng dấu chấm phẩy), chúng sẽ được thực thi tuần tự trong một transaction:
+Nếu phần đã chọn chứa **nhiều câu lệnh** (phân tách bằng dấu chấm phẩy), chúng chạy tuần tự trong một transaction:
 
 - Các câu lệnh chạy theo thứ tự, từng câu một
-- Nếu bất kỳ câu lệnh nào thất bại, quá trình thực thi dừng lại và tất cả thay đổi được rollback
+- Nếu câu lệnh nào thất bại, quá trình dừng lại và tất cả thay đổi được rollback
 - Thông báo lỗi cho biết câu lệnh nào thất bại (ví dụ: "Statement 3/5 failed: ...")
-- Kết quả từ câu lệnh `SELECT` cuối cùng được hiển thị trong bảng dữ liệu
+- Kết quả từ câu lệnh `SELECT` cuối cùng hiển thị trong data grid
 - Mỗi câu lệnh được ghi lại riêng trong lịch sử truy vấn
 
-Điều này hữu ích khi chạy SQL dump, migration hoặc các nhóm câu lệnh liên quan:
+Phù hợp khi chạy SQL dump, migration hoặc nhóm câu lệnh liên quan:
 
 ```sql
 DROP TABLE IF EXISTS users;
@@ -111,15 +111,15 @@ SELECT * FROM users;
 
 ## Tự động hoàn thành
 
-TablePro cung cấp tự động hoàn thành SQL thông minh hiểu schema cơ sở dữ liệu của bạn.
+Autocomplete SQL theo schema, tự điều chỉnh theo ngữ cảnh query.
 
 ### Kích hoạt tự động hoàn thành
 
-Tự động hoàn thành xuất hiện tự động khi bạn gõ, hoặc bạn có thể kích hoạt thủ công:
+Autocomplete xuất hiện tự động khi bạn gõ:
 
 - Bắt đầu gõ từ khóa, tên bảng hoặc tên cột
 - Nhấn `Escape` để đóng popup
-- Sử dụng phím mũi tên để điều hướng các gợi ý
+- Sử dụng phím mũi tên để điều hướng gợi ý
 - Nhấn `Enter` hoặc `Tab` để chấp nhận gợi ý
 
 {/* Screenshot: Autocomplete popup showing table and column suggestions */}
@@ -149,7 +149,7 @@ Tự động hoàn thành xuất hiện tự động khi bạn gõ, hoặc bạn
 
 ### Hoàn thành nhận biết Schema
 
-Tự động hoàn thành nhận biết ngữ cảnh và hiểu schema của bạn:
+Autocomplete phân giải alias bảng và hiển thị đúng cột:
 
 ```sql
 SELECT u.  -- Hiển thị các cột từ bảng 'users' có alias là 'u'
@@ -159,7 +159,7 @@ JOIN orders o ON u.id = o.  -- Hiển thị các cột từ bảng 'orders'
 
 ### Từ khóa SQL
 
-Các từ khóa SQL phổ biến được gợi ý dựa trên ngữ cảnh:
+Từ khóa được gợi ý theo ngữ cảnh:
 
 - Sau `SELECT`: `DISTINCT`, `TOP`, `ALL`
 - Sau `FROM`: `JOIN`, `LEFT JOIN`, `INNER JOIN`, `WHERE`
@@ -173,27 +173,27 @@ Các từ khóa SQL phổ biến được gợi ý dựa trên ngữ cảnh:
 |--------|----------|-------------|
 | Thực thi truy vấn | `Cmd+Enter` | Chạy truy vấn tại con trỏ, hoặc tất cả câu lệnh đã chọn |
 | Giải thích truy vấn | `Option+Cmd+E` | Hiển thị kế hoạch thực thi cho truy vấn tại con trỏ |
-| Định dạng truy vấn | `Option+Cmd+F` | Định dạng truy vấn hiện tại để dễ đọc hơn |
+| Định dạng truy vấn | `Option+Cmd+F` | Định dạng truy vấn hiện tại cho dễ đọc |
 
 ### Kết quả truy vấn
 
-Kết quả xuất hiện trong bảng dữ liệu bên dưới trình soạn thảo:
+Kết quả xuất hiện trong data grid bên dưới editor:
 
 - Số lượng dòng và thời gian thực thi được hiển thị
-- Kết quả được phân trang cho các tập dữ liệu lớn
-- Nhấp vào tiêu đề cột để sắp xếp
+- Kết quả được phân trang cho dataset lớn
+- Nhấp tiêu đề cột để sắp xếp
 
 ### Giải thích Truy vấn
 
-Sử dụng tính năng **Explain Query** để xem kế hoạch thực thi cho truy vấn của bạn, giúp bạn hiểu cách cơ sở dữ liệu sẽ thực thi và xác định các điểm nghẽn hiệu suất.
+Xem kế hoạch thực thi để phát hiện index thiếu hoặc join kém hiệu quả.
 
 Để giải thích truy vấn:
 
-- Nhấp nút **Explain** trong thanh công cụ editor, hoặc
+- Nhấp nút **Explain** trong thanh công cụ, hoặc
 - Nhấn `Option+Cmd+E`, hoặc
 - Sử dụng menu: **Query** > **Explain Query**
 
-TablePro tự động sử dụng cú pháp đúng cho cơ sở dữ liệu của bạn:
+TablePro tự động dùng đúng cú pháp cho database:
 
 | Cơ sở dữ liệu | Cú pháp được sử dụng |
 |----------|-------------|
@@ -201,10 +201,10 @@ TablePro tự động sử dụng cú pháp đúng cho cơ sở dữ liệu củ
 | PostgreSQL | `EXPLAIN <truy vấn>` |
 | SQLite | `EXPLAIN QUERY PLAN <truy vấn>` |
 
-Kết quả kế hoạch thực thi xuất hiện trong bảng dữ liệu bên dưới editor, hiển thị việc sử dụng index, chiến lược join và số hàng ước tính.
+Kế hoạch thực thi hiển thị index đang dùng, chiến lược join và số hàng ước tính trong data grid.
 
 <Tip>
-Chạy Explain trước khi thực thi các truy vấn tốn kém để xác minh chúng sử dụng đúng index và chiến lược join mong đợi.
+Chạy Explain trước khi thực thi query tốn kém để xác minh đúng index và chiến lược join.
 </Tip>
 
 {/* Ảnh chụp: Kết quả EXPLAIN hiển thị trong bảng dữ liệu */}
@@ -223,17 +223,17 @@ Chạy Explain trước khi thực thi các truy vấn tốn kém để xác min
 
 ## Định dạng SQL
 
-TablePro tích hợp sẵn trình định dạng SQL tự động tái cấu trúc truy vấn của bạn để dễ đọc hơn. Trình định dạng nhận biết dialect và điều chỉnh đầu ra phù hợp với cơ sở dữ liệu bạn đang kết nối.
+Trình định dạng SQL tích hợp, nhận biết dialect và tự điều chỉnh theo MySQL, PostgreSQL hoặc SQLite.
 
 ### Định dạng truy vấn
 
 Để định dạng truy vấn hiện tại:
 
 - Nhấn `Option+Cmd+F`, hoặc
-- Nhấp nút **Format** trong thanh công cụ editor, hoặc
+- Nhấp nút **Format** trong thanh công cụ, hoặc
 - Sử dụng menu: **Query** > **Format Query**
 
-Trình định dạng áp dụng các biến đổi sau:
+Các biến đổi được áp dụng:
 
 | Biến đổi | Mô tả |
 |----------|--------|
@@ -246,13 +246,13 @@ Trình định dạng áp dụng các biến đổi sau:
 
 ### Định dạng theo Dialect
 
-Trình định dạng tự động nhận biết cơ sở dữ liệu đang kết nối và áp dụng các quy tắc riêng cho từng dialect:
+Trình định dạng nhận biết database đang kết nối và áp dụng quy tắc riêng:
 
 | Cơ sở dữ liệu | Hành vi định dạng |
 |----------------|-------------------|
-| MySQL / MariaDB | Giữ nguyên định danh trong dấu backtick, xử lý cú pháp riêng của MySQL |
-| PostgreSQL | Giữ nguyên định danh trong dấu nháy kép, xử lý cú pháp riêng của PostgreSQL |
-| SQLite | Xử lý từ khóa và cú pháp riêng của SQLite |
+| MySQL / MariaDB | Giữ nguyên định danh backtick, xử lý cú pháp MySQL |
+| PostgreSQL | Giữ nguyên định danh nháy kép, xử lý cú pháp PostgreSQL |
+| SQLite | Xử lý từ khóa và cú pháp SQLite |
 
 ### Ví dụ Trước & Sau
 
@@ -281,7 +281,7 @@ LIMIT 100;
 ```
 
 <Tip>
-Định dạng truy vấn trước khi chia sẻ với đồng nghiệp hoặc lưu làm template để có SQL nhất quán, dễ đọc.
+Định dạng query trước khi chia sẻ với đồng nghiệp hoặc lưu làm template.
 </Tip>
 
 {/* Ảnh chụp: Truy vấn SQL trước và sau khi định dạng */}
@@ -300,11 +300,11 @@ LIMIT 100;
 
 ### Xử lý lỗi
 
-Khi một truy vấn thất bại:
+Khi truy vấn thất bại:
 
-1. Thông báo lỗi xuất hiện bên dưới trình soạn thảo
-2. Số dòng có thể được tô sáng nếu lỗi tham chiếu đến một dòng cụ thể
-3. Đọc thông báo lỗi để biết chi tiết về những gì đã xảy ra sai
+1. Thông báo lỗi xuất hiện bên dưới editor
+2. Số dòng có thể được tô sáng nếu lỗi trỏ đến dòng cụ thể
+3. Đọc thông báo lỗi để biết chi tiết
 
 {/* Screenshot: Query error message display */}
 <Frame caption="Thông báo lỗi truy vấn">
@@ -322,20 +322,20 @@ Khi một truy vấn thất bại:
 
 ## Chế độ Vim
 
-TablePro tích hợp tùy chọn phím tắt Vim cho trình soạn thảo SQL, cung cấp chỉnh sửa theo chế độ cho các lập trình viên quen với điều hướng và thao tác văn bản kiểu Vim.
+Phím tắt Vim tùy chọn cho chỉnh sửa modal. Hỗ trợ đầy đủ Normal, Insert, Visual và Command-line.
 
 ### Bật chế độ Vim
 
-Bật/tắt chế độ Vim trong **Settings** > **Editor** > **Editing** > **Vim mode**. Khi bật, trình soạn thảo chuyển sang chỉnh sửa theo chế độ với huy hiệu chỉ báo chế độ hiển thị trên thanh công cụ editor.
+Bật/tắt trong **Settings** > **Editor** > **Editing** > **Vim mode**. Huy hiệu chỉ báo chế độ hiển thị trên thanh công cụ khi bật.
 
 ### Các chế độ
 
 | Chế độ | Mô tả |
 |--------|-------|
-| **Normal** | Chế độ mặc định để điều hướng và ra lệnh. Nhấn `Escape` để quay lại đây. |
-| **Insert** | Chế độ nhập văn bản, hoạt động như editor thông thường. |
-| **Visual** | Chế độ chọn theo ký tự. |
-| **Visual Line** | Chế độ chọn theo dòng. |
+| **Normal** | Chế độ mặc định để điều hướng và ra lệnh. Nhấn `Escape` để quay lại. |
+| **Insert** | Chế độ nhập văn bản, hoạt động như editor thường. |
+| **Visual** | Chọn theo ký tự. |
+| **Visual Line** | Chọn theo dòng. |
 | **Command-line** | Lệnh Ex (`:w`, `:q`, v.v.). |
 
 ### Di chuyển
@@ -370,7 +370,7 @@ Bật/tắt chế độ Vim trong **Settings** > **Editor** > **Editing** > **Vi
 
 ### Chế độ Visual
 
-Nhấn `v` để chọn theo ký tự hoặc `V` để chọn theo dòng. Sử dụng các phím di chuyển để mở rộng vùng chọn, sau đó áp dụng toán tử:
+Nhấn `v` để chọn theo ký tự hoặc `V` để chọn theo dòng. Dùng phím di chuyển để mở rộng vùng chọn, sau đó áp dụng toán tử:
 
 - `d` — xóa vùng chọn
 - `y` — yank vùng chọn
@@ -378,7 +378,7 @@ Nhấn `v` để chọn theo ký tự hoặc `V` để chọn theo dòng. Sử d
 
 ### Chế độ Command-line
 
-Nhấn `:` trong chế độ Normal để vào chế độ command-line:
+Nhấn `:` trong chế độ Normal:
 
 | Lệnh | Hành động |
 |-------|-----------|
@@ -387,19 +387,19 @@ Nhấn `:` trong chế độ Normal để vào chế độ command-line:
 
 ### Tiền tố số đếm
 
-Hầu hết các phím di chuyển và toán tử chấp nhận tiền tố số đếm: `3j` di chuyển xuống 3 dòng, `2dd` xóa 2 dòng, `5x` xóa 5 ký tự.
+Hầu hết phím di chuyển và toán tử chấp nhận tiền tố số: `3j` xuống 3 dòng, `2dd` xóa 2 dòng, `5x` xóa 5 ký tự.
 
 ### Phối hợp phím Escape
 
-Khi chế độ Vim được bật, `Escape` quay lại chế độ Normal. Nếu gợi ý tự động hoàn thành AI đang hiển thị, `Escape` lần đầu đóng gợi ý và lần thứ hai quay lại chế độ Normal.
+Khi Vim bật, `Escape` quay lại Normal. Nếu gợi ý AI đang hiển thị, `Escape` đầu tiên đóng gợi ý, `Escape` thứ hai quay lại Normal.
 
 <Tip>
-Huy hiệu chỉ báo chế độ trên thanh công cụ hiển thị chế độ Vim hiện tại (NORMAL, INSERT, VISUAL) để bạn luôn biết mình đang ở chế độ nào.
+Huy hiệu trên thanh công cụ hiển thị chế độ Vim hiện tại (NORMAL, INSERT, VISUAL) để bạn luôn biết mình đang ở chế độ nào.
 </Tip>
 
 ## Cài đặt Trình soạn thảo
 
-Tùy chỉnh trình soạn thảo trong **Settings** > **Editor**:
+Tùy chỉnh trong **Settings** > **Editor**:
 
 ### Cài đặt Font
 
@@ -420,7 +420,7 @@ Tùy chỉnh trình soạn thảo trong **Settings** > **Editor**:
 
 | Cài đặt | Mô tả | Mặc định |
 |---------|-------|---------|
-| **Vim Mode** | Bật phím tắt Vim (chế độ Normal/Insert/Visual) | Tắt |
+| **Vim Mode** | Bật phím tắt Vim (Normal/Insert/Visual) | Tắt |
 
 ### Cài đặt Thụt lề
 
@@ -447,17 +447,17 @@ Tùy chỉnh trình soạn thảo trong **Settings** > **Editor**:
 
 ### Hỗ Trợ AI
 
-Trình soạn thảo SQL tích hợp với chat AI của TablePro để viết và gỡ lỗi truy vấn:
+Editor tích hợp với AI chat của TablePro để viết và gỡ lỗi query:
 
-- **Giải thích với AI** (`Cmd+L`) — nhận giải thích chi tiết về truy vấn của bạn
-- **Tối ưu với AI** (`Cmd+Option+L`) — nhận gợi ý cải thiện hiệu năng
-- **Yêu cầu AI sửa lỗi** — khi truy vấn thất bại, nhấp "Ask AI to Fix" trong hộp thoại lỗi
+- **Giải thích với AI** (`Cmd+L`) — giải thích chi tiết query
+- **Tối ưu với AI** (`Cmd+Option+L`) — gợi ý cải thiện hiệu năng
+- **Yêu cầu AI sửa lỗi** — khi query lỗi, nhấp "Ask AI to Fix" trong hộp thoại
 
-Xem [AI Chat](/vi/features/ai-chat) để biết chi tiết đầy đủ về cấu hình nhà cung cấp và tính năng AI.
+Xem [AI Chat](/vi/features/ai-chat) để biết chi tiết cấu hình AI.
 
 ### Sử dụng chú thích
 
-Thêm chú thích để ghi chú các truy vấn của bạn:
+Thêm chú thích vào query:
 
 ```sql
 -- Lấy người dùng đang hoạt động với đơn hàng gần đây
@@ -470,13 +470,13 @@ GROUP BY u.name;
 
 /*
  * Chú thích nhiều dòng
- * Hữu ích cho các giải thích dài hơn
+ * Hữu ích cho giải thích dài hơn
  */
 ```
 
 ### Khám phá bảng nhanh
 
-Để nhanh chóng khám phá cấu trúc và dữ liệu của bảng:
+Xem nhanh cấu trúc và dữ liệu bảng:
 
 ```sql
 -- Xem cấu trúc bảng (MySQL)
@@ -494,7 +494,7 @@ SELECT COUNT(*) FROM users;
 
 ### Sử dụng Alias
 
-Sử dụng alias bảng cho truy vấn sạch hơn, dễ đọc hơn:
+Alias bảng giúp query gọn và rõ ràng hơn:
 
 ```sql
 -- Không có alias (dài dòng)
@@ -502,7 +502,7 @@ SELECT users.name, orders.total
 FROM users
 JOIN orders ON users.id = orders.user_id;
 
--- Với alias (sạch hơn)
+-- Với alias (gọn hơn)
 SELECT u.name, o.total
 FROM users u
 JOIN orders o ON u.id = o.user_id;
@@ -510,28 +510,28 @@ JOIN orders o ON u.id = o.user_id;
 
 ## Mở tệp SQL
 
-TablePro có thể mở trực tiếp các tệp `.sql` từ Finder, giúp bạn dễ dàng làm việc với các truy vấn đã lưu, migration và script SQL.
+TablePro mở trực tiếp tệp `.sql` từ Finder.
 
 ### Mở từ Finder
 
-Có hai cách để mở tệp `.sql` trong TablePro:
+Hai cách mở tệp `.sql`:
 
-- **Nhấp đúp** vào tệp `.sql` trong Finder (nếu TablePro được đặt làm ứng dụng mặc định)
+- **Nhấp đúp** vào tệp `.sql` trong Finder (nếu TablePro là ứng dụng mặc định)
 - **Nhấp chuột phải** vào tệp `.sql` > **Open With** > **TablePro**
 
 ### Hành vi kết nối
 
 | Trạng thái | Hành vi |
 |------------|---------|
-| **Đã kết nối** với cơ sở dữ liệu | Tệp mở ngay lập tức trong tab editor mới |
-| **Chưa kết nối** | Tệp được xếp hàng đợi và tự động mở sau khi bạn kết nối với cơ sở dữ liệu |
+| **Đã kết nối** với database | Tệp mở ngay trong tab editor mới |
+| **Chưa kết nối** | Tệp được xếp hàng đợi và tự động mở sau khi kết nối |
 
 ### Nhiều tệp
 
-Mở nhiều tệp `.sql` sẽ tạo một tab riêng cho mỗi tệp, cho phép bạn làm việc với nhiều script cùng lúc.
+Mở nhiều tệp `.sql` tạo một tab riêng cho mỗi tệp.
 
 <Note>
-Nội dung tệp được tải vào tab editor. Các thay đổi bạn thực hiện trong editor không ảnh hưởng đến tệp `.sql` gốc trên ổ đĩa.
+Nội dung tệp được tải vào tab editor. Các thay đổi trong editor không ảnh hưởng đến tệp `.sql` gốc trên đĩa.
 </Note>
 
 ## Phím tắt
@@ -554,7 +554,7 @@ Nội dung tệp được tải vào tab editor. Các thay đổi bạn thực h
 
 ### Luôn sử dụng LIMIT
 
-Khi khám phá dữ liệu, luôn sử dụng `LIMIT` để tránh tải hàng triệu dòng:
+Khi khám phá dữ liệu, luôn thêm `LIMIT` để tránh tải hàng triệu dòng:
 
 ```sql
 SELECT * FROM large_table LIMIT 100;
@@ -562,19 +562,19 @@ SELECT * FROM large_table LIMIT 100;
 
 ### Kiểm tra DELETE/UPDATE với SELECT trước
 
-Trước khi chạy các truy vấn phá hủy, xác minh bằng SELECT:
+Trước khi chạy query xóa/sửa, xác minh bằng SELECT:
 
 ```sql
--- Đầu tiên, xác minh những gì sẽ bị ảnh hưởng
+-- Xác minh những gì sẽ bị ảnh hưởng
 SELECT * FROM users WHERE last_login < '2023-01-01';
 
--- Sau đó chạy delete thực tế
+-- Sau đó chạy delete
 DELETE FROM users WHERE last_login < '2023-01-01';
 ```
 
 ### Sử dụng Transaction để an toàn
 
-Bọc các thao tác nguy hiểm trong transaction:
+Bọc thao tác nguy hiểm trong transaction:
 
 ```sql
 BEGIN;
@@ -595,15 +595,15 @@ ROLLBACK;
 
 <CardGroup cols={2}>
   <Card title="Tự động hoàn thành" icon="wand-magic-sparkles" href="/vi/features/autocomplete">
-    Tìm hiểu sâu về tính năng tự động hoàn thành
+    Chi tiết về autocomplete
   </Card>
   <Card title="Bảng dữ liệu" icon="table" href="/vi/features/data-grid">
-    Xem và chỉnh sửa kết quả truy vấn
+    Xem và chỉnh sửa kết quả
   </Card>
   <Card title="Lịch sử truy vấn" icon="clock-rotate-left" href="/vi/features/query-history">
-    Truy cập các truy vấn trước đó
+    Truy cập các query trước đó
   </Card>
   <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
-    Tất cả các phím tắt
+    Tất cả phím tắt
   </Card>
 </CardGroup>

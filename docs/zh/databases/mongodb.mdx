@@ -1,0 +1,404 @@
+---
+title: MongoDB
+description: 连接 MongoDB 5.0+，支持 MQL shell 查询、集合浏览和 BSON 类型显示
+---
+
+# MongoDB 连接
+
+TablePro 支持 MongoDB 5.0 及更高版本。集合在侧栏中以表的形式显示。文档的字段作为列展示，嵌套对象渲染为格式化的 JSON。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 MongoDB">
+    从数据库类型选择器中选择 **MongoDB**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、认证数据库、username 和 password
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP | `localhost` |
+| **Port** | MongoDB 服务器端口 | `27017` |
+| **Database** | 要连接的数据库名称 | - |
+
+### 可选字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Username** | 用于认证的 MongoDB 用户名 |
+| **Password** | 用户密码 |
+| **Auth Database** | 认证数据库（默认为 `admin`） |
+
+<Tip>
+对于没有启用认证的本地开发环境，可以留空 username 和 password 字段。
+</Tip>
+
+### 高级设置
+
+在 **Advanced** 标签页中配置 read preference 和 write concern。这些设置仅适用于 MongoDB 连接。
+
+| 字段 | 描述 | 选项 |
+|-------|-------------|---------|
+| **Read Preference** | 控制哪些 replica set 成员接收读操作 | Default、Primary、Primary Preferred、Secondary、Secondary Preferred、Nearest |
+| **Write Concern** | 控制写操作的确认级别 | Default、Majority、1、2、3 |
+
+<Tip>
+默认设置适用于大多数场景。使用 **Secondary Preferred** 或 **Nearest** 可以将读负载分散到 replica 成员之间。使用 **Majority** write concern 可以获得更强的持久性保证。
+</Tip>
+
+{/* Screenshot: MongoDB connection form */}
+<Frame caption="MongoDB 连接表单">
+  <img
+    className="block dark:hidden"
+    src="/images/mongodb-connection-form.png"
+    alt="MongoDB 连接表单"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mongodb-connection-form-dark.png"
+    alt="MongoDB 连接表单"
+  />
+</Frame>
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local MongoDB
+Host:     localhost
+Port:     27017
+Username: （留空）
+Password: （留空）
+Database: myapp
+```
+
+### Docker MongoDB 容器
+
+```
+Name:     Docker MongoDB
+Host:     localhost
+Port:     27017（或你映射的端口）
+Username: root
+Password: （来自 MONGO_INITDB_ROOT_PASSWORD 的密码）
+Database: admin
+```
+
+### MongoDB Atlas
+
+```
+Name:     Atlas Cluster
+Host:     cluster0.abc123.mongodb.net
+Port:     27017
+Username: atlas_user
+Password: （你的 Atlas 密码）
+Database: myapp
+```
+
+<Note>
+MongoDB Atlas 要求 SSL/TLS。请在连接表单的 SSL/TLS 部分启用。
+</Note>
+
+### 远程服务器
+
+```
+Name:     Production DB
+Host:     db.example.com
+Port:     27017
+Username: app_user
+Password: （安全密码）
+Database: production
+```
+
+<Warning>
+对于生产数据库，建议使用 [SSH tunneling](/zh/databases/ssh-tunneling) 进行安全连接。
+</Warning>
+
+## SSL/TLS 连接
+
+在连接表单的 **SSL/TLS** 部分配置 SSL。
+
+| SSL 模式 | 描述 |
+|----------|-------------|
+| **Disabled** | 不使用 SSL 加密 |
+| **Required** | 要求 SSL 加密 |
+| **Verify CA** | 要求 SSL 并验证服务器证书是否由 CA 签发 |
+
+对于 **Verify CA** 模式，需要提供 CA 证书文件路径。也可以提供可选的客户端证书和密钥文件以实现 mutual TLS。
+
+<Tip>
+MongoDB Atlas 始终要求 SSL/TLS。连接 Atlas 集群时使用 **Required** 或 **Verify CA**。
+</Tip>
+
+<Note>
+如果不想配置 SSL 证书，[SSH tunneling](/zh/databases/ssh-tunneling) 可以通过 SSH tunnel 加密所有流量。
+</Note>
+
+{/* Screenshot: MongoDB SSL/TLS configuration */}
+<Frame caption="MongoDB SSL/TLS 配置">
+  <img
+    className="block dark:hidden"
+    src="/images/mongodb-ssl-config.png"
+    alt="MongoDB SSL/TLS 配置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mongodb-ssl-config-dark.png"
+    alt="MongoDB SSL/TLS 配置"
+  />
+</Frame>
+
+## SSH Tunnel 支持
+
+通过 SSH tunnel 连接 MongoDB 以安全访问远程服务器。设置方法请参阅 [SSH Tunneling](/zh/databases/ssh-tunneling)。
+
+## 功能
+
+### 集合浏览
+
+连接后，侧栏显示所选数据库中的所有集合：
+
+1. 点击侧栏中的连接名称
+2. 展开数据库查看其集合
+3. 点击集合查看其文档
+
+{/* Screenshot: Sidebar showing MongoDB collections */}
+<Frame caption="MongoDB 集合浏览器">
+  <img
+    className="block dark:hidden"
+    src="/images/mongodb-collection-browser.png"
+    alt="集合浏览器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mongodb-collection-browser-dark.png"
+    alt="集合浏览器"
+  />
+</Frame>
+
+### 文档查看
+
+文档在数据网格中以字段作为列的方式显示：
+
+- **顶层字段** 显示为独立的列
+- **嵌套对象** 渲染为格式化的 JSON 字符串
+- **数组** 显示为 JSON 数组
+- **ObjectId** 值显示为其字符串表示
+- **BSON 类型**（Date、Decimal128、Binary 等）以适当的格式渲染
+
+<Tip>
+Schema 通过采样集合中的文档来推断。列反映了所有采样文档中找到的字段的并集。
+</Tip>
+
+### 集合复制
+
+复制现有集合，包括所有文档和索引：
+
+1. 打开 **Create Table** 对话框
+2. 点击工具栏中的 **Duplicate**
+3. 从列表中选择源集合
+4. TablePro 使用 `aggregate` 配合 `$out` 复制所有文档，并重建非主索引
+
+复制的集合命名为 `originalName_copy`（如果名称已存在则添加数字后缀）。
+
+### MongoDB Shell 查询
+
+在编辑器中使用 MongoDB Shell（MQL）语法执行查询：
+
+```javascript
+// 带过滤的文档查找
+db.users.find({ age: { $gte: 18 }, active: true })
+
+// 带投影和排序的查找
+db.orders.find(
+  { status: "completed" },
+  { customerId: 1, total: 1, date: 1 }
+).sort({ date: -1 }).limit(20)
+
+// 聚合管道
+db.sales.aggregate([
+  { $match: { date: { $gte: ISODate("2025-01-01") } } },
+  { $group: { _id: "$product", totalSales: { $sum: "$amount" } } },
+  { $sort: { totalSales: -1 } },
+  { $limit: 10 }
+])
+
+// 文档计数
+db.users.countDocuments({ role: "admin" })
+
+// 去重值
+db.products.distinct("category")
+```
+
+### CRUD 操作
+
+#### 插入文档
+
+```javascript
+// 插入单个文档
+db.users.insertOne({
+  name: "John Doe",
+  email: "john@example.com",
+  age: 30,
+  tags: ["developer", "admin"]
+})
+
+// 插入多个文档
+db.users.insertMany([
+  { name: "Alice", email: "alice@example.com" },
+  { name: "Bob", email: "bob@example.com" }
+])
+```
+
+#### 更新文档
+
+```javascript
+// 更新单个文档
+db.users.updateOne(
+  { email: "john@example.com" },
+  { $set: { age: 31, updatedAt: new Date() } }
+)
+
+// 更新多个文档
+db.users.updateMany(
+  { active: false },
+  { $set: { status: "inactive" } }
+)
+```
+
+#### 删除文档
+
+```javascript
+// 删除单个文档
+db.users.deleteOne({ email: "john@example.com" })
+
+// 删除多个文档
+db.users.deleteMany({ active: false, lastLogin: { $lt: ISODate("2024-01-01") } })
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或 "couldn't connect to server"
+
+**原因及解决方案**：
+
+1. **MongoDB 服务器未运行**
+   ```bash
+   # 检查 MongoDB 是否运行
+   mongosh --eval "db.runCommand({ ping: 1 })"
+
+   # 启动 MongoDB（macOS Homebrew）
+   brew services start mongodb-community
+   ```
+
+2. **端口错误**
+   - 检查 MongoDB 配置文件（`mongod.conf`）中的端口
+   - 检查你的配置
+
+3. **MongoDB 未监听预期地址**
+   - 检查 `mongod.conf` 中的 `bindIp`
+   - 对于远程连接，添加客户端 IP 或使用 `0.0.0.0`
+
+### 认证失败
+
+**症状**："Authentication failed" 或 "command find requires authentication"
+
+**解决方案**：
+
+1. 验证 username、password 和认证数据库
+2. 检查用户角色：
+   ```javascript
+   db.getUsers()
+   ```
+3. 创建或更新用户凭据：
+   ```javascript
+   db.createUser({
+     user: "appuser",
+     pwd: "password",
+     roles: [{ role: "readWrite", db: "myapp" }]
+   })
+   ```
+
+### 连接超时
+
+**症状**：连接挂起或超时
+
+**解决方案**：
+
+1. 验证 host 和 port 是否正确
+2. 检查网络连通性和防火墙规则
+3. 对于 MongoDB Atlas，确保你的 IP 已在 Network Access 设置中加入白名单
+
+## 已知限制
+
+- **事务**：多文档事务需要 replica set 或分片集群。独立实例不支持事务。
+- **Schema 推断**：由于 MongoDB 是无 schema 的，列结构通过采样文档推断。文档结构差异很大的集合可能无法显示所有字段。
+- **固定大小集合**：对 capped collection 的某些操作（更新、删除）可能受限。
+- **GridFS**：GridFS 文件存储不能通过集合浏览器直接浏览。
+- **Change Streams**：当前版本不支持实时 change stream。
+
+## 性能建议
+
+### 大型集合
+
+对于有数百万文档的集合：
+
+1. 在查询中始终使用过滤条件或 `limit()`
+2. 在数据网格设置中启用分页
+3. 为常见查询模式创建适当的索引
+
+### 索引管理
+
+监控和创建索引以提升性能：
+
+```javascript
+// 列出现有索引
+db.users.getIndexes()
+
+// 创建索引
+db.users.createIndex({ email: 1 }, { unique: true })
+
+// 创建复合索引
+db.orders.createIndex({ customerId: 1, date: -1 })
+```
+
+### 查询分析
+
+使用 `explain()` 了解查询性能：
+
+```javascript
+db.users.find({ age: { $gte: 18 } }).explain("executionStats")
+```
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 MongoDB 服务器
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握查询编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 MongoDB 数据
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    在数据网格中浏览和编辑文档
+  </Card>
+</CardGroup>

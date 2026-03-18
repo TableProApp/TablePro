@@ -16,9 +16,8 @@ struct ImportStateTests {
         let state = ImportState()
         #expect(state.isImporting == false)
         #expect(state.progress == 0.0)
-        #expect(state.currentStatement == "")
-        #expect(state.currentStatementIndex == 0)
-        #expect(state.totalStatements == 0)
+        #expect(state.processedStatements == 0)
+        #expect(state.estimatedTotalStatements == 0)
         #expect(state.statusMessage == "")
         #expect(state.errorMessage == nil)
     }
@@ -46,7 +45,7 @@ struct ImportStateTests {
 
         #expect(state.isImporting == true)
         #expect(state.progress == 0.0)
-        #expect(state.currentStatement == "")
+        #expect(state.processedStatements == 0)
         #expect(state.errorMessage == nil)
     }
 
@@ -60,14 +59,11 @@ struct ImportStateTests {
         state.progress = 0.75
         #expect(state.progress == 0.75)
 
-        state.currentStatement = "CREATE TABLE test"
-        #expect(state.currentStatement == "CREATE TABLE test")
+        state.processedStatements = 5
+        #expect(state.processedStatements == 5)
 
-        state.currentStatementIndex = 5
-        #expect(state.currentStatementIndex == 5)
-
-        state.totalStatements = 20
-        #expect(state.totalStatements == 20)
+        state.estimatedTotalStatements = 20
+        #expect(state.estimatedTotalStatements == 20)
 
         state.statusMessage = "Importing..."
         #expect(state.statusMessage == "Importing...")

@@ -2,13 +2,14 @@
 //  ImportSuccessView.swift
 //  TablePro
 //
-//  Success dialog shown after successful SQL import.
+//  Success dialog shown after successful import.
 //
 
 import SwiftUI
+import TableProPluginKit
 
 struct ImportSuccessView: View {
-    let result: ImportResult?
+    let result: PluginImportResult?
     let onClose: () -> Void
 
     var body: some View {
@@ -21,7 +22,7 @@ struct ImportSuccessView: View {
                 Text("Import Successful")
                     .font(.system(size: 15, weight: .semibold))
 
-                if let result = result {
+                if let result {
                     Text("\(result.executedStatements) statements executed")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)

@@ -1,78 +1,74 @@
 ---
 title: PostgreSQL
-description: Kết nối đến cơ sở dữ liệu PostgreSQL với TablePro
+description: Kết nối PostgreSQL 12+ với duyệt schema, hiển thị JSONB và driver libpq đầy đủ
 ---
 
 # Kết nối PostgreSQL
 
-TablePro hỗ trợ đầy đủ cho PostgreSQL 12 và các phiên bản mới hơn. PostgreSQL nổi tiếng với các tính năng tiên tiến, tuân thủ tiêu chuẩn và khả năng mở rộng.
+TablePro hỗ trợ PostgreSQL 12 trở lên qua libpq C connector. Duyệt schema, hiển thị kiểu dữ liệu phong phú (JSONB, arrays, UUID, inet) và mọi tính năng truy vấn PostgreSQL chuẩn đều hoạt động ngay.
 
 ## Thiết lập nhanh
 
 <Steps>
   <Step title="Mở Form kết nối">
-    Click **New Connection** từ màn hình Welcome hoặc **File** > **New Connection**
+    Nhấp **New Connection** từ màn hình Chào mừng hoặc **File** > **New Connection**
   </Step>
   <Step title="Chọn PostgreSQL">
-    Chọn **PostgreSQL** từ danh sách loại cơ sở dữ liệu
+    Chọn **PostgreSQL** từ danh sách loại database
   </Step>
   <Step title="Nhập thông tin kết nối">
     Điền host, port, username, password và tên database
   </Step>
   <Step title="Kiểm tra và kết nối">
-    Click **Test Connection**, sau đó **Create**
+    Nhấp **Test Connection**, rồi **Create**
   </Step>
 </Steps>
 
 ## Cài đặt kết nối
 
-### Các trường bắt buộc
+### Trường bắt buộc
 
 | Trường | Mô tả | Mặc định |
 |-------|-------------|---------|
 | **Name** | Tên định danh kết nối | - |
-| **Host** | Hostname hoặc IP của server | `localhost` |
-| **Port** | Cổng server PostgreSQL | `5432` |
-| **Username** | Tên người dùng PostgreSQL | `postgres` |
-| **Password** | Mật khẩu người dùng | - |
-| **Database** | Tên database để kết nối | - |
+| **Host** | Hostname hoặc IP server | `localhost` |
+| **Port** | Cổng PostgreSQL | `5432` |
+| **Username** | Người dùng PostgreSQL | `postgres` |
+| **Password** | Mật khẩu | - |
+| **Database** | Tên database | - |
 
 <Warning>
-Khác với MySQL, PostgreSQL yêu cầu chỉ định tên database để kết nối.
+Khác MySQL, PostgreSQL bắt buộc chỉ định tên database khi kết nối.
 </Warning>
 
 <Tip>
-Bạn cũng có thể kết nối trực tiếp bằng cách mở URL `postgresql://` từ trình duyệt hoặc terminal. Xem [Tham chiếu URL kết nối](/databases/connection-urls) để biết chi tiết.
+Bạn cũng có thể kết nối bằng URL `postgresql://` từ trình duyệt hoặc terminal. Xem [Tham chiếu URL kết nối](/databases/connection-urls).
 </Tip>
 
 {/* Screenshot: Biểu mẫu kết nối PostgreSQL */}
-<Frame caption="Biểu mẫu kết nối PostgreSQL">
+<Frame caption="Form kết nối PostgreSQL">
   <img
     className="block dark:hidden"
     src="/images/postgresql-connection-form.png"
-    alt="Biểu mẫu kết nối PostgreSQL"
+    alt="Form kết nối PostgreSQL"
   />
   <img
     className="hidden dark:block"
     src="/images/postgresql-connection-form-dark.png"
-    alt="Biểu mẫu kết nối PostgreSQL"
+    alt="Form kết nối PostgreSQL"
   />
 </Frame>
 
-<Tip>
-Bạn cũng có thể kết nối trực tiếp bằng cách mở URL `postgresql://` từ trình duyệt hoặc terminal. Xem [Tham chiếu URL kết nối](/databases/connection-urls) để biết thêm chi tiết.
-</Tip>
+## Ví dụ cấu hình
 
-## Các cấu hình ví dụ
-
-### Server phát triển cục bộ
+### Server dev local
 
 ```
 Name:     Local PostgreSQL
 Host:     localhost
 Port:     5432
 Username: postgres
-Password: (mật khẩu của bạn)
+Password: (mật khẩu)
 Database: postgres
 ```
 
@@ -81,7 +77,7 @@ Database: postgres
 ```
 Name:     Docker Postgres
 Host:     localhost
-Port:     5432 (hoặc cổng đã map)
+Port:     5432 (hoặc cổng mapped)
 Username: postgres
 Password: (mật khẩu từ POSTGRES_PASSWORD)
 Database: postgres
@@ -93,16 +89,16 @@ Database: postgres
 Name:     Homebrew Postgres
 Host:     localhost
 Port:     5432
-Username: (tên người dùng macOS của bạn)
+Username: (tên user macOS)
 Password: (để trống cho local trust auth)
 Database: postgres
 ```
 
 <Tip>
-Homebrew PostgreSQL thường sử dụng xác thực "trust" cho kết nối cục bộ, nghĩa là không cần mật khẩu.
+Homebrew PostgreSQL thường dùng xác thực "trust" cho kết nối local, không cần mật khẩu.
 </Tip>
 
-### Remote Server
+### Server từ xa
 
 ```
 Name:     Production DB
@@ -122,7 +118,7 @@ Name:     AWS RDS Postgres
 Host:     mydb.abc123.us-east-1.rds.amazonaws.com
 Port:     5432
 Username: postgres
-Password: (mật khẩu RDS của bạn)
+Password: (mật khẩu RDS)
 Database: postgres
 ```
 
@@ -138,16 +134,16 @@ Database: (từ DATABASE_URL)
 ```
 
 <Note>
-Phân tích `DATABASE_URL` của Heroku để trích xuất host, port, username, password và tên database.
+Phân tích `DATABASE_URL` của Heroku để lấy host, port, username, password và tên database.
 </Note>
 
 ## Tính năng
 
 ### Hỗ trợ Schema
 
-PostgreSQL tổ chức các bảng thành schemas. TablePro hiển thị:
+PostgreSQL tổ chức bảng thành schemas. TablePro hiển thị:
 
-1. Tất cả schemas có thể truy cập bởi người dùng của bạn
+1. Tất cả schemas user có quyền truy cập
 2. Các bảng trong mỗi schema
 3. Thứ tự search path
 
@@ -165,34 +161,34 @@ PostgreSQL tổ chức các bảng thành schemas. TablePro hiển thị:
   />
 </Frame>
 
-### Chuyển đổi database
+### Chuyển đổi Database
 
-Bạn có thể chuyển đổi giữa các database PostgreSQL bằng trình chuyển đổi database (**⌘K**):
+Chuyển giữa các database và schema bằng switcher (**Cmd+K**):
 
-1. Nhấn **⌘K** để mở trình chuyển đổi — hiển thị danh sách database cho kết nối PostgreSQL
-2. Chọn database đích (ví dụ: `app`, `analytics`, hoặc `postgres`)
-3. Sidebar, truy vấn và toolbar sẽ cập nhật sau khi kết nối lại
+1. Nhấn **Cmd+K** để mở switcher. Hiển thị danh sách database cho kết nối PostgreSQL
+2. Chọn database đích (ví dụ: `app`, `analytics`, `postgres`)
+3. Sidebar, truy vấn và toolbar cập nhật sau khi kết nối lại
 
 <Tip>
-Các database hệ thống (`postgres`, `template0`, `template1`) được đánh dấu là hệ thống.
+Database hệ thống (`postgres`, `template0`, `template1`) được đánh dấu là hệ thống.
 </Tip>
 
 <Note>
-Chuyển đổi database sẽ kết nối lại phiên PostgreSQL tới database đã chọn.
+Chuyển database sẽ kết nối lại phiên PostgreSQL đến database đã chọn.
 </Note>
 
 ### Thông tin bảng
 
-Cho mỗi bảng, TablePro hiển thị:
+Mỗi bảng hiển thị:
 
-- **Structure**: Các cột với kiểu dữ liệu đặc thù PostgreSQL
+- **Structure**: Cột với kiểu dữ liệu PostgreSQL
 - **Indexes**: Bao gồm partial và expression indexes
 - **Constraints**: Primary keys, foreign keys, check constraints
 - **DDL**: Câu lệnh CREATE TABLE
 
 ### Thực thi truy vấn
 
-Thực thi truy vấn với hỗ trợ đầy đủ cú pháp PostgreSQL:
+Hỗ trợ đầy đủ cú pháp PostgreSQL:
 
 ```sql
 -- Truy vấn JSONB
@@ -228,17 +224,17 @@ WHERE search_vector @@ query
 ORDER BY rank DESC;
 ```
 
-### Các kiểu dữ liệu đặc thù PostgreSQL
+### Kiểu dữ liệu PostgreSQL
 
 TablePro hiển thị đúng hệ thống kiểu phong phú của PostgreSQL:
 
 | Kiểu | Hiển thị |
 |------|---------|
-| `jsonb` | JSON được format |
+| `jsonb` | JSON format |
 | `array` | Ký hiệu array |
 | `uuid` | Chuỗi UUID |
 | `inet` | Địa chỉ IP |
-| `timestamp with time zone` | Timestamp được bản địa hóa |
+| `timestamp with time zone` | Timestamp bản địa hóa |
 | `interval` | Khoảng thời gian dễ đọc |
 | `bytea` | Chỉ thị dữ liệu binary |
 
@@ -250,30 +246,30 @@ TablePro hiển thị đúng hệ thống kiểu phong phú của PostgreSQL:
 
 **Nguyên nhân và Giải pháp**:
 
-1. **PostgreSQL server không chạy**
+1. **PostgreSQL không chạy**
    ```bash
-   # Kiểm tra PostgreSQL có đang chạy không
+   # Kiểm tra PostgreSQL
    pg_isready -h localhost -p 5432
 
-   # Khởi động PostgreSQL (macOS với Homebrew)
+   # Khởi động (macOS Homebrew)
    brew services start postgresql@16
    ```
 
 2. **PostgreSQL không chấp nhận kết nối**
    - Kiểm tra `listen_addresses` trong `postgresql.conf`
-   - Cho kết nối remote, đặt `listen_addresses = '*'`
+   - Cho kết nối remote: `listen_addresses = '*'`
 
 3. **Firewall chặn kết nối**
-   - Kiểm tra cài đặt firewall macOS
-   - Xác minh cổng 5432 có thể truy cập
+   - Kiểm tra firewall macOS
+   - Xác minh cổng 5432 truy cập được
 
 ### Authentication Failed
 
 **Triệu chứng**: "password authentication failed" hoặc "Peer authentication failed"
 
-**Hiểu về pg_hba.conf**:
+**Về pg_hba.conf**:
 
-PostgreSQL sử dụng `pg_hba.conf` để kiểm soát xác thực. Các entry phổ biến:
+PostgreSQL dùng `pg_hba.conf` để kiểm soát xác thực:
 
 ```
 # TYPE  DATABASE        USER            ADDRESS                 METHOD
@@ -285,8 +281,8 @@ host    all             all             ::1/128                 md5
 **Giải pháp**:
 
 1. **Cho password auth**: Đảm bảo `md5` hoặc `scram-sha-256` được đặt
-2. **Cho phát triển cục bộ**: Sử dụng `trust` (không cần mật khẩu)
-3. **Reset password nếu quên**:
+2. **Cho dev local**: Dùng `trust` (không cần mật khẩu)
+3. **Reset password**:
    ```sql
    ALTER USER postgres WITH PASSWORD 'newpassword';
    ```
@@ -295,7 +291,7 @@ host    all             all             ::1/128                 md5
 
 **Triệu chứng**: "database 'xyz' does not exist"
 
-**Giải pháp**: Kết nối đến database hiện có trước (thường là `postgres`), sau đó tạo database của bạn:
+**Giải pháp**: Kết nối database có sẵn trước (thường là `postgres`), rồi tạo database:
 
 ```sql
 CREATE DATABASE myapp;
@@ -313,7 +309,7 @@ CREATE DATABASE myapp;
    WHERE grantee = 'username';
    ```
 
-2. Cấp quyền cần thiết:
+2. Cấp quyền:
    ```sql
    GRANT ALL ON DATABASE mydb TO username;
    GRANT ALL ON SCHEMA public TO username;
@@ -322,24 +318,24 @@ CREATE DATABASE myapp;
 
 ### Kết nối SSL/TLS
 
-TablePro hỗ trợ mã hóa SSL/TLS cho kết nối PostgreSQL. Cấu hình SSL trong phần **SSL/TLS** của biểu mẫu kết nối.
+Cấu hình SSL trong phần **SSL/TLS** của form kết nối.
 
 | Chế độ SSL | PostgreSQL `sslmode` | Mô tả |
 |----------|---------------------|-------------|
 | **Disabled** | `disable` | Không mã hóa SSL |
-| **Preferred** | `prefer` | Sử dụng SSL nếu có sẵn, quay lại không mã hóa nếu không |
-| **Required** | `require` | Yêu cầu SSL, nhưng không xác minh chứng chỉ |
-| **Verify CA** | `verify-ca` | Yêu cầu SSL và xác minh chứng chỉ server với CA |
-| **Verify Identity** | `verify-full` | Yêu cầu SSL, xác minh CA và xác minh hostname server |
+| **Preferred** | `prefer` | Dùng SSL nếu có, không thì kết nối thường |
+| **Required** | `require` | Bắt buộc SSL, không xác minh chứng chỉ |
+| **Verify CA** | `verify-ca` | Bắt buộc SSL và xác minh chứng chỉ server với CA |
+| **Verify Identity** | `verify-full` | Bắt buộc SSL, xác minh CA và hostname server |
 
-Đối với chế độ **Verify CA** và **Verify Identity**, cung cấp đường dẫn đến chứng chỉ CA (root certificate). Bạn cũng có thể cung cấp file chứng chỉ client và khóa tùy chọn để xác thực TLS hai chiều.
+Với **Verify CA** và **Verify Identity**, cung cấp đường dẫn chứng chỉ CA (root certificate). Tùy chọn thêm file chứng chỉ client và key cho mutual TLS.
 
 <Tip>
-Nhà cung cấp cloud như AWS RDS, Heroku và Supabase thường yêu cầu SSL. Sử dụng chế độ **Required** hoặc **Verify CA** tùy theo nhu cầu bảo mật.
+Cloud providers như AWS RDS, Heroku, Supabase thường yêu cầu SSL. Dùng **Required** hoặc **Verify CA** tùy nhu cầu bảo mật.
 </Tip>
 
 <Note>
-Nếu bạn không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/databases/ssh-tunneling) là phương án thay thế mã hóa toàn bộ traffic qua đường hầm SSH.
+Nếu không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/databases/ssh-tunneling) mã hóa toàn bộ traffic qua tunnel SSH.
 </Note>
 
 {/* Screenshot: Cấu hình SSL/TLS PostgreSQL */}
@@ -356,9 +352,103 @@ Nếu bạn không muốn cấu hình chứng chỉ SSL, [SSH tunneling](/vi/dat
   />
 </Frame>
 
+## Lệnh Khởi động
+
+Đặt biến phiên tự động áp dụng mỗi khi kết nối. Cấu hình trong tab **Advanced** của form kết nối.
+
+Lệnh khởi động PostgreSQL thường dùng:
+
+```sql
+SET timezone = 'UTC';
+SET search_path TO myschema, public;
+SET statement_timeout = '30s';
+SET work_mem = '256MB';
+SET client_encoding = 'UTF8';
+```
+
+Đặt `search_path` hữu ích khi bảng nằm trong schema không mặc định. Thay vì phải ghi đầy đủ tên bảng (`myschema.users`), đặt search path một lần rồi truy vấn trực tiếp theo tên bảng.
+
+Đặt `timezone` giúp mọi truy vấn `timestamptz` trả kết quả cùng múi giờ, bất kể timezone của server hay hệ điều hành client.
+
+Xem [Lệnh Khởi động](/vi/databases/overview#lệnh-khởi-động) để biết thêm chi tiết.
+
+## Hỗ trợ file ~/.pgpass
+
+TablePro hỗ trợ file `~/.pgpass` chuẩn của PostgreSQL để xác thực không cần mật khẩu. Hữu ích cho môi trường quản lý mật khẩu bằng công cụ secrets bên ngoài.
+
+### Thiết lập
+
+1. Tạo `~/.pgpass` với các entry theo định dạng: `hostname:port:database:username:password`
+2. Đặt quyền: `chmod 0600 ~/.pgpass`
+3. Trong form kết nối, bật **Use ~/.pgpass** ở phần Authentication
+4. Để trống trường mật khẩu
+
+### Định dạng
+
+Mỗi dòng trong `~/.pgpass` theo định dạng:
+
+```
+hostname:port:database:username:password
+```
+
+Dùng `*` làm wildcard để khớp bất kỳ giá trị nào:
+
+```
+# Khớp mọi database trên localhost cho user postgres
+localhost:5432:*:postgres:mypassword
+
+# Khớp mọi host/port/database cho user cụ thể
+*:*:*:deploy_user:deploy_password
+```
+
+Escape dấu hai chấm bằng `\:` và dấu gạch chéo ngược bằng `\\`.
+
+### Xác minh
+
+Form kết nối hiển thị trạng thái khi bật **Use ~/.pgpass**:
+
+- **Xanh lá**: Tìm thấy `~/.pgpass` với entry khớp
+- **Vàng**: Không tìm thấy file, hoặc không có entry khớp
+- **Đỏ**: File có quyền không đúng (cần `chmod 0600`)
+
+<Warning>
+libpq bỏ qua `~/.pgpass` nếu quyền file không chính xác `0600`. TablePro hiển thị cảnh báo rõ ràng trong form kết nối.
+</Warning>
+
+<Note>
+Khi dùng SSH tunneling, libpq kết nối đến `127.0.0.1` trên cổng tunnel local, không phải host remote. Dùng wildcard (`*`) cho host và port trong `~/.pgpass` để khớp kết nối qua tunnel.
+</Note>
+
+## Script Pre-Connect
+
+Chạy shell script trước mỗi lần kết nối. Hữu ích cho việc làm mới credentials, cập nhật `~/.pgpass`, hoặc kiểm tra trước khi kết nối.
+
+### Thiết lập
+
+1. Mở tab **Advanced** trong form kết nối
+2. Nhập script vào trường **Pre-Connect Script**
+3. Script chạy qua `/bin/bash -c` trước mỗi kết nối
+
+### Hành vi
+
+- Script kế thừa môi trường parent (HOME, PATH, v.v.)
+- Exit code khác 0 sẽ hủy kết nối kèm thông báo lỗi
+- Timeout 10 giây: script bị dừng nếu chạy quá lâu
+- Chỉ chạy khi kết nối thủ công, không chạy khi tự động kết nối lại
+
+### Ví dụ: Làm mới pgpass từ secrets manager
+
+```bash
+#!/bin/bash
+vault read -field=password secret/postgres > ~/.pgpass_entry
+echo "db.example.com:5432:mydb:app_user:$(cat ~/.pgpass_entry)" > ~/.pgpass
+chmod 0600 ~/.pgpass
+rm ~/.pgpass_entry
+```
+
 ## PostgreSQL Extensions
 
-TablePro hoạt động với database sử dụng các extension phổ biến:
+TablePro hoạt động với database dùng các extension phổ biến:
 
 | Extension | Hỗ trợ |
 |-----------|---------|
@@ -368,7 +458,7 @@ TablePro hoạt động với database sử dụng các extension phổ biến:
 | `hstore` | Hiển thị key-value |
 | `ltree` | Hiển thị tree path |
 
-Để xem các extension đã cài đặt:
+Xem extension đã cài:
 
 ```sql
 SELECT * FROM pg_extension;
@@ -378,7 +468,7 @@ SELECT * FROM pg_extension;
 
 ### Phân tích truy vấn
 
-Sử dụng `EXPLAIN ANALYZE` để hiểu hiệu năng truy vấn:
+Dùng `EXPLAIN ANALYZE` để xem hiệu năng truy vấn:
 
 ```sql
 EXPLAIN ANALYZE
@@ -387,7 +477,7 @@ SELECT * FROM users WHERE email LIKE '%@example.com';
 
 ### Giới hạn kết nối
 
-PostgreSQL có giới hạn kết nối mặc định. Giám sát kết nối:
+PostgreSQL có giới hạn kết nối mặc định. Giám sát:
 
 ```sql
 SELECT count(*) FROM pg_stat_activity;
@@ -395,15 +485,15 @@ SELECT count(*) FROM pg_stat_activity;
 
 ### Bảng lớn
 
-Cho bảng có hàng triệu dòng:
+Cho bảng hàng triệu dòng:
 
-1. Luôn sử dụng `LIMIT` trong truy vấn khám phá
-2. Tạo indexes phù hợp
-3. Sử dụng phân trang trong data grid
+1. Luôn dùng `LIMIT` trong truy vấn khám phá
+2. Tạo index phù hợp
+3. Dùng phân trang trong data grid
 
 ## Khác biệt với MySQL
 
-Nếu bạn đến từ MySQL:
+Nếu bạn từ MySQL:
 
 | MySQL | PostgreSQL |
 |-------|------------|
@@ -418,15 +508,15 @@ Nếu bạn đến từ MySQL:
 
 <CardGroup cols={2}>
   <Card title="SSH Tunnel" icon="lock" href="/vi/databases/ssh-tunneling">
-    Kết nối an toàn đến PostgreSQL server remote
+    Kết nối an toàn đến PostgreSQL server từ xa
   </Card>
   <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Làm chủ các tính năng SQL editor
+    Các tính năng SQL editor
   </Card>
   <Card title="Nhập/Xuất" icon="file-import" href="/vi/features/import-export">
     Import và export dữ liệu PostgreSQL
   </Card>
   <Card title="Cấu trúc Bảng" icon="table" href="/vi/features/table-structure">
-    Xem và sửa đổi cấu trúc bảng
+    Xem và sửa cấu trúc bảng
   </Card>
 </CardGroup>

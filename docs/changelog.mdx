@@ -4,6 +4,195 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="March 17, 2026" description="v0.20.1">
+  ### Bug Fixes
+
+  - Fixed plugin registry compatibility with PluginKit version 2
+</Update>
+
+<Update label="March 17, 2026" description="v0.20.0">
+  ### New Features
+
+  - **Turkish Language**: Added Turkish (Türkçe) as a new language option in Settings > General
+  - **etcd v3 Support**: New database plugin with prefix-tree key browsing, etcdctl syntax editor, lease management, watch, mTLS, auth, and cluster info
+  - **Save Changes Button**: New toolbar button for committing pending data edits
+  - **Connection Delete Confirmation**: Confirmation dialog before deleting a connection
+  - **Unsaved Edit Protection**: Confirmation dialog before sort, pagination, filter, or search discards unsaved edits
+
+  ### Bug Fixes
+
+  - Fixed SSH tunnel crashes caused by concurrent libssh2 calls on the same session
+  - Fixed unsaved cell edits lost when switching tabs, sorting, paginating, filtering, or switching apps
+  - Fixed auto-reconnect and health monitor silently discarding unsaved changes
+  - Fixed SSH tunnel recovery failing after tunnel death due to stale driver state
+  - Fixed health monitor ping interfering with active user queries
+  - Fixed connection test not cleaning up SSH tunnel on completion
+  - Fixed test connection success indicator not resetting after field changes
+  - Fixed SSH port field accepting invalid values
+  - Fixed DROP TABLE and TRUNCATE TABLE sidebar operations producing no SQL for plugin-based drivers
+  - Fixed foreign key navigation arrows not appearing after switching databases with Cmd+K on MySQL
+  - Fixed sidebar not refreshing after creating or dropping tables
+  - Fixed dropping a table disconnecting the database when the dropped table's tab was active
+</Update>
+
+<Update label="March 16, 2026" description="v0.19.1">
+  ### Bug Fixes
+
+  - Fixed SSH tunnel connections timing out when connecting through SSH
+  - Fixed plugin metadata dispatch failing for externally installed plugins
+  - Improved SSH public key authentication error messages with detailed failure reasons
+</Update>
+
+<Update label="March 15, 2026" description="v0.19.0">
+  ### New Features
+
+  - **iCloud Sync (Pro)**: Sync connections, groups, tags, settings, and query history across Macs with per-category toggles, conflict resolution, and real-time status indicator
+  - **SQL Favorites**: Save frequently used queries with optional keyword bindings for autocomplete expansion
+  - **Copy as JSON**: Copy selected rows as JSON from context menu and Edit menu
+  - **Help Menu**: Quick links to website, documentation, GitHub, and sponsor page
+  - **BLOB Hex Display**: View BLOB data as hex dump in the detail view sidebar
+
+  ### Bug Fixes
+
+  - Fixed SSH agent connections failing when socket path contains `~` (e.g., 1Password agent)
+  - Fixed Keychain authorization prompt appearing on every table open
+</Update>
+
+<Update label="March 14, 2026" description="v0.18.1">
+  ### Bug Fixes
+
+  - Fixed plugin download counts resetting to zero when a new plugin version is released
+</Update>
+
+<Update label="March 14, 2026" description="v0.18.0">
+  ### New Features
+
+  - **Theme Engine**: 4 built-in themes (Default Light/Dark, Dracula, Nord) with full color, font, and layout customization — import/export themes as JSON
+  - **Theme Registry**: Browse, install, and update community themes from the plugin registry
+  - **Cassandra & ScyllaDB Support**: Connect to Cassandra and ScyllaDB databases via a downloadable plugin
+  - **SSH Two-Factor Authentication**: TOTP support with auto-generate and prompt modes for SSH connections
+  - **SSH Host Key Verification**: Fingerprint confirmation dialog for new and changed host keys
+  - **Keyboard Interactive SSH**: Support for keyboard-interactive authentication method
+  - **Column Visibility**: Toggle columns on/off via status bar button or header context menu
+  - **Copy as SQL**: Copy selected rows as INSERT or UPDATE statements from the data grid context menu
+  - **PostgreSQL `.pgpass` Support**: Automatic password lookup from `~/.pgpass` for PostgreSQL and Redshift connections
+  - **Pre-connect Script**: Run a shell command before each connection via Connection > Advanced
+  - **Custom Plugin Registry URL**: Configure a private/enterprise registry URL for plugin distribution
+
+  ### Improvements
+
+  - MSSQL, MongoDB, Redis, XLSX export, MQL export, and SQL import extracted into downloadable plugins — MySQL, PostgreSQL, SQLite, CSV, JSON, and SQL export remain built-in
+  - Redesigned Plugins settings with master-detail layout and download counts
+  - All database-specific behavior now driven by plugin metadata instead of hardcoded switches, enabling third-party database plugins
+  - Connection form fields, sidebar labels, and SQL dialect features are now fully plugin-driven
+  - App-level appearance mode (Light, Dark, Auto) independent of theme selection
+  - MSSQL query cancellation and lock timeout support
+
+  ### Bug Fixes
+
+  - Fixed plugin icon rendering not supporting custom asset images alongside SF Symbols
+</Update>
+
+<Update label="March 11, 2026" description="v0.17.0">
+  ### New Features
+
+  - **DuckDB Support**: Connect to `.duckdb` files, query CSV/Parquet/JSON files via SQL, schema navigation, and extension management
+  - **MongoDB Auth Database**: Configure `authSource` to authenticate against any database instead of the default `admin`
+  - **Safe Mode Levels**: 6 per-connection levels (Silent, Alert, Alert Full, Safe Mode, Safe Mode Full, Read-Only) replacing the boolean read-only toggle, with confirmation dialogs and Touch ID/password authentication
+  - **Preview Tabs**: Single-click opens a temporary preview tab, double-click or editing promotes it to a permanent tab
+  - **Import Plugin System**: SQL import extracted into a `.tableplugin` bundle with support for `.sql` and `.gz` compressed files
+  - **Open SQLite from Finder**: Double-click `.sqlite`, `.sqlite3`, `.db3`, `.s3db`, `.sl3`, and `.sqlitedb` files to open them directly
+  - **Plugin Install Prompt**: Automatic prompt to install missing driver plugins when connecting to an unsupported database type
+
+  ### Improvements
+
+  - Oracle and ClickHouse shipped as downloadable plugins, reducing app bundle size
+  - SQLite driver extracted from built-in bundle to downloadable plugin
+  - Export plugin options (CSV, XLSX, JSON, SQL, MQL) now persist across app restarts
+  - Plugins can declare settings views rendered in Settings > Plugins
+  - True prepared statements for MSSQL and ClickHouse, eliminating string interpolation
+  - Batch query operations for MSSQL, Oracle, ClickHouse, and SQLite, eliminating N+1 patterns
+  - Unified error formatting and localized error messages across all database drivers
+  - Standardized parameter binding with type-aware numeric handling and NULL literal support
+
+  ### Bug Fixes
+
+  - Fixed MongoDB Read Preference, Write Concern, and Redis Database not persisting across app restarts
+  - Fixed DELETE and UPDATE queries using all columns in WHERE clause instead of primary key for PostgreSQL, Redshift, MSSQL, and ClickHouse
+  - Fixed SSL/TLS always being enabled for MongoDB, Redis, and ClickHouse connections
+  - Fixed Redis sidebar click showing data briefly then going empty
+  - Fixed MongoDB showing "Invalid database name" when connecting without a database name
+  - Fixed result truncation at 100K rows being silently discarded instead of reported to UI
+</Update>
+
+<Update label="March 9, 2026" description="v0.16.1">
+  ### Bug Fixes
+
+  - Fixed stale filter causing repeated errors when restoring tabs after switching database or schema
+  - Fixed sidebar showing old tables during database/schema switch instead of a loading indicator
+  - Fixed sidebar search field disappearing when no tables match filter on macOS 15 and earlier
+  - Fixed disabled plugin database types still appearing in connection form picker
+  - Fixed main window not closing before reopening welcome screen on connection failure
+</Update>
+
+<Update label="March 9, 2026" description="v0.16.0">
+  ### New Features
+
+  - **Plugin System**: All 8 database drivers and 5 export formats extracted into `.tableplugin` bundles loaded at runtime — enables third-party plugins
+  - **Plugin Marketplace**: Browse, search, and install plugins from the GitHub-hosted registry with checksum verification
+  - **Settings > Plugins**: Manage installed plugins — enable/disable, install from file or marketplace, view details
+  - **ClickHouse Support**: Query ClickHouse databases with progress tracking, EXPLAIN variants, TLS/HTTPS, server-side cancellation, and Parts view
+  - **Startup Commands**: Run custom SQL after connecting (e.g., `SET time_zone`) via Connection > Advanced tab
+  - **Chinese Simplified Localization**: Full zh-Hans translation for the entire app UI
+
+  ### Improvements
+
+  - Reduced memory by ~80-130 MB per connection: eliminated dedicated ping driver, lazy plugin loading, RowBuffer deduplication, metadata driver consolidation
+  - Consolidated per-editor NSEvent monitors into shared singleton (O(n) to O(1) per event)
+  - Reorganized project into domain-specific subdirectories
+
+  ### Bug Fixes
+
+  - Fixed inspector separator bleeding into toolbar area with default connection color
+  - Fixed inspector toggle lagging due to synchronous UserDefaults writes during animation
+</Update>
+
+<Update label="March 8, 2026" description="v0.15.0">
+  ### New Features
+
+  - **Oracle Database Support**: Connect to Oracle databases via OCI (Oracle Call Interface)
+  - **Database URL Scheme**: Open connections directly from terminal with `open "mysql://user@host/db" -a TablePro` — supports MySQL, PostgreSQL, SQLite, MongoDB, Redis, MSSQL, and Oracle
+  - **SSH Agent Authentication**: Use SSH Agent for tunnel authentication, compatible with 1Password SSH Agent, Secretive, and ssh-agent
+  - **Multi-Jump SSH**: Chain multiple SSH hops (ProxyJump) to reach databases through bastion hosts — configure jump hosts in the connection form or import from `~/.ssh/config`
+
+  ### Improvements
+
+  - Reduced app binary size by ~55% by replacing CodeEditLanguages xcframework (38 grammars) with a local package compiling only SQL, Bash, and JavaScript
+
+  ### Bug Fixes
+
+  - Fixed memory leak where session state objects were recreated on every tab open, causing 785MB usage at 5 tabs
+  - Fixed per-cell field editor allocation in DataGrid creating 180+ NSTextView instances instead of sharing one
+  - Fixed NSEvent monitor not removed on all popover dismissal paths in connection switcher
+  - Fixed race condition in FreeTDS `disconnect()` where `dbproc` was set to nil without holding the lock
+  - Fixed JSON encoding and file I/O blocking the main thread in TabStateStorage
+  - Fixed MySQL/MariaDB getting `BEGIN` instead of `START TRANSACTION` in table operations
+  - Fixed port resetting to default value when editing a connection with a custom port
+  - Fixed data races in `MainContentCoordinator`, `LibPQConnection`, and `VimKeyInterceptor`
+  - Fixed SSH askpass script written with world-readable permissions
+  - Fixed welcome screen showing blank panel when connections have orphaned group IDs
+  - Fixed multiple tabs auto-executing queries simultaneously on connection restore
+  - Fixed unescaped identifiers in MySQL `SHOW CREATE TABLE` queries allowing SQL injection via table names
+  - Fixed `QueryResultRow` equality ignoring cell values, preventing SwiftUI from re-rendering updated rows
+  - Fixed `Cmd+Delete` in sidebar search clearing the query editor
+</Update>
+
+<Update label="March 6, 2026" description="v0.14.1">
+  ### New Features
+
+  - **PostgreSQL Database & Schema Switching**: Switch databases and schemas for PostgreSQL connections via ⌘K
+</Update>
+
 <Update label="March 5, 2026" description="v0.14.0">
   ### New Features
 
@@ -41,7 +230,7 @@ rss: true
   - **Deep Links**: Open connections, tables, queries, and import connections via `tablepro://` URLs
   - **Copy as URL**: Right-click a connection to copy its details as a connection string (e.g., `mysql://user:pass@host/db`)
   - **Auto-show Inspector**: Automatically open the right sidebar when selecting a row (Settings > Data Grid)
-  - **Homebrew Cask**: Install via `brew install datlechin/tap/tablepro`
+  - **Homebrew Cask**: Install via `brew install --cask tablepro`
 
   ### Improvements
 

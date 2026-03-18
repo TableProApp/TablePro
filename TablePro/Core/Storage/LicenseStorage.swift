@@ -8,7 +8,6 @@
 import Foundation
 import IOKit
 import os
-import Security
 
 /// Persists license data using Keychain (secrets) and UserDefaults (metadata)
 final class LicenseStorage {
@@ -29,68 +28,17 @@ final class LicenseStorage {
 
     /// Save license key to Keychain
     func saveLicenseKey(_ key: String) {
-        let account = Keys.keychainLicenseKey
-
-        // Delete existing
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.TablePro",
-            kSecAttrAccount as String: account,
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        guard let data = key.data(using: .utf8) else { return }
-
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.TablePro",
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
-        ]
-
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        if status != errSecSuccess {
-            Self.logger.error("Failed to save license key: OSStatus \(status)")
-        }
+        KeychainHelper.shared.saveString(key, forKey: Keys.keychainLicenseKey)
     }
 
     /// Load license key from Keychain
     func loadLicenseKey() -> String? {
-        let account = Keys.keychainLicenseKey
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.TablePro",
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let key = String(data: data, encoding: .utf8)
-        else {
-            return nil
-        }
-
-        return key
+        KeychainHelper.shared.loadString(forKey: Keys.keychainLicenseKey)
     }
 
     /// Delete license key from Keychain
     func deleteLicenseKey() {
-        let account = Keys.keychainLicenseKey
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "com.TablePro",
-            kSecAttrAccount as String: account,
-        ]
-
-        SecItemDelete(query as CFDictionary)
+        KeychainHelper.shared.delete(key: Keys.keychainLicenseKey)
     }
 
     // MARK: - Signed Payload (UserDefaults)

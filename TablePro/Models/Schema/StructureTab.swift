@@ -13,4 +13,5 @@ enum StructureTab: String, CaseIterable, Hashable {
     case indexes = "Indexes"
     case foreignKeys = "Foreign Keys"
     case ddl = "DDL"
+    case parts = "Parts"
 }

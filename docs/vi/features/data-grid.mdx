@@ -1,11 +1,11 @@
 ---
 title: Bảng Dữ Liệu
-description: Xem, chỉnh sửa và quản lý dữ liệu trong giao diện mạnh mẽ giống bảng tính
+description: Grid kiểu bảng tính với chỉnh sửa inline, editor theo kiểu dữ liệu, và sao chép TSV/CSV/JSON
 ---
 
 # Bảng Dữ Liệu
 
-Data grid hiển thị kết quả query và nội dung bảng trong giao diện giống bảng tính. Nó hỗ trợ xem, chỉnh sửa, sắp xếp và xuất dữ liệu với hiệu suất cao ngay cả với dataset lớn.
+Kết quả query và nội dung bảng hiển thị trong grid kiểu bảng tính. Chỉnh sửa ô trực tiếp, sắp xếp cột, sao chép nhiều định dạng, và phân trang qua tập kết quả lớn.
 
 {/* Screenshot: Data grid showing query results with multiple columns */}
 <Frame caption="Data grid hiển thị kết quả query">
@@ -25,7 +25,7 @@ Data grid hiển thị kết quả query và nội dung bảng trong giao diện
 
 ### Mở Bảng
 
-Để xem nội dung của bảng:
+Để xem nội dung bảng:
 
 1. Mở rộng database trong sidebar
 2. Click vào tên bảng
@@ -42,41 +42,27 @@ SELECT * FROM users;
 Header của data grid hiển thị:
 
 - **Số hàng**: Số lượng hàng trả về
-- **Thời gian thực thi**: Thời gian query mất bao lâu
-- **Hàng bị ảnh hưởng**: Đối với query UPDATE/DELETE
-
-{/* Screenshot: Data grid header showing row count and execution time */}
-<Frame caption="Thông tin kết quả query">
-  <img
-    className="block dark:hidden"
-    src="/images/data-grid-header.png"
-    alt="Result info"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/data-grid-header-dark.png"
-    alt="Result info"
-  />
-</Frame>
+- **Thời gian thực thi**: Query mất bao lâu
+- **Hàng bị ảnh hưởng**: Cho query UPDATE/DELETE
 
 ## Tính Năng Cột
 
 ### Thay Đổi Kích Thước Cột
 
 - Kéo viền cột để thay đổi kích thước
-- Double-click vào viền để tự động vừa chiều rộng cột
-- Chiều rộng cột được ghi nhớ cho mỗi bảng
+- Nhấp đúp viền để tự động vừa chiều rộng
+- Chiều rộng cột được ghi nhớ theo bảng
 
 ### Sắp Xếp Dữ Liệu
 
-Click vào header cột để sắp xếp:
+Click header cột để sắp xếp:
 
-- **Click đầu tiên**: Sắp xếp tăng dần (A-Z, 0-9)
-- **Click thứ hai**: Sắp xếp giảm dần (Z-A, 9-0)
+- **Click đầu tiên**: Tăng dần (A-Z, 0-9)
+- **Click thứ hai**: Giảm dần (Z-A, 9-0)
 - **Click thứ ba**: Bỏ sắp xếp
 
 <Tip>
-Sắp xếp được thực hiện cục bộ trên dữ liệu đã tải. Để sắp xếp phía server, sử dụng `ORDER BY` trong truy vấn của bạn.
+Sắp xếp chạy cục bộ trên dữ liệu đã tải. Để sắp xếp phía server, dùng `ORDER BY` trong query.
 </Tip>
 
 {/* Ảnh chụp: Header cột với chỉ báo sắp xếp */}
@@ -95,7 +81,7 @@ Sắp xếp được thực hiện cục bộ trên dữ liệu đã tải. Đ�
 
 ### Các Loại Cột
 
-Data grid hiển thị các loại dữ liệu khác nhau một cách phù hợp:
+Mỗi kiểu dữ liệu được hiển thị phù hợp:
 
 | Loại | Hiển thị |
 |------|---------|
@@ -103,20 +89,20 @@ Data grid hiển thị các loại dữ liệu khác nhau một cách phù hợp
 | Integer | Số căn phải |
 | Decimal/Float | Số được định dạng |
 | Boolean | True/False |
-| Date/Time | Chuỗi ngày được định dạng |
+| Date/Time | Chuỗi ngày định dạng |
 | NULL | Chỉ báo "NULL" có style |
-| JSON | JSON được định dạng (có thể mở rộng) |
-| ENUM | Popover dropdown chỉnh sửa |
-| SET | Popover checkbox chỉnh sửa |
+| JSON | JSON định dạng (mở rộng được) |
+| ENUM | Popover dropdown |
+| SET | Popover checkbox |
 | Binary/BLOB | Chỉ báo nhị phân |
 
 ## Chỉnh Sửa Dữ Liệu
 
 ### Chỉnh Sửa Inline
 
-Để chỉnh sửa một ô:
+Để chỉnh sửa ô:
 
-1. Double-click vào ô
+1. Nhấp đúp vào ô
 2. Nhập giá trị mới
 3. Nhấn `Enter` để xác nhận hoặc `Escape` để hủy
 
@@ -138,23 +124,23 @@ Data grid hiển thị các loại dữ liệu khác nhau một cách phù hợp
 
 | Chế độ | Kích hoạt | Mô tả |
 |------|---------|-------------|
-| Xem | Mặc định | Hiển thị chỉ đọc |
-| Chỉnh sửa | Double-click | Sửa giá trị ô |
+| Xem | Mặc định | Chỉ đọc |
+| Chỉnh sửa | Nhấp đúp | Sửa giá trị ô |
 
 ### Bộ Chọn Ngày/Giờ
 
-Khi bạn chỉnh sửa ô trong cột date, datetime, timestamp hoặc time, một popover bộ chọn ngày gốc sẽ xuất hiện thay vì trường văn bản thông thường. Bộ chọn tự động điều chỉnh theo loại cột:
+Chỉnh sửa cột date, datetime, timestamp hoặc time mở popover chọn ngày gốc thay vì text field. Bộ chọn tự điều chỉnh theo kiểu cột:
 
-| Loại Cột | Phần Tử Bộ Chọn |
+| Loại Cột | Phần Tử |
 |-------------|----------------|
 | `DATE` | Năm, tháng, ngày |
 | `DATETIME` / `TIMESTAMP` | Năm, tháng, ngày, giờ, phút, giây |
 | `TIME` | Giờ, phút, giây |
 
-Bộ chọn hỗ trợ các định dạng ngày phổ biến từ cơ sở dữ liệu và xuất giá trị theo định dạng chuẩn (`YYYY-MM-DD HH:MM:SS`). Sử dụng điều khiển stepper hoặc nhập trực tiếp vào các trường của bộ chọn để thay đổi ngày.
+Bộ chọn xử lý các định dạng ngày phổ biến và xuất giá trị theo chuẩn (`YYYY-MM-DD HH:MM:SS`). Dùng stepper hoặc nhập trực tiếp.
 
 <Tip>
-Bộ chọn ngày tự động phân tích giá trị ô hiện tại. Nếu giá trị không thể phân tích được, nó sẽ mặc định là ngày/giờ hiện tại.
+Bộ chọn ngày tự động phân tích giá trị hiện tại. Nếu không phân tích được, mặc định là ngày/giờ hiện tại.
 </Tip>
 
 {/* Ảnh chụp: Bộ chọn ngày cho cột date */}
@@ -173,15 +159,15 @@ Bộ chọn ngày tự động phân tích giá trị ô hiện tại. Nếu gi�
 
 ### Tra Cứu Khóa Ngoại
 
-Khi bạn chỉnh sửa ô trong cột khóa ngoại, một dropdown tìm kiếm sẽ xuất hiện hiển thị các giá trị hợp lệ từ bảng được tham chiếu:
+Chỉnh sửa cột foreign key mở dropdown tìm kiếm hiển thị giá trị hợp lệ từ bảng tham chiếu:
 
 - Dropdown hiển thị cả giá trị FK và cột mô tả (ví dụ: `1 — John Doe`)
-- Nhập vào trường tìm kiếm để lọc giá trị
-- Click đơn vào giá trị để highlight; double-click hoặc nhấn `Enter` để áp dụng lựa chọn
-- Popover tự động phát hiện cột hiển thị tốt nhất từ bảng được tham chiếu
+- Gõ vào ô tìm kiếm để lọc
+- Click đơn để highlight; nhấp đúp hoặc `Enter` để áp dụng
+- Popover tự phát hiện cột hiển thị tốt nhất từ bảng tham chiếu
 
 <Tip>
-Tra cứu khóa ngoại lấy tối đa 1.000 giá trị từ bảng được tham chiếu. Với các bảng có nhiều giá trị hơn, sử dụng trường tìm kiếm để thu hẹp kết quả.
+Tra cứu foreign key lấy tối đa 1.000 giá trị từ bảng tham chiếu. Với bảng lớn hơn, dùng ô tìm kiếm để thu hẹp.
 </Tip>
 
 {/* Ảnh chụp: Tra cứu khóa ngoại với tìm kiếm */}
@@ -200,13 +186,13 @@ Tra cứu khóa ngoại lấy tối đa 1.000 giá trị từ bảng được th
 
 ### Trình Chỉnh Sửa Boolean
 
-Khi bạn double-click vào ô trong cột BOOLEAN, BIT, hoặc TINYINT(1), một popover checkbox sẽ xuất hiện để chuyển đổi nhanh giữa true/false:
+Nhấp đúp ô BOOLEAN, BIT, hoặc TINYINT(1) mở popover checkbox:
 
-- **Checkbox**: Click để chuyển đổi giữa true và false
-- **OK/Cancel**: Click **OK** hoặc nhấn `Enter` để xác nhận; click **Cancel** hoặc nhấn `Escape` để hủy
-- **Cột nullable**: Trạng thái không xác định thứ ba đại diện cho NULL
+- **Checkbox**: Click để chuyển đổi true/false
+- **OK/Cancel**: Click **OK** hoặc `Enter` để xác nhận; **Cancel** hoặc `Escape` để hủy
+- **Cột nullable**: Trạng thái không xác định đại diện NULL
 
-Hành vi theo từng cơ sở dữ liệu:
+Hành vi theo database:
 
 | Cơ sở dữ liệu | Loại cột | Giá trị |
 |----------------|----------|---------|
@@ -215,7 +201,7 @@ Hành vi theo từng cơ sở dữ liệu:
 | SQLite | `INTEGER` | `0` / `1` |
 
 <Tip>
-Đối với cột boolean nullable, checkbox hỗ trợ ba trạng thái: đã chọn (true), bỏ chọn (false) và không xác định (NULL).
+Với cột boolean nullable, checkbox có ba trạng thái: checked (true), unchecked (false) và indeterminate (NULL).
 </Tip>
 
 {/* Ảnh chụp: Trình chỉnh sửa checkbox boolean */}
@@ -234,20 +220,20 @@ Hành vi theo từng cơ sở dữ liệu:
 
 ### Trình Chỉnh Sửa Cột ENUM
 
-Khi bạn double-click vào ô trong cột ENUM, một popover dropdown có tìm kiếm sẽ xuất hiện hiển thị tất cả giá trị được phép:
+Nhấp đúp ô ENUM mở dropdown tìm kiếm hiển thị tất cả giá trị được phép:
 
-- **Ô tìm kiếm**: Gõ để lọc danh sách giá trị
-- **Tùy chọn NULL**: Hiển thị ở đầu cho cột nullable (hiển thị chữ nghiêng)
-- **Giá trị hiện tại**: Được tô màu accent
-- Single-click để chọn và xác nhận ngay lập tức
-- Nhấn `Escape` để hủy
+- **Ô tìm kiếm**: Gõ để lọc danh sách
+- **NULL**: Hiển thị đầu danh sách cho cột nullable (chữ nghiêng)
+- **Giá trị hiện tại**: Tô màu accent
+- Click đơn để chọn và áp dụng ngay
+- `Escape` để hủy
 
-Tính năng này hoạt động trên tất cả các cơ sở dữ liệu được hỗ trợ:
+Hoạt động trên tất cả database hỗ trợ:
 
 | Cơ sở dữ liệu | Nguồn ENUM |
 |----------------|------------|
 | MySQL/MariaDB | Kiểu `ENUM` gốc từ định nghĩa cột |
-| PostgreSQL | Kiểu enum do người dùng định nghĩa (qua catalog `pg_enum`) |
+| PostgreSQL | Kiểu enum do người dùng định nghĩa (qua `pg_enum`) |
 | SQLite | Ràng buộc `CHECK(column IN ('val1','val2'))` |
 
 {/* Ảnh chụp: Bộ chọn giá trị ENUM */}
@@ -266,15 +252,15 @@ Tính năng này hoạt động trên tất cả các cơ sở dữ liệu đư�
 
 ### Trình Chỉnh Sửa Cột SET
 
-Khi bạn double-click vào ô trong cột SET (MySQL/MariaDB), một popover checkbox sẽ xuất hiện:
+Nhấp đúp ô SET (MySQL/MariaDB) mở popover checkbox:
 
-- Mỗi giá trị được phép hiển thị dưới dạng checkbox
-- Các giá trị đang được chọn sẽ được tick sẵn (phân tích từ giá trị phân tách bằng dấu phẩy)
-- Click **OK** hoặc nhấn `Enter` để xác nhận các giá trị đã chọn (nối bằng dấu phẩy)
-- Click **Cancel** hoặc nhấn `Escape` để hủy thay đổi
+- Mỗi giá trị hiển thị dưới dạng checkbox
+- Giá trị đang chọn được tick sẵn (phân tích từ chuỗi phân tách dấu phẩy)
+- Click **OK** hoặc `Enter` để xác nhận (nối bằng dấu phẩy)
+- Click **Cancel** hoặc `Escape` để hủy
 
 <Tip>
-Nếu giá trị ENUM/SET không có sẵn (ví dụ từ kết quả truy vấn phức tạp thay vì duyệt bảng trực tiếp), ô sẽ chuyển về chỉnh sửa inline text.
+Nếu giá trị ENUM/SET không có sẵn (ví dụ từ kết quả query phức tạp thay vì duyệt bảng), ô chuyển về chỉnh sửa text inline.
 </Tip>
 
 {/* Ảnh chụp: Trình chỉnh sửa đa chọn giá trị SET */}
@@ -293,15 +279,15 @@ Nếu giá trị ENUM/SET không có sẵn (ví dụ từ kết quả truy vấn
 
 ### Trình Soạn Thảo JSON
 
-Khi bạn chỉnh sửa ô trong cột JSON hoặc JSONB, một popover trình soạn thảo JSON chuyên dụng sẽ xuất hiện:
+Chỉnh sửa ô JSON hoặc JSONB mở popover editor JSON chuyên dụng:
 
-- **Xác thực thời gian thực**: Hiển thị JSON có hợp lệ hay không khi bạn nhập
-- **Save/Cancel**: Các nút rõ ràng để lưu hoặc hủy thay đổi
+- **Xác thực real-time**: Hiển thị JSON hợp lệ hay không khi bạn nhập
+- **Save/Cancel**: Nút rõ ràng để lưu hoặc hủy
 
-Trình soạn thảo xác thực JSON trước khi lưu. Nếu văn bản không phải JSON hợp lệ, bạn sẽ thấy hộp thoại xác nhận trước khi giá trị được lưu.
+Editor xác thực JSON trước khi lưu. JSON không hợp lệ sẽ hiện hộp thoại xác nhận trước khi lưu.
 
 <Tip>
-Giá trị JSON được tự động thu gọn (minified) khi lưu vào cơ sở dữ liệu để lưu trữ hiệu quả.
+Giá trị JSON được tự động compact (minified) khi lưu vào database.
 </Tip>
 
 {/* Ảnh chụp: Trình soạn thảo JSON với xác thực */}
@@ -320,11 +306,11 @@ Giá trị JSON được tự động thu gọn (minified) khi lưu vào cơ s�
 
 ### Chỉnh Sửa Nhiều Hàng
 
-Bạn có thể thực hiện thao tác trên nhiều hàng cùng lúc:
+Thao tác trên nhiều hàng cùng lúc:
 
-- **Chọn nhiều hàng**: Click vào số hàng trong khi giữ `Cmd` (không liền kề) hoặc `Shift` (phạm vi)
-- **Xóa nhiều hàng**: Chọn các hàng, sau đó click **Delete** hoặc nhấn phím `Delete`
-- **Thao tác nhiều hàng**: Sử dụng nút toolbar để thực hiện trên lựa chọn hiện tại
+- **Chọn nhiều hàng**: Click số hàng giữ `Cmd` (không liền kề) hoặc `Shift` (phạm vi)
+- **Xóa nhiều hàng**: Chọn hàng, click **Delete** hoặc phím `Delete`
+- **Thao tác nhiều hàng**: Dùng nút toolbar cho lựa chọn hiện tại
 
 {/* Ảnh chụp: Nhiều hàng được chọn để chỉnh sửa */}
 <Frame caption="Nhiều hàng được chọn để chỉnh sửa">
@@ -342,24 +328,24 @@ Bạn có thể thực hiện thao tác trên nhiều hàng cùng lúc:
 
 ### Lưu Thay Đổi
 
-Các thay đổi được xếp hàng và không được áp dụng vào database ngay lập tức. Sử dụng các hành động sau để quản lý thay đổi đang chờ:
+Thay đổi được xếp hàng, không áp dụng ngay. Quản lý thay đổi đang chờ:
 
-- **Xem trước SQL**: Click nút **Preview SQL** (biểu tượng mắt) hoặc nhấn `Cmd+Shift+P` để xem trước các câu lệnh SQL đang chờ trước khi commit
-- **Commit**: Click nút **Commit** (hoặc nhấn `Cmd+S`) để áp dụng tất cả thay đổi đang chờ vào database
-- **Discard**: Click nút **Discard** để hoàn tác tất cả thay đổi đang chờ
-- **Undo/Redo**: Nhấn `Cmd+Z` để undo hoặc `Cmd+Shift+Z` để redo các chỉnh sửa riêng lẻ trước khi commit
+- **Xem trước SQL**: Click **Preview SQL** (biểu tượng mắt) hoặc `Cmd+Shift+P` để xem SQL đang chờ
+- **Commit**: Click **Commit** (hoặc `Cmd+S`) để áp dụng tất cả thay đổi
+- **Discard**: Click **Discard** để hoàn tác tất cả
+- **Undo/Redo**: `Cmd+Z` để undo, `Cmd+Shift+Z` để redo trước khi commit
 
-Xem [Change Tracking](/features/change-tracking) để biết chi tiết đầy đủ về cách thay đổi được xếp hàng và áp dụng.
+Xem [Change Tracking](/features/change-tracking) để biết chi tiết.
 
 <Warning>
-Chỉnh sửa chỉ khả dụng cho query `SELECT * FROM table` đơn giản. Các query phức tạp với join hoặc aggregation là chỉ đọc.
+Chỉnh sửa khả dụng cho query `SELECT * FROM table` đơn giản. Query với join hoặc aggregation là chỉ đọc.
 </Warning>
 
 ### Thêm Hàng Mới
 
 Để thêm hàng mới:
 
-1. Click nút **+** trong toolbar (hoặc sử dụng phím tắt)
+1. Click nút **+** trong toolbar (hoặc phím tắt)
 2. Điền giá trị cho mỗi cột
 3. Apply changes để lưu
 
@@ -367,25 +353,25 @@ Chỉnh sửa chỉ khả dụng cho query `SELECT * FROM table` đơn giản. C
 
 Để xóa hàng:
 
-1. Chọn (các) hàng cần xóa
-2. Click nút **Delete** hoặc nhấn phím `Delete`
-3. Xác nhận việc xóa
+1. Chọn hàng cần xóa
+2. Click **Delete** hoặc phím `Delete`
+3. Xác nhận
 4. Apply changes để thực thi
 
 ## Chỉ Báo Thay Đổi
 
-Khi bạn thực hiện chỉnh sửa, TablePro cung cấp phản hồi trực quan về các thay đổi đang chờ:
+Thay đổi đang chờ có phản hồi trực quan:
 
-- **Ô đã sửa đổi** được làm nổi bật bằng màu nền riêng biệt
+- **Ô đã sửa** tô nền khác biệt
 - **Hàng mới** hiển thị chỉ báo chèn
 - **Hàng đã xóa** hiển thị chỉ báo xóa
-- **Toolbar** hiển thị số lượng thay đổi đang chờ
+- **Toolbar** hiển thị số thay đổi đang chờ
 
-Các chỉ báo này giúp bạn xem lại tất cả các sửa đổi trước khi commit chúng vào database. Xem [Change Tracking](/features/change-tracking) để biết chi tiết về cách hoạt động của change tracking.
+Xem lại tất cả sửa đổi trước khi commit. Xem [Change Tracking](/features/change-tracking) để biết chi tiết.
 
 ## Cell Inspector
 
-Cell Inspector là bảng sidebar bên phải cung cấp thông tin chi tiết về hàng đã chọn hoặc bảng hiện tại. Bật/tắt bằng `Cmd+Shift+B` hoặc qua **View** > **Toggle Cell Inspector**.
+Cell Inspector là panel sidebar bên phải hiển thị thông tin chi tiết về hàng đã chọn hoặc bảng hiện tại. Bật/tắt bằng `Cmd+Shift+B` hoặc **View** > **Toggle Cell Inspector**.
 
 {/* Screenshot: Cell Inspector showing row details */}
 <Frame caption="Cell Inspector hiển thị chi tiết hàng">
@@ -403,56 +389,56 @@ Cell Inspector là bảng sidebar bên phải cung cấp thông tin chi tiết v
 
 ### Chế Độ Chi Tiết Hàng
 
-Khi một hàng được chọn, Cell Inspector hiển thị tất cả giá trị cột cho hàng đó:
+Khi chọn một hàng, Cell Inspector hiển thị tất cả giá trị cột:
 
-- **Danh sách cột có tìm kiếm**: Tìm nhanh cột bằng cách gõ vào trường tìm kiếm
-- **Tên cột và kiểu dữ liệu**: Mỗi mục hiển thị tên cột kèm kiểu dữ liệu
-- **Giá trị ô đầy đủ**: Giá trị được hiển thị không bị cắt ngắn, giúp bạn xem toàn bộ nội dung
-- **Chỉnh sửa văn bản nhiều dòng**: Cột TEXT/VARCHAR cung cấp vùng soạn thảo nhiều dòng để chỉnh sửa giá trị dài
-- **Chỉ báo chỉ đọc**: Ô không thể chỉnh sửa được đánh dấu rõ ràng là chỉ đọc
+- **Danh sách cột có tìm kiếm**: Tìm nhanh cột bằng ô tìm kiếm
+- **Tên cột và kiểu dữ liệu**: Mỗi mục hiển thị tên kèm kiểu dữ liệu
+- **Giá trị đầy đủ**: Hiển thị không cắt ngắn
+- **Chỉnh sửa nhiều dòng**: Cột TEXT/VARCHAR có vùng soạn thảo nhiều dòng
+- **Chỉ báo chỉ đọc**: Ô không thể chỉnh sửa được đánh dấu rõ
 
-Bạn có thể chỉnh sửa giá trị trực tiếp trong inspector. Các thay đổi được xếp hàng giống như chỉnh sửa inline trong data grid — chúng không được áp dụng cho đến khi bạn commit.
+Chỉnh sửa trực tiếp trong inspector. Thay đổi được xếp hàng giống inline editing, không áp dụng đến khi commit.
 
 ### Chế Độ Thông Tin Bảng
 
-Khi không có hàng nào được chọn, Cell Inspector chuyển sang chế độ Thông Tin Bảng và hiển thị metadata về bảng hiện tại:
+Khi không chọn hàng, Cell Inspector hiển thị metadata bảng:
 
 | Metadata | Mô tả |
 |----------|-------|
-| Tên bảng | Tên của bảng hiện tại |
+| Tên bảng | Tên bảng hiện tại |
 | Số hàng | Tổng số hàng |
-| Kích thước lưu trữ | Dung lượng đĩa được sử dụng bởi bảng |
+| Kích thước lưu trữ | Dung lượng đĩa |
 | Ngày tạo | Thời điểm bảng được tạo |
-| Engine | Storage engine (ví dụ: InnoDB, MyISAM) |
-| Charset | Bộ ký tự của bảng |
-| Collation | Collation dùng để sắp xếp |
+| Engine | Storage engine (InnoDB, MyISAM, v.v.) |
+| Charset | Bộ ký tự |
+| Collation | Collation sắp xếp |
 
 <Note>
-Kết nối chỉ đọc và kết quả query tuân thủ trạng thái chỉ đọc — chỉnh sửa bị vô hiệu hóa trong Cell Inspector cho những trường hợp đó.
+Kết nối có Safe Mode đặt ở Read-Only và kết quả query phức tạp không cho phép chỉnh sửa. Chỉnh sửa bị tắt trong Cell Inspector cho những trường hợp đó. Xem [Safe Mode](/features/safe-mode) để biết chi tiết.
 </Note>
 
 ## Điều Hướng
 
-### Điều Hướng Bằng Bàn Phím
+### Điều Hướng Bàn Phím
 
 | Phím | Hành động |
 |-----|--------|
 | Phím mũi tên | Di chuyển giữa các ô |
-| `Tab` | Chuyển đến ô tiếp theo |
-| `Shift+Tab` | Chuyển đến ô trước |
+| `Tab` | Ô tiếp theo |
+| `Shift+Tab` | Ô trước |
 | `Enter` | Chỉnh sửa ô đã chọn |
 | `Escape` | Hủy chỉnh sửa / Bỏ chọn |
-| `Home` | Đi đến ô đầu tiên trong hàng |
-| `End` | Đi đến ô cuối cùng trong hàng |
-| `Cmd+Home` | Đi đến hàng đầu tiên |
-| `Cmd+End` | Đi đến hàng cuối cùng |
+| `Home` | Ô đầu tiên trong hàng |
+| `End` | Ô cuối cùng trong hàng |
+| `Cmd+Home` | Hàng đầu tiên |
+| `Cmd+End` | Hàng cuối cùng |
 | `Page Up` | Cuộn lên một trang |
 | `Page Down` | Cuộn xuống một trang |
 
-### Điều Hướng Bằng Chuột
+### Điều Hướng Chuột
 
-- **Click**: Chọn một ô
-- **Double-click**: Chỉnh sửa một ô
+- **Click**: Chọn ô
+- **Nhấp đúp**: Chỉnh sửa ô
 - **Click + kéo**: Chọn nhiều ô
 - **Scroll wheel**: Cuộn dọc
 - **Shift + scroll**: Cuộn ngang
@@ -462,26 +448,26 @@ Kết nối chỉ đọc và kết quả query tuân thủ trạng thái chỉ �
 ### Chọn Ô
 
 - **Ô đơn**: Click vào ô
-- **Phạm vi ô**: Click và kéo, hoặc click ô đầu tiên rồi Shift+click ô cuối
-- **Toàn bộ hàng**: Click vào số hàng
-- **Nhiều hàng**: Click số hàng và kéo, hoặc Cmd+click cho không liên tiếp
+- **Phạm vi ô**: Click và kéo, hoặc click ô đầu rồi Shift+click ô cuối
+- **Toàn hàng**: Click số hàng
+- **Nhiều hàng**: Click số hàng và kéo, hoặc Cmd+click
 
 ### Sao Chép Dữ Liệu
 
-1. Chọn các ô hoặc hàng bạn muốn sao chép
+1. Chọn ô hoặc hàng cần sao chép
 2. Nhấn `Cmd+C`
 3. Dán vào ứng dụng khác
 
-TablePro hỗ trợ nhiều định dạng sao chép:
+Nhiều định dạng sao chép:
 
 | Định dạng | Phím tắt | Mô tả |
 |--------|----------|-------------|
-| Tab-separated | `Cmd+C` | Sao chép mặc định, tương thích với bảng tính |
-| CSV | `Cmd+Shift+C` | Giá trị phân tách bằng dấu phẩy |
-| JSON | `Cmd+Option+C` | Mảng JSON của các object |
-| TSV | Có sẵn từ menu ngữ cảnh | Tab-separated với header |
+| Tab-separated | `Cmd+C` | Mặc định, tương thích bảng tính |
+| CSV | `Cmd+Shift+C` | Phân tách dấu phẩy |
+| JSON | `Cmd+Option+J` | Mảng JSON |
+| TSV | Menu ngữ cảnh | Tab-separated có header |
 
-Định dạng tab-separated mặc định tương thích với:
+Tab-separated mặc định tương thích với:
 - Excel
 - Numbers
 - Google Sheets
@@ -503,19 +489,19 @@ TablePro hỗ trợ nhiều định dạng sao chép:
 
 ## Phân Trang
 
-Đối với tập kết quả lớn, data grid sử dụng phân trang:
+Tập kết quả lớn được phân trang.
 
 ### Điều Khiển Trang
 
-- **Trang đầu**: Đi đến đầu
-- **Trang trước**: Quay lại một trang
-- **Số trang**: Trang hiện tại / tổng số trang
-- **Trang tiếp**: Tiến lên một trang
-- **Trang cuối**: Đi đến cuối
+- **Trang đầu**: Về đầu
+- **Trang trước**: Lùi một trang
+- **Số trang**: Trang hiện tại / tổng trang
+- **Trang tiếp**: Tiến một trang
+- **Trang cuối**: Về cuối
 
 ### Kích Thước Trang
 
-Cấu hình kích thước trang mặc định trong **Settings** > **Data Grid**:
+Cấu hình trong **Settings** > **Data Grid**:
 
 | Tùy chọn | Hàng mỗi trang |
 |--------|---------------|
@@ -525,10 +511,10 @@ Cấu hình kích thước trang mặc định trong **Settings** > **Data Grid*
 | Tùy chỉnh | 10 - 100,000 |
 
 <Tip>
-Kích thước trang nhỏ hơn tải nhanh hơn và sử dụng ít bộ nhớ hơn. Sử dụng kích thước lớn hơn khi bạn cần xem nhiều dữ liệu cùng lúc.
+Page size nhỏ tải nhanh hơn, tốn ít bộ nhớ. Dùng size lớn khi cần xem nhiều dữ liệu.
 </Tip>
 
-{/* Ảnh chụp: Điều khiển phân trang với điều hướng trang */}
+{/* Ảnh chụp: Điều khiển phân trang */}
 <Frame caption="Điều khiển phân trang với điều hướng trang">
   <img
     className="block dark:hidden"
@@ -544,11 +530,11 @@ Kích thước trang nhỏ hơn tải nhanh hơn và sử dụng ít bộ nhớ 
 
 ## Giá Trị NULL
 
-Giá trị NULL được hiển thị khác biệt:
+NULL hiển thị khác biệt rõ ràng:
 
-- Văn bản có style hiển thị "NULL" (có thể tùy chỉnh)
-- Màu khác với giá trị thông thường
-- Không thể nhầm lẫn với chuỗi "NULL"
+- Text có style hiển thị "NULL" (tùy chỉnh được)
+- Màu khác với giá trị thường
+- Không nhầm lẫn với chuỗi "NULL"
 
 {/* Screenshot: Data grid showing NULL values */}
 <Frame caption="Hiển thị giá trị NULL">
@@ -570,7 +556,7 @@ Trong **Settings** > **Data Grid**:
 
 | Thiết lập | Mặc định | Mô tả |
 |---------|---------|-------------|
-| **NULL Display** | "NULL" | Văn bản hiển thị cho giá trị NULL |
+| **NULL Display** | "NULL" | Text hiển thị cho NULL |
 
 ## Định Dạng Ngày
 
@@ -589,18 +575,18 @@ Cấu hình trong **Settings** > **Data Grid** > **Date Format**.
 
 ## Chiều Cao Hàng
 
-Điều chỉnh chiều cao hàng để đọc tốt hơn:
+Điều chỉnh chiều cao hàng:
 
-| Tùy chọn | Chiều cao | Tốt nhất cho |
+| Tùy chọn | Chiều cao | Phù hợp cho |
 |--------|--------|----------|
-| Compact | 20px | Dữ liệu dày đặc, nhiều hàng hiển thị |
+| Compact | 20px | Dữ liệu dày đặc, nhiều hàng |
 | Normal | 24px | Xem tiêu chuẩn |
 | Comfortable | 28px | Dễ đọc hơn |
 | Spacious | 32px | Accessibility, touch |
 
 Cấu hình trong **Settings** > **Data Grid** > **Row Height**.
 
-{/* Ảnh chụp: So sánh chiều cao hàng: Compact, Normal, Comfortable, Spacious */}
+{/* Ảnh chụp: So sánh chiều cao hàng */}
 <Frame caption="So sánh chiều cao hàng: Compact, Normal, Comfortable, Spacious">
   <img
     className="block dark:hidden"
@@ -616,10 +602,10 @@ Cấu hình trong **Settings** > **Data Grid** > **Row Height**.
 
 ## Màu Hàng Xen Kẽ
 
-Bật màu hàng xen kẽ để quét dễ dàng hơn:
+Màu xen kẽ giúp quét dữ liệu dễ hơn:
 
-- **Bật**: Mỗi hàng khác có màu nền nhẹ
-- **Tắt**: Tất cả hàng có cùng màu nền
+- **Bật**: Mỗi hàng khác có nền nhẹ
+- **Tắt**: Tất cả hàng cùng nền
 
 Cấu hình trong **Settings** > **Data Grid** > **Show Alternate Rows**.
 
@@ -639,86 +625,86 @@ Cấu hình trong **Settings** > **Data Grid** > **Show Alternate Rows**.
 
 ## MongoDB Collections
 
-Khi xem các collection MongoDB, lưới dữ liệu có một số khác biệt so với cơ sở dữ liệu SQL:
+Collection MongoDB có một số khác biệt so với SQL trong data grid.
 
 ### Schema Tài liệu
 
-Các collection MongoDB không có schema cố định. TablePro suy luận cấu trúc cột bằng cách lấy mẫu tối đa 500 tài liệu. Nếu collection của bạn có các dạng tài liệu khác nhau, một số cột có thể hiển thị NULL cho các tài liệu không chứa các trường đó.
+MongoDB không có schema cố định. TablePro suy luận cấu trúc cột bằng cách lấy mẫu tối đa 500 tài liệu. Nếu tài liệu có dạng khác nhau, một số cột hiển thị NULL cho tài liệu thiếu trường đó.
 
 ### Cột _id Không thể Chỉnh sửa
 
-Cột `_id` không thể chỉnh sửa trực tiếp hoặc bằng cách nhấp đúp. MongoDB không cho phép sửa đổi trường `_id` của tài liệu đã tồn tại. Để thay đổi `_id` của tài liệu, bạn phải xóa và chèn lại.
+Cột `_id` không thể chỉnh sửa. MongoDB không cho phép sửa `_id` trên tài liệu hiện có. Muốn đổi `_id`, xóa rồi chèn lại.
 
 ### Hiển thị Kiểu BSON
 
-Các kiểu BSON của MongoDB được hiển thị với định dạng phù hợp:
-- **ObjectId**: Hiển thị dạng `ObjectId("...")`
-- **Date**: Định dạng ISO 8601 datetime
-- **Binary**: Hiển thị dạng `BinData(subtype, "base64...")`
-- **Decimal128**: Hiển thị dạng chuỗi số thập phân
-- **DBRef**: Hiển thị dạng `DBRef("collection", id)`
+Các kiểu BSON MongoDB được định dạng phù hợp:
+- **ObjectId**: `ObjectId("...")`
+- **Date**: ISO 8601 datetime
+- **Binary**: `BinData(subtype, "base64...")`
+- **Decimal128**: Chuỗi số thập phân
+- **DBRef**: `DBRef("collection", id)`
 
-### Xem trước Câu lệnh MQL
+### Xem trước MQL
 
-Khi bạn thực hiện thay đổi (chèn, cập nhật, xóa) trong lưới dữ liệu, phần xem trước SQL hiển thị lệnh MongoDB shell thay vì SQL:
-- Chèn tạo `db.collection.insertMany([...])`
-- Cập nhật tạo `db.collection.updateOne({filter}, {$set: {...}})`
-- Xóa tạo `db.collection.deleteMany({_id: {$in: [...]}})`
+Khi thay đổi (chèn, sửa, xóa) trong data grid, preview hiển thị lệnh MongoDB shell thay vì SQL:
+- Chèn: `db.collection.insertMany([...])`
+- Sửa: `db.collection.updateOne({filter}, {$set: {...}})`
+- Xóa: `db.collection.deleteMany({_id: {$in: [...]}})`
 
 ## Làm Việc Với Dataset Lớn
 
 ### Mẹo Hiệu Suất
 
-1. **Sử dụng LIMIT**: Luôn giới hạn kết quả khi khám phá
+1. **Dùng LIMIT**: Luôn giới hạn kết quả khi khám phá
    ```sql
    SELECT * FROM large_table LIMIT 100;
    ```
 
-2. **Chọn cột cụ thể**: Tránh `SELECT *` cho bảng có nhiều cột
+2. **Chọn cột cụ thể**: Tránh `SELECT *` cho bảng nhiều cột
    ```sql
    SELECT id, name, email FROM users;
    ```
 
-3. **Sử dụng phân trang**: Để data grid phân trang kết quả
+3. **Dùng phân trang**: Để data grid phân trang kết quả
 
-4. **Lọc ở database**: Sử dụng mệnh đề WHERE thay vì tải tất cả dữ liệu
+4. **Lọc ở database**: Dùng WHERE thay vì tải tất cả
    ```sql
    SELECT * FROM orders WHERE status = 'pending';
    ```
 
 ### Sử Dụng Bộ Nhớ
 
-Data grid tải dữ liệu theo trang để quản lý bộ nhớ:
+Data grid tải theo trang để quản lý bộ nhớ:
 
-- Chỉ các trang hiển thị được giữ trong bộ nhớ
+- Chỉ trang đang hiển thị nằm trong bộ nhớ
 - Cuộn tải trang mới khi cần
-- Cột BLOB/TEXT lớn được tải theo yêu cầu
+- Cột BLOB/TEXT lớn tải theo yêu cầu
 
 ## Tùy Chọn Export
 
 Export dữ liệu trực tiếp từ data grid:
 
 1. Chạy query hoặc mở bảng
-2. Click nút **Export**
+2. Click **Export**
 3. Chọn định dạng: CSV, JSON, SQL
 4. Chọn đích đến
 
-Xem [Import & Export](/features/import-export) để biết chi tiết tùy chọn export.
+Xem [Import & Export](/features/import-export) để biết chi tiết.
 
 ## Phím Tắt
 
 | Hành động | Phím tắt |
 |--------|----------|
-| Sao chép lựa chọn | `Cmd+C` |
-| Sao chép dạng CSV | `Cmd+Shift+C` |
-| Sao chép dạng JSON | `Cmd+Option+C` |
+| Sao chép | `Cmd+C` |
+| Sao chép CSV | `Cmd+Shift+C` |
+| Sao chép JSON | `Cmd+Option+J` |
 | Chọn tất cả | `Cmd+A` |
 | Xóa hàng | `Delete` |
 | Chỉnh sửa ô | `Enter` |
 | Hủy chỉnh sửa | `Escape` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
-| Commit thay đổi | `Cmd+S` |
+| Commit | `Cmd+S` |
 | Điều hướng | Phím mũi tên |
 | Ô tiếp theo | `Tab` |
 | Ô trước | `Shift+Tab` |

@@ -1,20 +1,16 @@
 ---
 title: Kiến trúc
-description: Hiểu về cấu trúc codebase và các mẫu thiết kế của TablePro
+description: Cấu trúc MVVM, protocol database driver, SSH tunnel dựa trên actor và chi tiết autocomplete engine
 ---
 
 # Kiến trúc
 
-Hướng dẫn này giải thích về kiến trúc, các mẫu thiết kế và cách các thành phần của TablePro hoạt động cùng nhau.
-
-## Tổng quan
-
 TablePro được xây dựng với:
 
-- **SwiftUI** cho giao diện người dùng
+- **SwiftUI** cho giao diện
 - **AppKit** cho tích hợp macOS cấp thấp
-- **Swift Concurrency** (async/await, actors) cho các thao tác đồng thời
-- **Thư viện database native** cho kết nối database
+- **Swift Concurrency** (async/await, actors) cho thao tác đồng thời
+- **Thư viện C native** cho kết nối database
 
 ```mermaid
 block-beta
@@ -47,75 +43,62 @@ block-beta
 
 ## Dependencies
 
-TablePro sử dụng Swift Package Manager (SPM) cho các dependencies bên thứ ba:
+Dependencies SPM:
 
 | Package | Phiên bản | Mục đích |
 |---------|---------|---------|
-| **CodeEditSourceEditor** | 0.15.2+ | Component code editor dựa trên tree-sitter cho trình soạn thảo SQL |
+| **CodeEditSourceEditor** | 0.15.2+ | Code editor dựa trên tree-sitter cho SQL editor |
 | **Sparkle** | 2.x | Framework cập nhật tự động với chữ ký EdDSA |
 
 <Note>
-CodeEditSourceEditor đi kèm một plugin SwiftLint yêu cầu `-skipPackagePluginValidation` cho CLI builds. Xem hướng dẫn [Build](/vi/development/building) để biết chi tiết.
+CodeEditSourceEditor kèm plugin SwiftLint yêu cầu `-skipPackagePluginValidation` cho CLI builds. Xem [Build](/vi/development/building).
 </Note>
 
 ## Cấu trúc thư mục
 
 <Tree>
   <Tree.Folder name="TablePro" defaultOpen>
-    <Tree.Folder name="Models">
-      <Tree.File name="DatabaseConnection.swift" />
-      <Tree.File name="QueryResult.swift" />
-      <Tree.File name="TableInfo.swift" />
-      <Tree.File name="AppSettings.swift" />
-    </Tree.Folder>
-    <Tree.Folder name="Views">
-      <Tree.Folder name="Main" />
-      <Tree.Folder name="Connection" />
-      <Tree.Folder name="Editor" />
-      <Tree.Folder name="Results" />
-      <Tree.Folder name="Structure" />
-      <Tree.Folder name="Settings" />
-      <Tree.Folder name="Welcome" />
-    </Tree.Folder>
-    <Tree.Folder name="ViewModels">
-      <Tree.File name="DatabaseManager.swift" />
-    </Tree.Folder>
     <Tree.Folder name="Core">
       <Tree.Folder name="Database">
         <Tree.File name="DatabaseDriver.swift" />
-        <Tree.File name="MySQLDriver.swift" />
-        <Tree.File name="PostgreSQLDriver.swift" />
-        <Tree.File name="SQLiteDriver.swift" />
+        <Tree.File name="DatabaseManager.swift" />
       </Tree.Folder>
-      <Tree.Folder name="Autocomplete">
-        <Tree.File name="CompletionEngine.swift" />
-        <Tree.File name="SQLContextAnalyzer.swift" />
-        <Tree.File name="SQLKeywords.swift" />
+      <Tree.Folder name="Plugins">
+        <Tree.File name="PluginManager.swift" />
+        <Tree.File name="PluginDriverAdapter.swift" />
       </Tree.Folder>
-      <Tree.Folder name="SSH">
-        <Tree.File name="SSHTunnelManager.swift" />
-      </Tree.Folder>
+      <Tree.Folder name="Autocomplete" />
+      <Tree.Folder name="Services" />
+      <Tree.Folder name="SSH" />
     </Tree.Folder>
+    <Tree.Folder name="Views" />
+    <Tree.Folder name="Models" />
+    <Tree.Folder name="ViewModels" />
     <Tree.Folder name="Extensions" />
-    <Tree.Folder name="Theme">
-      <Tree.File name="Theme.swift" />
-    </Tree.Folder>
+    <Tree.Folder name="Theme" />
     <Tree.Folder name="Resources" />
   </Tree.Folder>
+  <Tree.Folder name="Plugins" defaultOpen>
+    <Tree.Folder name="TableProPluginKit" />
+    <Tree.Folder name="MySQLDriverPlugin" />
+    <Tree.Folder name="PostgreSQLDriverPlugin" />
+    <Tree.File name="..." />
+  </Tree.Folder>
+  <Tree.Folder name="Libs" />
+  <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="scripts" />
 </Tree>
 
 ## Các mẫu thiết kế
 
 ### Kiến trúc MVVM
 
-TablePro sử dụng mô hình Model-View-ViewModel (MVVM):
-
 ```mermaid
 flowchart LR
     Model["Model<br>(Struct)"] <--> ViewModel["ViewModel<br>(Observable)"] <--> View["View<br>(SwiftUI)"]
 ```
 
-**Models**: Cấu trúc dữ liệu thuần túy (structs, enums)
+**Models**: Cấu trúc dữ liệu thuần (structs, enums)
 ```swift
 struct DatabaseConnection: Codable, Identifiable {
     let id: UUID
@@ -126,7 +109,7 @@ struct DatabaseConnection: Codable, Identifiable {
 }
 ```
 
-**ViewModels**: Container trạng thái có thể quan sát
+**ViewModels**: Container trạng thái observable
 ```swift
 @MainActor
 class DatabaseManager: ObservableObject {
@@ -139,14 +122,14 @@ class DatabaseManager: ObservableObject {
 }
 ```
 
-**Views**: UI khai báo SwiftUI
+**Views**: SwiftUI declarative
 ```swift
 struct ConnectionFormView: View {
     @StateObject private var dbManager = DatabaseManager.shared
 
     var body: some View {
         Form {
-            // Các thành phần UI
+            // Các phần tử UI
         }
     }
 }
@@ -154,7 +137,7 @@ struct ConnectionFormView: View {
 
 ### Thiết kế hướng Protocol
 
-Database drivers tuân theo một protocol:
+Tất cả database drivers conform một protocol:
 
 ```swift
 protocol DatabaseDriver: AnyObject {
@@ -169,17 +152,11 @@ protocol DatabaseDriver: AnyObject {
 }
 ```
 
-Các triển khai:
-
-```swift
-class MySQLDriver: DatabaseDriver { ... }
-class PostgreSQLDriver: DatabaseDriver { ... }
-class SQLiteDriver: DatabaseDriver { ... }
-```
+Các database driver được triển khai dưới dạng bundle `.tableplugin` và được tải tại runtime. Mỗi plugin implement `DriverPlugin` và `PluginDatabaseDriver` từ framework `TableProPluginKit`. `PluginDriverAdapter` kết nối `PluginDatabaseDriver` với protocol `DatabaseDriver` của core.
 
 ### Actor Isolation
 
-Các thao tác đồng thời sử dụng Swift actors:
+Thao tác đồng thời dùng Swift actors:
 
 ```swift
 actor SSHTunnelManager {
@@ -192,40 +169,25 @@ actor SSHTunnelManager {
         sshHost: String,
         // ...
     ) async throws -> Int {
-        // Quản lý tunnel an toàn luồng
+        // Quản lý tunnel thread-safe
     }
 }
 ```
 
-### Factory Pattern
+### Plugin System
 
-Tạo driver sử dụng factory:
-
-```swift
-enum DatabaseDriverFactory {
-    static func createDriver(for connection: DatabaseConnection) -> DatabaseDriver {
-        switch connection.type {
-        case .mysql, .mariadb:
-            return MySQLDriver(connection: connection)
-        case .postgresql:
-            return PostgreSQLDriver(connection: connection)
-        case .sqlite:
-            return SQLiteDriver(connection: connection)
-        }
-    }
-}
-```
+Tạo driver dùng hệ thống plugin. `PluginManager` tìm và tải các bundle `.tableplugin` tại runtime. `DatabaseDriverFactory` tra cứu plugin qua `DatabaseType.pluginTypeId` và bọc chúng bằng `PluginDriverAdapter` để conform protocol `DatabaseDriver` của core. Không cần switch statement hay danh sách driver cố định.
 
 ## Các thành phần chính
 
 ### DatabaseManager
 
-Bộ quản lý trung tâm cho các thao tác database:
+Quản lý trung tâm mọi thao tác database:
 
-- Quản lý các session đang hoạt động
+- Quản lý sessions đang hoạt động
 - Điều phối kết nối/ngắt kết nối
 - Xử lý vòng đời SSH tunnel
-- Công bố thay đổi trạng thái cho UI
+- Phát thay đổi trạng thái cho UI
 
 ```swift
 @MainActor
@@ -241,19 +203,23 @@ class DatabaseManager: ObservableObject {
 }
 ```
 
-### Database Drivers
+### Database Driver Plugins
 
-Mỗi driver đóng gói logic đặc thù cho database:
+Mỗi driver là một bundle `.tableplugin` trong `Plugins/`. MySQL, PostgreSQL và SQLite được tích hợp sẵn trong app bundle; các driver còn lại được phân phối qua plugin registry và tải xuống khi cần.
 
-| Driver | Library | Protocol |
-|--------|---------|----------|
-| MySQLDriver | libmariadb | MySQL wire protocol |
-| PostgreSQLDriver | libpq | PostgreSQL protocol |
-| SQLiteDriver | Built-in SQLite3 | File-based |
+| Plugin | Database Types | C Bridge | Phân phối |
+|--------|---------------|----------|-----------|
+| MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) | Tích hợp sẵn |
+| PostgreSQLDriverPlugin | PostgreSQL, Redshift | CLibPQ (libpq) | Tích hợp sẵn |
+| SQLiteDriverPlugin | SQLite | Foundation sqlite3 | Tích hợp sẵn |
+| ClickHouseDriverPlugin | ClickHouse | URLSession HTTP | Registry |
+| MSSQLDriverPlugin | SQL Server | CFreeTDS | Registry |
+| MongoDBDriverPlugin | MongoDB | CLibMongoc | Registry |
+| RedisDriverPlugin | Redis | CRedis | Registry |
+| DuckDBDriverPlugin | DuckDB | CDuckDB | Registry |
+| OracleDriverPlugin | Oracle | OracleNIO (SPM) | Registry |
 
 ### Autocomplete Engine
-
-Hệ thống autocomplete:
 
 ```mermaid
 flowchart TB
@@ -266,13 +232,13 @@ flowchart TB
 ```
 
 - **CompletionEngine**: Điểm vào chính
-- **SQLContextAnalyzer**: Phân tích ngữ cảnh truy vấn
+- **SQLContextAnalyzer**: Phân tích ngữ cảnh query
 - **SQLSchemaProvider**: Cung cấp thông tin schema
 - **SQLKeywords**: Định nghĩa từ khóa SQL
 
 ### SSH Tunnel Manager
 
-Quản lý SSH tunnels như một actor:
+Quản lý SSH tunnel dạng actor:
 
 ```swift
 actor SSHTunnelManager {
@@ -285,8 +251,8 @@ actor SSHTunnelManager {
 ```
 
 Tính năng:
-- Chuyển tiếp port qua `ssh` hệ thống
-- Xác thực bằng password và key
+- Port forwarding qua `ssh` hệ thống
+- Xác thực password và key
 - Giám sát trạng thái
 - Tự động dọn dẹp
 
@@ -301,18 +267,17 @@ flowchart TB
     Form --> Manager["DatabaseManager<br>.connectToSession"]
     Manager --> SSH["SSHTunnelManager"]
     Manager --> Factory["DatabaseDriverFactory"]
-    Factory --> MySQL["MySQL Driver"]
-    Factory --> Postgres["Postgres Driver"]
+    Factory --> Plugin["PluginManager<br>(loads .tableplugin)"]
+    Plugin --> Adapter["PluginDriverAdapter"]
     SSH --> Connected["Connection Established"]
-    MySQL --> Connected
-    Postgres --> Connected
+    Adapter --> Connected
 
     subgraph optional ["if SSH enabled"]
         SSH
     end
 ```
 
-### Luồng thực thi truy vấn
+### Luồng thực thi query
 
 ```mermaid
 flowchart TB
@@ -328,7 +293,7 @@ flowchart TB
 
 ### Published Properties
 
-Trạng thái UI được quản lý với `@Published`:
+Trạng thái UI dùng `@Published`:
 
 ```swift
 @MainActor
@@ -341,7 +306,7 @@ class DatabaseManager: ObservableObject {
 
 ### App Storage
 
-Settings sử dụng `@AppStorage` để lưu trữ:
+Settings lưu qua `@AppStorage`:
 
 ```swift
 @AppStorage("appearance.theme") var theme: AppTheme = .system
@@ -370,7 +335,7 @@ struct TableProApp: App {
 
 ### Driver Errors
 
-Mỗi driver định nghĩa các lỗi cụ thể:
+Mỗi driver định nghĩa lỗi riêng:
 
 ```swift
 enum MySQLError: Error, LocalizedError {
@@ -390,7 +355,7 @@ enum MySQLError: Error, LocalizedError {
 
 ### Error Propagation
 
-Lỗi được truyền lên qua async/await:
+Lỗi truyền qua async/await:
 
 ```swift
 func executeQuery(_ query: String) async throws -> QueryResult {
@@ -405,7 +370,7 @@ func executeQuery(_ query: String) async throws -> QueryResult {
 
 ### Unit Tests
 
-Tests nằm trong `TableProTests/`:
+Tests trong `TableProTests/`:
 
 ```swift
 final class MySQLDriverTests: XCTestCase {
@@ -418,8 +383,6 @@ final class MySQLDriverTests: XCTestCase {
 ```
 
 ### Integration Tests
-
-Cho các test database:
 
 ```swift
 func testExecuteQuery() async throws {
@@ -435,7 +398,7 @@ func testExecuteQuery() async throws {
 ## Bước tiếp theo
 
 <CardGroup cols={2}>
-  <Card title="Phong cách Code" icon="code" href="/vi/development/code-style">
+  <Card title="Code Style" icon="code" href="/vi/development/code-style">
     Quy ước và hướng dẫn code
   </Card>
   <Card title="Build" icon="hammer" href="/vi/development/building">

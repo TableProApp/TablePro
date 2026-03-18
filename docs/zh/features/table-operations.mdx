@@ -1,0 +1,353 @@
+---
+title: 表操作
+description: 删除表、清空表、复制表、创建视图，以及从侧边栏切换数据库
+---
+
+# 表操作
+
+右键点击侧边栏中的表，可以删除、清空或复制表。创建和管理视图。在同一连接上切换数据库。
+
+## 表操作
+
+右键点击侧边栏中的表以访问以下操作。
+
+### 删除表
+
+永久删除一张表及其所有数据。
+
+1. 右键点击表（或选择多张表）
+2. 选择 **Delete**
+3. 在确认对话框中配置选项
+4. 点击 **OK** 执行
+
+{/* Screenshot: Drop table confirmation dialog */}
+<Frame caption="删除表确认对话框及选项">
+  <img
+    className="block dark:hidden"
+    src="/images/drop-table-dialog.png"
+    alt="删除表对话框"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/drop-table-dialog-dark.png"
+    alt="删除表对话框"
+  />
+</Frame>
+
+**各数据库的选项：**
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 临时禁用外键验证 |
+    | **级联** | 不支持 |
+  </Tab>
+  <Tab title="PostgreSQL">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 不支持（请使用 CASCADE） |
+    | **级联** | 删除所有依赖对象（视图、外键） |
+  </Tab>
+  <Tab title="SQLite">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 临时禁用外键验证 |
+    | **级联** | 不支持 |
+  </Tab>
+</Tabs>
+
+<Warning>
+删除表是不可逆的操作。删除前请务必备份重要数据。
+</Warning>
+
+### 清空表
+
+删除所有行但保留表结构。
+
+1. 右键点击表（或选择多张表）
+2. 选择 **Truncate**
+3. 在确认对话框中配置选项
+4. 点击 **OK** 执行
+
+**各数据库的选项：**
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 临时禁用外键验证 |
+    | **级联** | TRUNCATE 不支持 |
+  </Tab>
+  <Tab title="PostgreSQL">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 不支持（请使用 CASCADE） |
+    | **级联** | 清空所有通过外键关联的表 |
+  </Tab>
+  <Tab title="SQLite">
+    | 选项 | 说明 |
+    |------|------|
+    | **忽略外键检查** | 临时禁用外键验证 |
+    | **级联** | 不支持 |
+  </Tab>
+</Tabs>
+
+<Note>
+Truncate 比 `DELETE FROM table` 更快，因为它跳过逐行删除日志。它还会重置自增计数器。
+</Note>
+
+{/* Screenshot: Truncate table confirmation with options */}
+<Frame caption="清空表确认对话框及选项">
+  <img
+    className="block dark:hidden"
+    src="/images/truncate-table-dialog.png"
+    alt="清空表确认对话框及选项"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/truncate-table-dialog-dark.png"
+    alt="清空表确认对话框及选项"
+  />
+</Frame>
+
+### 批量操作
+
+选择多张表可一次性执行删除或清空操作。相同的选项应用于所有选中的表。
+
+1. 按住 `Cmd` 点击选择多张表
+2. 右键选择 **Delete** 或 **Truncate**
+3. 在对话框中统一配置选项
+4. 对所有选中的表执行操作
+
+## 视图管理
+
+数据库视图是由 SQL 查询定义的虚拟表。TablePro 在侧边栏中以独特的眼睛图标和紫色标记显示视图。
+
+### 创建视图
+
+通过打开带模板的 SQL 编辑器标签页来创建新视图：
+
+1. 右键点击侧边栏并选择 **Create New View...**
+2. 或通过 **File** > **New View...**
+3. 一个新的 SQL 编辑器标签页会打开，其中包含 CREATE VIEW 模板
+4. 修改视图名称和 SELECT 查询
+5. 执行查询以创建视图
+
+模板会根据你的数据库类型自动适配：
+
+<Tabs>
+  <Tab title="MySQL/MariaDB">
+    ```sql
+    CREATE VIEW view_name AS
+    SELECT column1, column2
+    FROM table_name
+    WHERE condition;
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    ```sql
+    CREATE OR REPLACE VIEW view_name AS
+    SELECT column1, column2
+    FROM table_name
+    WHERE condition;
+    ```
+  </Tab>
+  <Tab title="SQLite">
+    ```sql
+    CREATE VIEW IF NOT EXISTS view_name AS
+    SELECT column1, column2
+    FROM table_name
+    WHERE condition;
+    ```
+  </Tab>
+</Tabs>
+
+{/* Screenshot: Create View with SQL template */}
+<Frame caption="使用 SQL 模板创建视图">
+  <img
+    className="block dark:hidden"
+    src="/images/create-view-editor.png"
+    alt="使用 SQL 模板创建视图"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/create-view-editor-dark.png"
+    alt="使用 SQL 模板创建视图"
+  />
+</Frame>
+
+### 编辑视图定义
+
+修改现有视图的 SQL 定义：
+
+1. 右键点击侧边栏中的视图
+2. 选择 **Edit View Definition**
+3. 当前视图定义在新的 SQL 编辑器标签页中打开
+4. 修改查询并执行以更新视图
+
+<Note>
+MySQL/MariaDB 使用 `ALTER VIEW` 修改视图。PostgreSQL 使用 `CREATE OR REPLACE VIEW`。SQLite 不支持 ALTER VIEW，需要先删除再重建视图。
+</Note>
+
+### 删除视图
+
+从数据库中移除视图：
+
+1. 右键点击侧边栏中的视图
+2. 选择 **Drop View**
+3. 确认删除
+
+<Tip>
+视图不存储数据。删除视图只会移除视图定义，底层表数据不受影响。
+</Tip>
+
+### 右键菜单差异
+
+侧边栏右键菜单在视图和表之间有所不同：
+
+| 操作 | 表 | 视图 |
+|------|-----|------|
+| 查看结构 | 是 | 是 |
+| 导出 | 是 | 是 |
+| 导入 | 是 | 否 |
+| 清空 | 是 | 否 |
+| 编辑定义 | 否 | 是 |
+| 删除 | 是 | 是 |
+
+{/* Screenshot: View-specific context menu options */}
+<Frame caption="视图专属的右键菜单选项">
+  <img
+    className="block dark:hidden"
+    src="/images/view-context-menu.png"
+    alt="视图专属的右键菜单选项"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/view-context-menu-dark.png"
+    alt="视图专属的右键菜单选项"
+  />
+</Frame>
+
+## 数据库操作
+
+### 创建数据库
+
+从界面创建新数据库（MySQL/MariaDB）：
+
+<Steps>
+  <Step title="打开数据库切换器">
+    点击工具栏中的数据库名称或按 `Cmd+K` 打开数据库切换器
+  </Step>
+  <Step title="点击创建">
+    点击数据库切换器工具栏中的 **Create** 按钮
+  </Step>
+  <Step title="配置">
+    输入名称，选择字符集和排序规则
+  </Step>
+  <Step title="创建">
+    点击 **Create** 执行
+  </Step>
+</Steps>
+
+{/* Screenshot: Create database dialog */}
+<Frame caption="创建数据库对话框">
+  <img
+    className="block dark:hidden"
+    src="/images/create-database.png"
+    alt="创建数据库"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/create-database-dark.png"
+    alt="创建数据库"
+  />
+</Frame>
+
+可用的字符集和排序规则：
+
+| 字符集 | 排序规则 |
+|--------|----------|
+| **utf8mb4** | utf8mb4_unicode_ci、utf8mb4_general_ci、utf8mb4_bin |
+| **utf8** | utf8_unicode_ci、utf8_general_ci、utf8_bin |
+| **latin1** | latin1_swedish_ci、latin1_general_ci、latin1_bin |
+| **ascii** | ascii_general_ci、ascii_bin |
+
+### 数据库切换器
+
+在同一连接上切换数据库：
+
+1. 点击工具栏中的数据库名称
+2. 浏览可用数据库及其元数据
+3. 按名称搜索筛选
+4. 双击或选中后点击 **Open** 切换
+
+切换器显示最近使用的数据库以便快速访问，并支持刷新数据库列表。
+
+{/* Screenshot: Database switcher with search and recent databases */}
+<Frame caption="带搜索和最近数据库的数据库切换器">
+  <img
+    className="block dark:hidden"
+    src="/images/database-switcher.png"
+    alt="带搜索和最近数据库的数据库切换器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/database-switcher-dark.png"
+    alt="带搜索和最近数据库的数据库切换器"
+  />
+</Frame>
+
+## MongoDB 集合操作
+
+MongoDB 集合操作与 SQL 表操作有所不同。
+
+### 创建集合
+
+使用 MQL 编辑器创建 MongoDB 集合。对于需要特定选项（capped、validator）的集合：
+
+```javascript
+db.createCollection("myCollection", {
+  capped: true,
+  size: 1048576,
+  max: 1000
+})
+```
+
+### 删除集合
+
+右键点击侧边栏中的集合并选择 **Drop Table**。这会执行 `db.collection.drop()` 并移除所有文档和索引。
+
+### 显示所有集合
+
+在侧边栏中选择 **Show All Tables** 以自动执行 `listCollections` 并显示当前数据库中的所有集合。
+
+<Note>
+MongoDB 集合不支持 **Truncate**。要删除所有文档但保留集合，请在 MQL 编辑器中使用 `db.collection.deleteMany({})`。
+</Note>
+
+## 键盘快捷键
+
+| 操作 | 快捷键 |
+|------|--------|
+| 删除选中的表 | `Cmd+Delete` |
+| 复制表名 | `Cmd+C`（在侧边栏中） |
+| 导出表 | `Cmd+E`（在侧边栏中） |
+| 导入数据 | `Cmd+I`（在侧边栏中） |
+
+## 下一步
+
+<CardGroup cols={2}>
+  <Card title="表结构" icon="table-columns" href="/zh/features/table-structure">
+    查看和修改现有表的 schema
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    查看和编辑表数据
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写 DDL 和 DML 查询
+  </Card>
+  <Card title="导入与导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出表数据
+  </Card>
+</CardGroup>

@@ -1,0 +1,55 @@
+name: build-documentation
+on:
+  workflow_dispatch:
+  workflow_call:
+jobs:
+  build-docc:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Build Documentation
+        run: exec ./.github/scripts/build-docc.sh
+      - name: Init new repo in dist folder and commit generated files
+        run: |
+          cd docs
+          git init
+          git config http.postBuffer 524288000
+          git add -A
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git commit -m 'deploy'
+        
+      - name: Force push to destination branch
+        uses: ad-m/github-push-action@v0.8.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: docs
+          force: true
+          directory: ./docs
+
+      ############################
+      ##### IMPORTANT NOTICE #####
+      ############################
+      # This was used to build the documentation catalog until
+      # it didn't produce the 'documentation' directory anymore.
+      #
+      # - uses: fwcd/swift-docc-action@v1.0.2
+      #   with:
+      #     target: CodeEditTextView
+      #     output: ./docs
+      #     hosting-base-path: CodeEditTextView
+      #     disable-indexing: 'true'
+      #     transform-for-static-hosting: 'true'
+      #
+      # The command that this plugin uses is:
+      #
+      # swift package --allow-writing-to-directory ./docs generate-documentation \
+      #       --target CodeEditTextView 
+      #       --output-path ./docs 
+      #       --hosting-base-path CodeEditTextView
+      #       --disable-indexing 
+      #       --transform-for-static-hosting
+      #
+      # We now use xcodebuild to build the documentation catalog instead.
+      #

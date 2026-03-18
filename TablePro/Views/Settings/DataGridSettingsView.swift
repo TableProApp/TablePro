@@ -2,7 +2,7 @@
 //  DataGridSettingsView.swift
 //  TablePro
 //
-//  Settings for data grid display and pagination
+//  Settings for data grid display and pagination (fonts moved to theme)
 //
 
 import SwiftUI
@@ -25,7 +25,6 @@ struct DataGridSettingsView: View {
                     }
                 }
 
-                // NULL Display with validation
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("NULL display:", text: $settings.nullDisplay)
 

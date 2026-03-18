@@ -16,7 +16,7 @@ private struct MockTableFetcher: TableFetcher {
     var tables: [TableInfo]
     var error: Error?
 
-    func fetchTables() async throws -> [TableInfo] {
+    func fetchTables(force: Bool) async throws -> [TableInfo] {
         if let error { throw error }
         return tables
     }

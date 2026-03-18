@@ -1,0 +1,175 @@
+---
+title: Plugin Registry
+description: How to publish downloadable plugins to the TablePro plugin registry
+---
+
+# Plugin Registry
+
+The plugin registry is a JSON manifest hosted at [github.com/TableProApp/plugins](https://github.com/TableProApp/plugins). TablePro fetches it to populate **Settings > Plugins > Browse** and to auto-install missing driver plugins.
+
+## Manifest Format
+
+The registry manifest (`plugins.json`) follows `RegistryManifest`:
+
+```json
+{
+  "schemaVersion": 1,
+  "plugins": [
+    // ... plugin entries
+  ]
+}
+```
+
+Each entry matches the `RegistryPlugin` model:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | `string` | Yes | Bundle identifier (e.g., `com.TablePro.OracleDriver`) |
+| `name` | `string` | Yes | Display name |
+| `version` | `string` | Yes | Semantic version |
+| `summary` | `string` | Yes | One-line description |
+| `author` | `object` | Yes | `{ "name": "...", "url": "..." }` |
+| `homepage` | `string` | No | Project URL |
+| `category` | `string` | Yes | One of: `database-driver`, `export-format`, `import-format`, `theme`, `other` |
+| `databaseTypeIds` | `[string]` | No | Maps to `DatabaseType.pluginTypeId` values. Used for auto-install prompts. |
+| `downloadURL` | `string` | No* | Direct URL to the `.zip` file |
+| `sha256` | `string` | No* | SHA-256 hex digest of the ZIP file |
+| `binaries` | `[object]` | No | Per-architecture binaries: `[{ "architecture": "arm64"\|"x86_64", "downloadURL": "...", "sha256": "..." }]` |
+| `minAppVersion` | `string` | No | Minimum TablePro version (e.g., `"0.17.0"`) |
+| `minPluginKitVersion` | `int` | No | Minimum PluginKit version (currently `1`) |
+| `iconName` | `string` | No | SF Symbol name for display |
+| `isVerified` | `bool` | Yes | Whether the plugin is verified by the TablePro team |
+
+\* Either `downloadURL`/`sha256` (flat fields) or `binaries` array is required. If `binaries` is present, the app picks the matching architecture. Flat fields serve as fallback for older app versions.
+
+## Oracle and ClickHouse Entries
+
+These two database drivers ship as downloadable plugins instead of being bundled with the app. Their registry entries:
+
+```json
+{
+  "id": "com.TablePro.OracleDriver",
+  "name": "Oracle Driver",
+  "version": "1.0.0",
+  "summary": "Oracle Database 12c+ driver via OracleNIO",
+  "author": {
+    "name": "TablePro",
+    "url": "https://tablepro.app"
+  },
+  "homepage": "https://tablepro.app/databases/oracle",
+  "category": "database-driver",
+  "databaseTypeIds": ["Oracle"],
+  "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-oracle-v1.0.0/OracleDriver-arm64.zip",
+  "sha256": "<sha256-of-zip>",
+  "binaries": [
+    { "architecture": "arm64", "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-oracle-v1.0.0/OracleDriver-arm64.zip", "sha256": "<sha256-of-zip>" },
+    { "architecture": "x86_64", "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-oracle-v1.0.0/OracleDriver-x86_64.zip", "sha256": "<sha256-of-zip>" }
+  ],
+  "minAppVersion": "0.17.0",
+  "minPluginKitVersion": 1,
+  "iconName": "server.rack",
+  "isVerified": true
+}
+```
+
+```json
+{
+  "id": "com.TablePro.ClickHouseDriver",
+  "name": "ClickHouse Driver",
+  "version": "1.0.0",
+  "summary": "ClickHouse OLAP database driver via HTTP interface",
+  "author": {
+    "name": "TablePro",
+    "url": "https://tablepro.app"
+  },
+  "homepage": "https://tablepro.app/databases/clickhouse",
+  "category": "database-driver",
+  "databaseTypeIds": ["ClickHouse"],
+  "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-clickhouse-v1.0.0/ClickHouseDriver-arm64.zip",
+  "sha256": "<sha256-of-zip>",
+  "binaries": [
+    { "architecture": "arm64", "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-clickhouse-v1.0.0/ClickHouseDriver-arm64.zip", "sha256": "<sha256-of-zip>" },
+    { "architecture": "x86_64", "downloadURL": "https://github.com/datlechin/TablePro/releases/download/plugin-clickhouse-v1.0.0/ClickHouseDriver-x86_64.zip", "sha256": "<sha256-of-zip>" }
+  ],
+  "minAppVersion": "0.17.0",
+  "minPluginKitVersion": 1,
+  "iconName": "chart.bar.xaxis",
+  "isVerified": true
+}
+```
+
+Replace `<sha256-of-zip>` with the actual SHA-256 output from `build-plugin.sh`. The `binaries` array provides per-architecture downloads; `downloadURL`/`sha256` flat fields point to arm64 as fallback for older app versions.
+
+## Theme Distribution
+
+Themes use the same registry manifest but with `category: "theme"`. Unlike database driver plugins, themes are pure JSON data with no executable code, no code signing, and no `.tableplugin` bundle.
+
+A theme registry entry's ZIP contains one or more `.json` files, each a valid `ThemeDefinition`. On install, TablePro extracts the JSONs, rewrites their IDs to `registry.{pluginId}.{originalSuffix}`, and stores them in `~/Library/Application Support/TablePro/Themes/Registry/`.
+
+Example theme registry entry:
+
+```json
+{
+  "id": "com.example.monokai-theme",
+  "name": "Monokai Theme",
+  "version": "1.0.0",
+  "summary": "Classic Monokai color scheme for TablePro",
+  "author": { "name": "Theme Author" },
+  "category": "theme",
+  "downloadURL": "https://example.com/monokai-theme.zip",
+  "sha256": "<sha256-of-zip>",
+  "iconName": "paintpalette",
+  "isVerified": false
+}
+```
+
+Theme packs (multiple themes in one ZIP) are supported. All themes from a pack are linked to the same registry plugin ID, so uninstalling removes all of them.
+
+## Custom Registry URL
+
+For enterprise or private plugin registries, you can override the default registry URL:
+
+```bash
+defaults write com.TablePro com.TablePro.customRegistryURL "https://your-registry.example.com/plugins.json"
+```
+
+To revert to the default registry:
+
+```bash
+defaults delete com.TablePro com.TablePro.customRegistryURL
+```
+
+The app invalidates its ETag cache when the registry URL changes, forcing a fresh fetch on the next Browse visit.
+
+## databaseTypeIds Mapping
+
+The `databaseTypeIds` field maps registry entries to `DatabaseType.pluginTypeId` values. This is how the app knows which registry plugin to install when a user selects a database type that has no loaded driver.
+
+| DatabaseType | pluginTypeId |
+|-------------|-------------|
+| MySQL, MariaDB | `"MySQL"` |
+| PostgreSQL, Redshift | `"PostgreSQL"` |
+| SQLite | `"SQLite"` |
+| MongoDB | `"MongoDB"` |
+| Redis | `"Redis"` |
+| SQL Server | `"SQL Server"` |
+| Oracle | `"Oracle"` |
+| ClickHouse | `"ClickHouse"` |
+
+## Publishing a Plugin Release
+
+1. Tag the commit: `git tag plugin-oracle-v1.0.0 && git push --tags`
+2. The `build-plugin.yml` CI workflow builds both architectures (arm64 + x86_64), signs, creates a GitHub release with ZIP artifacts, and automatically updates the plugin registry with a `binaries` array
+3. The app fetches the updated manifest on next **Browse** visit (with ETag caching)
+
+## Auto-Install Flow
+
+When a user selects a downloadable database type (Oracle or ClickHouse):
+
+1. `DatabaseType.isDownloadablePlugin` returns `true`
+2. `PluginManager.isDriverAvailable(for:)` returns `false` (no loaded driver)
+3. The connection form shows a download badge and triggers `installPluginForType`
+4. `PluginManager.installMissingPlugin(for:)` fetches the registry, finds the plugin by matching `databaseTypeIds`, and calls `installFromRegistry`
+5. The ZIP is downloaded, SHA-256 verified, extracted, code-signature verified, and loaded
+
+If the user tries to connect to an existing connection with a missing plugin, the same flow triggers via an alert prompt.

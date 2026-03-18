@@ -1,11 +1,11 @@
 ---
 title: PostgreSQL
-description: Connect to PostgreSQL databases with TablePro
+description: Connect to PostgreSQL 12+ with schema browsing, JSONB display, and full libpq driver support
 ---
 
 # PostgreSQL Connections
 
-TablePro provides full support for PostgreSQL 12 and later versions. PostgreSQL is known for its advanced features, standards compliance, and extensibility.
+TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema browsing, rich type display (JSONB, arrays, UUID, inet), and all standard PostgreSQL query features work out of the box.
 
 ## Quick Setup
 
@@ -42,7 +42,7 @@ Unlike MySQL, PostgreSQL requires specifying a database name to connect.
 </Warning>
 
 <Tip>
-You can also connect directly by opening a `postgresql://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
+You can also connect by opening a `postgresql://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
 </Tip>
 
 {/* Screenshot: PostgreSQL connection form */}
@@ -58,10 +58,6 @@ You can also connect directly by opening a `postgresql://` URL from your browser
     alt="PostgreSQL connection form"
   />
 </Frame>
-
-<Tip>
-You can also connect directly by opening a `postgresql://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
-</Tip>
 
 ## Example Configurations
 
@@ -167,9 +163,9 @@ PostgreSQL organizes tables into schemas. TablePro displays:
 
 ### Database Switching
 
-You can switch between PostgreSQL databases and schemas using the database switcher (**⌘K**):
+Switch between PostgreSQL databases and schemas with the database switcher (**Cmd+K**):
 
-1. Press **⌘K** to open the switcher — it lists databases for PostgreSQL connections
+1. Press **Cmd+K** to open the switcher. It lists databases for PostgreSQL connections
 2. Select the target database (for example, `app`, `analytics`, or `postgres`)
 3. The sidebar, queries, and toolbar update after the connection reconnects
 
@@ -192,7 +188,7 @@ For each table, TablePro shows:
 
 ### Query Execution
 
-Execute queries with full PostgreSQL syntax support:
+Execute queries with full PostgreSQL syntax:
 
 ```sql
 -- JSONB queries
@@ -230,7 +226,7 @@ ORDER BY rank DESC;
 
 ### PostgreSQL-Specific Types
 
-TablePro properly displays PostgreSQL's rich type system:
+TablePro renders PostgreSQL's rich type system correctly:
 
 | Type | Display |
 |------|---------|
@@ -322,7 +318,7 @@ CREATE DATABASE myapp;
 
 ### SSL/TLS Connections
 
-TablePro supports SSL/TLS encryption for PostgreSQL connections. Configure SSL in the **SSL/TLS** section of the connection form.
+Configure SSL in the **SSL/TLS** section of the connection form.
 
 | SSL Mode | PostgreSQL `sslmode` | Description |
 |----------|---------------------|-------------|
@@ -332,14 +328,14 @@ TablePro supports SSL/TLS encryption for PostgreSQL connections. Configure SSL i
 | **Verify CA** | `verify-ca` | Require SSL and verify the server certificate against a CA |
 | **Verify Identity** | `verify-full` | Require SSL, verify CA, and verify the server hostname |
 
-For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate (root certificate). You can also provide optional client certificate and key files for mutual TLS authentication.
+For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate (root certificate). You can also provide optional client certificate and key files for mutual TLS.
 
 <Tip>
-Cloud providers like AWS RDS, Heroku, and Supabase typically require SSL. Use **Required** or **Verify CA** mode depending on your security needs.
+Cloud providers like AWS RDS, Heroku, and Supabase typically require SSL. Use **Required** or **Verify CA** depending on your security needs.
 </Tip>
 
 <Note>
-If you prefer not to configure SSL certificates, [SSH tunneling](/databases/ssh-tunneling) is an alternative that encrypts all traffic through an SSH tunnel.
+If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
 </Note>
 
 {/* Screenshot: PostgreSQL SSL/TLS configuration */}
@@ -355,6 +351,100 @@ If you prefer not to configure SSL certificates, [SSH tunneling](/databases/ssh-
     alt="PostgreSQL SSL/TLS configuration"
   />
 </Frame>
+
+## Startup Commands
+
+Set session variables that apply automatically on every connection. Configure these in the **Advanced** tab of the connection form.
+
+Typical PostgreSQL startup commands:
+
+```sql
+SET timezone = 'UTC';
+SET search_path TO myschema, public;
+SET statement_timeout = '30s';
+SET work_mem = '256MB';
+SET client_encoding = 'UTF8';
+```
+
+Setting `search_path` is useful when your tables live in a non-default schema. Instead of qualifying every table name (`myschema.users`), set the search path once and query tables by name directly.
+
+Setting `timezone` ensures all `timestamptz` queries return results in the same zone, regardless of the server or client OS timezone.
+
+See [Startup Commands](/databases/overview#startup-commands) for more details.
+
+## ~/.pgpass File Support
+
+TablePro supports the standard PostgreSQL `~/.pgpass` file for password-less authentication. This is useful for environments where passwords are managed by external secrets tools.
+
+### Setup
+
+1. Create `~/.pgpass` with entries in the format: `hostname:port:database:username:password`
+2. Set permissions: `chmod 0600 ~/.pgpass`
+3. In the connection form, enable **Use ~/.pgpass** in the Authentication section
+4. Leave the password field blank
+
+### Format
+
+Each line in `~/.pgpass` follows this format:
+
+```
+hostname:port:database:username:password
+```
+
+Use `*` as a wildcard to match any value:
+
+```
+# Match any database on localhost for user postgres
+localhost:5432:*:postgres:mypassword
+
+# Match any host/port/database for a specific user
+*:*:*:deploy_user:deploy_password
+```
+
+Escape literal colons with `\:` and backslashes with `\\`.
+
+### Validation
+
+The connection form shows live status when **Use ~/.pgpass** is enabled:
+
+- **Green**: `~/.pgpass` found with a matching entry
+- **Yellow**: File not found, or no matching entry
+- **Red**: File has incorrect permissions (needs `chmod 0600`)
+
+<Warning>
+libpq silently ignores `~/.pgpass` if file permissions are not exactly `0600`. TablePro surfaces this as a clear warning in the connection form.
+</Warning>
+
+<Note>
+When using SSH tunneling, libpq connects to `127.0.0.1` on the local tunnel port, not the remote host. Use wildcards (`*`) for host and port in your `~/.pgpass` entries to match tunneled connections.
+</Note>
+
+## Pre-Connect Script
+
+Run a shell script before each connection attempt. This is useful for refreshing credentials, updating `~/.pgpass`, or performing pre-flight checks.
+
+### Setup
+
+1. Open the **Advanced** tab in the connection form
+2. Enter your script in the **Pre-Connect Script** field
+3. The script runs via `/bin/bash -c` before each connection
+
+### Behavior
+
+- The script inherits the parent environment (HOME, PATH, etc.)
+- Non-zero exit code aborts the connection with an error message
+- 10-second timeout: the script is terminated if it takes too long
+- Only runs on explicit connect, not on automatic reconnections
+
+### Example: Refresh pgpass from secrets manager
+
+```bash
+#!/bin/bash
+vault read -field=password secret/postgres > ~/.pgpass_entry
+echo "db.example.com:5432:mydb:app_user:$(cat ~/.pgpass_entry)" > ~/.pgpass
+chmod 0600 ~/.pgpass
+rm ~/.pgpass_entry
+```
 
 ## PostgreSQL Extensions
 

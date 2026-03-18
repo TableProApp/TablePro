@@ -1,0 +1,131 @@
+{
+    "id": "tablepro.default-light",
+    "name": "Default Light",
+    "version": 1,
+    "appearance": "light",
+    "author": "TablePro",
+    "editor": {
+        "background": "#FFFFFF",
+        "text": "#000000",
+        "cursor": "#007AFF",
+        "currentLineHighlight": "#007AFF14",
+        "selection": "#B4D8FD",
+        "lineNumber": "#8E8E93",
+        "invisibles": "#C7C7CC",
+        "syntax": {
+            "keyword": "#0A49A5",
+            "string": "#C41A16",
+            "number": "#6C36A9",
+            "comment": "#007400",
+            "null": "#C55B00",
+            "operator": "#000000",
+            "function": "#326D74",
+            "type": "#3F6E74"
+        }
+    },
+    "dataGrid": {
+        "background": "#FFFFFF",
+        "text": "#000000",
+        "alternateRow": "#F5F5F5",
+        "nullValue": "#8E8E93",
+        "boolTrue": "#248A3D",
+        "boolFalse": "#D70015",
+        "rowNumber": "#8E8E93",
+        "modified": "#FFD60A4D",
+        "inserted": "#34C7594D",
+        "deleted": "#FF3B304D",
+        "deletedText": "#FF3B3080",
+        "focusBorder": "#007AFF"
+    },
+    "ui": {
+        "windowBackground": "#ECECEC",
+        "controlBackground": "#FFFFFF",
+        "cardBackground": "#F5F5F5",
+        "border": "#D5D5D5",
+        "primaryText": "#000000",
+        "secondaryText": "#8E8E93",
+        "tertiaryText": "#C7C7CC",
+        "accentColor": null,
+        "selectionBackground": "#B4D8FD",
+        "hoverBackground": "#007AFF0D",
+        "status": {
+            "success": "#248A3D",
+            "warning": "#C55B00",
+            "error": "#D70015",
+            "info": "#007AFF"
+        },
+        "badges": {
+            "background": "#E5E5EA",
+            "primaryKey": "#007AFF26",
+            "autoIncrement": "#AF52DE26"
+        }
+    },
+    "sidebar": {
+        "background": "#F5F5F5",
+        "text": "#000000",
+        "selectedItem": "#007AFF33",
+        "hover": "#0000000A",
+        "sectionHeader": "#8E8E93"
+    },
+    "toolbar": {
+        "secondaryText": "#8E8E93",
+        "tertiaryText": "#C7C7CC"
+    },
+    "fonts": {
+        "editorFontFamily": "System Mono",
+        "editorFontSize": 13,
+        "dataGridFontFamily": "System Mono",
+        "dataGridFontSize": 13
+    },
+    "spacing": {
+        "xxxs": 2,
+        "xxs": 4,
+        "xs": 8,
+        "sm": 12,
+        "md": 16,
+        "lg": 20,
+        "xl": 24,
+        "listRowInsets": {
+            "top": 4,
+            "leading": 8,
+            "bottom": 4,
+            "trailing": 8
+        }
+    },
+    "typography": {
+        "tiny": 9,
+        "caption": 10,
+        "small": 11,
+        "medium": 12,
+        "body": 13,
+        "title3": 15,
+        "title2": 17
+    },
+    "iconSizes": {
+        "tinyDot": 6,
+        "statusDot": 8,
+        "small": 12,
+        "default": 14,
+        "medium": 16,
+        "large": 20,
+        "extraLarge": 24,
+        "huge": 32,
+        "massive": 64
+    },
+    "cornerRadius": {
+        "small": 4,
+        "medium": 6,
+        "large": 8
+    },
+    "rowHeights": {
+        "compact": 24,
+        "table": 32,
+        "comfortable": 44
+    },
+    "animations": {
+        "fast": 0.1,
+        "normal": 0.15,
+        "smooth": 0.2,
+        "slow": 0.3
+    }
+}

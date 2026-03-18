@@ -7,6 +7,7 @@
 
 import os
 import SwiftUI
+import TableProPluginKit
 
 struct ForeignKeyPopoverContentView: View {
     let currentValue: String?
@@ -115,8 +116,8 @@ struct ForeignKeyPopoverContentView: View {
             return
         }
 
-        let quotedTable = databaseType.quoteIdentifier(fkInfo.referencedTable)
-        let quotedColumn = databaseType.quoteIdentifier(fkInfo.referencedColumn)
+        let quotedTable = driver.quoteIdentifier(fkInfo.referencedTable)
+        let quotedColumn = driver.quoteIdentifier(fkInfo.referencedColumn)
 
         // Try to find a display column (first text-like column that isn't the FK column)
         var displayColumn: String?
@@ -132,11 +133,18 @@ struct ForeignKeyPopoverContentView: View {
         }
 
         let query: String
+        let limitSuffix: String
+        switch PluginManager.shared.paginationStyle(for: databaseType) {
+        case .offsetFetch:
+            limitSuffix = "OFFSET 0 ROWS FETCH NEXT \(Self.maxFetchRows) ROWS ONLY"
+        case .limit:
+            limitSuffix = "LIMIT \(Self.maxFetchRows)"
+        }
         if let displayCol = displayColumn {
-            let quotedDisplay = databaseType.quoteIdentifier(displayCol)
-            query = "SELECT \(quotedColumn), \(quotedDisplay) FROM \(quotedTable) ORDER BY \(quotedColumn) LIMIT \(Self.maxFetchRows)"
+            let quotedDisplay = driver.quoteIdentifier(displayCol)
+            query = "SELECT \(quotedColumn), \(quotedDisplay) FROM \(quotedTable) ORDER BY \(quotedColumn) \(limitSuffix)"
         } else {
-            query = "SELECT DISTINCT \(quotedColumn) FROM \(quotedTable) ORDER BY \(quotedColumn) LIMIT \(Self.maxFetchRows)"
+            query = "SELECT DISTINCT \(quotedColumn) FROM \(quotedTable) ORDER BY \(quotedColumn) \(limitSuffix)"
         }
 
         do {

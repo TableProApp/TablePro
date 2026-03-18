@@ -51,6 +51,65 @@ final class VimTextBufferAdapter: VimTextBuffer {
         cachedLineCount = nil
     }
 
+    /// Incrementally update the cached line count based on text change delta.
+    /// Avoids a full O(n) recount on every keystroke.
+    func textDidChange(in range: NSRange, replacementLength: Int) {
+        guard let textView else {
+            cachedLineCount = nil
+            return
+        }
+
+        guard let cached = cachedLineCount else { return }
+
+        let nsString = textView.string as NSString
+
+        // Pure insertion: count newlines in the new text and apply delta
+        if range.length == 0 {
+            var addedNewlines = 0
+            let end = range.location + replacementLength
+            if replacementLength > 0 && end <= nsString.length {
+                for i in range.location..<end {
+                    if nsString.character(at: i) == 0x0A { addedNewlines += 1 }
+                }
+            }
+            cachedLineCount = cached + addedNewlines
+            return
+        }
+
+        // For replacements/deletions, the old text is already gone so fall back to full recount
+        cachedLineCount = nil
+    }
+
+    /// Incrementally update the cached line count when the old text content is known.
+    func textDidChange(oldText: String, in range: NSRange, replacementLength: Int) {
+        guard let cached = cachedLineCount else { return }
+
+        let oldNs = oldText as NSString
+        var removedNewlines = 0
+        if range.length > 0 && range.location + range.length <= oldNs.length {
+            let end = range.location + range.length
+            for i in range.location..<end {
+                if oldNs.character(at: i) == 0x0A { removedNewlines += 1 }
+            }
+        }
+
+        guard let textView else {
+            cachedLineCount = nil
+            return
+        }
+
+        let nsString = textView.string as NSString
+        var addedNewlines = 0
+        let replacementEnd = range.location + replacementLength
+        if replacementLength > 0 && replacementEnd <= nsString.length {
+            for i in range.location..<replacementEnd {
+                if nsString.character(at: i) == 0x0A { addedNewlines += 1 }
+            }
+        }
+
+        cachedLineCount = max(1, cached + addedNewlines - removedNewlines)
+    }
+
     func lineRange(forOffset offset: Int) -> NSRange {
         guard let textView else { return NSRange(location: 0, length: 0) }
         let nsString = textView.string as NSString
@@ -196,6 +255,10 @@ final class VimTextBufferAdapter: VimTextBuffer {
         let maxLength = (textView.string as NSString).length - clampedLocation
         let clampedLength = max(0, min(range.length, maxLength))
         let clampedRange = NSRange(location: clampedLocation, length: clampedLength)
+
+        let currentRange = textView.selectedRange()
+        guard clampedRange != currentRange else { return }
+
         textView.selectionManager.setSelectedRange(clampedRange)
         // CodeEditTextView's setSelectedRange (singular) doesn't call setNeedsDisplay,
         // so selection highlights (drawn in draw(_:)) won't render without this.

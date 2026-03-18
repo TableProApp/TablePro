@@ -8,10 +8,7 @@
 import Foundation
 import Observation
 import os
-
-extension Notification.Name {
-    static let databaseDidConnect = Notification.Name("databaseDidConnect")
-}
+import TableProPluginKit
 
 /// Manages database connections and active drivers
 @MainActor @Observable
@@ -21,12 +18,22 @@ final class DatabaseManager {
 
     /// All active connection sessions
     private(set) var activeSessions: [UUID: ConnectionSession] = [:] {
-        didSet { sessionVersion &+= 1 }
+        didSet {
+            if Set(oldValue.keys) != Set(activeSessions.keys) {
+                connectionListVersion &+= 1
+            }
+            connectionStatusVersion &+= 1
+        }
     }
 
-    /// Monotonically increasing counter; incremented on every mutation of activeSessions.
-    /// Used by views for `.onChange` since `[UUID: ConnectionSession]` is not `Equatable`.
-    private(set) var sessionVersion: Int = 0
+    /// Incremented only when sessions are added or removed (keys change).
+    private(set) var connectionListVersion: Int = 0
+
+    /// Incremented when any session state changes (status, driver, metadata, etc.).
+    private(set) var connectionStatusVersion: Int = 0
+
+    /// Backward-compatible alias for views not yet migrated to fine-grained counters.
+    var sessionVersion: Int { connectionStatusVersion }
 
     /// Currently selected session ID (displayed in UI)
     private(set) var currentSessionId: UUID?
@@ -34,9 +41,10 @@ final class DatabaseManager {
     /// Health monitors for active connections (MySQL/PostgreSQL only)
     private var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
 
-    /// Dedicated lightweight drivers used exclusively for health-check pings.
-    /// Separate from the main driver so pings never queue behind long-running user queries.
-    private var pingDrivers: [UUID: DatabaseDriver] = [:]
+    /// Tracks connections with user queries currently in-flight.
+    /// The health monitor skips pings while a query is running to avoid
+    /// racing on non-thread-safe driver connections.
+    private var queriesInFlight: [UUID: Int] = [:]
 
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
@@ -49,20 +57,9 @@ final class DatabaseManager {
         currentSession?.driver
     }
 
-    /// Dedicated driver for metadata queries (columns, FKs, count).
-    /// Runs on a separate serial queue so metadata fetches don't block the main query.
-    var activeMetadataDriver: DatabaseDriver? {
-        currentSession?.metadataDriver
-    }
-
     /// Resolve the driver for a specific connection (session-scoped, no global state)
     func driver(for connectionId: UUID) -> DatabaseDriver? {
         activeSessions[connectionId]?.driver
-    }
-
-    /// Resolve the metadata driver for a specific connection
-    func metadataDriver(for connectionId: UUID) -> DatabaseDriver? {
-        activeSessions[connectionId]?.metadataDriver
     }
 
     /// Resolve a session by explicit connection ID
@@ -75,21 +72,7 @@ final class DatabaseManager {
         currentSession?.status ?? .disconnected
     }
 
-    private init() {
-        // Observe SSH tunnel failures
-        NotificationCenter.default.addObserver(
-            forName: .sshTunnelDied,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let connectionId = notification.userInfo?["connectionId"] as? UUID else { return }
-            guard let self else { return }
-
-            Task { @MainActor in
-                await self.handleSSHTunnelDied(connectionId: connectionId)
-            }
-        }
-    }
+    private init() {}
 
     // MARK: - Session Management
 
@@ -122,8 +105,34 @@ final class DatabaseManager {
             throw error
         }
 
+        // Run pre-connect hook if configured (only on explicit connect, not auto-reconnect)
+        if let script = connection.preConnectScript,
+           !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            do {
+                try await PreConnectHookRunner.run(script: script)
+            } catch {
+                activeSessions.removeValue(forKey: connection.id)
+                currentSessionId = nil
+                throw error
+            }
+        }
+
         // Create appropriate driver with effective connection
-        let driver = DatabaseDriverFactory.createDriver(for: effectiveConnection)
+        let driver: DatabaseDriver
+        do {
+            driver = try DatabaseDriverFactory.createDriver(for: effectiveConnection)
+        } catch {
+            // Close tunnel if SSH was established
+            if connection.sshConfig.enabled {
+                Task {
+                    try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+                }
+            }
+            activeSessions.removeValue(forKey: connection.id)
+            currentSessionId = nil
+            throw error
+        }
 
         do {
             try await driver.connect()
@@ -134,24 +143,49 @@ final class DatabaseManager {
                 try await driver.applyQueryTimeout(timeoutSeconds)
             }
 
-            // Initialize schema for PostgreSQL/Redshift connections
-            if let pgDriver = driver as? PostgreSQLDriver {
-                activeSessions[connection.id]?.currentSchema = pgDriver.currentSchema
-            } else if let rsDriver = driver as? RedshiftDriver {
-                activeSessions[connection.id]?.currentSchema = rsDriver.currentSchema
-            } else if connection.type == .redis {
-                // Redis defaults to db0 on connect; SELECT the configured database if non-default
-                let initialDb = connection.redisDatabase ?? Int(connection.database) ?? 0
-                if initialDb != 0 {
-                    try? await (driver as? RedisDriver)?.selectDatabase(initialDb)
-                }
-                activeSessions[connection.id]?.currentDatabase = String(initialDb)
-            } else if connection.type == .mssql,
-                      connection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      let mssqlDriver = driver as? MSSQLDriver {
-                if let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
-                    try? await mssqlDriver.switchDatabase(to: savedDb)
-                    activeSessions[connection.id]?.currentDatabase = savedDb
+            // Run startup commands before schema init
+            await executeStartupCommands(
+                connection.startupCommands, on: driver, connectionName: connection.name
+            )
+
+            // Initialize schema for drivers that support schema switching
+            if let schemaDriver = driver as? SchemaSwitchable {
+                activeSessions[connection.id]?.currentSchema = schemaDriver.currentSchema
+            }
+
+            // Run post-connect actions declared by the plugin
+            let postConnectActions = PluginMetadataRegistry.shared.snapshot(
+                forTypeId: connection.type.pluginTypeId
+            )?.postConnectActions ?? []
+
+            for action in postConnectActions {
+                switch action {
+                case .selectDatabaseFromLastSession:
+                    // Restore saved database (e.g. MSSQL) only when no explicit database is configured
+                    if connection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let adapter = driver as? PluginDriverAdapter,
+                       let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
+                        try? await adapter.switchDatabase(to: savedDb)
+                        activeSessions[connection.id]?.currentDatabase = savedDb
+                    }
+                case .selectDatabaseFromConnectionField(let fieldId):
+                    // Select database from a connection field (e.g. Redis database index).
+                    // Check additionalFields first, then legacy dedicated properties, then
+                    // fall back to parsing the main database field.
+                    let initialDb: Int
+                    if let fieldValue = connection.additionalFields[fieldId], let parsed = Int(fieldValue) {
+                        initialDb = parsed
+                    } else if fieldId == "redisDatabase", let legacy = connection.redisDatabase {
+                        initialDb = legacy
+                    } else if let fallback = Int(connection.database) {
+                        initialDb = fallback
+                    } else {
+                        initialDb = 0
+                    }
+                    if initialDb != 0 {
+                        try? await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
+                    }
+                    activeSessions[connection.id]?.currentDatabase = String(initialDb)
                 }
             }
 
@@ -160,16 +194,6 @@ final class DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-
-                // Restore tab state if it exists (offload file I/O from main thread)
-                let connId = connection.id
-                let tabState = await Task.detached(priority: .userInitiated) {
-                    TabStateStorage.shared.loadTabState(connectionId: connId)
-                }.value
-                if let tabState {
-                    session.tabs = tabState.tabs.map { QueryTab(from: $0) }
-                    session.selectedTabId = tabState.selectedTabId
-                }
 
                 activeSessions[connection.id] = session  // Single write, single publish
             }
@@ -180,37 +204,13 @@ final class DatabaseManager {
             // Post notification for reliable delivery
             NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
 
-            // Start health monitoring for network databases (skip SQLite)
-            if connection.type != .sqlite {
-                await startHealthMonitor(for: connection.id)
-            }
+            // Start health monitoring if the plugin supports it
+            let supportsHealth = PluginMetadataRegistry.shared.snapshot(
+                forTypeId: connection.type.pluginTypeId
+            )?.supportsHealthMonitor ?? true
 
-            // Create a dedicated metadata connection in the background so Phase 2
-            // metadata queries (columns, FKs, count) run in parallel with main queries.
-            let metaConnection = effectiveConnection
-            let metaConnectionId = connection.id
-            let metaTimeout = AppSettingsManager.shared.general.queryTimeoutSeconds
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let metaDriver = DatabaseDriverFactory.createDriver(for: metaConnection)
-                    try await metaDriver.connect()
-                    if metaTimeout > 0 {
-                        try? await metaDriver.applyQueryTimeout(metaTimeout)
-                    }
-                    // Sync schema on metadata driver for PostgreSQL/Redshift
-                    if let savedSchema = self.activeSessions[metaConnectionId]?.currentSchema {
-                        if let pgMetaDriver = metaDriver as? PostgreSQLDriver {
-                            try? await pgMetaDriver.switchSchema(to: savedSchema)
-                        } else if let rsMetaDriver = metaDriver as? RedshiftDriver {
-                            try? await rsMetaDriver.switchSchema(to: savedSchema)
-                        }
-                    }
-                    activeSessions[metaConnectionId]?.metadataDriver = metaDriver
-                } catch {
-                    // Non-fatal: Phase 2 falls back to main driver if metadata driver unavailable
-                    Self.logger.warning("Metadata connection failed: \(error.localizedDescription)")
-                }
+            if supportsHealth {
+                await startHealthMonitor(for: connection.id)
             }
         } catch {
             // Close tunnel if connection failed
@@ -259,12 +259,11 @@ final class DatabaseManager {
         // Stop health monitoring
         await stopHealthMonitor(for: sessionId)
 
-        session.metadataDriver?.disconnect()
         session.driver?.disconnect()
         activeSessions.removeValue(forKey: sessionId)
 
         // Clean up shared schema cache for this connection
-        MainContentCoordinator.clearSharedSchema(for: sessionId)
+        SchemaProviderRegistry.shared.clear(for: sessionId)
 
         // Clean up shared sidebar state for this connection
         SharedSidebarState.removeConnection(sessionId)
@@ -283,12 +282,13 @@ final class DatabaseManager {
 
     /// Disconnect all sessions
     func disconnectAll() async {
-        // Stop all health monitors
-        for sessionId in healthMonitors.keys {
+        let monitorIds = Array(healthMonitors.keys)
+        for sessionId in monitorIds {
             await stopHealthMonitor(for: sessionId)
         }
 
-        for sessionId in activeSessions.keys {
+        let sessionIds = Array(activeSessions.keys)
+        for sessionId in sessionIds {
             await disconnectSession(sessionId)
         }
     }
@@ -316,10 +316,18 @@ final class DatabaseManager {
 
     /// Execute a query on the current session
     func execute(query: String) async throws -> QueryResult {
-        guard let driver = activeDriver else {
+        guard let sessionId = currentSessionId, let driver = activeDriver else {
             throw DatabaseError.notConnected
         }
 
+        queriesInFlight[sessionId, default: 0] += 1
+        defer {
+            if let count = queriesInFlight[sessionId], count > 1 {
+                queriesInFlight[sessionId] = count - 1
+            } else {
+                queriesInFlight.removeValue(forKey: sessionId)
+            }
+        }
         return try await driver.execute(query: query)
     }
 
@@ -351,17 +359,22 @@ final class DatabaseManager {
             sshPasswordOverride: sshPassword
         )
 
-        defer {
-            // Close tunnel after test
+        let result: Bool
+        do {
+            let driver = try DatabaseDriverFactory.createDriver(for: testConnection)
+            result = try await driver.testConnection()
+        } catch {
             if connection.sshConfig.enabled {
-                Task {
-                    try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
-                }
+                try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
             }
+            throw error
         }
 
-        let driver = DatabaseDriverFactory.createDriver(for: testConnection)
-        return try await driver.testConnection()
+        if connection.sshConfig.enabled {
+            try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
+        }
+
+        return result
     }
 
     // MARK: - SSH Tunnel Helper
@@ -384,10 +397,11 @@ final class DatabaseManager {
 
         // Load Keychain credentials off the main thread to avoid blocking UI
         let connectionId = connection.id
-        let (storedSshPassword, keyPassphrase) = await Task.detached {
+        let (storedSshPassword, keyPassphrase, totpSecret) = await Task.detached {
             let pwd = ConnectionStorage.shared.loadSSHPassword(for: connectionId)
             let phrase = ConnectionStorage.shared.loadKeyPassphrase(for: connectionId)
-            return (pwd, phrase)
+            let totp = ConnectionStorage.shared.loadTOTPSecret(for: connectionId)
+            return (pwd, phrase, totp)
         }.value
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword
@@ -401,8 +415,15 @@ final class DatabaseManager {
             privateKeyPath: connection.sshConfig.privateKeyPath,
             keyPassphrase: keyPassphrase,
             sshPassword: sshPassword,
+            agentSocketPath: connection.sshConfig.agentSocketPath,
             remoteHost: connection.host,
-            remotePort: connection.port
+            remotePort: connection.port,
+            jumpHosts: connection.sshConfig.jumpHosts,
+            totpMode: connection.sshConfig.totpMode,
+            totpSecret: totpSecret,
+            totpAlgorithm: connection.sshConfig.totpAlgorithm,
+            totpDigits: connection.sshConfig.totpDigits,
+            totpPeriod: connection.sshConfig.totpPeriod
         )
 
         // Adapt SSL config for tunnel: SSH already authenticates the server,
@@ -419,6 +440,12 @@ final class DatabaseManager {
             tunnelSSL.clientKeyPath = ""
         }
 
+        var effectiveFields = connection.additionalFields
+        if connection.usePgpass {
+            effectiveFields["pgpassOriginalHost"] = connection.host
+            effectiveFields["pgpassOriginalPort"] = String(connection.port)
+        }
+
         return DatabaseConnection(
             id: connection.id,
             name: connection.name,
@@ -428,7 +455,8 @@ final class DatabaseManager {
             username: connection.username,
             type: connection.type,
             sshConfig: SSHConfiguration(),
-            sslConfig: tunnelSSL
+            sslConfig: tunnelSSL,
+            additionalFields: effectiveFields
         )
     }
 
@@ -439,37 +467,18 @@ final class DatabaseManager {
         // Stop any existing monitor
         await stopHealthMonitor(for: connectionId)
 
-        // Create a dedicated lightweight driver for pings so they never
-        // queue behind long-running user queries on the main driver.
-        if let session = activeSessions[connectionId] {
-            let connectionForPing = session.effectiveConnection ?? session.connection
-            let dedicatedPingDriver = DatabaseDriverFactory.createDriver(for: connectionForPing)
-            do {
-                try await dedicatedPingDriver.connect()
-                pingDrivers[connectionId] = dedicatedPingDriver
-            } catch {
-                Self.logger.warning(
-                    "Failed to create dedicated ping driver, will fall back to main driver")
-            }
-        }
-
         let monitor = ConnectionHealthMonitor(
             connectionId: connectionId,
             pingHandler: { [weak self] in
                 guard let self else { return false }
-                // Prefer the dedicated ping driver so pings are never blocked
-                // by long-running user queries on the main driver.
-                let pingDriver = await self.pingDrivers[connectionId]
-                let driver: DatabaseDriver
-                if let pingDriver {
-                    driver = pingDriver
-                } else if let mainDriver = await self.activeSessions[connectionId]?.driver {
-                    driver = mainDriver
-                } else {
+                // Skip ping while a user query is in-flight to avoid racing
+                // on the same non-thread-safe driver connection.
+                guard await self.queriesInFlight[connectionId] == nil else { return true }
+                guard let mainDriver = await self.activeSessions[connectionId]?.driver else {
                     return false
                 }
                 do {
-                    _ = try await driver.execute(query: "SELECT 1")
+                    _ = try await mainDriver.execute(query: "SELECT 1")
                     return true
                 } catch {
                     return false
@@ -484,13 +493,6 @@ final class DatabaseManager {
                         session.driver = driver
                         session.status = .connected
                     }
-
-                    // Also reconnect the dedicated ping driver so future pings
-                    // don't fail immediately after a successful main reconnect.
-                    let connectionForPing = session.effectiveConnection ?? session.connection
-                    let newPingDriver = DatabaseDriverFactory.createDriver(for: connectionForPing)
-                    try await newPingDriver.connect()
-                    await self.replacePingDriver(newPingDriver, for: connectionId)
 
                     return true
                 } catch {
@@ -515,7 +517,7 @@ final class DatabaseManager {
                         }
                     case .failed:
                         Self.logger.error(
-                            "Health monitoring failed for session \(id) after 3 retries")
+                            "Health monitoring failed for session \(id)")
                         self.updateSession(id) { session in
                             session.status = .error(String(localized: "Connection lost"))
                             session.clearCachedData()
@@ -539,7 +541,7 @@ final class DatabaseManager {
 
         // Use effective connection (tunneled) if available, otherwise original
         let connectionForDriver = session.effectiveConnection ?? session.connection
-        let driver = DatabaseDriverFactory.createDriver(for: connectionForDriver)
+        let driver = try DatabaseDriverFactory.createDriver(for: connectionForDriver)
         try await driver.connect()
 
         // Apply timeout
@@ -548,39 +550,28 @@ final class DatabaseManager {
             try await driver.applyQueryTimeout(timeoutSeconds)
         }
 
-        // Restore schema for PostgreSQL/Redshift if session had a non-default schema
-        if let savedSchema = session.currentSchema {
-            if let pgDriver = driver as? PostgreSQLDriver {
-                try? await pgDriver.switchSchema(to: savedSchema)
-            } else if let rsDriver = driver as? RedshiftDriver {
-                try? await rsDriver.switchSchema(to: savedSchema)
-            }
+        await executeStartupCommands(
+            session.connection.startupCommands, on: driver, connectionName: session.connection.name
+        )
+
+        if let savedSchema = session.currentSchema,
+           let schemaDriver = driver as? SchemaSwitchable {
+            try? await schemaDriver.switchSchema(to: savedSchema)
         }
 
         // Restore database for MSSQL if session had a non-default database
         if let savedDatabase = session.currentDatabase,
-           let mssqlDriver = driver as? MSSQLDriver {
-            try? await mssqlDriver.switchDatabase(to: savedDatabase)
+           let adapter = driver as? PluginDriverAdapter {
+            try? await adapter.switchDatabase(to: savedDatabase)
         }
 
         return driver
-    }
-
-    /// Replace the dedicated ping driver for a connection, disconnecting the old one.
-    private func replacePingDriver(_ newDriver: DatabaseDriver, for connectionId: UUID) {
-        pingDrivers[connectionId]?.disconnect()
-        pingDrivers[connectionId] = newDriver
     }
 
     /// Stop health monitoring for a connection
     private func stopHealthMonitor(for connectionId: UUID) async {
         if let monitor = healthMonitors.removeValue(forKey: connectionId) {
             await monitor.stopMonitoring()
-        }
-
-        // Disconnect and remove the dedicated ping driver
-        if let pingDriver = pingDrivers.removeValue(forKey: connectionId) {
-            pingDriver.disconnect()
         }
     }
 
@@ -606,14 +597,13 @@ final class DatabaseManager {
 
         do {
             // Disconnect existing drivers
-            session.metadataDriver?.disconnect()
             session.driver?.disconnect()
 
             // Recreate SSH tunnel if needed and build effective connection
             let effectiveConnection = try await buildEffectiveConnection(for: session.connection)
 
             // Create new driver and connect
-            let driver = DatabaseDriverFactory.createDriver(for: effectiveConnection)
+            let driver = try DatabaseDriverFactory.createDriver(for: effectiveConnection)
             try await driver.connect()
 
             // Apply timeout
@@ -622,19 +612,19 @@ final class DatabaseManager {
                 try await driver.applyQueryTimeout(timeoutSeconds)
             }
 
-            // Restore schema for PostgreSQL/Redshift if session had a non-default schema
-            if let savedSchema = activeSessions[sessionId]?.currentSchema {
-                if let pgDriver = driver as? PostgreSQLDriver {
-                    try? await pgDriver.switchSchema(to: savedSchema)
-                } else if let rsDriver = driver as? RedshiftDriver {
-                    try? await rsDriver.switchSchema(to: savedSchema)
-                }
+            await executeStartupCommands(
+                session.connection.startupCommands, on: driver, connectionName: session.connection.name
+            )
+
+            if let savedSchema = activeSessions[sessionId]?.currentSchema,
+               let schemaDriver = driver as? SchemaSwitchable {
+                try? await schemaDriver.switchSchema(to: savedSchema)
             }
 
             // Restore database for MSSQL if session had a non-default database
             if let savedDatabase = activeSessions[sessionId]?.currentDatabase,
-               let mssqlDriver = driver as? MSSQLDriver {
-                try? await mssqlDriver.switchDatabase(to: savedDatabase)
+               let adapter = driver as? PluginDriverAdapter {
+                try? await adapter.switchDatabase(to: savedDatabase)
             }
 
             // Update session
@@ -644,40 +634,12 @@ final class DatabaseManager {
                 session.effectiveConnection = effectiveConnection
             }
 
-            // Recreate metadata connection in background
-            let metaConnection = effectiveConnection
-            let metaConnectionId = sessionId
-            let metaTimeout = AppSettingsManager.shared.general.queryTimeoutSeconds
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let metaDriver = DatabaseDriverFactory.createDriver(for: metaConnection)
-                    try await metaDriver.connect()
-                    if metaTimeout > 0 {
-                        try? await metaDriver.applyQueryTimeout(metaTimeout)
-                    }
-                    // Restore schema on metadata driver too
-                    if let savedSchema = self.activeSessions[metaConnectionId]?.currentSchema {
-                        if let pgMetaDriver = metaDriver as? PostgreSQLDriver {
-                            try? await pgMetaDriver.switchSchema(to: savedSchema)
-                        } else if let rsMetaDriver = metaDriver as? RedshiftDriver {
-                            try? await rsMetaDriver.switchSchema(to: savedSchema)
-                        }
-                    }
-                    // Restore database on metadata driver too for MSSQL
-                    if let savedDatabase = self.activeSessions[metaConnectionId]?.currentDatabase,
-                       let mssqlMetaDriver = metaDriver as? MSSQLDriver {
-                        try? await mssqlMetaDriver.switchDatabase(to: savedDatabase)
-                    }
-                    activeSessions[metaConnectionId]?.metadataDriver = metaDriver
-                } catch {
-                    Self.logger.warning(
-                        "Metadata reconnection failed: \(error.localizedDescription)")
-                }
-            }
+            // Restart health monitoring if the plugin supports it
+            let supportsHealthReconnect = PluginMetadataRegistry.shared.snapshot(
+                forTypeId: session.connection.type.pluginTypeId
+            )?.supportsHealthMonitor ?? true
 
-            // Restart health monitoring
-            if session.connection.type != .sqlite {
+            if supportsHealthReconnect {
                 await startHealthMonitor(for: sessionId)
             }
 
@@ -697,31 +659,74 @@ final class DatabaseManager {
 
     // MARK: - SSH Tunnel Recovery
 
-    /// Handle SSH tunnel death by attempting reconnection
-    private func handleSSHTunnelDied(connectionId: UUID) async {
+    /// Handle SSH tunnel death by attempting reconnection with exponential backoff
+    func handleSSHTunnelDied(connectionId: UUID) async {
         guard let session = activeSessions[connectionId] else { return }
 
         Self.logger.warning("SSH tunnel died for connection: \(session.connection.name)")
 
-        // Mark connection as reconnecting
+        // Stop health monitor before retrying to prevent stale pings during reconnect
+        await stopHealthMonitor(for: connectionId)
+
+        // Disconnect the stale driver and invalidate it so connectToSession
+        // creates a fresh connection instead of short-circuiting on driver != nil
+        session.driver?.disconnect()
         updateSession(connectionId) { session in
+            session.driver = nil
             session.status = .connecting
         }
 
-        // Wait a bit before attempting reconnection (give VPN time to reconnect)
-        try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2 seconds
+        let maxRetries = 5
+        for retryCount in 0..<maxRetries {
+            // Exponential backoff: 2s, 4s, 8s, 16s, 32s (capped at 60s)
+            let delay = min(60.0, 2.0 * pow(2.0, Double(retryCount)))
+            Self.logger.info("SSH reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
-        do {
-            // Attempt to reconnect
-            try await connectToSession(session.connection)
-            Self.logger.info("Successfully reconnected SSH tunnel for: \(session.connection.name)")
-        } catch {
-            Self.logger.error("Failed to reconnect SSH tunnel: \(error.localizedDescription)")
+            do {
+                try await connectToSession(session.connection)
+                Self.logger.info("Successfully reconnected SSH tunnel for: \(session.connection.name)")
+                return
+            } catch {
+                Self.logger.warning("SSH reconnect attempt \(retryCount + 1) failed: \(error.localizedDescription)")
+            }
+        }
 
-            // Mark as error and release stale cached data
-            updateSession(connectionId) { session in
-                session.status = .error("SSH tunnel disconnected. Click to reconnect.")
-                session.clearCachedData()
+        Self.logger.error("All SSH reconnect attempts failed for: \(session.connection.name)")
+
+        // Mark as error and release stale cached data
+        updateSession(connectionId) { session in
+            session.status = .error("SSH tunnel disconnected. Click to reconnect.")
+            session.clearCachedData()
+        }
+    }
+
+    // MARK: - Startup Commands
+
+    nonisolated private static let startupLogger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
+
+    nonisolated private func executeStartupCommands(
+        _ commands: String?, on driver: DatabaseDriver, connectionName: String
+    ) async {
+        guard let commands, !commands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        let statements = commands
+            .components(separatedBy: CharacterSet(charactersIn: ";\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        for statement in statements {
+            do {
+                _ = try await driver.execute(query: statement)
+                Self.startupLogger.info(
+                    "Startup command succeeded for '\(connectionName)': \(statement)"
+                )
+            } catch {
+                Self.startupLogger.warning(
+                    "Startup command failed for '\(connectionName)': \(statement) — \(error.localizedDescription)"
+                )
             }
         }
     }
@@ -764,11 +769,14 @@ final class DatabaseManager {
             driver: driver
         )
 
-        // Generate SQL statements
+        guard let resolvedPluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            throw DatabaseError.unsupportedOperation
+        }
+
         let generator = SchemaStatementGenerator(
             tableName: tableName,
-            databaseType: databaseType,
-            primaryKeyConstraintName: pkConstraintName
+            primaryKeyConstraintName: pkConstraintName,
+            pluginDriver: resolvedPluginDriver
         )
         let statements = try generator.generate(changes: changes)
 
@@ -801,7 +809,7 @@ final class DatabaseManager {
         driver: DatabaseDriver
     ) async -> String? {
         // Only needed for PostgreSQL PK modifications
-        guard databaseType == .postgresql || databaseType == .redshift else { return nil }
+        guard databaseType == .postgresql || databaseType == .redshift || databaseType == .duckdb else { return nil }
         guard
             changes.contains(where: {
                 if case .modifyPrimaryKey = $0 { return true }
@@ -814,10 +822,8 @@ final class DatabaseManager {
         // Query the actual constraint name from pg_constraint
         let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
         let schema: String
-        if let pgDriver = driver as? PostgreSQLDriver {
-            schema = pgDriver.escapedSchema
-        } else if let rsDriver = driver as? RedshiftDriver {
-            schema = rsDriver.escapedSchema
+        if let schemaDriver = driver as? SchemaSwitchable {
+            schema = schemaDriver.escapedSchema
         } else {
             schema = "public"
         }

@@ -1,23 +1,23 @@
 ---
 title: SQL Editor
-description: Write and execute SQL queries with syntax highlighting and autocomplete
+description: Tree-sitter syntax highlighting, multi-statement execution, Vim mode, and built-in SQL formatting
 ---
 
 # SQL Editor
 
-The SQL editor is the heart of TablePro, for writing and executing SQL queries with syntax highlighting, intelligent autocomplete, and multi-query support.
+Write and run SQL with tree-sitter-powered syntax highlighting, schema-aware autocomplete, and multi-statement execution in a single editor pane.
 
 {/* Screenshot: SQL editor with syntax highlighting and autocomplete popup */}
 <Frame caption="SQL Editor with syntax highlighting">
-  <img 
-    className="block dark:hidden" 
-    src="/images/sql-editor.png" 
-    alt="SQL Editor" 
+  <img
+    className="block dark:hidden"
+    src="/images/sql-editor.png"
+    alt="SQL Editor"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/sql-editor-dark.png" 
-    alt="SQL Editor" 
+  <img
+    className="hidden dark:block"
+    src="/images/sql-editor-dark.png"
+    alt="SQL Editor"
   />
 </Frame>
 
@@ -25,7 +25,7 @@ The SQL editor is the heart of TablePro, for writing and executing SQL queries w
 
 ### Syntax Highlighting
 
-The editor provides real-time syntax highlighting for:
+Real-time syntax highlighting covers:
 
 - **Keywords**: `SELECT`, `FROM`, `WHERE`, `JOIN`, etc. (pink)
 - **Strings**: Single and double-quoted strings (green)
@@ -36,11 +36,11 @@ The editor provides real-time syntax highlighting for:
 
 ### Line Numbers
 
-Line numbers are displayed by default, making it easy to:
+Line numbers are on by default. Useful for:
 
-- Reference specific lines in error messages
-- Navigate large queries
-- Communicate about code with others
+- Matching error messages to specific lines
+- Navigating large queries
+- Referencing code in conversations
 
 <Tip>
 Toggle line numbers in **Settings** > **Editor** > **Show Line Numbers**.
@@ -48,7 +48,7 @@ Toggle line numbers in **Settings** > **Editor** > **Show Line Numbers**.
 
 ### Current Line Highlighting
 
-The current line is subtly highlighted to help you track your cursor position, especially useful in long queries.
+The current line gets a subtle highlight so you can track your cursor position in long queries.
 
 ## Writing Queries
 
@@ -64,7 +64,7 @@ Press `Cmd+Enter` to execute.
 
 ### Multiple Queries
 
-Write multiple queries separated by semicolons:
+Separate multiple queries with semicolons:
 
 ```sql
 SELECT * FROM users LIMIT 10;
@@ -72,21 +72,21 @@ SELECT COUNT(*) FROM orders;
 SELECT name, email FROM customers WHERE country = 'US';
 ```
 
-Place your cursor in any statement and press `Cmd+Enter` to execute just that statement.
+Place your cursor in any statement and press `Cmd+Enter` to execute just that one.
 
 ### Selecting and Executing
 
-Select text in the editor and press `Cmd+Enter` to execute only the selection.
+Select text and press `Cmd+Enter` to run only the selection.
 
-If your selection contains **multiple statements** (separated by semicolons), they are executed sequentially within a transaction:
+If the selection contains **multiple statements** (separated by semicolons), they run sequentially in a transaction:
 
-- Statements run in order, one at a time
-- If any statement fails, execution stops and all changes are rolled back
-- The error message indicates which statement failed (e.g. "Statement 3/5 failed: ...")
-- Results from the last `SELECT` statement are displayed in the data grid
+- Statements execute in order, one at a time
+- If any statement fails, execution stops and all changes roll back
+- The error message identifies which statement failed (e.g. "Statement 3/5 failed: ...")
+- Results from the last `SELECT` are shown in the data grid
 - Each statement is recorded individually in query history
 
-This is useful for running SQL dumps, migrations, or batches of related statements:
+Good for running SQL dumps, migrations, or batches of related statements:
 
 ```sql
 DROP TABLE IF EXISTS users;
@@ -111,11 +111,11 @@ SELECT * FROM users;
 
 ## Autocomplete
 
-TablePro provides intelligent SQL autocomplete that understands your database schema.
+Schema-aware SQL autocomplete that adapts to your query context.
 
 ### Triggering Autocomplete
 
-Autocomplete appears automatically as you type, or you can trigger it manually:
+Autocomplete appears automatically as you type. You can also:
 
 - Start typing a keyword, table name, or column name
 - Press `Escape` to dismiss the popup
@@ -124,15 +124,15 @@ Autocomplete appears automatically as you type, or you can trigger it manually:
 
 {/* Screenshot: Autocomplete popup showing table and column suggestions */}
 <Frame caption="SQL autocomplete">
-  <img 
-    className="block dark:hidden" 
-    src="/images/autocomplete-popup.png" 
-    alt="Autocomplete" 
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-popup.png"
+    alt="Autocomplete"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/autocomplete-popup-dark.png" 
-    alt="Autocomplete" 
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-popup-dark.png"
+    alt="Autocomplete"
   />
 </Frame>
 
@@ -149,7 +149,7 @@ Autocomplete appears automatically as you type, or you can trigger it manually:
 
 ### Schema-Aware Completion
 
-Autocomplete is context-aware and understands your schema:
+Autocomplete resolves table aliases and shows the right columns:
 
 ```sql
 SELECT u.  -- Shows columns from 'users' table aliased as 'u'
@@ -159,7 +159,7 @@ JOIN orders o ON u.id = o.  -- Shows columns from 'orders' table
 
 ### SQL Keywords
 
-Common SQL keywords are suggested based on context:
+Keywords are suggested based on context:
 
 - After `SELECT`: `DISTINCT`, `TOP`, `ALL`
 - After `FROM`: `JOIN`, `LEFT JOIN`, `INNER JOIN`, `WHERE`
@@ -185,7 +185,7 @@ Results appear in the data grid below the editor:
 
 ### Explain Query
 
-Use the **Explain Query** feature to view the execution plan for your query, helping you understand how the database will execute it and identify performance bottlenecks.
+View the execution plan for your query to spot missing indexes or inefficient joins.
 
 To explain a query:
 
@@ -201,7 +201,7 @@ TablePro automatically uses the correct syntax for your database:
 | PostgreSQL | `EXPLAIN <query>` |
 | SQLite | `EXPLAIN QUERY PLAN <query>` |
 
-The execution plan results appear in the data grid below the editor, showing index usage, join strategies, and estimated row counts.
+The execution plan shows index usage, join strategies, and estimated row counts in the data grid.
 
 <Tip>
 Run Explain before executing expensive queries to verify they use the expected indexes and join strategies.
@@ -223,7 +223,7 @@ Run Explain before executing expensive queries to verify they use the expected i
 
 ## SQL Formatting
 
-TablePro includes a built-in SQL formatter that automatically restructures your queries for readability. The formatter is dialect-aware and adapts its output to your connected database.
+Built-in SQL formatter that restructures queries for readability. Dialect-aware: it adapts output to MySQL, PostgreSQL, or SQLite syntax.
 
 ### Format Query
 
@@ -233,7 +233,7 @@ To format the current query:
 - Click the **Format** button in the editor toolbar, or
 - Use the menu: **Query** > **Format Query**
 
-The formatter applies the following transformations:
+The formatter applies these transformations:
 
 | Transformation | Description |
 |----------------|-------------|
@@ -246,7 +246,7 @@ The formatter applies the following transformations:
 
 ### Dialect-Aware Formatting
 
-The formatter automatically detects your connected database and applies dialect-specific rules:
+The formatter detects your connected database and applies dialect-specific rules:
 
 | Database | Formatting Behavior |
 |----------|---------------------|
@@ -281,7 +281,7 @@ LIMIT 100;
 ```
 
 <Tip>
-Format your queries before sharing them with teammates or saving them as templates for consistent, readable SQL.
+Format queries before sharing with teammates or saving as templates for consistent, readable SQL.
 </Tip>
 
 {/* Screenshot: SQL query before and after formatting */}
@@ -308,25 +308,25 @@ When a query fails:
 
 {/* Screenshot: Query error message display */}
 <Frame caption="Query error message">
-  <img 
-    className="block dark:hidden" 
-    src="/images/query-error.png" 
-    alt="Query error" 
+  <img
+    className="block dark:hidden"
+    src="/images/query-error.png"
+    alt="Query error"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/query-error-dark.png" 
-    alt="Query error" 
+  <img
+    className="hidden dark:block"
+    src="/images/query-error-dark.png"
+    alt="Query error"
   />
 </Frame>
 
 ## Vim Mode
 
-TablePro includes optional Vim keybindings for the SQL editor, providing modal editing for developers who prefer Vim-style navigation and text manipulation.
+Optional Vim keybindings for modal editing. Normal, Insert, Visual, and Command-line modes are all supported.
 
 ### Enabling Vim Mode
 
-Toggle Vim mode in **Settings** > **Editor** > **Editing** > **Vim mode**. When enabled, the editor switches to modal editing with a mode indicator badge displayed in the editor toolbar.
+Toggle in **Settings** > **Editor** > **Editing** > **Vim mode**. A mode indicator badge appears in the editor toolbar when active.
 
 ### Modes
 
@@ -391,7 +391,7 @@ Most motions and operators accept a count prefix: `3j` moves down 3 lines, `2dd`
 
 ### Escape Coordination
 
-When Vim mode is enabled, `Escape` returns to Normal mode. If AI autocomplete suggestions are visible, the first `Escape` dismisses the suggestion and the second returns to Normal mode.
+With Vim mode enabled, `Escape` returns to Normal mode. If AI autocomplete suggestions are visible, the first `Escape` dismisses the suggestion and the second returns to Normal mode.
 
 <Tip>
 The mode indicator badge in the toolbar shows your current Vim mode (NORMAL, INSERT, VISUAL) so you always know which mode you are in.
@@ -476,7 +476,7 @@ GROUP BY u.name;
 
 ### Quick Table Exploration
 
-To quickly explore a table's structure and data:
+Quickly check a table's structure and data:
 
 ```sql
 -- View table structure (MySQL)
@@ -494,7 +494,7 @@ SELECT COUNT(*) FROM users;
 
 ### Using Aliases
 
-Use table aliases for cleaner, more readable queries:
+Table aliases keep queries cleaner and shorter:
 
 ```sql
 -- Without aliases (verbose)
@@ -510,11 +510,11 @@ JOIN orders o ON u.id = o.user_id;
 
 ## Opening SQL Files
 
-TablePro can open `.sql` files directly from Finder, making it easy to work with saved queries, migrations, and SQL scripts.
+TablePro opens `.sql` files directly from Finder.
 
 ### Opening from Finder
 
-There are two ways to open `.sql` files in TablePro:
+Two ways to open `.sql` files:
 
 - **Double-click** a `.sql` file in Finder (if TablePro is set as the default app)
 - **Right-click** a `.sql` file > **Open With** > **TablePro**
@@ -528,7 +528,7 @@ There are two ways to open `.sql` files in TablePro:
 
 ### Multiple Files
 
-Opening multiple `.sql` files creates a separate tab for each file, allowing you to work with several scripts at once.
+Opening multiple `.sql` files creates a separate tab for each file.
 
 <Note>
 The file contents are loaded into the editor tab. Changes you make in the editor do not modify the original `.sql` file on disk.
@@ -554,7 +554,7 @@ The file contents are loaded into the editor tab. Changes you make in the editor
 
 ### Always Use LIMIT
 
-When exploring data, always use `LIMIT` to avoid loading millions of rows:
+When exploring data, always add `LIMIT` to avoid loading millions of rows:
 
 ```sql
 SELECT * FROM large_table LIMIT 100;

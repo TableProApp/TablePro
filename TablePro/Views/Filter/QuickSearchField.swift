@@ -23,12 +23,12 @@ struct QuickSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: DesignConstants.FontSize.medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .foregroundStyle(.secondary)
 
             TextField("Quick search across all columns...", text: $localText)
                 .textFieldStyle(.plain)
-                .font(.system(size: DesignConstants.FontSize.medium))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .focused($isTextFieldFocused)
                 .onSubmit {
                     if !localText.isEmpty {
@@ -44,7 +44,7 @@ struct QuickSearchField: View {
                     onClear()
                 }) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: DesignConstants.IconSize.small))
+                        .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)

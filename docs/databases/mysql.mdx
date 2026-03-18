@@ -1,11 +1,11 @@
 ---
 title: MySQL & MariaDB
-description: Connect to MySQL and MariaDB databases with TablePro
+description: Connect to MySQL 5.7+/8.0+ and MariaDB 10.x+ using the same MariaDB C connector driver
 ---
 
 # MySQL & MariaDB Connections
 
-TablePro provides full support for MySQL 5.7+, MySQL 8.0+, and MariaDB 10.x+. Both databases use the same connection interface since they share compatible protocols.
+TablePro supports MySQL 5.7+, MySQL 8.0+, and MariaDB 10.x+. Both databases share compatible protocols and use the same connection interface.
 
 ## Quick Setup
 
@@ -43,11 +43,11 @@ TablePro provides full support for MySQL 5.7+, MySQL 8.0+, and MariaDB 10.x+. Bo
 | **Database** | Default database to use after connecting |
 
 <Tip>
-Leaving the database field empty allows you to browse all databases the user has access to.
+Leaving the database field empty shows all databases the user has access to.
 </Tip>
 
 <Tip>
-You can also connect directly by opening a `mysql://` or `mariadb://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
+You can also connect by opening a `mysql://` or `mariadb://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
 </Tip>
 
 {/* Screenshot: MySQL connection form */}
@@ -63,10 +63,6 @@ You can also connect directly by opening a `mysql://` or `mariadb://` URL from y
     alt="MySQL connection form"
   />
 </Frame>
-
-<Tip>
-You can also connect directly by opening a `mysql://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
-</Tip>
 
 ## Example Configurations
 
@@ -120,7 +116,7 @@ For production databases, consider using [SSH tunneling](/databases/ssh-tunnelin
 
 ## MySQL vs MariaDB
 
-While TablePro uses the same driver for both, there are minor differences:
+TablePro uses the same driver for both. A few differences to note:
 
 | Feature | MySQL 8.0 | MariaDB 10.x |
 |---------|-----------|--------------|
@@ -145,21 +141,21 @@ After connecting, the sidebar shows all databases accessible to your user:
 
 {/* Screenshot: Sidebar showing expanded MySQL database with tables */}
 <Frame caption="Database browser">
-  <img 
-    className="block dark:hidden" 
-    src="/images/mysql-database-browser.png" 
-    alt="Database browser" 
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-database-browser.png"
+    alt="Database browser"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/mysql-database-browser-dark.png" 
-    alt="Database browser" 
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-database-browser-dark.png"
+    alt="Database browser"
   />
 </Frame>
 
 ### Table Information
 
-For each table, TablePro provides:
+For each table, TablePro shows:
 
 - **Structure**: Column definitions, types, and constraints
 - **Indexes**: All indexes including primary keys
@@ -240,15 +236,15 @@ SELECT * FROM category_tree;
 
 ### MySQL 8.0 Authentication
 
-MySQL 8.0 uses `caching_sha2_password` by default, which may cause connection issues.
+MySQL 8.0 defaults to `caching_sha2_password`, which may cause connection issues.
 
-**Option 1**: Use native password for specific user
+**Option 1**: Use native password for a specific user
 ```sql
 ALTER USER 'username'@'localhost'
 IDENTIFIED WITH mysql_native_password BY 'password';
 ```
 
-**Option 2**: Change default authentication method
+**Option 2**: Change the default authentication method
 ```ini
 # In my.cnf
 [mysqld]
@@ -257,7 +253,7 @@ default_authentication_plugin=mysql_native_password
 
 ### SSL/TLS Connections
 
-TablePro supports SSL/TLS encryption for MySQL and MariaDB connections. Configure SSL in the **SSL/TLS** section of the connection form.
+Configure SSL in the **SSL/TLS** section of the connection form.
 
 | SSL Mode | MySQL Behavior |
 |----------|----------------|
@@ -267,14 +263,14 @@ TablePro supports SSL/TLS encryption for MySQL and MariaDB connections. Configur
 | **Verify CA** | Enforces SSL and verifies the server certificate against the CA |
 | **Verify Identity** | Enforces SSL, verifies CA, and validates the server hostname |
 
-For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate file. Optionally, you can also provide client certificate and key files for mutual TLS authentication.
+For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate file. Optionally provide client certificate and key files for mutual TLS.
 
 <Tip>
-Most cloud MySQL providers (AWS RDS, Google Cloud SQL, Azure) require SSL. Use **Verify CA** mode with the provider's CA certificate for the best security.
+Most cloud MySQL providers (AWS RDS, Google Cloud SQL, Azure) require SSL. Use **Verify CA** with the provider's CA certificate for best security.
 </Tip>
 
 <Note>
-If you don't need SSL but want encrypted connections, [SSH tunneling](/databases/ssh-tunneling) is an alternative that encrypts all traffic through an SSH tunnel.
+If you don't need SSL but want encrypted connections, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel.
 </Note>
 
 {/* Screenshot: MySQL SSL/TLS configuration */}
@@ -310,13 +306,26 @@ For tables with millions of rows:
 
 2. Monitor query execution time in the results panel
 
+## Startup Commands
+
+Set session variables that apply automatically on every connection. Configure these in the **Advanced** tab of the connection form.
+
+Typical MySQL startup commands:
+
+```sql
+SET time_zone = '+00:00';
+SET NAMES utf8mb4;
+SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE';
+SET group_concat_max_len = 1000000;
+```
+
+For example, setting `time_zone` ensures all `DATETIME` and `TIMESTAMP` queries return results in UTC regardless of the server's configured timezone. This is especially useful when your application servers and database server are in different timezones.
+
+See [Startup Commands](/databases/overview#startup-commands) for more details.
+
 ## Character Sets
 
-TablePro defaults to UTF-8 (utf8mb4) for MySQL connections, ensuring proper handling of:
-
-- International characters
-- Emoji
-- Special symbols
+TablePro defaults to UTF-8 (utf8mb4) for MySQL connections, which handles international characters, emoji, and special symbols correctly.
 
 If you encounter encoding issues, verify your table/column character sets:
 

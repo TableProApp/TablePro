@@ -1,0 +1,309 @@
+---
+title: Redis
+description: 按命名空间浏览键、管理 TTL，以及直接在编辑器中执行 Redis 命令
+---
+
+# Redis 连接
+
+TablePro 支持 Redis 6.0 及更高版本。键按冒号分隔的命名空间在侧栏中分组。值在数据网格中以类型感知的格式显示（字符串、哈希、列表、集合、有序集合、JSON）。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 Redis">
+    从数据库类型选择器中选择 **Redis**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、password（如需要）和数据库索引
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP | `localhost` |
+| **Port** | Redis 服务器端口 | `6379` |
+
+### 可选字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Password** | Redis 服务器密码（AUTH） |
+| **Database** | 数据库索引（0-15，默认 `0`） |
+
+<Tip>
+对于没有启用认证的本地开发环境，可以留空 password 字段。Redis 默认使用数据库索引 `0`。
+</Tip>
+
+## 连接 URL 格式
+
+使用 Redis URL 导入连接。
+
+`rediss://` scheme（注意双 `s`）表示 TLS 加密连接。
+
+参阅 [连接 URL 参考](/zh/databases/connection-urls#redis) 了解完整的 Redis URL 格式。
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local Redis
+Host:     localhost
+Port:     6379
+Password: （留空）
+Database: 0
+```
+
+### Docker Redis 容器
+
+```
+Name:     Docker Redis
+Host:     localhost
+Port:     6379（或你映射的端口）
+Password: （来自 REDIS_PASSWORD 环境变量的密码）
+Database: 0
+```
+
+### Redis Cloud / 托管服务
+
+```
+Name:     Redis Cloud
+Host:     redis-12345.c1.us-east-1-2.ec2.cloud.redislabs.com
+Port:     12345
+Password: （你的 Redis Cloud 密码）
+Database: 0
+```
+
+<Note>
+托管 Redis 服务通常要求 SSL/TLS。请在连接表单的 SSL/TLS 部分启用。
+</Note>
+
+### 远程服务器
+
+```
+Name:     Production Cache
+Host:     redis.example.com
+Port:     6379
+Password: （安全密码）
+Database: 0
+```
+
+<Warning>
+对于生产环境的 Redis 实例，建议使用 [SSH tunneling](/zh/databases/ssh-tunneling) 进行安全连接。
+</Warning>
+
+## SSL/TLS 连接
+
+在连接表单的 **SSL/TLS** 部分配置 SSL。
+
+| SSL 模式 | 描述 |
+|----------|-------------|
+| **Disabled** | 不使用 SSL 加密 |
+| **Required** | 要求 SSL 加密 |
+| **Verify CA** | 要求 SSL 并验证服务器证书是否由 CA 签发 |
+
+对于 **Verify CA** 模式，需要提供 CA 证书文件路径。也可以提供可选的客户端证书和密钥文件以实现 mutual TLS。
+
+<Tip>
+导入需要 TLS 的连接时使用 `rediss://` URL scheme。
+</Tip>
+
+<Note>
+如果不想配置 SSL 证书，[SSH tunneling](/zh/databases/ssh-tunneling) 可以通过 SSH tunnel 加密所有流量。
+</Note>
+
+## SSH Tunnel 支持
+
+通过 SSH tunnel 连接 Redis 以安全访问远程服务器。设置方法请参阅 [SSH Tunneling](/zh/databases/ssh-tunneling)。
+
+## 功能
+
+### 命名空间浏览
+
+连接后，侧栏按冒号分隔的前缀对键进行分组。名为 `user:1`、`user:2` 和 `session:abc` 的键分别出现在 `user` 和 `session` 命名空间下：
+
+1. 点击侧栏中的连接名称
+2. 展开命名空间查看其键
+3. 点击键查看其值
+
+没有冒号分隔符的键归入根命名空间。
+
+### 键值查看
+
+值在数据网格中以类型感知的格式显示：
+
+- **String** 值显示为纯文本
+- **Hash** 字段以键值对的行形式显示
+- **List** 元素显示其索引
+- **Set** 成员显示为独立行
+- **Sorted Set** 成员显示其分数
+- **JSON** 值带有语法高亮
+
+### TTL 管理
+
+查看和管理键的生存时间（TTL）：
+
+- TTL 显示在数据网格中每个键的旁边
+- 没有过期时间的键显示 `-1`
+- 不存在的键显示 `-2`
+- 可以直接在界面中设置或更新 TTL 值
+
+### Redis CLI
+
+在编辑器标签页中直接执行 Redis 命令：
+
+```redis
+-- 键操作
+GET mykey
+SET mykey "hello" EX 60
+DEL mykey key2 key3
+KEYS user:*
+
+-- 哈希操作
+HGETALL myhash
+HSET myhash field1 "value1"
+HDEL myhash field1
+
+-- 列表操作
+LRANGE mylist 0 -1
+LPUSH mylist "item1" "item2"
+LLEN mylist
+
+-- 集合操作
+SMEMBERS myset
+SADD myset "member1" "member2"
+SCARD myset
+
+-- 有序集合操作
+ZRANGE myzset 0 -1 WITHSCORES
+ZADD myzset 1 "one" 2 "two"
+ZCARD myzset
+
+-- 扫描键
+SCAN 0 MATCH user:* COUNT 100
+
+-- 服务器信息
+PING
+INFO
+DBSIZE
+```
+
+### 支持的命令
+
+TablePro 支持全套 Redis 命令：
+
+| 类别 | 命令 |
+|----------|----------|
+| **String** | GET、SET、MGET、MSET、INCR、DECR、APPEND |
+| **Hash** | HGET、HSET、HGETALL、HDEL、HKEYS、HVALS、HLEN |
+| **List** | LPUSH、RPUSH、LPOP、RPOP、LRANGE、LLEN、LINDEX |
+| **Set** | SADD、SREM、SMEMBERS、SISMEMBER、SCARD、SUNION |
+| **Sorted Set** | ZADD、ZREM、ZRANGE、ZRANGEBYSCORE、ZCARD、ZSCORE |
+| **Key** | DEL、EXISTS、EXPIRE、TTL、TYPE、RENAME、KEYS、SCAN |
+| **Server** | PING、INFO、DBSIZE、FLUSHDB、SELECT |
+
+未在上方列出的命令仍会发送到服务器，其响应会显示在结果面板中。
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或超时
+
+**原因及解决方案**：
+
+1. **Redis 服务器未运行**
+   ```bash
+   # 检查 Redis 是否运行
+   redis-cli ping
+
+   # 启动 Redis（macOS Homebrew）
+   brew services start redis
+   ```
+
+2. **端口错误**
+   - 检查 Redis 配置文件（`redis.conf`）中的端口
+   - 检查你的配置
+
+3. **Redis 未监听预期地址**
+   - 检查 `redis.conf` 中的 `bind` 指令
+   - 对于远程连接，添加客户端 IP 或使用 `0.0.0.0`
+
+### 认证失败
+
+**症状**："NOAUTH Authentication required" 或 "ERR invalid password"
+
+**解决方案**：
+
+1. 验证密码是否匹配 `redis.conf` 中的 `requirepass`
+2. 对于 Redis 6.0+ 的 ACL：
+   ```redis
+   ACL LIST
+   ACL SETUSER myuser on >password ~* +@all
+   ```
+
+### 连接超时
+
+**症状**：连接挂起或超时
+
+**解决方案**：
+
+1. 验证 host 和 port 是否正确
+2. 检查网络连通性和防火墙规则
+3. 对于云托管的 Redis，确保你的 IP 已加入白名单
+
+## 已知限制
+
+- **集群模式**：不支持自动分片的 Redis Cluster。请直接连接单个节点。
+- **Pub/Sub**：当前版本不支持实时 Pub/Sub 订阅。
+- **Streams**：Redis Streams（XADD、XREAD 等）在数据网格中不支持，但命令可在 CLI 中使用。
+- **模块**：RedisJSON、RediSearch 等模块命令可通过 CLI 使用，但可能缺少专门的 UI 支持。
+- **大键**：包含数百万元素的键（大列表、集合或哈希）会进行分页以防止内存问题。
+
+## 性能建议
+
+### 大型数据库
+
+对于有数百万个键的 Redis 实例：
+
+1. 使用命名空间浏览按前缀过滤键
+2. 在 CLI 中使用 `SCAN` 而不是 `KEYS` 进行模式匹配
+3. 浏览大型集合时会自动应用分页
+
+### 内存监控
+
+检查 Redis 实例的内存使用情况：
+
+```redis
+INFO memory
+MEMORY USAGE mykey
+DBSIZE
+```
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 Redis 服务器
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握查询编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 Redis 数据
+  </Card>
+  <Card title="数据网格" icon="table" href="/zh/features/data-grid">
+    在数据网格中浏览和编辑键值数据
+  </Card>
+</CardGroup>

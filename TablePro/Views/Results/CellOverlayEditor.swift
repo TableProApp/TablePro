@@ -56,7 +56,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         let cellRect = cellView.convert(cellView.bounds, to: tableView)
 
         // Determine overlay height — at least the cell height, up to 120pt
-        let lineHeight: CGFloat = CellOverlayFonts.regular.boundingRectForFont.height + 4
+        let lineHeight: CGFloat = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
         let lineCount = CGFloat(value.components(separatedBy: .newlines).count)
         let contentHeight = max(lineCount * lineHeight + 8, cellRect.height)
         let overlayHeight = min(contentHeight, 120)
@@ -69,10 +69,11 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         )
 
         // Build text view
-        let textView = NSTextView(frame: NSRect(origin: .zero, size: overlayRect.size))
+        let textView = OverlayTextView(frame: NSRect(origin: .zero, size: overlayRect.size))
+        textView.overlayEditor = self
         textView.isRichText = false
         textView.allowsUndo = true
-        textView.font = CellOverlayFonts.regular
+        textView.font = ThemeEngine.shared.dataGridFonts.regular
         textView.textColor = .labelColor
         textView.backgroundColor = .textBackgroundColor
         textView.isVerticallyResizable = true
@@ -215,13 +216,26 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         // Up/Down arrows — let NSTextView handle natively for line navigation
         return false
     }
+}
 
-    // MARK: - Fonts
+// MARK: - Overlay Text View
 
-    private enum CellOverlayFonts {
-        static let regular = NSFont.monospacedSystemFont(
-            ofSize: DesignConstants.FontSize.body,
-            weight: .regular
-        )
+/// NSTextView subclass that commits and dismisses the overlay editor when
+/// the user presses a menu key equivalent (e.g. Cmd+S) so the shortcut
+/// propagates to the SwiftUI menu system instead of being swallowed.
+private final class OverlayTextView: NSTextView {
+    weak var overlayEditor: CellOverlayEditor?
+
+    /// Key equivalents that should commit the edit and bubble up to the menu bar.
+    private static let menuKeyEquivalents: Set<String> = ["s"]
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command),
+           let chars = event.charactersIgnoringModifiers,
+           Self.menuKeyEquivalents.contains(chars) {
+            overlayEditor?.dismiss(commit: true)
+            return false
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

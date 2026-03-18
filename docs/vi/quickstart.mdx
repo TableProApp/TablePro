@@ -1,40 +1,40 @@
 ---
 title: Bắt đầu nhanh
-description: Thiết lập và chạy TablePro trong vài phút
+description: Tải TablePro, cài đặt và kết nối database đầu tiên trong dưới 5 phút
 ---
 
 # Hướng dẫn Bắt đầu Nhanh
 
-Hướng dẫn này sẽ giúp bạn tải xuống TablePro, cài đặt và kết nối với cơ sở dữ liệu đầu tiên.
+Tải, cài đặt và chạy query đầu tiên.
 
 ## Bước 1: Tải xuống TablePro
 
 Cách nhanh nhất là dùng [Homebrew](https://brew.sh):
 
 ```bash
-brew install datlechin/tap/tablepro
+brew install --cask tablepro
 ```
 
 <Tip>
-Nếu bạn cài đặt qua Homebrew, hãy chuyển đến [Bước 3](#bước-3-tạo-kết-nối-đầu-tiên). Công thức cask xử lý cài đặt và tự động xóa thuộc tính quarantine của macOS.
+Nếu cài qua Homebrew, chuyển thẳng đến [Bước 3](#bước-3-tạo-kết-nối-đầu-tiên).
 </Tip>
 
-Ngoài ra, tải xuống thủ công:
+Hoặc tải thủ công:
 
 1. Truy cập [trang GitHub Releases](https://github.com/datlechin/tablepro/releases)
-2. Tải xuống file DMG cho Mac của bạn:
+2. Tải file DMG cho Mac:
    - **Apple Silicon** (M1/M2/M3/M4/M5): `TablePro-arm64.dmg`
    - **Intel**: `TablePro-x86_64.dmg`
 
 <Note>
-Không chắc Mac của bạn dùng chip nào? Nhấp vào menu Apple và chọn **About This Mac**. Tìm "Chip" (Apple Silicon) hoặc "Processor" (Intel).
+Không chắc Mac dùng chip nào? Nhấp menu Apple, chọn **About This Mac**. Tìm "Chip" (Apple Silicon) hoặc "Processor" (Intel).
 </Note>
 
 ## Bước 2: Cài đặt TablePro
 
-1. Mở file DMG đã tải xuống
-2. Kéo **TablePro** vào thư mục **Applications** của bạn
-3. Đẩy DMG ra
+1. Mở file DMG đã tải
+2. Kéo **TablePro** vào thư mục **Applications**
+3. Eject DMG
 4. Mở TablePro từ thư mục Applications
 
 {/* Screenshot: DMG installation window showing drag to Applications */}
@@ -51,31 +51,21 @@ Không chắc Mac của bạn dùng chip nào? Nhấp vào menu Apple và chọn
   />
 </Frame>
 
-<Warning>
-Khi khởi chạy lần đầu, macOS sẽ hiển thị lỗi **"TablePro is damaged and can't be opened"** vì TablePro không được ký với chứng chỉ Apple Developer. Để khắc phục, mở **Terminal** và chạy:
-
-```bash
-xattr -cr /Applications/TablePro.app
-```
-
-Sau đó mở lại TablePro. Bạn chỉ cần làm điều này một lần. Xem [hướng dẫn Cài đặt](/vi/installation#bảo-mật-khởi-chạy-lần-đầu) để biết thêm chi tiết.
-</Warning>
-
 ## Bước 3: Tạo Kết nối Đầu tiên
 
-Khi TablePro khởi chạy, bạn sẽ thấy màn hình Chào mừng. Hãy tạo một kết nối cơ sở dữ liệu mới.
+Màn hình Welcome hiện ra khi khởi chạy. Tạo kết nối database mới từ đây.
 
 ### Đối với MySQL/MariaDB
 
 1. Nhấp **New Connection**
-2. Chọn **MySQL** hoặc **MariaDB** làm loại cơ sở dữ liệu
+2. Chọn **MySQL** hoặc **MariaDB**
 3. Điền thông tin kết nối:
-   - **Name**: Tên thân thiện cho kết nối này (ví dụ: "Local MySQL")
-   - **Host**: `localhost` (hoặc địa chỉ máy chủ của bạn)
+   - **Name**: Tên gợi nhớ (ví dụ: "Local MySQL")
+   - **Host**: `localhost` (hoặc địa chỉ server)
    - **Port**: `3306` (mặc định)
-   - **Username**: Tên người dùng cơ sở dữ liệu của bạn (ví dụ: `root`)
-   - **Password**: Mật khẩu cơ sở dữ liệu của bạn
-   - **Database**: (Tùy chọn) Cơ sở dữ liệu mặc định để kết nối
+   - **Username**: Tên user database (ví dụ: `root`)
+   - **Password**: Mật khẩu database
+   - **Database**: (Tùy chọn) Database mặc định
 
 {/* Screenshot: Connection form with MySQL selected and fields filled in */}
 <Frame caption="Tạo kết nối MySQL">
@@ -94,60 +84,60 @@ Khi TablePro khởi chạy, bạn sẽ thấy màn hình Chào mừng. Hãy tạ
 ### Đối với PostgreSQL
 
 1. Nhấp **New Connection**
-2. Chọn **PostgreSQL** làm loại cơ sở dữ liệu
+2. Chọn **PostgreSQL**
 3. Điền thông tin kết nối:
-   - **Name**: Tên thân thiện (ví dụ: "Local PostgreSQL")
-   - **Host**: `localhost` (hoặc địa chỉ máy chủ của bạn)
+   - **Name**: Tên gợi nhớ (ví dụ: "Local PostgreSQL")
+   - **Host**: `localhost` (hoặc địa chỉ server)
    - **Port**: `5432` (mặc định)
-   - **Username**: Tên người dùng cơ sở dữ liệu của bạn (ví dụ: `postgres`)
-   - **Password**: Mật khẩu cơ sở dữ liệu của bạn
-   - **Database**: Tên cơ sở dữ liệu để kết nối
+   - **Username**: Tên user database (ví dụ: `postgres`)
+   - **Password**: Mật khẩu database
+   - **Database**: Tên database
 
 ### Đối với Amazon Redshift
 
 1. Nhấp **New Connection**
-2. Chọn **Amazon Redshift** làm loại cơ sở dữ liệu
+2. Chọn **Amazon Redshift**
 3. Điền thông tin kết nối:
-   - **Name**: Tên thân thiện (ví dụ: "Redshift Warehouse")
-   - **Host**: Endpoint cluster của bạn (ví dụ: `my-cluster.abc123.us-east-1.redshift.amazonaws.com`)
+   - **Name**: Tên gợi nhớ (ví dụ: "Redshift Warehouse")
+   - **Host**: Endpoint cluster (ví dụ: `my-cluster.abc123.us-east-1.redshift.amazonaws.com`)
    - **Port**: `5439` (mặc định)
-   - **Username**: Tên người dùng Redshift của bạn (ví dụ: `awsuser`)
-   - **Password**: Mật khẩu của bạn
-   - **Database**: Tên cơ sở dữ liệu (thường là `dev`)
+   - **Username**: Tên user Redshift (ví dụ: `awsuser`)
+   - **Password**: Mật khẩu
+   - **Database**: Tên database (thường là `dev`)
 
 ### Đối với SQLite
 
 1. Nhấp **New Connection**
-2. Chọn **SQLite** làm loại cơ sở dữ liệu
-3. Nhấp **Browse** để chọn file cơ sở dữ liệu SQLite của bạn
-4. Đặt tên cho kết nối của bạn
+2. Chọn **SQLite**
+3. Nhấp **Browse** để chọn file database SQLite
+4. Đặt tên cho kết nối
 
 <Tip>
-Cơ sở dữ liệu SQLite không yêu cầu xác thực - chỉ cần chọn file `.sqlite` hoặc `.db` trên Mac của bạn.
+SQLite không cần xác thực. Chỉ cần chọn file `.sqlite` hoặc `.db` trên Mac.
 </Tip>
 
 ### Đối với MongoDB
 
 1. Nhấp **New Connection**
-2. Chọn **MongoDB** làm loại cơ sở dữ liệu
+2. Chọn **MongoDB**
 3. Điền thông tin kết nối:
-   - **Name**: Tên thân thiện (ví dụ: "Local MongoDB")
-   - **Host**: `localhost` (hoặc địa chỉ máy chủ của bạn)
+   - **Name**: Tên gợi nhớ (ví dụ: "Local MongoDB")
+   - **Host**: `localhost` (hoặc địa chỉ server)
    - **Port**: `27017` (mặc định)
-   - **Username**: Tên người dùng cơ sở dữ liệu (nếu xác thực được bật)
-   - **Password**: Mật khẩu cơ sở dữ liệu
-   - **Database**: Tên cơ sở dữ liệu để kết nối
-   - **Auth Database**: Cơ sở dữ liệu xác thực (mặc định là `admin`)
+   - **Username**: Tên user database (nếu bật xác thực)
+   - **Password**: Mật khẩu database
+   - **Database**: Tên database
+   - **Auth Database**: Database xác thực (mặc định là `admin`)
 
 <Tip>
-Đối với các instance MongoDB cục bộ không có xác thực, bạn chỉ cần host và port. Kết nối MongoDB sử dụng giao thức URI `mongodb://` bên trong.
+MongoDB cục bộ không có xác thực chỉ cần host và port. Kết nối sử dụng giao thức `mongodb://` bên trong.
 </Tip>
 
 ## Bước 4: Kiểm tra và Kết nối
 
-1. Nhấp **Test Connection** để xác minh cài đặt của bạn
-2. Nếu thành công, bạn sẽ thấy dấu kiểm màu xanh
-3. Nhấp **Create** để lưu kết nối và kết nối
+1. Nhấp **Test Connection** để kiểm tra cài đặt
+2. Dấu kiểm xanh xác nhận kết nối thành công
+3. Nhấp **Create** để lưu và kết nối
 
 {/* Screenshot: Successful connection test showing green checkmark */}
 <Frame caption="Kiểm tra kết nối thành công">
@@ -163,12 +153,12 @@ Cơ sở dữ liệu SQLite không yêu cầu xác thực - chỉ cần chọn f
   />
 </Frame>
 
-## Bước 5: Khám phá Cơ sở dữ liệu của bạn
+## Bước 5: Khám phá Cơ sở dữ liệu
 
-Sau khi kết nối, bạn sẽ thấy giao diện chính với:
+Giao diện chính gồm ba phần:
 
-- **Sidebar**: Cơ sở dữ liệu và bảng của bạn
-- **SQL Editor**: Viết và thực thi các truy vấn SQL
+- **Sidebar**: Database và bảng
+- **SQL Editor**: Viết và thực thi truy vấn SQL
 - **Data Grid**: Xem và chỉnh sửa kết quả truy vấn
 
 {/* Screenshot: Main interface after connecting, showing sidebar with tables */}
@@ -187,42 +177,42 @@ Sau khi kết nối, bạn sẽ thấy giao diện chính với:
 
 ### Thử Truy vấn Đầu tiên
 
-1. Nhấp vào một bảng trong sidebar để xem nội dung của nó
-2. Hoặc nhập một truy vấn trong trình soạn thảo SQL:
+1. Nhấp vào một bảng trong sidebar để xem nội dung
+2. Hoặc gõ query trong SQL editor:
 
 ```sql
 SELECT * FROM users LIMIT 10;
 ```
 
-3. Nhấn `Cmd+Enter` để thực thi truy vấn
-4. Xem kết quả trong bảng dữ liệu bên dưới
+3. Nhấn `Cmd+Enter` để thực thi
+4. Xem kết quả trong data grid bên dưới
 
 ## Các bước tiếp theo
 
-Chúc mừng! Bạn đã thiết lập thành công TablePro. Đây là những gì cần khám phá tiếp theo:
+Xong rồi. Tiếp theo có thể xem:
 
 <CardGroup cols={2}>
   <Card title="Kết nối Cơ sở dữ liệu" icon="plug" href="/vi/databases/overview">
-    Tìm hiểu thêm về quản lý và tổ chức các kết nối của bạn.
+    Quản lý và tổ chức các kết nối.
   </Card>
   <Card title="Trình soạn thảo SQL" icon="code" href="/vi/features/sql-editor">
-    Làm chủ trình soạn thảo SQL với tô sáng cú pháp và tự động hoàn thành.
+    Tô sáng cú pháp, autocomplete và multi-cursor.
   </Card>
   <Card title="SSH Tunneling" icon="lock" href="/vi/databases/ssh-tunneling">
-    Kết nối an toàn với cơ sở dữ liệu từ xa thông qua SSH.
+    Kết nối database từ xa qua SSH.
   </Card>
   <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
-    Tăng tốc quy trình làm việc của bạn với các phím tắt.
+    Thao tác nhanh hơn với phím tắt.
   </Card>
   <Card title="AI SQL Assistant" icon="sparkles" href="/vi/features/ai-chat">
-    Sử dụng AI để viết, giải thích và tối ưu các truy vấn SQL.
+    Viết, giải thích và tối ưu SQL bằng AI.
   </Card>
 </CardGroup>
 
 ## Cần Trợ giúp?
 
-Nếu bạn gặp bất kỳ vấn đề nào:
+Nếu gặp vấn đề:
 
-- Kiểm tra [hướng dẫn Cài đặt](/vi/installation) để biết yêu cầu hệ thống chi tiết
-- Xem các hướng dẫn cụ thể cho từng cơ sở dữ liệu để khắc phục sự cố kết nối
-- [Mở một issue](https://github.com/datlechin/tablepro/issues) trên GitHub
+- Xem [hướng dẫn Cài đặt](/vi/installation) về yêu cầu hệ thống và xử lý lỗi
+- Xem hướng dẫn riêng cho từng loại database
+- [Mở issue](https://github.com/datlechin/tablepro/issues) trên GitHub

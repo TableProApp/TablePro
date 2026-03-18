@@ -32,6 +32,7 @@ struct DataGridIdentity: Equatable {
     let rowCount: Int
     let columnCount: Int
     let isEditable: Bool
+    let hiddenColumns: Set<String>
 }
 
 /// High-performance table view using AppKit NSTableView
@@ -41,7 +42,6 @@ struct DataGridView: NSViewRepresentable {
     var resultVersion: Int = 0
     var metadataVersion: Int = 0
     let isEditable: Bool
-    var onCommit: ((String) -> Void)?
     var onRefresh: (() -> Void)?
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onDeleteRows: ((Set<Int>) -> Void)?
@@ -59,6 +59,10 @@ struct DataGridView: NSViewRepresentable {
     var typePickerColumns: Set<Int>?
     var connectionId: UUID?
     var databaseType: DatabaseType?
+    var tableName: String?
+    var primaryKeyColumn: String?
+    var hiddenColumns: Set<String> = []
+    var onHideColumn: ((String) -> Void)?
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
@@ -148,6 +152,9 @@ struct DataGridView: NSViewRepresentable {
         }
         context.coordinator.isRebuildingColumns = false
 
+        // Apply column visibility
+        applyColumnVisibility(to: tableView)
+
         if let headerView = tableView.headerView {
             let headerMenu = NSMenu()
             headerMenu.delegate = context.coordinator
@@ -177,7 +184,8 @@ struct DataGridView: NSViewRepresentable {
             metadataVersion: metadataVersion,
             rowCount: rowProvider.totalRowCount,
             columnCount: rowProvider.columns.count,
-            isEditable: isEditable
+            isEditable: isEditable,
+            hiddenColumns: hiddenColumns
         )
         if currentIdentity == coordinator.lastIdentity {
             // Only refresh closure callbacks — they capture new state on each body eval
@@ -186,7 +194,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.onAddRow = onAddRow
             coordinator.onUndoInsert = onUndoInsert
             coordinator.onFilterColumn = onFilterColumn
-            coordinator.onCommit = onCommit
+            coordinator.onHideColumn = onHideColumn
             coordinator.onRefresh = onRefresh
             coordinator.onDeleteRows = onDeleteRows
             coordinator.getVisualState = getVisualState
@@ -219,37 +227,40 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.rowProvider = rowProvider
 
-        // Re-apply pending cell edits to the new rowProvider instance.
-        // SwiftUI may supply a cached rowProvider that doesn't reflect
-        // in-flight edits tracked by the changeManager.
-        for change in changeManager.changes {
-            guard let rowChange = change as? RowChange else { continue }
-            for cellChange in rowChange.cellChanges {
-                coordinator.rowProvider.updateValue(
-                    cellChange.newValue,
-                    at: rowChange.rowIndex,
-                    columnIndex: cellChange.columnIndex
-                )
+        // Re-apply pending cell edits only when changes have been modified
+        if changeManager.reloadVersion != coordinator.lastReapplyVersion {
+            coordinator.lastReapplyVersion = changeManager.reloadVersion
+            for change in changeManager.changes {
+                guard let rowChange = change as? RowChange else { continue }
+                for cellChange in rowChange.cellChanges {
+                    coordinator.rowProvider.updateValue(
+                        cellChange.newValue,
+                        at: rowChange.rowIndex,
+                        columnIndex: cellChange.columnIndex
+                    )
+                }
             }
         }
 
         coordinator.updateCache()
         coordinator.changeManager = changeManager
         coordinator.isEditable = isEditable
-        coordinator.onCommit = onCommit
         coordinator.onRefresh = onRefresh
         coordinator.onCellEdit = onCellEdit
-        coordinator.onDeleteRows = onDeleteRows  // Added: pass delete callback
+        coordinator.onDeleteRows = onDeleteRows
         coordinator.onSort = onSort
         coordinator.onAddRow = onAddRow
         coordinator.onUndoInsert = onUndoInsert
         coordinator.onFilterColumn = onFilterColumn
+        coordinator.onHideColumn = onHideColumn
         coordinator.getVisualState = getVisualState
         coordinator.onNavigateFK = onNavigateFK
         coordinator.dropdownColumns = dropdownColumns
         coordinator.typePickerColumns = typePickerColumns
         coordinator.connectionId = connectionId
         coordinator.databaseType = databaseType
+        coordinator.tableName = tableName
+        coordinator.primaryKeyColumn = primaryKeyColumn
 
         coordinator.rebuildVisualStateCache()
 
@@ -273,6 +284,9 @@ struct DataGridView: NSViewRepresentable {
             shouldRebuild: shouldRebuildColumns,
             structureChanged: structureChanged
         )
+
+        // Sync column visibility
+        applyColumnVisibility(to: tableView)
 
         syncSortDescriptors(tableView: tableView, coordinator: coordinator)
 
@@ -462,7 +476,10 @@ struct DataGridView: NSViewRepresentable {
         } else if versionChanged {
             // Granular reload: only reload rows that changed
             let changedRows = changeManager.consumeChangedRowIndices()
-            if !changedRows.isEmpty {
+            if changedRows.count > 500 {
+                // Too many changed rows — full reload is faster than granular
+                tableView.reloadData()
+            } else if !changedRows.isEmpty {
                 // Some rows changed → granular reload for performance
                 let rowIndexSet = IndexSet(changedRows)
                 let columnIndexSet = IndexSet(integersIn: 0..<tableView.numberOfColumns)
@@ -502,6 +519,21 @@ struct DataGridView: NSViewRepresentable {
         }
     }
 
+    // MARK: - Column Visibility
+
+    /// Apply hidden column state to the table view
+    private func applyColumnVisibility(to tableView: NSTableView) {
+        for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
+            guard let colIndex = Self.columnIndex(from: column.identifier),
+                  colIndex < rowProvider.columns.count else { continue }
+            let columnName = rowProvider.columns[colIndex]
+            let shouldHide = hiddenColumns.contains(columnName)
+            if column.isHidden != shouldHide {
+                column.isHidden = shouldHide
+            }
+        }
+    }
+
     // MARK: - Column Layout Helpers
 
     /// Extract column index from a stable identifier like "col_3"
@@ -516,11 +548,17 @@ struct DataGridView: NSViewRepresentable {
         guard Set(order) == Set(columns) else { return }
 
         let dataColumns = tableView.tableColumns.filter { $0.identifier.rawValue != "__rowNumber__" }
+
+        // Build name→column map for O(1) lookup
+        var columnMap: [String: NSTableColumn] = [:]
+        for col in dataColumns {
+            if let idx = columnIndex(from: col.identifier), idx < columns.count {
+                columnMap[columns[idx]] = col
+            }
+        }
+
         for (targetIndex, columnName) in order.enumerated() {
-            guard let sourceColumn = dataColumns.first(where: { col in
-                guard let idx = columnIndex(from: col.identifier), idx < columns.count else { return false }
-                return columns[idx] == columnName
-            }),
+            guard let sourceColumn = columnMap[columnName],
                   let currentIndex = tableView.tableColumns.firstIndex(of: sourceColumn) else { continue }
             let targetTableIndex = targetIndex + 1  // +1 for row number column
             if currentIndex != targetTableIndex && targetTableIndex < tableView.numberOfColumns {
@@ -562,6 +600,10 @@ struct DataGridView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(observer)
             coordinator.settingsObserver = nil
         }
+        if let observer = coordinator.themeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            coordinator.themeObserver = nil
+        }
     }
 
     func makeCoordinator() -> TableViewCoordinator {
@@ -570,7 +612,6 @@ struct DataGridView: NSViewRepresentable {
             changeManager: changeManager,
             isEditable: isEditable,
             selectedRowIndices: $selectedRowIndices,
-            onCommit: onCommit,
             onRefresh: onRefresh,
             onCellEdit: onCellEdit,
             onDeleteRows: onDeleteRows,
@@ -592,7 +633,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var rowProvider: InMemoryRowProvider
     var changeManager: AnyChangeManager
     var isEditable: Bool
-    var onCommit: ((String) -> Void)?
     var onRefresh: (() -> Void)?
     var onCellEdit: ((Int, Int, String?) -> Void)?
     var onDeleteRows: ((Set<Int>) -> Void)?
@@ -604,12 +644,15 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var onAddRow: (() -> Void)?
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
+    var onHideColumn: ((String) -> Void)?
     var onNavigateFK: ((String, ForeignKeyInfo) -> Void)?
     var getVisualState: ((Int) -> RowVisualState)?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
     var connectionId: UUID?
     var databaseType: DatabaseType?
+    var tableName: String?
+    var primaryKeyColumn: String?
 
     /// Check if undo is available
     func canUndo() -> Bool {
@@ -623,15 +666,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     weak var tableView: NSTableView?
     let cellFactory = DataGridCellFactory()
-    private(set) var overlayEditor: CellOverlayEditor?
+    var overlayEditor: CellOverlayEditor?
 
     // Settings observer for real-time updates
     fileprivate var settingsObserver: NSObjectProtocol?
+    // Theme observer for font/color changes
+    fileprivate var themeObserver: NSObjectProtocol?
+    /// Snapshot of last-seen data grid settings for change detection
+    private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
 
     fileprivate var lastIdentity: DataGridIdentity?
     var lastReloadVersion: Int = 0
+    var lastReapplyVersion: Int = -1
     private(set) var cachedRowCount: Int = 0
     private(set) var cachedColumnCount: Int = 0
     var isSyncingSortDescriptors: Bool = false
@@ -643,7 +691,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isWritingColumnLayout: Bool = false
 
     private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
-    private static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
+    static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     internal var pendingDropdownRow: Int = 0
     internal var pendingDropdownColumn: Int = 0
     private var rowVisualStateCache: [Int: RowVisualState] = [:]
@@ -657,7 +705,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         changeManager: AnyChangeManager,
         isEditable: Bool,
         selectedRowIndices: Binding<Set<Int>>,
-        onCommit: ((String) -> Void)?,
         onRefresh: (() -> Void)?,
         onCellEdit: ((Int, Int, String?) -> Void)?,
         onDeleteRows: ((Set<Int>) -> Void)?,
@@ -670,7 +717,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.changeManager = changeManager
         self.isEditable = isEditable
         self._selectedRowIndices = selectedRowIndices
-        self.onCommit = onCommit
         self.onRefresh = onRefresh
         self.onCellEdit = onCellEdit
         self.onDeleteRows = onDeleteRows
@@ -678,8 +724,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         self.onPasteRows = onPasteRows
         self.onUndo = onUndo
         self.onRedo = onRedo
+        self.lastDataGridSettings = AppSettingsManager.shared.dataGrid
         super.init()
         updateCache()
+
+        // Subscribe to theme changes for font/color updates
+        observeThemeChanges()
 
         // Subscribe to settings changes for real-time updates
         settingsObserver = NotificationCenter.default.addObserver(
@@ -691,14 +741,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
             DispatchQueue.main.async { [weak self] in
                 guard let self, let tableView = self.tableView else { return }
-                let newRowHeight = CGFloat(AppSettingsManager.shared.dataGrid.rowHeight.rawValue)
+                let settings = AppSettingsManager.shared.dataGrid
+                let prev = self.lastDataGridSettings
+                self.lastDataGridSettings = settings
 
-                // Only reload if row height changed (requires full reload)
+                let newRowHeight = CGFloat(settings.rowHeight.rawValue)
                 if tableView.rowHeight != newRowHeight {
                     tableView.rowHeight = newRowHeight
                     tableView.tile()
-                } else {
-                    // For other settings (date format, NULL display), just reload visible rows
+                }
+
+                // Font changes are handled by .themeDidChange observer.
+                // Check for data format changes that need cell re-rendering.
+                let dataChanged = prev.dateFormat != settings.dateFormat
+                    || prev.nullDisplay != settings.nullDisplay
+
+                if dataChanged {
                     let visibleRect = tableView.visibleRect
                     let visibleRange = tableView.rows(in: visibleRect)
                     if visibleRange.length > 0 {
@@ -712,8 +770,22 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    func observeThemeChanges() {
+        themeObserver = NotificationCenter.default.addObserver(
+            forName: .themeDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, let tableView = self.tableView else { return }
+            Self.updateVisibleCellFonts(tableView: tableView)
+        }
+    }
+
     deinit {
         if let observer = settingsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = themeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -721,6 +793,37 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func updateCache() {
         cachedRowCount = rowProvider.totalRowCount
         cachedColumnCount = rowProvider.columns.count
+    }
+
+    // MARK: - Font Updates
+
+    /// Update fonts on existing visible cell views in-place.
+    /// Uses `DataGridFontVariant` tags set during cell configuration
+    /// to apply the correct font variant without inspecting cell content.
+    @MainActor
+    static func updateVisibleCellFonts(tableView: NSTableView) {
+        let visibleRect = tableView.visibleRect
+        let visibleRange = tableView.rows(in: visibleRect)
+        guard visibleRange.length > 0 else { return }
+
+        let columnCount = tableView.numberOfColumns
+        for row in visibleRange.location..<(visibleRange.location + visibleRange.length) {
+            for col in 0..<columnCount {
+                guard let cellView = tableView.view(atColumn: col, row: row, makeIfNecessary: false) as? NSTableCellView,
+                      let textField = cellView.textField else { continue }
+
+                switch textField.tag {
+                case DataGridFontVariant.rowNumber:
+                    textField.font = ThemeEngine.shared.dataGridFonts.rowNumber
+                case DataGridFontVariant.italic:
+                    textField.font = ThemeEngine.shared.dataGridFonts.italic
+                case DataGridFontVariant.medium:
+                    textField.font = ThemeEngine.shared.dataGridFonts.medium
+                default:
+                    textField.font = ThemeEngine.shared.dataGridFonts.regular
+                }
+            }
+        }
     }
 
     // MARK: - Row Visual State Cache
@@ -775,549 +878,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func numberOfRows(in tableView: NSTableView) -> Int {
         cachedRowCount
-    }
-
-    // MARK: - Native Sorting
-
-    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
-        guard !isSyncingSortDescriptors else { return }
-
-        guard let sortDescriptor = tableView.sortDescriptors.first,
-              let key = sortDescriptor.key,
-              key.hasPrefix("col_"),
-              let columnIndex = Int(key.dropFirst(4)),
-              columnIndex >= 0 && columnIndex < rowProvider.columns.count else {
-            return
-        }
-
-        let isMultiSort = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-        onSort?(columnIndex, sortDescriptor.ascending, isMultiSort)
-    }
-
-    // MARK: - NSMenuDelegate (Header Context Menu)
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-
-        guard let tableView = tableView,
-              let headerView = tableView.headerView,
-              let window = tableView.window else { return }
-
-        let mouseLocation = window.mouseLocationOutsideOfEventStream
-        let pointInHeader = headerView.convert(mouseLocation, from: nil)
-        let columnIndex = headerView.column(at: pointInHeader)
-
-        guard columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
-
-        let column = tableView.tableColumns[columnIndex]
-        if column.identifier.rawValue == "__rowNumber__" { return }
-
-        // Derive base column name from stable identifier (avoids sort indicator in title)
-        let baseName: String = {
-            if let idx = DataGridView.columnIndex(from: column.identifier),
-               idx < rowProvider.columns.count {
-                return rowProvider.columns[idx]
-            }
-            return column.title
-        }()
-
-        let copyItem = NSMenuItem(title: String(localized: "Copy Column Name"), action: #selector(copyColumnName(_:)), keyEquivalent: "")
-        copyItem.representedObject = baseName
-        copyItem.target = self
-        menu.addItem(copyItem)
-
-        let filterItem = NSMenuItem(title: String(localized: "Filter with column"), action: #selector(filterWithColumn(_:)), keyEquivalent: "")
-        filterItem.representedObject = baseName
-        filterItem.target = self
-        menu.addItem(filterItem)
-    }
-
-    @objc private func copyColumnName(_ sender: NSMenuItem) {
-        guard let columnName = sender.representedObject as? String else { return }
-        ClipboardService.shared.writeText(columnName)
-    }
-
-    @objc private func filterWithColumn(_ sender: NSMenuItem) {
-        guard let columnName = sender.representedObject as? String else { return }
-        onFilterColumn?(columnName)
-    }
-
-    // MARK: - NSTableViewDelegate
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let column = tableColumn else { return nil }
-
-        let columnId = column.identifier.rawValue
-
-        if columnId == "__rowNumber__" {
-            return cellFactory.makeRowNumberCell(
-                tableView: tableView,
-                row: row,
-                cachedRowCount: cachedRowCount,
-                visualState: visualState(for: row)
-            )
-        }
-
-        guard columnId.hasPrefix("col_"), let columnIndex = Int(columnId.dropFirst(4)) else { return nil }
-
-        guard row >= 0 && row < cachedRowCount,
-              columnIndex >= 0 && columnIndex < cachedColumnCount,
-              let rowData = rowProvider.row(at: row) else {
-            return nil
-        }
-
-        let value = rowData.value(at: columnIndex)
-        let state = visualState(for: row)
-
-        // Get column type for date formatting
-        let columnType: ColumnType? = {
-            guard columnIndex < rowProvider.columnTypes.count else { return nil }
-            return rowProvider.columnTypes[columnIndex]
-        }()
-
-        let tableColumnIndex = columnIndex + 1
-        let isFocused: Bool = {
-            guard let keyTableView = tableView as? KeyHandlingTableView,
-                  keyTableView.focusedRow == row,
-                  keyTableView.focusedColumn == tableColumnIndex else { return false }
-            return true
-        }()
-
-        let isDropdown = dropdownColumns?.contains(columnIndex) == true
-        let isTypePicker = typePickerColumns?.contains(columnIndex) == true
-
-        let isEnumOrSet: Bool = {
-            guard columnIndex < rowProvider.columnTypes.count,
-                  columnIndex < rowProvider.columns.count else { return false }
-            let ct = rowProvider.columnTypes[columnIndex]
-            let columnName = rowProvider.columns[columnIndex]
-            guard ct.isEnumType || ct.isSetType else { return false }
-            return rowProvider.columnEnumValues[columnName]?.isEmpty == false
-        }()
-
-        let isFKColumn: Bool = {
-            guard columnIndex < rowProvider.columns.count else { return false }
-            let columnName = rowProvider.columns[columnIndex]
-            return rowProvider.columnForeignKeys[columnName] != nil
-        }()
-
-        return cellFactory.makeDataCell(
-            tableView: tableView,
-            row: row,
-            columnIndex: columnIndex,
-            value: value,
-            columnType: columnType,
-            visualState: state,
-            isEditable: isEditable && !state.isDeleted,
-            isLargeDataset: isLargeDataset,
-            isFocused: isFocused,
-            isDropdown: isEditable && (isDropdown || isTypePicker || isEnumOrSet),
-            isFKColumn: isFKColumn && !isDropdown && !(typePickerColumns?.contains(columnIndex) == true),
-            fkArrowTarget: self,
-            fkArrowAction: #selector(handleFKArrowClick(_:)),
-            delegate: self
-        )
-    }
-
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
-            ?? TableRowViewWithMenu()
-        rowView.identifier = Self.rowViewIdentifier
-        rowView.coordinator = self
-        rowView.rowIndex = row
-        return rowView
-    }
-
-    // MARK: - Selection
-
-    func tableViewColumnDidResize(_ notification: Notification) {
-        // Only track user-initiated resizes, not programmatic ones during column rebuilds
-        guard !isRebuildingColumns else { return }
-        hasUserResizedColumns = true
-    }
-
-    func tableViewColumnDidMove(_ notification: Notification) {
-        guard !isRebuildingColumns else { return }
-        hasUserResizedColumns = true
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        guard !isSyncingSelection else { return }
-        guard let tableView = notification.object as? NSTableView else { return }
-
-        let newSelection = Set(tableView.selectedRowIndexes.map { $0 })
-        if newSelection != selectedRowIndices {
-            DispatchQueue.main.async { [weak self] in
-                self?.selectedRowIndices = newSelection
-            }
-        }
-
-        if let keyTableView = tableView as? KeyHandlingTableView {
-            if newSelection.isEmpty {
-                keyTableView.focusedRow = -1
-                keyTableView.focusedColumn = -1
-            }
-        }
-    }
-
-    // MARK: - Click Handlers
-
-    @objc func handleClick(_ sender: NSTableView) {
-        guard isEditable else { return }
-
-        let row = sender.clickedRow
-        let column = sender.clickedColumn
-        guard row >= 0, column > 0 else { return }
-
-        let columnIndex = column - 1
-        guard !changeManager.isRowDeleted(row) else { return }
-
-        // Dropdown columns open on single click
-        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-            showDropdownMenu(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // ENUM/SET columns open on single click
-        if columnIndex < rowProvider.columnTypes.count,
-           columnIndex < rowProvider.columns.count {
-            let ct = rowProvider.columnTypes[columnIndex]
-            let columnName = rowProvider.columns[columnIndex]
-            if ct.isEnumType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                showEnumPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-                return
-            }
-            if ct.isSetType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                showSetPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-                return
-            }
-        }
-    }
-
-    @objc func handleDoubleClick(_ sender: NSTableView) {
-        guard isEditable else { return }
-
-        let row = sender.clickedRow
-        let column = sender.clickedColumn
-        guard row >= 0, column > 0 else { return }
-
-        let columnIndex = column - 1
-        guard !changeManager.isRowDeleted(row) else { return }
-
-        // MongoDB _id is immutable — block editing
-        if databaseType == .mongodb,
-           columnIndex < rowProvider.columns.count,
-           rowProvider.columns[columnIndex] == "_id" {
-            return
-        }
-
-        // Dropdown columns already handled by single click
-        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-            return
-        }
-
-        // Type picker columns use database-specific type popover
-        if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-            showTypePickerPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // ENUM/SET columns already handled by single click
-        if columnIndex < rowProvider.columnTypes.count,
-           columnIndex < rowProvider.columns.count {
-            let ct = rowProvider.columnTypes[columnIndex]
-            if ct.isEnumType || ct.isSetType {
-                let columnName = rowProvider.columns[columnIndex]
-                if let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                    return
-                }
-            }
-        }
-
-        // FK columns use searchable dropdown popover
-        if columnIndex < rowProvider.columns.count {
-            let columnName = rowProvider.columns[columnIndex]
-            if let fkInfo = rowProvider.columnForeignKeys[columnName] {
-                showForeignKeyPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex, fkInfo: fkInfo)
-                return
-            }
-        }
-
-        // Date columns use date picker popover
-        if columnIndex < rowProvider.columnTypes.count,
-           rowProvider.columnTypes[columnIndex].isDateType {
-            showDatePickerPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // JSON columns use JSON editor popover
-        if columnIndex < rowProvider.columnTypes.count,
-           rowProvider.columnTypes[columnIndex].isJsonType {
-            showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // Multiline values use the overlay editor instead of inline field editor
-        if let value = rowProvider.row(at: row)?.value(at: columnIndex),
-           value.containsLineBreak {
-            showOverlayEditor(tableView: sender, row: row, column: column, columnIndex: columnIndex, value: value)
-            return
-        }
-
-        // Regular columns — start inline editing
-        sender.editColumn(column, row: row, with: nil, select: true)
-    }
-
-    // MARK: - FK Navigation
-
-    @objc func handleFKArrowClick(_ sender: NSButton) {
-        guard let button = sender as? FKArrowButton else { return }
-        let row = button.fkRow
-        let columnIndex = button.fkColumnIndex
-
-        guard row >= 0 && row < cachedRowCount,
-              columnIndex >= 0 && columnIndex < rowProvider.columns.count,
-              let rowData = rowProvider.row(at: row) else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        guard let fkInfo = rowProvider.columnForeignKeys[columnName] else { return }
-
-        let value = rowData.value(at: columnIndex)
-        guard let value = value, !value.isEmpty else { return }
-
-        onNavigateFK?(value, fkInfo)
-    }
-
-    // MARK: - Editing
-
-    func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        guard isEditable,
-              let tableColumn = tableColumn else { return false }
-
-        let columnId = tableColumn.identifier.rawValue
-        guard columnId != "__rowNumber__",
-              !changeManager.isRowDeleted(row) else { return false }
-
-        // MongoDB _id is immutable — block editing
-        if databaseType == .mongodb,
-           columnId.hasPrefix("col_"),
-           let columnIndex = Int(columnId.dropFirst(4)),
-           columnIndex < rowProvider.columns.count,
-           rowProvider.columns[columnIndex] == "_id" {
-            return false
-        }
-
-        // Popover-editor columns (date/FK/JSON) are only editable via
-        // double-click (handleDoubleClick). Block inline editing for them.
-        if columnId.hasPrefix("col_"),
-           let columnIndex = Int(columnId.dropFirst(4)) {
-            if columnIndex < rowProvider.columns.count {
-                let columnName = rowProvider.columns[columnIndex]
-                if rowProvider.columnForeignKeys[columnName] != nil { return false }
-            }
-            if columnIndex < rowProvider.columnTypes.count {
-                let ct = rowProvider.columnTypes[columnIndex]
-                if ct.isDateType || ct.isJsonType || ct.isEnumType || ct.isSetType { return false }
-            }
-            if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-                return false
-            }
-            if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-                return false
-            }
-
-            // Multiline values use overlay editor — block inline field editor
-            if let value = rowProvider.row(at: row)?.value(at: columnIndex),
-               value.containsLineBreak {
-                let tableColumnIdx = tableView.column(withIdentifier: tableColumn.identifier)
-                guard tableColumnIdx >= 0 else { return false }
-                showOverlayEditor(tableView: tableView, row: row, column: tableColumnIdx, columnIndex: columnIndex, value: value)
-                return false
-            }
-        }
-
-        return true
-    }
-
-    // MARK: - Overlay Editor (Multiline)
-
-    func showOverlayEditor(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, value: String) {
-        if overlayEditor == nil {
-            overlayEditor = CellOverlayEditor()
-        }
-        guard let editor = overlayEditor else { return }
-
-        editor.onCommit = { [weak self] row, columnIndex, newValue in
-            self?.commitOverlayEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-        }
-        editor.onTabNavigation = { [weak self] row, column, forward in
-            self?.handleOverlayTabNavigation(row: row, column: column, forward: forward)
-        }
-        editor.show(in: tableView, row: row, column: column, columnIndex: columnIndex, value: value)
-    }
-
-    private func commitOverlayEdit(row: Int, columnIndex: Int, newValue: String) {
-        guard let rowData = rowProvider.row(at: row) else { return }
-        let oldValue = rowData.value(at: columnIndex)
-        guard oldValue != newValue else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowData.values
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        onCellEdit?(row, columnIndex, newValue)
-
-        let tableColumnIndex = columnIndex + 1
-        tableView?.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: tableColumnIndex))
-    }
-
-    private func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
-        guard let tableView = tableView else { return }
-
-        var nextColumn = forward ? column + 1 : column - 1
-        var nextRow = row
-
-        if forward {
-            if nextColumn >= tableView.numberOfColumns {
-                nextColumn = 1
-                nextRow += 1
-            }
-            if nextRow >= tableView.numberOfRows {
-                nextRow = tableView.numberOfRows - 1
-                nextColumn = tableView.numberOfColumns - 1
-            }
-        } else {
-            if nextColumn < 1 {
-                nextColumn = tableView.numberOfColumns - 1
-                nextRow -= 1
-            }
-            if nextRow < 0 {
-                nextRow = 0
-                nextColumn = 1
-            }
-        }
-
-        tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-
-        // Check if next cell is also multiline → open overlay there
-        let nextColumnIndex = nextColumn - 1
-        if nextColumnIndex >= 0, nextColumnIndex < rowProvider.columns.count,
-           let value = rowProvider.row(at: nextRow)?.value(at: nextColumnIndex),
-           value.containsLineBreak {
-            showOverlayEditor(tableView: tableView, row: nextRow, column: nextColumn, columnIndex: nextColumnIndex, value: value)
-        } else {
-            tableView.editColumn(nextColumn, row: nextRow, with: nil, select: true)
-        }
-    }
-
-    func control(_ control: NSControl, textShouldEndEditing fieldEditor: NSText) -> Bool {
-        guard let textField = control as? NSTextField, let tableView = tableView else { return true }
-
-        let row = tableView.row(for: textField)
-        let column = tableView.column(for: textField)
-
-        guard row >= 0, column > 0 else { return true }
-
-        let columnIndex = column - 1
-        let newValue: String? = textField.stringValue
-
-        guard let rowData = rowProvider.row(at: row) else { return true }
-        let oldValue = rowData.value(at: columnIndex)
-
-        guard oldValue != newValue else { return true }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowData.values
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        onCellEdit?(row, columnIndex, newValue)
-
-        DispatchQueue.main.async {
-            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
-        }
-
-        (control as? CellTextField)?.restoreTruncatedDisplay()
-
-        return true
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        guard let tableView = tableView else { return false }
-
-        let currentRow = tableView.row(for: control)
-        let currentColumn = tableView.column(for: control)
-
-        guard currentRow >= 0, currentColumn >= 0 else { return false }
-
-        if commandSelector == #selector(NSResponder.insertTab(_:)) {
-            tableView.window?.makeFirstResponder(tableView)
-
-            var nextColumn = currentColumn + 1
-            var nextRow = currentRow
-
-            if nextColumn >= tableView.numberOfColumns {
-                nextColumn = 1
-                nextRow += 1
-            }
-            if nextRow >= tableView.numberOfRows {
-                nextRow = tableView.numberOfRows - 1
-                nextColumn = tableView.numberOfColumns - 1
-            }
-
-            DispatchQueue.main.async {
-                tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
-                tableView.editColumn(nextColumn, row: nextRow, with: nil, select: true)
-            }
-            return true
-        }
-
-        if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
-            tableView.window?.makeFirstResponder(tableView)
-
-            var prevColumn = currentColumn - 1
-            var prevRow = currentRow
-
-            if prevColumn < 1 {
-                prevColumn = tableView.numberOfColumns - 1
-                prevRow -= 1
-            }
-            if prevRow < 0 {
-                prevRow = 0
-                prevColumn = 1
-            }
-
-            DispatchQueue.main.async {
-                tableView.selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
-                tableView.editColumn(prevColumn, row: prevRow, with: nil, select: true)
-            }
-            return true
-        }
-
-        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
-            tableView.window?.makeFirstResponder(tableView)
-            return true
-        }
-
-        if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
-            tableView.window?.makeFirstResponder(tableView)
-            return true
-        }
-
-        return false
     }
 }
 

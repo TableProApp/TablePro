@@ -145,6 +145,7 @@ identifier_name:
     - protocol_tcp
     - where_
     - TableProTabSmart
+    - x86_64
 
 nesting:
   type_level:

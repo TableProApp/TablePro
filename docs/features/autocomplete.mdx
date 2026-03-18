@@ -1,36 +1,36 @@
 ---
 title: Autocomplete
-description: Intelligent SQL autocomplete that understands your database schema
+description: Schema-aware SQL autocomplete with alias resolution, 50ms debounce, and support for 500KB+ files
 ---
 
 # SQL Autocomplete
 
-TablePro provides intelligent, context-aware SQL autocomplete that understands your database schema, SQL syntax, and query context. This helps you write queries faster and with fewer errors.
+Autocomplete analyzes your cursor position, the SQL syntax context, referenced tables and aliases, and your database schema to suggest only relevant completions at each point in the query.
 
 {/* Screenshot: Autocomplete popup showing mixed suggestions */}
 <Frame caption="Context-aware autocomplete">
-  <img 
-    className="block dark:hidden" 
-    src="/images/autocomplete.png" 
-    alt="Autocomplete" 
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete.png"
+    alt="Autocomplete"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/autocomplete-dark.png" 
-    alt="Autocomplete" 
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-dark.png"
+    alt="Autocomplete"
   />
 </Frame>
 
 ## How Autocomplete Works
 
-The autocomplete system analyzes:
+The autocomplete engine analyzes four things:
 
 1. **Your current position** in the query
 2. **SQL syntax context** (SELECT, FROM, WHERE, etc.)
 3. **Referenced tables** and their aliases
 4. **Your database schema** (tables, columns, functions)
 
-This allows it to suggest only relevant completions based on what makes sense at each point in your query.
+Suggestions are filtered to what makes sense at the cursor.
 
 ## Triggering Autocomplete
 
@@ -69,15 +69,15 @@ SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Suggests: ORDER
 
 {/* Screenshot: Keyword suggestions */}
 <Frame caption="SQL keyword suggestions">
-  <img 
-    className="block dark:hidden" 
-    src="/images/autocomplete-keywords.png" 
-    alt="Keyword suggestions" 
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-keywords.png"
+    alt="Keyword suggestions"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/autocomplete-keywords-dark.png" 
-    alt="Keyword suggestions" 
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-keywords-dark.png"
+    alt="Keyword suggestions"
   />
 </Frame>
 
@@ -102,15 +102,15 @@ SELECT * FROM users JOIN |  -- Suggests all tables
 
 {/* Screenshot: Table name suggestions */}
 <Frame caption="Table name suggestions">
-  <img 
-    className="block dark:hidden" 
-    src="/images/autocomplete-tables.png" 
-    alt="Table suggestions" 
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-tables.png"
+    alt="Table suggestions"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/autocomplete-tables-dark.png" 
-    alt="Table suggestions" 
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-tables-dark.png"
+    alt="Table suggestions"
   />
 </Frame>
 
@@ -126,7 +126,7 @@ SELECT * FROM users WHERE |  -- Suggests columns from users
 
 #### After Table Alias
 
-When you use a table alias, typing the alias followed by `.` shows that table's columns:
+Typing an alias followed by `.` shows that table's columns:
 
 ```sql
 SELECT
@@ -137,15 +137,15 @@ JOIN orders o ON u.id = o.|  -- Shows: id, user_id, total (from orders)
 
 {/* Screenshot: Column suggestions after alias */}
 <Frame caption="Column suggestions for aliased table">
-  <img 
-    className="block dark:hidden" 
-    src="/images/autocomplete-alias.png" 
-    alt="Alias suggestions" 
+  <img
+    className="block dark:hidden"
+    src="/images/autocomplete-alias.png"
+    alt="Alias suggestions"
   />
-  <img 
-    className="hidden dark:block" 
-    src="/images/autocomplete-alias-dark.png" 
-    alt="Alias suggestions" 
+  <img
+    className="hidden dark:block"
+    src="/images/autocomplete-alias-dark.png"
+    alt="Alias suggestions"
   />
 </Frame>
 
@@ -267,15 +267,15 @@ JOIN orders o ON |
 
 | Key | Action |
 |-----|--------|
-| `↓` Down arrow | Select next suggestion |
-| `↑` Up arrow | Select previous suggestion |
+| `Down` arrow | Select next suggestion |
+| `Up` arrow | Select previous suggestion |
 | `Enter` | Accept selected suggestion |
 | `Tab` | Accept selected suggestion |
 | `Escape` | Dismiss popup |
 
 ### Filtering
 
-Continue typing to filter the suggestions:
+Continue typing to filter suggestions:
 
 ```sql
 SELECT * FROM user|
@@ -295,11 +295,11 @@ When you accept a suggestion:
 
 ### How Schema is Loaded
 
-When you connect to a database, TablePro:
+On connection, TablePro:
 
 1. Fetches all table names
 2. Loads column information for each table
-3. Caches this information for fast autocomplete
+3. Caches this for fast autocomplete
 
 ### Refreshing Schema
 
@@ -308,7 +308,7 @@ If you make schema changes (add tables, alter columns):
 1. Right-click the connection in sidebar
 2. Select **Refresh**
 
-Or disconnect and reconnect to the database.
+Or disconnect and reconnect.
 
 <Tip>
 Schema changes made in TablePro (via Structure tab) are automatically reflected in autocomplete.
@@ -318,19 +318,19 @@ Schema changes made in TablePro (via Structure tab) are automatically reflected 
 
 ### Large Files
 
-Autocomplete works on SQL files of any size, including multi-megabyte dumps. For files larger than 500 KB, the engine automatically extracts a local window around the cursor and analyzes only the nearby statement, so suggestions remain instant regardless of total file size.
+Autocomplete works on SQL files of any size, including multi-megabyte dumps. For files larger than 500 KB, the engine extracts a local window (~10 KB) around the cursor and analyzes only the nearby statement. Suggestions stay instant regardless of total file size.
 
 ### Large Schemas
 
-For databases with many tables (100+):
+For databases with 100+ tables:
 
 - Initial schema loading may take a moment
 - Autocomplete remains responsive after caching
-- Filter suggestions by typing more characters
+- Type more characters to narrow suggestions faster
 
 ### Tips for Better Performance
 
-1. **Type more characters**: Typing more narrows suggestions faster
+1. **Type more characters**: Narrows suggestions faster
 2. **Use table aliases**: Reduces lookup scope
 3. **Let caching work**: Schema is cached after first load
 
@@ -345,17 +345,17 @@ For databases with many tables (100+):
 
 ### Query Complexity
 
-Very complex queries may have limited context awareness:
+Very complex queries have limited context awareness:
 
 - Deeply nested subqueries
 - Complex CTEs
 - Dynamic SQL
 
-In these cases, basic keyword and table suggestions still work.
+Basic keyword and table suggestions still work in these cases.
 
 ## Configuration
 
-Autocomplete is enabled by default with no configuration needed. A 50ms debounce is applied to completion triggers to reduce unnecessary work.
+Autocomplete is on by default with no configuration needed. A 50ms debounce is applied to completion triggers to reduce unnecessary work.
 
 ## Best Practices
 
@@ -377,7 +377,7 @@ JOIN orders ON users.id = orders.user_id
 
 ### Start with FROM
 
-Writing FROM first helps autocomplete know your tables:
+Writing FROM first gives autocomplete the table context:
 
 ```sql
 -- This approach helps autocomplete
@@ -388,7 +388,7 @@ SELECT u.|  -- Now knows about u and o tables
 
 ### Let Suggestions Guide You
 
-If you're not sure of the exact column name:
+If you're unsure of the exact column name:
 
 1. Type the table alias and dot: `u.`
 2. Browse the suggestions

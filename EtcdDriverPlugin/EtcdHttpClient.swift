@@ -1,0 +1,1045 @@
+//
+//  EtcdHttpClient.swift
+//  TablePro
+//
+
+import Foundation
+import os
+import TableProPluginKit
+
+// MARK: - Error Types
+
+enum EtcdError: Error, LocalizedError {
+    case notConnected
+    case connectionFailed(String)
+    case serverError(String)
+    case authFailed(String)
+    case requestCancelled
+
+    var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            return String(localized: "Not connected to etcd")
+        case .connectionFailed(let detail):
+            return String(localized: "Connection failed: \(detail)")
+        case .serverError(let detail):
+            return String(localized: "Server error: \(detail)")
+        case .authFailed(let detail):
+            return String(localized: "Authentication failed: \(detail)")
+        case .requestCancelled:
+            return String(localized: "Request was cancelled")
+        }
+    }
+}
+
+// MARK: - Codable Types
+
+struct EtcdResponseHeader: Decodable {
+    let clusterId: String?
+    let memberId: String?
+    let revision: String?
+    let raftTerm: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case clusterId = "cluster_id"
+        case memberId = "member_id"
+        case revision
+        case raftTerm = "raft_term"
+    }
+}
+
+struct EtcdKeyValue: Decodable {
+    let key: String
+    let value: String?
+    let version: String?
+    let createRevision: String?
+    let modRevision: String?
+    let lease: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case value
+        case version
+        case createRevision = "create_revision"
+        case modRevision = "mod_revision"
+        case lease
+    }
+}
+
+// KV Request/Response
+
+struct EtcdRangeRequest: Encodable {
+    let key: String
+    var rangeEnd: String?
+    var limit: Int64?
+    var sortOrder: String?
+    var sortTarget: String?
+    var keysOnly: Bool?
+    var countOnly: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case rangeEnd = "range_end"
+        case limit
+        case sortOrder = "sort_order"
+        case sortTarget = "sort_target"
+        case keysOnly = "keys_only"
+        case countOnly = "count_only"
+    }
+}
+
+struct EtcdRangeResponse: Decodable {
+    let kvs: [EtcdKeyValue]?
+    let count: String?
+    let more: Bool?
+}
+
+struct EtcdPutRequest: Encodable {
+    let key: String
+    let value: String
+    var lease: String?
+    var prevKv: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case value
+        case lease
+        case prevKv = "prev_kv"
+    }
+}
+
+struct EtcdPutResponse: Decodable {
+    let header: EtcdResponseHeader?
+    let prevKv: EtcdKeyValue?
+
+    private enum CodingKeys: String, CodingKey {
+        case header
+        case prevKv = "prev_kv"
+    }
+}
+
+struct EtcdDeleteRequest: Encodable {
+    let key: String
+    var rangeEnd: String?
+    var prevKv: Bool?
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case rangeEnd = "range_end"
+        case prevKv = "prev_kv"
+    }
+}
+
+struct EtcdDeleteResponse: Decodable {
+    let deleted: String?
+    let prevKvs: [EtcdKeyValue]?
+
+    private enum CodingKeys: String, CodingKey {
+        case deleted
+        case prevKvs = "prev_kvs"
+    }
+}
+
+// Lease
+
+struct EtcdLeaseGrantRequest: Encodable {
+    let TTL: String
+    var ID: String?
+}
+
+struct EtcdLeaseGrantResponse: Decodable {
+    let ID: String?
+    let TTL: String?
+    let error: String?
+}
+
+struct EtcdLeaseRevokeRequest: Encodable {
+    let ID: String
+}
+
+struct EtcdLeaseTimeToLiveRequest: Encodable {
+    let ID: String
+    let keys: Bool?
+}
+
+struct EtcdLeaseTimeToLiveResponse: Decodable {
+    let ID: String?
+    let TTL: String?
+    let grantedTTL: String?
+    let keys: [String]?
+}
+
+struct EtcdLeaseListResponse: Decodable {
+    let leases: [EtcdLeaseStatus]?
+}
+
+struct EtcdLeaseStatus: Decodable {
+    let ID: String
+}
+
+// Cluster
+
+struct EtcdMemberListResponse: Decodable {
+    let members: [EtcdMember]?
+    let header: EtcdResponseHeader?
+}
+
+struct EtcdMember: Decodable {
+    let ID: String?
+    let name: String?
+    let peerURLs: [String]?
+    let clientURLs: [String]?
+    let isLearner: Bool?
+}
+
+struct EtcdStatusResponse: Decodable {
+    let version: String?
+    let dbSize: String?
+    let leader: String?
+    let raftIndex: String?
+    let raftTerm: String?
+    let errors: [String]?
+}
+
+// Watch
+
+struct EtcdWatchRequest: Encodable {
+    let createRequest: EtcdWatchCreateRequest
+
+    private enum CodingKeys: String, CodingKey {
+        case createRequest = "create_request"
+    }
+}
+
+struct EtcdWatchCreateRequest: Encodable {
+    let key: String
+    var rangeEnd: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case rangeEnd = "range_end"
+    }
+}
+
+struct EtcdWatchStreamResponse: Decodable {
+    let result: EtcdWatchResult?
+}
+
+struct EtcdWatchResult: Decodable {
+    let events: [EtcdWatchEvent]?
+    let header: EtcdResponseHeader?
+}
+
+struct EtcdWatchEvent: Decodable {
+    let type: String?
+    let kv: EtcdKeyValue?
+    let prevKv: EtcdKeyValue?
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case kv
+        case prevKv = "prev_kv"
+    }
+}
+
+// Auth
+
+struct EtcdAuthRequest: Encodable {
+    let name: String
+    let password: String
+}
+
+struct EtcdAuthResponse: Decodable {
+    let token: String?
+}
+
+struct EtcdUserAddRequest: Encodable {
+    let name: String
+    let password: String
+}
+
+struct EtcdUserDeleteRequest: Encodable {
+    let name: String
+}
+
+struct EtcdUserListResponse: Decodable {
+    let users: [String]?
+}
+
+struct EtcdRoleAddRequest: Encodable {
+    let name: String
+}
+
+struct EtcdRoleDeleteRequest: Encodable {
+    let name: String
+}
+
+struct EtcdRoleListResponse: Decodable {
+    let roles: [String]?
+}
+
+struct EtcdUserGrantRoleRequest: Encodable {
+    let user: String
+    let role: String
+}
+
+struct EtcdUserRevokeRoleRequest: Encodable {
+    let user: String
+    let role: String
+}
+
+// Maintenance
+
+struct EtcdCompactionRequest: Encodable {
+    let revision: String
+    let physical: Bool?
+}
+
+// MARK: - Generic Error Response
+
+private struct EtcdErrorResponse: Decodable {
+    let error: String?
+    let message: String?
+    let code: Int?
+}
+
+// MARK: - HTTP Client
+
+final class EtcdHttpClient: @unchecked Sendable {
+    private let config: DriverConnectionConfig
+    private let lock = NSLock()
+    private var session: URLSession?
+    private var currentTask: URLSessionDataTask?
+    private var authToken: String?
+    private var _isAuthenticating = false
+
+    private static let logger = Logger(subsystem: "com.TablePro.EtcdDriver", category: "EtcdHttpClient")
+
+    init(config: DriverConnectionConfig) {
+        self.config = config
+    }
+
+    // MARK: - Base URL
+
+    private var tlsEnabled: Bool {
+        let mode = config.additionalFields["etcdTlsMode"] ?? "Disabled"
+        return mode != "Disabled"
+    }
+
+    private var baseUrl: String {
+        let scheme = tlsEnabled ? "https" : "http"
+        return "\(scheme)://\(config.host):\(config.port)"
+    }
+
+    // MARK: - Connection Lifecycle
+
+    func connect() async throws {
+        let tlsMode = config.additionalFields["etcdTlsMode"] ?? "Disabled"
+
+        let urlConfig = URLSessionConfiguration.default
+        urlConfig.timeoutIntervalForRequest = 30
+        urlConfig.timeoutIntervalForResource = 300
+
+        let delegate: URLSessionDelegate?
+        switch tlsMode {
+        case "Required":
+            delegate = InsecureTlsDelegate()
+        case "VerifyCA", "VerifyIdentity":
+            delegate = EtcdTlsDelegate(
+                caCertPath: config.additionalFields["etcdCaCertPath"],
+                clientCertPath: config.additionalFields["etcdClientCertPath"],
+                clientKeyPath: config.additionalFields["etcdClientKeyPath"],
+                verifyHostname: tlsMode == "VerifyIdentity"
+            )
+        default:
+            delegate = nil
+        }
+
+        lock.lock()
+        if let delegate {
+            session = URLSession(configuration: urlConfig, delegate: delegate, delegateQueue: nil)
+        } else {
+            session = URLSession(configuration: urlConfig)
+        }
+        lock.unlock()
+
+        do {
+            try await ping()
+        } catch {
+            lock.lock()
+            session?.invalidateAndCancel()
+            session = nil
+            lock.unlock()
+            Self.logger.error("Connection test failed: \(error.localizedDescription)")
+            throw EtcdError.connectionFailed(error.localizedDescription)
+        }
+
+        if !config.username.isEmpty {
+            do {
+                try await authenticate()
+            } catch {
+                lock.lock()
+                session?.invalidateAndCancel()
+                session = nil
+                lock.unlock()
+                throw error
+            }
+        }
+
+        Self.logger.debug("Connected to etcd at \(self.config.host):\(self.config.port)")
+    }
+
+    func disconnect() {
+        lock.lock()
+        currentTask?.cancel()
+        currentTask = nil
+        session?.invalidateAndCancel()
+        session = nil
+        authToken = nil
+        _isAuthenticating = false
+        lock.unlock()
+    }
+
+    func ping() async throws {
+        let _: EtcdStatusResponse = try await post(path: "v3/maintenance/status", body: EmptyBody())
+    }
+
+    // MARK: - KV Operations
+
+    func rangeRequest(_ req: EtcdRangeRequest) async throws -> EtcdRangeResponse {
+        try await post(path: "v3/kv/range", body: req)
+    }
+
+    func putRequest(_ req: EtcdPutRequest) async throws -> EtcdPutResponse {
+        try await post(path: "v3/kv/put", body: req)
+    }
+
+    func deleteRequest(_ req: EtcdDeleteRequest) async throws -> EtcdDeleteResponse {
+        try await post(path: "v3/kv/deleterange", body: req)
+    }
+
+    // MARK: - Lease Operations
+
+    func leaseGrant(ttl: Int64) async throws -> EtcdLeaseGrantResponse {
+        let req = EtcdLeaseGrantRequest(TTL: String(ttl))
+        return try await post(path: "v3/lease/grant", body: req)
+    }
+
+    func leaseRevoke(leaseId: Int64) async throws {
+        let req = EtcdLeaseRevokeRequest(ID: String(leaseId))
+        try await postVoid(path: "v3/lease/revoke", body: req)
+    }
+
+    func leaseTimeToLive(leaseId: Int64, keys: Bool) async throws -> EtcdLeaseTimeToLiveResponse {
+        let req = EtcdLeaseTimeToLiveRequest(ID: String(leaseId), keys: keys)
+        return try await post(path: "v3/lease/timetolive", body: req)
+    }
+
+    func leaseList() async throws -> EtcdLeaseListResponse {
+        try await post(path: "v3/lease/leases", body: EmptyBody())
+    }
+
+    // MARK: - Cluster Operations
+
+    func memberList() async throws -> EtcdMemberListResponse {
+        try await post(path: "v3/cluster/member/list", body: EmptyBody())
+    }
+
+    func endpointStatus() async throws -> EtcdStatusResponse {
+        try await post(path: "v3/maintenance/status", body: EmptyBody())
+    }
+
+    // MARK: - Watch
+
+    func watch(key: String, prefix: Bool, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
+        lock.lock()
+        guard let session else {
+            lock.unlock()
+            throw EtcdError.notConnected
+        }
+        let token = authToken
+        lock.unlock()
+
+        let b64Key = Self.base64Encode(key)
+        var createReq = EtcdWatchCreateRequest(key: b64Key)
+        if prefix {
+            createReq.rangeEnd = Self.base64Encode(Self.prefixRangeEnd(for: key))
+        }
+        let watchReq = EtcdWatchRequest(createRequest: createReq)
+
+        guard let url = URL(string: "\(baseUrl)/v3/watch") else {
+            throw EtcdError.serverError("Invalid URL: \(baseUrl)/v3/watch")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token {
+            request.setValue(token, forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(watchReq)
+
+        return try await withThrowingTaskGroup(of: [EtcdWatchEvent].self) { group in
+            let collectedData = DataCollector()
+
+            group.addTask {
+                let data: Data = try await withCheckedThrowingContinuation { continuation in
+                    let task = session.dataTask(with: request) { data, _, error in
+                        if let error {
+                            // URLError.cancelled is expected when we cancel after timeout
+                            if (error as? URLError)?.code == .cancelled {
+                                continuation.resume(returning: data ?? Data())
+                            } else {
+                                continuation.resume(throwing: error)
+                            }
+                            return
+                        }
+                        continuation.resume(returning: data ?? Data())
+                    }
+                    collectedData.task = task
+                    task.resume()
+                }
+                return Self.parseWatchEvents(from: data)
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                collectedData.task?.cancel()
+                return []
+            }
+
+            var allEvents: [EtcdWatchEvent] = []
+            for try await events in group {
+                allEvents.append(contentsOf: events)
+            }
+            group.cancelAll()
+            return allEvents
+        }
+    }
+
+    // MARK: - Auth Management
+
+    func authEnable() async throws {
+        try await postVoid(path: "v3/auth/enable", body: EmptyBody())
+    }
+
+    func authDisable() async throws {
+        try await postVoid(path: "v3/auth/disable", body: EmptyBody())
+    }
+
+    func userAdd(name: String, password: String) async throws {
+        let req = EtcdUserAddRequest(name: name, password: password)
+        try await postVoid(path: "v3/auth/user/add", body: req)
+    }
+
+    func userDelete(name: String) async throws {
+        let req = EtcdUserDeleteRequest(name: name)
+        try await postVoid(path: "v3/auth/user/delete", body: req)
+    }
+
+    func userList() async throws -> [String] {
+        let resp: EtcdUserListResponse = try await post(path: "v3/auth/user/list", body: EmptyBody())
+        return resp.users ?? []
+    }
+
+    func roleAdd(name: String) async throws {
+        let req = EtcdRoleAddRequest(name: name)
+        try await postVoid(path: "v3/auth/role/add", body: req)
+    }
+
+    func roleDelete(name: String) async throws {
+        let req = EtcdRoleDeleteRequest(name: name)
+        try await postVoid(path: "v3/auth/role/delete", body: req)
+    }
+
+    func roleList() async throws -> [String] {
+        let resp: EtcdRoleListResponse = try await post(path: "v3/auth/role/list", body: EmptyBody())
+        return resp.roles ?? []
+    }
+
+    func userGrantRole(user: String, role: String) async throws {
+        let req = EtcdUserGrantRoleRequest(user: user, role: role)
+        try await postVoid(path: "v3/auth/user/grant", body: req)
+    }
+
+    func userRevokeRole(user: String, role: String) async throws {
+        let req = EtcdUserRevokeRoleRequest(user: user, role: role)
+        try await postVoid(path: "v3/auth/user/revoke", body: req)
+    }
+
+    // MARK: - Maintenance
+
+    func compaction(revision: Int64, physical: Bool) async throws {
+        let req = EtcdCompactionRequest(revision: String(revision), physical: physical)
+        try await postVoid(path: "v3/kv/compaction", body: req)
+    }
+
+    // MARK: - Cancellation
+
+    func cancelCurrentRequest() {
+        lock.lock()
+        currentTask?.cancel()
+        currentTask = nil
+        lock.unlock()
+    }
+
+    // MARK: - Internal Transport
+
+    private func post<Req: Encodable, Res: Decodable>(path: String, body: Req) async throws -> Res {
+        let data = try await performRequest(path: path, body: body)
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(Res.self, from: data)
+        } catch {
+            let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
+            Self.logger.error("Failed to decode response for \(path): \(bodyStr)")
+            throw EtcdError.serverError("Failed to decode response: \(error.localizedDescription)")
+        }
+    }
+
+    private func postVoid<Req: Encodable>(path: String, body: Req) async throws {
+        _ = try await performRequest(path: path, body: body)
+    }
+
+    private func performRequest<Req: Encodable>(path: String, body: Req) async throws -> Data {
+        lock.lock()
+        guard let session else {
+            lock.unlock()
+            throw EtcdError.notConnected
+        }
+        let token = authToken
+        lock.unlock()
+
+        guard let url = URL(string: "\(baseUrl)/\(path)") else {
+            throw EtcdError.serverError("Invalid URL: \(baseUrl)/\(path)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token {
+            request.setValue(token, forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
+                let task = session.dataTask(with: request) { data, response, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let data, let response else {
+                        continuation.resume(throwing: EtcdError.serverError("Empty response from server"))
+                        return
+                    }
+                    continuation.resume(returning: (data, response))
+                }
+
+                self.lock.lock()
+                self.currentTask = task
+                self.lock.unlock()
+
+                task.resume()
+            }
+        } onCancel: {
+            self.lock.lock()
+            self.currentTask?.cancel()
+            self.currentTask = nil
+            self.lock.unlock()
+        }
+
+        lock.lock()
+        currentTask = nil
+        lock.unlock()
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EtcdError.serverError("Invalid response type")
+        }
+
+        if httpResponse.statusCode == 401 {
+            // Attempt token refresh if not already authenticating and credentials are available
+            lock.lock()
+            let alreadyAuthenticating = _isAuthenticating
+            lock.unlock()
+
+            if !alreadyAuthenticating, !config.username.isEmpty {
+                try await authenticate()
+                return try await performRequest(path: path, body: body)
+            }
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unauthorized"
+            throw EtcdError.authFailed(errorBody)
+        }
+
+        if httpResponse.statusCode >= 400 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Unknown error"
+            if let errorResp = try? JSONDecoder().decode(EtcdErrorResponse.self, from: data),
+               let message = errorResp.error ?? errorResp.message {
+                throw EtcdError.serverError(message)
+            }
+            throw EtcdError.serverError(errorBody.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        return data
+    }
+
+    // MARK: - Authentication
+
+    private func authenticate() async throws {
+        lock.lock()
+        guard session != nil else {
+            lock.unlock()
+            throw EtcdError.notConnected
+        }
+        if _isAuthenticating {
+            lock.unlock()
+            return
+        }
+        _isAuthenticating = true
+        lock.unlock()
+
+        defer {
+            lock.lock()
+            _isAuthenticating = false
+            lock.unlock()
+        }
+
+        let authReq = EtcdAuthRequest(name: config.username, password: config.password)
+        guard let url = URL(string: "\(baseUrl)/v3/auth/authenticate") else {
+            throw EtcdError.serverError("Invalid auth URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(authReq)
+
+        lock.lock()
+        guard let session else {
+            lock.unlock()
+            throw EtcdError.notConnected
+        }
+        lock.unlock()
+
+        let (data, response) = try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
+            let task = session.dataTask(with: request) { data, response, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                guard let data, let response else {
+                    continuation.resume(throwing: EtcdError.authFailed("Empty response"))
+                    return
+                }
+                continuation.resume(returning: (data, response))
+            }
+            task.resume()
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw EtcdError.authFailed("Invalid response type")
+        }
+
+        if httpResponse.statusCode >= 400 {
+            let errorBody = String(data: data, encoding: .utf8) ?? "Authentication failed"
+            throw EtcdError.authFailed(errorBody)
+        }
+
+        let authResp = try JSONDecoder().decode(EtcdAuthResponse.self, from: data)
+        guard let token = authResp.token, !token.isEmpty else {
+            throw EtcdError.authFailed("No token in response")
+        }
+
+        lock.lock()
+        authToken = token
+        lock.unlock()
+
+        Self.logger.debug("Authenticated with etcd successfully")
+    }
+
+    // MARK: - Watch Helpers
+
+    private static func parseWatchEvents(from data: Data) -> [EtcdWatchEvent] {
+        guard !data.isEmpty else { return [] }
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+
+        var events: [EtcdWatchEvent] = []
+        let decoder = JSONDecoder()
+        let lines = text.components(separatedBy: "\n")
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            guard let lineData = trimmed.data(using: .utf8) else { continue }
+
+            if let streamResp = try? decoder.decode(EtcdWatchStreamResponse.self, from: lineData),
+               let result = streamResp.result,
+               let resultEvents = result.events {
+                events.append(contentsOf: resultEvents)
+            } else if let result = try? decoder.decode(EtcdWatchResult.self, from: lineData),
+                      let resultEvents = result.events {
+                events.append(contentsOf: resultEvents)
+            }
+        }
+        return events
+    }
+
+    // MARK: - Base64 Helpers
+
+    static func base64Encode(_ string: String) -> String {
+        Data(string.utf8).base64EncodedString()
+    }
+
+    static func base64Decode(_ string: String) -> String {
+        guard let data = Data(base64Encoded: string) else { return string }
+        return String(data: data, encoding: .utf8) ?? "<b64:\(string)>"
+    }
+
+    static func prefixRangeEnd(for prefix: String) -> String {
+        // Increment last byte for prefix range queries
+        var bytes = Array(prefix.utf8)
+        guard !bytes.isEmpty else { return "\0" }
+        var i = bytes.count - 1
+        while i >= 0 {
+            if bytes[i] < 0xFF {
+                bytes[i] += 1
+                return String(bytes: Array(bytes[0 ... i]), encoding: .utf8) ?? "\0"
+            }
+            i -= 1
+        }
+        return "\0"
+    }
+
+    // MARK: - Empty Body Helper
+
+    private struct EmptyBody: Encodable {}
+
+    // MARK: - Data Collector for Watch
+
+    private final class DataCollector: @unchecked Sendable {
+        var task: URLSessionDataTask?
+    }
+
+    // MARK: - TLS Delegates
+
+    private class InsecureTlsDelegate: NSObject, URLSessionDelegate {
+        func urlSession(
+            _ session: URLSession,
+            didReceive challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        ) {
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+               let serverTrust = challenge.protectionSpace.serverTrust {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        }
+    }
+
+    private class EtcdTlsDelegate: NSObject, URLSessionDelegate {
+        private let caCertPath: String?
+        private let clientCertPath: String?
+        private let clientKeyPath: String?
+        private let verifyHostname: Bool
+
+        init(
+            caCertPath: String?,
+            clientCertPath: String?,
+            clientKeyPath: String?,
+            verifyHostname: Bool
+        ) {
+            self.caCertPath = caCertPath
+            self.clientCertPath = clientCertPath
+            self.clientKeyPath = clientKeyPath
+            self.verifyHostname = verifyHostname
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            didReceive challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        ) {
+            let authMethod = challenge.protectionSpace.authenticationMethod
+
+            if authMethod == NSURLAuthenticationMethodServerTrust {
+                handleServerTrust(challenge: challenge, completionHandler: completionHandler)
+            } else if authMethod == NSURLAuthenticationMethodClientCertificate {
+                handleClientCertificate(challenge: challenge, completionHandler: completionHandler)
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        }
+
+        private func handleServerTrust(
+            challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        ) {
+            guard let serverTrust = challenge.protectionSpace.serverTrust else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+
+            if let caPath = caCertPath, !caPath.isEmpty {
+                guard let caData = try? Data(contentsOf: URL(fileURLWithPath: caPath)),
+                      let caCert = SecCertificateCreateWithData(nil, caData as CFData) else {
+                    completionHandler(.cancelAuthenticationChallenge, nil)
+                    return
+                }
+
+                SecTrustSetAnchorCertificates(serverTrust, [caCert] as CFArray)
+                SecTrustSetAnchorCertificatesOnly(serverTrust, true)
+            }
+
+            if !verifyHostname {
+                // VerifyCA mode: validate the CA chain but skip hostname check
+                let policy = SecPolicyCreateBasicX509()
+                SecTrustSetPolicies(serverTrust, policy)
+            }
+
+            var secResult: SecTrustResultType = .invalid
+            SecTrustEvaluate(serverTrust, &secResult)
+
+            if secResult == .unspecified || secResult == .proceed {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            } else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+            }
+        }
+
+        private func handleClientCertificate(
+            challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+        ) {
+            guard let certPath = clientCertPath, !certPath.isEmpty,
+                  let keyPath = clientKeyPath, !keyPath.isEmpty else {
+                completionHandler(.performDefaultHandling, nil)
+                return
+            }
+
+            guard let p12Data = buildPkcs12(certPath: certPath, keyPath: keyPath) else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+
+            let options: [String: Any] = [kSecImportExportPassphrase as String: ""]
+            var items: CFArray?
+            let status = SecPKCS12Import(p12Data as CFData, options as CFDictionary, &items)
+
+            guard status == errSecSuccess,
+                  let itemArray = items as? [[String: Any]],
+                  let firstItem = itemArray.first,
+                  let identityRef = firstItem[kSecImportItemIdentity as String] else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+
+            // swiftlint:disable:next force_cast
+            let identity = identityRef as! SecIdentity
+            let credential = URLCredential(
+                identity: identity,
+                certificates: nil,
+                persistence: .forSession
+            )
+            completionHandler(.useCredential, credential)
+        }
+
+        private func buildPkcs12(certPath: String, keyPath: String) -> Data? {
+            // Read PEM cert and key, create identity via SecItemImport
+            guard let certData = try? Data(contentsOf: URL(fileURLWithPath: certPath)),
+                  let keyData = try? Data(contentsOf: URL(fileURLWithPath: keyPath)) else {
+                return nil
+            }
+
+            var certItems: CFArray?
+            var certFormat = SecExternalFormat.formatPEMSequence
+            var certType = SecExternalItemType.itemTypeCertificate
+            let certStatus = SecItemImport(
+                certData as CFData,
+                nil,
+                &certFormat,
+                &certType,
+                [],
+                nil,
+                nil,
+                &certItems
+            )
+
+            guard certStatus == errSecSuccess,
+                  let certs = certItems as? [SecCertificate],
+                  let cert = certs.first else {
+                return nil
+            }
+
+            var keyItems: CFArray?
+            var keyFormat = SecExternalFormat.formatPEMSequence
+            var keyType = SecExternalItemType.itemTypePrivateKey
+            let keyStatus = SecItemImport(
+                keyData as CFData,
+                nil,
+                &keyFormat,
+                &keyType,
+                [],
+                nil,
+                nil,
+                &keyItems
+            )
+
+            guard keyStatus == errSecSuccess,
+                  let keys = keyItems as? [SecKey],
+                  let privateKey = keys.first else {
+                return nil
+            }
+
+            // Export to PKCS#12
+            var exportItems: CFArray?
+            guard let identity = createIdentity(certificate: cert, privateKey: privateKey) else {
+                return nil
+            }
+
+            var exportParams = SecItemImportExportKeyParameters()
+            var p12Data: CFData?
+            let exportStatus = SecItemExport(
+                identity,
+                .formatPKCS12,
+                [],
+                &exportParams,
+                &p12Data
+            )
+
+            guard exportStatus == errSecSuccess, let data = p12Data else {
+                _ = exportItems
+                return nil
+            }
+            _ = exportItems
+            return data as Data
+        }
+
+        private func createIdentity(certificate: SecCertificate, privateKey: SecKey) -> SecIdentity? {
+            // Add cert and key to a temporary keychain to get an identity
+            let addCertQuery: [String: Any] = [
+                kSecClass as String: kSecClassCertificate,
+                kSecValueRef as String: certificate,
+                kSecReturnRef as String: true
+            ]
+            var certRef: CFTypeRef?
+            SecItemAdd(addCertQuery as CFDictionary, &certRef)
+
+            let addKeyQuery: [String: Any] = [
+                kSecClass as String: kSecClassKey,
+                kSecValueRef as String: privateKey,
+                kSecReturnRef as String: true
+            ]
+            var keyRef: CFTypeRef?
+            SecItemAdd(addKeyQuery as CFDictionary, &keyRef)
+
+            var identity: SecIdentity?
+            let status = SecIdentityCreateWithCertificate(nil, certificate, &identity)
+            if status == errSecSuccess {
+                return identity
+            }
+            return nil
+        }
+    }
+}

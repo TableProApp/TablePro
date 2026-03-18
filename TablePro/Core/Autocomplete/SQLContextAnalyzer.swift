@@ -303,9 +303,11 @@ final class SQLContextAnalyzer {
         let safePosition = min(cursorPosition, nsQuery.length)
 
         // Extract the current statement for multi-statement queries
-        let (currentStatement, statementOffset) = extractCurrentStatement(
-            from: nsQuery, cursorPosition: safePosition
+        let located = SQLStatementScanner.locatedStatementAtCursor(
+            in: nsQuery as String, cursorPosition: safePosition
         )
+        let currentStatement = located.sql
+        let statementOffset = located.offset
         let adjustedPosition = safePosition - statementOffset
 
         let nsStatement = currentStatement as NSString
@@ -400,78 +402,6 @@ final class SQLContextAnalyzer {
             currentFunction: currentFunction,
             isAfterComma: isAfterComma
         )
-    }
-
-    // MARK: - Multi-Statement Support
-
-    /// Extract the current SQL statement containing the cursor.
-    /// Uses NSString UTF-16 character access for O(1) per character instead of
-    /// O(n) Swift String.index(offsetBy:).
-    private func extractCurrentStatement(
-        from nsQuery: NSString,
-        cursorPosition: Int
-    ) -> (statement: String, offset: Int) {
-        let length = nsQuery.length
-        guard length > 0 else { return ("", 0) }
-
-        // Scan through to find semicolons not inside strings/comments
-        var statementStart = 0
-        var inString = false
-        var inComment = false
-        var prevChar: UInt16 = 0
-
-        // Track the statement that contains the cursor
-        var foundStatement: String?
-        var foundOffset = 0
-
-        for i in 0..<length {
-            let ch = nsQuery.character(at: i)
-
-            // Track string state
-            if ch == Self.singleQuote && prevChar != Self.backslash && !inComment {
-                inString.toggle()
-            }
-
-            // Track line comment state
-            if ch == Self.dash && prevChar == Self.dash && !inString {
-                inComment = true
-            }
-            if ch == Self.newline && inComment {
-                inComment = false
-            }
-
-            // Found statement boundary
-            if ch == Self.semicolon && !inString && !inComment {
-                let stmtEnd = i + 1
-                let stmtRange = NSRange(location: statementStart, length: stmtEnd - statementStart)
-
-                // Check if cursor is within this statement
-                if cursorPosition >= statementStart && cursorPosition < stmtEnd {
-                    foundStatement = nsQuery.substring(with: stmtRange)
-                    foundOffset = statementStart
-                    break
-                }
-                statementStart = stmtEnd
-            }
-
-            prevChar = ch
-        }
-
-        // If found during scan, return it
-        if let stmt = foundStatement {
-            return (stmt, foundOffset)
-        }
-
-        // Check the last statement (may not end with ;)
-        if statementStart < length {
-            let stmtRange = NSRange(location: statementStart, length: length - statementStart)
-            if cursorPosition >= statementStart {
-                return (nsQuery.substring(with: stmtRange), statementStart)
-            }
-        }
-
-        // Fallback: return entire query
-        return (nsQuery as String, 0)
     }
 
     // MARK: - CTE Support
@@ -927,10 +857,18 @@ final class SQLContextAnalyzer {
             return .select // Column context
         }
 
-        let upper = textBeforeCursor.uppercased()
+        // Window to last N chars to avoid O(n) regex on large queries
+        let windowSize = 5_000 // Also referenced by SQLContextAnalyzerWindowingTests
+        let nsText = textBeforeCursor as NSString
+        let windowedText: String
+        if nsText.length > windowSize {
+            windowedText = nsText.substring(from: nsText.length - windowSize)
+        } else {
+            windowedText = textBeforeCursor
+        }
 
         // Remove string literals and comments for analysis
-        let cleaned = removeStringsAndComments(from: upper)
+        let cleaned = removeStringsAndComments(from: windowedText)
 
         // Run regex-based clause detection FIRST — DDL contexts (CREATE TABLE,
         // ALTER TABLE, etc.) must take priority over function-arg detection,

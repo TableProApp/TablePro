@@ -1,0 +1,21 @@
+name: CI - Push to main
+on:
+  push:
+    branches:
+      - 'main'
+  workflow_dispatch:
+jobs:
+  swiftlint:
+    name: SwiftLint
+    uses: ./.github/workflows/swiftlint.yml
+    secrets: inherit
+  test:
+    name: Testing CodeEditSourceEditor
+    needs: swiftlint
+    uses: ./.github/workflows/tests.yml
+    secrets: inherit
+  build_documentation:
+    name: Build Documentation
+    needs: [swiftlint, test]
+    uses: ./.github/workflows/build-documentation.yml
+    secrets: inherit

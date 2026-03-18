@@ -546,7 +546,7 @@ private struct AIProviderEditorSheet: View {
 
     // MARK: - Connection Test
 
-    private func testProvider() {
+    func testProvider() {
         let provider = AIProviderFactory.createProvider(for: draft, apiKey: editingAPIKey)
 
         isTesting = true

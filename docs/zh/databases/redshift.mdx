@@ -1,0 +1,246 @@
+---
+title: Amazon Redshift
+description: 通过 PostgreSQL wire protocol 连接 Redshift 集群和 Serverless，显示 DISTKEY/SORTKEY 元数据
+---
+
+# Amazon Redshift 连接
+
+TablePro 连接 Amazon Redshift——AWS 基于 PostgreSQL 8.0.2 的列式数据仓库。连接使用与 PostgreSQL 相同的 libpq 驱动，并通过 Redshift 特有的元数据查询获取分布方式、排序键和表大小信息。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择 Redshift">
+    从数据库类型选择器中选择 **Amazon Redshift**
+  </Step>
+  <Step title="输入连接信息">
+    填写集群端点、port、username、password 和数据库名称
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | Redshift 集群端点 | - |
+| **Port** | Redshift 服务器端口 | `5439` |
+| **Username** | Redshift 用户名 | - |
+| **Password** | 用户密码 | - |
+| **Database** | 要连接的数据库名称 | `dev` |
+
+<Warning>
+Redshift 需要指定数据库名称。每个集群创建时的默认数据库是 `dev`。
+</Warning>
+
+## 配置示例
+
+### Redshift 集群
+
+```
+Name:     Production Warehouse
+Host:     my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com
+Port:     5439
+Username: awsuser
+Password: （你的密码）
+Database: dev
+```
+
+### Redshift Serverless
+
+```
+Name:     Serverless Warehouse
+Host:     my-workgroup.123456789012.us-west-2.redshift-serverless.amazonaws.com
+Port:     5439
+Username: admin
+Password: （你的密码）
+Database: dev
+```
+
+<Tip>
+在 AWS 控制台的 Amazon Redshift > Clusters > 你的集群 > Properties 中找到集群端点。端点中包含端口，但在 TablePro 中需要分别输入 host 和 port。
+</Tip>
+
+## 功能
+
+### Schema 支持
+
+Redshift 像 PostgreSQL 一样将表组织到 schema 中。TablePro 显示：
+
+1. 当前用户可访问的所有 schema
+2. 每个 schema 中的表
+3. search path 顺序
+
+### Schema 切换
+
+使用数据库切换器（**Cmd+K**）在 Redshift schema 之间切换：
+
+1. 按 **Cmd+K** 打开切换器
+2. 选择目标 schema
+3. 侧栏、查询和工具栏会更新以反映所选 schema
+
+<Tip>
+默认 schema 是 `public`。系统 schema 如 `pg_catalog` 和 `information_schema` 会从列表中过滤掉。
+</Tip>
+
+### 表浏览和数据查看
+
+浏览表、视图和后期绑定视图。数据网格会对大型仓库表进行分页。通过 `svv_table_info` 获取的 Redshift 特有元数据——分布方式、排序键和表大小——可在表信息面板中查看。
+
+### 查询执行
+
+使用 Redshift SQL 语法执行查询。编辑器高亮显示 Redshift 特有的函数和关键字。
+
+```sql
+-- Window functions
+SELECT
+    category,
+    product,
+    revenue,
+    RANK() OVER (PARTITION BY category ORDER BY revenue DESC) as rank
+FROM sales;
+
+-- 从 S3 加载数据
+COPY sales FROM 's3://mybucket/data/sales/'
+IAM_ROLE 'arn:aws:iam::123456789012:role/MyRedshiftRole'
+FORMAT AS PARQUET;
+
+-- 导出到 S3
+UNLOAD ('SELECT * FROM sales WHERE year = 2024')
+TO 's3://mybucket/export/sales_2024_'
+IAM_ROLE 'arn:aws:iam::123456789012:role/MyRedshiftRole'
+FORMAT AS CSV;
+
+-- 分析压缩
+ANALYZE COMPRESSION sales;
+```
+
+### 数据导出
+
+以多种格式导出查询结果或表数据：
+
+- CSV
+- JSON
+- SQL（INSERT 语句）
+- XLSX
+
+### 数据导入
+
+从 CSV、JSON、SQL 和 XLSX 文件导入数据到 Redshift 表中。
+
+### DDL 生成
+
+查看任意表的 DDL（CREATE TABLE 语句），包括 Redshift 特有的子句：DISTKEY、SORTKEY、DISTSTYLE 和 ENCODE 指令。
+
+### 外键导航
+
+Redshift 支持外键定义，但仅用于信息参考（引擎不会强制执行）。TablePro 显示这些关系，并允许在相关表之间导航。
+
+## SSL/TLS
+
+Redshift 连接支持 SSL/TLS 加密，配置与 PostgreSQL 相同：
+
+| SSL 模式 | 描述 |
+|----------|-------------|
+| **Disabled** | 不使用 SSL 加密 |
+| **Preferred** | 如果可用则使用 SSL，否则回退到非加密连接 |
+| **Required** | 要求 SSL，但不验证证书 |
+| **Verify CA** | 要求 SSL 并验证服务器证书是否由 CA 签发 |
+| **Verify Identity** | 要求 SSL，验证 CA 和服务器主机名 |
+
+<Tip>
+AWS Redshift 端点默认支持 SSL。生产连接建议使用 **Required** 或 **Verify CA**。
+</Tip>
+
+## SSH Tunnel 支持
+
+如果你的集群在私有 VPC 中，可以通过 SSH tunnel 连接 Redshift。在连接表单的 SSH 标签页中配置。TablePro 会将 Redshift 连接通过 tunnel 路由。
+
+## 限制
+
+Redshift 是列式数据仓库，不是通用的 RDBMS。一些 PostgreSQL 功能缺失或工作方式不同：
+
+| 特性 | Redshift 行为 |
+|---------|------------------|
+| **索引** | 没有传统的 B-tree 索引。使用 DISTKEY 和 SORTKEY 控制数据分布和排序。这些列显示在 Structure 标签页中。 |
+| **ALTER TABLE** | 支持有限。不能重命名列。类型变更仅限于扩展 VARCHAR 或更改数值精度。 |
+| **枚举类型** | 不支持。没有用于自定义枚举的 CREATE TYPE。 |
+| **序列** | 不支持。使用 IDENTITY 列代替。 |
+| **外键** | 仅供参考。在 DDL 中定义但引擎不强制执行。 |
+| **触发器** | 不支持。 |
+| **存储过程** | 支持，但使用受限的 PL/pgSQL 子集。 |
+
+### DISTKEY 和 SORTKEY
+
+Redshift 使用分布键在节点间分布数据，使用排序键在每个节点内排序数据，而非传统索引。TablePro 在每个表的 Structure 标签页中显示 DISTKEY 和 SORTKEY 标记，展示你的数据是如何物理组织的。
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或超时
+
+**常见原因**：
+
+1. **安全组未配置**：你的 IP 必须在 Redshift 集群 VPC 安全组的入站规则中允许（端口 5439）。
+2. **集群未公开访问**：如果集群属性中 `Publicly Accessible` 为 No，你需要 SSH tunnel 或 VPN。
+3. **集群已暂停**：Redshift 集群可以暂停以节省成本。在 AWS 控制台中恢复集群。
+
+### 认证失败
+
+**症状**："password authentication failed"
+
+**解决方案**：
+
+1. 在 AWS 控制台中验证主用户名和密码
+2. 对于基于 IAM 的认证，确保凭据是最新的
+3. 检查用户是否被授予访问指定数据库的权限
+
+### 查询性能
+
+Redshift 针对大数据集的分析查询进行了优化。如果查询较慢：
+
+1. 检查表的分布方式：`SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
+2. 运行 `ANALYZE` 更新表统计信息
+3. 使用 `EXPLAIN` 查看查询计划
+4. 确保 SORTKEY 列匹配你常用的 WHERE 和 JOIN 条件
+
+## 与 PostgreSQL 的区别
+
+如果你从 PostgreSQL 转到 Redshift：
+
+| PostgreSQL | Redshift |
+|------------|----------|
+| 默认端口 5432 | 默认端口 5439 |
+| B-tree、GIN、GiST 索引 | 仅 DISTKEY + SORTKEY |
+| `CREATE INDEX` | 不支持 |
+| 完整约束执行 | 外键仅供参考 |
+| `SERIAL` / `GENERATED AS IDENTITY` | `IDENTITY(seed, step)` |
+| 丰富的类型系统（JSONB、数组等） | 类型有限（无数组，JSON 通过 SUPER 类型有限支持） |
+| `pg_stat_activity` | `stv_recents`、`svl_qlog` |
+| 行式存储 | 列式存储 |
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    连接私有 VPC 中的 Redshift 集群
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    编写和执行 Redshift 查询
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 Redshift 数据
+  </Card>
+  <Card title="表结构" icon="table" href="/zh/features/table-structure">
+    查看 DISTKEY、SORTKEY 和列定义
+  </Card>
+</CardGroup>

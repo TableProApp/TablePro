@@ -1,0 +1,351 @@
+---
+title: MySQL & MariaDB
+description: 通过相同的 MariaDB C connector 驱动连接 MySQL 5.7+/8.0+ 和 MariaDB 10.x+
+---
+
+# MySQL & MariaDB 连接
+
+TablePro 支持 MySQL 5.7+、MySQL 8.0+ 和 MariaDB 10.x+。两种数据库共享兼容的协议，使用相同的连接界面。
+
+## 快速设置
+
+<Steps>
+  <Step title="打开连接表单">
+    在欢迎界面点击 **New Connection**，或选择 **File** > **New Connection**
+  </Step>
+  <Step title="选择数据库类型">
+    从类型选择器中选择 **MySQL** 或 **MariaDB**
+  </Step>
+  <Step title="输入连接信息">
+    填写 host、port、username、password，以及可选的默认数据库
+  </Step>
+  <Step title="测试并连接">
+    点击 **Test Connection**，然后点击 **Create**
+  </Step>
+</Steps>
+
+## 连接设置
+
+### 必填字段
+
+| 字段 | 描述 | 默认值 |
+|-------|-------------|---------|
+| **Name** | 连接标识名称 | - |
+| **Host** | 服务器主机名或 IP | `localhost` |
+| **Port** | MySQL 服务器端口 | `3306` |
+| **Username** | MySQL 用户名 | `root` |
+| **Password** | 用户密码 | - |
+
+### 可选字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Database** | 连接后使用的默认数据库 |
+
+<Tip>
+留空数据库字段会显示该用户有权访问的所有数据库。
+</Tip>
+
+<Tip>
+你也可以通过在浏览器或终端中打开 `mysql://` 或 `mariadb://` URL 来连接。详见 [连接 URL 参考](/zh/databases/connection-urls)。
+</Tip>
+
+{/* Screenshot: MySQL connection form */}
+<Frame caption="MySQL 连接表单">
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-connection-form.png"
+    alt="MySQL 连接表单"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-connection-form-dark.png"
+    alt="MySQL 连接表单"
+  />
+</Frame>
+
+## 配置示例
+
+### 本地开发服务器
+
+```
+Name:     Local MySQL
+Host:     localhost
+Port:     3306
+Username: root
+Password: （你的密码）
+Database: （留空）
+```
+
+### Docker MySQL 容器
+
+```
+Name:     Docker MySQL
+Host:     localhost
+Port:     3306（或你映射的端口）
+Username: root
+Password: （来自 MYSQL_ROOT_PASSWORD 的密码）
+Database: （留空）
+```
+
+### MAMP Pro
+
+```
+Name:     MAMP MySQL
+Host:     localhost
+Port:     8889（MAMP 默认端口）
+Username: root
+Password: root
+Database: （留空）
+```
+
+### 远程服务器
+
+```
+Name:     Production DB
+Host:     db.example.com
+Port:     3306
+Username: app_user
+Password: （安全密码）
+Database: production
+```
+
+<Warning>
+对于生产数据库，建议使用 [SSH tunneling](/zh/databases/ssh-tunneling) 进行安全连接。
+</Warning>
+
+## MySQL 与 MariaDB 的区别
+
+TablePro 对两者使用相同的驱动。以下是一些差异：
+
+| 特性 | MySQL 8.0 | MariaDB 10.x |
+|---------|-----------|--------------|
+| 默认认证方式 | `caching_sha2_password` | `mysql_native_password` |
+| JSON 支持 | 原生 | 兼容 |
+| Window functions | 支持 | 支持 |
+| CTEs | 支持 | 支持 |
+
+<Note>
+如果遇到 MySQL 8.0 的认证问题，请参阅 [认证问题排查](#mysql-80-认证) 部分。
+</Note>
+
+## 功能
+
+### 浏览数据库
+
+连接后，侧栏显示该用户可访问的所有数据库：
+
+1. 点击侧栏中的连接名称
+2. 展开数据库查看其表
+3. 点击表查看内容
+
+{/* Screenshot: Sidebar showing expanded MySQL database with tables */}
+<Frame caption="数据库浏览器">
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-database-browser.png"
+    alt="数据库浏览器"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-database-browser-dark.png"
+    alt="数据库浏览器"
+  />
+</Frame>
+
+### 表信息
+
+每个表显示以下内容：
+
+- **Structure**：列定义、类型和约束
+- **Indexes**：所有索引，包括主键
+- **Foreign Keys**：与其他表的关系
+- **DDL**：CREATE TABLE 语句
+
+### 查询执行
+
+完整支持 MySQL 语法：
+
+```sql
+-- JSON 查询
+SELECT id, JSON_EXTRACT(data, '$.name') as name
+FROM users
+WHERE JSON_CONTAINS(roles, '"admin"');
+
+-- Window functions
+SELECT
+    department,
+    employee,
+    salary,
+    RANK() OVER (PARTITION BY department ORDER BY salary DESC) as rank
+FROM employees;
+
+-- CTEs
+WITH RECURSIVE category_tree AS (
+    SELECT id, name, parent_id, 0 as level
+    FROM categories WHERE parent_id IS NULL
+    UNION ALL
+    SELECT c.id, c.name, c.parent_id, ct.level + 1
+    FROM categories c
+    JOIN category_tree ct ON c.parent_id = ct.id
+)
+SELECT * FROM category_tree;
+```
+
+## 故障排除
+
+### 连接被拒绝
+
+**症状**："Connection refused" 或 "Can't connect to MySQL server"
+
+**原因及解决方案**：
+
+1. **MySQL 服务器未运行**
+   ```bash
+   # 检查 MySQL 是否运行
+   mysqladmin ping -h localhost -u root -p
+
+   # 启动 MySQL（macOS Homebrew）
+   brew services start mysql
+   ```
+
+2. **端口错误**
+   - 在 MySQL 中验证端口：`SHOW VARIABLES LIKE 'port';`
+   - 检查配置文件
+
+3. **MySQL 未监听 TCP**
+   - 检查 `my.cnf` 中是否设置了 `skip-networking`
+   - 确保 `bind-address` 包含你的客户端 IP
+
+### 访问被拒绝
+
+**症状**："Access denied for user 'xxx'@'localhost'"
+
+**解决方案**：
+
+1. 验证用户名和密码
+2. 检查用户权限：
+   ```sql
+   SHOW GRANTS FOR 'username'@'localhost';
+   ```
+3. 授予必要权限：
+   ```sql
+   GRANT ALL PRIVILEGES ON database_name.* TO 'username'@'localhost';
+   FLUSH PRIVILEGES;
+   ```
+
+### MySQL 8.0 认证
+
+MySQL 8.0 默认使用 `caching_sha2_password`，可能导致连接问题。
+
+**方案一**：为特定用户使用 native password
+```sql
+ALTER USER 'username'@'localhost'
+IDENTIFIED WITH mysql_native_password BY 'password';
+```
+
+**方案二**：更改默认认证方式
+```ini
+# 在 my.cnf 中
+[mysqld]
+default_authentication_plugin=mysql_native_password
+```
+
+### SSL/TLS 连接
+
+在连接表单的 **SSL/TLS** 部分配置 SSL。
+
+| SSL 模式 | MySQL 行为 |
+|----------|----------------|
+| **Disabled** | 明确禁用 SSL |
+| **Preferred** | 如果服务器支持则使用 SSL，否则回退到非加密连接 |
+| **Required** | 强制 SSL 加密（`MYSQL_OPT_SSL_ENFORCE`） |
+| **Verify CA** | 强制 SSL 并验证服务器证书是否由 CA 签发 |
+| **Verify Identity** | 强制 SSL，验证 CA 和服务器主机名 |
+
+对于 **Verify CA** 和 **Verify Identity** 模式，需要提供 CA 证书文件路径。可选提供客户端证书和密钥文件以实现 mutual TLS。
+
+<Tip>
+大多数云端 MySQL 服务商（AWS RDS、Google Cloud SQL、Azure）都要求 SSL。使用 **Verify CA** 配合服务商提供的 CA 证书以获得最佳安全性。
+</Tip>
+
+<Note>
+如果不需要 SSL 但想加密连接，[SSH tunneling](/zh/databases/ssh-tunneling) 可以通过 SSH tunnel 加密所有流量。
+</Note>
+
+{/* Screenshot: MySQL SSL/TLS configuration */}
+<Frame caption="MySQL SSL/TLS 配置">
+  <img
+    className="block dark:hidden"
+    src="/images/mysql-ssl-config.png"
+    alt="MySQL SSL/TLS 配置"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/mysql-ssl-config-dark.png"
+    alt="MySQL SSL/TLS 配置"
+  />
+</Frame>
+
+## 性能建议
+
+### 大型结果集
+
+对于有数百万行的表：
+
+1. 在查询中使用 `LIMIT`
+2. 在数据网格设置中启用分页
+3. 为常见查询创建适当的索引
+
+### 复杂查询
+
+1. 使用 `EXPLAIN` 分析查询计划：
+   ```sql
+   EXPLAIN SELECT * FROM users WHERE email LIKE '%@example.com';
+   ```
+
+2. 在结果面板中监控查询执行时间
+
+## 启动命令
+
+设置每次连接时自动应用的会话变量。在连接表单的 **Advanced** 标签页中配置。
+
+常用的 MySQL 启动命令：
+
+```sql
+SET time_zone = '+00:00';
+SET NAMES utf8mb4;
+SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE';
+SET group_concat_max_len = 1000000;
+```
+
+例如，设置 `time_zone` 可以确保所有 `DATETIME` 和 `TIMESTAMP` 查询返回 UTC 结果，不受服务器配置时区的影响。当应用服务器和数据库服务器位于不同时区时特别有用。
+
+详见 [启动命令](/zh/databases/overview#启动命令)。
+
+## 字符集
+
+TablePro 默认使用 UTF-8（utf8mb4）连接 MySQL，可以正确处理国际字符、emoji 和特殊符号。
+
+如果遇到编码问题，请检查表/列的字符集：
+
+```sql
+SHOW CREATE TABLE table_name;
+```
+
+## 后续步骤
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    安全连接远程 MySQL 服务器
+  </Card>
+  <Card title="SQL 编辑器" icon="code" href="/zh/features/sql-editor">
+    掌握 SQL 编辑器功能
+  </Card>
+  <Card title="导入/导出" icon="file-import" href="/zh/features/import-export">
+    导入和导出 MySQL 数据
+  </Card>
+  <Card title="表结构" icon="table" href="/zh/features/table-structure">
+    查看和修改表结构
+  </Card>
+</CardGroup>

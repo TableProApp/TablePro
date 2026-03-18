@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import os
+import TableProPluginKit
 
 /// View model for the AI chat panel
 @MainActor @Observable
@@ -47,6 +48,38 @@ final class AIChatViewModel {
 
     /// Query results summary from the active tab
     var queryResults: String?
+
+    // MARK: - AI Action Dispatch
+
+    private var queryLanguage: String {
+        guard let type = connection?.type else { return "sql" }
+        return PluginManager.shared.editorLanguage(for: type).codeBlockTag
+    }
+
+    private var queryTypeName: String {
+        guard let type = connection?.type else { return "SQL query" }
+        return "\(PluginManager.shared.queryLanguageName(for: type)) query"
+    }
+
+    func handleFixError(query: String, error: String) {
+        startNewConversation()
+        let prompt = "Fix this \(queryTypeName) error:\n\nQuery:\n```\(queryLanguage)\n\(query)\n```\n\nError: \(error)"
+        sendWithContext(prompt: prompt, feature: .fixError)
+    }
+
+    func handleExplainSelection(_ selectedText: String) {
+        guard !selectedText.isEmpty else { return }
+        startNewConversation()
+        let prompt = "Explain this \(queryTypeName):\n```\(queryLanguage)\n\(selectedText)\n```"
+        sendWithContext(prompt: prompt, feature: .explainQuery)
+    }
+
+    func handleOptimizeSelection(_ selectedText: String) {
+        guard !selectedText.isEmpty else { return }
+        startNewConversation()
+        let prompt = "Optimize this \(queryTypeName):\n```\(queryLanguage)\n\(selectedText)\n```"
+        sendWithContext(prompt: prompt, feature: .optimizeQuery)
+    }
 
     // MARK: - Constants
 
@@ -197,6 +230,28 @@ final class AIChatViewModel {
         errorMessage = nil
     }
 
+    /// Release all session-specific data to free memory on disconnect.
+    /// Unlike `clearConversation()`, this does not delete persisted history.
+    func clearSessionData() {
+        streamingTask?.cancel()
+        streamingTask = nil
+        schemaProvider = nil
+        connection = nil
+        tables = []
+        columnsByTable = [:]
+        foreignKeysByTable = [:]
+        currentQuery = nil
+        queryResults = nil
+        messages = []
+        errorMessage = nil
+        lastMessageFailed = false
+        activeConversationID = nil
+        sessionApprovedConnections = []
+        isStreaming = false
+        streamingAssistantID = nil
+        pendingFeature = nil
+    }
+
     /// Delete a conversation
     func deleteConversation(_ id: UUID) {
         chatStorage.delete(id)
@@ -252,7 +307,7 @@ final class AIChatViewModel {
         let settings = AppSettingsManager.shared.ai
 
         // Resolve provider from feature routing or use first enabled provider
-        guard let (config, apiKey) = resolveProvider(for: feature, settings: settings) else {
+        guard let (config, apiKey) = AIProviderFactory.resolveProvider(for: feature, settings: settings) else {
             errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
             return
         }
@@ -276,7 +331,7 @@ final class AIChatViewModel {
         }
 
         let provider = AIProviderFactory.createProvider(for: config, apiKey: apiKey)
-        let model = resolveModel(for: feature, config: config, settings: settings)
+        let model = AIProviderFactory.resolveModel(for: feature, config: config, settings: settings)
         let systemPrompt = buildSystemPrompt(settings: settings)
 
         // Create assistant message placeholder
@@ -335,39 +390,6 @@ final class AIChatViewModel {
         }
     }
 
-    private func resolveProvider(
-        for feature: AIFeature,
-        settings: AISettings
-    ) -> (AIProviderConfig, String?)? {
-        // Check feature routing first
-        if let route = settings.featureRouting[feature.rawValue],
-           let config = settings.providers.first(where: { $0.id == route.providerID && $0.isEnabled }) {
-            let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-            return (config, apiKey)
-        }
-
-        // Fall back to first enabled provider
-        guard let config = settings.providers.first(where: { $0.isEnabled }) else {
-            return nil
-        }
-
-        let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-        return (config, apiKey)
-    }
-
-    private func resolveModel(
-        for feature: AIFeature,
-        config: AIProviderConfig,
-        settings: AISettings
-    ) -> String {
-        // Use feature-specific model if routed
-        if let route = settings.featureRouting[feature.rawValue], !route.model.isEmpty {
-            return route.model
-        }
-        // Fall back to provider's default model
-        return config.model
-    }
-
     private func resolveConnectionPolicy(settings: AISettings) -> AIConnectionPolicy? {
         let policy = connection?.aiPolicy ?? settings.defaultConnectionPolicy
 
@@ -385,6 +407,7 @@ final class AIChatViewModel {
     private func buildSystemPrompt(settings: AISettings) -> String? {
         guard let connection else { return nil }
 
+        let idQuote = PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\""
         return AISchemaContext.buildSystemPrompt(
             databaseType: connection.type,
             databaseName: connection.database,
@@ -393,7 +416,8 @@ final class AIChatViewModel {
             foreignKeys: foreignKeysByTable,
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
-            settings: settings
+            settings: settings,
+            identifierQuote: idQuote
         )
     }
 }

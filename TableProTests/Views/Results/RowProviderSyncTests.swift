@@ -46,7 +46,7 @@ struct RowProviderSyncTests {
     @Test("Single cell edit syncs to new provider")
     func singleCellEditSyncsToNewProvider() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 1)!.values
+        let originalRow = providerA.rowValues(at: 1)!
 
         // Edit row 1, col 1: "name_1" → "new"
         manager.recordCellChange(
@@ -62,16 +62,16 @@ struct RowProviderSyncTests {
         // Simulate SwiftUI providing a stale cached provider
         let rows = TestFixtures.makeQueryResultRows(count: 3, columns: ["id", "name", "email"])
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
-        #expect(providerB.row(at: 1)?.value(at: 1) == "name_1")
+        #expect(providerB.value(atRow: 1, column: 1) == "name_1")
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 1)?.value(at: 1) == "new")
+        #expect(providerB.value(atRow: 1, column: 1) == "new")
     }
 
     @Test("Multiple cell edits on same row sync correctly")
     func multipleCellEditsSameRowSync() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 0)!.values
+        let originalRow = providerA.rowValues(at: 0)!
 
         manager.recordCellChange(
             rowIndex: 0,
@@ -94,15 +94,15 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == "updated_name")
-        #expect(providerB.row(at: 0)?.value(at: 2) == "updated_email")
+        #expect(providerB.value(atRow: 0, column: 1) == "updated_name")
+        #expect(providerB.value(atRow: 0, column: 2) == "updated_email")
     }
 
     @Test("Multiple cell edits on different rows sync correctly")
     func multipleCellEditsDifferentRowsSync() {
         let (manager, providerA) = makeScenario()
-        let originalRow0 = providerA.row(at: 0)!.values
-        let originalRow2 = providerA.row(at: 2)!.values
+        let originalRow0 = providerA.rowValues(at: 0)!
+        let originalRow2 = providerA.rowValues(at: 2)!
 
         manager.recordCellChange(
             rowIndex: 0,
@@ -125,14 +125,14 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == "new_name_0")
-        #expect(providerB.row(at: 2)?.value(at: 2) == "new_email_2")
+        #expect(providerB.value(atRow: 0, column: 1) == "new_name_0")
+        #expect(providerB.value(atRow: 2, column: 2) == "new_email_2")
     }
 
     @Test("Edit then undo leaves provider unchanged")
     func editThenUndoLeavesProviderUnchanged() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 1)!.values
+        let originalRow = providerA.rowValues(at: 1)!
 
         manager.recordCellChange(
             rowIndex: 1,
@@ -149,13 +149,13 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 1)?.value(at: 1) == "name_1")
+        #expect(providerB.value(atRow: 1, column: 1) == "name_1")
     }
 
     @Test("Edit, undo, redo syncs correctly")
     func editUndoRedoSyncsCorrectly() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 1)!.values
+        let originalRow = providerA.rowValues(at: 1)!
 
         manager.recordCellChange(
             rowIndex: 1,
@@ -173,7 +173,7 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 1)?.value(at: 1) == "new")
+        #expect(providerB.value(atRow: 1, column: 1) == "new")
     }
 
     @Test("Inserted row cell edit syncs to new provider")
@@ -201,13 +201,13 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: columns)
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 3)?.value(at: 1) == "inserted_val")
+        #expect(providerB.value(atRow: 3, column: 1) == "inserted_val")
     }
 
     @Test("Deleted row does not affect sync")
     func deletedRowDoesNotAffectSync() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 1)!.values
+        let originalRow = providerA.rowValues(at: 1)!
 
         manager.recordRowDeletion(rowIndex: 1, originalRow: originalRow)
 
@@ -218,15 +218,15 @@ struct RowProviderSyncTests {
         reapplyChanges(from: manager, to: providerB)
 
         // ProviderB values remain unchanged
-        #expect(providerB.row(at: 0)?.value(at: 0) == "id_0")
-        #expect(providerB.row(at: 1)?.value(at: 1) == "name_1")
-        #expect(providerB.row(at: 2)?.value(at: 2) == "email_2")
+        #expect(providerB.value(atRow: 0, column: 0) == "id_0")
+        #expect(providerB.value(atRow: 1, column: 1) == "name_1")
+        #expect(providerB.value(atRow: 2, column: 2) == "email_2")
     }
 
     @Test("Multiple edits to same cell — last value wins")
     func multipleEditsToSameCellLastValueWins() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 0)!.values
+        let originalRow = providerA.rowValues(at: 0)!
 
         manager.recordCellChange(
             rowIndex: 0,
@@ -249,13 +249,13 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == "c")
+        #expect(providerB.value(atRow: 0, column: 1) == "c")
     }
 
     @Test("Reapply is idempotent")
     func reapplyIsIdempotent() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 0)!.values
+        let originalRow = providerA.rowValues(at: 0)!
 
         manager.recordCellChange(
             rowIndex: 0,
@@ -270,17 +270,17 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == "updated")
+        #expect(providerB.value(atRow: 0, column: 1) == "updated")
 
         // Apply again — should remain correct, no corruption
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == "updated")
+        #expect(providerB.value(atRow: 0, column: 1) == "updated")
     }
 
     @Test("Null value syncs correctly")
     func nullValueSyncsCorrectly() {
         let (manager, providerA) = makeScenario()
-        let originalRow = providerA.row(at: 0)!.values
+        let originalRow = providerA.rowValues(at: 0)!
 
         manager.recordCellChange(
             rowIndex: 0,
@@ -295,7 +295,7 @@ struct RowProviderSyncTests {
         let providerB = InMemoryRowProvider(rows: rows, columns: ["id", "name", "email"])
 
         reapplyChanges(from: manager, to: providerB)
-        #expect(providerB.row(at: 0)?.value(at: 1) == nil)
+        #expect(providerB.value(atRow: 0, column: 1) == nil)
     }
 
     @Test("Reapply with no changes is a no-op")
@@ -307,19 +307,19 @@ struct RowProviderSyncTests {
 
         reapplyChanges(from: manager, to: providerB)
 
-        #expect(providerB.row(at: 0)?.value(at: 0) == "id_0")
-        #expect(providerB.row(at: 0)?.value(at: 1) == "name_0")
-        #expect(providerB.row(at: 0)?.value(at: 2) == "email_0")
-        #expect(providerB.row(at: 1)?.value(at: 0) == "id_1")
-        #expect(providerB.row(at: 1)?.value(at: 1) == "name_1")
-        #expect(providerB.row(at: 2)?.value(at: 2) == "email_2")
+        #expect(providerB.value(atRow: 0, column: 0) == "id_0")
+        #expect(providerB.value(atRow: 0, column: 1) == "name_0")
+        #expect(providerB.value(atRow: 0, column: 2) == "email_0")
+        #expect(providerB.value(atRow: 1, column: 0) == "id_1")
+        #expect(providerB.value(atRow: 1, column: 1) == "name_1")
+        #expect(providerB.value(atRow: 2, column: 2) == "email_2")
     }
 
     @Test("Batch delete does not crash")
     func batchDeleteDoesNotCrash() {
         let (manager, providerA) = makeScenario()
-        let originalRow0 = providerA.row(at: 0)!.values
-        let originalRow1 = providerA.row(at: 1)!.values
+        let originalRow0 = providerA.rowValues(at: 0)!
+        let originalRow1 = providerA.rowValues(at: 1)!
 
         manager.recordBatchRowDeletion(rows: [
             (rowIndex: 0, originalRow: originalRow0),
@@ -333,8 +333,8 @@ struct RowProviderSyncTests {
         reapplyChanges(from: manager, to: providerB)
 
         // Values remain unchanged
-        #expect(providerB.row(at: 0)?.value(at: 0) == "id_0")
-        #expect(providerB.row(at: 1)?.value(at: 1) == "name_1")
-        #expect(providerB.row(at: 2)?.value(at: 2) == "email_2")
+        #expect(providerB.value(atRow: 0, column: 0) == "id_0")
+        #expect(providerB.value(atRow: 1, column: 1) == "name_1")
+        #expect(providerB.value(atRow: 2, column: 2) == "email_2")
     }
 }

@@ -90,7 +90,7 @@ struct LiveTableFetcherTests {
         #expect(initialCallCount == 1)
 
         let fetcher = LiveTableFetcher(connectionId: UUID(), schemaProvider: provider)
-        let result = try await fetcher.fetchTables()
+        let result = try await fetcher.fetchTables(force: false)
 
         #expect(result.count == 3)
         #expect(result.map(\.name) == ["users", "orders", "products"])
@@ -102,7 +102,7 @@ struct LiveTableFetcherTests {
         let provider = SQLSchemaProvider()
 
         let fetcher = LiveTableFetcher(connectionId: UUID(), schemaProvider: provider)
-        let result = try await fetcher.fetchTables()
+        let result = try await fetcher.fetchTables(force: false)
 
         #expect(result.isEmpty)
     }
@@ -110,7 +110,7 @@ struct LiveTableFetcherTests {
     @Test("works without schema provider using direct driver fetch")
     func worksWithoutSchemaProvider() async throws {
         let fetcher = LiveTableFetcher(connectionId: UUID())
-        let result = try await fetcher.fetchTables()
+        let result = try await fetcher.fetchTables(force: false)
 
         #expect(result.isEmpty)
     }
@@ -131,11 +131,64 @@ struct LiveTableFetcherTests {
         let fetcher = LiveTableFetcher(connectionId: UUID(), schemaProvider: provider)
 
         for _ in 0..<3 {
-            let result = try await fetcher.fetchTables()
+            let result = try await fetcher.fetchTables(force: false)
             #expect(result.count == 2)
             #expect(result.map(\.name) == ["accounts", "transactions"])
         }
 
         #expect(mockDriver.fetchTablesCallCount == 1)
+    }
+
+    @Test("force: true bypasses schema provider cache and hits driver")
+    func forceBypassesCache() async throws {
+        let initialTables = [
+            TestFixtures.makeTableInfo(name: "users"),
+            TestFixtures.makeTableInfo(name: "orders")
+        ]
+
+        let mockDriver = MockDatabaseDriver()
+        mockDriver.tablesToReturn = initialTables
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: mockDriver)
+
+        let freshTables = [
+            TestFixtures.makeTableInfo(name: "users"),
+            TestFixtures.makeTableInfo(name: "orders"),
+            TestFixtures.makeTableInfo(name: "new_table")
+        ]
+        mockDriver.tablesToReturn = freshTables
+
+        let callCountBefore = mockDriver.fetchTablesCallCount
+
+        let fetcher = LiveTableFetcher(connectionId: UUID(), schemaProvider: provider)
+        let result = try await fetcher.fetchTables(force: true)
+
+        #expect(result.count == 3)
+        #expect(result.map(\.name) == ["users", "orders", "new_table"])
+        #expect(mockDriver.fetchTablesCallCount == callCountBefore + 1)
+    }
+
+    @Test("force: true writes fresh tables back into schema provider")
+    func forcedFetchUpdatesSchemaProvider() async throws {
+        let initialTables = [TestFixtures.makeTableInfo(name: "old_table")]
+
+        let mockDriver = MockDatabaseDriver()
+        mockDriver.tablesToReturn = initialTables
+
+        let provider = SQLSchemaProvider()
+        await provider.loadSchema(using: mockDriver)
+
+        let freshTables = [
+            TestFixtures.makeTableInfo(name: "alpha"),
+            TestFixtures.makeTableInfo(name: "beta")
+        ]
+        mockDriver.tablesToReturn = freshTables
+
+        let fetcher = LiveTableFetcher(connectionId: UUID(), schemaProvider: provider)
+        _ = try await fetcher.fetchTables(force: true)
+
+        let cached = await provider.getTables()
+        #expect(cached.map(\.name).sorted() == ["alpha", "beta"])
     }
 }

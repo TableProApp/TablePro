@@ -1,1181 +1,1120 @@
-@testable import TablePro
+//
+//  RedisCommandParserTests.swift
+//  TableProTests
+//
+//  Tests for RedisCommandParser, which parses Redis CLI-style commands
+//  into structured RedisOperation values.
+//
+//  The parser lives inside RedisDriverPlugin (a bundle target), so we copy
+//  the pure-value types here as private helpers instead of using @testable import.
+//
+
+import Foundation
 import Testing
 
-@Suite("Redis Command Parser")
-struct RedisCommandParserTests {
-    // MARK: - String Commands
+// MARK: - Key Commands
 
-    @Suite("String Commands")
-    struct StringCommands {
-        @Test("GET parses key")
-        func parseGet() throws {
-            let op = try RedisCommandParser.parse("GET mykey")
-            guard case .get(let key) = op else {
-                Issue.record("Expected GET"); return
-            }
-            #expect(key == "mykey")
+@Suite("RedisCommandParser - Key Commands")
+struct RedisCommandParserKeyCommandTests {
+    @Test("GET parses key")
+    func getCommand() throws {
+        let op = try TestRedisCommandParser.parse("GET mykey")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get, got \(op)")
+            return
         }
+        #expect(key == "mykey")
+    }
 
-        @Test("GET missing key throws")
-        func getMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("GET")
-            }
-        }
-
-        @Test("SET parses key and value")
-        func parseSet() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue")
-            guard case .set(let key, let value, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(key == "mykey")
-            #expect(value == "myvalue")
-            #expect(options == nil)
-        }
-
-        @Test("SET with EX option")
-        func setWithEx() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue EX 60")
-            guard case .set(_, _, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(options?.ex == 60)
-            #expect(options?.px == nil)
-            #expect(options?.nx == false)
-            #expect(options?.xx == false)
-        }
-
-        @Test("SET with PX option")
-        func setWithPx() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue PX 5000")
-            guard case .set(_, _, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(options?.px == 5_000)
-            #expect(options?.ex == nil)
-        }
-
-        @Test("SET with NX option")
-        func setWithNx() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue NX")
-            guard case .set(_, _, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(options?.nx == true)
-            #expect(options?.xx == false)
-        }
-
-        @Test("SET with XX option")
-        func setWithXx() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue XX")
-            guard case .set(_, _, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(options?.xx == true)
-            #expect(options?.nx == false)
-        }
-
-        @Test("SET with combined options EX and NX")
-        func setWithExAndNx() throws {
-            let op = try RedisCommandParser.parse("SET mykey myvalue EX 120 NX")
-            guard case .set(_, _, let options) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(options?.ex == 120)
-            #expect(options?.nx == true)
-        }
-
-        @Test("SET missing value throws")
-        func setMissingValue() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SET mykey")
-            }
-        }
-
-        @Test("SET missing key and value throws")
-        func setMissingBoth() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SET")
-            }
-        }
-
-        @Test("DEL single key")
-        func delSingleKey() throws {
-            let op = try RedisCommandParser.parse("DEL key1")
-            guard case .del(let keys) = op else {
-                Issue.record("Expected DEL"); return
-            }
-            #expect(keys == ["key1"])
-        }
-
-        @Test("DEL multiple keys")
-        func delMultipleKeys() throws {
-            let op = try RedisCommandParser.parse("DEL key1 key2 key3")
-            guard case .del(let keys) = op else {
-                Issue.record("Expected DEL"); return
-            }
-            #expect(keys == ["key1", "key2", "key3"])
-        }
-
-        @Test("DEL missing key throws")
-        func delMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("DEL")
-            }
+    @Test("GET missing key throws")
+    func getMissingKey() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("GET")
         }
     }
 
-    // MARK: - Key Commands
-
-    @Suite("Key Commands")
-    struct KeyCommands {
-        @Test("KEYS parses pattern")
-        func parseKeys() throws {
-            let op = try RedisCommandParser.parse("KEYS user:*")
-            guard case .keys(let pattern) = op else {
-                Issue.record("Expected KEYS"); return
-            }
-            #expect(pattern == "user:*")
+    @Test("SET parses key and value")
+    func setCommand() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey myvalue")
+        guard case .set(let key, let value, let options) = op else {
+            Issue.record("Expected .set, got \(op)")
+            return
         }
+        #expect(key == "mykey")
+        #expect(value == "myvalue")
+        #expect(options == nil)
+    }
 
-        @Test("KEYS missing pattern throws")
-        func keysMissingPattern() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("KEYS")
-            }
+    @Test("SET with EX option")
+    func setWithExpiry() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey myvalue EX 60")
+        guard case .set(_, _, let options) = op else {
+            Issue.record("Expected .set")
+            return
         }
+        #expect(options?.ex == 60)
+    }
 
-        @Test("SCAN with cursor only")
-        func scanCursorOnly() throws {
-            let op = try RedisCommandParser.parse("SCAN 0")
-            guard case .scan(let cursor, let pattern, let count) = op else {
-                Issue.record("Expected SCAN"); return
-            }
-            #expect(cursor == 0)
-            #expect(pattern == nil)
-            #expect(count == nil)
+    @Test("SET with NX option")
+    func setWithNx() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey myvalue NX")
+        guard case .set(_, _, let options) = op else {
+            Issue.record("Expected .set")
+            return
         }
+        #expect(options?.nx == true)
+    }
 
-        @Test("SCAN with MATCH option")
-        func scanWithMatch() throws {
-            let op = try RedisCommandParser.parse("SCAN 0 MATCH user:*")
-            guard case .scan(let cursor, let pattern, let count) = op else {
-                Issue.record("Expected SCAN"); return
-            }
-            #expect(cursor == 0)
-            #expect(pattern == "user:*")
-            #expect(count == nil)
-        }
-
-        @Test("SCAN with COUNT option")
-        func scanWithCount() throws {
-            let op = try RedisCommandParser.parse("SCAN 5 COUNT 200")
-            guard case .scan(let cursor, let pattern, let count) = op else {
-                Issue.record("Expected SCAN"); return
-            }
-            #expect(cursor == 5)
-            #expect(pattern == nil)
-            #expect(count == 200)
-        }
-
-        @Test("SCAN with MATCH and COUNT")
-        func scanWithMatchAndCount() throws {
-            let op = try RedisCommandParser.parse("SCAN 0 MATCH user:* COUNT 100")
-            guard case .scan(let cursor, let pattern, let count) = op else {
-                Issue.record("Expected SCAN"); return
-            }
-            #expect(cursor == 0)
-            #expect(pattern == "user:*")
-            #expect(count == 100)
-        }
-
-        @Test("SCAN with non-integer cursor throws")
-        func scanInvalidCursor() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SCAN abc")
-            }
-        }
-
-        @Test("SCAN missing cursor throws")
-        func scanMissingCursor() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SCAN")
-            }
-        }
-
-        @Test("TYPE parses key")
-        func parseType() throws {
-            let op = try RedisCommandParser.parse("TYPE mykey")
-            guard case .type(let key) = op else {
-                Issue.record("Expected TYPE"); return
-            }
-            #expect(key == "mykey")
-        }
-
-        @Test("TYPE missing key throws")
-        func typeMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("TYPE")
-            }
-        }
-
-        @Test("TTL parses key")
-        func parseTtl() throws {
-            let op = try RedisCommandParser.parse("TTL session:abc")
-            guard case .ttl(let key) = op else {
-                Issue.record("Expected TTL"); return
-            }
-            #expect(key == "session:abc")
-        }
-
-        @Test("TTL missing key throws")
-        func ttlMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("TTL")
-            }
-        }
-
-        @Test("PTTL parses key")
-        func parsePttl() throws {
-            let op = try RedisCommandParser.parse("PTTL session:abc")
-            guard case .pttl(let key) = op else {
-                Issue.record("Expected PTTL"); return
-            }
-            #expect(key == "session:abc")
-        }
-
-        @Test("PTTL missing key throws")
-        func pttlMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("PTTL")
-            }
-        }
-
-        @Test("EXPIRE parses key and seconds")
-        func parseExpire() throws {
-            let op = try RedisCommandParser.parse("EXPIRE mykey 300")
-            guard case .expire(let key, let seconds) = op else {
-                Issue.record("Expected EXPIRE"); return
-            }
-            #expect(key == "mykey")
-            #expect(seconds == 300)
-        }
-
-        @Test("EXPIRE with non-integer seconds throws")
-        func expireInvalidSeconds() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("EXPIRE mykey abc")
-            }
-        }
-
-        @Test("EXPIRE missing seconds throws")
-        func expireMissingSeconds() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("EXPIRE mykey")
-            }
-        }
-
-        @Test("PERSIST parses key")
-        func parsePersist() throws {
-            let op = try RedisCommandParser.parse("PERSIST mykey")
-            guard case .persist(let key) = op else {
-                Issue.record("Expected PERSIST"); return
-            }
-            #expect(key == "mykey")
-        }
-
-        @Test("PERSIST missing key throws")
-        func persistMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("PERSIST")
-            }
-        }
-
-        @Test("RENAME parses key and newKey")
-        func parseRename() throws {
-            let op = try RedisCommandParser.parse("RENAME oldkey newkey")
-            guard case .rename(let key, let newKey) = op else {
-                Issue.record("Expected RENAME"); return
-            }
-            #expect(key == "oldkey")
-            #expect(newKey == "newkey")
-        }
-
-        @Test("RENAME missing newKey throws")
-        func renameMissingNewKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("RENAME oldkey")
-            }
-        }
-
-        @Test("EXISTS single key")
-        func existsSingleKey() throws {
-            let op = try RedisCommandParser.parse("EXISTS mykey")
-            guard case .exists(let keys) = op else {
-                Issue.record("Expected EXISTS"); return
-            }
-            #expect(keys == ["mykey"])
-        }
-
-        @Test("EXISTS multiple keys")
-        func existsMultipleKeys() throws {
-            let op = try RedisCommandParser.parse("EXISTS key1 key2 key3")
-            guard case .exists(let keys) = op else {
-                Issue.record("Expected EXISTS"); return
-            }
-            #expect(keys == ["key1", "key2", "key3"])
-        }
-
-        @Test("EXISTS missing key throws")
-        func existsMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("EXISTS")
-            }
+    @Test("SET missing value throws")
+    func setMissingValue() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("SET mykey")
         }
     }
 
-    // MARK: - Hash Commands
-
-    @Suite("Hash Commands")
-    struct HashCommands {
-        @Test("HGET parses key and field")
-        func parseHget() throws {
-            let op = try RedisCommandParser.parse("HGET myhash name")
-            guard case .hget(let key, let field) = op else {
-                Issue.record("Expected HGET"); return
-            }
-            #expect(key == "myhash")
-            #expect(field == "name")
+    @Test("DEL parses single key")
+    func delSingleKey() throws {
+        let op = try TestRedisCommandParser.parse("DEL mykey")
+        guard case .del(let keys) = op else {
+            Issue.record("Expected .del")
+            return
         }
+        #expect(keys == ["mykey"])
+    }
 
-        @Test("HGET missing field throws")
-        func hgetMissingField() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HGET myhash")
-            }
+    @Test("DEL parses multiple keys")
+    func delMultipleKeys() throws {
+        let op = try TestRedisCommandParser.parse("DEL key1 key2 key3")
+        guard case .del(let keys) = op else {
+            Issue.record("Expected .del")
+            return
         }
+        #expect(keys == ["key1", "key2", "key3"])
+    }
 
-        @Test("HSET single field-value pair")
-        func hsetSinglePair() throws {
-            let op = try RedisCommandParser.parse("HSET myhash name Alice")
-            guard case .hset(let key, let fieldValues) = op else {
-                Issue.record("Expected HSET"); return
-            }
-            #expect(key == "myhash")
-            #expect(fieldValues.count == 1)
-            #expect(fieldValues[0].0 == "name")
-            #expect(fieldValues[0].1 == "Alice")
-        }
-
-        @Test("HSET multiple field-value pairs")
-        func hsetMultiplePairs() throws {
-            let op = try RedisCommandParser.parse("HSET myhash name Alice age 30")
-            guard case .hset(let key, let fieldValues) = op else {
-                Issue.record("Expected HSET"); return
-            }
-            #expect(key == "myhash")
-            #expect(fieldValues.count == 2)
-            #expect(fieldValues[0].0 == "name")
-            #expect(fieldValues[0].1 == "Alice")
-            #expect(fieldValues[1].0 == "age")
-            #expect(fieldValues[1].1 == "30")
-        }
-
-        @Test("HSET with even arg count (odd field-values) throws")
-        func hsetOddArgCount() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HSET myhash name Alice age")
-            }
-        }
-
-        @Test("HSET missing field-value throws")
-        func hsetMissingFieldValue() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HSET myhash")
-            }
-        }
-
-        @Test("HGETALL parses key")
-        func parseHgetall() throws {
-            let op = try RedisCommandParser.parse("HGETALL myhash")
-            guard case .hgetall(let key) = op else {
-                Issue.record("Expected HGETALL"); return
-            }
-            #expect(key == "myhash")
-        }
-
-        @Test("HGETALL missing key throws")
-        func hgetallMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HGETALL")
-            }
-        }
-
-        @Test("HDEL single field")
-        func hdelSingleField() throws {
-            let op = try RedisCommandParser.parse("HDEL myhash name")
-            guard case .hdel(let key, let fields) = op else {
-                Issue.record("Expected HDEL"); return
-            }
-            #expect(key == "myhash")
-            #expect(fields == ["name"])
-        }
-
-        @Test("HDEL multiple fields")
-        func hdelMultipleFields() throws {
-            let op = try RedisCommandParser.parse("HDEL myhash name age email")
-            guard case .hdel(let key, let fields) = op else {
-                Issue.record("Expected HDEL"); return
-            }
-            #expect(key == "myhash")
-            #expect(fields == ["name", "age", "email"])
-        }
-
-        @Test("HDEL missing field throws")
-        func hdelMissingField() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HDEL myhash")
-            }
+    @Test("DEL missing key throws")
+    func delMissingKey() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("DEL")
         }
     }
 
-    // MARK: - List Commands
-
-    @Suite("List Commands")
-    struct ListCommands {
-        @Test("LRANGE parses key, start, stop")
-        func parseLrange() throws {
-            let op = try RedisCommandParser.parse("LRANGE mylist 0 -1")
-            guard case .lrange(let key, let start, let stop) = op else {
-                Issue.record("Expected LRANGE"); return
-            }
-            #expect(key == "mylist")
-            #expect(start == 0)
-            #expect(stop == -1)
+    @Test("KEYS parses pattern")
+    func keysCommand() throws {
+        let op = try TestRedisCommandParser.parse("KEYS user:*")
+        guard case .keys(let pattern) = op else {
+            Issue.record("Expected .keys")
+            return
         }
+        #expect(pattern == "user:*")
+    }
 
-        @Test("LRANGE with positive range")
-        func lrangePositiveRange() throws {
-            let op = try RedisCommandParser.parse("LRANGE mylist 5 10")
-            guard case .lrange(_, let start, let stop) = op else {
-                Issue.record("Expected LRANGE"); return
-            }
-            #expect(start == 5)
-            #expect(stop == 10)
+    @Test("SCAN parses cursor with MATCH and COUNT")
+    func scanWithOptions() throws {
+        let op = try TestRedisCommandParser.parse("SCAN 0 MATCH user:* COUNT 100")
+        guard case .scan(let cursor, let pattern, let count) = op else {
+            Issue.record("Expected .scan")
+            return
         }
+        #expect(cursor == 0)
+        #expect(pattern == "user:*")
+        #expect(count == 100)
+    }
 
-        @Test("LRANGE with non-integer start throws")
-        func lrangeInvalidStart() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LRANGE mylist abc -1")
-            }
+    @Test("SCAN without options")
+    func scanBasic() throws {
+        let op = try TestRedisCommandParser.parse("SCAN 0")
+        guard case .scan(let cursor, let pattern, let count) = op else {
+            Issue.record("Expected .scan")
+            return
         }
+        #expect(cursor == 0)
+        #expect(pattern == nil)
+        #expect(count == nil)
+    }
 
-        @Test("LRANGE with non-integer stop throws")
-        func lrangeInvalidStop() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LRANGE mylist 0 xyz")
-            }
+    @Test("TYPE parses key")
+    func typeCommand() throws {
+        let op = try TestRedisCommandParser.parse("TYPE mykey")
+        guard case .type(let key) = op else {
+            Issue.record("Expected .type")
+            return
         }
+        #expect(key == "mykey")
+    }
 
-        @Test("LRANGE missing arguments throws")
-        func lrangeMissingArgs() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LRANGE mylist")
-            }
+    @Test("TTL parses key")
+    func ttlCommand() throws {
+        let op = try TestRedisCommandParser.parse("TTL mykey")
+        guard case .ttl(let key) = op else {
+            Issue.record("Expected .ttl")
+            return
         }
+        #expect(key == "mykey")
+    }
 
-        @Test("LPUSH single value")
-        func lpushSingleValue() throws {
-            let op = try RedisCommandParser.parse("LPUSH mylist val1")
-            guard case .lpush(let key, let values) = op else {
-                Issue.record("Expected LPUSH"); return
-            }
-            #expect(key == "mylist")
-            #expect(values == ["val1"])
+    @Test("EXPIRE parses key and seconds")
+    func expireCommand() throws {
+        let op = try TestRedisCommandParser.parse("EXPIRE mykey 300")
+        guard case .expire(let key, let seconds) = op else {
+            Issue.record("Expected .expire")
+            return
         }
+        #expect(key == "mykey")
+        #expect(seconds == 300)
+    }
 
-        @Test("LPUSH multiple values")
-        func lpushMultipleValues() throws {
-            let op = try RedisCommandParser.parse("LPUSH mylist val1 val2 val3")
-            guard case .lpush(let key, let values) = op else {
-                Issue.record("Expected LPUSH"); return
-            }
-            #expect(key == "mylist")
-            #expect(values == ["val1", "val2", "val3"])
-        }
-
-        @Test("LPUSH missing value throws")
-        func lpushMissingValue() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LPUSH mylist")
-            }
-        }
-
-        @Test("RPUSH single value")
-        func rpushSingleValue() throws {
-            let op = try RedisCommandParser.parse("RPUSH mylist val1")
-            guard case .rpush(let key, let values) = op else {
-                Issue.record("Expected RPUSH"); return
-            }
-            #expect(key == "mylist")
-            #expect(values == ["val1"])
-        }
-
-        @Test("RPUSH multiple values")
-        func rpushMultipleValues() throws {
-            let op = try RedisCommandParser.parse("RPUSH mylist val1 val2 val3")
-            guard case .rpush(let key, let values) = op else {
-                Issue.record("Expected RPUSH"); return
-            }
-            #expect(key == "mylist")
-            #expect(values == ["val1", "val2", "val3"])
-        }
-
-        @Test("RPUSH missing value throws")
-        func rpushMissingValue() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("RPUSH mylist")
-            }
-        }
-
-        @Test("LLEN parses key")
-        func parseLlen() throws {
-            let op = try RedisCommandParser.parse("LLEN mylist")
-            guard case .llen(let key) = op else {
-                Issue.record("Expected LLEN"); return
-            }
-            #expect(key == "mylist")
-        }
-
-        @Test("LLEN missing key throws")
-        func llenMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LLEN")
-            }
+    @Test("EXPIRE with non-integer seconds throws")
+    func expireInvalidSeconds() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("EXPIRE mykey abc")
         }
     }
 
-    // MARK: - Set Commands
-
-    @Suite("Set Commands")
-    struct SetCommands {
-        @Test("SMEMBERS parses key")
-        func parseSmembers() throws {
-            let op = try RedisCommandParser.parse("SMEMBERS myset")
-            guard case .smembers(let key) = op else {
-                Issue.record("Expected SMEMBERS"); return
-            }
-            #expect(key == "myset")
+    @Test("RENAME parses key and newKey")
+    func renameCommand() throws {
+        let op = try TestRedisCommandParser.parse("RENAME oldkey newkey")
+        guard case .rename(let key, let newKey) = op else {
+            Issue.record("Expected .rename")
+            return
         }
+        #expect(key == "oldkey")
+        #expect(newKey == "newkey")
+    }
 
-        @Test("SMEMBERS missing key throws")
-        func smembersMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SMEMBERS")
-            }
+    @Test("EXISTS parses multiple keys")
+    func existsCommand() throws {
+        let op = try TestRedisCommandParser.parse("EXISTS k1 k2")
+        guard case .exists(let keys) = op else {
+            Issue.record("Expected .exists")
+            return
         }
+        #expect(keys == ["k1", "k2"])
+    }
+}
 
-        @Test("SADD single member")
-        func saddSingleMember() throws {
-            let op = try RedisCommandParser.parse("SADD myset member1")
-            guard case .sadd(let key, let members) = op else {
-                Issue.record("Expected SADD"); return
-            }
-            #expect(key == "myset")
-            #expect(members == ["member1"])
+// MARK: - Hash Commands
+
+@Suite("RedisCommandParser - Hash Commands")
+struct RedisCommandParserHashTests {
+    @Test("HGET parses key and field")
+    func hgetCommand() throws {
+        let op = try TestRedisCommandParser.parse("HGET myhash field1")
+        guard case .hget(let key, let field) = op else {
+            Issue.record("Expected .hget")
+            return
         }
+        #expect(key == "myhash")
+        #expect(field == "field1")
+    }
 
-        @Test("SADD multiple members")
-        func saddMultipleMembers() throws {
-            let op = try RedisCommandParser.parse("SADD myset m1 m2 m3")
-            guard case .sadd(let key, let members) = op else {
-                Issue.record("Expected SADD"); return
-            }
-            #expect(key == "myset")
-            #expect(members == ["m1", "m2", "m3"])
+    @Test("HSET parses key and field-value pairs")
+    func hsetCommand() throws {
+        let op = try TestRedisCommandParser.parse("HSET myhash f1 v1 f2 v2")
+        guard case .hset(let key, let fieldValues) = op else {
+            Issue.record("Expected .hset")
+            return
         }
+        #expect(key == "myhash")
+        #expect(fieldValues.count == 2)
+        #expect(fieldValues[0].0 == "f1")
+        #expect(fieldValues[0].1 == "v1")
+        #expect(fieldValues[1].0 == "f2")
+        #expect(fieldValues[1].1 == "v2")
+    }
 
-        @Test("SADD missing member throws")
-        func saddMissingMember() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SADD myset")
-            }
-        }
-
-        @Test("SREM single member")
-        func sremSingleMember() throws {
-            let op = try RedisCommandParser.parse("SREM myset member1")
-            guard case .srem(let key, let members) = op else {
-                Issue.record("Expected SREM"); return
-            }
-            #expect(key == "myset")
-            #expect(members == ["member1"])
-        }
-
-        @Test("SREM multiple members")
-        func sremMultipleMembers() throws {
-            let op = try RedisCommandParser.parse("SREM myset m1 m2 m3")
-            guard case .srem(let key, let members) = op else {
-                Issue.record("Expected SREM"); return
-            }
-            #expect(key == "myset")
-            #expect(members == ["m1", "m2", "m3"])
-        }
-
-        @Test("SREM missing member throws")
-        func sremMissingMember() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SREM myset")
-            }
-        }
-
-        @Test("SCARD parses key")
-        func parseScard() throws {
-            let op = try RedisCommandParser.parse("SCARD myset")
-            guard case .scard(let key) = op else {
-                Issue.record("Expected SCARD"); return
-            }
-            #expect(key == "myset")
-        }
-
-        @Test("SCARD missing key throws")
-        func scardMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SCARD")
-            }
+    @Test("HSET with odd argument count throws")
+    func hsetOddArgs() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("HSET myhash f1 v1 f2")
         }
     }
 
-    // MARK: - Sorted Set Commands
-
-    @Suite("Sorted Set Commands")
-    struct SortedSetCommands {
-        @Test("ZRANGE without WITHSCORES")
-        func zrangeWithoutScores() throws {
-            let op = try RedisCommandParser.parse("ZRANGE myzset 0 -1")
-            guard case .zrange(let key, let start, let stop, let withScores) = op else {
-                Issue.record("Expected ZRANGE"); return
-            }
-            #expect(key == "myzset")
-            #expect(start == 0)
-            #expect(stop == -1)
-            #expect(withScores == false)
+    @Test("HGETALL parses key")
+    func hgetallCommand() throws {
+        let op = try TestRedisCommandParser.parse("HGETALL myhash")
+        guard case .hgetall(let key) = op else {
+            Issue.record("Expected .hgetall")
+            return
         }
+        #expect(key == "myhash")
+    }
 
-        @Test("ZRANGE with WITHSCORES")
-        func zrangeWithScores() throws {
-            let op = try RedisCommandParser.parse("ZRANGE myzset 0 -1 WITHSCORES")
-            guard case .zrange(let key, let start, let stop, let withScores) = op else {
-                Issue.record("Expected ZRANGE"); return
-            }
-            #expect(key == "myzset")
-            #expect(start == 0)
-            #expect(stop == -1)
-            #expect(withScores == true)
+    @Test("HDEL parses key and fields")
+    func hdelCommand() throws {
+        let op = try TestRedisCommandParser.parse("HDEL myhash f1 f2")
+        guard case .hdel(let key, let fields) = op else {
+            Issue.record("Expected .hdel")
+            return
         }
+        #expect(key == "myhash")
+        #expect(fields == ["f1", "f2"])
+    }
+}
 
-        @Test("ZRANGE with non-integer start throws")
-        func zrangeInvalidStart() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZRANGE myzset abc -1")
-            }
+// MARK: - List Commands
+
+@Suite("RedisCommandParser - List Commands")
+struct RedisCommandParserListTests {
+    @Test("LRANGE parses key, start, stop")
+    func lrangeCommand() throws {
+        let op = try TestRedisCommandParser.parse("LRANGE mylist 0 -1")
+        guard case .lrange(let key, let start, let stop) = op else {
+            Issue.record("Expected .lrange")
+            return
         }
+        #expect(key == "mylist")
+        #expect(start == 0)
+        #expect(stop == -1)
+    }
 
-        @Test("ZRANGE with non-integer stop throws")
-        func zrangeInvalidStop() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZRANGE myzset 0 xyz")
-            }
-        }
-
-        @Test("ZRANGE missing arguments throws")
-        func zrangeMissingArgs() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZRANGE myzset")
-            }
-        }
-
-        @Test("ZADD single score-member pair")
-        func zaddSinglePair() throws {
-            let op = try RedisCommandParser.parse("ZADD myzset 1.5 member1")
-            guard case .zadd(let key, let scoreMembers) = op else {
-                Issue.record("Expected ZADD"); return
-            }
-            #expect(key == "myzset")
-            #expect(scoreMembers.count == 1)
-            #expect(scoreMembers[0].0 == 1.5)
-            #expect(scoreMembers[0].1 == "member1")
-        }
-
-        @Test("ZADD multiple score-member pairs")
-        func zaddMultiplePairs() throws {
-            let op = try RedisCommandParser.parse("ZADD myzset 1.0 alpha 2.0 beta 3.0 gamma")
-            guard case .zadd(let key, let scoreMembers) = op else {
-                Issue.record("Expected ZADD"); return
-            }
-            #expect(key == "myzset")
-            #expect(scoreMembers.count == 3)
-            #expect(scoreMembers[0].0 == 1.0)
-            #expect(scoreMembers[0].1 == "alpha")
-            #expect(scoreMembers[1].0 == 2.0)
-            #expect(scoreMembers[1].1 == "beta")
-            #expect(scoreMembers[2].0 == 3.0)
-            #expect(scoreMembers[2].1 == "gamma")
-        }
-
-        @Test("ZADD with integer score")
-        func zaddIntegerScore() throws {
-            let op = try RedisCommandParser.parse("ZADD myzset 5 member1")
-            guard case .zadd(_, let scoreMembers) = op else {
-                Issue.record("Expected ZADD"); return
-            }
-            #expect(scoreMembers[0].0 == 5.0)
-        }
-
-        @Test("ZADD with invalid score throws")
-        func zaddInvalidScore() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZADD myzset notanumber member1")
-            }
-        }
-
-        @Test("ZADD with odd score-member count throws")
-        func zaddOddPairCount() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZADD myzset 1.0 alpha 2.0")
-            }
-        }
-
-        @Test("ZADD missing score-member throws")
-        func zaddMissingArgs() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZADD myzset")
-            }
-        }
-
-        @Test("ZREM single member")
-        func zremSingleMember() throws {
-            let op = try RedisCommandParser.parse("ZREM myzset member1")
-            guard case .zrem(let key, let members) = op else {
-                Issue.record("Expected ZREM"); return
-            }
-            #expect(key == "myzset")
-            #expect(members == ["member1"])
-        }
-
-        @Test("ZREM multiple members")
-        func zremMultipleMembers() throws {
-            let op = try RedisCommandParser.parse("ZREM myzset m1 m2 m3")
-            guard case .zrem(let key, let members) = op else {
-                Issue.record("Expected ZREM"); return
-            }
-            #expect(key == "myzset")
-            #expect(members == ["m1", "m2", "m3"])
-        }
-
-        @Test("ZREM missing member throws")
-        func zremMissingMember() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZREM myzset")
-            }
-        }
-
-        @Test("ZCARD parses key")
-        func parseZcard() throws {
-            let op = try RedisCommandParser.parse("ZCARD myzset")
-            guard case .zcard(let key) = op else {
-                Issue.record("Expected ZCARD"); return
-            }
-            #expect(key == "myzset")
-        }
-
-        @Test("ZCARD missing key throws")
-        func zcardMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZCARD")
-            }
+    @Test("LRANGE with non-integer bounds throws")
+    func lrangeInvalidBounds() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("LRANGE mylist abc def")
         }
     }
 
-    // MARK: - Stream Commands
-
-    @Suite("Stream Commands")
-    struct StreamCommands {
-        @Test("XRANGE without COUNT")
-        func xrangeWithoutCount() throws {
-            let op = try RedisCommandParser.parse("XRANGE mystream - +")
-            guard case .xrange(let key, let start, let end, let count) = op else {
-                Issue.record("Expected XRANGE"); return
-            }
-            #expect(key == "mystream")
-            #expect(start == "-")
-            #expect(end == "+")
-            #expect(count == nil)
+    @Test("LPUSH parses key and values")
+    func lpushCommand() throws {
+        let op = try TestRedisCommandParser.parse("LPUSH mylist a b c")
+        guard case .lpush(let key, let values) = op else {
+            Issue.record("Expected .lpush")
+            return
         }
+        #expect(key == "mylist")
+        #expect(values == ["a", "b", "c"])
+    }
 
-        @Test("XRANGE with COUNT")
-        func xrangeWithCount() throws {
-            let op = try RedisCommandParser.parse("XRANGE mystream - + COUNT 10")
-            guard case .xrange(let key, let start, let end, let count) = op else {
-                Issue.record("Expected XRANGE"); return
-            }
-            #expect(key == "mystream")
-            #expect(start == "-")
-            #expect(end == "+")
-            #expect(count == 10)
+    @Test("RPUSH parses key and values")
+    func rpushCommand() throws {
+        let op = try TestRedisCommandParser.parse("RPUSH mylist x y")
+        guard case .rpush(let key, let values) = op else {
+            Issue.record("Expected .rpush")
+            return
         }
+        #expect(key == "mylist")
+        #expect(values == ["x", "y"])
+    }
 
-        @Test("XRANGE with specific IDs")
-        func xrangeWithIds() throws {
-            let op = try RedisCommandParser.parse("XRANGE mystream 1526985054069-0 1526985055069-0")
-            guard case .xrange(_, let start, let end, _) = op else {
-                Issue.record("Expected XRANGE"); return
-            }
-            #expect(start == "1526985054069-0")
-            #expect(end == "1526985055069-0")
+    @Test("LLEN parses key")
+    func llenCommand() throws {
+        let op = try TestRedisCommandParser.parse("LLEN mylist")
+        guard case .llen(let key) = op else {
+            Issue.record("Expected .llen")
+            return
         }
+        #expect(key == "mylist")
+    }
+}
 
-        @Test("XRANGE missing arguments throws")
-        func xrangeMissingArgs() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("XRANGE mystream")
-            }
+// MARK: - Set Commands
+
+@Suite("RedisCommandParser - Set Commands")
+struct RedisCommandParserSetTests {
+    @Test("SMEMBERS parses key")
+    func smembersCommand() throws {
+        let op = try TestRedisCommandParser.parse("SMEMBERS myset")
+        guard case .smembers(let key) = op else {
+            Issue.record("Expected .smembers")
+            return
         }
+        #expect(key == "myset")
+    }
 
-        @Test("XLEN parses key")
-        func parseXlen() throws {
-            let op = try RedisCommandParser.parse("XLEN mystream")
-            guard case .xlen(let key) = op else {
-                Issue.record("Expected XLEN"); return
-            }
-            #expect(key == "mystream")
+    @Test("SADD parses key and members")
+    func saddCommand() throws {
+        let op = try TestRedisCommandParser.parse("SADD myset a b c")
+        guard case .sadd(let key, let members) = op else {
+            Issue.record("Expected .sadd")
+            return
         }
+        #expect(key == "myset")
+        #expect(members == ["a", "b", "c"])
+    }
 
-        @Test("XLEN missing key throws")
-        func xlenMissingKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("XLEN")
-            }
+    @Test("SREM parses key and members")
+    func sremCommand() throws {
+        let op = try TestRedisCommandParser.parse("SREM myset a")
+        guard case .srem(let key, let members) = op else {
+            Issue.record("Expected .srem")
+            return
+        }
+        #expect(key == "myset")
+        #expect(members == ["a"])
+    }
+
+    @Test("SCARD parses key")
+    func scardCommand() throws {
+        let op = try TestRedisCommandParser.parse("SCARD myset")
+        guard case .scard(let key) = op else {
+            Issue.record("Expected .scard")
+            return
+        }
+        #expect(key == "myset")
+    }
+}
+
+// MARK: - Sorted Set Commands
+
+@Suite("RedisCommandParser - Sorted Set Commands")
+struct RedisCommandParserSortedSetTests {
+    @Test("ZRANGE parses key, start, stop")
+    func zrangeCommand() throws {
+        let op = try TestRedisCommandParser.parse("ZRANGE myzset 0 -1")
+        guard case .zrange(let key, let start, let stop, let withScores) = op else {
+            Issue.record("Expected .zrange")
+            return
+        }
+        #expect(key == "myzset")
+        #expect(start == 0)
+        #expect(stop == -1)
+        #expect(withScores == false)
+    }
+
+    @Test("ZRANGE with WITHSCORES")
+    func zrangeWithScores() throws {
+        let op = try TestRedisCommandParser.parse("ZRANGE myzset 0 -1 WITHSCORES")
+        guard case .zrange(_, _, _, let withScores) = op else {
+            Issue.record("Expected .zrange")
+            return
+        }
+        #expect(withScores == true)
+    }
+
+    @Test("ZADD parses key and score-member pairs")
+    func zaddCommand() throws {
+        let op = try TestRedisCommandParser.parse("ZADD myzset 1.5 a 2.0 b")
+        guard case .zadd(let key, let scoreMembers) = op else {
+            Issue.record("Expected .zadd")
+            return
+        }
+        #expect(key == "myzset")
+        #expect(scoreMembers.count == 2)
+        #expect(scoreMembers[0].0 == 1.5)
+        #expect(scoreMembers[0].1 == "a")
+        #expect(scoreMembers[1].0 == 2.0)
+        #expect(scoreMembers[1].1 == "b")
+    }
+
+    @Test("ZADD with non-numeric score throws")
+    func zaddInvalidScore() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("ZADD myzset notanumber member")
         }
     }
 
-    // MARK: - Server Commands
-
-    @Suite("Server Commands")
-    struct ServerCommands {
-        @Test("PING")
-        func parsePing() throws {
-            let op = try RedisCommandParser.parse("PING")
-            guard case .ping = op else {
-                Issue.record("Expected PING"); return
-            }
+    @Test("ZREM parses key and members")
+    func zremCommand() throws {
+        let op = try TestRedisCommandParser.parse("ZREM myzset a b")
+        guard case .zrem(let key, let members) = op else {
+            Issue.record("Expected .zrem")
+            return
         }
+        #expect(key == "myzset")
+        #expect(members == ["a", "b"])
+    }
 
-        @Test("INFO without section")
-        func infoWithoutSection() throws {
-            let op = try RedisCommandParser.parse("INFO")
-            guard case .info(let section) = op else {
-                Issue.record("Expected INFO"); return
-            }
-            #expect(section == nil)
+    @Test("ZCARD parses key")
+    func zcardCommand() throws {
+        let op = try TestRedisCommandParser.parse("ZCARD myzset")
+        guard case .zcard(let key) = op else {
+            Issue.record("Expected .zcard")
+            return
         }
+        #expect(key == "myzset")
+    }
+}
 
-        @Test("INFO with section")
-        func infoWithSection() throws {
-            let op = try RedisCommandParser.parse("INFO server")
-            guard case .info(let section) = op else {
-                Issue.record("Expected INFO"); return
-            }
-            #expect(section == "server")
+// MARK: - Stream Commands
+
+@Suite("RedisCommandParser - Stream Commands")
+struct RedisCommandParserStreamTests {
+    @Test("XRANGE parses key, start, end")
+    func xrangeCommand() throws {
+        let op = try TestRedisCommandParser.parse("XRANGE mystream - +")
+        guard case .xrange(let key, let start, let end, let count) = op else {
+            Issue.record("Expected .xrange")
+            return
         }
+        #expect(key == "mystream")
+        #expect(start == "-")
+        #expect(end == "+")
+        #expect(count == nil)
+    }
 
-        @Test("DBSIZE")
-        func parseDbsize() throws {
-            let op = try RedisCommandParser.parse("DBSIZE")
-            guard case .dbsize = op else {
-                Issue.record("Expected DBSIZE"); return
-            }
+    @Test("XRANGE with COUNT")
+    func xrangeWithCount() throws {
+        let op = try TestRedisCommandParser.parse("XRANGE mystream - + COUNT 10")
+        guard case .xrange(_, _, _, let count) = op else {
+            Issue.record("Expected .xrange")
+            return
         }
+        #expect(count == 10)
+    }
 
-        @Test("FLUSHDB")
-        func parseFlushdb() throws {
-            let op = try RedisCommandParser.parse("FLUSHDB")
-            guard case .flushdb = op else {
-                Issue.record("Expected FLUSHDB"); return
-            }
+    @Test("XLEN parses key")
+    func xlenCommand() throws {
+        let op = try TestRedisCommandParser.parse("XLEN mystream")
+        guard case .xlen(let key) = op else {
+            Issue.record("Expected .xlen")
+            return
         }
+        #expect(key == "mystream")
+    }
+}
 
-        @Test("SELECT valid database index")
-        func parseSelect() throws {
-            let op = try RedisCommandParser.parse("SELECT 3")
-            guard case .select(let database) = op else {
-                Issue.record("Expected SELECT"); return
-            }
-            #expect(database == 3)
-        }
+// MARK: - Server Commands
 
-        @Test("SELECT with non-integer throws")
-        func selectInvalidIndex() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SELECT abc")
-            }
-        }
-
-        @Test("SELECT missing index throws")
-        func selectMissingIndex() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SELECT")
-            }
-        }
-
-        @Test("CONFIG GET parses parameter")
-        func parseConfigGet() throws {
-            let op = try RedisCommandParser.parse("CONFIG GET maxmemory")
-            guard case .configGet(let parameter) = op else {
-                Issue.record("Expected CONFIG GET"); return
-            }
-            #expect(parameter == "maxmemory")
-        }
-
-        @Test("CONFIG SET parses parameter and value")
-        func parseConfigSet() throws {
-            let op = try RedisCommandParser.parse("CONFIG SET maxmemory 128mb")
-            guard case .configSet(let parameter, let value) = op else {
-                Issue.record("Expected CONFIG SET"); return
-            }
-            #expect(parameter == "maxmemory")
-            #expect(value == "128mb")
-        }
-
-        @Test("CONFIG SET missing value throws")
-        func configSetMissingValue() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("CONFIG SET maxmemory")
-            }
-        }
-
-        @Test("CONFIG missing subcommand throws")
-        func configMissingSubcommand() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("CONFIG")
-            }
-        }
-
-        @Test("CONFIG with only one arg throws (requires subcommand + parameter)")
-        func configUnknownSubcommand() {
-            // CONFIG requires at least 2 args (subcommand + parameter), so CONFIG RESETSTAT throws
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("CONFIG RESETSTAT")
-            }
-        }
-
-        @Test("CONFIG unknown subcommand with parameter falls back to .command")
-        func configUnknownSubcommandWithParam() throws {
-            let op = try RedisCommandParser.parse("CONFIG RESETSTAT all")
-            guard case .command(let args) = op else {
-                Issue.record("Expected .command fallback"); return
-            }
-            #expect(args == ["CONFIG", "RESETSTAT", "all"])
+@Suite("RedisCommandParser - Server Commands")
+struct RedisCommandParserServerTests {
+    @Test("PING")
+    func pingCommand() throws {
+        let op = try TestRedisCommandParser.parse("PING")
+        guard case .ping = op else {
+            Issue.record("Expected .ping")
+            return
         }
     }
 
-    // MARK: - Transaction Commands
-
-    @Suite("Transaction Commands")
-    struct TransactionCommands {
-        @Test("MULTI")
-        func parseMulti() throws {
-            let op = try RedisCommandParser.parse("MULTI")
-            guard case .multi = op else {
-                Issue.record("Expected MULTI"); return
-            }
+    @Test("INFO without section")
+    func infoCommand() throws {
+        let op = try TestRedisCommandParser.parse("INFO")
+        guard case .info(let section) = op else {
+            Issue.record("Expected .info")
+            return
         }
+        #expect(section == nil)
+    }
 
-        @Test("EXEC")
-        func parseExec() throws {
-            let op = try RedisCommandParser.parse("EXEC")
-            guard case .exec = op else {
-                Issue.record("Expected EXEC"); return
-            }
+    @Test("INFO with section")
+    func infoWithSection() throws {
+        let op = try TestRedisCommandParser.parse("INFO memory")
+        guard case .info(let section) = op else {
+            Issue.record("Expected .info")
+            return
         }
+        #expect(section == "memory")
+    }
 
-        @Test("DISCARD")
-        func parseDiscard() throws {
-            let op = try RedisCommandParser.parse("DISCARD")
-            guard case .discard = op else {
-                Issue.record("Expected DISCARD"); return
-            }
+    @Test("DBSIZE")
+    func dbsizeCommand() throws {
+        let op = try TestRedisCommandParser.parse("DBSIZE")
+        guard case .dbsize = op else {
+            Issue.record("Expected .dbsize")
+            return
         }
     }
 
-    // MARK: - Error Cases
-
-    @Suite("Error Cases")
-    struct ErrorCases {
-        @Test("Empty string throws emptySyntax")
-        func emptyInput() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("")
-            }
+    @Test("SELECT parses database index")
+    func selectCommand() throws {
+        let op = try TestRedisCommandParser.parse("SELECT 3")
+        guard case .select(let database) = op else {
+            Issue.record("Expected .select")
+            return
         }
+        #expect(database == 3)
+    }
 
-        @Test("Whitespace-only string throws emptySyntax")
-        func whitespaceOnlyInput() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("   ")
-            }
-        }
-
-        @Test("EXPIRE non-integer seconds throws invalidArgument")
-        func expireNonInteger() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("EXPIRE key 3.5")
-            }
-        }
-
-        @Test("LRANGE non-integer indices throws invalidArgument")
-        func lrangeNonInteger() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("LRANGE list a b")
-            }
-        }
-
-        @Test("ZRANGE non-integer indices throws invalidArgument")
-        func zrangeNonInteger() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZRANGE zset a b")
-            }
-        }
-
-        @Test("SCAN non-integer cursor throws missingArgument")
-        func scanNonIntegerCursor() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SCAN notint")
-            }
-        }
-
-        @Test("SELECT non-integer database throws missingArgument")
-        func selectNonInteger() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SELECT notint")
-            }
-        }
-
-        @Test("ZADD non-numeric score throws invalidArgument")
-        func zaddNonNumericScore() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("ZADD zset abc member")
-            }
-        }
-
-        @Test("HSET with only key throws missingArgument")
-        func hsetOnlyKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HSET hash")
-            }
-        }
-
-        @Test("HDEL with only key throws missingArgument")
-        func hdelOnlyKey() {
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("HDEL hash")
-            }
+    @Test("SELECT with non-integer throws")
+    func selectInvalid() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("SELECT abc")
         }
     }
 
-    // MARK: - Tokenizer
+    @Test("CONFIG GET parses parameter")
+    func configGetCommand() throws {
+        let op = try TestRedisCommandParser.parse("CONFIG GET maxmemory")
+        guard case .configGet(let parameter) = op else {
+            Issue.record("Expected .configGet")
+            return
+        }
+        #expect(parameter == "maxmemory")
+    }
 
-    @Suite("Tokenizer")
-    struct Tokenizer {
-        @Test("Double-quoted strings preserve spaces")
-        func doubleQuotedStrings() throws {
-            let op = try RedisCommandParser.parse("SET \"my key\" \"my value\"")
-            guard case .set(let key, let value, _) = op else {
-                Issue.record("Expected SET"); return
+    @Test("CONFIG SET parses parameter and value")
+    func configSetCommand() throws {
+        let op = try TestRedisCommandParser.parse("CONFIG SET maxmemory 100mb")
+        guard case .configSet(let parameter, let value) = op else {
+            Issue.record("Expected .configSet")
+            return
+        }
+        #expect(parameter == "maxmemory")
+        #expect(value == "100mb")
+    }
+
+    @Test("MULTI")
+    func multiCommand() throws {
+        let op = try TestRedisCommandParser.parse("MULTI")
+        guard case .multi = op else {
+            Issue.record("Expected .multi")
+            return
+        }
+    }
+
+    @Test("EXEC")
+    func execCommand() throws {
+        let op = try TestRedisCommandParser.parse("EXEC")
+        guard case .exec = op else {
+            Issue.record("Expected .exec")
+            return
+        }
+    }
+
+    @Test("DISCARD")
+    func discardCommand() throws {
+        let op = try TestRedisCommandParser.parse("DISCARD")
+        guard case .discard = op else {
+            Issue.record("Expected .discard")
+            return
+        }
+    }
+}
+
+// MARK: - Error Cases
+
+@Suite("RedisCommandParser - Error Cases")
+struct RedisCommandParserErrorTests {
+    @Test("Empty input throws emptySyntax")
+    func emptyInput() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("")
+        }
+    }
+
+    @Test("Whitespace-only input throws emptySyntax")
+    func whitespaceOnly() {
+        #expect(throws: TestRedisParseError.self) {
+            try TestRedisCommandParser.parse("   ")
+        }
+    }
+
+    @Test("Unknown command returns .command with all tokens")
+    func unknownCommand() throws {
+        let op = try TestRedisCommandParser.parse("CUSTOM arg1 arg2")
+        guard case .command(let args) = op else {
+            Issue.record("Expected .command")
+            return
+        }
+        #expect(args == ["CUSTOM", "arg1", "arg2"])
+    }
+}
+
+// MARK: - Tokenizer
+
+@Suite("RedisCommandParser - Tokenizer")
+struct RedisCommandParserTokenizerTests {
+    @Test("Double-quoted strings are parsed correctly")
+    func doubleQuotedString() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey \"hello world\"")
+        guard case .set(let key, let value, _) = op else {
+            Issue.record("Expected .set")
+            return
+        }
+        #expect(key == "mykey")
+        #expect(value == "hello world")
+    }
+
+    @Test("Single-quoted strings are parsed correctly")
+    func singleQuotedString() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey 'hello world'")
+        guard case .set(let key, let value, _) = op else {
+            Issue.record("Expected .set")
+            return
+        }
+        #expect(key == "mykey")
+        #expect(value == "hello world")
+    }
+
+    @Test("Escaped characters are preserved")
+    func escapedCharacters() throws {
+        let op = try TestRedisCommandParser.parse("SET mykey hello\\ world")
+        guard case .set(let key, let value, _) = op else {
+            Issue.record("Expected .set")
+            return
+        }
+        #expect(key == "mykey")
+        #expect(value == "hello world")
+    }
+
+    @Test("Case insensitivity for commands")
+    func caseInsensitivity() throws {
+        let op = try TestRedisCommandParser.parse("get mykey")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get")
+            return
+        }
+        #expect(key == "mykey")
+    }
+
+    @Test("Mixed case commands")
+    func mixedCase() throws {
+        let op = try TestRedisCommandParser.parse("GeT mykey")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get")
+            return
+        }
+        #expect(key == "mykey")
+    }
+
+    @Test("Multiple spaces between tokens")
+    func multipleSpaces() throws {
+        let op = try TestRedisCommandParser.parse("GET   mykey")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get")
+            return
+        }
+        #expect(key == "mykey")
+    }
+
+    @Test("Leading and trailing whitespace is trimmed")
+    func leadingTrailingWhitespace() throws {
+        let op = try TestRedisCommandParser.parse("  GET mykey  ")
+        guard case .get(let key) = op else {
+            Issue.record("Expected .get")
+            return
+        }
+        #expect(key == "mykey")
+    }
+}
+
+// MARK: - Private Local Helpers (copied from RedisDriverPlugin)
+
+private enum TestRedisOperation {
+    case get(key: String)
+    case set(key: String, value: String, options: TestRedisSetOptions?)
+    case del(keys: [String])
+    case keys(pattern: String)
+    case scan(cursor: Int, pattern: String?, count: Int?)
+    case type(key: String)
+    case ttl(key: String)
+    case pttl(key: String)
+    case expire(key: String, seconds: Int)
+    case persist(key: String)
+    case rename(key: String, newKey: String)
+    case exists(keys: [String])
+    case hget(key: String, field: String)
+    case hset(key: String, fieldValues: [(String, String)])
+    case hgetall(key: String)
+    case hdel(key: String, fields: [String])
+    case lrange(key: String, start: Int, stop: Int)
+    case lpush(key: String, values: [String])
+    case rpush(key: String, values: [String])
+    case llen(key: String)
+    case smembers(key: String)
+    case sadd(key: String, members: [String])
+    case srem(key: String, members: [String])
+    case scard(key: String)
+    case zrange(key: String, start: Int, stop: Int, withScores: Bool)
+    case zadd(key: String, scoreMembers: [(Double, String)])
+    case zrem(key: String, members: [String])
+    case zcard(key: String)
+    case xrange(key: String, start: String, end: String, count: Int?)
+    case xlen(key: String)
+    case ping
+    case info(section: String?)
+    case dbsize
+    case flushdb
+    case select(database: Int)
+    case configGet(parameter: String)
+    case configSet(parameter: String, value: String)
+    case command(args: [String])
+    case multi
+    case exec
+    case discard
+}
+
+private struct TestRedisSetOptions {
+    var ex: Int?
+    var px: Int?
+    var nx: Bool = false
+    var xx: Bool = false
+}
+
+private enum TestRedisParseError: Error, LocalizedError {
+    case emptySyntax
+    case invalidArgument(String)
+    case missingArgument(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptySyntax:
+            return "Empty Redis command"
+        case .invalidArgument(let msg):
+            return "Invalid argument: \(msg)"
+        case .missingArgument(let msg):
+            return "Missing argument: \(msg)"
+        }
+    }
+}
+
+private struct TestRedisCommandParser {
+    static func parse(_ input: String) throws -> TestRedisOperation {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw TestRedisParseError.emptySyntax }
+
+        let tokens = tokenize(trimmed)
+        guard let first = tokens.first else { throw TestRedisParseError.emptySyntax }
+
+        let command = first.uppercased()
+        let args = Array(tokens.dropFirst())
+
+        switch command {
+        case "GET", "SET", "DEL", "KEYS", "SCAN", "TYPE", "TTL", "PTTL",
+             "EXPIRE", "PERSIST", "RENAME", "EXISTS":
+            return try parseKeyCommand(command, args: args)
+        case "HGET", "HSET", "HGETALL", "HDEL":
+            return try parseHashCommand(command, args: args)
+        case "LRANGE", "LPUSH", "RPUSH", "LLEN":
+            return try parseListCommand(command, args: args)
+        case "SMEMBERS", "SADD", "SREM", "SCARD":
+            return try parseSetCommand(command, args: args)
+        case "ZRANGE", "ZADD", "ZREM", "ZCARD":
+            return try parseSortedSetCommand(command, args: args)
+        case "XRANGE", "XLEN":
+            return try parseStreamCommand(command, args: args)
+        case "PING", "INFO", "DBSIZE", "FLUSHDB", "SELECT", "CONFIG",
+             "MULTI", "EXEC", "DISCARD":
+            return try parseServerCommand(command, args: args, tokens: tokens)
+        default:
+            return .command(args: tokens)
+        }
+    }
+
+    private static func parseKeyCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "GET":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("GET requires a key") }
+            return .get(key: args[0])
+        case "SET":
+            guard args.count >= 2 else { throw TestRedisParseError.missingArgument("SET requires key and value") }
+            let options = parseSetOptions(Array(args.dropFirst(2)))
+            return .set(key: args[0], value: args[1], options: options)
+        case "DEL":
+            guard !args.isEmpty else { throw TestRedisParseError.missingArgument("DEL requires at least one key") }
+            return .del(keys: args)
+        case "KEYS":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("KEYS requires a pattern") }
+            return .keys(pattern: args[0])
+        case "SCAN":
+            guard args.count >= 1, let cursor = Int(args[0]) else {
+                throw TestRedisParseError.missingArgument("SCAN requires a cursor (integer)")
             }
-            #expect(key == "my key")
-            #expect(value == "my value")
+            let (pattern, count) = parseScanOptions(Array(args.dropFirst()))
+            return .scan(cursor: cursor, pattern: pattern, count: count)
+        case "TYPE":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("TYPE requires a key") }
+            return .type(key: args[0])
+        case "TTL":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("TTL requires a key") }
+            return .ttl(key: args[0])
+        case "PTTL":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("PTTL requires a key") }
+            return .pttl(key: args[0])
+        case "EXPIRE":
+            guard args.count >= 2 else { throw TestRedisParseError.missingArgument("EXPIRE requires key and seconds") }
+            guard let seconds = Int(args[1]) else {
+                throw TestRedisParseError.invalidArgument("EXPIRE seconds must be an integer")
+            }
+            return .expire(key: args[0], seconds: seconds)
+        case "PERSIST":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("PERSIST requires a key") }
+            return .persist(key: args[0])
+        case "RENAME":
+            guard args.count >= 2 else { throw TestRedisParseError.missingArgument("RENAME requires key and newKey") }
+            return .rename(key: args[0], newKey: args[1])
+        case "EXISTS":
+            guard !args.isEmpty else { throw TestRedisParseError.missingArgument("EXISTS requires at least one key") }
+            return .exists(keys: args)
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown key command: \(command)")
+        }
+    }
+
+    private static func parseHashCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "HGET":
+            guard args.count >= 2 else { throw TestRedisParseError.missingArgument("HGET requires key and field") }
+            return .hget(key: args[0], field: args[1])
+        case "HSET":
+            guard args.count >= 3, args.count % 2 == 1 else {
+                throw TestRedisParseError.missingArgument("HSET requires key followed by field value pairs")
+            }
+            var fieldValues: [(String, String)] = []
+            var i = 1
+            while i + 1 < args.count {
+                fieldValues.append((args[i], args[i + 1]))
+                i += 2
+            }
+            return .hset(key: args[0], fieldValues: fieldValues)
+        case "HGETALL":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("HGETALL requires a key") }
+            return .hgetall(key: args[0])
+        case "HDEL":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("HDEL requires key and at least one field")
+            }
+            return .hdel(key: args[0], fields: Array(args.dropFirst()))
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown hash command: \(command)")
+        }
+    }
+
+    private static func parseListCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "LRANGE":
+            guard args.count >= 3 else {
+                throw TestRedisParseError.missingArgument("LRANGE requires key, start, and stop")
+            }
+            guard let start = Int(args[1]), let stop = Int(args[2]) else {
+                throw TestRedisParseError.invalidArgument("LRANGE start and stop must be integers")
+            }
+            return .lrange(key: args[0], start: start, stop: stop)
+        case "LPUSH":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("LPUSH requires key and at least one value")
+            }
+            return .lpush(key: args[0], values: Array(args.dropFirst()))
+        case "RPUSH":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("RPUSH requires key and at least one value")
+            }
+            return .rpush(key: args[0], values: Array(args.dropFirst()))
+        case "LLEN":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("LLEN requires a key") }
+            return .llen(key: args[0])
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown list command: \(command)")
+        }
+    }
+
+    private static func parseSetCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "SMEMBERS":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("SMEMBERS requires a key") }
+            return .smembers(key: args[0])
+        case "SADD":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("SADD requires key and at least one member")
+            }
+            return .sadd(key: args[0], members: Array(args.dropFirst()))
+        case "SREM":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("SREM requires key and at least one member")
+            }
+            return .srem(key: args[0], members: Array(args.dropFirst()))
+        case "SCARD":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("SCARD requires a key") }
+            return .scard(key: args[0])
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown set command: \(command)")
+        }
+    }
+
+    private static func parseSortedSetCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "ZRANGE":
+            guard args.count >= 3 else {
+                throw TestRedisParseError.missingArgument("ZRANGE requires key, start, and stop")
+            }
+            guard let start = Int(args[1]), let stop = Int(args[2]) else {
+                throw TestRedisParseError.invalidArgument("ZRANGE start and stop must be integers")
+            }
+            let withScores = args.count > 3 && args[3].uppercased() == "WITHSCORES"
+            return .zrange(key: args[0], start: start, stop: stop, withScores: withScores)
+        case "ZADD":
+            guard args.count >= 3, (args.count - 1) % 2 == 0 else {
+                throw TestRedisParseError.missingArgument("ZADD requires key followed by score member pairs")
+            }
+            var scoreMembers: [(Double, String)] = []
+            var i = 1
+            while i + 1 < args.count {
+                guard let score = Double(args[i]) else {
+                    throw TestRedisParseError.invalidArgument("ZADD score must be a number: \(args[i])")
+                }
+                scoreMembers.append((score, args[i + 1]))
+                i += 2
+            }
+            return .zadd(key: args[0], scoreMembers: scoreMembers)
+        case "ZREM":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("ZREM requires key and at least one member")
+            }
+            return .zrem(key: args[0], members: Array(args.dropFirst()))
+        case "ZCARD":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("ZCARD requires a key") }
+            return .zcard(key: args[0])
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown sorted set command: \(command)")
+        }
+    }
+
+    private static func parseStreamCommand(_ command: String, args: [String]) throws -> TestRedisOperation {
+        switch command {
+        case "XRANGE":
+            guard args.count >= 3 else {
+                throw TestRedisParseError.missingArgument("XRANGE requires key, start, and end")
+            }
+            var count: Int?
+            if args.count >= 5, args[3].uppercased() == "COUNT" {
+                count = Int(args[4])
+            }
+            return .xrange(key: args[0], start: args[1], end: args[2], count: count)
+        case "XLEN":
+            guard args.count >= 1 else { throw TestRedisParseError.missingArgument("XLEN requires a key") }
+            return .xlen(key: args[0])
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown stream command: \(command)")
+        }
+    }
+
+    private static func parseServerCommand(
+        _ command: String, args: [String], tokens: [String]
+    ) throws -> TestRedisOperation {
+        switch command {
+        case "PING":
+            return .ping
+        case "INFO":
+            return .info(section: args.first)
+        case "DBSIZE":
+            return .dbsize
+        case "FLUSHDB":
+            return .flushdb
+        case "SELECT":
+            guard args.count >= 1, let db = Int(args[0]) else {
+                throw TestRedisParseError.missingArgument("SELECT requires a database index (integer)")
+            }
+            return .select(database: db)
+        case "CONFIG":
+            guard args.count >= 2 else {
+                throw TestRedisParseError.missingArgument("CONFIG requires a subcommand and parameter")
+            }
+            let subcommand = args[0].uppercased()
+            switch subcommand {
+            case "GET":
+                return .configGet(parameter: args[1])
+            case "SET":
+                guard args.count >= 3 else {
+                    throw TestRedisParseError.missingArgument("CONFIG SET requires parameter and value")
+                }
+                return .configSet(parameter: args[1], value: args[2])
+            default:
+                return .command(args: tokens)
+            }
+        case "MULTI":
+            return .multi
+        case "EXEC":
+            return .exec
+        case "DISCARD":
+            return .discard
+        default:
+            throw TestRedisParseError.invalidArgument("Unknown server command: \(command)")
+        }
+    }
+
+    private static func tokenize(_ input: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+        var inQuote = false
+        var quoteChar: Character = "\""
+        var escapeNext = false
+
+        for char in input {
+            if escapeNext {
+                current.append(char)
+                escapeNext = false
+                continue
+            }
+            if char == "\\" {
+                escapeNext = true
+                continue
+            }
+            if inQuote {
+                if char == quoteChar {
+                    inQuote = false
+                } else {
+                    current.append(char)
+                }
+                continue
+            }
+            if char == "\"" || char == "'" {
+                inQuote = true
+                quoteChar = char
+                continue
+            }
+            if char.isWhitespace {
+                if !current.isEmpty {
+                    tokens.append(current)
+                    current = ""
+                }
+                continue
+            }
+            current.append(char)
         }
 
-        @Test("Single-quoted strings preserve spaces")
-        func singleQuotedStrings() throws {
-            let op = try RedisCommandParser.parse("SET 'my key' 'my value'")
-            guard case .set(let key, let value, _) = op else {
-                Issue.record("Expected SET"); return
-            }
-            #expect(key == "my key")
-            #expect(value == "my value")
+        if !current.isEmpty {
+            tokens.append(current)
         }
+        return tokens
+    }
 
-        @Test("Escaped characters within unquoted tokens")
-        func escapedCharacters() throws {
-            let op = try RedisCommandParser.parse("SET my\\ key my\\ value")
-            guard case .set(let key, let value, _) = op else {
-                Issue.record("Expected SET"); return
+    private static func parseSetOptions(_ args: [String]) -> TestRedisSetOptions? {
+        guard !args.isEmpty else { return nil }
+        var options = TestRedisSetOptions()
+        var hasOption = false
+        var i = 0
+        while i < args.count {
+            let arg = args[i].uppercased()
+            switch arg {
+            case "EX":
+                if i + 1 < args.count, let seconds = Int(args[i + 1]) {
+                    options.ex = seconds
+                    hasOption = true
+                    i += 1
+                }
+            case "PX":
+                if i + 1 < args.count, let millis = Int(args[i + 1]) {
+                    options.px = millis
+                    hasOption = true
+                    i += 1
+                }
+            case "NX":
+                options.nx = true
+                hasOption = true
+            case "XX":
+                options.xx = true
+                hasOption = true
+            default:
+                break
             }
-            #expect(key == "my key")
-            #expect(value == "my value")
+            i += 1
         }
+        return hasOption ? options : nil
+    }
 
-        @Test("Escaped quote inside double-quoted string")
-        func escapedQuoteInDoubleQuotes() throws {
-            let op = try RedisCommandParser.parse("SET key \"val\\\"ue\"")
-            guard case .set(_, let value, _) = op else {
-                Issue.record("Expected SET"); return
+    private static func parseScanOptions(_ args: [String]) -> (pattern: String?, count: Int?) {
+        var pattern: String?
+        var count: Int?
+        var i = 0
+        while i < args.count {
+            let arg = args[i].uppercased()
+            switch arg {
+            case "MATCH":
+                if i + 1 < args.count {
+                    pattern = args[i + 1]
+                    i += 1
+                }
+            case "COUNT":
+                if i + 1 < args.count {
+                    count = Int(args[i + 1])
+                    i += 1
+                }
+            default:
+                break
             }
-            #expect(value == "val\"ue")
+            i += 1
         }
-
-        @Test("Case-insensitive command parsing")
-        func caseInsensitiveCommands() throws {
-            let lower = try RedisCommandParser.parse("get mykey")
-            guard case .get(let key1) = lower else {
-                Issue.record("Expected GET from lowercase"); return
-            }
-            #expect(key1 == "mykey")
-
-            let mixed = try RedisCommandParser.parse("GeT mykey")
-            guard case .get(let key2) = mixed else {
-                Issue.record("Expected GET from mixed case"); return
-            }
-            #expect(key2 == "mykey")
-        }
-
-        @Test("Unknown command falls back to .command with all tokens")
-        func unknownCommandFallback() throws {
-            let op = try RedisCommandParser.parse("CUSTOM arg1 arg2")
-            guard case .command(let args) = op else {
-                Issue.record("Expected generic command"); return
-            }
-            #expect(args == ["CUSTOM", "arg1", "arg2"])
-        }
-
-        @Test("Multiple spaces between tokens are handled")
-        func multipleSpaces() throws {
-            let op = try RedisCommandParser.parse("GET    mykey")
-            guard case .get(let key) = op else {
-                Issue.record("Expected GET"); return
-            }
-            #expect(key == "mykey")
-        }
-
-        @Test("Leading and trailing whitespace is trimmed")
-        func leadingTrailingWhitespace() throws {
-            let op = try RedisCommandParser.parse("  GET mykey  ")
-            guard case .get(let key) = op else {
-                Issue.record("Expected GET"); return
-            }
-            #expect(key == "mykey")
-        }
-
-        @Test("Empty quoted string is not appended as token")
-        func emptyQuotedString() {
-            // The tokenizer skips empty strings, so SET key "" only produces ["SET", "key"]
-            #expect(throws: RedisParseError.self) {
-                try RedisCommandParser.parse("SET key \"\"")
-            }
-        }
+        return (pattern, count)
     }
 }

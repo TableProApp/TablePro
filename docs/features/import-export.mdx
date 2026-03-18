@@ -1,11 +1,11 @@
 ---
 title: Import & Export
-description: Import SQL files and export your data in various formats
+description: Export to CSV, JSON, SQL, MQL, or XLSX. Import SQL files with transaction safety and progress tracking.
 ---
 
 # Import & Export
 
-TablePro supports importing SQL files into your database and exporting data in multiple formats (CSV, JSON, SQL, MQL, and Excel XLSX) for backup, migration, or analysis. You can also paste tabular data from your clipboard directly into the data grid.
+Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL files with gzip support, and paste tabular data from your clipboard directly into the grid.
 
 ## Export Data
 
@@ -21,11 +21,11 @@ Export data from query results or tables:
 6. Click **Export**
 
 <Note>
-**MongoDB**: SQL export is not available for MongoDB connections. Use CSV, JSON, MQL, or XLSX format instead. The MQL format generates `db.collection.insertMany([...])` scripts that can be run directly in `mongosh`.
+**MongoDB**: SQL export is not available for MongoDB connections. Use CSV, JSON, MQL, or XLSX instead. MQL generates `db.collection.insertMany([...])` scripts that run directly in `mongosh`.
 </Note>
 
 <Note>
-**Redis**: SQL and MQL exports are not available for Redis connections. Use CSV, JSON, or XLSX format to export key-value data.
+**Redis**: SQL and MQL exports are not available for Redis connections. Use CSV, JSON, or XLSX to export key-value data.
 </Note>
 
 {/* Screenshot: Export dialog with format options */}
@@ -57,7 +57,7 @@ Export data from query results or tables:
     | Option | Description | Default |
     |--------|-------------|---------|
     | Header | Include column names as first row | Yes |
-    | Delimiter | Character separating values: comma, semicolon, tab, or pipe | Comma |
+    | Delimiter | Separator character: comma, semicolon, tab, or pipe | Comma |
     | Quote handling | When to quote values: always, as needed, or never | As needed |
     | NULL handling | Convert NULL values to empty strings | Yes |
     | Line breaks in data | Convert line breaks within values to spaces | No |
@@ -208,7 +208,7 @@ Export data from query results or tables:
     ```
 
     <Note>
-    MQL export is only available for MongoDB connections. The output is a `.js` file that can be executed directly in `mongosh`.
+    MQL export is only available for MongoDB connections. The output is a `.js` file that runs directly in `mongosh`.
     </Note>
   </Tab>
   <Tab title="XLSX">
@@ -226,12 +226,12 @@ Export data from query results or tables:
     | NULL as empty | Convert NULL values to empty cells | Yes |
 
     Features:
-    - **Multi-sheet export**: When exporting multiple tables, each table becomes a separate worksheet
+    - **Multi-sheet export**: Each table becomes a separate worksheet
     - **Numeric detection**: Numbers are stored as numeric cells (not text) for proper Excel formatting
-    - **Shared strings**: String deduplication for efficient file size
+    - **Shared strings**: String deduplication for smaller file sizes
     - **Bold headers**: First row is automatically bolded when headers are included
     - **Large dataset support**: Optimized for 175K+ rows using streaming Data buffers and background file assembly
-    - **No dependencies**: Uses a pure-Swift OOXML writer -- no external libraries required
+    - **No dependencies**: Pure-Swift OOXML writer, no external libraries
 
     {/* Screenshot: Excel export options */}
     <Frame caption="Excel export options">
@@ -258,7 +258,7 @@ To export the results of a specific query:
 3. Only the displayed results are exported
 
 <Tip>
-For large exports, use pagination or LIMIT in your query to control the size of the export.
+For large exports, use pagination or LIMIT in your query to control the output size.
 </Tip>
 
 ### Exporting Entire Tables
@@ -270,7 +270,7 @@ To export all data from a table:
 3. Or run `SELECT * FROM table_name` and export
 
 <Tip>
-You can export multiple tables at once by selecting them in the export dialog's tree view. When exporting as SQL, each table can have individual options for including structure (DDL), DROP statements, and data.
+Export multiple tables at once by selecting them in the export dialog's tree view. When exporting as SQL, each table can have individual options for structure (DDL), DROP statements, and data.
 </Tip>
 
 ### Exporting Structure Only
@@ -300,7 +300,7 @@ When exporting large datasets, a progress indicator shows:
 
 ## Clipboard Paste (CSV/TSV)
 
-You can paste tabular data directly from your clipboard into the data grid. TablePro automatically detects whether the clipboard content is CSV (comma-separated) or TSV (tab-separated) format.
+Paste tabular data from your clipboard directly into the data grid. TablePro auto-detects whether the content is CSV (comma-separated) or TSV (tab-separated).
 
 **How it works:**
 
@@ -308,7 +308,7 @@ You can paste tabular data directly from your clipboard into the data grid. Tabl
 2. Select a row in the data grid
 3. Press `Cmd+V` to paste
 
-TablePro uses an RFC 4180-compliant CSV parser that handles:
+The CSV parser is RFC 4180-compliant and handles:
 
 - Quoted fields with commas inside (e.g., `"New York, NY"`)
 - Escaped double quotes (e.g., `"He said ""hello"""`)
@@ -316,12 +316,12 @@ TablePro uses an RFC 4180-compliant CSV parser that handles:
 - Automatic header row detection (skips if column names match)
 
 <Tip>
-The format is auto-detected based on content: if the data contains more tabs than commas, it's parsed as TSV; otherwise as CSV. Data copied from Excel or Google Sheets is typically tab-separated.
+Format is auto-detected: if the data contains more tabs than commas, it parses as TSV; otherwise CSV. Data from Excel or Google Sheets is typically tab-separated.
 </Tip>
 
 ## Import Data
 
-TablePro supports importing **SQL files** (`.sql` and `.sql.gz`). SQL import executes statements directly against your database, making it ideal for restoring backups, running migrations, or seeding data.
+TablePro imports **SQL files** (`.sql` and `.sql.gz`). Statements execute directly against your database, making it good for restoring backups, running migrations, or seeding data.
 
 <Note>
 **MongoDB**: SQL import is not available for MongoDB connections. Use `mongoimport` or the MQL shell for importing data.
@@ -370,7 +370,11 @@ TablePro supports importing **SQL files** (`.sql` and `.sql.gz`). SQL import exe
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
 <Tip>
-Wrapping the import in a transaction ensures that if any statement fails, all changes are rolled back, leaving your database in a consistent state.
+Wrapping in a transaction ensures that if any statement fails, all changes roll back, leaving your database in a consistent state.
+</Tip>
+
+<Tip>
+Import options (wrap in transaction, disable foreign key checks) persist across app launches. Change them once and they stick.
 </Tip>
 
 ### SQL Preview
@@ -378,10 +382,10 @@ Wrapping the import in a transaction ensures that if any statement fails, all ch
 Before running the import, the dialog shows:
 
 - **SQL code preview** of the file contents
-- **Statement count** -- the total number of SQL statements detected
+- **Statement count** -- total number of SQL statements detected
 - **File size** of the selected file
 
-This lets you verify the file contains the expected SQL before executing it.
+This lets you verify the file contains the expected SQL before executing.
 
 ## Progress and Errors
 
@@ -409,7 +413,7 @@ During import, a progress indicator shows:
 
 ### Error Handling
 
-Import stops on the first error encountered. If the import is wrapped in a transaction, all changes are rolled back automatically.
+Import stops on the first error. If the import is wrapped in a transaction, all changes roll back automatically.
 
 When an error occurs, TablePro displays:
 
@@ -418,7 +422,7 @@ When an error occurs, TablePro displays:
 - **Error message** -- the error returned by the database
 
 <Warning>
-There is no "skip errors" mode. If a statement fails, the import halts immediately. Use the "Wrap in transaction" option to ensure partial imports are rolled back cleanly.
+There is no "skip errors" mode. If a statement fails, the import halts. Use "Wrap in transaction" to ensure partial imports roll back cleanly.
 </Warning>
 
 ## Compression
@@ -427,8 +431,8 @@ There is no "skip errors" mode. If a statement fails, the import halts immediate
 
 Gzip compression is available for **SQL export only**:
 
-- Enable the "Compress with gzip" option in the SQL export settings
-- The output file is saved with a `.sql.gz` extension
+- Enable "Compress with gzip" in the SQL export settings
+- Output is saved with a `.sql.gz` extension
 - Significantly reduces file size for large SQL dumps
 
 <Note>
@@ -437,7 +441,7 @@ Gzip compression is not available for CSV, JSON, or XLSX exports.
 
 ### Compressed Import
 
-- TablePro automatically detects `.sql.gz` files during import
+- TablePro auto-detects `.sql.gz` files during import
 - Files are decompressed on-the-fly -- no manual decompression needed
 - Works identically to importing a regular `.sql` file
 
@@ -462,19 +466,19 @@ Gzip compression is not available for CSV, JSON, or XLSX exports.
    - MQL for MongoDB backup/restore via `mongosh`
    - XLSX for sharing with non-technical users in Excel
 
-4. **Use gzip for large SQL exports**: Enable compression to reduce file size significantly
+4. **Use gzip for large SQL exports**: Compression reduces file size significantly
 
 ### Importing
 
 1. **Backup first**: Always backup your database before running SQL imports
 
-2. **Test with a small file first**: Verify your import settings work correctly on a subset before running a large import
+2. **Test with a small file first**: Verify your import settings on a subset before running a large import
 
-3. **Use transactions**: Keep "Wrap in transaction" enabled so failed imports are automatically rolled back
+3. **Use transactions**: Keep "Wrap in transaction" enabled so failed imports roll back automatically
 
-4. **Disable foreign key checks**: When importing dumps that reference tables in a specific order, keep "Disable foreign key checks" enabled to avoid constraint errors
+4. **Disable foreign key checks**: When importing dumps that reference tables in a specific order, keep this enabled to avoid constraint errors
 
-5. **Check encoding**: Ensure the encoding setting matches your SQL file's actual encoding to avoid character corruption
+5. **Check encoding**: Make sure the encoding setting matches your SQL file's actual encoding to avoid character corruption
 
 ## Troubleshooting
 
@@ -508,7 +512,7 @@ Gzip compression is not available for CSV, JSON, or XLSX exports.
 - Or ensure parent tables are created before child tables in your SQL file
 
 **"Transaction rolled back"**
-- A statement in the file caused an error, and the entire import was rolled back
+- A statement in the file caused an error, rolling back the entire import
 - Check the error message and line number to identify the problematic statement
 - Fix the SQL file and re-import
 

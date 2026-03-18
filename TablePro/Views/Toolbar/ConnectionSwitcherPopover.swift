@@ -8,6 +8,7 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 /// Popover content for quick connection switching
 struct ConnectionSwitcherPopover: View {
@@ -56,15 +57,15 @@ struct ConnectionSwitcherPopover: View {
                 if !sortedSessions.isEmpty {
                     Section {
                         ForEach(Array(sortedSessions.enumerated()), id: \.element.id) { index, session in
-                            connectionRow(
-                                connection: session.connection,
-                                isActive: session.id == currentSessionId,
-                                isConnected: session.status.isConnected,
-                                isHighlighted: index == selectedIndex
-                            )
-                            .onTapGesture {
-                                switchToSession(session.id)
+                            Button(action: { switchToSession(session.id) }) {
+                                connectionRow(
+                                    connection: session.connection,
+                                    isActive: session.id == currentSessionId,
+                                    isConnected: session.status.isConnected,
+                                    isHighlighted: index == selectedIndex
+                                )
                             }
+                            .buttonStyle(.plain)
                             .listRowBackground(
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(
@@ -74,12 +75,12 @@ struct ConnectionSwitcherPopover: View {
                                     )
                                     .padding(.horizontal, 4)
                             )
-                            .listRowInsets(DesignConstants.swiftUIListRowInsets)
+                            .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
                             .listRowSeparator(.hidden)
                         }
                     } header: {
                         Text("ACTIVE CONNECTIONS")
-                            .font(.system(size: DesignConstants.FontSize.caption, weight: .semibold))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -89,16 +90,16 @@ struct ConnectionSwitcherPopover: View {
                     Section {
                         ForEach(Array(inactiveSaved.enumerated()), id: \.element.id) { index, connection in
                             let itemIndex = sortedSessions.count + index
-                            connectionRow(
-                                connection: connection,
-                                isActive: false,
-                                isConnected: false,
-                                isConnecting: isConnecting == connection.id,
-                                isHighlighted: itemIndex == selectedIndex
-                            )
-                            .onTapGesture {
-                                connectToSaved(connection)
+                            Button(action: { connectToSaved(connection) }) {
+                                connectionRow(
+                                    connection: connection,
+                                    isActive: false,
+                                    isConnected: false,
+                                    isConnecting: isConnecting == connection.id,
+                                    isHighlighted: itemIndex == selectedIndex
+                                )
                             }
+                            .buttonStyle(.plain)
                             .listRowBackground(
                                 RoundedRectangle(cornerRadius: 4)
                                     .fill(
@@ -108,12 +109,12 @@ struct ConnectionSwitcherPopover: View {
                                     )
                                     .padding(.horizontal, 4)
                             )
-                            .listRowInsets(DesignConstants.swiftUIListRowInsets)
+                            .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
                             .listRowSeparator(.hidden)
                         }
                     } header: {
                         Text("SAVED CONNECTIONS")
-                            .font(.system(size: DesignConstants.FontSize.caption, weight: .semibold))
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -293,7 +294,7 @@ struct ConnectionSwitcherPopover: View {
     // MARK: - Helpers
 
     private func connectionSubtitle(_ connection: DatabaseConnection) -> String {
-        if connection.type == .sqlite {
+        if PluginManager.shared.connectionMode(for: connection.type) == .fileBased {
             return connection.database
         }
         let port = connection.port != connection.type.defaultPort ? ":\(connection.port)" : ""
@@ -325,7 +326,7 @@ struct ConnectionSwitcherPopover: View {
 
     /// Find an existing visible window for the given connection ID
     private func findWindow(for connectionId: UUID) -> NSWindow? {
-        NativeTabRegistry.shared.findWindow(for: connectionId)
+        WindowLifecycleMonitor.shared.findWindow(for: connectionId)
     }
 
     /// Open a new window for a different connection, ensuring it doesn't

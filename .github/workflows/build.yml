@@ -16,7 +16,7 @@ env:
 jobs:
   lint:
     name: SwiftLint
-    runs-on: self-hosted
+    runs-on: macos-15
     timeout-minutes: 10
 
     steps:
@@ -31,21 +31,23 @@ jobs:
 
   build-arm64:
     name: Build ARM64
-    runs-on: self-hosted
+    runs-on: macos-15
     needs: lint
     timeout-minutes: 20
 
     steps:
-      - name: Install Git LFS
-        run: brew list git-lfs &>/dev/null || brew install git-lfs; git lfs install
-
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
-      - name: Pull LFS files
-        run: git lfs pull
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2'
+
+      - name: Download static libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-libs.sh --force
 
       - name: Install ARM64 dependencies
         run: |
@@ -61,12 +63,6 @@ jobs:
 
           # Link packages with --force and --overwrite (needed for keg-only formulas)
           brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
-
-          # Verify installations
-          if ! brew list mariadb-connector-c >/dev/null 2>&1; then
-            echo "❌ ERROR: mariadb-connector-c installation failed"
-            exit 1
-          fi
 
           echo "✅ ARM64 dependencies installed"
 
@@ -84,6 +80,39 @@ jobs:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
         run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
 
+      - name: Import signing certificate
+        env:
+          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      - name: Configure notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "TablePro" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD"
+
+      - name: Install provisioning profile
+        env:
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
+
       - name: Build ARM64
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
@@ -98,74 +127,44 @@ jobs:
       - name: Package artifacts
         env:
           NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh arm64 "/tmp/tablepro-artifacts-${{ github.sha }}"
+        run: scripts/ci/package-artifacts.sh arm64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-arm64
+          path: |
+            build/Release/TablePro-*.dmg
+            build/Release/TablePro-*.zip
 
   build-x86_64:
     name: Build x86_64
-    runs-on: self-hosted
+    runs-on: macos-15
     needs: lint
     timeout-minutes: 20
 
     steps:
-      - name: Install Git LFS
-        run: brew list git-lfs &>/dev/null || brew install git-lfs; git lfs install
-
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          lfs: true
 
-      - name: Pull LFS files
-        run: git lfs pull
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2'
+
+      - name: Download static libraries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/download-libs.sh --force
 
       - name: Install Rosetta 2
-        run: |
-          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
-            echo "Installing Rosetta 2..."
-            if ! softwareupdate --install-rosetta --agree-to-license; then
-              echo "❌ ERROR: Failed to install Rosetta 2"
-              exit 1
-            fi
-
-            # Verify Rosetta 2 works
-            if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
-              echo "❌ ERROR: Rosetta 2 installed but not functional"
-              exit 1
-            fi
-
-            echo "✅ Rosetta 2 installed"
-          else
-            echo "✅ Rosetta 2 already installed"
-          fi
+        run: softwareupdate --install-rosetta --agree-to-license || true
 
       - name: Install x86_64 Homebrew
         run: |
           if [ ! -f /usr/local/bin/brew ]; then
             echo "Installing x86_64 Homebrew..."
-
-            if ! arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
-              echo "❌ ERROR: Homebrew installation failed"
-              exit 1
-            fi
-
-            if [ ! -f /usr/local/bin/brew ]; then
-              echo "❌ ERROR: Homebrew not found after installation"
-              exit 1
-            fi
-
-            if ! /usr/local/bin/brew --version; then
-              echo "❌ ERROR: Homebrew not functional"
-              exit 1
-            fi
-
-            echo "✅ x86_64 Homebrew installed"
-          else
-            echo "x86_64 Homebrew already installed"
-
-            if ! /usr/local/bin/brew --version; then
-              echo "❌ ERROR: Homebrew not functional"
-              exit 1
-            fi
+            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           fi
 
       - name: Install x86_64 dependencies
@@ -183,12 +182,6 @@ jobs:
           # Link packages with --force (needed for keg-only formulas)
           arch -x86_64 /usr/local/bin/brew link --force --overwrite mariadb-connector-c 2>/dev/null || true
 
-          # Verify installations
-          if ! arch -x86_64 /usr/local/bin/brew list mariadb-connector-c >/dev/null 2>&1; then
-            echo "❌ ERROR: mariadb-connector-c installation failed"
-            exit 1
-          fi
-
           echo "✅ x86_64 dependencies installed"
 
       - name: Prepare libraries
@@ -205,6 +198,39 @@ jobs:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
         run: echo "ANALYTICS_HMAC_SECRET = ${ANALYTICS_HMAC_SECRET}" > Secrets.xcconfig
 
+      - name: Import signing certificate
+        env:
+          CERTIFICATES_P12: ${{ secrets.CERTIFICATES_P12 }}
+          CERTIFICATES_PASSWORD: ${{ secrets.CERTIFICATES_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          echo "$CERTIFICATES_P12" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$CERTIFICATES_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain
+
+      - name: Configure notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "TablePro" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$NOTARY_PASSWORD"
+
+      - name: Install provisioning profile
+        env:
+          PROVISIONING_PROFILE: ${{ secrets.PROVISIONING_PROFILE }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$PROVISIONING_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/tablepro.provisionprofile
+
       - name: Build x86_64
         env:
           ANALYTICS_HMAC_SECRET: ${{ secrets.ANALYTICS_HMAC_SECRET }}
@@ -219,11 +245,19 @@ jobs:
       - name: Package artifacts
         env:
           NOTARIZE: "true"
-        run: scripts/ci/package-artifacts.sh x86_64 "/tmp/tablepro-artifacts-${{ github.sha }}"
+        run: scripts/ci/package-artifacts.sh x86_64
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-x86_64
+          path: |
+            build/Release/TablePro-*.dmg
+            build/Release/TablePro-*.zip
 
   release:
     name: Create GitHub Release
-    runs-on: self-hosted
+    runs-on: macos-15
     needs: [build-arm64, build-x86_64]
     if: startsWith(github.ref, 'refs/tags/v')
     timeout-minutes: 10
@@ -236,12 +270,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Collect staged artifacts
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.2'
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts-raw/
+          merge-multiple: true
+
+      - name: Flatten artifacts
         run: |
-          STAGING="/tmp/tablepro-artifacts-${{ github.sha }}"
           mkdir -p artifacts/
-          cp "$STAGING"/* artifacts/
-          echo "✅ Artifacts collected from $STAGING"
+          find artifacts-raw/ -type f \( -name "*.dmg" -o -name "*.zip" \) -exec mv {} artifacts/ \;
+          rm -rf artifacts-raw/
+          echo "Artifacts:"
           ls -lh artifacts/
 
       - name: Verify and organize artifacts for release
@@ -332,24 +377,3 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
         run: scripts/ci/notify-telegram.sh "${GITHUB_REF#refs/tags/v}"
-
-  update-homebrew:
-    name: Update Homebrew Tap
-    runs-on: self-hosted
-    needs: release
-    if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-beta') && !contains(github.ref, '-alpha') && !contains(github.ref, '-rc')
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Update Homebrew cask formula
-        if: env.HOMEBREW_TAP_TOKEN != ''
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: scripts/ci/update-homebrew.sh "${GITHUB_REF#refs/tags/v}" "/tmp/tablepro-artifacts-${{ github.sha }}"
-
-      - name: Clean up staging directory
-        if: always()
-        run: rm -rf "/tmp/tablepro-artifacts-${{ github.sha }}" || true

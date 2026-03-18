@@ -1,24 +1,18 @@
 ---
 title: Building
-description: Build TablePro for development and release distribution
+description: Debug builds, release builds for arm64/x86_64, DMG packaging, code signing, and CI/CD workflows
 ---
 
 # Building TablePro
-
-This guide covers building TablePro for development, creating release builds, and packaging for distribution.
 
 ## Development Builds
 
 ### Using Xcode
 
-The quickest way to build during development:
-
-1. Open `TablePro.xcodeproj` in Xcode
+1. Open `TablePro.xcodeproj`
 2. Select the **TablePro** scheme
 3. Select **My Mac** as the destination
-4. Press `Cmd+R` to build and run
-
-Or `Cmd+B` to build without running.
+4. `Cmd+R` to build and run, or `Cmd+B` to build only
 
 ### Using Command Line
 
@@ -40,7 +34,7 @@ xcodebuild -project TablePro.xcodeproj \
 
 ### Clean Build
 
-If you encounter build issues:
+If you hit build issues:
 
 ```bash
 # Clean via xcodebuild
@@ -56,32 +50,28 @@ rm -rf ~/Library/Developer/Xcode/DerivedData
 
 ### Using the Build Script
 
-TablePro includes a build script for creating release builds:
-
 ```bash
-# Build for Apple Silicon (M1/M2/M3/M4/M5)
+# Apple Silicon (M1/M2/M3/M4/M5)
 scripts/build-release.sh arm64
 
-# Build for Intel
+# Intel
 scripts/build-release.sh x86_64
 
-# Build for both architectures
+# Both architectures
 scripts/build-release.sh both
 ```
 
 ### Build Script Details
 
-The `build-release.sh` script:
+`build-release.sh` does the following:
 
 1. **Prepares libraries**: Extracts the correct architecture from universal libraries
 2. **Builds the app**: Runs xcodebuild with Release configuration
 3. **Copies output**: Places the app in `build/Release/`
 4. **Restores icon**: Ensures the full app icon is included
-5. **Verifies architecture**: Confirms the binary matches the target architecture
+5. **Verifies architecture**: Confirms the binary matches the target
 
 ### Output Location
-
-After building, find the app at:
 
 ```
 build/Release/TablePro-arm64.app   # Apple Silicon
@@ -89,8 +79,6 @@ build/Release/TablePro-x86_64.app  # Intel
 ```
 
 ### Manual Release Build
-
-If you prefer manual building:
 
 ```bash
 # Set architecture
@@ -110,42 +98,26 @@ xcodebuild \
 
 ## Native Libraries
 
-TablePro uses native C libraries for database connectivity.
-
-### Library Files
-
-Located in `Libs/`:
-
-| File | Purpose |
-|------|---------|
-| `libmariadb_universal.a` | Universal (arm64 + x86_64) MariaDB library |
-| `libmariadb.a` | Architecture-specific (created during build) |
+TablePro uses native C libraries for database connectivity. These are hosted on a dedicated [GitHub Release](https://github.com/datlechin/TablePro/releases/tag/libs-v1) and downloaded via `scripts/download-libs.sh`.
 
 ### Library Setup
 
-The universal library must exist before building:
-
 ```bash
-# Check if universal library exists
-ls -la Libs/libmariadb_universal.a
+# Download libraries (skips if already present)
+scripts/download-libs.sh
 
-# If missing, create from architecture-specific libraries
-lipo -create \
-    Libs/libmariadb_arm64.a \
-    Libs/libmariadb_x86_64.a \
-    -output Libs/libmariadb_universal.a
+# Force re-download
+scripts/download-libs.sh --force
 ```
 
-The build script automatically extracts the correct architecture slice.
+The build script (`build-release.sh`) extracts the correct architecture slice automatically from the universal libraries.
 
 ## Creating DMG
 
 ### Using the DMG Script
 
-Create a distributable DMG file:
-
 ```bash
-# First, build the release
+# Build the release first
 scripts/build-release.sh arm64
 
 # Then create DMG
@@ -154,16 +126,12 @@ scripts/create-dmg.sh arm64
 
 ### DMG Contents
 
-The DMG includes:
-
 - TablePro.app
 - Applications folder shortcut
 - Background image (if configured)
 - License file (if included)
 
 ### Output
-
-DMGs are created at:
 
 ```
 build/Release/TablePro-arm64.dmg
@@ -174,17 +142,11 @@ build/Release/TablePro-x86_64.dmg
 
 ### Development Builds
 
-Development builds are unsigned by default, which is fine for local testing.
+Unsigned by default. Fine for local testing.
 
 ### Release Distribution
 
-For public distribution:
-
-<Warning>
-TablePro is currently distributed unsigned. macOS Gatekeeper will show a warning on first launch.
-</Warning>
-
-To sign the app (requires Apple Developer account):
+To sign (requires Apple Developer account):
 
 ```bash
 # Sign the app
@@ -218,8 +180,6 @@ xcrun stapler staple build/Release/TablePro-arm64.app
 
 ### Build Settings
 
-Key build settings in Xcode:
-
 | Setting | Debug | Release |
 |---------|-------|---------|
 | Optimization | None (-O0) | Optimize for Speed (-O) |
@@ -244,17 +204,17 @@ Key build settings in Xcode:
 ld: library not found for -lmariadb
 ```
 
-Solution:
+Fix:
 1. Check `Libs/` directory exists
 2. Run `scripts/build-release.sh` to prepare libraries
-3. Verify `libmariadb.a` exists for target architecture
+3. Verify `libmariadb.a` exists for the target architecture
 
 **Code signing errors**:
 ```
 Code signing is required for product type 'Application'
 ```
 
-Solution: Build script disables code signing. If building manually, add:
+Fix: The build script disables code signing. For manual builds, add:
 ```
 CODE_SIGN_IDENTITY=""
 CODE_SIGNING_REQUIRED=NO
@@ -265,17 +225,17 @@ CODE_SIGNING_REQUIRED=NO
 building for macOS-arm64 but attempting to link with file built for macOS-x86_64
 ```
 
-Solution:
+Fix:
 1. Clean build folder
-2. Ensure libraries match target architecture
-3. Run build script which handles library architecture
+2. Make sure libraries match the target architecture
+3. Use the build script, which handles library architecture
 
 ### Xcode Issues
 
 **Scheme not found**:
 1. Open Xcode
 2. Product > Scheme > Manage Schemes
-3. Ensure TablePro scheme is checked
+3. Check that the TablePro scheme is enabled
 
 **Derived data issues**:
 ```bash
@@ -291,7 +251,7 @@ rm -rf ~/Library/Developer/Xcode/DerivedData/*/Index
 
 ### GitHub Actions
 
-Example workflow for automated builds:
+Example CI workflow:
 
 ```yaml
 name: Build
@@ -329,8 +289,6 @@ jobs:
 
 ### Release Workflow
 
-For creating releases:
-
 ```yaml
 release:
   runs-on: macos-latest
@@ -357,7 +315,7 @@ release:
 
 ## Build Sizes
 
-Typical build sizes (v0.1.1):
+Typical sizes (v0.1.1):
 
 | Build | Size |
 |-------|------|

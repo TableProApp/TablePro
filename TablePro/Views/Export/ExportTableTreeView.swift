@@ -8,10 +8,20 @@
 
 import AppKit
 import SwiftUI
+import TableProPluginKit
 
 struct ExportTableTreeView: View {
     @Binding var databaseItems: [ExportDatabaseItem]
-    let format: ExportFormat
+    let formatId: String
+
+    private var optionColumns: [PluginExportOptionColumn] {
+        guard let plugin = PluginManager.shared.exportPlugins[formatId] else { return [] }
+        return type(of: plugin).perTableOptionColumns
+    }
+
+    private var currentPlugin: (any ExportFormatPlugin)? {
+        PluginManager.shared.exportPlugins[formatId]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,14 +54,11 @@ struct ExportTableTreeView: View {
                     let newState = !database.allSelected
                     for index in allTables.wrappedValue.indices {
                         allTables[index].isSelected.wrappedValue = newState
-                        if newState && format == .sql {
-                            if !allTables[index].sqlOptions.wrappedValue.hasAnyOption {
-                                allTables[index].sqlOptions.wrappedValue = SQLTableExportOptions()
-                            }
-                        }
-                        if newState && format == .mql {
-                            if !allTables[index].mqlOptions.wrappedValue.hasAnyOption {
-                                allTables[index].mqlOptions.wrappedValue = MQLTableExportOptions()
+                        if newState && !optionColumns.isEmpty {
+                            if allTables[index].wrappedValue.optionValues.isEmpty ||
+                                !allTables[index].wrappedValue.optionValues.contains(true) {
+                                let defaults = currentPlugin?.defaultTableOptionValues() ?? Array(repeating: true, count: optionColumns.count)
+                                allTables[index].optionValues.wrappedValue = defaults
                             }
                         }
                     }
@@ -82,19 +89,11 @@ struct ExportTableTreeView: View {
 
     private func tableRow(table: Binding<ExportTableItem>) -> some View {
         HStack(spacing: 4) {
-            if format == .sql {
+            if !optionColumns.isEmpty {
                 TristateCheckbox(
-                    state: sqlTableCheckboxState(table.wrappedValue),
+                    state: genericCheckboxState(table.wrappedValue),
                     action: {
-                        toggleTableSQLOptions(table)
-                    }
-                )
-                .frame(width: 18)
-            } else if format == .mql {
-                TristateCheckbox(
-                    state: mqlTableCheckboxState(table.wrappedValue),
-                    action: {
-                        toggleTableMQLOptions(table)
+                        toggleGenericOptions(table)
                     }
                 )
                 .frame(width: 18)
@@ -113,125 +112,67 @@ struct ExportTableTreeView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
 
-            if format == .sql {
+            if !optionColumns.isEmpty {
                 Spacer()
 
-                Toggle("Structure", isOn: table.sqlOptions.includeStructure)
+                ForEach(Array(optionColumns.enumerated()), id: \.element.id) { colIndex, column in
+                    Toggle(column.label, isOn: Binding(
+                        get: {
+                            guard colIndex < table.wrappedValue.optionValues.count else { return true }
+                            return table.optionValues[colIndex].wrappedValue
+                        },
+                        set: { newValue in
+                            ensureOptionValues(table)
+                            table.optionValues[colIndex].wrappedValue = newValue
+                            let anyTrue = table.wrappedValue.optionValues.contains(true)
+                            table.isSelected.wrappedValue = anyTrue
+                        }
+                    ))
                     .toggleStyle(.checkbox)
                     .labelsHidden()
                     .disabled(!table.wrappedValue.isSelected)
                     .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 56, alignment: .center)
-                    .onChange(of: table.wrappedValue.sqlOptions) { _, newOptions in
-                        table.isSelected.wrappedValue = newOptions.hasAnyOption
-                    }
-
-                Toggle("Drop", isOn: table.sqlOptions.includeDrop)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!table.wrappedValue.isSelected)
-                    .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 44, alignment: .center)
-
-                Toggle("Data", isOn: table.sqlOptions.includeData)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!table.wrappedValue.isSelected)
-                    .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 44, alignment: .center)
-            } else if format == .mql {
-                Spacer()
-
-                Toggle("Drop", isOn: table.mqlOptions.includeDrop)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!table.wrappedValue.isSelected)
-                    .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 44, alignment: .center)
-                    .onChange(of: table.wrappedValue.mqlOptions) { _, newOptions in
-                        table.isSelected.wrappedValue = newOptions.hasAnyOption
-                    }
-
-                Toggle("Indexes", isOn: table.mqlOptions.includeIndexes)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!table.wrappedValue.isSelected)
-                    .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 44, alignment: .center)
-                    .onChange(of: table.wrappedValue.mqlOptions) { _, newOptions in
-                        table.isSelected.wrappedValue = newOptions.hasAnyOption
-                    }
-
-                Toggle("Data", isOn: table.mqlOptions.includeData)
-                    .toggleStyle(.checkbox)
-                    .labelsHidden()
-                    .disabled(!table.wrappedValue.isSelected)
-                    .opacity(table.wrappedValue.isSelected ? 1.0 : 0.4)
-                    .frame(width: 44, alignment: .center)
-                    .onChange(of: table.wrappedValue.mqlOptions) { _, newOptions in
-                        table.isSelected.wrappedValue = newOptions.hasAnyOption
-                    }
+                    .frame(width: column.width, alignment: .center)
+                }
             }
         }
     }
 
-    private func sqlTableCheckboxState(_ table: ExportTableItem) -> TristateCheckbox.State {
-        let opts = table.sqlOptions
-        let count = (opts.includeStructure ? 1 : 0) + (opts.includeDrop ? 1 : 0) + (opts.includeData ? 1 : 0)
-        if !table.isSelected || count == 0 { return .unchecked }
-        if count == 3 { return .checked }
+    // MARK: - Generic Option Helpers
+
+    private func genericCheckboxState(_ table: ExportTableItem) -> TristateCheckbox.State {
+        if !table.isSelected || table.optionValues.isEmpty { return .unchecked }
+        let trueCount = table.optionValues.count(where: { $0 })
+        if trueCount == 0 { return .unchecked }
+        if trueCount == table.optionValues.count { return .checked }
         return .mixed
     }
 
-    private func toggleTableSQLOptions(_ table: Binding<ExportTableItem>) {
+    private func toggleGenericOptions(_ table: Binding<ExportTableItem>) {
+        ensureOptionValues(table)
         if !table.wrappedValue.isSelected {
             table.isSelected.wrappedValue = true
-            if !table.wrappedValue.sqlOptions.hasAnyOption {
-                table.sqlOptions.includeStructure.wrappedValue = true
-                table.sqlOptions.includeDrop.wrappedValue = true
-                table.sqlOptions.includeData.wrappedValue = true
+            if !table.wrappedValue.optionValues.contains(true) {
+                for i in table.wrappedValue.optionValues.indices {
+                    table.optionValues[i].wrappedValue = true
+                }
             }
         } else {
-            let opts = table.wrappedValue.sqlOptions
-            let allChecked = opts.includeStructure && opts.includeDrop && opts.includeData
-
+            let allChecked = table.wrappedValue.optionValues.allSatisfy { $0 }
             if allChecked {
                 table.isSelected.wrappedValue = false
             } else {
-                table.sqlOptions.includeStructure.wrappedValue = true
-                table.sqlOptions.includeDrop.wrappedValue = true
-                table.sqlOptions.includeData.wrappedValue = true
+                for i in table.wrappedValue.optionValues.indices {
+                    table.optionValues[i].wrappedValue = true
+                }
             }
         }
     }
 
-    private func mqlTableCheckboxState(_ table: ExportTableItem) -> TristateCheckbox.State {
-        let opts = table.mqlOptions
-        let count = (opts.includeDrop ? 1 : 0) + (opts.includeIndexes ? 1 : 0) + (opts.includeData ? 1 : 0)
-        if !table.isSelected || count == 0 { return .unchecked }
-        if count == 3 { return .checked }
-        return .mixed
-    }
-
-    private func toggleTableMQLOptions(_ table: Binding<ExportTableItem>) {
-        if !table.wrappedValue.isSelected {
-            table.isSelected.wrappedValue = true
-            if !table.wrappedValue.mqlOptions.hasAnyOption {
-                table.mqlOptions.includeDrop.wrappedValue = true
-                table.mqlOptions.includeData.wrappedValue = true
-                table.mqlOptions.includeIndexes.wrappedValue = true
-            }
-        } else {
-            let opts = table.wrappedValue.mqlOptions
-            let allChecked = opts.includeDrop && opts.includeData && opts.includeIndexes
-
-            if allChecked {
-                table.isSelected.wrappedValue = false
-            } else {
-                table.mqlOptions.includeDrop.wrappedValue = true
-                table.mqlOptions.includeData.wrappedValue = true
-                table.mqlOptions.includeIndexes.wrappedValue = true
-            }
+    private func ensureOptionValues(_ table: Binding<ExportTableItem>) {
+        if table.wrappedValue.optionValues.count < optionColumns.count {
+            let defaults = currentPlugin?.defaultTableOptionValues() ?? Array(repeating: true, count: optionColumns.count)
+            table.optionValues.wrappedValue = defaults
         }
     }
 }

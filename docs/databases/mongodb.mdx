@@ -1,11 +1,11 @@
 ---
 title: MongoDB
-description: Connect to MongoDB databases with TablePro
+description: Connect to MongoDB 5.0+ with MQL shell queries, collection browsing, and BSON type display
 ---
 
 # MongoDB Connections
 
-TablePro provides support for MongoDB 5.0 and later versions. MongoDB is a document-oriented NoSQL database that stores data in flexible, JSON-like BSON documents. Collections appear as tables in the sidebar, and documents are displayed with fields as columns.
+TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sidebar. Documents display with fields as columns, and nested objects render as formatted JSON.
 
 ## Quick Setup
 
@@ -44,12 +44,12 @@ TablePro provides support for MongoDB 5.0 and later versions. MongoDB is a docum
 | **Auth Database** | Authentication database (defaults to `admin`) |
 
 <Tip>
-For local development without authentication enabled, you can leave the username and password fields empty.
+For local development without authentication, leave the username and password fields empty.
 </Tip>
 
 ### Advanced Settings
 
-Configure read preference and write concern in the **Advanced** tab of the connection form. These settings are optional and only apply to MongoDB connections.
+Configure read preference and write concern in the **Advanced** tab. These apply only to MongoDB connections.
 
 | Field | Description | Options |
 |-------|-------------|---------|
@@ -57,7 +57,7 @@ Configure read preference and write concern in the **Advanced** tab of the conne
 | **Write Concern** | Controls the acknowledgment level for write operations | Default, Majority, 1, 2, 3 |
 
 <Tip>
-For most use cases, the default settings work well. Use **Secondary Preferred** or **Nearest** read preference to distribute read load across replica set members. Use **Majority** write concern for stronger durability guarantees.
+Defaults work for most cases. Use **Secondary Preferred** or **Nearest** to distribute read load across replica members. Use **Majority** write concern for stronger durability.
 </Tip>
 
 {/* Screenshot: MongoDB connection form */}
@@ -110,7 +110,7 @@ Database: myapp
 ```
 
 <Note>
-For MongoDB Atlas connections, SSL/TLS is required. Enable it in the SSL/TLS section of the connection form.
+MongoDB Atlas requires SSL/TLS. Enable it in the SSL/TLS section of the connection form.
 </Note>
 
 ### Remote Server
@@ -130,7 +130,7 @@ For production databases, consider using [SSH tunneling](/databases/ssh-tunnelin
 
 ## SSL/TLS Connections
 
-TablePro supports SSL/TLS encryption for MongoDB connections. Configure SSL in the **SSL/TLS** section of the connection form.
+Configure SSL in the **SSL/TLS** section of the connection form.
 
 | SSL Mode | Description |
 |----------|-------------|
@@ -138,14 +138,14 @@ TablePro supports SSL/TLS encryption for MongoDB connections. Configure SSL in t
 | **Required** | Require SSL encryption |
 | **Verify CA** | Require SSL and verify the server certificate against a CA |
 
-For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS authentication.
+For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS.
 
 <Tip>
-MongoDB Atlas always requires SSL/TLS. Use **Required** or **Verify CA** mode when connecting to Atlas clusters.
+MongoDB Atlas always requires SSL/TLS. Use **Required** or **Verify CA** when connecting to Atlas clusters.
 </Tip>
 
 <Note>
-If you prefer not to configure SSL certificates, [SSH tunneling](/databases/ssh-tunneling) is an alternative that encrypts all traffic through an SSH tunnel.
+If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
 </Note>
 
 {/* Screenshot: MongoDB SSL/TLS configuration */}
@@ -164,13 +164,13 @@ If you prefer not to configure SSL certificates, [SSH tunneling](/databases/ssh-
 
 ## SSH Tunnel Support
 
-You can connect to MongoDB through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for detailed setup instructions.
+Connect to MongoDB through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for setup instructions.
 
 ## Features
 
 ### Collection Browsing
 
-After connecting, the sidebar shows all collections in the selected database. Collections appear as tables in the sidebar:
+After connecting, the sidebar shows all collections in the selected database:
 
 1. Click the connection name in the sidebar
 2. Expand a database to see its collections
@@ -192,16 +192,16 @@ After connecting, the sidebar shows all collections in the selected database. Co
 
 ### Document Viewing
 
-Documents are displayed in the data grid with fields as columns:
+Documents display in the data grid with fields as columns:
 
 - **Top-level fields** appear as individual columns
-- **Nested objects** are displayed as formatted JSON strings
-- **Arrays** are shown as JSON arrays
-- **ObjectId** values are displayed as their string representation
-- **BSON types** (Date, Decimal128, Binary, etc.) are rendered with appropriate formatting
+- **Nested objects** render as formatted JSON strings
+- **Arrays** show as JSON arrays
+- **ObjectId** values display as their string representation
+- **BSON types** (Date, Decimal128, Binary, etc.) render with appropriate formatting
 
 <Tip>
-The schema is inferred by sampling documents in the collection. Columns reflect the union of all fields found across sampled documents.
+Schema is inferred by sampling documents in the collection. Columns reflect the union of all fields found across sampled documents.
 </Tip>
 
 ### Collection Duplication
@@ -248,8 +248,6 @@ db.products.distinct("category")
 
 #### Insert Documents
 
-Insert new documents into a collection:
-
 ```javascript
 // Insert one document
 db.users.insertOne({
@@ -268,8 +266,6 @@ db.users.insertMany([
 
 #### Update Documents
 
-Update existing documents:
-
 ```javascript
 // Update one document
 db.users.updateOne(
@@ -285,8 +281,6 @@ db.users.updateMany(
 ```
 
 #### Delete Documents
-
-Remove documents from a collection:
 
 ```javascript
 // Delete one document
@@ -353,8 +347,8 @@ db.users.deleteMany({ active: false, lastLogin: { $lt: ISODate("2024-01-01") } }
 
 ## Known Limitations
 
-- **Transactions**: Multi-document transactions require a replica set or sharded cluster configuration. Standalone MongoDB instances do not support transactions.
-- **Schema inference**: Since MongoDB is schema-less, the column structure is inferred by sampling documents. Collections with highly varied document structures may not show all fields.
+- **Transactions**: Multi-document transactions require a replica set or sharded cluster. Standalone instances do not support transactions.
+- **Schema inference**: Since MongoDB is schema-less, column structure is inferred by sampling documents. Collections with highly varied document structures may not show all fields.
 - **Capped collections**: Some operations (update, delete) may be restricted on capped collections.
 - **GridFS**: GridFS file storage is not directly browsable through the collection browser.
 - **Change streams**: Real-time change streams are not supported in the current version.
