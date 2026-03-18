@@ -2,7 +2,7 @@
 
 **Date:** 2025-03-18
 **Related Issue:** [#368 — High CPU Usage by TablePro on macOS](https://github.com/datlechin/TablePro/issues/368)
-**Status:** Phase 1-4 fixes applied (15/17 medium+ issues fixed) — build verified
+**Status:** Phase 1-4 fixes applied (16/17 medium+ issues fixed) — build verified
 
 ---
 
@@ -51,13 +51,9 @@ Secondary contributors include main-thread I/O blocking (Keychain, plugin loadin
 
 ### HIGH-1: `activeSessions` Whole-Dictionary @Observable Granularity
 
-- [ ] **Fix applied**
+- [x] **Fix applied** — Added `connectionStatusVersions: [UUID: Int]` per-connection counters. ContentView and MainContentView now observe their specific connection's counter. Added `setSession`/`removeSessionEntry` helpers to centralize writes and bump per-connection counters.
 
-**Files:** `DatabaseManager.swift:20`, `ContentView.swift:105-158`, `MainContentView.swift:299-319`
-
-`DatabaseManager` is `@Observable`. `activeSessions` is a single `[UUID: ConnectionSession]` dictionary. Any write to any key invalidates ALL views observing any part of the dictionary — including views for completely unrelated connections.
-
-**Fix:** Introduce per-connection `@Observable` wrapper classes (`ConnectionSessionBox`), or promote `connectionStatusVersion` to per-connection: `connectionStatusVersions: [UUID: Int]`.
+**Files:** `DatabaseManager.swift`, `ContentView.swift:105`, `MainContentView.swift:299`
 
 ---
 

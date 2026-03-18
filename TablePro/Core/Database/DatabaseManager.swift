@@ -32,6 +32,10 @@ final class DatabaseManager {
     /// Incremented when any session state changes (status, driver, metadata, etc.).
     private(set) var connectionStatusVersion: Int = 0
 
+    /// Per-connection version counters. Views observe their specific connection's
+    /// counter to avoid cross-connection re-renders.
+    private(set) var connectionStatusVersions: [UUID: Int] = [:]
+
     /// Backward-compatible alias for views not yet migrated to fine-grained counters.
     var sessionVersion: Int { connectionStatusVersion }
 
@@ -90,7 +94,7 @@ final class DatabaseManager {
         if activeSessions[connection.id] == nil {
             var session = ConnectionSession(connection: connection)
             session.status = .connecting
-            activeSessions[connection.id] = session
+            setSession(session, for: connection.id)
         }
         currentSessionId = connection.id
 
@@ -100,7 +104,7 @@ final class DatabaseManager {
             effectiveConnection = try await buildEffectiveConnection(for: connection)
         } catch {
             // Remove failed session
-            activeSessions.removeValue(forKey: connection.id)
+            removeSessionEntry(for: connection.id)
             currentSessionId = nil
             throw error
         }
@@ -112,7 +116,7 @@ final class DatabaseManager {
             do {
                 try await PreConnectHookRunner.run(script: script)
             } catch {
-                activeSessions.removeValue(forKey: connection.id)
+                removeSessionEntry(for: connection.id)
                 currentSessionId = nil
                 throw error
             }
@@ -129,7 +133,7 @@ final class DatabaseManager {
                     try? await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
                 }
             }
-            activeSessions.removeValue(forKey: connection.id)
+            removeSessionEntry(for: connection.id)
             currentSessionId = nil
             throw error
         }
@@ -195,7 +199,7 @@ final class DatabaseManager {
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
 
-                activeSessions[connection.id] = session  // Single write, single publish
+                setSession(session, for: connection.id)
             }
 
             // Save as last connection for "Reopen Last Session" feature
@@ -221,7 +225,7 @@ final class DatabaseManager {
             }
 
             // Remove failed session completely so UI returns to Welcome window
-            activeSessions.removeValue(forKey: connection.id)
+            removeSessionEntry(for: connection.id)
 
             // Clear current session if this was it
             if currentSessionId == connection.id {
@@ -259,7 +263,7 @@ final class DatabaseManager {
         await stopHealthMonitor(for: sessionId)
 
         session.driver?.disconnect()
-        activeSessions.removeValue(forKey: sessionId)
+        removeSessionEntry(for: sessionId)
 
         // Clean up shared schema cache for this connection
         SchemaProviderRegistry.shared.clear(for: sessionId)
@@ -301,18 +305,30 @@ final class DatabaseManager {
         update(&session)
         let driverAfter = session.driver as AnyObject?
         guard !session.isContentViewEquivalent(to: before) || driverBefore !== driverAfter else { return }
-        activeSessions[sessionId] = session
+        setSession(session, for: sessionId)
+    }
+
+    /// Write a session and bump its per-connection version counter.
+    private func setSession(_ session: ConnectionSession, for connectionId: UUID) {
+        activeSessions[connectionId] = session
+        connectionStatusVersions[connectionId, default: 0] &+= 1
+    }
+
+    /// Remove a session and clean up its per-connection version counter.
+    private func removeSessionEntry(for connectionId: UUID) {
+        activeSessions.removeValue(forKey: connectionId)
+        connectionStatusVersions.removeValue(forKey: connectionId)
     }
 
     #if DEBUG
     /// Test-only: inject a session for unit testing without real database connections
     internal func injectSession(_ session: ConnectionSession, for connectionId: UUID) {
-        activeSessions[connectionId] = session
+        setSession(session, for: connectionId)
     }
 
     /// Test-only: remove an injected session
     internal func removeSession(for connectionId: UUID) {
-        activeSessions.removeValue(forKey: connectionId)
+        removeSessionEntry(for: connectionId)
     }
     #endif
 
