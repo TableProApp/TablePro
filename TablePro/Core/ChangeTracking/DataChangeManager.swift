@@ -88,6 +88,21 @@ final class DataChangeManager {
         return true
     }
 
+    /// Binary search: count of elements in a sorted array that are strictly less than `target`.
+    /// Used for O(n log n) batch index shifting instead of O(n²) nested loops.
+    private static func countLessThan(_ target: Int, in sorted: [Int]) -> Int {
+        var lo = 0, hi = sorted.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if sorted[mid] < target {
+                lo = mid + 1
+            } else {
+                hi = mid
+            }
+        }
+        return lo
+    }
+
     /// Undo/redo manager
     private let undoManager = DataChangeUndoManager()
 
@@ -414,18 +429,20 @@ final class DataChangeManager {
 
         pushUndo(.batchRowInsertion(rowIndices: validRows, rowValues: rowValues))
 
-        for deletedIndex in validRows.reversed() {
-            var shiftedIndices = Set<Int>()
-            for idx in insertedRowIndices {
-                shiftedIndices.insert(idx > deletedIndex ? idx - 1 : idx)
-            }
-            insertedRowIndices = shiftedIndices
+        // Single-pass shift using binary search instead of O(n²) nested loop
+        let sortedDeleted = validRows.sorted()
 
-            for i in 0..<changes.count {
-                if changes[i].rowIndex > deletedIndex {
-                    changes[i].rowIndex -= 1
-                }
-            }
+        var newInserted = Set<Int>()
+        for idx in insertedRowIndices {
+            let shiftCount = Self.countLessThan(idx, in: sortedDeleted)
+            newInserted.insert(idx - shiftCount)
+        }
+        insertedRowIndices = newInserted
+
+        for i in 0..<changes.count {
+            let rowIndex = changes[i].rowIndex
+            let shiftCount = Self.countLessThan(rowIndex, in: sortedDeleted)
+            changes[i].rowIndex = rowIndex - shiftCount
         }
 
         rebuildChangeIndex()

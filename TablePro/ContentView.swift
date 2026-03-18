@@ -40,7 +40,7 @@ struct ContentView: View {
         if let tableName = payload?.tableName {
             defaultTitle = tableName
         } else if let connectionId = payload?.connectionId,
-                  let connection = ConnectionStorage.shared.loadConnections().first(where: { $0.id == connectionId }) {
+                  let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             defaultTitle = "\(langName) Query"
         } else {

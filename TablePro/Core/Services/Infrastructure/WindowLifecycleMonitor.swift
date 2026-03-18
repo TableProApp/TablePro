@@ -16,7 +16,7 @@ internal final class WindowLifecycleMonitor {
 
     private struct Entry {
         let connectionId: UUID
-        let window: NSWindow
+        weak var window: NSWindow?
         var observer: NSObjectProtocol?
         var isPreview: Bool = false
     }
@@ -77,28 +77,32 @@ internal final class WindowLifecycleMonitor {
 
     /// Return all live windows for a connection.
     internal func windows(for connectionId: UUID) -> [NSWindow] {
-        entries.values
+        purgeStaleEntries()
+        return entries.values
             .filter { $0.connectionId == connectionId }
-            .map(\.window)
+            .compactMap(\.window)
     }
 
     /// Check if other live windows exist for a connection, excluding a specific windowId.
     internal func hasOtherWindows(for connectionId: UUID, excluding windowId: UUID) -> Bool {
-        entries.contains { key, value in
+        purgeStaleEntries()
+        return entries.contains { key, value in
             key != windowId && value.connectionId == connectionId
         }
     }
 
     /// All connection IDs that currently have registered windows.
     internal func allConnectionIds() -> Set<UUID> {
-        Set(entries.values.map(\.connectionId))
+        purgeStaleEntries()
+        return Set(entries.values.map(\.connectionId))
     }
 
     /// Find the first visible window for a connection.
     internal func findWindow(for connectionId: UUID) -> NSWindow? {
-        entries.values
+        purgeStaleEntries()
+        return entries.values
             .filter { $0.connectionId == connectionId }
-            .map(\.window)
+            .compactMap(\.window)
             .first { $0.isVisible }
     }
 
@@ -109,18 +113,26 @@ internal final class WindowLifecycleMonitor {
 
     /// Check if any windows are registered for a connection.
     internal func hasWindows(for connectionId: UUID) -> Bool {
-        entries.values.contains { $0.connectionId == connectionId }
+        purgeStaleEntries()
+        return entries.values.contains { $0.connectionId == connectionId }
     }
 
-    /// Check if a specific window is still registered
+    /// Check if a specific window is still registered (with a live NSWindow reference).
     internal func isRegistered(windowId: UUID) -> Bool {
-        entries[windowId] != nil
+        guard entries[windowId] != nil else { return false }
+        purgeStaleEntries()
+        return entries[windowId] != nil
     }
 
     /// Find the first preview window for a connection.
     internal func previewWindow(for connectionId: UUID) -> (windowId: UUID, window: NSWindow)? {
-        entries.first { $0.value.connectionId == connectionId && $0.value.isPreview }
-            .map { ($0.key, $0.value.window) }
+        purgeStaleEntries()
+        for (windowId, entry) in entries {
+            guard entry.connectionId == connectionId, entry.isPreview else { continue }
+            guard let window = entry.window else { continue }
+            return (windowId, window)
+        }
+        return nil
     }
 
     /// Look up the NSWindow for a given windowId.
@@ -135,6 +147,19 @@ internal final class WindowLifecycleMonitor {
 
     // MARK: - Private
 
+    /// Remove entries whose window has already been deallocated.
+    private func purgeStaleEntries() {
+        let staleIds = entries.compactMap { key, value -> UUID? in
+            value.window == nil ? key : nil
+        }
+        for windowId in staleIds {
+            let entry = entries.removeValue(forKey: windowId)
+            if let observer = entry?.observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+    }
+
     private func handleWindowClose(_ closedWindow: NSWindow) {
         guard let (windowId, entry) = entries.first(where: { $0.value.window === closedWindow }) else {
             return
@@ -147,7 +172,9 @@ internal final class WindowLifecycleMonitor {
         }
         entries.removeValue(forKey: windowId)
 
-        let hasRemainingWindows = entries.values.contains { $0.connectionId == closedConnectionId }
+        let hasRemainingWindows = entries.values.contains {
+            $0.connectionId == closedConnectionId && $0.window != nil
+        }
         if !hasRemainingWindows {
             Task {
                 await DatabaseManager.shared.disconnectSession(closedConnectionId)

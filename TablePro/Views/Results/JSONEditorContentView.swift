@@ -195,17 +195,29 @@ private struct JSONSyntaxTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONSyntaxTextView
         var isUpdating = false
+        private var highlightWorkItem: DispatchWorkItem?
 
         init(_ parent: JSONSyntaxTextView) {
             self.parent = parent
+        }
+
+        deinit {
+            highlightWorkItem?.cancel()
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             isUpdating = true
             parent.text = textView.string
-            JSONSyntaxTextView.applyHighlighting(to: textView)
             isUpdating = false
+
+            // Debounce syntax highlighting to avoid 4 regex passes per keystroke
+            highlightWorkItem?.cancel()
+            highlightWorkItem = DispatchWorkItem { [weak textView] in
+                guard let textView else { return }
+                JSONSyntaxTextView.applyHighlighting(to: textView)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: highlightWorkItem!)
         }
     }
 }

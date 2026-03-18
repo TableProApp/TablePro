@@ -270,12 +270,12 @@ final class MainContentCoordinator {
             }
         }
 
-        registerForPersistence()
         _ = Self.registerTerminationObserver
     }
 
     func markActivated() {
         _didActivate.withLock { $0 = true }
+        registerForPersistence()
         setupPluginDriver()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
@@ -366,6 +366,7 @@ final class MainContentCoordinator {
         // Never-activated coordinators are throwaway instances created by SwiftUI
         // during body re-evaluation — @State only keeps the first, rest are discarded
         guard _didActivate.withLock({ $0 }) else {
+            MainActor.assumeIsolated { unregisterFromPersistence() }
             if !alreadyHandled {
                 Task { @MainActor in
                     SchemaProviderRegistry.shared.release(for: connectionId)

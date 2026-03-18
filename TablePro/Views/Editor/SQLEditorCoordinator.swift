@@ -295,7 +295,8 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         ) { [weak self, weak controller] _ in
             guard let self, let controller else { return }
             // Defer so it runs AFTER reloadUI() → styleTextView()
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self, weak controller] in
+                guard let self, let controller else { return }
                 self.setHorizontalScrollProperties(controller: controller)
                 self.handleVimSettingsChange(controller: controller)
                 self.vimCursorManager?.updatePosition()

@@ -56,7 +56,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
         let previousSyncState = UserDefaults.standard.bool(forKey: KeychainHelper.passwordSyncEnabledKey)
         UserDefaults.standard.set(passwordSyncExpected, forKey: KeychainHelper.passwordSyncEnabledKey)
-        KeychainHelper.shared.migrateFromLegacyKeychainIfNeeded()
+        Task.detached(priority: .utility) {
+            KeychainHelper.shared.migrateFromLegacyKeychainIfNeeded()
+        }
         if passwordSyncExpected != previousSyncState {
             Task.detached(priority: .background) {
                 KeychainHelper.shared.migratePasswordSyncState(synchronizable: passwordSyncExpected)

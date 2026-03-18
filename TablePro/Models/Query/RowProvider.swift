@@ -269,6 +269,8 @@ final class DatabaseRowProvider: RowProvider {
     private let baseQuery: String
     private var cache: [Int: TableRowData] = [:]
     private let pageSize: Int
+    private var prefetchTask: Task<Void, Never>?
+    private var inFlightRange: Range<Int>?
 
     private(set) var totalRowCount: Int = 0
     private(set) var columns: [String]
@@ -317,22 +319,44 @@ final class DatabaseRowProvider: RowProvider {
 
         let offset = minIndex
         let limit = min(maxIndex - minIndex + pageSize, totalRowCount - offset)
+        let fetchRange = offset..<(offset + limit)
 
-        Task { @MainActor in
+        if let inFlight = inFlightRange,
+           inFlight.contains(offset) && inFlight.contains(offset + limit - 1) {
+            return
+        }
+
+        prefetchTask?.cancel()
+        let driver = self.driver
+        let baseQuery = self.baseQuery
+
+        inFlightRange = fetchRange
+        prefetchTask = Task { [weak self] in
             do {
                 let result = try await driver.fetchRows(query: baseQuery, offset: offset, limit: limit)
-                for (i, row) in result.rows.enumerated() {
-                    let rowData = TableRowData(index: offset + i, values: row)
-                    cache[offset + i] = rowData
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    for (i, row) in result.rows.enumerated() {
+                        self.cache[offset + i] = TableRowData(index: offset + i, values: row)
+                    }
+                    self.evictCacheIfNeeded(nearIndex: offset)
+                    self.inFlightRange = nil
                 }
-                evictCacheIfNeeded(nearIndex: offset)
             } catch {
+                guard !Task.isCancelled else { return }
                 Self.logger.error("Prefetch error: \(error)")
+                await MainActor.run { [weak self] in
+                    self?.inFlightRange = nil
+                }
             }
         }
     }
 
     func invalidateCache() {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        inFlightRange = nil
         cache.removeAll()
         isInitialized = false
     }

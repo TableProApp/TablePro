@@ -20,6 +20,9 @@ final class PluginManager {
 
     private(set) var isInstalling = false
 
+    /// True once the initial plugin discovery + loading pass has completed.
+    private(set) var hasFinishedInitialLoad = false
+
     private static let needsRestartKey = "com.TablePro.needsRestart"
 
     private var _needsRestart: Bool = UserDefaults.standard.bool(
@@ -69,12 +72,140 @@ final class PluginManager {
     // MARK: - Loading
 
     /// Discover and load all plugins. Discovery is synchronous (reads Info.plist),
-    /// then bundle loading is deferred to the next run loop iteration so it doesn't block app launch.
+    /// then bundle loading runs on a background thread to avoid blocking the UI.
+    /// Only the final registration into dictionaries happens on MainActor.
     func loadPlugins() {
         migrateDisabledPluginsKey()
         discoverAllPlugins()
-        Task { @MainActor in
-            self.loadPendingPlugins(clearRestartFlag: true)
+        let pending = pendingPluginURLs
+        Task {
+            let loaded = await Self.loadBundlesOffMain(pending)
+            self.pendingPluginURLs.removeAll()
+            self._needsRestart = false
+            self.registerLoadedPlugins(loaded)
+            self.validateDependencies()
+            self.hasFinishedInitialLoad = true
+            Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
+        }
+    }
+
+    /// Holds the result of loading a single plugin bundle off the main thread.
+    /// Bundle is not formally Sendable but is thread-safe for property reads after load().
+    private struct LoadedBundle: @unchecked Sendable {
+        let url: URL
+        let source: PluginSource
+        let bundle: Bundle
+        let principalClassName: String
+
+        // These are extracted off-main since they're static protocol properties
+        let pluginName: String
+        let pluginVersion: String
+        let pluginDescription: String
+        let capabilities: [PluginCapability]
+        let databaseTypeId: String?
+        let additionalTypeIds: [String]
+        let pluginIconName: String
+        let defaultPort: Int?
+    }
+
+    /// Perform the expensive bundle.load() and principalClass resolution off MainActor.
+    /// Returns successfully loaded bundles with their metadata extracted.
+    nonisolated private static func loadBundlesOffMain(
+        _ pending: [(url: URL, source: PluginSource)]
+    ) async -> [LoadedBundle] {
+        var results: [LoadedBundle] = []
+        for entry in pending {
+            guard let bundle = Bundle(url: entry.url) else {
+                logger.error("Cannot create bundle from \(entry.url.lastPathComponent)")
+                continue
+            }
+
+            let infoPlist = bundle.infoDictionary ?? [:]
+            let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
+            if pluginKitVersion > currentPluginKitVersion {
+                logger.error("Plugin \(entry.url.lastPathComponent) requires PluginKit v\(pluginKitVersion), current is v\(currentPluginKitVersion)")
+                continue
+            }
+
+            if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
+                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+                if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
+                    logger.error("Plugin \(entry.url.lastPathComponent) requires app v\(minAppVersion)")
+                    continue
+                }
+            }
+
+            if entry.source == .userInstalled {
+                if pluginKitVersion < currentPluginKitVersion {
+                    logger.error("User plugin \(entry.url.lastPathComponent) has outdated PluginKit v\(pluginKitVersion)")
+                    continue
+                }
+            }
+
+            // Heavy I/O: dynamic linker resolution, C bridge library initialization
+            guard bundle.load() else {
+                logger.error("Bundle failed to load executable: \(entry.url.lastPathComponent)")
+                continue
+            }
+
+            guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {
+                logger.error("Principal class does not conform to TableProPlugin: \(entry.url.lastPathComponent)")
+                continue
+            }
+
+            let driverType = principalClass as? any DriverPlugin.Type
+            let loaded = LoadedBundle(
+                url: entry.url,
+                source: entry.source,
+                bundle: bundle,
+                principalClassName: NSStringFromClass(principalClass),
+                pluginName: principalClass.pluginName,
+                pluginVersion: principalClass.pluginVersion,
+                pluginDescription: principalClass.pluginDescription,
+                capabilities: principalClass.capabilities,
+                databaseTypeId: driverType?.databaseTypeId,
+                additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
+                pluginIconName: driverType?.iconName ?? "puzzlepiece",
+                defaultPort: driverType?.defaultPort
+            )
+            results.append(loaded)
+        }
+        return results
+    }
+
+    /// Register pre-loaded bundles into the plugin dictionaries. Must be called on MainActor.
+    private func registerLoadedPlugins(_ loaded: [LoadedBundle]) {
+        let disabled = disabledPluginIds
+
+        for item in loaded {
+            let bundleId = item.bundle.bundleIdentifier ?? item.url.lastPathComponent
+            let entry = PluginEntry(
+                id: bundleId,
+                bundle: item.bundle,
+                url: item.url,
+                source: item.source,
+                name: item.pluginName,
+                version: item.pluginVersion,
+                pluginDescription: item.pluginDescription,
+                capabilities: item.capabilities,
+                isEnabled: !disabled.contains(bundleId),
+                databaseTypeId: item.databaseTypeId,
+                additionalTypeIds: item.additionalTypeIds,
+                pluginIconName: item.pluginIconName,
+                defaultPort: item.defaultPort
+            )
+
+            plugins.append(entry)
+
+            if let principalClass = item.bundle.principalClass as? any TableProPlugin.Type {
+                validateCapabilityDeclarations(principalClass, pluginId: bundleId)
+                if entry.isEnabled {
+                    let instance = principalClass.init()
+                    registerCapabilities(instance, pluginId: bundleId)
+                }
+            }
+
+            Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(item.source == .builtIn ? "built-in" : "user")]")
         }
     }
 
@@ -97,8 +228,9 @@ final class PluginManager {
         Self.logger.info("Discovered \(self.pendingPluginURLs.count) plugin(s), will load on first use")
     }
 
-    /// Load all discovered but not-yet-loaded plugin bundles.
-    /// Safety fallback for code paths that need plugins before the deferred Task completes.
+    /// Load all discovered but not-yet-loaded plugin bundles synchronously on MainActor.
+    /// Only used by install/uninstall paths that need immediate plugin availability.
+    /// Normal startup uses `loadPlugins()` which loads bundles off the main thread.
     func loadPendingPlugins(clearRestartFlag: Bool = false) {
         if clearRestartFlag {
             _needsRestart = false
@@ -115,6 +247,7 @@ final class PluginManager {
             }
         }
 
+        hasFinishedInitialLoad = true
         validateDependencies()
         Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
     }
@@ -458,9 +591,7 @@ final class PluginManager {
     // MARK: - Driver Availability
 
     func isDriverAvailable(for databaseType: DatabaseType) -> Bool {
-        // Safety fallback: loads pending plugins if the deferred startup Task hasn't completed yet
-        loadPendingPlugins()
-        return driverPlugins[databaseType.pluginTypeId] != nil
+        driverPlugins[databaseType.pluginTypeId] != nil
     }
 
     func isDriverLoaded(for databaseType: DatabaseType) -> Bool {
@@ -485,8 +616,7 @@ final class PluginManager {
     // MARK: - Plugin Property Lookups
 
     func driverPlugin(for databaseType: DatabaseType) -> (any DriverPlugin)? {
-        loadPendingPlugins()
-        return driverPlugins[databaseType.pluginTypeId]
+        driverPlugins[databaseType.pluginTypeId]
     }
 
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil

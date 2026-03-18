@@ -246,7 +246,8 @@ actor ConnectionHealthMonitor {
         state = newState
 
         if oldState != newState {
-            // Skip logging for routine healthy ↔ checking cycle (every 30s)
+            // Skip logging and callback for routine healthy ↔ checking ping cycles (every 30s).
+            // These produce no meaningful state change for the UI.
             let isRoutineCycle = (oldState == .healthy && newState == .checking)
                 || (oldState == .checking && newState == .healthy)
             if !isRoutineCycle {
@@ -254,9 +255,8 @@ actor ConnectionHealthMonitor {
                     level: logLevel(for: newState),
                     "Connection \(self.connectionId) health state: \(String(describing: oldState)) -> \(String(describing: newState))"
                 )
+                await onStateChanged(connectionId, newState)
             }
-
-            await onStateChanged(connectionId, newState)
         }
     }
 

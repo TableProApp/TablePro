@@ -471,8 +471,17 @@ struct DataGridView: NSViewRepresentable {
         if needsFullReload {
             tableView.reloadData()
         } else if metadataChanged {
-            // FK metadata arrived (Phase 2) — reload all cells to show FK arrow buttons
-            tableView.reloadData()
+            // FK metadata arrived (Phase 2) — reload only FK columns to show arrow buttons
+            let fkColumnIndices = IndexSet(
+                rowProvider.columns.enumerated().compactMap { index, columnName in
+                    rowProvider.columnForeignKeys[columnName] != nil ? index + 1 : nil
+                }
+            )
+            if !fkColumnIndices.isEmpty {
+                let visibleRange = tableView.rows(in: tableView.visibleRect)
+                let visibleRows = IndexSet(integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length))
+                tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
+            }
         } else if versionChanged {
             // Granular reload: only reload rows that changed
             let changedRows = changeManager.consumeChangedRowIndices()
