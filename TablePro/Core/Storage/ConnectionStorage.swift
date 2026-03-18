@@ -134,9 +134,9 @@ final class ConnectionStorage {
             color: connection.color,
             tagId: connection.tagId,
             groupId: connection.groupId,
+            sortOrder: connection.sortOrder,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
-            sortOrder: connection.sortOrder,
             redisDatabase: connection.redisDatabase,
             startupCommands: connection.startupCommands,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
@@ -558,9 +558,9 @@ private struct StoredConnection: Codable {
             color: parsedColor,
             tagId: parsedTagId,
             groupId: parsedGroupId,
+            sortOrder: sortOrder,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
-            sortOrder: sortOrder,
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             additionalFields: mergedFields
