@@ -374,6 +374,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var color: ConnectionColor
     var tagId: UUID?
     var groupId: UUID?
+    var sortOrder: Int = 0
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var additionalFields: [String: String] = [:]
@@ -428,6 +429,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         color: ConnectionColor = .none,
         tagId: UUID? = nil,
         groupId: UUID? = nil,
+        sortOrder: Int = 0,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         mongoAuthSource: String? = nil,
@@ -451,6 +453,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.color = color
         self.tagId = tagId
         self.groupId = groupId
+        self.sortOrder = sortOrder
         self.safeModeLevel = safeModeLevel
         self.aiPolicy = aiPolicy
         self.redisDatabase = redisDatabase
