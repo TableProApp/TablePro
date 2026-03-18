@@ -118,23 +118,25 @@ actor SQLSchemaProvider {
 
     /// Find table name from alias
     func resolveAlias(_ aliasOrName: String, in references: [TableReference]) -> String? {
+        let lowerName = aliasOrName.lowercased()
+
         // First check if it's an alias
         for ref in references {
-            if ref.alias?.lowercased() == aliasOrName.lowercased() {
+            if ref.alias?.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
         // Then check if it's a table name directly
         for ref in references {
-            if ref.tableName.lowercased() == aliasOrName.lowercased() {
+            if ref.tableName.lowercased() == lowerName {
                 return ref.tableName
             }
         }
 
         // Finally check against known tables
         for table in tables {
-            if table.name.lowercased() == aliasOrName.lowercased() {
+            if table.name.lowercased() == lowerName {
                 return table.name
             }
         }

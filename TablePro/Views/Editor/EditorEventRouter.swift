@@ -22,6 +22,7 @@ internal final class EditorEventRouter {
     private var rightClickMonitor: Any?
     private var clipboardMonitor: Any?
     private var windowUpdateObserver: NSObjectProtocol?
+    private var needsFirstResponderCheck = false
 
     private init() {}
 
@@ -84,10 +85,18 @@ internal final class EditorEventRouter {
             forName: NSWindow.didUpdateNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
+        ) { [weak self] _ in
             guard let self else { return }
             MainActor.assumeIsolated {
-                self.handleWindowUpdate(notification)
+                guard !self.needsFirstResponderCheck else { return }
+                self.needsFirstResponderCheck = true
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.needsFirstResponderCheck = false
+                    for ref in self.editors.values {
+                        ref.coordinator?.checkFirstResponderChange()
+                    }
+                }
             }
         }
     }
@@ -152,9 +161,4 @@ internal final class EditorEventRouter {
         return event
     }
 
-    private func handleWindowUpdate(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow,
-              let (coordinator, _) = editor(for: window) else { return }
-        coordinator.checkFirstResponderChange()
-    }
 }

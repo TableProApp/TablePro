@@ -269,32 +269,44 @@ public extension PluginDatabaseDriver {
     }
 
     private static func substituteQuestionMarks(query: String, parameters: [String?]) -> String {
+        let nsQuery = query as NSString
+        let length = nsQuery.length
         var sql = ""
         var paramIndex = 0
         var inSingleQuote = false
         var inDoubleQuote = false
         var isEscaped = false
+        var i = 0
 
-        for char in query {
+        let backslash: UInt16 = 0x5C // \\
+        let singleQuote: UInt16 = 0x27 // '
+        let doubleQuote: UInt16 = 0x22 // "
+        let questionMark: UInt16 = 0x3F // ?
+
+        while i < length {
+            let char = nsQuery.character(at: i)
+
             if isEscaped {
                 isEscaped = false
-                sql.append(char)
+                sql.append(Character(UnicodeScalar(char)!))
+                i += 1
                 continue
             }
 
-            if char == "\\" && (inSingleQuote || inDoubleQuote) {
+            if char == backslash && (inSingleQuote || inDoubleQuote) {
                 isEscaped = true
-                sql.append(char)
+                sql.append(Character(UnicodeScalar(char)!))
+                i += 1
                 continue
             }
 
-            if char == "'" && !inDoubleQuote {
+            if char == singleQuote && !inDoubleQuote {
                 inSingleQuote.toggle()
-            } else if char == "\"" && !inSingleQuote {
+            } else if char == doubleQuote && !inSingleQuote {
                 inDoubleQuote.toggle()
             }
 
-            if char == "?" && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
+            if char == questionMark && !inSingleQuote && !inDoubleQuote && paramIndex < parameters.count {
                 if let value = parameters[paramIndex] {
                     sql.append(escapedParameterValue(value))
                 } else {
@@ -302,8 +314,10 @@ public extension PluginDatabaseDriver {
                 }
                 paramIndex += 1
             } else {
-                sql.append(char)
+                sql.append(Character(UnicodeScalar(char)!))
             }
+
+            i += 1
         }
 
         return sql

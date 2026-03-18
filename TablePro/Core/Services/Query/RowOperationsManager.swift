@@ -394,12 +394,41 @@ final class RowOperationsManager {
     /// Auto-detect whether clipboard text is CSV or TSV
     /// Heuristic: if tabs appear in most lines, use TSV; otherwise CSV
     static func detectParser(for text: String) -> RowDataParser {
-        let lines = text.components(separatedBy: .newlines)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        guard !lines.isEmpty else { return TSVRowParser() }
+        // Single-pass scan: count non-empty lines containing tabs vs commas
+        var tabLines = 0
+        var commaLines = 0
+        var nonEmptyLines = 0
+        var lineHasTab = false
+        var lineHasComma = false
+        var lineIsEmpty = true
 
-        let tabCount = lines.count(where: { $0.contains("\t") })
-        let commaCount = lines.count(where: { $0.contains(",") })
+        for char in text {
+            if char.isNewline {
+                if !lineIsEmpty {
+                    nonEmptyLines += 1
+                    if lineHasTab { tabLines += 1 }
+                    if lineHasComma { commaLines += 1 }
+                }
+                lineHasTab = false
+                lineHasComma = false
+                lineIsEmpty = true
+            } else {
+                if !char.isWhitespace { lineIsEmpty = false }
+                if char == "\t" { lineHasTab = true }
+                if char == "," { lineHasComma = true }
+            }
+        }
+        // Handle last line (no trailing newline)
+        if !lineIsEmpty {
+            nonEmptyLines += 1
+            if lineHasTab { tabLines += 1 }
+            if lineHasComma { commaLines += 1 }
+        }
+
+        guard nonEmptyLines > 0 else { return TSVRowParser() }
+
+        let tabCount = tabLines
+        let commaCount = commaLines
 
         // If majority of lines have tabs, use TSV; otherwise CSV
         if tabCount > commaCount {

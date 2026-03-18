@@ -485,7 +485,7 @@ internal enum LibSSH2TunnelFactory {
                             pollfd(fd: sshSocketFD, events: Int16(POLLIN), revents: 0),
                         ]
 
-                        let pollResult = poll(&pollFDs, 2, 100)
+                        let pollResult = poll(&pollFDs, 2, 500)
                         if pollResult < 0 { break }
 
                         // Channel -> socketpair (serialized libssh2 call)

@@ -430,6 +430,7 @@ final class InlineSuggestionManager {
                 object: contentView,
                 queue: .main
             ) { [weak self] _ in
+                guard self?.currentSuggestion != nil else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if let suggestion = self.currentSuggestion {

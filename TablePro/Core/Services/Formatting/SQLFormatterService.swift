@@ -92,6 +92,10 @@ struct SQLFormatterService: SQLFormatterProtocol {
     }()
 
     /// WHERE condition alignment pattern: \s+(AND|OR)\s+
+    private static let majorKeywordRegex: NSRegularExpression = {
+        regex("\\b(ORDER|GROUP|HAVING|LIMIT|UNION|INTERSECT)\\b", options: .caseInsensitive)
+    }()
+
     private static let whereConditionRegex: NSRegularExpression = {
         regex("\\s+(AND|OR)\\s+", options: .caseInsensitive)
     }()
@@ -471,14 +475,13 @@ struct SQLFormatterService: SQLFormatterProtocol {
             return sql
         }
 
-        // Find end of WHERE clause
-        let majorKeywords = ["ORDER", "GROUP", "HAVING", "LIMIT", "UNION", "INTERSECT"]
+        // Find end of WHERE clause using single regex scan
+        let searchStart = whereRange.upperBound
+        let searchNSRange = NSRange(searchStart..<sql.endIndex, in: sql)
         var endIndex = sql.endIndex
 
-        for keyword in majorKeywords {
-            if let range = sql.range(of: keyword, options: .caseInsensitive, range: whereRange.upperBound..<sql.endIndex) {
-                endIndex = min(endIndex, range.lowerBound)
-            }
+        if let match = Self.majorKeywordRegex.firstMatch(in: sql, range: searchNSRange) {
+            endIndex = Range(match.range, in: sql)!.lowerBound
         }
 
         // Fix #3: Work with immutable substring

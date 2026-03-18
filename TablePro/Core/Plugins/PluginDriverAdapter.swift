@@ -11,6 +11,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     let connection: DatabaseConnection
     private(set) var status: ConnectionStatus = .disconnected
     private let pluginDriver: any PluginDatabaseDriver
+    private var columnTypeCache: [String: ColumnType] = [:]
 
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
@@ -421,6 +422,13 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     private func mapColumnType(rawTypeName: String) -> ColumnType {
+        if let cached = columnTypeCache[rawTypeName] { return cached }
+        let result = classifyColumnType(rawTypeName: rawTypeName)
+        columnTypeCache[rawTypeName] = result
+        return result
+    }
+
+    private func classifyColumnType(rawTypeName: String) -> ColumnType {
         let upper = rawTypeName.uppercased()
 
         if upper.contains("BOOL") {

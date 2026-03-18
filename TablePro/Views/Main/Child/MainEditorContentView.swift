@@ -115,16 +115,7 @@ struct MainEditorContentView: View {
                 initialQuery: item.query
             )
         }
-        .onChange(of: tabManager.tabs.count) {
-            // Clean up caches for closed tabs
-            let openTabIds = Set(tabManager.tabs.map(\.id))
-            sortCache = sortCache.filter { openTabIds.contains($0.key) }
-            coordinator.cleanupSortCache(openTabIds: openTabIds)
-            tabRowProviders = tabRowProviders.filter { openTabIds.contains($0.key) }
-            tabProviderVersions = tabProviderVersions.filter { openTabIds.contains($0.key) }
-            tabProviderMetaVersions = tabProviderMetaVersions.filter { openTabIds.contains($0.key) }
-        }
-        .onChange(of: tabManager.tabs.map(\.id)) { _, newIds in
+        .onChange(of: tabManager.tabIds) { _, newIds in
             let openTabIds = Set(newIds)
             sortCache = sortCache.filter { openTabIds.contains($0.key) }
             coordinator.cleanupSortCache(openTabIds: openTabIds)
@@ -462,6 +453,8 @@ struct MainEditorContentView: View {
         Binding(
             get: { tab.columnLayout },
             set: { newValue in
+                coordinator.isUpdatingColumnLayout = true
+                defer { coordinator.isUpdatingColumnLayout = false }
                 if let index = tabManager.selectedTabIndex {
                     tabManager.tabs[index].columnLayout = newValue
                 }

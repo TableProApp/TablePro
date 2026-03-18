@@ -57,6 +57,8 @@ final class PluginManager {
 
     private var pendingPluginURLs: [(url: URL, source: PluginSource)] = []
 
+    private var queryBuildingDriverCache: [String: (any PluginDatabaseDriver)?] = [:]
+
     private init() {}
 
     private func migrateDisabledPluginsKey() {
@@ -622,13 +624,19 @@ final class PluginManager {
     /// Returns a temporary plugin driver for query building (buildBrowseQuery), or nil
     /// if the plugin doesn't implement custom query building (NoSQL hooks).
     func queryBuildingDriver(for databaseType: DatabaseType) -> (any PluginDatabaseDriver)? {
-        guard let plugin = driverPlugin(for: databaseType) else { return nil }
-        let config = DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: "")
-        let driver = plugin.createDriver(config: config)
-        guard driver.buildBrowseQuery(table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0) != nil else {
+        let typeId = databaseType.pluginTypeId
+        if let cached = queryBuildingDriverCache[typeId] { return cached }
+        guard let plugin = driverPlugin(for: databaseType) else {
+            queryBuildingDriverCache[typeId] = .some(nil)
             return nil
         }
-        return driver
+        let config = DriverConnectionConfig(host: "", port: 0, username: "", password: "", database: "")
+        let driver = plugin.createDriver(config: config)
+        let result: (any PluginDatabaseDriver)? =
+            driver.buildBrowseQuery(table: "_probe", sortColumns: [], columns: [], limit: 1, offset: 0) != nil
+            ? driver : nil
+        queryBuildingDriverCache[typeId] = .some(result)
+        return result
     }
 
     func editorLanguage(for databaseType: DatabaseType) -> EditorLanguage {

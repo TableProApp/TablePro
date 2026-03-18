@@ -106,6 +106,7 @@ final class MainContentCoordinator {
 
     /// Set during handleTabChange to suppress redundant onChange(of: resultColumns) reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
+    @ObservationIgnored var isUpdatingColumnLayout = false
 
     /// Guards against re-entrant confirm dialogs (e.g. nested run loop during runModal)
     @ObservationIgnored internal var isShowingConfirmAlert = false
@@ -839,9 +840,7 @@ final class MainContentCoordinator {
                     let result = try await queryDriver.execute(query: effectiveSQL)
                     safeColumns = result.columns
                     safeColumnTypes = result.columnTypes
-                    safeRows = result.rows.enumerated().map { index, row in
-                        QueryResultRow(id: index, values: row)
-                    }
+                    safeRows = result.toQueryResultRows()
                     safeExecutionTime = result.executionTime
                     safeRowsAffected = result.rowsAffected
                 }
@@ -1187,6 +1186,21 @@ final class MainContentCoordinator {
         rows: [QueryResultRow],
         sortColumns: [SortColumn]
     ) -> [Int] {
+        // Fast path: single-column sort avoids intermediate key array allocation
+        if sortColumns.count == 1 {
+            let col = sortColumns[0]
+            let colIndex = col.columnIndex
+            let ascending = col.direction == .ascending
+            var indices = Array(0..<rows.count)
+            indices.sort { i1, i2 in
+                let v1 = colIndex < rows[i1].values.count ? (rows[i1].values[colIndex] ?? "") : ""
+                let v2 = colIndex < rows[i2].values.count ? (rows[i2].values[colIndex] ?? "") : ""
+                let cmp = v1.localizedStandardCompare(v2)
+                return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
+            }
+            return indices
+        }
+
         // Pre-extract sort keys for each row to avoid repeated access during comparison
         let sortKeys: [[String]] = rows.map { row in
             sortColumns.map { sortCol in

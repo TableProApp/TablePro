@@ -212,7 +212,9 @@ final class InMemoryRowProvider: RowProvider {
                 // Rebuild sort indices: remove this entry and adjust indices above the removed one
                 var newIndices = sorted
                 newIndices.remove(at: index)
-                newIndices = newIndices.map { $0 > bufferIdx ? $0 - 1 : $0 }
+                for i in newIndices.indices where newIndices[i] > bufferIdx {
+                    newIndices[i] -= 1
+                }
                 sortIndices = newIndices
             } else {
                 rowBuffer.rows.remove(at: index)

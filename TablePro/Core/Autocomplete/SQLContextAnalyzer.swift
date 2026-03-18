@@ -41,7 +41,7 @@ enum SQLClauseType {
 }
 
 /// Represents a table reference with optional alias
-struct TableReference: Equatable, Sendable {
+struct TableReference: Hashable, Sendable {
     let tableName: String
     let alias: String?
 
@@ -344,6 +344,7 @@ final class SQLContextAnalyzer {
 
         // Find all table references in the current statement
         var tableReferences = extractTableReferences(from: currentStatement)
+        var seenReferences = Set<TableReference>(tableReferences)
 
         // Extract CTEs from the current statement
         let cteNames = extractCTENames(from: currentStatement)
@@ -351,7 +352,7 @@ final class SQLContextAnalyzer {
         // Add CTE names as table references
         for cteName in cteNames {
             let cteRef = TableReference(tableName: cteName, alias: nil)
-            if !tableReferences.contains(cteRef) {
+            if seenReferences.insert(cteRef).inserted {
                 tableReferences.append(cteRef)
             }
         }
@@ -359,7 +360,7 @@ final class SQLContextAnalyzer {
         // Extract ALTER TABLE table name and add to references
         if let alterTableName = extractAlterTableName(from: currentStatement) {
             let alterRef = TableReference(tableName: alterTableName, alias: nil)
-            if !tableReferences.contains(alterRef) {
+            if seenReferences.insert(alterRef).inserted {
                 tableReferences.append(alterRef)
             }
         }
@@ -782,6 +783,7 @@ final class SQLContextAnalyzer {
     /// Extract all table references (table names and aliases) from the query
     private func extractTableReferences(from query: String) -> [TableReference] {
         var references: [TableReference] = []
+        var seen = Set<TableReference>()
 
         // SQL keywords that should NOT be treated as table names
         let sqlKeywords: Set<String> = [
@@ -816,7 +818,7 @@ final class SQLContextAnalyzer {
                 }
 
                 let ref = TableReference(tableName: tableName, alias: alias)
-                if !references.contains(ref) {
+                if seen.insert(ref).inserted {
                     references.append(ref)
                 }
             }

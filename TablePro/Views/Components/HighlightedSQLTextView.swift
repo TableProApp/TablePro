@@ -69,7 +69,7 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     private static let syntaxPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
         var patterns: [(NSRegularExpression, NSColor)] = []
 
-        // SQL Keywords (blue)
+        // SQL Keywords (blue) — single alternation regex for all keywords
         let keywords = [
             "CREATE", "TABLE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
             "NOT", "NULL", "DEFAULT", "UNIQUE", "INDEX", "AUTO_INCREMENT",
@@ -82,10 +82,9 @@ struct HighlightedSQLTextView: NSViewRepresentable {
             "SUM", "AVG", "MIN", "MAX", "CASE", "WHEN", "THEN", "ELSE", "END",
             "UNION", "ALL", "WITH", "RECURSIVE"
         ]
-        for keyword in keywords {
-            if let regex = try? NSRegularExpression(pattern: "\\b\(keyword)\\b", options: .caseInsensitive) {
-                patterns.append((regex, .systemBlue))
-            }
+        let keywordPattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
+        if let regex = try? NSRegularExpression(pattern: keywordPattern, options: .caseInsensitive) {
+            patterns.append((regex, .systemBlue))
         }
 
         // Strings (red)
@@ -111,17 +110,16 @@ struct HighlightedSQLTextView: NSViewRepresentable {
     private static let mqlPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
         var patterns: [(NSRegularExpression, NSColor)] = []
 
-        // MongoDB methods (blue)
+        // MongoDB methods (blue) — single alternation regex for all methods
         let methods = [
             "find", "findOne", "insertOne", "insertMany", "updateOne", "updateMany",
             "deleteOne", "deleteMany", "aggregate", "countDocuments", "estimatedDocumentCount",
             "distinct", "createIndex", "dropIndex", "sort", "limit", "skip", "project",
             "match", "group", "unwind", "lookup", "replaceOne", "drop"
         ]
-        for method in methods {
-            if let regex = try? NSRegularExpression(pattern: "\\.(\(method))\\s*\\(", options: []) {
-                patterns.append((regex, .systemBlue))
-            }
+        let methodPattern = "\\.(" + methods.joined(separator: "|") + ")\\s*\\("
+        if let regex = try? NSRegularExpression(pattern: methodPattern, options: []) {
+            patterns.append((regex, .systemBlue))
         }
 
         // db. prefix (blue)

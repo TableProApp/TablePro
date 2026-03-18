@@ -672,6 +672,7 @@ struct MainContentView: View {
         // Don't persist during teardown — SwiftUI may fire onChange with empty tabs
         // as the view is being deallocated
         guard !coordinator.isTearingDown else { return }
+        guard !coordinator.isUpdatingColumnLayout else { return }
 
         // Promote preview tab if user has interacted with it
         if let tab = tabManager.selectedTab, tab.isPreview, tab.hasUserInteraction {

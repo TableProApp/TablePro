@@ -517,6 +517,8 @@ final class QueryTabManager {
     var tabs: [QueryTab] = []
     var selectedTabId: UUID?
 
+    var tabIds: [UUID] { tabs.map(\.id) }
+
     var selectedTab: QueryTab? {
         guard let id = selectedTabId else { return tabs.first }
         return tabs.first { $0.id == id }

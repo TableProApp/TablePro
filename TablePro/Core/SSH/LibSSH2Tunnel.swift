@@ -358,7 +358,7 @@ internal final class LibSSH2Tunnel: @unchecked Sendable {
                 pollfd(fd: self.socketFD, events: Int16(POLLIN), revents: 0),
             ]
 
-            let pollResult = poll(&pollFDs, 2, 100) // 100ms timeout
+            let pollResult = poll(&pollFDs, 2, 500) // 500ms timeout
             if pollResult < 0 { break }
 
             // Read from SSH channel when the SSH socket has data or on timeout

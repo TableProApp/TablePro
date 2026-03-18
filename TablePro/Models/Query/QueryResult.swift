@@ -43,9 +43,12 @@ struct QueryResult {
 
     /// Convert to QueryResultRow format for UI
     func toQueryResultRows() -> [QueryResultRow] {
-        rows.enumerated().map { index, row in
-            QueryResultRow(id: index, values: row)
+        var result = [QueryResultRow]()
+        result.reserveCapacity(rows.count)
+        for (index, row) in rows.enumerated() {
+            result.append(QueryResultRow(id: index, values: row))
         }
+        return result
     }
 
     static let empty = QueryResult(

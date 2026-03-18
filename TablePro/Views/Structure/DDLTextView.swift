@@ -61,17 +61,16 @@ struct DDLTextView: NSViewRepresentable {
     private static let syntaxPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
         var patterns: [(NSRegularExpression, NSColor)] = []
 
-        // SQL Keywords (blue)
+        // SQL Keywords (blue) — single alternation regex for all keywords
         let keywords = [
             "CREATE", "TABLE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
             "NOT", "NULL", "DEFAULT", "UNIQUE", "INDEX", "AUTO_INCREMENT",
             "ON", "DELETE", "UPDATE", "CASCADE", "RESTRICT", "SET",
             "INT", "INTEGER", "VARCHAR", "CHAR", "TEXT", "TIMESTAMP", "DATETIME"
         ]
-        for keyword in keywords {
-            if let regex = try? NSRegularExpression(pattern: "\\b\(keyword)\\b", options: .caseInsensitive) {
-                patterns.append((regex, .systemBlue))
-            }
+        let keywordPattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
+        if let regex = try? NSRegularExpression(pattern: keywordPattern, options: .caseInsensitive) {
+            patterns.append((regex, .systemBlue))
         }
 
         // Strings (red)
