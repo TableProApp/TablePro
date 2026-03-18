@@ -165,6 +165,8 @@ public extension PluginDatabaseDriver {
 
     func fetchApproximateRowCount(table: String, schema: String?) async throws -> Int? { nil }
 
+    /// Default: fetches columns per-table sequentially (N+1 round-trips).
+    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.COLUMNS).
     func fetchAllColumns(schema: String?) async throws -> [String: [PluginColumnInfo]] {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginColumnInfo]] = [:]
@@ -174,6 +176,8 @@ public extension PluginDatabaseDriver {
         return result
     }
 
+    /// Default: fetches foreign keys per-table sequentially (N+1 round-trips).
+    /// SQL drivers should override with a single bulk query (e.g. INFORMATION_SCHEMA.KEY_COLUMN_USAGE).
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
         let tables = try await fetchTables(schema: schema)
         var result: [String: [PluginForeignKeyInfo]] = [:]

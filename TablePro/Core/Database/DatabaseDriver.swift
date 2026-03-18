@@ -231,17 +231,9 @@ extension DatabaseDriver {
     }
 
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]] {
-        var result: [String: [ForeignKeyInfo]] = [:]
-        for name in tableNames {
-            do {
-                let fks = try await fetchForeignKeys(table: name)
-                if !fks.isEmpty { result[name] = fks }
-            } catch {
-                Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
-                    .debug("Failed to fetch foreign keys for \(name): \(error.localizedDescription)")
-            }
-        }
-        return result
+        let all = try await fetchAllForeignKeys()
+        let nameSet = Set(tableNames)
+        return all.filter { nameSet.contains($0.key) }
     }
 
     /// Default fetchAllColumns: falls back to per-table fetchColumns (N+1).

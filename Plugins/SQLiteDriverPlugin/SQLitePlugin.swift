@@ -551,13 +551,44 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchAllForeignKeys(schema: String?) async throws -> [String: [PluginForeignKeyInfo]] {
-        let tables = try await fetchTables(schema: schema)
-        var result: [String: [PluginForeignKeyInfo]] = [:]
-        for table in tables {
-            let fks = try await fetchForeignKeys(table: table.name, schema: schema)
-            if !fks.isEmpty { result[table.name] = fks }
+        let query = """
+            SELECT m.name AS table_name, p.id, p."table" AS referenced_table,
+                   p."from" AS column_name, p."to" AS referenced_column,
+                   p.on_update, p.on_delete
+            FROM sqlite_master m, pragma_foreign_key_list(m.name) p
+            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+            ORDER BY m.name, p.id, p.seq
+            """
+        let result = try await execute(query: query)
+
+        var allForeignKeys: [String: [PluginForeignKeyInfo]] = [:]
+
+        for row in result.rows {
+            guard row.count >= 7,
+                  let tableName = row[0],
+                  let id = row[1],
+                  let refTable = row[2],
+                  let fromCol = row[3],
+                  let toCol = row[4] else {
+                continue
+            }
+
+            let onUpdate = row[5] ?? "NO ACTION"
+            let onDelete = row[6] ?? "NO ACTION"
+
+            let fk = PluginForeignKeyInfo(
+                name: "fk_\(tableName)_\(id)",
+                column: fromCol,
+                referencedTable: refTable,
+                referencedColumn: toCol,
+                onDelete: onDelete,
+                onUpdate: onUpdate
+            )
+
+            allForeignKeys[tableName, default: []].append(fk)
         }
-        return result
+
+        return allForeignKeys
     }
 
     func fetchIndexes(table: String, schema: String?) async throws -> [PluginIndexInfo] {
