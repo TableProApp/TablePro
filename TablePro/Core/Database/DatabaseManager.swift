@@ -43,12 +43,12 @@ final class DatabaseManager {
     private(set) var currentSessionId: UUID?
 
     /// Health monitors for active connections (MySQL/PostgreSQL only)
-    private var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
+    @ObservationIgnored private var healthMonitors: [UUID: ConnectionHealthMonitor] = [:]
 
     /// Tracks connections with user queries currently in-flight.
     /// The health monitor skips pings while a query is running to avoid
     /// racing on non-thread-safe driver connections.
-    private var queriesInFlight: [UUID: Int] = [:]
+    @ObservationIgnored private var queriesInFlight: [UUID: Int] = [:]
 
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
