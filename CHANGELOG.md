@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cloudflare D1 database support
+- Match highlighting in autocomplete suggestions (matched characters shown in bold)
+- Loading spinner in autocomplete popup while fetching column metadata
+
+### Changed
+
+- Refactored autocomplete popup to native SwiftUI (visible selection highlight, native accent color, scroll-to-selection)
+- Autocomplete now suppresses noisy empty-prefix suggestions in non-browseable contexts (e.g., after SELECT, WHERE)
+- Autocomplete ranking stays consistent as you type (unified fuzzy scoring between initial display and live filtering)
+- Increased autocomplete suggestion limit from 20 to 40 for schema-heavy contexts (FROM, SELECT, WHERE)
+
 ## [0.20.4] - 2026-03-19
 
 ### Fixed

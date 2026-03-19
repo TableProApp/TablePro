@@ -23,4 +23,11 @@ public protocol CodeSuggestionEntry {
     var imageColor: Color { get }
 
     var deprecated: Bool { get }
+
+    /// Character index ranges in the label that matched the user's typed prefix.
+    var matchedRanges: [Range<Int>] { get }
+}
+
+public extension CodeSuggestionEntry {
+    var matchedRanges: [Range<Int>] { [] }
 }

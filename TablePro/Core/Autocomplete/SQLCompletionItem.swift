@@ -76,6 +76,7 @@ struct SQLCompletionItem: Identifiable, Hashable {
     let documentation: String?  // Tooltip/description
     var sortPriority: Int       // For ranking (lower = higher priority)
     let filterText: String      // Text used for matching
+    var matchedRanges: [Range<Int>] = []
 
     init(
         label: String,

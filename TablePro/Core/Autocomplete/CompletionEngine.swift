@@ -19,7 +19,7 @@ struct CompletionContext {
 final class CompletionEngine {
     // MARK: - Properties
 
-    private let provider: SQLCompletionProvider
+    let provider: SQLCompletionProvider
 
     /// Size threshold (in UTF-16 code units) above which we extract a local
     /// window around the cursor instead of passing the full document to the

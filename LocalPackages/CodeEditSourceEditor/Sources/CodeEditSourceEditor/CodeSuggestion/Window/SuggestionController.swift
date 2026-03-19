@@ -8,6 +8,7 @@
 import AppKit
 import CodeEditTextView
 import Combine
+import SwiftUI
 
 public final class SuggestionController: NSWindowController {
     static var shared: SuggestionController = SuggestionController()
@@ -35,19 +36,38 @@ public final class SuggestionController: NSWindowController {
 
     /// Holds the observer for the window resign notifications
     private var windowResignObserver: NSObjectProtocol?
+    /// Closes autocomplete when first responder changes away from the active text view
+    private var firstResponderObserver: NSObjectProtocol?
+    private var localEventMonitor: Any?
+    private var sizeObservers: Set<AnyCancellable> = []
 
     // MARK: - Initialization
 
     public init() {
         let window = Self.makeWindow()
-
-        let controller = SuggestionViewController()
-        controller.model = model
-        window.contentViewController = controller
-
         super.init(window: window)
 
-        controller.windowController = self
+        let contentView = SuggestionContentView(model: model)
+        let hostingView = NSHostingView(rootView: contentView)
+        window.contentView = hostingView
+
+        model.$items
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateWindowSizeFromContent()
+                }
+            }
+            .store(in: &sizeObservers)
+
+        model.$selectedIndex
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.updateWindowSizeFromContent()
+                }
+            }
+            .store(in: &sizeObservers)
 
         if window.isVisible {
             window.close()
@@ -71,6 +91,8 @@ public final class SuggestionController: NSWindowController {
             delegate: delegate,
             cursorPosition: cursorPosition
         ) { parentWindow, cursorRect in
+            self.model.updateTheme(from: textView)
+
             if asPopover {
                 self.popover?.close()
                 self.popover = nil
@@ -80,22 +102,13 @@ public final class SuggestionController: NSWindowController {
                 let popover = NSPopover()
                 popover.behavior = .transient
 
-                let controller = SuggestionViewController()
-                controller.model = self.model
-                controller.windowController = self
-                controller.tableView.reloadData()
-                controller.styleView(using: textView)
-
+                let controller = NSHostingController(rootView: SuggestionContentView(model: self.model))
                 popover.contentViewController = controller
                 popover.show(relativeTo: textViewPosition, of: textView.textView, preferredEdge: .maxY)
                 self.popover = popover
             } else {
                 self.showWindow(attachedTo: parentWindow)
                 self.constrainWindowToScreenEdges(cursorRect: cursorRect, font: textView.font)
-
-                if let controller = self.contentViewController as? SuggestionViewController {
-                    controller.styleView(using: textView)
-                }
             }
         }
     }
@@ -105,8 +118,6 @@ public final class SuggestionController: NSWindowController {
         guard let window = window else { return }
         parentWindow.addChildWindow(window, ordered: .above)
 
-        // Close on window switch observer
-        // Initialized outside of `setupEventMonitors` in order to grab the parent window
         if let existingObserver = windowResignObserver {
             NotificationCenter.default.removeObserver(existingObserver)
         }
@@ -118,20 +129,39 @@ public final class SuggestionController: NSWindowController {
             self?.close()
         }
 
+        // Close when the active text view is removed (e.g., tab closed/switched)
+        if let existingObserver = firstResponderObserver {
+            NotificationCenter.default.removeObserver(existingObserver)
+        }
+        firstResponderObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didUpdateNotification,
+            object: parentWindow,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            if self.model.activeTextView == nil || self.model.activeTextView?.view.window == nil {
+                self.close()
+            }
+        }
+
+        setupEventMonitors()
         super.showWindow(nil)
         window.orderFront(nil)
-        window.contentViewController?.viewWillAppear()
     }
 
     /// Close the window
     public override func close() {
         model.willClose()
+        removeEventMonitors()
+
+        if let observer = firstResponderObserver {
+            NotificationCenter.default.removeObserver(observer)
+            firstResponderObserver = nil
+        }
 
         if popover != nil {
             popover?.close()
             popover = nil
-        } else {
-            contentViewController?.viewWillDisappear()
         }
 
         super.close()
@@ -161,6 +191,47 @@ public final class SuggestionController: NSWindowController {
                     asPopover: asPopover
                 )
             }
+        }
+    }
+
+    // MARK: - Keyboard Event Monitoring
+
+    private func setupEventMonitors() {
+        removeEventMonitors()
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+
+            // Close if the active text view was removed from its window (e.g., tab closed)
+            if self.model.activeTextView == nil || self.model.activeTextView?.view.window == nil {
+                self.close()
+                return event
+            }
+
+            switch event.keyCode {
+            case 53: // Escape
+                self.close()
+                return nil
+            case 125: // Down Arrow
+                self.model.moveDown()
+                return nil
+            case 126: // Up Arrow
+                self.model.moveUp()
+                return nil
+            case 36, 48: // Return, Tab
+                if let item = self.model.selectedItem {
+                    self.model.applySelectedItem(item: item, window: self.window)
+                }
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    private func removeEventMonitors() {
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
         }
     }
 }

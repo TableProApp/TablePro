@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import SwiftUI
 
 extension SuggestionController {
     /// Will constrain the window's frame to be within the visible screen
@@ -77,6 +78,14 @@ extension SuggestionController {
         if isWindowAboveCursor && oldFrame.size.height != newSize.height {
             window.setFrameOrigin(oldFrame.origin)
         }
+    }
+
+    func updateWindowSizeFromContent() {
+        guard let hostingView = window?.contentView as? NSHostingView<SuggestionContentView> else { return }
+        let fitting = hostingView.fittingSize
+        let minWidth: CGFloat = 256
+        let newSize = NSSize(width: max(fitting.width, minWidth), height: fitting.height)
+        updateWindowSize(newSize: newSize)
     }
 
     // MARK: - Private Methods
