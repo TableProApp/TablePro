@@ -83,11 +83,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
-        var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmed.caseInsensitiveCompare("SELECT") == .orderedSame {
-            trimmed = "SELECT 0"
-        }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Health monitor sends "SELECT 1" as a ping — intercept and remap to PING.
         if trimmed.lowercased() == "select 1" {
@@ -782,7 +778,7 @@ private extension RedisPluginDriver {
         switch operation {
         case .lrange(let key, let start, let stop):
             let result = try await conn.executeCommand(["LRANGE", key, String(start), String(stop)])
-            return buildListResult(result, startTime: startTime)
+            return buildListResult(result, startOffset: start, startTime: startTime)
 
         case .lpush(let key, let values):
             let args = ["LPUSH", key] + values
@@ -1216,9 +1212,9 @@ private extension RedisPluginDriver {
         case "set":
             return ["SSCAN", key, "0", "COUNT", String(Self.previewLimit)]
         case "zset":
-            return ["ZRANGE", key, "0", String(Self.previewLimit - 1)]
+            return ["ZRANGE", key, "0", String(Self.previewLimit - 1), "WITHSCORES"]
         case "stream":
-            return ["XLEN", key]
+            return ["XREVRANGE", key, "+", "-", "COUNT", "5"]
         default:
             return nil
         }
@@ -1271,13 +1267,37 @@ private extension RedisPluginDriver {
             return truncatePreview("[\(quoted.joined(separator: ", "))]")
 
         case "zset":
-            guard let members = reply.stringArrayValue else { return "[]" }
-            let quoted = members.map { "\"\(escapeJsonString($0))\"" }
-            return truncatePreview("[\(quoted.joined(separator: ", "))]")
+            // Parse WITHSCORES result: alternating member, score pairs
+            guard let items = reply.stringArrayValue, !items.isEmpty else { return "[]" }
+            var pairs: [String] = []
+            var i = 0
+            while i + 1 < items.count {
+                pairs.append("\(items[i]):\(items[i + 1])")
+                i += 2
+            }
+            return truncatePreview(pairs.joined(separator: ", "))
 
         case "stream":
-            let len = reply.intValue ?? 0
-            return "(\(len) entries)"
+            // Parse XREVRANGE result: array of [id, [field, value, ...]] entries
+            guard let entries = reply.arrayValue, !entries.isEmpty else {
+                return "(0 entries)"
+            }
+            var entryStrings: [String] = []
+            for entry in entries {
+                guard let parts = entry.arrayValue, parts.count >= 2,
+                      let entryId = parts[0].stringValue,
+                      let fields = parts[1].stringArrayValue else {
+                    continue
+                }
+                var fieldPairs: [String] = []
+                var j = 0
+                while j + 1 < fields.count {
+                    fieldPairs.append("\(fields[j])=\(fields[j + 1])")
+                    j += 2
+                }
+                entryStrings.append("\(entryId): \(fieldPairs.joined(separator: ", "))")
+            }
+            return truncatePreview(entryStrings.joined(separator: "; "))
 
         default:
             return nil
@@ -1430,7 +1450,7 @@ private extension RedisPluginDriver {
         )
     }
 
-    func buildListResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
+    func buildListResult(_ result: RedisReply, startOffset: Int = 0, startTime: Date) -> PluginQueryResult {
         guard let array = result.stringArrayValue else {
             return PluginQueryResult(
                 columns: ["Index", "Value"],
@@ -1442,7 +1462,7 @@ private extension RedisPluginDriver {
         }
 
         let rows = array.enumerated().map { index, value -> [String?] in
-            [String(index), value]
+            [String(startOffset + index), value]
         }
 
         return PluginQueryResult(
