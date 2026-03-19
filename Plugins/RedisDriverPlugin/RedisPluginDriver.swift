@@ -187,33 +187,41 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw RedisPluginError.notConnected
         }
 
+        // Parse key counts from INFO keyspace
         let result = try await conn.executeCommand(["INFO", "keyspace"])
-        guard let info = result.stringValue else { return [] }
+        var keyCounts: [String: Int] = [:]
+        if let info = result.stringValue {
+            for line in info.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("db"),
+                      let colonIndex = trimmed.firstIndex(of: ":") else { continue }
 
-        var databases: [PluginTableInfo] = []
-        for line in info.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.hasPrefix("db"),
-                  let colonIndex = trimmed.firstIndex(of: ":") else { continue }
+                let dbName = String(trimmed[trimmed.startIndex ..< colonIndex])
+                let statsStr = String(trimmed[trimmed.index(after: colonIndex)...])
 
-            let dbName = String(trimmed[trimmed.startIndex ..< colonIndex])
-            let statsStr = String(trimmed[trimmed.index(after: colonIndex)...])
-
-            var keyCount = 0
-            for stat in statsStr.components(separatedBy: ",") {
-                let parts = stat.components(separatedBy: "=")
-                if parts.count == 2, parts[0] == "keys", let count = Int(parts[1]) {
-                    keyCount = count
-                    break
+                for stat in statsStr.components(separatedBy: ",") {
+                    let parts = stat.components(separatedBy: "=")
+                    if parts.count == 2, parts[0] == "keys", let count = Int(parts[1]) {
+                        keyCounts[dbName] = count
+                        break
+                    }
                 }
-            }
-
-            if keyCount > 0 {
-                databases.append(PluginTableInfo(name: dbName, type: "TABLE", rowCount: keyCount))
             }
         }
 
-        return databases
+        // Get total database count from CONFIG GET databases
+        let configResult = try await conn.executeCommand(["CONFIG", "GET", "databases"])
+        var maxDatabases = 16
+        if let array = configResult.stringArrayValue, array.count >= 2, let count = Int(array[1]) {
+            maxDatabases = count
+        }
+
+        // Return all databases (including empty ones) so users can navigate to them
+        return (0 ..< maxDatabases).map { index in
+            let dbName = "db\(index)"
+            let keyCount = keyCounts[dbName] ?? 0
+            return PluginTableInfo(name: dbName, type: "TABLE", rowCount: keyCount)
+        }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
@@ -309,7 +317,15 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchDatabases() async throws -> [String] {
-        []
+        guard let conn = redisConnection else {
+            throw RedisPluginError.notConnected
+        }
+        let result = try await conn.executeCommand(["CONFIG", "GET", "databases"])
+        var maxDatabases = 16
+        if let array = result.stringArrayValue, array.count >= 2, let count = Int(array[1]) {
+            maxDatabases = count
+        }
+        return (0 ..< maxDatabases).map { "db\($0)" }
     }
 
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata {
@@ -377,10 +393,26 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func switchDatabase(to database: String) async throws {
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
-        guard let dbIndex = Int(database) ?? Int(database.dropFirst(2)) else {
+        let dbIndex: Int
+        if let idx = Int(database) {
+            dbIndex = idx
+        } else if database.lowercased().hasPrefix("db"), let idx = Int(database.dropFirst(2)) {
+            dbIndex = idx
+        } else {
             throw RedisPluginError(code: 0, message: "Invalid database index: \(database)")
         }
         try await conn.selectDatabase(dbIndex)
+    }
+
+    // MARK: - Table Operations
+
+    func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? {
+        ["FLUSHDB"]
+    }
+
+    func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
+        // Redis databases are pre-allocated and cannot be dropped
+        nil
     }
 
     // MARK: - EXPLAIN
@@ -662,7 +694,10 @@ private extension RedisPluginDriver {
             return buildStatusResult(success ? "OK" : "Key not found or no TTL", startTime: startTime)
 
         case .rename(let key, let newKey):
-            _ = try await conn.executeCommand(["RENAME", key, newKey])
+            let reply = try await conn.executeCommand(["RENAME", key, newKey])
+            if case .error(let msg) = reply {
+                throw RedisPluginError(code: 0, message: "RENAME failed: \(msg)")
+            }
             return buildStatusResult("OK", startTime: startTime)
 
         case .exists(let keys):
@@ -1260,14 +1295,19 @@ private extension RedisPluginDriver {
 
     func escapeJsonString(_ str: String) -> String {
         var result = ""
-        for char in str {
-            switch char {
+        for scalar in str.unicodeScalars {
+            switch scalar {
             case "\\": result += "\\\\"
             case "\"": result += "\\\""
             case "\n": result += "\\n"
             case "\r": result += "\\r"
             case "\t": result += "\\t"
-            default: result.append(char)
+            default:
+                if scalar.value < 0x20 {
+                    result += String(format: "\\u%04X", scalar.value)
+                } else {
+                    result += String(scalar)
+                }
             }
         }
         return result
