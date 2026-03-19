@@ -196,30 +196,46 @@ extension MainContentCoordinator {
         connectionType: DatabaseType,
         schemaResult: SchemaResult?
     ) {
+        let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+
+        // Phase 2a: Exact row count
+        // Redis/non-SQL drivers don't support SELECT COUNT(*); use approximate count instead.
         Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !self.isTearingDown else { return }
             guard let mainDriver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let quotedTable = mainDriver.quoteIdentifier(tableName)
-            let countResult = try? await mainDriver.execute(
-                query: "SELECT COUNT(*) FROM \(quotedTable)"
-            )
-            if let firstRow = countResult?.rows.first,
-               let countStr = firstRow.first ?? nil,
-               let count = Int(countStr) {
+
+            let count: Int?
+            if isNonSQL {
+                count = try? await mainDriver.fetchApproximateRowCount(table: tableName)
+            } else {
+                let quotedTable = mainDriver.quoteIdentifier(tableName)
+                let countResult = try? await mainDriver.execute(
+                    query: "SELECT COUNT(*) FROM \(quotedTable)"
+                )
+                if let firstRow = countResult?.rows.first,
+                   let countStr = firstRow.first ?? nil {
+                    count = Int(countStr)
+                } else {
+                    count = nil
+                }
+            }
+
+            if let count {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     guard capturedGeneration == queryGeneration else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         tabManager.tabs[idx].pagination.totalRowCount = count
-                        tabManager.tabs[idx].pagination.isApproximateRowCount = false
+                        tabManager.tabs[idx].pagination.isApproximateRowCount = isNonSQL
                     }
                 }
             }
         }
 
-        // Phase 2b: Fetch enum/set values
+        // Phase 2b: Fetch enum/set values (not applicable for non-SQL databases)
+        guard !isNonSQL else { return }
         guard let enumDriver = DatabaseManager.shared.driver(for: connectionId) else { return }
         Task { [weak self] in
             guard let self else { return }
@@ -270,21 +286,34 @@ extension MainContentCoordinator {
         capturedGeneration: Int,
         connectionType: DatabaseType
     ) {
+        let isNonSQL = PluginManager.shared.editorLanguage(for: connectionType) != .sql
+
         Task { [weak self] in
             guard let self else { return }
             guard let mainDriver = DatabaseManager.shared.driver(for: connectionId) else { return }
-            let quotedTable = mainDriver.quoteIdentifier(tableName)
-            let countResult = try? await mainDriver.execute(
-                query: "SELECT COUNT(*) FROM \(quotedTable)"
-            )
-            if let firstRow = countResult?.rows.first,
-               let countStr = firstRow.first ?? nil,
-               let count = Int(countStr) {
+
+            let count: Int?
+            if isNonSQL {
+                count = try? await mainDriver.fetchApproximateRowCount(table: tableName)
+            } else {
+                let quotedTable = mainDriver.quoteIdentifier(tableName)
+                let countResult = try? await mainDriver.execute(
+                    query: "SELECT COUNT(*) FROM \(quotedTable)"
+                )
+                if let firstRow = countResult?.rows.first,
+                   let countStr = firstRow.first ?? nil {
+                    count = Int(countStr)
+                } else {
+                    count = nil
+                }
+            }
+
+            if let count {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         tabManager.tabs[idx].pagination.totalRowCount = count
-                        tabManager.tabs[idx].pagination.isApproximateRowCount = false
+                        tabManager.tabs[idx].pagination.isApproximateRowCount = isNonSQL
                     }
                 }
             }

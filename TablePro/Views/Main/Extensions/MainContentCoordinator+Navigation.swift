@@ -431,18 +431,26 @@ extension MainContentCoordinator {
     /// Select a Redis database index and then run the query.
     /// Redis sidebar clicks go through openTableTab (sync), so we need a Task
     /// to call the async selectDatabase before executing the query.
+    /// Cancels any previous in-flight switch to prevent race conditions
+    /// from rapid sidebar clicks.
     private func selectRedisDatabaseAndQuery(_ dbIndex: Int) {
+        cancelRedisDatabaseSwitchTask()
+
         let connId = connectionId
         let database = String(dbIndex)
-        Task { @MainActor in
+        redisDatabaseSwitchTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
                 if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {
                     try await adapter.switchDatabase(to: String(dbIndex))
                 }
             } catch {
-                navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                if !Task.isCancelled {
+                    navigationLogger.error("Failed to SELECT Redis db\(dbIndex): \(error.localizedDescription, privacy: .public)")
+                }
                 return
             }
+            guard !Task.isCancelled else { return }
             DatabaseManager.shared.updateSession(connId) { session in
                 session.currentDatabase = database
             }

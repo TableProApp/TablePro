@@ -17,9 +17,36 @@ extension MainContentCoordinator {
         "RENAME ", "GRANT ", "REVOKE ",
     ]
 
+    /// Redis commands that modify data
+    private static let redisWriteCommands: Set<String> = [
+        "SET", "DEL", "HSET", "HDEL", "HMSET", "LPUSH", "RPUSH", "LPOP", "RPOP",
+        "SADD", "SREM", "ZADD", "ZREM", "EXPIRE", "PERSIST", "RENAME",
+        "FLUSHDB", "FLUSHALL", "MSET", "APPEND", "INCR", "DECR", "INCRBY",
+        "DECRBY", "SETEX", "PSETEX", "SETNX", "GETSET", "GETDEL",
+        "XADD", "XTRIM", "XDEL",
+    ]
+
+    /// Redis commands that are destructive
+    private static let redisDangerousCommands: Set<String> = [
+        "FLUSHDB", "FLUSHALL", "DEBUG", "SHUTDOWN",
+    ]
+
     /// Check if a SQL statement is a write operation (modifies data or schema)
     func isWriteQuery(_ sql: String) -> Bool {
-        let uppercased = sql.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Redis: check the first token against known write commands
+        if connection.type == .redis {
+            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
+            // CONFIG SET is a write; plain CONFIG GET is not
+            if firstToken == "CONFIG" {
+                let rest = trimmed.dropFirst(firstToken.count).trimmingCharacters(in: .whitespaces)
+                return rest.uppercased().hasPrefix("SET")
+            }
+            return Self.redisWriteCommands.contains(firstToken)
+        }
+
+        let uppercased = trimmed.uppercased()
         return Self.writeQueryPrefixes.contains { uppercased.hasPrefix($0) }
     }
 
@@ -30,7 +57,20 @@ extension MainContentCoordinator {
 
     /// Check if a query is potentially dangerous (DROP, TRUNCATE, DELETE without WHERE)
     func isDangerousQuery(_ sql: String) -> Bool {
-        let uppercased = sql.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Redis: check for destructive commands
+        if connection.type == .redis {
+            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
+            // CONFIG SET is dangerous
+            if firstToken == "CONFIG" {
+                let rest = trimmed.dropFirst(firstToken.count).trimmingCharacters(in: .whitespaces)
+                return rest.uppercased().hasPrefix("SET")
+            }
+            return Self.redisDangerousCommands.contains(firstToken)
+        }
+
+        let uppercased = trimmed.uppercased()
 
         // Check for DROP
         if uppercased.hasPrefix("DROP ") {
