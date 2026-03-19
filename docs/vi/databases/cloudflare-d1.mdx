@@ -1,0 +1,210 @@
+---
+title: Cloudflare D1
+description: Kết nối cơ sở dữ liệu Cloudflare D1 với TablePro
+---
+
+# Kết nối Cloudflare D1
+
+TablePro hỗ trợ Cloudflare D1, cơ sở dữ liệu serverless tương thích SQLite. TablePro kết nối qua REST API của Cloudflare bằng API token, không cần kết nối trực tiếp hay SSH tunnel.
+
+## Cài đặt Plugin
+
+Driver Cloudflare D1 có sẵn dưới dạng plugin tải về. Khi bạn chọn Cloudflare D1 trong form kết nối, TablePro sẽ tự động nhắc bạn cài đặt. Bạn cũng có thể cài đặt thủ công:
+
+1. Mở **Cài đặt** > **Plugin** > **Duyệt**
+2. Tìm **Cloudflare D1 Driver** và nhấn **Cài đặt**
+3. Plugin được tải và kích hoạt ngay lập tức, không cần khởi động lại
+
+## Thiết lập Nhanh
+
+<Steps>
+  <Step title="Mở Biểu mẫu Kết nối">
+    Nhấp **New Connection** từ màn hình Chào mừng hoặc **File** > **New Connection**
+  </Step>
+  <Step title="Chọn Cloudflare D1">
+    Chọn **Cloudflare D1** từ bộ chọn loại cơ sở dữ liệu
+  </Step>
+  <Step title="Nhập Thông tin Kết nối">
+    Điền tên database (hoặc UUID), Account ID và API token của Cloudflare
+  </Step>
+  <Step title="Kiểm tra và Kết nối">
+    Nhấp **Test Connection**, sau đó nhấp **Create**
+  </Step>
+</Steps>
+
+## Cài đặt Kết nối
+
+### Trường Bắt buộc
+
+| Trường | Mô tả |
+|--------|-------|
+| **Name** | Tên định danh kết nối |
+| **Database** | Tên hoặc UUID của database D1 |
+| **Account ID** | Account ID của Cloudflare |
+| **API Token** | API token có quyền D1 |
+
+<Tip>
+Bạn có thể dùng tên database (ví dụ: `my-app-db`) hoặc UUID. Nếu dùng tên, TablePro sẽ tự động chuyển đổi sang UUID qua API Cloudflare.
+</Tip>
+
+## Lấy Thông tin Xác thực
+
+### Account ID
+
+Tìm Account ID trên [bảng điều khiển Cloudflare](https://dash.cloudflare.com) ở thanh bên phải, hoặc chạy:
+
+```bash
+npx wrangler whoami
+```
+
+### API Token
+
+1. Truy cập [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. Nhấp **Create Token**
+3. Chọn mẫu **Custom token**
+4. Thêm quyền: **Account** > **D1** > **Edit**
+5. Lưu và sao chép token
+
+<Warning>
+Bảo quản API token cẩn thận. TablePro lưu token trong macOS Keychain, nhưng token cho phép truy cập tất cả database D1 trong tài khoản.
+</Warning>
+
+### Tạo Database D1
+
+Nếu chưa có database D1:
+
+```bash
+# Cài đặt Wrangler CLI
+npm install -g wrangler
+
+# Đăng nhập Cloudflare
+wrangler login
+
+# Tạo database
+wrangler d1 create my-app-db
+
+# Thêm dữ liệu test
+wrangler d1 execute my-app-db --remote \
+  --command "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)"
+wrangler d1 execute my-app-db --remote \
+  --command "INSERT INTO users VALUES (1, 'Alice', 'alice@example.com')"
+```
+
+Bạn cũng có thể tạo database trực tiếp từ TablePro bằng nút **Create Database** trong bộ chuyển database.
+
+## Ví dụ Cấu hình
+
+```
+Name:       My D1 Database
+Database:   my-app-db
+Account ID: abc123def456
+API Token:  (API token Cloudflare của bạn)
+```
+
+## Tính năng
+
+### Duyệt Database
+
+Sau khi kết nối, sử dụng bộ chuyển database trên thanh công cụ để liệt kê và chuyển đổi giữa các database D1 trong tài khoản Cloudflare. Thanh bên hiển thị các bảng và view trong database đã chọn.
+
+### Duyệt Bảng
+
+Với mỗi bảng, TablePro hiển thị:
+
+- **Cấu trúc**: Cột với kiểu dữ liệu SQLite, khả năng null, giá trị mặc định và thông tin khóa chính
+- **Chỉ mục**: Chỉ mục B-tree với chi tiết cột
+- **Khóa ngoại**: Ràng buộc khóa ngoại với bảng tham chiếu
+- **DDL**: Câu lệnh CREATE TABLE đầy đủ
+
+### Trình Soạn thảo SQL
+
+Viết và thực thi truy vấn SQL với cú pháp SQLite:
+
+```sql
+-- Truy vấn dữ liệu
+SELECT name, email FROM users WHERE id > 10 ORDER BY name;
+
+-- Tạo bảng
+CREATE TABLE posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### EXPLAIN Query Plan
+
+Phân tích kế hoạch thực thi truy vấn bằng nút Explain trong trình soạn thảo. TablePro sử dụng `EXPLAIN QUERY PLAN` để hiển thị cách SQLite xử lý truy vấn.
+
+### Chỉnh sửa Dữ liệu
+
+Chỉnh sửa giá trị ô, thêm hàng và xóa hàng trực tiếp trong lưới dữ liệu. Các thay đổi được gửi dưới dạng câu lệnh INSERT, UPDATE và DELETE qua D1 API.
+
+### Quản lý Database
+
+- **Liệt kê Database**: Xem tất cả database D1 trong tài khoản Cloudflare
+- **Chuyển Database**: Chuyển đổi giữa các database mà không cần kết nối lại
+- **Tạo Database**: Tạo database D1 mới trực tiếp từ TablePro
+
+### Xuất dữ liệu
+
+Xuất kết quả truy vấn hoặc dữ liệu bảng sang CSV, JSON, SQL và các định dạng khác.
+
+## Xử lý Sự cố
+
+### Xác thực Thất bại
+
+**Triệu chứng**: "Authentication failed. Check your API token and Account ID."
+
+**Giải pháp**:
+
+1. Kiểm tra API token có quyền **D1 Edit**
+2. Xác nhận Account ID đúng với tài khoản Cloudflare
+3. Đảm bảo token chưa hết hạn hoặc bị thu hồi
+
+### Không Tìm thấy Database
+
+**Triệu chứng**: "Database 'name' not found in account"
+
+**Giải pháp**:
+
+1. Kiểm tra tên hoặc UUID database chính xác
+2. Xác nhận database tồn tại: `wrangler d1 list`
+3. Đảm bảo API token có quyền truy cập tài khoản chứa database
+
+### Bị Giới hạn Tần suất
+
+**Triệu chứng**: "Rate limited by Cloudflare"
+
+**Giải pháp**:
+
+1. Đợi theo thời gian chỉ định trong thông báo lỗi
+2. Giảm tần suất truy vấn
+3. Sử dụng phân trang cho tập kết quả lớn
+
+## Hạn chế
+
+- **Không có kết nối liên tục.** Mỗi truy vấn là một yêu cầu HTTP độc lập đến API Cloudflare.
+- **Không hỗ trợ transaction.** D1 không hỗ trợ transaction đa câu lệnh. Mỗi câu lệnh SQL thực thi độc lập và tự động commit.
+- **Không cần SSH hay SSL.** D1 truy cập qua HTTPS thông qua API Cloudflare. Không cần cấu hình SSL hay SSH tunnel.
+- **Giới hạn 10 GB.** Mỗi database D1 giới hạn 10 GB.
+- **Giới hạn tần suất API.** API Cloudflare có giới hạn tần suất có thể ảnh hưởng đến sử dụng nặng.
+
+## Bước Tiếp theo
+
+<CardGroup cols={2}>
+  <Card title="Trình Soạn thảo SQL" icon="code" href="/features/sql-editor">
+    Tìm hiểu các tính năng trình soạn thảo
+  </Card>
+  <Card title="Lưới Dữ liệu" icon="table" href="/features/data-grid">
+    Duyệt và chỉnh sửa dữ liệu
+  </Card>
+  <Card title="Xuất Dữ liệu" icon="file-export" href="/features/import-export">
+    Xuất dữ liệu D1 sang các định dạng khác
+  </Card>
+  <Card title="Phím Tắt" icon="keyboard" href="/features/keyboard-shortcuts">
+    Tăng tốc quy trình làm việc
+  </Card>
+</CardGroup>

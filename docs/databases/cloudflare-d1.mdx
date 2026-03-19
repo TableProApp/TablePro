@@ -1,0 +1,239 @@
+---
+title: Cloudflare D1
+description: Connect to Cloudflare D1 databases with TablePro
+---
+
+# Cloudflare D1 Connections
+
+TablePro supports Cloudflare D1, a serverless SQLite-compatible database. TablePro connects via the Cloudflare REST API using your API token - no direct database connections or SSH tunnels needed.
+
+## Install Plugin
+
+The Cloudflare D1 driver is available as a downloadable plugin. When you select Cloudflare D1 in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
+
+1. Open **Settings** > **Plugins** > **Browse**
+2. Find **Cloudflare D1 Driver** and click **Install**
+3. The plugin downloads and loads immediately - no restart needed
+
+## Quick Setup
+
+<Steps>
+  <Step title="Open Connection Form">
+    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  </Step>
+  <Step title="Select Cloudflare D1">
+    Choose **Cloudflare D1** from the database type selector
+  </Step>
+  <Step title="Enter Connection Details">
+    Fill in your database name (or UUID), Cloudflare Account ID, and API token
+  </Step>
+  <Step title="Test and Connect">
+    Click **Test Connection**, then **Create**
+  </Step>
+</Steps>
+
+## Connection Settings
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Connection identifier |
+| **Database** | D1 database name or UUID |
+| **Account ID** | Your Cloudflare account ID |
+| **API Token** | Cloudflare API token with D1 permissions |
+
+<Tip>
+You can use either the database name (e.g., `my-app-db`) or the database UUID. If you use a name, TablePro resolves it to the UUID automatically via the Cloudflare API.
+</Tip>
+
+## Getting Your Credentials
+
+### Account ID
+
+Find your Account ID on the [Cloudflare dashboard](https://dash.cloudflare.com) right sidebar, or run:
+
+```bash
+npx wrangler whoami
+```
+
+### API Token
+
+1. Go to [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens)
+2. Click **Create Token**
+3. Select **Custom token** template
+4. Add permission: **Account** > **D1** > **Edit**
+5. Save and copy the token
+
+<Warning>
+Store your API token securely. TablePro saves it in the macOS Keychain, but the token grants access to all D1 databases in your account.
+</Warning>
+
+### Create a D1 Database
+
+If you don't have a D1 database yet:
+
+```bash
+# Install Wrangler CLI
+npm install -g wrangler
+
+# Login to Cloudflare
+wrangler login
+
+# Create a database
+wrangler d1 create my-app-db
+
+# Seed with test data
+wrangler d1 execute my-app-db --remote \
+  --command "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)"
+wrangler d1 execute my-app-db --remote \
+  --command "INSERT INTO users VALUES (1, 'Alice', 'alice@example.com')"
+```
+
+You can also create databases directly from TablePro using the **Create Database** button in the database switcher.
+
+## Example Configuration
+
+```
+Name:       My D1 Database
+Database:   my-app-db
+Account ID: abc123def456
+API Token:  (your Cloudflare API token)
+```
+
+## Features
+
+### Database Browsing
+
+After connecting, use the database switcher in the toolbar to list and switch between all D1 databases in your Cloudflare account. The sidebar shows tables and views in the selected database.
+
+### Table Browsing
+
+For each table, TablePro shows:
+
+- **Structure**: Columns with SQLite data types, nullability, default values, and primary key info
+- **Indexes**: B-tree indexes with column details
+- **Foreign Keys**: Foreign key constraints with referenced tables
+- **DDL**: The full CREATE TABLE statement
+
+### Query Editor
+
+Write and execute SQL queries using SQLite syntax:
+
+```sql
+-- Query data
+SELECT name, email FROM users WHERE id > 10 ORDER BY name;
+
+-- Create tables
+CREATE TABLE posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Aggregations
+SELECT user_id, COUNT(*) as post_count
+FROM posts
+GROUP BY user_id
+HAVING post_count > 5;
+```
+
+### EXPLAIN Query Plan
+
+Analyze query execution plans using the Explain button in the query editor. TablePro uses `EXPLAIN QUERY PLAN` to show how SQLite processes your queries.
+
+### Data Editing
+
+Edit cell values, insert rows, and delete rows directly in the data grid. Changes are submitted as standard INSERT, UPDATE, and DELETE statements via the D1 API.
+
+### Database Management
+
+- **List Databases**: View all D1 databases in your Cloudflare account
+- **Switch Database**: Switch between databases without reconnecting
+- **Create Database**: Create new D1 databases directly from TablePro
+
+### Export
+
+Export query results or table data to CSV, JSON, SQL, and other formats.
+
+## SQL Dialect
+
+D1 uses SQLite's SQL syntax. Key points:
+
+- **Identifier quoting**: Double quotes (`"column_name"`)
+- **String literals**: Single quotes (`'value'`)
+- **Auto-increment**: `INTEGER PRIMARY KEY AUTOINCREMENT`
+- **Type affinity**: SQLite's flexible type system applies
+- **PRAGMA support**: Most SQLite PRAGMAs work (`PRAGMA table_info`, `PRAGMA foreign_key_list`, etc.)
+
+## Troubleshooting
+
+### Authentication Failed
+
+**Symptoms**: "Authentication failed. Check your API token and Account ID."
+
+**Solutions**:
+
+1. Verify your API token has **D1 Edit** permissions
+2. Check that the Account ID matches your Cloudflare account
+3. Ensure the token has not expired or been revoked
+4. Try creating a new API token
+
+### Database Not Found
+
+**Symptoms**: "Database 'name' not found in account"
+
+**Solutions**:
+
+1. Verify the database name or UUID is correct
+2. Check that the database exists: `wrangler d1 list`
+3. Ensure your API token has access to the account containing the database
+
+### Rate Limited
+
+**Symptoms**: "Rate limited by Cloudflare"
+
+**Solutions**:
+
+1. Wait for the retry period indicated in the error message
+2. Reduce query frequency
+3. Use pagination for large result sets instead of fetching all rows
+
+### Connection Timeout
+
+**Symptoms**: Queries take too long or time out
+
+**Solutions**:
+
+1. Check your internet connection
+2. Verify the Cloudflare API is operational at [Cloudflare Status](https://www.cloudflarestatus.com)
+3. Simplify complex queries that may exceed D1's execution limits
+
+## Known Limitations
+
+- **No persistent connections.** Each query is an independent HTTP request to the Cloudflare API. There is no connection pooling or session state between requests.
+- **No transactions.** D1 does not support multi-statement transactions across API calls. Each SQL statement executes independently and auto-commits.
+- **No SSH or SSL configuration.** D1 is accessed exclusively via HTTPS through the Cloudflare API. No custom SSL certificates or SSH tunnels are needed or supported.
+- **No schema editing UI.** Table structure changes must be done via SQL (ALTER TABLE, etc.) in the query editor.
+- **10 GB database limit.** Each D1 database is capped at 10 GB. For larger datasets, consider sharding across multiple databases.
+- **API rate limits.** The Cloudflare API has rate limits that may affect heavy usage. TablePro surfaces rate limit errors with retry timing.
+- **No import.** Bulk data import is not supported through the plugin. Use `wrangler d1 execute` with SQL files for bulk loading.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
+    Master the query editor features
+  </Card>
+  <Card title="Data Grid" icon="table" href="/features/data-grid">
+    Browse and edit data in the data grid
+  </Card>
+  <Card title="Export" icon="file-export" href="/features/import-export">
+    Export D1 data to various formats
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
+    Speed up your workflow
+  </Card>
+</CardGroup>
