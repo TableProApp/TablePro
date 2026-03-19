@@ -874,7 +874,13 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         // Host and port can be empty (will use defaults: localhost and default port)
         let mode = PluginManager.shared.connectionMode(for: type)
         let requiresDatabase = mode == .fileBased || mode == .apiOnly
-        let basicValid = !name.isEmpty && (requiresDatabase ? !database.isEmpty : true)
+        var basicValid = !name.isEmpty && (requiresDatabase ? !database.isEmpty : true)
+        if mode == .apiOnly {
+            let hasRequiredFields = authSectionFields
+                .filter(\.isRequired)
+                .allSatisfy { !(additionalFieldValues[$0.id] ?? "").isEmpty }
+            basicValid = basicValid && hasRequiredFields && !password.isEmpty
+        }
         if sshEnabled {
             let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)
             let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty && sshPortValid

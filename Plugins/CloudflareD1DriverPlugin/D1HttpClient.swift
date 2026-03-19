@@ -363,11 +363,17 @@ final class D1HttpClient: @unchecked Sendable {
                 message: String(localized: "Authentication failed. Check your API token and Account ID.")
             )
         case 429:
-            let retryAfter = response.value(forHTTPHeaderField: "Retry-After") ?? "unknown"
-            Self.logger.warning("D1 rate limited. Retry-After: \(retryAfter)")
-            throw D1HttpError(
-                message: String(localized: "Rate limited by Cloudflare. Retry after \(retryAfter) seconds.")
-            )
+            let retryAfter = response.value(forHTTPHeaderField: "Retry-After")
+            Self.logger.warning("D1 rate limited. Retry-After: \(retryAfter ?? "not specified")")
+            if let seconds = retryAfter {
+                throw D1HttpError(
+                    message: String(localized: "Rate limited by Cloudflare. Retry after \(seconds) seconds.")
+                )
+            } else {
+                throw D1HttpError(
+                    message: String(localized: "Rate limited by Cloudflare. Please try again later.")
+                )
+            }
         default:
             if let errorResponse = try? JSONDecoder().decode(
                 D1ApiResponse<D1RawResultPayload>.self, from: data

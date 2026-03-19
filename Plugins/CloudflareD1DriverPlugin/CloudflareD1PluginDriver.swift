@@ -139,12 +139,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let anyParams: [Any?] = parameters.map { param -> Any? in
-            guard let value = param else { return nil }
-            return value
-        }
-
-        let payload = try await client.executeRaw(sql: trimmed, params: anyParams)
+        let payload = try await client.executeRaw(sql: trimmed, params: parameters)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapRawResult(payload, executionTime: executionTime)
     }
@@ -220,7 +215,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         let query = """
             SELECT m.name AS tbl, p.cid, p.name, p.type, p."notnull", p.dflt_value, p.pk
             FROM sqlite_master m, pragma_table_info(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT LIKE '_cf_%'
+            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB '_cf_*'
             ORDER BY m.name, p.cid
             """
         let result = try await execute(query: query)
@@ -259,7 +254,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
                    p."from" AS column_name, p."to" AS referenced_column,
                    p.on_update, p.on_delete
             FROM sqlite_master m, pragma_foreign_key_list(m.name) p
-            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT LIKE '_cf_%'
+            WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND m.name NOT GLOB '_cf_*'
             ORDER BY m.name, p.id, p.seq
             """
         let result = try await execute(query: query)
@@ -569,9 +564,17 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
     // MARK: - Transactions
 
-    func beginTransaction() async throws {}
-    func commitTransaction() async throws {}
-    func rollbackTransaction() async throws {}
+    func beginTransaction() async throws {
+        throw CloudflareD1Error(message: String(localized: "Transactions are not supported by Cloudflare D1"))
+    }
+
+    func commitTransaction() async throws {
+        throw CloudflareD1Error(message: String(localized: "Transactions are not supported by Cloudflare D1"))
+    }
+
+    func rollbackTransaction() async throws {
+        throw CloudflareD1Error(message: String(localized: "Transactions are not supported by Cloudflare D1"))
+    }
 
     // MARK: - Private Helpers
 
