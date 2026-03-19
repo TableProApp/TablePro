@@ -292,14 +292,22 @@ public extension PluginDatabaseDriver {
 
             if isEscaped {
                 isEscaped = false
-                sql.append(Character(UnicodeScalar(char)!))
+                if let scalar = UnicodeScalar(char) {
+                    sql.append(Character(scalar))
+                } else {
+                    sql.append("\u{FFFD}")
+                }
                 i += 1
                 continue
             }
 
             if char == backslash && (inSingleQuote || inDoubleQuote) {
                 isEscaped = true
-                sql.append(Character(UnicodeScalar(char)!))
+                if let scalar = UnicodeScalar(char) {
+                    sql.append(Character(scalar))
+                } else {
+                    sql.append("\u{FFFD}")
+                }
                 i += 1
                 continue
             }
@@ -318,7 +326,11 @@ public extension PluginDatabaseDriver {
                 }
                 paramIndex += 1
             } else {
-                sql.append(Character(UnicodeScalar(char)!))
+                if let scalar = UnicodeScalar(char) {
+                    sql.append(Character(scalar))
+                } else {
+                    sql.append("\u{FFFD}")
+                }
             }
 
             i += 1
@@ -341,7 +353,11 @@ public extension PluginDatabaseDriver {
 
             if isEscaped {
                 isEscaped = false
-                sql.append(Character(UnicodeScalar(char)!))
+                if let scalar = UnicodeScalar(char) {
+                    sql.append(Character(scalar))
+                } else {
+                    sql.append("\u{FFFD}")
+                }
                 i += 1
                 continue
             }
@@ -349,7 +365,11 @@ public extension PluginDatabaseDriver {
             let backslash: UInt16 = 0x5C // \\
             if char == backslash && (inSingleQuote || inDoubleQuote) {
                 isEscaped = true
-                sql.append(Character(UnicodeScalar(char)!))
+                if let scalar = UnicodeScalar(char) {
+                    sql.append(Character(scalar))
+                } else {
+                    sql.append("\u{FFFD}")
+                }
                 i += 1
                 continue
             }
@@ -369,7 +389,9 @@ public extension PluginDatabaseDriver {
                 while j < length {
                     let digitChar = nsQuery.character(at: j)
                     if digitChar >= 0x30 && digitChar <= 0x39 { // 0-9
-                        numStr.append(Character(UnicodeScalar(digitChar)!))
+                        if let scalar = UnicodeScalar(digitChar) {
+                            numStr.append(Character(scalar))
+                        }
                         j += 1
                     } else {
                         break
@@ -386,7 +408,11 @@ public extension PluginDatabaseDriver {
                 }
             }
 
-            sql.append(Character(UnicodeScalar(char)!))
+            if let scalar = UnicodeScalar(char) {
+                sql.append(Character(scalar))
+            } else {
+                sql.append("\u{FFFD}")
+            }
             i += 1
         }
 

@@ -231,6 +231,15 @@ extension DatabaseDriver {
     }
 
     func fetchForeignKeys(forTables tableNames: [String]) async throws -> [String: [ForeignKeyInfo]] {
+        // For small subsets, per-table fetch avoids scanning the entire schema
+        if tableNames.count <= 5 {
+            var result: [String: [ForeignKeyInfo]] = [:]
+            for tableName in tableNames {
+                let fks = try await fetchForeignKeys(table: tableName)
+                if !fks.isEmpty { result[tableName] = fks }
+            }
+            return result
+        }
         let all = try await fetchAllForeignKeys()
         let nameSet = Set(tableNames)
         return all.filter { nameSet.contains($0.key) }
