@@ -871,6 +871,7 @@ final class PluginManager {
             unregisterCapabilities(pluginId: pluginId)
         }
 
+        queryBuildingDriverCache.removeAll()
         Self.logger.info("Plugin '\(pluginId)' \(enabled ? "enabled" : "disabled")")
     }
 
