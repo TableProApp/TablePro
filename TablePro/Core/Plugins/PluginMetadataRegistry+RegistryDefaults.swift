@@ -455,6 +455,57 @@ extension PluginMetadataRegistry {
             "Geospatial": ["geo"]
         ]
 
+        let d1Dialect = SQLDialectDescriptor(
+            identifierQuote: "\"",
+            keywords: [
+                "SELECT", "FROM", "WHERE", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "CROSS",
+                "ON", "AND", "OR", "NOT", "IN", "LIKE", "GLOB", "BETWEEN", "AS",
+                "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET",
+                "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
+                "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "TRIGGER",
+                "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "UNIQUE", "CONSTRAINT",
+                "ADD", "COLUMN", "RENAME",
+                "NULL", "IS", "ASC", "DESC", "DISTINCT", "ALL",
+                "CASE", "WHEN", "THEN", "ELSE", "END", "COALESCE", "IFNULL", "NULLIF",
+                "UNION", "INTERSECT", "EXCEPT",
+                "AUTOINCREMENT", "WITHOUT", "ROWID", "PRAGMA",
+                "REPLACE", "ABORT", "FAIL", "IGNORE", "ROLLBACK",
+                "TEMP", "TEMPORARY", "VACUUM", "EXPLAIN", "QUERY", "PLAN"
+            ],
+            functions: [
+                "COUNT", "SUM", "AVG", "MAX", "MIN", "GROUP_CONCAT", "TOTAL",
+                "LENGTH", "SUBSTR", "SUBSTRING", "LOWER", "UPPER", "TRIM", "LTRIM", "RTRIM",
+                "REPLACE", "INSTR", "PRINTF",
+                "DATE", "TIME", "DATETIME", "JULIANDAY", "STRFTIME",
+                "ABS", "ROUND", "RANDOM",
+                "CAST", "TYPEOF",
+                "COALESCE", "IFNULL", "NULLIF", "HEX", "QUOTE"
+            ],
+            dataTypes: [
+                "INTEGER", "REAL", "TEXT", "BLOB", "NUMERIC",
+                "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT",
+                "UNSIGNED", "BIG", "INT2", "INT8",
+                "CHARACTER", "VARCHAR", "VARYING", "NCHAR", "NATIVE",
+                "NVARCHAR", "CLOB",
+                "DOUBLE", "PRECISION", "FLOAT",
+                "DECIMAL", "BOOLEAN", "DATE", "DATETIME"
+            ],
+            tableOptions: ["WITHOUT ROWID", "STRICT"],
+            regexSyntax: .unsupported,
+            booleanLiteralStyle: .numeric,
+            likeEscapeStyle: .explicit,
+            paginationStyle: .limit
+        )
+
+        let d1ColumnTypes: [String: [String]] = [
+            "Integer": ["INTEGER", "INT", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
+            "Float": ["REAL", "DOUBLE", "FLOAT", "NUMERIC", "DECIMAL"],
+            "String": ["TEXT", "VARCHAR", "CHARACTER", "CHAR", "CLOB", "NVARCHAR", "NCHAR"],
+            "Date": ["DATE", "TIME", "DATETIME", "TIMESTAMP"],
+            "Binary": ["BLOB"],
+            "Boolean": ["BOOLEAN"]
+        ]
+
         return [
             ("MongoDB", PluginMetadataSnapshot(
                 displayName: "MongoDB", iconName: "mongodb-icon", defaultPort: 27_017,
@@ -916,6 +967,59 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/client-key.pem",
                             section: .advanced
                         ),
+                    ]
+                )
+            )),
+            ("Cloudflare D1", PluginMetadataSnapshot(
+                displayName: "Cloudflare D1", iconName: "cloudflare-d1-icon", defaultPort: 0,
+                requiresAuthentication: true, supportsForeignKeys: true, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "d1", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [
+                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
+                ],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: ["d1"], postConnectActions: [],
+                brandColorHex: "#F6821F",
+                queryLanguageName: "SQL", editorLanguage: .sql,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: true,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: true,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "main",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .flat,
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: d1Dialect,
+                    statementCompletions: [],
+                    columnTypesByCategory: d1ColumnTypes
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "cfAccountId",
+                            label: String(localized: "Account ID"),
+                            placeholder: "Cloudflare Account ID",
+                            required: true,
+                            section: .authentication
+                        )
                     ]
                 )
             ))

@@ -236,6 +236,7 @@ extension DatabaseType {
     static let cassandra = DatabaseType(rawValue: "Cassandra")
     static let scylladb = DatabaseType(rawValue: "ScyllaDB")
     static let etcd = DatabaseType(rawValue: "etcd")
+    static let cloudflareD1 = DatabaseType(rawValue: "Cloudflare D1")
 }
 
 extension DatabaseType: Codable {

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cloudflare D1 database support
 - Match highlighting in autocomplete suggestions (matched characters shown in bold)
 - Loading spinner in autocomplete popup while fetching column metadata
 

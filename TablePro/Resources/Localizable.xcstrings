@@ -2308,6 +2308,9 @@
         }
       }
     },
+    "Account ID" : {
+
+    },
     "Account:" : {
       "localizations" : {
         "tr" : {
@@ -3339,6 +3342,9 @@
           }
         }
       }
+    },
+    "API Token" : {
+
     },
     "Appearance" : {
       "localizations" : {

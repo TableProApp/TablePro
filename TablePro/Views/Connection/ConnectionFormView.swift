@@ -265,6 +265,14 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                             .controlSize(.small)
                     }
                 }
+            } else if PluginManager.shared.connectionMode(for: type) == .apiOnly {
+                Section(String(localized: "Connection")) {
+                    TextField(
+                        String(localized: "Database"),
+                        text: $database,
+                        prompt: Text("database_name")
+                    )
+                }
             } else {
                 Section(String(localized: "Connection")) {
                     TextField(
@@ -285,8 +293,12 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         )
                     }
                 }
+            }
+
+            if PluginManager.shared.connectionMode(for: type) != .fileBased {
                 Section(String(localized: "Authentication")) {
-                    if PluginManager.shared.requiresAuthentication(for: type) {
+                    if PluginManager.shared.requiresAuthentication(for: type)
+                        && PluginManager.shared.connectionMode(for: type) != .apiOnly {
                         TextField(
                             String(localized: "Username"),
                             text: $username,
@@ -306,8 +318,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         )
                     }
                     if !hidePasswordField {
+                        let isApiOnly = PluginManager.shared.connectionMode(for: type) == .apiOnly
                         SecureField(
-                            String(localized: "Password"),
+                            isApiOnly ? String(localized: "API Token") : String(localized: "Password"),
                             text: $password
                         )
                     }
@@ -859,8 +872,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
 
     private var isValid: Bool {
         // Host and port can be empty (will use defaults: localhost and default port)
-        let isFileBased = PluginManager.shared.connectionMode(for: type) == .fileBased
-        let basicValid = !name.isEmpty && (isFileBased ? !database.isEmpty : true)
+        let mode = PluginManager.shared.connectionMode(for: type)
+        let requiresDatabase = mode == .fileBased || mode == .apiOnly
+        let basicValid = !name.isEmpty && (requiresDatabase ? !database.isEmpty : true)
         if sshEnabled {
             let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)
             let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty && sshPortValid
