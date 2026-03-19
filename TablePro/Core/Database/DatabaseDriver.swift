@@ -235,8 +235,13 @@ extension DatabaseDriver {
         if tableNames.count <= 5 {
             var result: [String: [ForeignKeyInfo]] = [:]
             for tableName in tableNames {
-                let fks = try await fetchForeignKeys(table: tableName)
-                if !fks.isEmpty { result[tableName] = fks }
+                do {
+                    let fks = try await fetchForeignKeys(table: tableName)
+                    if !fks.isEmpty { result[tableName] = fks }
+                } catch {
+                    Logger(subsystem: "com.TablePro", category: "DatabaseDriver")
+                        .debug("Failed to fetch foreign keys for \(tableName): \(error.localizedDescription)")
+                }
             }
             return result
         }
