@@ -331,7 +331,7 @@ final class RedisPluginConnection: @unchecked Sendable {
         }
     }
 
-    private func resetCancellation() {
+    func resetCancellation() {
         stateLock.lock()
         _isCancelled = false
         stateLock.unlock()
@@ -356,7 +356,6 @@ final class RedisPluginConnection: @unchecked Sendable {
     func executeCommand(_ args: [String]) async throws -> RedisReply {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
-            resetCancellation()
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }
@@ -379,7 +378,6 @@ final class RedisPluginConnection: @unchecked Sendable {
     func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
         #if canImport(CRedis)
         return try await pluginDispatchAsync(on: queue) { [self] in
-            resetCancellation()
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }
@@ -404,7 +402,6 @@ final class RedisPluginConnection: @unchecked Sendable {
     func selectDatabase(_ index: Int) async throws {
         #if canImport(CRedis)
         try await pluginDispatchAsync(on: queue) { [self] in
-            resetCancellation()
             guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }

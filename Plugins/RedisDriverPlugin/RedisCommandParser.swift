@@ -73,6 +73,8 @@ enum RedisOperation {
 struct RedisSetOptions {
     var ex: Int?
     var px: Int?
+    var exat: Int?
+    var pxat: Int?
     var nx: Bool = false
     var xx: Bool = false
 }
@@ -998,18 +1000,20 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("EXAT requires a value")
                 }
-                guard Int(args[i + 1]) != nil else {
+                guard let timestamp = Int(args[i + 1]) else {
                     throw RedisParseError.invalidArgument("EXAT value must be a positive integer")
                 }
+                options.exat = timestamp
                 hasOption = true
                 i += 1
             case "PXAT":
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("PXAT requires a value")
                 }
-                guard Int(args[i + 1]) != nil else {
+                guard let timestamp = Int(args[i + 1]) else {
                     throw RedisParseError.invalidArgument("PXAT value must be a positive integer")
                 }
+                options.pxat = timestamp
                 hasOption = true
                 i += 1
             case "NX":

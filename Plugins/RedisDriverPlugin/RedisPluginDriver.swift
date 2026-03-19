@@ -78,6 +78,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let startTime = Date()
         cachedScanPattern = nil
         cachedScanKeys = nil
+        redisConnection?.resetCancellation()
 
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
@@ -610,6 +611,8 @@ private extension RedisPluginDriver {
             if let opts = options {
                 if let ex = opts.ex { args += ["EX", String(ex)] }
                 if let px = opts.px { args += ["PX", String(px)] }
+                if let exat = opts.exat { args += ["EXAT", String(exat)] }
+                if let pxat = opts.pxat { args += ["PXAT", String(pxat)] }
                 if opts.nx { args.append("NX") }
                 if opts.xx { args.append("XX") }
             }
