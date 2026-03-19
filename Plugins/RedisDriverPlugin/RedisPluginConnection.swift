@@ -23,6 +23,7 @@ struct RedisSSLConfig {
     var caCertificatePath: String = ""
     var clientCertificatePath: String = ""
     var clientKeyPath: String = ""
+    var verifyPeer: Bool = true
 
     init() {}
 
@@ -32,6 +33,7 @@ struct RedisSSLConfig {
         self.caCertificatePath = additionalFields["sslCaCertPath"] ?? ""
         self.clientCertificatePath = additionalFields["sslClientCertPath"] ?? ""
         self.clientKeyPath = additionalFields["sslClientKeyPath"] ?? ""
+        self.verifyPeer = (additionalFields["sslVerifyPeer"] ?? "true") == "true"
     }
 }
 
@@ -99,7 +101,10 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     #if canImport(CRedis)
     private static let initOnce: Void = {
-        redisInitOpenSSL()
+        let result = redisInitOpenSSL()
+        if result != REDIS_OK {
+            logger.warning("redisInitOpenSSL failed with code \(result)")
+        }
     }()
 
     private var context: UnsafeMutablePointer<redisContext>?
@@ -109,6 +114,7 @@ final class RedisPluginConnection: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.TablePro.redis.plugin", qos: .userInitiated)
     private let host: String
     private let port: Int
+    private let username: String?
     private let password: String?
     private let database: Int
     private let sslConfig: RedisSSLConfig
@@ -144,12 +150,14 @@ final class RedisPluginConnection: @unchecked Sendable {
     init(
         host: String,
         port: Int,
+        username: String? = nil,
         password: String?,
         database: Int = 0,
         sslConfig: RedisSSLConfig = RedisSSLConfig()
     ) {
         self.host = host
         self.port = port
+        self.username = username
         self.password = password
         self.database = database
         self.sslConfig = sslConfig
@@ -165,17 +173,8 @@ final class RedisPluginConnection: @unchecked Sendable {
         sslContext = nil
         stateLock.unlock()
 
-        let cleanupQueue = queue
-        if handle != nil || ssl != nil {
-            cleanupQueue.async {
-                if let handle = handle {
-                    redisFree(handle)
-                }
-                if let ssl = ssl {
-                    redisFreeSSLContext(ssl)
-                }
-            }
-        }
+        if let handle { redisFree(handle) }
+        if let ssl { redisFreeSSLContext(ssl) }
         #endif
     }
 
@@ -187,7 +186,8 @@ final class RedisPluginConnection: @unchecked Sendable {
         try await pluginDispatchAsync(on: queue) { [self] in
             logger.debug("Connecting to Redis at \(self.host):\(self.port)")
 
-            guard let ctx = redisConnect(host, Int32(port)) else {
+            let connectTimeout = timeval(tv_sec: 10, tv_usec: 0)
+            guard let ctx = redisConnectWithTimeout(host, Int32(port), connectTimeout) else {
                 logger.error("Failed to create Redis context")
                 throw RedisPluginError.connectionFailed
             }
@@ -201,6 +201,10 @@ final class RedisPluginConnection: @unchecked Sendable {
                 redisFree(ctx)
                 throw RedisPluginError(code: errCode, message: errMsg)
             }
+
+            let commandTimeout = timeval(tv_sec: 30, tv_usec: 0)
+            redisSetTimeout(ctx, commandTimeout)
+            redisEnableKeepAliveWithInterval(ctx, 60)
 
             self.context = ctx
 
@@ -216,7 +220,13 @@ final class RedisPluginConnection: @unchecked Sendable {
 
             if let password = password, !password.isEmpty {
                 do {
-                    let reply = try executeCommandSync(["AUTH", password])
+                    let authArgs: [String]
+                    if let username = username, !username.isEmpty {
+                        authArgs = ["AUTH", username, password]
+                    } else {
+                        authArgs = ["AUTH", password]
+                    }
+                    let reply = try executeCommandSync(authArgs)
                     if case .error(let msg) = reply {
                         redisFree(ctx)
                         self.context = nil
@@ -345,11 +355,17 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     func executeCommand(_ args: [String]) async throws -> RedisReply {
         #if canImport(CRedis)
-        resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
-            guard !isShuttingDown, context != nil else {
+            resetCancellation()
+            guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }
+            stateLock.lock()
+            guard context != nil else {
+                stateLock.unlock()
+                throw RedisPluginError.notConnected
+            }
+            stateLock.unlock()
             try checkCancelled()
             let result = try executeCommandSync(args)
             try checkCancelled()
@@ -362,11 +378,17 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     func executePipeline(_ commands: [[String]]) async throws -> [RedisReply] {
         #if canImport(CRedis)
-        resetCancellation()
         return try await pluginDispatchAsync(on: queue) { [self] in
-            guard !isShuttingDown, context != nil else {
+            resetCancellation()
+            guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }
+            stateLock.lock()
+            guard context != nil else {
+                stateLock.unlock()
+                throw RedisPluginError.notConnected
+            }
+            stateLock.unlock()
             try checkCancelled()
             let results = try executePipelineSync(commands)
             try checkCancelled()
@@ -381,11 +403,17 @@ final class RedisPluginConnection: @unchecked Sendable {
 
     func selectDatabase(_ index: Int) async throws {
         #if canImport(CRedis)
-        resetCancellation()
         try await pluginDispatchAsync(on: queue) { [self] in
-            guard !isShuttingDown, context != nil else {
+            resetCancellation()
+            guard !isShuttingDown else {
                 throw RedisPluginError.notConnected
             }
+            stateLock.lock()
+            guard context != nil else {
+                stateLock.unlock()
+                throw RedisPluginError.notConnected
+            }
+            stateLock.unlock()
             try checkCancelled()
             let reply = try executeCommandSync(["SELECT", String(index)])
             if case .error(let msg) = reply {
@@ -417,27 +445,44 @@ private extension RedisPluginConnection {
         let clientKey: UnsafePointer<CChar>? = sslConfig.clientKeyPath.isEmpty
             ? nil
             : (sslConfig.clientKeyPath as NSString).utf8String
+        let sniHostname: UnsafePointer<CChar>? = (host as NSString).utf8String
 
-        guard let ssl = redisCreateSSLContext(caCert, nil, clientCert, clientKey, nil, &sslError) else {
+        var options = redisSSLOptions()
+        options.cacert_filename = caCert
+        options.capath = nil
+        options.cert_filename = clientCert
+        options.private_key_filename = clientKey
+        options.server_name = sniHostname
+        options.verify_mode = sslConfig.verifyPeer ? REDIS_SSL_VERIFY_PEER : REDIS_SSL_VERIFY_NONE
+
+        guard let ssl = redisCreateSSLContextWithOptions(&options, &sslError) else {
             let errCode = Int(sslError.rawValue)
-            throw RedisPluginError(code: errCode, message: "Failed to create SSL context (error \(errCode))")
+            throw RedisPluginError(
+                code: errCode,
+                message: "Failed to create SSL context (error \(errCode))"
+            )
         }
-
-        self.sslContext = ssl
 
         let result = redisInitiateSSLWithContext(ctx, ssl)
         if result != REDIS_OK {
+            redisFreeSSLContext(ssl)
             let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
                 ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
             }
             throw RedisPluginError(code: Int(result), message: "SSL handshake failed: \(errMsg)")
         }
 
+        self.sslContext = ssl
         logger.debug("SSL connection established")
     }
 
     func executeCommandSync(_ args: [String]) throws -> RedisReply {
-        guard let ctx = context else { throw RedisPluginError.notConnected }
+        stateLock.lock()
+        guard let ctx = context else {
+            stateLock.unlock()
+            throw RedisPluginError.notConnected
+        }
+        stateLock.unlock()
 
         let argc = Int32(args.count)
         let lengths = args.map { $0.utf8.count }
@@ -461,7 +506,12 @@ private extension RedisPluginConnection {
     }
 
     func executePipelineSync(_ commands: [[String]]) throws -> [RedisReply] {
-        guard let ctx = context else { throw RedisPluginError.notConnected }
+        stateLock.lock()
+        guard let ctx = context else {
+            stateLock.unlock()
+            throw RedisPluginError.notConnected
+        }
+        stateLock.unlock()
         guard !commands.isEmpty else { return [] }
 
         var appendedCount = 0
@@ -517,8 +567,18 @@ private extension RedisPluginConnection {
     ) rethrows -> T {
         let count = args.count
 
-        let cStrings = args.map { strdup($0) }
-        defer { cStrings.forEach { free($0) } }
+        let cStrings: [UnsafeMutablePointer<CChar>] = args.map { arg in
+            var utf8 = Array(arg.utf8)
+            let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: utf8.count + 1)
+            utf8.withUnsafeBufferPointer { buf in
+                buf.baseAddress!.withMemoryRebound(to: CChar.self, capacity: buf.count) { src in
+                    ptr.initialize(from: src, count: buf.count)
+                }
+            }
+            ptr[utf8.count] = 0
+            return ptr
+        }
+        defer { cStrings.forEach { $0.deallocate() } }
 
         let argv = UnsafeMutablePointer<UnsafePointer<CChar>?>.allocate(capacity: count)
         let argvlen = UnsafeMutablePointer<Int>.allocate(capacity: count)
@@ -651,7 +711,12 @@ private extension RedisPluginConnection {
     }
 
     func fetchServerVersionSync() -> String? {
-        guard context != nil else { return nil }
+        stateLock.lock()
+        guard context != nil else {
+            stateLock.unlock()
+            return nil
+        }
+        stateLock.unlock()
         do {
             let reply = try executeCommandSync(["INFO", "server"])
             if case .string(let info) = reply {
@@ -664,7 +729,7 @@ private extension RedisPluginConnection {
     }
 
     func parseVersionFromInfo(_ info: String) -> String? {
-        for line in info.components(separatedBy: "\r\n") {
+        for line in info.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if trimmed.hasPrefix("redis_version:") {
                 let value = trimmed.dropFirst("redis_version:".count)

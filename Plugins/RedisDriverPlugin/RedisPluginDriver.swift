@@ -42,6 +42,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let conn = RedisPluginConnection(
             host: config.host,
             port: config.port,
+            username: config.username.isEmpty ? nil : config.username,
             password: config.password.isEmpty ? nil : config.password,
             database: redisDb,
             sslConfig: sslConfig
