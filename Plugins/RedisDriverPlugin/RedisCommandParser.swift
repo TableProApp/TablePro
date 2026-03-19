@@ -951,8 +951,8 @@ struct RedisCommandParser {
             current.append(char)
         }
 
-        // Handle trailing backslash outside quotes
-        if escapeNext, !escapedInsideQuote {
+        // Handle trailing backslash
+        if escapeNext {
             current.append("\\")
         }
 
@@ -980,7 +980,7 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("EX requires a value")
                 }
-                guard let seconds = Int(args[i + 1]) else {
+                guard let seconds = Int(args[i + 1]), seconds > 0 else {
                     throw RedisParseError.invalidArgument("EX value must be a positive integer")
                 }
                 options.ex = seconds
@@ -990,7 +990,7 @@ struct RedisCommandParser {
                 guard i + 1 < args.count else {
                     throw RedisParseError.missingArgument("PX requires a value")
                 }
-                guard let millis = Int(args[i + 1]) else {
+                guard let millis = Int(args[i + 1]), millis > 0 else {
                     throw RedisParseError.invalidArgument("PX value must be a positive integer")
                 }
                 options.px = millis

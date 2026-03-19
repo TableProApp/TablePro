@@ -86,18 +86,6 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Health monitor sends "SELECT 1" as a ping — intercept and remap to PING.
-        if trimmed.lowercased() == "select 1" {
-            _ = try await conn.executeCommand(["PING"])
-            return PluginQueryResult(
-                columns: ["ok"],
-                columnTypeNames: ["Int32"],
-                rows: [["1"]],
-                rowsAffected: 0,
-                executionTime: Date().timeIntervalSince(startTime)
-            )
-        }
-
         let operation = try RedisCommandParser.parse(trimmed)
         return try await executeOperation(operation, connection: conn, startTime: startTime)
     }
@@ -134,6 +122,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
         let startTime = Date()
+        redisConnection?.resetCancellation()
 
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
@@ -144,7 +133,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         switch operation {
         case .scan(_, let pattern, _):
-            let cacheKey = pattern ?? "*"
+            let dbIndex = conn.currentDatabase()
+            let cacheKey = "\(dbIndex):\(pattern ?? "*")"
             let allKeys: [String]
             if cachedScanPattern == cacheKey, let cached = cachedScanKeys {
                 allKeys = cached
@@ -180,6 +170,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Schema Operations
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
+        redisConnection?.resetCancellation()
         guard let conn = redisConnection else {
             throw RedisPluginError.notConnected
         }
@@ -389,6 +380,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {
+        redisConnection?.resetCancellation()
         guard let conn = redisConnection else { throw RedisPluginError.notConnected }
         let dbIndex: Int
         if let idx = Int(database) {
@@ -408,8 +400,9 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? {
-        // Redis databases are pre-allocated and cannot be dropped
-        nil
+        // Redis databases are pre-allocated and cannot be dropped.
+        // Return empty string to prevent adapter from synthesizing SQL DROP.
+        ""
     }
 
     // MARK: - EXPLAIN
@@ -897,12 +890,24 @@ private extension RedisPluginDriver {
                 args += [String(score), member]
             }
             let result = try await conn.executeCommand(args)
-            let added = result.intValue ?? 0
+            if flags.contains("INCR") {
+                // INCR mode returns the new score (or nil for NX miss)
+                let scoreStr = result.stringValue ?? "nil"
+                return PluginQueryResult(
+                    columns: ["score"],
+                    columnTypeNames: ["String"],
+                    rows: [[scoreStr]],
+                    rowsAffected: 0,
+                    executionTime: Date().timeIntervalSince(startTime)
+                )
+            }
+            let count = result.intValue ?? 0
+            let columnName = flags.contains("CH") ? "changed" : "added"
             return PluginQueryResult(
-                columns: ["added"],
+                columns: [columnName],
                 columnTypeNames: ["Int64"],
-                rows: [[String(added)]],
-                rowsAffected: added,
+                rows: [[String(count)]],
+                rowsAffected: count,
                 executionTime: Date().timeIntervalSince(startTime)
             )
 

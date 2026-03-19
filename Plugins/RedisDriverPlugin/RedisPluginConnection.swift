@@ -561,9 +561,13 @@ private extension RedisPluginConnection {
 
     func markDisconnected() {
         stateLock.lock()
+        let handle = context
         context = nil
         _isConnected = false
         stateLock.unlock()
+        #if canImport(CRedis)
+        if let handle { redisFree(handle) }
+        #endif
     }
 
     func withArgvPointers<T>(
@@ -574,11 +578,11 @@ private extension RedisPluginConnection {
         let count = args.count
 
         let cStrings: [UnsafeMutablePointer<CChar>] = args.map { arg in
-            var utf8 = Array(arg.utf8)
+            let utf8 = Array(arg.utf8)
             let ptr = UnsafeMutablePointer<CChar>.allocate(capacity: utf8.count + 1)
-            utf8.withUnsafeBufferPointer { buf in
-                buf.baseAddress!.withMemoryRebound(to: CChar.self, capacity: buf.count) { src in
-                    ptr.initialize(from: src, count: buf.count)
+            if let base = utf8.withUnsafeBufferPointer({ $0.baseAddress }) {
+                base.withMemoryRebound(to: CChar.self, capacity: utf8.count) { src in
+                    ptr.initialize(from: src, count: utf8.count)
                 }
             }
             ptr[utf8.count] = 0

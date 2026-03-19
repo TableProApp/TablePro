@@ -144,7 +144,7 @@ struct RedisStatementGenerator {
                 }
                 return args
             }
-            return "HSET \(escapeArgument(key)) field \(escapeArgument(value))"
+            return "HSET \(escapeArgument(key)) value \(escapeArgument(value))"
         case "list":
             return "RPUSH \(escapeArgument(key)) \(escapeArgument(value))"
         case "set":

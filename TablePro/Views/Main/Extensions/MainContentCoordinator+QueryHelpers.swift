@@ -215,7 +215,7 @@ extension MainContentCoordinator {
                     query: "SELECT COUNT(*) FROM \(quotedTable)"
                 )
                 if let firstRow = countResult?.rows.first,
-                   let countStr = firstRow.first ?? nil {
+                   let countStr = firstRow.first.flatMap({ $0 }) {
                     count = Int(countStr)
                 } else {
                     count = nil
@@ -301,7 +301,7 @@ extension MainContentCoordinator {
                     query: "SELECT COUNT(*) FROM \(quotedTable)"
                 )
                 if let firstRow = countResult?.rows.first,
-                   let countStr = firstRow.first ?? nil {
+                   let countStr = firstRow.first.flatMap({ $0 }) {
                     count = Int(countStr)
                 } else {
                     count = nil
