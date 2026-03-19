@@ -110,6 +110,7 @@ final class SuggestionViewModel: ObservableObject {
                     self.items = completionItems.items
                     self.selectedIndex = 0
                     self.syntaxHighlightedCache = [:]
+                    self.notifySelection()
                     showWindowOnParent(targetParentWindow, cursorRect)
                 }
             } catch {
@@ -143,6 +144,7 @@ final class SuggestionViewModel: ObservableObject {
         items = newItems
         selectedIndex = 0
         syntaxHighlightedCache = [:]
+        notifySelection()
     }
 
     func didSelect(item: CodeSuggestionEntry) {
@@ -162,9 +164,12 @@ final class SuggestionViewModel: ObservableObject {
     }
 
     func willClose() {
+        itemsRequestTask?.cancel()
+        itemsRequestTask = nil
         items.removeAll()
         selectedIndex = 0
         activeTextView = nil
+        delegate = nil
     }
 
     func syntaxHighlights(forIndex index: Int) -> NSAttributedString? {

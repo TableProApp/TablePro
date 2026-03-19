@@ -494,6 +494,8 @@ final class SQLCompletionProvider {
     /// Filter and rank items by prefix, returning sorted results with match ranges
     func filterAndRank(_ items: [SQLCompletionItem], prefix: String, context: SQLContext) -> [SQLCompletionItem] {
         var filtered = filterByPrefix(items, prefix: prefix)
+        // Clear stale match ranges before recomputing
+        for i in filtered.indices { filtered[i].matchedRanges = [] }
         populateMatchRanges(&filtered, prefix: prefix)
         return rankResults(filtered, prefix: prefix, context: context)
     }

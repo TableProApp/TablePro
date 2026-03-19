@@ -144,7 +144,15 @@ public final class SuggestionController: NSWindowController {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            if self.model.activeTextView == nil || self.model.activeTextView?.view.window == nil {
+            guard let textView = self.model.activeTextView else {
+                self.close()
+                return
+            }
+            // Close if text view removed from window or lost first responder
+            if textView.view.window == nil {
+                self.close()
+            } else if let firstResponder = textView.view.window?.firstResponder as? NSView,
+                      !firstResponder.isDescendant(of: textView.view) {
                 self.close()
             }
         }
