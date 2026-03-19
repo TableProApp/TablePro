@@ -173,8 +173,14 @@ final class RedisPluginConnection: @unchecked Sendable {
         sslContext = nil
         stateLock.unlock()
 
-        if let handle { redisFree(handle) }
-        if let ssl { redisFreeSSLContext(ssl) }
+        // Dispatch cleanup to the serial queue to ensure in-flight commands complete first
+        if handle != nil || ssl != nil {
+            let cleanupQueue = queue
+            cleanupQueue.async {
+                if let handle { redisFree(handle) }
+                if let ssl { redisFreeSSLContext(ssl) }
+            }
+        }
         #endif
     }
 

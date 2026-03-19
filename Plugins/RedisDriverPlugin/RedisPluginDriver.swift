@@ -440,7 +440,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }()
 
         guard let key else { return nil }
-        return "DEBUG OBJECT \(key)"
+        let quoted = key.contains(" ") || key.contains("\"") ? "\"\(key.replacingOccurrences(of: "\"", with: "\\\""))\"" : key
+        return "DEBUG OBJECT \(quoted)"
     }
 
     // MARK: - View Templates
@@ -1016,7 +1017,9 @@ private extension RedisPluginDriver {
             return buildStatusResult("OK", startTime: startTime)
 
         case .select(let database):
-            _ = try await conn.executeCommand(["SELECT", String(database)])
+            try await conn.selectDatabase(database)
+            cachedScanPattern = nil
+            cachedScanKeys = nil
             return buildStatusResult("OK", startTime: startTime)
 
         case .configGet(let parameter):
