@@ -46,15 +46,6 @@ struct D1RawResults: Decodable {
     }
 }
 
-struct D1QueryResultPayload: Decodable {
-    let results: [[String: D1Value]]?
-    let meta: D1QueryMeta?
-    let success: Bool
-
-    private enum CodingKeys: String, CodingKey {
-        case results, meta, success
-    }
-}
 
 struct D1QueryMeta: Decodable {
     let duration: Double?
@@ -90,6 +81,8 @@ struct D1ListResponse: Decodable {
     }
 }
 
+// No .bool case: D1/SQLite stores booleans as integers (0/1),
+// and Foundation's JSONDecoder decodes JSON true/false as Int when Int is tried first.
 enum D1Value: Decodable {
     case string(String)
     case int(Int)
@@ -198,22 +191,6 @@ final class D1HttpClient: @unchecked Sendable {
         let data = try await performRequest(url: url, method: "POST", body: body)
 
         let envelope = try JSONDecoder().decode(D1ApiResponse<[D1RawResultPayload]>.self, from: data)
-        try checkApiSuccess(envelope)
-
-        guard let results = envelope.result, let first = results.first else {
-            throw D1HttpError(message: String(localized: "Empty response from Cloudflare D1"))
-        }
-
-        return first
-    }
-
-    func executeQuery(sql: String, params: [Any?]? = nil) async throws -> D1QueryResultPayload {
-        let dbId = databaseId
-        let url = try baseURL(databaseId: dbId).appendingPathComponent("query")
-        let body = try buildQueryBody(sql: sql, params: params)
-        let data = try await performRequest(url: url, method: "POST", body: body)
-
-        let envelope = try JSONDecoder().decode(D1ApiResponse<[D1QueryResultPayload]>.self, from: data)
         try checkApiSuccess(envelope)
 
         guard let results = envelope.result, let first = results.first else {

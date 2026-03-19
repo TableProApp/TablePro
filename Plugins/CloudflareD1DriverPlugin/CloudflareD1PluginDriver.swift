@@ -139,7 +139,8 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
 
         let startTime = Date()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let payload = try await client.executeRaw(sql: trimmed, params: parameters)
+        let anyParams: [Any?] = parameters.map { $0 as Any? }
+        let payload = try await client.executeRaw(sql: trimmed, params: anyParams)
         let executionTime = Date().timeIntervalSince(startTime)
         return mapRawResult(payload, executionTime: executionTime)
     }
