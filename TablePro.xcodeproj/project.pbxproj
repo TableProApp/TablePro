@@ -31,7 +31,6 @@
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5AE4F4912F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
@@ -142,17 +141,6 @@
 				5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins */,
 			);
 			name = "Copy Plug-Ins";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		5AE4F4922F6BC0640097AC5B /* Copy D1 Plugin */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				5AE4F4912F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin in Copy Plug-Ins */,
-			);
-			name = "Copy D1 Plugin";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5A86FF0100000000 /* Embed Frameworks */ = {
@@ -778,7 +766,6 @@
 				5A1091C52EF17EDC0055EA7C /* Resources */,
 				5A86FF0100000000 /* Embed Frameworks */,
 				5A86FF0000000000 /* Copy Plug-Ins */,
-				5AE4F4922F6BC0640097AC5B /* Copy D1 Plugin */,
 			);
 			buildRules = (
 			);
