@@ -26,6 +26,11 @@ struct RedisStatementGenerator {
         columns.firstIndex(of: "Value")
     }
 
+    /// Index of the "Type" column
+    private var typeColumnIndex: Int? {
+        columns.firstIndex(of: "Type")
+    }
+
     /// Index of the "TTL" column
     private var ttlColumnIndex: Int? {
         columns.firstIndex(of: "TTL")
@@ -80,22 +85,27 @@ struct RedisStatementGenerator {
 
         var key: String?
         var value: String?
+        var type: String?
         var ttl: Int?
 
         if let values = insertedRowData[change.rowIndex] {
             if let ki = keyColumnIndex, ki < values.count {
                 key = values[ki]
             }
+            if let ti = typeColumnIndex, ti < values.count {
+                type = values[ti]
+            }
             if let vi = valueColumnIndex, vi < values.count {
                 value = values[vi]
             }
-            if let ti = ttlColumnIndex, ti < values.count, let ttlStr = values[ti] {
+            if let ttli = ttlColumnIndex, ttli < values.count, let ttlStr = values[ttli] {
                 ttl = Int(ttlStr)
             }
         } else {
             for cellChange in change.cellChanges {
                 switch cellChange.columnName {
                 case "Key": key = cellChange.newValue
+                case "Type": type = cellChange.newValue
                 case "Value": value = cellChange.newValue
                 case "TTL":
                     if let ttlStr = cellChange.newValue { ttl = Int(ttlStr) }
@@ -110,7 +120,7 @@ struct RedisStatementGenerator {
         }
 
         let v = value ?? ""
-        let cmd = "SET \(escapeArgument(k)) \(escapeArgument(v))"
+        let cmd = generateInsertCommand(key: k, value: v, type: type?.lowercased())
         statements.append((statement: cmd, parameters: []))
 
         if let ttlSeconds = ttl, ttlSeconds > 0 {
@@ -119,6 +129,31 @@ struct RedisStatementGenerator {
         }
 
         return statements
+    }
+
+    /// Generate the appropriate Redis command based on the data type
+    private func generateInsertCommand(key: String, value: String, type: String?) -> String {
+        switch type {
+        case "hash":
+            // Try to parse value as JSON object for HSET key field1 val1 ...
+            if let data = value.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                var args = "HSET \(escapeArgument(key))"
+                for (field, val) in json {
+                    args += " \(escapeArgument(field)) \(escapeArgument(String(describing: val)))"
+                }
+                return args
+            }
+            return "HSET \(escapeArgument(key)) field \(escapeArgument(value))"
+        case "list":
+            return "RPUSH \(escapeArgument(key)) \(escapeArgument(value))"
+        case "set":
+            return "SADD \(escapeArgument(key)) \(escapeArgument(value))"
+        case "zset":
+            return "ZADD \(escapeArgument(key)) 0 \(escapeArgument(value))"
+        default:
+            return "SET \(escapeArgument(key)) \(escapeArgument(value))"
+        }
     }
 
     // MARK: - UPDATE
@@ -148,12 +183,30 @@ struct RedisStatementGenerator {
             return key
         }()
 
+        // Determine the Redis type from the original row data
+        let redisType: String? = {
+            guard let ti = typeColumnIndex,
+                  let originalRow = change.originalRow,
+                  ti < originalRow.count else {
+                return nil
+            }
+            return originalRow[ti]
+        }()
+
         for cellChange in change.cellChanges {
             switch cellChange.columnName {
             case "Key":
                 continue // Already handled above
             case "Value":
                 if let newValue = cellChange.newValue {
+                    let typeLower = redisType?.lowercased() ?? "string"
+                    if typeLower != "string" {
+                        // Non-string types show a preview; blindly SET would destroy the data structure
+                        Self.logger.warning(
+                            "Skipping Value update for \(typeLower) key '\(effectiveKey)' - use query editor"
+                        )
+                        continue
+                    }
                     let cmd = "SET \(escapeArgument(effectiveKey)) \(escapeArgument(newValue))"
                     statements.append((statement: cmd, parameters: []))
                 }
@@ -187,14 +240,18 @@ struct RedisStatementGenerator {
 
     /// Escape a Redis argument for safe embedding in a command string.
     /// Wraps in double quotes if the value contains whitespace or special characters.
+    /// Ensures special characters round-trip correctly through the tokenizer.
     private func escapeArgument(_ value: String) -> String {
-        let needsQuoting = value.isEmpty || value.contains(where: { $0.isWhitespace || $0 == "\"" || $0 == "'" })
+        let needsQuoting = value.isEmpty || value.contains(where: {
+            $0.isWhitespace || $0 == "\"" || $0 == "'" || $0 == "\\" || $0 == "\n" || $0 == "\r" || $0 == "\t"
+        })
         if needsQuoting {
             let escaped = value
                 .replacingOccurrences(of: "\\", with: "\\\\")
                 .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\n", with: "\\n")
                 .replacingOccurrences(of: "\r", with: "\\r")
+                .replacingOccurrences(of: "\t", with: "\\t")
             return "\"\(escaped)\""
         }
         return value

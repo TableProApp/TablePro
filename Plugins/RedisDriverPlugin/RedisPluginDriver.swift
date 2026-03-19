@@ -391,7 +391,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return k
             case .sadd(let k, _), .srem(let k, _):
                 return k
-            case .zadd(let k, _), .zrem(let k, _):
+            case .zadd(let k, _, _), .zrem(let k, _):
                 return k
             case .del(let keys) where keys.count == 1:
                 return keys[0]
@@ -832,14 +832,16 @@ private extension RedisPluginDriver {
         startTime: Date
     ) async throws -> PluginQueryResult {
         switch operation {
-        case .zrange(let key, let start, let stop, let withScores):
-            var args = ["ZRANGE", key, String(start), String(stop)]
-            if withScores { args.append("WITHSCORES") }
+        case .zrange(let key, let start, let stop, let flags):
+            var args = ["ZRANGE", key, start, stop]
+            args += flags
+            let withScores = flags.contains("WITHSCORES")
             let result = try await conn.executeCommand(args)
             return buildSortedSetResult(result, withScores: withScores, startTime: startTime)
 
-        case .zadd(let key, let scoreMembers):
+        case .zadd(let key, let flags, let scoreMembers):
             var args = ["ZADD", key]
+            args += flags
             for (score, member) in scoreMembers {
                 args += [String(score), member]
             }
