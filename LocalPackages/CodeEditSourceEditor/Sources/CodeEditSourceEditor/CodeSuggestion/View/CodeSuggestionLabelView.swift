@@ -33,36 +33,34 @@ struct CodeSuggestionLabelView: View {
 
     // swiftlint:disable shorthand_operator
     private func highlightedLabel() -> Text {
-        let label = suggestion.label
+        let nsLabel = suggestion.label as NSString
         let ranges = suggestion.matchedRanges
         let color = effectiveLabelColor
 
         guard !ranges.isEmpty else {
-            return Text(label).foregroundColor(color)
+            return Text(suggestion.label).foregroundColor(color)
         }
 
         var result = Text("")
         var currentIndex = 0
 
         for range in ranges {
-            let clampedUpper = min(range.upperBound, label.count)
+            let clampedUpper = min(range.upperBound, nsLabel.length)
             guard range.lowerBound < clampedUpper else { continue }
 
             if currentIndex < range.lowerBound {
-                let start = label.index(label.startIndex, offsetBy: currentIndex)
-                let end = label.index(label.startIndex, offsetBy: range.lowerBound)
-                result = result + Text(label[start..<end]).foregroundColor(color)
+                let segment = nsLabel.substring(with: NSRange(location: currentIndex, length: range.lowerBound - currentIndex))
+                result = result + Text(segment).foregroundColor(color)
             }
 
-            let start = label.index(label.startIndex, offsetBy: range.lowerBound)
-            let end = label.index(label.startIndex, offsetBy: clampedUpper)
-            result = result + Text(label[start..<end]).foregroundColor(color).bold()
+            let segment = nsLabel.substring(with: NSRange(location: range.lowerBound, length: clampedUpper - range.lowerBound))
+            result = result + Text(segment).foregroundColor(color).bold()
             currentIndex = clampedUpper
         }
 
-        if currentIndex < label.count {
-            let start = label.index(label.startIndex, offsetBy: currentIndex)
-            result = result + Text(label[start...]).foregroundColor(color)
+        if currentIndex < nsLabel.length {
+            let segment = nsLabel.substring(from: currentIndex)
+            result = result + Text(segment).foregroundColor(color)
         }
 
         return result

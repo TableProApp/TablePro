@@ -48,6 +48,9 @@ struct SuggestionContentView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .contentShape(Rectangle())
+                    .onTapGesture(count: 1) {
+                        model.selectedIndex = index
+                    }
                     .onTapGesture(count: 2) {
                         model.selectedIndex = index
                         if let selectedItem = model.selectedItem {
@@ -56,9 +59,6 @@ struct SuggestionContentView: View {
                                 window: model.activeTextView?.view.window
                             )
                         }
-                    }
-                    .onTapGesture(count: 1) {
-                        model.selectedIndex = index
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(
@@ -86,10 +86,13 @@ struct SuggestionContentView: View {
 
     private var contentWidth: CGFloat {
         let font = model.activeTextView?.font ?? NSFont.systemFont(ofSize: 12)
-        // Icon (pointSize + 2) + spacing(2) + label padding (13*2) + extra buffer
         let iconWidth = font.pointSize + 6
         let maxLabelLength = min(
-            (model.items.reduce(0) { max($0, $1.label.count + ($1.detail?.count ?? 0)) }) + 2,
+            model.items.reduce(0) { current, item in
+                let labelLen = (item.label as NSString).length
+                let detailLen = ((item.detail ?? "") as NSString).length
+                return max(current, labelLen + detailLen)
+            } + 2,
             64
         )
         let textWidth = CGFloat(maxLabelLength) * font.charWidth

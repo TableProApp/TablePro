@@ -51,21 +51,26 @@ public final class SuggestionController: NSWindowController {
         let hostingView = NSHostingView(rootView: contentView)
         window.contentView = hostingView
 
+        // Resize window when items change
         model.$items
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.updateWindowSizeFromContent()
-                }
+                self?.updateWindowSizeFromContent()
             }
             .store(in: &sizeObservers)
 
+        // Resize window only when preview visibility changes (not every arrow key)
         model.$selectedIndex
             .receive(on: DispatchQueue.main)
+            .map { [weak self] index -> Bool in
+                guard let self, index >= 0, index < self.model.items.count else { return false }
+                let item = self.model.items[index]
+                return item.documentation != nil || item.sourcePreview != nil
+                    || !(item.pathComponents?.isEmpty ?? true)
+            }
+            .removeDuplicates()
             .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.updateWindowSizeFromContent()
-                }
+                self?.updateWindowSizeFromContent()
             }
             .store(in: &sizeObservers)
 
@@ -153,6 +158,11 @@ public final class SuggestionController: NSWindowController {
     public override func close() {
         model.willClose()
         removeEventMonitors()
+
+        if let observer = windowResignObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowResignObserver = nil
+        }
 
         if let observer = firstResponderObserver {
             NotificationCenter.default.removeObserver(observer)

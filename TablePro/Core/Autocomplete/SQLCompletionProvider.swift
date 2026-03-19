@@ -28,9 +28,8 @@ final class SQLCompletionProvider {
     /// Context-aware suggestion limit: schema-heavy clauses get more results
     private func maxSuggestions(for clauseType: SQLClauseType) -> Int {
         switch clauseType {
-        case .from, .join, .into, .dropObject, .createIndex:
-            return 40
-        case .select, .where_, .and, .on, .having, .groupBy, .orderBy,
+        case .from, .join, .into, .dropObject, .createIndex,
+             .select, .where_, .and, .on, .having, .groupBy, .orderBy,
              .set, .insertColumns, .returning, .using:
             return 40
         default:
@@ -624,16 +623,20 @@ final class SQLCompletionProvider {
     private func populateMatchRanges(_ items: inout [SQLCompletionItem], prefix: String) {
         guard !prefix.isEmpty else { return }
         let lowerPrefix = prefix.lowercased()
+        let nsPrefix = lowerPrefix as NSString
 
         for i in items.indices {
-            let filterText = items[i].filterText
-            if filterText.hasPrefix(lowerPrefix) {
-                items[i].matchedRanges = [0..<lowerPrefix.count]
-            } else if let range = filterText.range(of: lowerPrefix) {
-                let start = filterText.distance(from: filterText.startIndex, to: range.lowerBound)
-                items[i].matchedRanges = [start..<(start + lowerPrefix.count)]
-            } else if let result = fuzzyMatchWithIndices(pattern: lowerPrefix, target: filterText) {
-                items[i].matchedRanges = indicesToRanges(result.indices)
+            let nsFilterText = items[i].filterText as NSString
+            let prefixRange = nsFilterText.range(of: lowerPrefix, options: .anchored)
+            if prefixRange.location != NSNotFound {
+                items[i].matchedRanges = [0..<nsPrefix.length]
+            } else {
+                let containsRange = nsFilterText.range(of: lowerPrefix)
+                if containsRange.location != NSNotFound {
+                    items[i].matchedRanges = [containsRange.location..<(containsRange.location + containsRange.length)]
+                } else if let result = fuzzyMatchWithIndices(pattern: lowerPrefix, target: items[i].filterText) {
+                    items[i].matchedRanges = indicesToRanges(result.indices)
+                }
             }
         }
     }
