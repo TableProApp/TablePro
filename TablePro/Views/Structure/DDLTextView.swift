@@ -105,10 +105,12 @@ struct DDLTextView: NSViewRepresentable {
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
 
-        // Apply pre-compiled patterns
+        // Apply pre-compiled patterns (cap to 10k chars for large DDL safety)
         let text = textStorage.string
+        let highlightLength = min(textStorage.length, 10_000)
+        let highlightRange = NSRange(location: 0, length: highlightLength)
         for (regex, color) in Self.syntaxPatterns {
-            let matches = regex.matches(in: text, options: [], range: fullRange)
+            let matches = regex.matches(in: text, options: [], range: highlightRange)
             for match in matches {
                 textStorage.addAttribute(.foregroundColor, value: color, range: match.range)
             }

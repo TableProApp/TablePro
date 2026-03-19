@@ -480,8 +480,9 @@ struct SQLFormatterService: SQLFormatterProtocol {
         let searchNSRange = NSRange(searchStart..<sql.endIndex, in: sql)
         var endIndex = sql.endIndex
 
-        if let match = Self.majorKeywordRegex.firstMatch(in: sql, range: searchNSRange) {
-            endIndex = Range(match.range, in: sql)!.lowerBound
+        if let match = Self.majorKeywordRegex.firstMatch(in: sql, range: searchNSRange),
+           let matchRange = Range(match.range, in: sql) {
+            endIndex = matchRange.lowerBound
         }
 
         // Fix #3: Work with immutable substring

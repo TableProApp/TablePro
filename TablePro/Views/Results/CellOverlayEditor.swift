@@ -58,8 +58,8 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         // Determine overlay height — at least the cell height, up to 120pt
         let lineHeight: CGFloat = ThemeEngine.shared.dataGridFonts.regular.boundingRectForFont.height + 4
         var newlineCount = 0
-        for scalar in value.unicodeScalars {
-            if CharacterSet.newlines.contains(scalar) { newlineCount += 1 }
+        for scalar in value.unicodeScalars where scalar == "\n" {
+            newlineCount += 1
         }
         let lineCount = CGFloat(newlineCount + 1)
         let contentHeight = max(lineCount * lineHeight + 8, cellRect.height)

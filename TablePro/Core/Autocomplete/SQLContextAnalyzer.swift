@@ -41,7 +41,7 @@ enum SQLClauseType {
 }
 
 /// Represents a table reference with optional alias
-struct TableReference: Hashable, Sendable {
+internal struct TableReference: Hashable, Sendable {
     let tableName: String
     let alias: String?
 

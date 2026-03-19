@@ -454,9 +454,11 @@ struct MainEditorContentView: View {
             get: { tab.columnLayout },
             set: { newValue in
                 coordinator.isUpdatingColumnLayout = true
-                defer { coordinator.isUpdatingColumnLayout = false }
                 if let index = tabManager.selectedTabIndex {
                     tabManager.tabs[index].columnLayout = newValue
+                }
+                DispatchQueue.main.async {
+                    coordinator.isUpdatingColumnLayout = false
                 }
             }
         )
