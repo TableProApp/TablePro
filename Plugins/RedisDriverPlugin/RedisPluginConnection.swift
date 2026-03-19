@@ -529,6 +529,7 @@ private extension RedisPluginConnection {
                     let errMsg = withUnsafePointer(to: &ctx.pointee.errstr) { ptr in
                         ptr.withMemoryRebound(to: CChar.self, capacity: 128) { String(cString: $0) }
                     }
+                    markDisconnected()
                     throw RedisPluginError(code: Int(ctx.pointee.err), message: errMsg)
                 }
             }
@@ -550,6 +551,7 @@ private extension RedisPluginConnection {
                         freeReplyObject(d)
                     }
                 }
+                markDisconnected()
                 throw RedisPluginError(code: Int(ctx.pointee.err), message: errMsg)
             }
             let replyPtr = reply.assumingMemoryBound(to: redisReply.self)
@@ -558,6 +560,13 @@ private extension RedisPluginConnection {
             replies.append(parsed)
         }
         return replies
+    }
+
+    func markDisconnected() {
+        stateLock.lock()
+        context = nil
+        _isConnected = false
+        stateLock.unlock()
     }
 
     func withArgvPointers<T>(

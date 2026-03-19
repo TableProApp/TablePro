@@ -104,7 +104,7 @@ struct RedisQueryBuilder {
         var result = ""
         for char in str {
             switch char {
-            case "*", "?", "[", "]":
+            case "*", "?", "[":
                 result.append("\\")
                 result.append(char)
             case "\\":
