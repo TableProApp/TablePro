@@ -9,7 +9,11 @@ struct SSHProfileEditorView: View {
     @Environment(\.dismiss) private var dismiss
 
     let existingProfile: SSHProfile?
+    var initialPassword: String?
+    var initialKeyPassphrase: String?
+    var initialTOTPSecret: String?
     var onSave: ((SSHProfile) -> Void)?
+    var onDelete: (() -> Void)?
 
     // Profile identity
     @State private var profileName: String = ""
@@ -319,16 +323,10 @@ struct SSHProfileEditorView: View {
             customAgentSocketPath = profile.agentSocketPath
         }
 
-        // Load secrets from Keychain
-        if let pwd = SSHProfileStorage.shared.loadSSHPassword(for: profile.id) {
-            sshPassword = pwd
-        }
-        if let phrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profile.id) {
-            keyPassphrase = phrase
-        }
-        if let secret = SSHProfileStorage.shared.loadTOTPSecret(for: profile.id) {
-            totpSecret = secret
-        }
+        // Load secrets from Keychain, falling back to initial values (e.g. from "Save as Profile")
+        sshPassword = SSHProfileStorage.shared.loadSSHPassword(for: profile.id) ?? initialPassword ?? ""
+        keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profile.id) ?? initialKeyPassphrase ?? ""
+        totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profile.id) ?? initialTOTPSecret ?? ""
     }
 
     private func saveProfile() {
@@ -383,7 +381,7 @@ struct SSHProfileEditorView: View {
     private func deleteProfile() {
         guard let profile = existingProfile else { return }
         SSHProfileStorage.shared.deleteProfile(profile)
-        onSave?(profile)
+        onDelete?()
         dismiss()
     }
 

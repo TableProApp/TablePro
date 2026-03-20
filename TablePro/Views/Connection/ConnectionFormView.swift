@@ -507,24 +507,29 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             }
             .controlSize(.small)
         }
-        .onAppear {
-            sshProfiles = SSHProfileStorage.shared.loadProfiles()
-        }
         .sheet(isPresented: $showingCreateProfile) {
-            SSHProfileEditorView(existingProfile: nil) { _ in
+            SSHProfileEditorView(existingProfile: nil, onSave: { _ in
                 reloadProfiles()
-            }
+            })
         }
         .sheet(item: $editingProfile) { profile in
-            SSHProfileEditorView(existingProfile: profile) { _ in
+            SSHProfileEditorView(existingProfile: profile, onSave: { _ in
                 reloadProfiles()
-            }
+            }, onDelete: {
+                reloadProfiles()
+            })
         }
         .sheet(isPresented: $showingSaveAsProfile) {
-            SSHProfileEditorView(existingProfile: buildProfileFromInlineConfig()) { savedProfile in
-                sshProfileId = savedProfile.id
-                reloadProfiles()
-            }
+            SSHProfileEditorView(
+                existingProfile: buildProfileFromInlineConfig(),
+                initialPassword: sshPassword,
+                initialKeyPassphrase: keyPassphrase,
+                initialTOTPSecret: totpSecret,
+                onSave: { savedProfile in
+                    sshProfileId = savedProfile.id
+                    reloadProfiles()
+                }
+            )
         }
     }
 
@@ -1002,7 +1007,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 .allSatisfy { !(additionalFieldValues[$0.id] ?? "").isEmpty }
             basicValid = basicValid && hasRequiredFields && !password.isEmpty
         }
-        if sshEnabled {
+        if sshEnabled && sshProfileId == nil {
             let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)
             let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty && sshPortValid
             let authValid =
@@ -1028,6 +1033,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private func loadConnectionData() {
+        sshProfiles = SSHProfileStorage.shared.loadProfiles()
         // If editing, load from storage
         if let id = connectionId,
             let existing = storage.loadConnections().first(where: { $0.id == id })
@@ -1345,22 +1351,25 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 if !password.isEmpty {
                     ConnectionStorage.shared.savePassword(password, for: testConn.id)
                 }
-                if sshEnabled
-                    && (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
-                    && !sshPassword.isEmpty
-                {
-                    ConnectionStorage.shared.saveSSHPassword(sshPassword, for: testConn.id)
-                }
-                if sshEnabled && sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
-                    ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: testConn.id)
-                }
-                if sshEnabled && totpMode == .autoGenerate && !totpSecret.isEmpty {
-                    ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: testConn.id)
+                // Only write inline SSH secrets when not using a profile
+                if sshEnabled && sshProfileId == nil {
+                    if (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
+                        && !sshPassword.isEmpty
+                    {
+                        ConnectionStorage.shared.saveSSHPassword(sshPassword, for: testConn.id)
+                    }
+                    if sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
+                        ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: testConn.id)
+                    }
+                    if totpMode == .autoGenerate && !totpSecret.isEmpty {
+                        ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: testConn.id)
+                    }
                 }
 
+                let sshPasswordForTest = sshProfileId == nil ? sshPassword : nil
                 let success = try await DatabaseManager.shared.testConnection(
-                    testConn, sshPassword: sshPassword)
-                ConnectionStorage.shared.deleteTOTPSecret(for: testConn.id)
+                    testConn, sshPassword: sshPasswordForTest)
+                cleanupTestSecrets(for: testConn.id)
                 await MainActor.run {
                     isTesting = false
                     if success {
@@ -1374,7 +1383,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     }
                 }
             } catch {
-                ConnectionStorage.shared.deleteTOTPSecret(for: testConn.id)
+                cleanupTestSecrets(for: testConn.id)
                 await MainActor.run {
                     isTesting = false
                     testSucceeded = false
@@ -1403,6 +1412,13 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 database = url.path(percentEncoded: false)
             }
         }
+    }
+
+    private func cleanupTestSecrets(for testId: UUID) {
+        ConnectionStorage.shared.deletePassword(for: testId)
+        ConnectionStorage.shared.deleteSSHPassword(for: testId)
+        ConnectionStorage.shared.deleteKeyPassphrase(for: testId)
+        ConnectionStorage.shared.deleteTOTPSecret(for: testId)
     }
 
     private func browseForPrivateKey() {
