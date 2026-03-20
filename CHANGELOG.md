@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- etcd connection failing with 404 on etcd 3.4.x due to hardcoded `/v3/` API prefix
+
 ## [0.21.0] - 2026-03-19
 
 ### Added
