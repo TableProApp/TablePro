@@ -131,6 +131,9 @@ struct SyncSettingsView: View {
             Toggle("Groups & Tags:", isOn: $syncSettings.syncGroupsAndTags)
                 .onChange(of: syncSettings.syncGroupsAndTags) { _, _ in persistSettings() }
 
+            Toggle("SSH Profiles:", isOn: $syncSettings.syncSSHProfiles)
+                .onChange(of: syncSettings.syncSSHProfiles) { _, _ in persistSettings() }
+
             Toggle("Settings:", isOn: $syncSettings.syncSettings)
                 .onChange(of: syncSettings.syncSettings) { _, _ in persistSettings() }
 

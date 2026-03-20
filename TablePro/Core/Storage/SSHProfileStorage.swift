@@ -45,6 +45,17 @@ final class SSHProfileStorage {
         do {
             let data = try encoder.encode(profiles)
             defaults.set(data, forKey: profilesKey)
+            SyncChangeTracker.shared.markDirty(.sshProfile, ids: profiles.map { $0.id.uuidString })
+        } catch {
+            Self.logger.error("Failed to save SSH profiles: \(error)")
+        }
+    }
+
+    func saveProfilesWithoutSync(_ profiles: [SSHProfile]) {
+        guard !lastLoadFailed else { return }
+        do {
+            let data = try encoder.encode(profiles)
+            defaults.set(data, forKey: profilesKey)
         } catch {
             Self.logger.error("Failed to save SSH profiles: \(error)")
         }
@@ -67,6 +78,7 @@ final class SSHProfileStorage {
     }
 
     func deleteProfile(_ profile: SSHProfile) {
+        SyncChangeTracker.shared.markDeleted(.sshProfile, id: profile.id.uuidString)
         var profiles = loadProfiles()
         guard !lastLoadFailed else { return }
         profiles.removeAll { $0.id == profile.id }

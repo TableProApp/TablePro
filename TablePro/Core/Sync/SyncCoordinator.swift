@@ -146,12 +146,17 @@ final class SyncCoordinator {
             changeTracker.markDirty(.tag, id: tag.id.uuidString)
         }
 
+        let sshProfiles = SSHProfileStorage.shared.loadProfiles()
+        for profile in sshProfiles {
+            changeTracker.markDirty(.sshProfile, id: profile.id.uuidString)
+        }
+
         // Mark all settings categories as dirty
         for category in ["general", "appearance", "editor", "dataGrid", "history", "tabs", "keyboard", "ai"] {
             changeTracker.markDirty(.settings, id: category)
         }
 
-        Self.logger.info("Marked all local data dirty: \(connections.count) connections, \(groups.count) groups, \(tags.count) tags, 8 settings categories")
+        Self.logger.info("Marked all local data dirty: \(connections.count) connections, \(groups.count) groups, \(tags.count) tags, \(sshProfiles.count) SSH profiles, 8 settings categories")
     }
 
     /// Called when user disables sync in settings
@@ -254,6 +259,11 @@ final class SyncCoordinator {
             collectDirtyTags(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
+        // Collect dirty SSH profiles
+        if settings.syncSSHProfiles {
+            collectDirtySSHProfiles(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
+        }
+
         // Collect unsynced query history
         if settings.syncQueryHistory {
             let limit = settings.historySyncLimit.limit ?? Int.max
@@ -301,6 +311,9 @@ final class SyncCoordinator {
                 changeTracker.clearAllDirty(.group)
                 changeTracker.clearAllDirty(.tag)
             }
+            if settings.syncSSHProfiles {
+                changeTracker.clearAllDirty(.sshProfile)
+            }
             if settings.syncSettings {
                 changeTracker.clearAllDirty(.settings)
             }
@@ -320,6 +333,11 @@ final class SyncCoordinator {
                 }
                 for tombstone in metadataStorage.tombstones(for: .tag) {
                     metadataStorage.removeTombstone(type: .tag, id: tombstone.id)
+                }
+            }
+            if settings.syncSSHProfiles {
+                for tombstone in metadataStorage.tombstones(for: .sshProfile) {
+                    metadataStorage.removeTombstone(type: .sshProfile, id: tombstone.id)
                 }
             }
             if settings.syncSettings {
@@ -416,6 +434,8 @@ final class SyncCoordinator {
             case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
                 applyRemoteTag(record)
                 groupsOrTagsChanged = true
+            case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
+                applyRemoteSSHProfile(record)
             case SyncRecordType.settings.rawValue where settings.syncSettings:
                 applyRemoteSettings(record)
             case SyncRecordType.queryHistory.rawValue where settings.syncQueryHistory:
@@ -494,6 +514,18 @@ final class SyncCoordinator {
         TagStorage.shared.saveTags(tags)
     }
 
+    private func applyRemoteSSHProfile(_ record: CKRecord) {
+        guard let remoteProfile = SyncRecordMapper.toSSHProfile(record) else { return }
+
+        var profiles = SSHProfileStorage.shared.loadProfiles()
+        if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
+            profiles[index] = remoteProfile
+        } else {
+            profiles.append(remoteProfile)
+        }
+        SSHProfileStorage.shared.saveProfilesWithoutSync(profiles)
+    }
+
     private func applyRemoteSettings(_ record: CKRecord) {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               let data = SyncRecordMapper.settingsData(from: record)
@@ -559,6 +591,15 @@ final class SyncCoordinator {
                 var tags = TagStorage.shared.loadTags()
                 tags.removeAll { $0.id == uuid }
                 TagStorage.shared.saveTags(tags)
+            }
+        }
+
+        if recordName.hasPrefix("SSHProfile_") {
+            let uuidString = String(recordName.dropFirst("SSHProfile_".count))
+            if let uuid = UUID(uuidString: uuidString) {
+                var profiles = SSHProfileStorage.shared.loadProfiles()
+                profiles.removeAll { $0.id == uuid }
+                SSHProfileStorage.shared.saveProfilesWithoutSync(profiles)
             }
         }
     }
@@ -654,6 +695,7 @@ final class SyncCoordinator {
             case SyncRecordType.tag.rawValue: syncRecordType = .tag
             case SyncRecordType.settings.rawValue: syncRecordType = .settings
             case SyncRecordType.queryHistory.rawValue: syncRecordType = .queryHistory
+            case SyncRecordType.sshProfile.rawValue: syncRecordType = .sshProfile
             default: continue
             }
 
@@ -783,6 +825,28 @@ final class SyncCoordinator {
         for tombstone in metadataStorage.tombstones(for: .tag) {
             deletions.append(
                 SyncRecordMapper.recordID(type: .tag, id: tombstone.id, in: zoneID)
+            )
+        }
+    }
+
+    private func collectDirtySSHProfiles(
+        into records: inout [CKRecord],
+        deletions: inout [CKRecord.ID],
+        zoneID: CKRecordZone.ID
+    ) {
+        let dirtyProfileIds = changeTracker.dirtyRecords(for: .sshProfile)
+        if !dirtyProfileIds.isEmpty {
+            let profiles = SSHProfileStorage.shared.loadProfiles()
+            for id in dirtyProfileIds {
+                if let profile = profiles.first(where: { $0.id.uuidString == id }) {
+                    records.append(SyncRecordMapper.toCKRecord(profile, in: zoneID))
+                }
+            }
+        }
+
+        for tombstone in metadataStorage.tombstones(for: .sshProfile) {
+            deletions.append(
+                SyncRecordMapper.recordID(type: .sshProfile, id: tombstone.id, in: zoneID)
             )
         }
     }

@@ -1,0 +1,107 @@
+---
+title: SSH Profiles
+description: 创建可复用的 SSH 隧道配置，在多个数据库连接之间共享
+---
+
+# SSH Profiles
+
+SSH profiles 允许你定义一次 SSH tunnel 配置，在多个数据库连接中复用。无需为每个通过同一服务器的连接重复输入相同的 SSH host、port、用户名和认证设置，只需创建一个 profile 并从下拉菜单中选择。
+
+## 创建 SSH Profile
+
+<Steps>
+  <Step title="打开连接表单">
+    打开新建或已有的连接，切换到 **SSH Tunnel** 标签页。
+  </Step>
+  <Step title="启用 SSH Tunnel">
+    将 **SSH Tunnel** 开关切换为 ON。
+  </Step>
+  <Step title="创建新 Profile">
+    点击 **Use SSH Profile** 从内联配置切换到 profile 模式，然后从 profile 下拉菜单中选择 **Create New Profile...**。
+  </Step>
+  <Step title="填写 Profile 信息">
+    输入 profile 名称并配置 SSH 设置（host、port、用户名、认证方式）。这些字段与内联 SSH 配置相同。
+  </Step>
+  <Step title="保存">
+    点击 **Save** 保存 profile。该 profile 现在可在所有连接的 profile 下拉菜单中使用。
+  </Step>
+</Steps>
+
+### Profile 字段
+
+| 字段 | 描述 |
+|-------|-------------|
+| **Profile Name** | 用于识别此 profile 的标签（如 "Production Bastion"、"Staging Jump"） |
+| **SSH Host** | SSH 服务器主机名或 IP |
+| **SSH Port** | SSH 服务器端口（默认 `22`） |
+| **SSH User** | SSH 用户名 |
+| **Auth Method** | Password、Private Key 或 SSH Agent |
+| **Jump Hosts** | 可选的多跳配置 |
+
+认证字段（密码、密钥文件、口令、agent socket）取决于所选认证方式。与[内联 SSH tunnel 设置](/zh/databases/ssh-tunneling#认证方式)完全相同。
+
+## 使用 SSH Profiles
+
+1. 打开连接的 **SSH Tunnel** 标签页并启用 SSH
+2. 点击 **Use SSH Profile** 切换到 profile 模式
+3. 从下拉菜单中选择一个 profile
+4. SSH 设置以只读摘要形式显示 profile 的 host、port、用户名和认证方式
+
+连接存储的是对 profile 的引用，而不是设置的副本。如果之后更新 profile，所有使用该 profile 的连接会自动获取更改。
+
+要切换回每个连接独立的 SSH 设置，点击 **Use Inline Config**。这会将连接与 profile 分离，允许你直接编辑 SSH 字段。
+
+## 编辑和删除 Profile
+
+### 编辑
+
+1. 打开使用该 profile 的任意连接（或创建新连接并选择该 profile）
+2. 点击 profile 下拉菜单旁的 **Edit** 按钮
+3. 修改设置并点击 **Save**
+
+更改会应用到所有引用此 profile 的连接。
+
+### 删除
+
+1. 打开 profile 编辑器
+2. 点击 **Delete Profile**
+3. 确认对话框会显示当前有多少连接正在使用此 profile
+4. 确认删除。受影响的连接会恢复为内联 SSH 配置，profile 的设置会被复制过去，不会有连接丢失 SSH 配置。
+
+## 将当前配置保存为 Profile
+
+如果你已有使用内联 SSH 设置的连接，想要复用该配置：
+
+1. 打开连接的 **SSH Tunnel** 标签页
+2. 点击 **Save Current as Profile...**
+3. 输入 profile 名称
+4. 当前 SSH 设置保存为新 profile，连接切换为使用该 profile
+
+当你发现多个连接共享同一个 SSH tunnel 并想要统一管理时，这个功能很有用。
+
+## iCloud 同步
+
+启用 iCloud Sync 并开启 **Connections** 类别后，SSH profiles 会在你的 Mac 之间同步。Profile 与连接一起同步。
+
+<Note>
+SSH 密码和密钥口令默认**不会**与 profile 一起同步。这些凭据存储在本地 macOS Keychain 中。在 **Settings** > **Sync** 中启用 **Password sync** 可通过 iCloud Keychain 同步凭据（Apple 端到端加密）。
+</Note>
+
+参阅 [iCloud 同步](/zh/features/icloud-sync) 了解完整的同步配置详情。
+
+## 相关页面
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/zh/databases/ssh-tunneling">
+    SSH tunnel 完整设置和故障排除
+  </Card>
+  <Card title="iCloud 同步" icon="cloud" href="/zh/features/icloud-sync">
+    跨 Mac 同步设置
+  </Card>
+  <Card title="连接管理" icon="plug" href="/zh/databases/overview">
+    管理所有连接
+  </Card>
+  <Card title="键盘快捷键" icon="keyboard" href="/zh/features/keyboard-shortcuts">
+    加速你的工作流程
+  </Card>
+</CardGroup>

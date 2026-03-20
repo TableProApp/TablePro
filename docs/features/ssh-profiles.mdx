@@ -1,0 +1,107 @@
+---
+title: SSH Profiles
+description: Create reusable SSH tunnel configurations that can be shared across multiple database connections
+---
+
+# SSH Profiles
+
+SSH profiles let you define an SSH tunnel configuration once and reuse it across multiple database connections. Instead of entering the same SSH host, port, username, and auth settings for every connection that tunnels through the same server, create a profile and select it from a dropdown.
+
+## Creating an SSH Profile
+
+<Steps>
+  <Step title="Open Connection Form">
+    Open a new or existing connection and switch to the **SSH Tunnel** tab.
+  </Step>
+  <Step title="Enable SSH Tunnel">
+    Toggle the **SSH Tunnel** switch to ON.
+  </Step>
+  <Step title="Create New Profile">
+    Click **Use SSH Profile** to switch from inline configuration to profile mode, then click **Create New Profile...** from the profile dropdown.
+  </Step>
+  <Step title="Fill in Profile Details">
+    Enter a profile name and configure the SSH settings (host, port, username, authentication method). These are the same fields as inline SSH configuration.
+  </Step>
+  <Step title="Save">
+    Click **Save** to store the profile. It is now available in the profile dropdown for all connections.
+  </Step>
+</Steps>
+
+### Profile Fields
+
+| Field | Description |
+|-------|-------------|
+| **Profile Name** | A label to identify this profile (e.g., "Production Bastion", "Staging Jump") |
+| **SSH Host** | SSH server hostname or IP |
+| **SSH Port** | SSH server port (default `22`) |
+| **SSH User** | SSH username |
+| **Auth Method** | Password, Private Key, or SSH Agent |
+| **Jump Hosts** | Optional multi-hop configuration |
+
+Authentication fields (password, key file, passphrase, agent socket) depend on the selected auth method. These work identically to [inline SSH tunnel settings](/databases/ssh-tunneling#authentication-methods).
+
+## Using SSH Profiles
+
+1. Open a connection's **SSH Tunnel** tab and enable SSH
+2. Click **Use SSH Profile** to switch to profile mode
+3. Select a profile from the dropdown
+4. The SSH settings display as a read-only summary showing the profile's host, port, user, and auth method
+
+The connection stores a reference to the profile, not a copy of the settings. If you update the profile later, all connections using it pick up the changes automatically.
+
+To switch back to per-connection SSH settings, click **Use Inline Config**. This detaches the connection from the profile and lets you edit SSH fields directly.
+
+## Editing and Deleting Profiles
+
+### Editing
+
+1. Open any connection that uses the profile (or create a new one and select the profile)
+2. Click the **Edit** button next to the profile dropdown
+3. Modify the settings and click **Save**
+
+Changes apply to all connections that reference this profile.
+
+### Deleting
+
+1. Open the profile editor
+2. Click **Delete Profile**
+3. A confirmation dialog shows how many connections currently use this profile
+4. Confirm to delete. Affected connections revert to inline SSH configuration with the profile's settings copied in, so no connection loses its SSH config.
+
+## Save Current Config as Profile
+
+If you already have a connection with inline SSH settings and want to reuse that configuration:
+
+1. Open the connection's **SSH Tunnel** tab
+2. Click **Save Current as Profile...**
+3. Enter a profile name
+4. The current SSH settings are saved as a new profile, and the connection switches to using that profile
+
+This is useful when you realize multiple connections share the same SSH tunnel and you want to consolidate them.
+
+## iCloud Sync
+
+SSH profiles sync across your Macs when iCloud Sync is enabled with the **Connections** category turned on. Profiles are synced alongside your connections.
+
+<Note>
+SSH passwords and key passphrases are **not** synced with the profile by default. These credentials are stored in the local macOS Keychain. Enable **Password sync** in **Settings** > **Sync** to sync credentials via iCloud Keychain (end-to-end encrypted by Apple).
+</Note>
+
+See [iCloud Sync](/features/icloud-sync) for full sync configuration details.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
+    Full SSH tunnel setup and troubleshooting
+  </Card>
+  <Card title="iCloud Sync" icon="cloud" href="/features/icloud-sync">
+    Sync settings across Macs
+  </Card>
+  <Card title="Connection Management" icon="plug" href="/databases/overview">
+    Managing all your connections
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
+    Speed up your workflow
+  </Card>
+</CardGroup>

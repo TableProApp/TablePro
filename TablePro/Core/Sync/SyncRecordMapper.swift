@@ -18,6 +18,7 @@ enum SyncRecordType: String, CaseIterable {
     case queryHistory = "QueryHistory"
     case favorite = "SQLFavorite"
     case favoriteFolder = "SQLFavoriteFolder"
+    case sshProfile = "SSHProfile"
 }
 
 /// Pure-function mapper between local models and CKRecord
@@ -44,6 +45,7 @@ struct SyncRecordMapper {
         case .queryHistory: recordName = "History_\(id)"
         case .favorite: recordName = "Favorite_\(id)"
         case .favoriteFolder: recordName = "FavoriteFolder_\(id)"
+        case .sshProfile: recordName = "SSHProfile_\(id)"
         }
         return CKRecord.ID(recordName: recordName, zoneID: zone)
     }
@@ -310,5 +312,83 @@ struct SyncRecordMapper {
         }
 
         return record
+    }
+
+    // MARK: - SSH Profile
+
+    static func toCKRecord(_ profile: SSHProfile, in zone: CKRecordZone.ID) -> CKRecord {
+        let recordID = recordID(type: .sshProfile, id: profile.id.uuidString, in: zone)
+        let record = CKRecord(recordType: SyncRecordType.sshProfile.rawValue, recordID: recordID)
+
+        record["profileId"] = profile.id.uuidString as CKRecordValue
+        record["name"] = profile.name as CKRecordValue
+        record["host"] = profile.host as CKRecordValue
+        record["port"] = Int64(profile.port) as CKRecordValue
+        record["username"] = profile.username as CKRecordValue
+        record["authMethod"] = profile.authMethod.rawValue as CKRecordValue
+        record["privateKeyPath"] = profile.privateKeyPath as CKRecordValue
+        record["useSSHConfig"] = Int64(profile.useSSHConfig ? 1 : 0) as CKRecordValue
+        record["agentSocketPath"] = profile.agentSocketPath as CKRecordValue
+        record["totpMode"] = profile.totpMode.rawValue as CKRecordValue
+        record["totpAlgorithm"] = profile.totpAlgorithm.rawValue as CKRecordValue
+        record["totpDigits"] = Int64(profile.totpDigits) as CKRecordValue
+        record["totpPeriod"] = Int64(profile.totpPeriod) as CKRecordValue
+        record["modifiedAtLocal"] = Date() as CKRecordValue
+        record["schemaVersion"] = schemaVersion as CKRecordValue
+
+        if !profile.jumpHosts.isEmpty {
+            do {
+                let jumpHostsData = try encoder.encode(profile.jumpHosts)
+                record["jumpHostsJson"] = jumpHostsData as CKRecordValue
+            } catch {
+                logger.warning("Failed to encode jump hosts for sync: \(error.localizedDescription)")
+            }
+        }
+
+        return record
+    }
+
+    static func toSSHProfile(_ record: CKRecord) -> SSHProfile? {
+        guard let profileIdString = record["profileId"] as? String,
+              let profileId = UUID(uuidString: profileIdString),
+              let name = record["name"] as? String
+        else {
+            logger.warning("Failed to decode SSH profile from CKRecord: missing required fields")
+            return nil
+        }
+
+        let host = record["host"] as? String ?? ""
+        let port = (record["port"] as? Int64).map { Int($0) } ?? 22
+        let username = record["username"] as? String ?? ""
+        let authMethodRaw = record["authMethod"] as? String ?? SSHAuthMethod.password.rawValue
+        let privateKeyPath = record["privateKeyPath"] as? String ?? ""
+        let useSSHConfig = (record["useSSHConfig"] as? Int64 ?? 1) != 0
+        let agentSocketPath = record["agentSocketPath"] as? String ?? ""
+        let totpModeRaw = record["totpMode"] as? String ?? TOTPMode.none.rawValue
+        let totpAlgorithmRaw = record["totpAlgorithm"] as? String ?? TOTPAlgorithm.sha1.rawValue
+        let totpDigits = (record["totpDigits"] as? Int64).map { Int($0) } ?? 6
+        let totpPeriod = (record["totpPeriod"] as? Int64).map { Int($0) } ?? 30
+
+        var jumpHosts: [SSHJumpHost] = []
+        if let jumpHostsData = record["jumpHostsJson"] as? Data {
+            jumpHosts = (try? decoder.decode([SSHJumpHost].self, from: jumpHostsData)) ?? []
+        }
+
+        return SSHProfile(
+            id: profileId,
+            name: name,
+            host: host,
+            port: port,
+            username: username,
+            authMethod: SSHAuthMethod(rawValue: authMethodRaw) ?? .password,
+            privateKeyPath: privateKeyPath,
+            useSSHConfig: useSSHConfig,
+            agentSocketPath: agentSocketPath,
+            jumpHosts: jumpHosts,
+            totpMode: TOTPMode(rawValue: totpModeRaw) ?? .none,
+            totpAlgorithm: TOTPAlgorithm(rawValue: totpAlgorithmRaw) ?? .sha1,
+            totpDigits: totpDigits,
+            totpPeriod: totpPeriod
+        )
     }
 }

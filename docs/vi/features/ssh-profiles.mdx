@@ -1,0 +1,107 @@
+---
+title: SSH Profiles
+description: Tạo cấu hình SSH tunnel tái sử dụng để chia sẻ giữa nhiều kết nối database
+---
+
+# SSH Profiles
+
+SSH profiles cho phép bạn định nghĩa cấu hình SSH tunnel một lần và tái sử dụng cho nhiều kết nối database. Thay vì nhập cùng SSH host, port, username và cài đặt xác thực cho mỗi kết nối đi qua cùng server, tạo một profile và chọn từ dropdown.
+
+## Tạo SSH Profile
+
+<Steps>
+  <Step title="Mở Form Kết nối">
+    Mở kết nối mới hoặc sẵn có và chuyển sang tab **SSH Tunnel**.
+  </Step>
+  <Step title="Bật SSH Tunnel">
+    Bật công tắc **SSH Tunnel**.
+  </Step>
+  <Step title="Tạo Profile Mới">
+    Nhấp **Use SSH Profile** để chuyển từ cấu hình inline sang chế độ profile, sau đó chọn **Create New Profile...** từ dropdown profile.
+  </Step>
+  <Step title="Điền Thông tin Profile">
+    Nhập tên profile và cấu hình SSH (host, port, username, phương thức xác thực). Các trường giống cấu hình SSH inline.
+  </Step>
+  <Step title="Lưu">
+    Nhấp **Save** để lưu profile. Profile giờ có sẵn trong dropdown cho tất cả kết nối.
+  </Step>
+</Steps>
+
+### Các Trường Profile
+
+| Trường | Mô tả |
+|-------|-------------|
+| **Profile Name** | Tên để nhận dạng profile (ví dụ: "Production Bastion", "Staging Jump") |
+| **SSH Host** | Hostname hoặc IP của SSH server |
+| **SSH Port** | Cổng SSH server (mặc định `22`) |
+| **SSH User** | Tên người dùng SSH |
+| **Auth Method** | Password, Private Key, hoặc SSH Agent |
+| **Jump Hosts** | Cấu hình multi-hop tùy chọn |
+
+Các trường xác thực (password, key file, passphrase, agent socket) phụ thuộc vào phương thức xác thực đã chọn. Hoạt động giống [cài đặt SSH tunnel inline](/vi/databases/ssh-tunneling#phương-thức-xác-thực).
+
+## Sử dụng SSH Profiles
+
+1. Mở tab **SSH Tunnel** của kết nối và bật SSH
+2. Nhấp **Use SSH Profile** để chuyển sang chế độ profile
+3. Chọn profile từ dropdown
+4. Cài đặt SSH hiển thị dạng tóm tắt chỉ đọc gồm host, port, user và phương thức xác thực
+
+Kết nối lưu tham chiếu đến profile, không phải bản sao cài đặt. Nếu bạn cập nhật profile sau, tất cả kết nối dùng profile đó tự động nhận thay đổi.
+
+Để chuyển về cài đặt SSH riêng cho từng kết nối, nhấp **Use Inline Config**. Thao tác này tách kết nối khỏi profile và cho phép chỉnh sửa trực tiếp các trường SSH.
+
+## Sửa và Xóa Profile
+
+### Sửa
+
+1. Mở kết nối đang dùng profile (hoặc tạo mới và chọn profile)
+2. Nhấp nút **Edit** bên cạnh dropdown profile
+3. Sửa cài đặt và nhấp **Save**
+
+Thay đổi áp dụng cho tất cả kết nối tham chiếu đến profile này.
+
+### Xóa
+
+1. Mở trình sửa profile
+2. Nhấp **Delete Profile**
+3. Hộp thoại xác nhận hiển thị số kết nối đang dùng profile
+4. Xác nhận xóa. Các kết nối bị ảnh hưởng chuyển về cấu hình SSH inline với cài đặt của profile được sao chép vào, không kết nối nào mất cấu hình SSH.
+
+## Lưu Cấu hình Hiện tại thành Profile
+
+Nếu bạn đã có kết nối với cài đặt SSH inline và muốn tái sử dụng cấu hình đó:
+
+1. Mở tab **SSH Tunnel** của kết nối
+2. Nhấp **Save Current as Profile...**
+3. Nhập tên profile
+4. Cài đặt SSH hiện tại được lưu thành profile mới, và kết nối chuyển sang dùng profile đó
+
+Hữu ích khi bạn nhận ra nhiều kết nối dùng chung SSH tunnel và muốn hợp nhất.
+
+## Đồng bộ iCloud
+
+SSH profiles đồng bộ giữa các Mac khi bật iCloud Sync với danh mục **Connections**. Profile được đồng bộ cùng với kết nối.
+
+<Note>
+Mật khẩu SSH và passphrase key **không** đồng bộ cùng profile theo mặc định. Thông tin xác thực lưu trong macOS Keychain local. Bật **Password sync** trong **Settings** > **Sync** để đồng bộ qua iCloud Keychain (mã hóa đầu cuối bởi Apple).
+</Note>
+
+Xem [Đồng bộ iCloud](/vi/features/icloud-sync) để biết chi tiết cấu hình đồng bộ.
+
+## Trang liên quan
+
+<CardGroup cols={2}>
+  <Card title="SSH Tunneling" icon="lock" href="/vi/databases/ssh-tunneling">
+    Thiết lập và khắc phục sự cố SSH tunnel
+  </Card>
+  <Card title="Đồng bộ iCloud" icon="cloud" href="/vi/features/icloud-sync">
+    Đồng bộ cài đặt giữa các Mac
+  </Card>
+  <Card title="Quản lý Kết nối" icon="plug" href="/vi/databases/overview">
+    Quản lý tất cả kết nối
+  </Card>
+  <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
+    Tăng tốc quy trình làm việc
+  </Card>
+</CardGroup>

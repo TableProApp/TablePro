@@ -16,6 +16,7 @@ struct SyncSettings: Codable, Equatable {
     var syncQueryHistory: Bool
     var historySyncLimit: HistorySyncLimit
     var syncPasswords: Bool
+    var syncSSHProfiles: Bool
 
     init(
         enabled: Bool,
@@ -24,7 +25,8 @@ struct SyncSettings: Codable, Equatable {
         syncSettings: Bool,
         syncQueryHistory: Bool,
         historySyncLimit: HistorySyncLimit,
-        syncPasswords: Bool = false
+        syncPasswords: Bool = false,
+        syncSSHProfiles: Bool = true
     ) {
         self.enabled = enabled
         self.syncConnections = syncConnections
@@ -33,6 +35,7 @@ struct SyncSettings: Codable, Equatable {
         self.syncQueryHistory = syncQueryHistory
         self.historySyncLimit = historySyncLimit
         self.syncPasswords = syncPasswords
+        self.syncSSHProfiles = syncSSHProfiles
     }
 
     init(from decoder: Decoder) throws {
@@ -44,6 +47,7 @@ struct SyncSettings: Codable, Equatable {
         syncQueryHistory = try container.decode(Bool.self, forKey: .syncQueryHistory)
         historySyncLimit = try container.decode(HistorySyncLimit.self, forKey: .historySyncLimit)
         syncPasswords = try container.decodeIfPresent(Bool.self, forKey: .syncPasswords) ?? false
+        syncSSHProfiles = try container.decodeIfPresent(Bool.self, forKey: .syncSSHProfiles) ?? true
     }
 
     static let `default` = SyncSettings(
@@ -53,7 +57,8 @@ struct SyncSettings: Codable, Equatable {
         syncSettings: true,
         syncQueryHistory: true,
         historySyncLimit: .entries500,
-        syncPasswords: false
+        syncPasswords: false,
+        syncSSHProfiles: true
     )
 }
 

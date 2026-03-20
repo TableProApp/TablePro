@@ -142,6 +142,13 @@ struct ConflictResolutionView: View {
             if let name = record["name"] as? String {
                 fieldRow(label: String(localized: "Name"), value: name)
             }
+        case .sshProfile:
+            if let name = record["name"] as? String {
+                fieldRow(label: String(localized: "Name"), value: name)
+            }
+            if let host = record["host"] as? String {
+                fieldRow(label: "Host", value: host)
+            }
         }
     }
 

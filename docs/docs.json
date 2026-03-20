@@ -65,7 +65,8 @@
                   "features/keyboard-shortcuts",
                   "features/deep-links",
                   "features/safe-mode",
-                  "features/icloud-sync"
+                  "features/icloud-sync",
+                  "features/ssh-profiles"
                 ]
               },
               {
@@ -161,7 +162,8 @@
                   "vi/features/keyboard-shortcuts",
                   "vi/features/deep-links",
                   "vi/features/safe-mode",
-                  "vi/features/icloud-sync"
+                  "vi/features/icloud-sync",
+                  "vi/features/ssh-profiles"
                 ]
               },
               {
@@ -262,7 +264,8 @@
                   "zh/features/keyboard-shortcuts",
                   "zh/features/deep-links",
                   "zh/features/safe-mode",
-                  "zh/features/icloud-sync"
+                  "zh/features/icloud-sync",
+                  "zh/features/ssh-profiles"
                 ]
               },
               {
