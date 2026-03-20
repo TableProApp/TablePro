@@ -1227,7 +1227,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             if let d1 = Double(str), let d2 = Double(value) { return d1 <= d2 }
             return str <= value
         default:
-            return true
+            Self.logger.warning("Unknown filter operator: \(op)")
+            return false
         }
     }
 

@@ -34,7 +34,10 @@ extension DynamoDBAttributeValue: Codable {
         } else if let value = try container.decodeIfPresent(String.self, forKey: .n) {
             self = .number(value)
         } else if let value = try container.decodeIfPresent(String.self, forKey: .b) {
-            self = .binary(Data(base64Encoded: value) ?? Data())
+            guard let data = Data(base64Encoded: value) else {
+                throw DecodingError.dataCorruptedError(forKey: .b, in: container, debugDescription: "Invalid base64 string")
+            }
+            self = .binary(data)
         } else if let value = try container.decodeIfPresent(Bool.self, forKey: .bool) {
             self = .bool(value)
         } else if let value = try container.decodeIfPresent(Bool.self, forKey: .null), value {
