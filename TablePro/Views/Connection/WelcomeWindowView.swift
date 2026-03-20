@@ -647,7 +647,8 @@ struct WelcomeWindowView: View {
               !collapsedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
             collapsedGroupIds.insert(groupId)
-            selectedConnectionId = nil
+            // Keep selectedConnectionId so Ctrl+L can derive the groupId to expand.
+            // The List won't show a highlight for the hidden row.
             UserDefaults.standard.set(
                 Array(collapsedGroupIds.map(\.uuidString)),
                 forKey: "com.TablePro.collapsedGroupIds"
