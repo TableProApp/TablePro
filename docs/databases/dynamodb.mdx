@@ -318,12 +318,12 @@ For read-only access, remove the write actions (`PutItem`, `UpdateItem`, `Delete
 
 - **No persistent connections.** DynamoDB is HTTP-based. Each operation is an independent API request.
 - **No SSH or SSL configuration.** DynamoDB uses HTTPS transport via URLSession with custom SigV4 request signing. No custom SSL certificates or SSH tunnels are needed.
-- **No schema editing.** DynamoDB does not support ALTER TABLE. Table structure is defined at creation time.
+- **Schema editing unavailable.** DynamoDB does not support ALTER TABLE. Table structure is defined at creation time.
 - **Approximate item counts.** The item count shown in table metadata is approximate and updated by DynamoDB every ~6 hours.
 - **Cursor-based pagination.** DynamoDB uses continuation tokens internally. Jumping to an arbitrary page requires scanning through all preceding items.
-- **No transactions UI.** DynamoDB transactions (TransactWriteItems/TransactGetItems) are not exposed in the UI. Use the AWS Console or CLI for transactional operations.
-- **No DAX support.** DynamoDB Accelerator (DAX) in-memory caching is not supported.
-- **No Global Tables management.** Multi-region Global Tables configuration is not available through the plugin.
+- **Transactions not exposed.** DynamoDB transactions (TransactWriteItems/TransactGetItems) are not exposed in the UI. Use the AWS Console or CLI for transactional operations.
+- **DAX unsupported.** DynamoDB Accelerator (DAX) in-memory caching is not supported.
+- **Global Tables management unavailable.** Multi-region Global Tables configuration is not available through the plugin.
 
 ## Next Steps
 

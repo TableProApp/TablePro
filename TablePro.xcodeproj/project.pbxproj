@@ -35,15 +35,6 @@
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
 		5ACE00012F4F00000000000A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000009 /* Sparkle */; };
 		5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000C /* MarkdownUI */; };
-		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5AEA8B422F6808CA0040461A /* EtcdStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */; };
-		5AEA8B432F6808CA0040461A /* EtcdPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3D2F6808CA0040461A /* EtcdPlugin.swift */; };
-		5AEA8B442F6808CA0040461A /* EtcdCommandParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */; };
-		5AEA8B452F6808CA0040461A /* EtcdPluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3E2F6808CA0040461A /* EtcdPluginDriver.swift */; };
-		5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */; };
-		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
-		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
 		5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A1 /* DynamoDBConnection.swift */; };
 		5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A2 /* DynamoDBItemFlattener.swift */; };
@@ -53,6 +44,15 @@
 		5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */; };
 		5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */; };
 		5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AEA8B422F6808CA0040461A /* EtcdStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */; };
+		5AEA8B432F6808CA0040461A /* EtcdPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3D2F6808CA0040461A /* EtcdPlugin.swift */; };
+		5AEA8B442F6808CA0040461A /* EtcdCommandParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */; };
+		5AEA8B452F6808CA0040461A /* EtcdPluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3E2F6808CA0040461A /* EtcdPluginDriver.swift */; };
+		5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3F2F6808CA0040461A /* EtcdQueryBuilder.swift */; };
+		5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */; };
+		5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AEE5B362F5C9B7B00FA84D7 /* OracleNIO in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000F /* OracleNIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -193,8 +193,6 @@
 		5A86F000100000000 /* SQLImport.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLImport.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A87A000100000000 /* CassandraDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CassandraDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TableProTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloudflareD1DriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
-		5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamoDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5ADDB00200000000000000A1 /* DynamoDBConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBConnection.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A2 /* DynamoDBItemFlattener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBItemFlattener.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A3 /* DynamoDBPartiQLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBPartiQLParser.swift; sourceTree = "<group>"; };
@@ -202,6 +200,8 @@
 		5ADDB00200000000000000A5 /* DynamoDBPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBPluginDriver.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBQueryBuilder.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBStatementGenerator.swift; sourceTree = "<group>"; };
+		5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamoDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloudflareD1DriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EtcdDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdCommandParser.swift; sourceTree = "<group>"; };
 		5AEA8B3C2F6808CA0040461A /* EtcdHttpClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdHttpClient.swift; sourceTree = "<group>"; };
@@ -664,6 +664,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ADDB00400000000000000B2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5AE4F4712F6BC0640097AC5B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -677,14 +685,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5AEA8B492F6808E90040461A /* TableProPluginKit.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		5ADDB00400000000000000B2 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1211,6 +1211,25 @@
 			productReference = 5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5ADDB00800000000000000B0 /* Build configuration list for PBXNativeTarget "DynamoDBDriverPlugin" */;
+			buildPhases = (
+				5ADDB00400000000000000B1 /* Sources */,
+				5ADDB00400000000000000B2 /* Frameworks */,
+				5ADDB00400000000000000B3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DynamoDBDriverPlugin;
+			packageProductDependencies = (
+			);
+			productName = DynamoDBDriverPlugin;
+			productReference = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5AE4F4752F6BC0640097AC5B /* Build configuration list for PBXNativeTarget "CloudflareD1DriverPlugin" */;
@@ -1231,25 +1250,6 @@
 			);
 			productName = CloudflareD1DriverPlugin;
 			productReference = 5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */;
-			productType = "com.apple.product-type.bundle";
-		};
-		5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 5ADDB00800000000000000B0 /* Build configuration list for PBXNativeTarget "DynamoDBDriverPlugin" */;
-			buildPhases = (
-				5ADDB00400000000000000B1 /* Sources */,
-				5ADDB00400000000000000B2 /* Frameworks */,
-				5ADDB00400000000000000B3 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = DynamoDBDriverPlugin;
-			packageProductDependencies = (
-			);
-			productName = DynamoDBDriverPlugin;
-			productReference = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
 		5AEA8B292F6808270040461A /* EtcdDriverPlugin */ = {
@@ -1527,6 +1527,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ADDB00400000000000000B3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5AE4F4722F6BC0640097AC5B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1535,13 +1542,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5AEA8B282F6808270040461A /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		5ADDB00400000000000000B3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1684,6 +1684,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ADDB00400000000000000B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */,
+				5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */,
+				5ADDB00100000000000000A3 /* DynamoDBPartiQLParser.swift in Sources */,
+				5ADDB00100000000000000A4 /* DynamoDBPlugin.swift in Sources */,
+				5ADDB00100000000000000A5 /* DynamoDBPluginDriver.swift in Sources */,
+				5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */,
+				5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5AE4F4702F6BC0640097AC5B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1701,20 +1715,6 @@
 				5AEA8B452F6808CA0040461A /* EtcdPluginDriver.swift in Sources */,
 				5AEA8B462F6808CA0040461A /* EtcdQueryBuilder.swift in Sources */,
 				5AEA8B472F6808CA0040461A /* EtcdHttpClient.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		5ADDB00400000000000000B1 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */,
-				5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */,
-				5ADDB00100000000000000A3 /* DynamoDBPartiQLParser.swift in Sources */,
-				5ADDB00100000000000000A4 /* DynamoDBPlugin.swift in Sources */,
-				5ADDB00100000000000000A5 /* DynamoDBPluginDriver.swift in Sources */,
-				5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */,
-				5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3048,6 +3048,55 @@
 			};
 			name = Release;
 		};
+		5ADDB00700000000000000B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/DynamoDBDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).DynamoDBPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.DynamoDBDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5ADDB00700000000000000B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/DynamoDBDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).DynamoDBPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.DynamoDBDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5AE4F4762F6BC0640097AC5B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3135,55 +3184,6 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.EtcdDriverPlugin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_VERSION = 5.9;
-				WRAPPER_EXTENSION = tableplugin;
-			};
-			name = Release;
-		};
-		5ADDB00700000000000000B1 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Plugins/DynamoDBDriverPlugin/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).DynamoDBPlugin";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.DynamoDBDriverPlugin;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
-				SKIP_INSTALL = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.9;
-				WRAPPER_EXTENSION = tableplugin;
-			};
-			name = Debug;
-		};
-		5ADDB00700000000000000B2 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Plugins/DynamoDBDriverPlugin/Info.plist;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).DynamoDBPlugin";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.DynamoDBDriverPlugin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -3375,6 +3375,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5ADDB00800000000000000B0 /* Build configuration list for PBXNativeTarget "DynamoDBDriverPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5ADDB00700000000000000B1 /* Debug */,
+				5ADDB00700000000000000B2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5AE4F4752F6BC0640097AC5B /* Build configuration list for PBXNativeTarget "CloudflareD1DriverPlugin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -3389,15 +3398,6 @@
 			buildConfigurations = (
 				5AEA8B2B2F6808270040461A /* Debug */,
 				5AEA8B2C2F6808270040461A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		5ADDB00800000000000000B0 /* Build configuration list for PBXNativeTarget "DynamoDBDriverPlugin" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				5ADDB00700000000000000B1 /* Debug */,
-				5ADDB00700000000000000B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

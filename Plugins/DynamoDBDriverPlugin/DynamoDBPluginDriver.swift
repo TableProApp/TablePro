@@ -10,7 +10,7 @@ import Foundation
 import OSLog
 import TableProPluginKit
 
-final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
+internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private let config: DriverConnectionConfig
     private var _connection: DynamoDBConnection?
     private let lock = NSLock()
@@ -126,7 +126,63 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult {
-        try await execute(query: query)
+        let startTime = Date()
+
+        guard let conn = connection else {
+            throw DynamoDBError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If no parameters, fall back to regular execute
+        guard !parameters.isEmpty else {
+            return try await execute(query: trimmed)
+        }
+
+        // Convert parameters to DynamoDB attribute value dictionaries
+        let dynamoParams: [[String: Any]] = parameters.map { param in
+            guard let value = param else {
+                return ["NULL": true] as [String: Any]
+            }
+            // Treat as number if it looks numeric
+            if Double(value) != nil {
+                return ["N": value]
+            }
+            return ["S": value]
+        }
+
+        let response = try await conn.executeStatement(statement: trimmed, parameters: dynamoParams)
+        let items = response.Items ?? []
+
+        if items.isEmpty {
+            return PluginQueryResult(
+                columns: ["Result"],
+                columnTypeNames: ["String"],
+                rows: [["Statement executed"]],
+                rowsAffected: 0,
+                executionTime: Date().timeIntervalSince(startTime)
+            )
+        }
+
+        let tableName = DynamoDBPartiQLParser.extractTableName(trimmed)
+        let keySchema: [(name: String, keyType: String)]
+        if let name = tableName {
+            keySchema = try await cachedKeySchema(name, conn: conn)
+        } else {
+            keySchema = []
+        }
+
+        let columns = DynamoDBItemFlattener.unionColumns(from: items, keySchema: keySchema)
+        let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: items)
+        let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
+
+        return PluginQueryResult(
+            columns: columns,
+            columnTypeNames: typeNames,
+            rows: rows,
+            rowsAffected: 0,
+            executionTime: Date().timeIntervalSince(startTime)
+        )
     }
 
     func fetchRowCount(query: String) async throws -> Int {
@@ -137,24 +193,21 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let parsed = DynamoDBQueryBuilder.parseCountQuery(trimmed) {
-            if parsed.filterColumn != nil {
+            if let col = parsed.filterColumn, let op = parsed.filterOp, let val = parsed.filterValue {
+                let filters = [DynamoDBFilterSpec(column: col, op: op, value: val)]
                 return try await countFilteredScanItems(
                     tableName: parsed.tableName, conn: conn,
-                    filterColumn: parsed.filterColumn,
-                    filterOp: parsed.filterOp,
-                    filterValue: parsed.filterValue
+                    filters: filters, logicMode: "AND"
                 )
             }
             return try await countItems(tableName: parsed.tableName, conn: conn)
         }
 
         if let parsed = DynamoDBQueryBuilder.parseScanQuery(trimmed) {
-            if let firstFilter = parsed.filters.first {
+            if !parsed.filters.isEmpty {
                 return try await countFilteredScanItems(
                     tableName: parsed.tableName, conn: conn,
-                    filterColumn: firstFilter.column,
-                    filterOp: firstFilter.op,
-                    filterValue: firstFilter.value
+                    filters: parsed.filters, logicMode: parsed.logicMode
                 )
             }
             return try await countItems(tableName: parsed.tableName, conn: conn)
@@ -674,6 +727,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var lastEvaluatedKey: [String: DynamoDBAttributeValue]?
         let fetchLimit = min(parsed.limit + parsed.offset, Self.maxItems)
 
+        let hasFilters = !parsed.filters.isEmpty
+
         repeat {
             let batchLimit = min(fetchLimit - allItems.count, 1000)
             let response = try await conn.scan(
@@ -681,18 +736,19 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 limit: batchLimit,
                 exclusiveStartKey: lastEvaluatedKey
             )
-            let items = response.Items ?? []
+            var items = response.Items ?? []
+
+            if hasFilters {
+                items = applyClientFilters(
+                    items: items, filters: parsed.filters, logicMode: parsed.logicMode
+                )
+            }
+
             allItems.append(contentsOf: items)
             lastEvaluatedKey = response.LastEvaluatedKey
 
             if lastEvaluatedKey == nil || allItems.count >= fetchLimit { break }
         } while true
-
-        if !parsed.filters.isEmpty {
-            allItems = applyClientFilters(
-                items: allItems, filters: parsed.filters, logicMode: parsed.logicMode
-            )
-        }
 
         // Apply pagination
         let total = allItems.count
@@ -1098,9 +1154,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func countFilteredScanItems(
         tableName: String,
         conn: DynamoDBConnection,
-        filterColumn: String?,
-        filterOp: String?,
-        filterValue: String?
+        filters: [DynamoDBFilterSpec],
+        logicMode: String
     ) async throws -> Int {
         var total = 0
         var lastKey: [String: DynamoDBAttributeValue]?
@@ -1111,8 +1166,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 exclusiveStartKey: lastKey
             )
             var items = response.Items ?? []
-            if let filterColumn = filterColumn, let filterOp = filterOp, let filterValue = filterValue {
-                items = applyClientFilter(items: items, column: filterColumn, op: filterOp, value: filterValue)
+            if !filters.isEmpty {
+                items = applyClientFilters(items: items, filters: filters, logicMode: logicMode)
             }
             total += items.count
             lastKey = response.LastEvaluatedKey

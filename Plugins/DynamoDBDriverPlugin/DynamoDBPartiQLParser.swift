@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum DynamoDBQueryType {
+internal enum DynamoDBQueryType {
     case select
     case insert
     case update
@@ -15,7 +15,7 @@ enum DynamoDBQueryType {
     case unknown
 }
 
-struct DynamoDBPartiQLParser {
+internal struct DynamoDBPartiQLParser {
     /// Classify a PartiQL statement by its first keyword.
     static func queryType(_ statement: String) -> DynamoDBQueryType {
         let trimmed = statement.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -84,6 +84,7 @@ struct DynamoDBPartiQLParser {
     // MARK: - Private
 
     /// Simple tokenizer that respects quoted identifiers and string literals.
+    /// Handles PartiQL doubled single-quote escaping (e.g., `'O''Brien'`).
     private static func tokenize(_ sql: String) -> [String] {
         var tokens: [String] = []
         var current = ""
@@ -91,28 +92,48 @@ struct DynamoDBPartiQLParser {
         var inSingleQuote = false
         var isEscaped = false
 
-        for char in sql {
+        let chars = Array(sql)
+        var i = 0
+
+        while i < chars.count {
+            let char = chars[i]
+
             if isEscaped {
                 current.append(char)
                 isEscaped = false
+                i += 1
                 continue
             }
 
             if char == "\\" {
                 current.append(char)
                 isEscaped = true
+                i += 1
                 continue
             }
 
             if char == "\"" && !inSingleQuote {
                 inDoubleQuote.toggle()
                 current.append(char)
+                i += 1
                 continue
             }
 
             if char == "'" && !inDoubleQuote {
-                inSingleQuote.toggle()
+                if inSingleQuote {
+                    // Check for doubled single-quote escape ('')
+                    if i + 1 < chars.count && chars[i + 1] == "'" {
+                        current.append(char)
+                        current.append(chars[i + 1])
+                        i += 2
+                        continue
+                    }
+                    inSingleQuote = false
+                } else {
+                    inSingleQuote = true
+                }
                 current.append(char)
+                i += 1
                 continue
             }
 
@@ -121,10 +142,12 @@ struct DynamoDBPartiQLParser {
                     tokens.append(current)
                     current = ""
                 }
+                i += 1
                 continue
             }
 
             current.append(char)
+            i += 1
         }
 
         if !current.isEmpty {

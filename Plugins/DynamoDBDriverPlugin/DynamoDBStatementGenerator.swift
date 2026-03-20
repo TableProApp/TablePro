@@ -9,7 +9,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-enum DynamoDBStatementError: LocalizedError {
+internal enum DynamoDBStatementError: LocalizedError {
     case invalidNumber(value: String)
     case invalidBoolean(value: String)
     case unsupportedBinaryType
@@ -26,7 +26,7 @@ enum DynamoDBStatementError: LocalizedError {
     }
 }
 
-struct DynamoDBStatementGenerator {
+internal struct DynamoDBStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DynamoDBStatementGenerator")
 
     let tableName: String
@@ -83,7 +83,7 @@ struct DynamoDBStatementGenerator {
         }
 
         for key in keySchema {
-            guard let val = values[key.name], val != nil, !val!.isEmpty else {
+            guard let val = values[key.name], let unwrapped = val, !unwrapped.isEmpty else {
                 Self.logger.warning("Skipping INSERT - missing key column '\(key.name)'")
                 return []
             }

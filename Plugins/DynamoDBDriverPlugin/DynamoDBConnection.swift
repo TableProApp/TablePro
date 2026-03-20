@@ -51,7 +51,16 @@ extension DynamoDBAttributeValue: Codable {
         } else if let values = try container.decodeIfPresent([String].self, forKey: .ns) {
             self = .numberSet(values)
         } else if let values = try container.decodeIfPresent([String].self, forKey: .bs) {
-            self = .binarySet(values.compactMap { Data(base64Encoded: $0) })
+            let decoded = try values.map { str -> Data in
+                guard let data = Data(base64Encoded: str) else {
+                    throw DecodingError.dataCorruptedError(
+                        forKey: .bs, in: container,
+                        debugDescription: "Invalid base64 string in binary set"
+                    )
+                }
+                return data
+            }
+            self = .binarySet(decoded)
         } else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
@@ -105,7 +114,7 @@ private enum DynamoDBTypeCodingKey: String, CodingKey {
 
 // MARK: - AWS Credentials
 
-struct AWSCredentials: Sendable {
+internal struct AWSCredentials: Sendable {
     let accessKeyId: String
     let secretAccessKey: String
     let sessionToken: String?
@@ -113,7 +122,7 @@ struct AWSCredentials: Sendable {
 
 // MARK: - DynamoDB Error
 
-enum DynamoDBError: Error, LocalizedError {
+internal enum DynamoDBError: Error, LocalizedError {
     case notConnected
     case connectionFailed(String)
     case serverError(String)
@@ -141,16 +150,16 @@ enum DynamoDBError: Error, LocalizedError {
 
 // MARK: - Response Types
 
-struct ListTablesResponse: Decodable {
+internal struct ListTablesResponse: Decodable {
     let TableNames: [String]?
     let LastEvaluatedTableName: String?
 }
 
-struct DescribeTableResponse: Decodable {
+internal struct DescribeTableResponse: Decodable {
     let Table: TableDescription
 }
 
-struct TableDescription: Decodable {
+internal struct TableDescription: Decodable {
     let TableName: String
     let KeySchema: [KeySchemaElement]?
     let AttributeDefinitions: [AttributeDefinition]?
@@ -165,17 +174,17 @@ struct TableDescription: Decodable {
     let CreationDateTime: Double?
 }
 
-struct KeySchemaElement: Decodable {
+internal struct KeySchemaElement: Decodable {
     let AttributeName: String
     let KeyType: String
 }
 
-struct AttributeDefinition: Decodable {
+internal struct AttributeDefinition: Decodable {
     let AttributeName: String
     let AttributeType: String
 }
 
-struct GlobalSecondaryIndexDescription: Decodable {
+internal struct GlobalSecondaryIndexDescription: Decodable {
     let IndexName: String
     let KeySchema: [KeySchemaElement]?
     let Projection: Projection?
@@ -185,7 +194,7 @@ struct GlobalSecondaryIndexDescription: Decodable {
     let IndexSizeBytes: Int64?
 }
 
-struct LocalSecondaryIndexDescription: Decodable {
+internal struct LocalSecondaryIndexDescription: Decodable {
     let IndexName: String
     let KeySchema: [KeySchemaElement]?
     let Projection: Projection?
@@ -193,35 +202,35 @@ struct LocalSecondaryIndexDescription: Decodable {
     let IndexSizeBytes: Int64?
 }
 
-struct ProvisionedThroughputDescription: Decodable {
+internal struct ProvisionedThroughputDescription: Decodable {
     let ReadCapacityUnits: Int64?
     let WriteCapacityUnits: Int64?
 }
 
-struct BillingModeSummary: Decodable {
+internal struct BillingModeSummary: Decodable {
     let BillingMode: String?
 }
 
-struct Projection: Decodable {
+internal struct Projection: Decodable {
     let ProjectionType: String?
     let NonKeyAttributes: [String]?
 }
 
-struct ScanResponse: Decodable {
+internal struct ScanResponse: Decodable {
     let Items: [[String: DynamoDBAttributeValue]]?
     let Count: Int?
     let ScannedCount: Int?
     let LastEvaluatedKey: [String: DynamoDBAttributeValue]?
 }
 
-struct QueryResponse: Decodable {
+internal struct QueryResponse: Decodable {
     let Items: [[String: DynamoDBAttributeValue]]?
     let Count: Int?
     let ScannedCount: Int?
     let LastEvaluatedKey: [String: DynamoDBAttributeValue]?
 }
 
-struct ExecuteStatementResponse: Decodable {
+internal struct ExecuteStatementResponse: Decodable {
     let Items: [[String: DynamoDBAttributeValue]]?
     let NextToken: String?
     let LastEvaluatedKey: [String: DynamoDBAttributeValue]?
@@ -246,7 +255,7 @@ private struct DynamoDBErrorResponse: Decodable {
 
 // MARK: - DynamoDB Connection
 
-final class DynamoDBConnection: @unchecked Sendable {
+internal final class DynamoDBConnection: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let lock = NSLock()
     private var _session: URLSession?
@@ -385,10 +394,16 @@ final class DynamoDBConnection: @unchecked Sendable {
         return try await request(target: "DynamoDB_20120810.Query", body: body)
     }
 
-    func executeStatement(statement: String, limit: Int? = nil, nextToken: String? = nil) async throws
-        -> ExecuteStatementResponse
-    {
+    func executeStatement(
+        statement: String,
+        parameters: [[String: Any]]? = nil,
+        limit: Int? = nil,
+        nextToken: String? = nil
+    ) async throws -> ExecuteStatementResponse {
         var body: [String: Any] = ["Statement": statement]
+        if let parameters = parameters, !parameters.isEmpty {
+            body["Parameters"] = parameters
+        }
         if let limit = limit {
             body["Limit"] = limit
         }
@@ -465,8 +480,7 @@ final class DynamoDBConnection: @unchecked Sendable {
                 }
                 throw DynamoDBError.serverError("[\(errorType)] \(errorResponse.errorMessage)")
             }
-            let bodyStr = String(data: data, encoding: .utf8) ?? "No response body"
-            throw DynamoDBError.serverError("HTTP \(httpResponse.statusCode): \(bodyStr)")
+            throw DynamoDBError.serverError("HTTP \(httpResponse.statusCode): Response body redacted (length: \(data.count))")
         }
 
         do {
