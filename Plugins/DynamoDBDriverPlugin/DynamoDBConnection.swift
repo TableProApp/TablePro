@@ -256,7 +256,21 @@ final class DynamoDBConnection: @unchecked Sendable {
         self.region = config.additionalFields["awsRegion"] ?? "us-east-1"
 
         if let customEndpoint = config.additionalFields["awsEndpointUrl"], !customEndpoint.isEmpty {
-            self.endpointUrl = customEndpoint
+            if customEndpoint.lowercased().hasPrefix("http://") {
+                let loopbackHosts: Set<String> = ["localhost", "127.0.0.1", "::1"]
+                let isLoopback = URL(string: customEndpoint).flatMap(\.host).map {
+                    loopbackHosts.contains($0.lowercased())
+                } ?? false
+                if isLoopback {
+                    self.endpointUrl = customEndpoint
+                } else {
+                    let upgraded = "https://" + customEndpoint.dropFirst("http://".count)
+                    Self.logger.warning("Insecure endpoint for non-loopback host, upgrading to HTTPS")
+                    self.endpointUrl = upgraded
+                }
+            } else {
+                self.endpointUrl = customEndpoint
+            }
         } else {
             self.endpointUrl = "https://dynamodb.\(region).amazonaws.com"
         }
@@ -340,7 +354,8 @@ final class DynamoDBConnection: @unchecked Sendable {
         expressionAttributeValues: [String: DynamoDBAttributeValue],
         limit: Int? = nil,
         exclusiveStartKey: [String: DynamoDBAttributeValue]? = nil,
-        scanIndexForward: Bool = true
+        scanIndexForward: Bool = true,
+        select: String? = nil
     ) async throws -> QueryResponse {
         var body: [String: Any] = [
             "TableName": tableName,
@@ -354,6 +369,9 @@ final class DynamoDBConnection: @unchecked Sendable {
             body["ExclusiveStartKey"] = try encodedAttributeMap(startKey)
         }
         body["ScanIndexForward"] = scanIndexForward
+        if let select = select {
+            body["Select"] = select
+        }
         return try await request(target: "DynamoDB_20120810.Query", body: body)
     }
 
@@ -402,7 +420,8 @@ final class DynamoDBConnection: @unchecked Sendable {
 
         let (data, response) = try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            let task = urlSession.dataTask(with: urlRequest) { data, response, error in
+            let task = urlSession.dataTask(with: urlRequest) { [weak self] data, response, error in
+                self?.lock.withLock { self?._currentTask = nil }
                 if let error {
                     if (error as? URLError)?.code == .cancelled {
                         continuation.resume(throwing: DynamoDBError.requestCancelled)
@@ -417,6 +436,7 @@ final class DynamoDBConnection: @unchecked Sendable {
                 }
                 continuation.resume(returning: (data, response))
             }
+            self.lock.withLock { self._currentTask = task }
             task.resume()
         }
 
@@ -443,8 +463,7 @@ final class DynamoDBConnection: @unchecked Sendable {
             let decoded = try JSONDecoder().decode(T.self, from: data)
             return decoded
         } catch {
-            let bodyStr = String(data: data, encoding: .utf8) ?? "<binary>"
-            Self.logger.error("Decode failed for \(target): \(error.localizedDescription)\nBody: \(bodyStr)")
+            Self.logger.error("Decode failed for \(target): responseLength=\(data.count), error=\(error.localizedDescription)")
             throw DynamoDBError.invalidResponse("Failed to decode response: \(error.localizedDescription)")
         }
     }
@@ -575,9 +594,7 @@ final class DynamoDBConnection: @unchecked Sendable {
         let secretAccessKey = config.additionalFields["awsSecretAccessKey"] ?? config.password
         let sessionToken = config.additionalFields["awsSessionToken"]
 
-        NSLog("[DynamoDB] Resolved credentials - accessKeyId: '%@', secretKey length: %d, region: '%@', endpoint: '%@'",
-              accessKeyId, secretAccessKey.count, region, endpointUrl)
-        NSLog("[DynamoDB] additionalFields keys: %@", Array(config.additionalFields.keys).sorted().description)
+        Self.logger.debug("Resolved credentials — credentialSource: accessKey, region: \(self.region)")
 
         guard !accessKeyId.isEmpty, !secretAccessKey.isEmpty else {
             throw DynamoDBError.authFailed("Access Key ID and Secret Access Key are required")
@@ -611,8 +628,10 @@ final class DynamoDBConnection: @unchecked Sendable {
             }
             guard currentProfile == profileName else { continue }
 
-            let parts = trimmed.components(separatedBy: "=").map { $0.trimmingCharacters(in: .whitespaces) }
-            guard parts.count >= 2 else { continue }
+            let parts = trimmed.split(separator: "=", maxSplits: 1).map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }
+            guard parts.count == 2 else { continue }
 
             switch parts[0] {
             case "aws_access_key_id":
@@ -638,30 +657,35 @@ final class DynamoDBConnection: @unchecked Sendable {
     }
 
     private func resolveSsoCredentials() throws -> AWSCredentials {
-        let ssoCachePath = NSString("~/.aws/sso/cache").expandingTildeInPath
+        let cliCachePath = NSString("~/.aws/cli/cache").expandingTildeInPath
 
-        guard let enumerator = FileManager.default.enumerator(atPath: ssoCachePath) else {
-            throw DynamoDBError.authFailed("Cannot read ~/.aws/sso/cache/")
+        guard let enumerator = FileManager.default.enumerator(atPath: cliCachePath) else {
+            throw DynamoDBError.authFailed("Cannot read ~/.aws/cli/cache/")
         }
 
         var latestToken: (accessKeyId: String, secretAccessKey: String, sessionToken: String, expiresAt: Date)?
 
         while let fileName = enumerator.nextObject() as? String {
             guard fileName.hasSuffix(".json") else { continue }
-            let filePath = (ssoCachePath as NSString).appendingPathComponent(fileName)
+            let filePath = (cliCachePath as NSString).appendingPathComponent(fileName)
             guard let data = FileManager.default.contents(atPath: filePath) else { continue }
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
 
-            guard let accessKeyId = json["accessKeyId"] as? String,
-                  let secretAccessKey = json["secretAccessKey"] as? String,
-                  let sessionToken = json["sessionToken"] as? String,
-                  let expiresAtStr = json["expiresAt"] as? String
+            guard let accessKeyId = json["AccessKeyId"] as? String,
+                  let secretAccessKey = json["SecretAccessKey"] as? String,
+                  let sessionToken = json["SessionToken"] as? String
             else { continue }
 
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            guard let expiresAt = formatter.date(from: expiresAtStr) ?? ISO8601DateFormatter().date(from: expiresAtStr)
-            else { continue }
+            let expiresAt: Date
+            if let expiresAtStr = json["Expiration"] as? String {
+                let formatter = ISO8601DateFormatter()
+                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                guard let parsed = formatter.date(from: expiresAtStr) ?? ISO8601DateFormatter().date(from: expiresAtStr)
+                else { continue }
+                expiresAt = parsed
+            } else {
+                continue
+            }
 
             guard expiresAt > Date() else { continue }
 
@@ -672,7 +696,7 @@ final class DynamoDBConnection: @unchecked Sendable {
 
         guard let token = latestToken else {
             throw DynamoDBError.authFailed(
-                "No valid SSO credentials found in ~/.aws/sso/cache/. Run 'aws sso login' first."
+                "No valid SSO credentials found in ~/.aws/cli/cache/. Run 'aws sso login' first."
             )
         }
 

@@ -90,6 +90,7 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "AKIA...",
             section: .authentication
         ),
+        // TODO: .secure fields stored in additionalFields (plain JSON), not Keychain — needs migration
         ConnectionField(
             id: "awsSecretAccessKey",
             label: String(localized: "Secret Access Key"),
@@ -114,24 +115,9 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "awsRegion",
             label: String(localized: "AWS Region"),
+            placeholder: "us-east-1",
             defaultValue: "us-east-1",
-            fieldType: .dropdown(options: [
-                .init(value: "us-east-1", label: "US East (N. Virginia)"),
-                .init(value: "us-east-2", label: "US East (Ohio)"),
-                .init(value: "us-west-1", label: "US West (N. California)"),
-                .init(value: "us-west-2", label: "US West (Oregon)"),
-                .init(value: "eu-west-1", label: "Europe (Ireland)"),
-                .init(value: "eu-west-2", label: "Europe (London)"),
-                .init(value: "eu-central-1", label: "Europe (Frankfurt)"),
-                .init(value: "ap-northeast-1", label: "Asia Pacific (Tokyo)"),
-                .init(value: "ap-southeast-1", label: "Asia Pacific (Singapore)"),
-                .init(value: "ap-southeast-2", label: "Asia Pacific (Sydney)"),
-                .init(value: "ap-south-1", label: "Asia Pacific (Mumbai)"),
-                .init(value: "sa-east-1", label: "South America (São Paulo)"),
-                .init(value: "ca-central-1", label: "Canada (Central)"),
-                .init(value: "me-south-1", label: "Middle East (Bahrain)"),
-                .init(value: "af-south-1", label: "Africa (Cape Town)")
-            ]),
+            fieldType: .text,
             section: .authentication
         ),
         ConnectionField(

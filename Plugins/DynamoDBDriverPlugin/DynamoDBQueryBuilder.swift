@@ -8,15 +8,22 @@
 import Foundation
 import TableProPluginKit
 
+// MARK: - Filter Encoding
+
+struct DynamoDBFilterSpec: Codable {
+    let column: String
+    let op: String
+    let value: String
+}
+
 // MARK: - Parsed Query Types
 
 struct DynamoDBParsedScanQuery {
     let tableName: String
     let limit: Int
     let offset: Int
-    let filterColumn: String?
-    let filterOp: String?
-    let filterValue: String?
+    let filters: [DynamoDBFilterSpec]
+    let logicMode: String
 }
 
 struct DynamoDBParsedQueryQuery {
@@ -26,6 +33,8 @@ struct DynamoDBParsedQueryQuery {
     let partitionKeyType: String
     let limit: Int
     let offset: Int
+    let filters: [DynamoDBFilterSpec]
+    let logicMode: String
 }
 
 struct DynamoDBParsedCountQuery {
@@ -42,15 +51,13 @@ struct DynamoDBQueryBuilder {
     static let queryTag = "DYNAMODB_QUERY:"
     static let countTag = "DYNAMODB_COUNT:"
 
-    /// Build a browse query for the given table. If a partition key equality filter is found,
-    /// emit a QUERY tag (more efficient). Otherwise emit a SCAN tag.
     func buildBrowseQuery(
         table: String,
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         limit: Int,
         offset: Int
     ) -> String {
-        Self.encodeScanQuery(tableName: table, limit: limit, offset: offset)
+        Self.encodeScanQuery(tableName: table, limit: limit, offset: offset, filters: [], logicMode: "AND")
     }
 
     func buildFilteredQuery(
@@ -61,34 +68,33 @@ struct DynamoDBQueryBuilder {
         columns: [String],
         limit: Int,
         offset: Int,
-        keySchema: [(name: String, keyType: String)]
+        keySchema: [(name: String, keyType: String)],
+        attributeTypes: [String: String] = [:]
     ) -> String? {
-        // If there is a partition key equality filter, use QUERY for efficiency
         let partitionKey = keySchema.first(where: { $0.keyType == "HASH" })
         if let pk = partitionKey,
            let pkFilter = filters.first(where: { $0.column == pk.name && $0.op == "=" })
         {
-            // Determine type from column name (default to S)
-            let pkType = "S"
+            let pkType = attributeTypes[pk.name] ?? "S"
+            let remainingFilters = filters.filter { !($0.column == pk.name && $0.op == "=") }
+            let specs = remainingFilters.map { DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
             return Self.encodeQueryQuery(
                 tableName: table,
                 partitionKeyName: pk.name,
                 partitionKeyValue: pkFilter.value,
                 partitionKeyType: pkType,
                 limit: limit,
-                offset: offset
+                offset: offset,
+                filters: specs,
+                logicMode: logicMode
             )
         }
 
-        // Fall back to scan with first filter
-        if let filter = filters.first {
-            return Self.encodeScanQuery(
-                tableName: table, limit: limit, offset: offset,
-                filterColumn: filter.column, filterOp: filter.op, filterValue: filter.value
-            )
-        }
-
-        return Self.encodeScanQuery(tableName: table, limit: limit, offset: offset)
+        let specs = filters.map { DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        return Self.encodeScanQuery(
+            tableName: table, limit: limit, offset: offset,
+            filters: specs, logicMode: logicMode
+        )
     }
 
     func buildQuickSearchQuery(
@@ -98,10 +104,10 @@ struct DynamoDBQueryBuilder {
         limit: Int,
         offset: Int
     ) -> String {
-        // Quick search uses a scan with a "contains" filter on all columns (client-side)
-        Self.encodeScanQuery(
+        let searchFilter = DynamoDBFilterSpec(column: "*", op: "CONTAINS", value: searchText)
+        return Self.encodeScanQuery(
             tableName: table, limit: limit, offset: offset,
-            filterColumn: "*", filterOp: "CONTAINS", filterValue: searchText
+            filters: [searchFilter], logicMode: "AND"
         )
     }
 
@@ -113,18 +119,45 @@ struct DynamoDBQueryBuilder {
         sortColumns: [(columnIndex: Int, ascending: Bool)],
         limit: Int,
         offset: Int,
-        keySchema: [(name: String, keyType: String)]
+        keySchema: [(name: String, keyType: String)],
+        attributeTypes: [String: String] = [:]
     ) -> String? {
-        if !searchText.isEmpty {
-            return buildQuickSearchQuery(
-                table: table, searchText: searchText,
-                sortColumns: sortColumns, limit: limit, offset: offset
+        let searchFilter: DynamoDBFilterSpec? = searchText.isEmpty
+            ? nil
+            : DynamoDBFilterSpec(column: "*", op: "CONTAINS", value: searchText)
+
+        var allFilters = filters.map { DynamoDBFilterSpec(column: $0.column, op: $0.op, value: $0.value) }
+        if let sf = searchFilter {
+            allFilters.append(sf)
+        }
+
+        if allFilters.isEmpty {
+            return Self.encodeScanQuery(tableName: table, limit: limit, offset: offset, filters: [], logicMode: "AND")
+        }
+
+        let partitionKey = keySchema.first(where: { $0.keyType == "HASH" })
+        if let pk = partitionKey,
+           let pkIdx = allFilters.firstIndex(where: { $0.column == pk.name && $0.op == "=" })
+        {
+            let pkFilter = allFilters[pkIdx]
+            let pkType = attributeTypes[pk.name] ?? "S"
+            var remainingFilters = allFilters
+            remainingFilters.remove(at: pkIdx)
+            return Self.encodeQueryQuery(
+                tableName: table,
+                partitionKeyName: pk.name,
+                partitionKeyValue: pkFilter.value,
+                partitionKeyType: pkType,
+                limit: limit,
+                offset: offset,
+                filters: remainingFilters,
+                logicMode: logicMode
             )
         }
-        return buildFilteredQuery(
-            table: table, filters: filters, logicMode: logicMode,
-            sortColumns: sortColumns, columns: [], limit: limit, offset: offset,
-            keySchema: keySchema
+
+        return Self.encodeScanQuery(
+            tableName: table, limit: limit, offset: offset,
+            filters: allFilters, logicMode: logicMode
         )
     }
 
@@ -134,15 +167,14 @@ struct DynamoDBQueryBuilder {
         tableName: String,
         limit: Int,
         offset: Int,
-        filterColumn: String? = nil,
-        filterOp: String? = nil,
-        filterValue: String? = nil
+        filters: [DynamoDBFilterSpec],
+        logicMode: String
     ) -> String {
         let b64Table = Data(tableName.utf8).base64EncodedString()
-        let b64FilterCol = Data((filterColumn ?? "").utf8).base64EncodedString()
-        let b64FilterOp = Data((filterOp ?? "").utf8).base64EncodedString()
-        let b64FilterVal = Data((filterValue ?? "").utf8).base64EncodedString()
-        return "\(scanTag)\(b64Table):\(limit):\(offset):\(b64FilterCol):\(b64FilterOp):\(b64FilterVal)"
+        let filtersJson = (try? JSONEncoder().encode(filters)) ?? Data()
+        let b64Filters = filtersJson.base64EncodedString()
+        let b64Logic = Data(logicMode.utf8).base64EncodedString()
+        return "\(scanTag)\(b64Table):\(limit):\(offset):\(b64Filters):\(b64Logic)"
     }
 
     private static func encodeQueryQuery(
@@ -151,13 +183,18 @@ struct DynamoDBQueryBuilder {
         partitionKeyValue: String,
         partitionKeyType: String,
         limit: Int,
-        offset: Int
+        offset: Int,
+        filters: [DynamoDBFilterSpec] = [],
+        logicMode: String = "AND"
     ) -> String {
         let b64Table = Data(tableName.utf8).base64EncodedString()
         let b64PkName = Data(partitionKeyName.utf8).base64EncodedString()
         let b64PkValue = Data(partitionKeyValue.utf8).base64EncodedString()
         let b64PkType = Data(partitionKeyType.utf8).base64EncodedString()
-        return "\(queryTag)\(b64Table):\(limit):\(offset):\(b64PkName):\(b64PkValue):\(b64PkType)"
+        let filtersJson = (try? JSONEncoder().encode(filters)) ?? Data()
+        let b64Filters = filtersJson.base64EncodedString()
+        let b64Logic = Data(logicMode.utf8).base64EncodedString()
+        return "\(queryTag)\(b64Table):\(limit):\(offset):\(b64PkName):\(b64PkValue):\(b64PkType):\(b64Filters):\(b64Logic)"
     }
 
     static func encodeCountQuery(
@@ -179,7 +216,7 @@ struct DynamoDBQueryBuilder {
         guard query.hasPrefix(scanTag) else { return nil }
         let body = String(query.dropFirst(scanTag.count))
         let parts = body.components(separatedBy: ":")
-        guard parts.count >= 6 else { return nil }
+        guard parts.count >= 5 else { return nil }
 
         guard let tableData = Data(base64Encoded: parts[0]),
               let tableName = String(data: tableData, encoding: .utf8),
@@ -187,17 +224,23 @@ struct DynamoDBQueryBuilder {
               let offset = Int(parts[2])
         else { return nil }
 
-        let filterColumn = decodeBase64(parts[3])
-        let filterOp = decodeBase64(parts[4])
-        let filterValue = decodeBase64(parts[5...].joined(separator: ":"))
+        let filters: [DynamoDBFilterSpec]
+        if let filtersData = Data(base64Encoded: parts[3]),
+           let decoded = try? JSONDecoder().decode([DynamoDBFilterSpec].self, from: filtersData)
+        {
+            filters = decoded
+        } else {
+            filters = []
+        }
+
+        let logicMode = decodeBase64(parts[4]) ?? "AND"
 
         return DynamoDBParsedScanQuery(
             tableName: tableName,
             limit: limit,
             offset: offset,
-            filterColumn: filterColumn?.isEmpty == true ? nil : filterColumn,
-            filterOp: filterOp?.isEmpty == true ? nil : filterOp,
-            filterValue: filterValue?.isEmpty == true ? nil : filterValue
+            filters: filters,
+            logicMode: logicMode
         )
     }
 
@@ -213,8 +256,25 @@ struct DynamoDBQueryBuilder {
               let offset = Int(parts[2]),
               let pkName = decodeBase64(parts[3]),
               let pkValue = decodeBase64(parts[4]),
-              let pkType = decodeBase64(parts[5...].joined(separator: ":"))
+              let pkType = decodeBase64(parts[5])
         else { return nil }
+
+        let filters: [DynamoDBFilterSpec]
+        if parts.count >= 7,
+           let filtersData = Data(base64Encoded: parts[6]),
+           let decoded = try? JSONDecoder().decode([DynamoDBFilterSpec].self, from: filtersData)
+        {
+            filters = decoded
+        } else {
+            filters = []
+        }
+
+        let logicMode: String
+        if parts.count >= 8, let decoded = decodeBase64(parts[7]) {
+            logicMode = decoded
+        } else {
+            logicMode = "AND"
+        }
 
         return DynamoDBParsedQueryQuery(
             tableName: tableName,
@@ -222,7 +282,9 @@ struct DynamoDBQueryBuilder {
             partitionKeyValue: pkValue,
             partitionKeyType: pkType,
             limit: limit,
-            offset: offset
+            offset: offset,
+            filters: filters,
+            logicMode: logicMode
         )
     }
 

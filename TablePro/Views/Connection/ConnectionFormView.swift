@@ -981,6 +981,11 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if !hidePasswordField {
                 basicValid = basicValid && !password.isEmpty
             }
+            if hidePasswordField && additionalFieldValues["awsAuthMethod"] == "credentials" {
+                let hasAccessKey = !(additionalFieldValues["awsAccessKeyId"] ?? "").isEmpty
+                let hasSecret = !(additionalFieldValues["awsSecretAccessKey"] ?? "").isEmpty
+                basicValid = basicValid && hasAccessKey && hasSecret
+            }
         }
         if sshEnabled && sshProfileId == nil {
             let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)

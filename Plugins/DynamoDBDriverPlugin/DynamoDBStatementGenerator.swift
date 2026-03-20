@@ -9,6 +9,20 @@ import Foundation
 import os
 import TableProPluginKit
 
+enum DynamoDBStatementError: LocalizedError {
+    case invalidNumber(value: String)
+    case invalidBoolean(value: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidNumber(let value):
+            return "Invalid number value: '\(value)'"
+        case .invalidBoolean(let value):
+            return "Invalid boolean value: '\(value)'. Expected true/false/1/0."
+        }
+    }
+}
+
 struct DynamoDBStatementGenerator {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DynamoDBStatementGenerator")
 
@@ -26,19 +40,19 @@ struct DynamoDBStatementGenerator {
         insertedRowData: [Int: [String?]],
         deletedRowIndices: Set<Int>,
         insertedRowIndices: Set<Int>
-    ) -> [(statement: String, parameters: [String?])] {
+    ) throws -> [(statement: String, parameters: [String?])] {
         var statements: [(statement: String, parameters: [String?])] = []
 
         for change in changes {
             switch change.type {
             case .insert:
                 guard insertedRowIndices.contains(change.rowIndex) else { continue }
-                statements += generateInsert(for: change, insertedRowData: insertedRowData)
+                statements += try generateInsert(for: change, insertedRowData: insertedRowData)
             case .update:
-                statements += generateUpdate(for: change)
+                statements += try generateUpdate(for: change)
             case .delete:
                 guard deletedRowIndices.contains(change.rowIndex) else { continue }
-                if let stmt = generateDelete(for: change) {
+                if let stmt = try generateDelete(for: change) {
                     statements.append(stmt)
                 }
             }
@@ -52,7 +66,7 @@ struct DynamoDBStatementGenerator {
     private func generateInsert(
         for change: PluginRowChange,
         insertedRowData: [Int: [String?]]
-    ) -> [(statement: String, parameters: [String?])] {
+    ) throws -> [(statement: String, parameters: [String?])] {
         var values: [String: String?] = [:]
 
         if let rowData = insertedRowData[change.rowIndex] {
@@ -65,7 +79,6 @@ struct DynamoDBStatementGenerator {
             }
         }
 
-        // Ensure key columns are present
         for key in keySchema {
             guard let val = values[key.name], val != nil, !val!.isEmpty else {
                 Self.logger.warning("Skipping INSERT - missing key column '\(key.name)'")
@@ -78,36 +91,30 @@ struct DynamoDBStatementGenerator {
             guard let value = values[column], let val = value else { continue }
             let typeIndex = columns.firstIndex(of: column) ?? 0
             let typeName = typeIndex < columnTypeNames.count ? columnTypeNames[typeIndex] : "S"
-            attrs.append("'\(escapePartiQL(column))': \(formatValue(val, typeName: typeName))")
+            attrs.append("'\(escapePartiQL(column))': \(try formatValue(val, typeName: typeName))")
         }
 
         let quotedTable = "\"\(escapeIdentifier(tableName))\""
-        let statement = "INSERT INTO \(quotedTable) VALUE {'\(attrs.joined(separator: ", "))'}"
-            .replacingOccurrences(of: "{'", with: "{ '")
-            .replacingOccurrences(of: "'}", with: "' }")
-
-        // Correct: build the VALUE { ... } properly
         let attrString = attrs.joined(separator: ", ")
-        let correctedStatement = "INSERT INTO \(quotedTable) VALUE { \(attrString) }"
+        let statement = "INSERT INTO \(quotedTable) VALUE { \(attrString) }"
 
-        return [(statement: correctedStatement, parameters: [])]
+        return [(statement: statement, parameters: [])]
     }
 
     // MARK: - UPDATE
 
     private func generateUpdate(
         for change: PluginRowChange
-    ) -> [(statement: String, parameters: [String?])] {
+    ) throws -> [(statement: String, parameters: [String?])] {
         guard !change.cellChanges.isEmpty else { return [] }
 
-        // Filter out key column changes (DynamoDB does not allow updating key attributes)
         let nonKeyChanges = change.cellChanges.filter { !keyColumnNames.contains($0.columnName) }
         guard !nonKeyChanges.isEmpty else {
             Self.logger.info("Skipping UPDATE - only key columns were changed (not allowed)")
             return []
         }
 
-        guard let whereClause = buildWhereClause(from: change) else {
+        guard let whereClause = try buildWhereClause(from: change) else {
             Self.logger.warning("Skipping UPDATE - cannot build WHERE clause")
             return []
         }
@@ -118,7 +125,7 @@ struct DynamoDBStatementGenerator {
             let typeName = typeIndex < columnTypeNames.count ? columnTypeNames[typeIndex] : "S"
             let formattedValue: String
             if let newValue = cellChange.newValue {
-                formattedValue = formatValue(newValue, typeName: typeName)
+                formattedValue = try formatValue(newValue, typeName: typeName)
             } else {
                 formattedValue = "NULL"
             }
@@ -135,8 +142,8 @@ struct DynamoDBStatementGenerator {
 
     private func generateDelete(
         for change: PluginRowChange
-    ) -> (statement: String, parameters: [String?])? {
-        guard let whereClause = buildWhereClause(from: change) else {
+    ) throws -> (statement: String, parameters: [String?])? {
+        guard let whereClause = try buildWhereClause(from: change) else {
             Self.logger.warning("Skipping DELETE - cannot build WHERE clause")
             return nil
         }
@@ -149,7 +156,7 @@ struct DynamoDBStatementGenerator {
 
     // MARK: - Helpers
 
-    private func buildWhereClause(from change: PluginRowChange) -> String? {
+    private func buildWhereClause(from change: PluginRowChange) throws -> String? {
         guard let originalRow = change.originalRow else { return nil }
 
         var conditions: [String] = []
@@ -160,30 +167,37 @@ struct DynamoDBStatementGenerator {
             else { return nil }
 
             let typeName = colIndex < columnTypeNames.count ? columnTypeNames[colIndex] : "S"
-            conditions.append("\"\(escapeIdentifier(key.name))\" = \(formatValue(value, typeName: typeName))")
+            conditions.append(
+                "\"\(escapeIdentifier(key.name))\" = \(try formatValue(value, typeName: typeName))"
+            )
         }
 
         guard !conditions.isEmpty else { return nil }
         return conditions.joined(separator: " AND ")
     }
 
-    private func formatValue(_ value: String, typeName: String) -> String {
+    private func formatValue(_ value: String, typeName: String) throws -> String {
         switch typeName {
         case "N":
-            // Numbers are unquoted in PartiQL
             if Int64(value) != nil || Double(value) != nil {
                 return value
             }
-            return "'\(escapePartiQL(value))'"
+            throw DynamoDBStatementError.invalidNumber(value: value)
         case "BOOL":
             let lower = value.lowercased()
-            return (lower == "true" || lower == "1") ? "true" : "false"
+            switch lower {
+            case "true", "1":
+                return "true"
+            case "false", "0":
+                return "false"
+            default:
+                throw DynamoDBStatementError.invalidBoolean(value: value)
+            }
         case "NULL":
             return "NULL"
         case "S":
             return "'\(escapePartiQL(value))'"
         default:
-            // For complex types (L, M, SS, NS, BS), pass through as-is if it looks like JSON
             if value.hasPrefix("[") || value.hasPrefix("{") {
                 return value
             }
