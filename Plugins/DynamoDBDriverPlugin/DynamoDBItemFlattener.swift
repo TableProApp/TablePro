@@ -88,9 +88,9 @@ struct DynamoDBItemFlattener {
         case .null:
             return "NULL"
         case .list(let items):
-            return serializeToJson(listToJson(items))
+            return serializeToJson(listToTypedEnvelopes(items))
         case .map(let map):
-            return serializeToJson(mapToJson(map))
+            return serializeToJson(mapToTypedEnvelopes(map))
         case .stringSet(let values):
             return serializeToJson(values)
         case .numberSet(let values):
@@ -187,6 +187,48 @@ struct DynamoDBItemFlattener {
             result[key] = valueToJsonPrimitive(value)
         }
         return result
+    }
+
+    /// Convert a list to DynamoDB-typed envelope format (e.g., [{"S":"val"},{"N":"123"}])
+    /// so that `stringToAttributeValue` can round-trip correctly.
+    private static func listToTypedEnvelopes(_ items: [DynamoDBAttributeValue]) -> [Any] {
+        items.map { valueToTypedEnvelope($0) }
+    }
+
+    /// Convert a map to DynamoDB-typed envelope format (e.g., {"k":{"S":"val"}})
+    /// so that `stringToAttributeValue` can round-trip correctly.
+    private static func mapToTypedEnvelopes(_ map: [String: DynamoDBAttributeValue]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for (key, value) in map {
+            result[key] = valueToTypedEnvelope(value)
+        }
+        return result
+    }
+
+    /// Wrap a single DynamoDBAttributeValue in its DynamoDB JSON type envelope.
+    private static func valueToTypedEnvelope(_ value: DynamoDBAttributeValue) -> [String: Any] {
+        switch value {
+        case .string(let s):
+            return ["S": s]
+        case .number(let n):
+            return ["N": n]
+        case .binary(let data):
+            return ["B": data.base64EncodedString()]
+        case .bool(let b):
+            return ["BOOL": b]
+        case .null:
+            return ["NULL": true]
+        case .list(let items):
+            return ["L": listToTypedEnvelopes(items)]
+        case .map(let map):
+            return ["M": mapToTypedEnvelopes(map)]
+        case .stringSet(let values):
+            return ["SS": values]
+        case .numberSet(let values):
+            return ["NS": values]
+        case .binarySet(let values):
+            return ["BS": values.map { $0.base64EncodedString() }]
+        }
     }
 
     private static func valueToJsonPrimitive(_ value: DynamoDBAttributeValue) -> Any {

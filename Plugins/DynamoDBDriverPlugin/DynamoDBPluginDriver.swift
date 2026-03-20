@@ -224,18 +224,14 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 let names = response.TableNames ?? []
                 allTableNames.append(contentsOf: names)
                 lastEvaluated = response.LastEvaluatedTableName
-                // Stop if no more pages (fewer results than limit, or no pagination token)
-                if names.count < 100 { break }
             } while lastEvaluated != nil
 
-            Self.logger.error("fetchTables found \(allTableNames.count) tables: \(allTableNames)")
-            NSLog("DynamoDB fetchTables found %d tables: %@", allTableNames.count, allTableNames)
+            Self.logger.debug("fetchTables found \(allTableNames.count) tables")
             return allTableNames.map { name in
                 PluginTableInfo(name: name, type: "TABLE")
             }
         } catch {
             Self.logger.error("fetchTables error: \(error.localizedDescription)")
-            NSLog("DynamoDB fetchTables error: %@", error.localizedDescription)
             throw error
         }
     }
@@ -588,7 +584,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func executeTaggedQuery(
         _ query: String, conn: DynamoDBConnection, startTime: Date
     ) async throws -> PluginQueryResult {
-        NSLog("[DynamoDB] executeTaggedQuery: %@", String(query.prefix(120)))
+        Self.logger.debug("executeTaggedQuery called")
         if let parsed = DynamoDBQueryBuilder.parseScanQuery(query) {
             return try await executeScan(parsed, conn: conn, startTime: startTime)
         }
@@ -689,9 +685,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             allItems.append(contentsOf: items)
             lastEvaluatedKey = response.LastEvaluatedKey
 
-            // Stop if we got fewer items than requested (last page) or hit our target
-            if items.count < batchLimit || allItems.count >= fetchLimit { break }
-        } while lastEvaluatedKey != nil
+            if lastEvaluatedKey == nil || allItems.count >= fetchLimit { break }
+        } while true
 
         if !parsed.filters.isEmpty {
             allItems = applyClientFilters(
@@ -710,8 +705,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: allItems)
         let rows = DynamoDBItemFlattener.flatten(items: pageItems, columns: columns)
 
-        NSLog("[DynamoDB] executeScan result: %d items, %d columns (%@), %d rows",
-              allItems.count, columns.count, columns.joined(separator: ", "), rows.count)
+        Self.logger.debug("executeScan result: \(allItems.count) items, \(columns.count) columns, \(rows.count) rows")
         return PluginQueryResult(
             columns: columns,
             columnTypeNames: typeNames,
@@ -755,8 +749,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             allItems.append(contentsOf: fetched)
             lastEvaluatedKey = response.LastEvaluatedKey
 
-            if fetched.count < batchLimit || allItems.count >= fetchLimit { break }
-        } while lastEvaluatedKey != nil
+            if lastEvaluatedKey == nil || allItems.count >= fetchLimit { break }
+        } while true
 
         if !parsed.filters.isEmpty {
             allItems = applyClientFilters(
@@ -825,7 +819,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             state.allItems.append(contentsOf: newItems)
             state.lastEvaluatedKey = response.LastEvaluatedKey
 
-            if response.LastEvaluatedKey == nil || (response.Items ?? []).count < batchSize {
+            if response.LastEvaluatedKey == nil {
                 state.isExhausted = true
             }
 
@@ -904,7 +898,7 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             state.allItems.append(contentsOf: fetchedItems)
             state.lastEvaluatedKey = response.LastEvaluatedKey
 
-            if response.LastEvaluatedKey == nil || fetchedItems.count < batchSize {
+            if response.LastEvaluatedKey == nil {
                 state.isExhausted = true
             }
 
@@ -1095,8 +1089,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let batchCount = response.Count ?? 0
             total += batchCount
             lastKey = response.LastEvaluatedKey
-            if batchCount < 10000 { break }
-        } while lastKey != nil
+            if lastKey == nil { break }
+        } while true
 
         return total
     }
@@ -1122,8 +1116,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
             total += items.count
             lastKey = response.LastEvaluatedKey
-            if (response.Items ?? []).count < 1000 { break }
-        } while lastKey != nil
+            if lastKey == nil { break }
+        } while true
         return total
     }
 
@@ -1153,8 +1147,8 @@ final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             )
             total += response.Count ?? 0
             lastKey = response.LastEvaluatedKey
-            if (response.Count ?? 0) < 10000 { break }
-        } while lastKey != nil
+            if lastKey == nil { break }
+        } while true
         return total
     }
 

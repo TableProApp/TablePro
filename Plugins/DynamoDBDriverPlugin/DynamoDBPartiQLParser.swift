@@ -57,22 +57,22 @@ struct DynamoDBPartiQLParser {
             if let fromIndex = tokens.firstIndex(where: { $0.uppercased() == "FROM" }),
                fromIndex + 1 < tokens.count
             {
-                return unquoteIdentifier(tokens[fromIndex + 1])
+                return normalizeIdentifierToken(tokens[fromIndex + 1])
             }
         case "INSERT":
             // INSERT INTO "table" ...
             if tokens.count >= 3, tokens[1].uppercased() == "INTO" {
-                return unquoteIdentifier(tokens[2])
+                return normalizeIdentifierToken(tokens[2])
             }
         case "UPDATE":
             // UPDATE "table" ...
             if tokens.count >= 2 {
-                return unquoteIdentifier(tokens[1])
+                return normalizeIdentifierToken(tokens[1])
             }
         case "DELETE":
             // DELETE FROM "table" ...
             if tokens.count >= 3, tokens[1].uppercased() == "FROM" {
-                return unquoteIdentifier(tokens[2])
+                return normalizeIdentifierToken(tokens[2])
             }
         default:
             break
@@ -132,6 +132,15 @@ struct DynamoDBPartiQLParser {
         }
 
         return tokens
+    }
+
+    /// Strip trailing punctuation (`;`, `,`) from a token before unquoting.
+    private static func normalizeIdentifierToken(_ token: String) -> String {
+        var cleaned = token
+        while cleaned.hasSuffix(";") || cleaned.hasSuffix(",") {
+            cleaned = String(cleaned.dropLast())
+        }
+        return unquoteIdentifier(cleaned)
     }
 
     /// Remove surrounding double quotes from an identifier if present.

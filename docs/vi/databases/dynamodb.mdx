@@ -70,7 +70,7 @@ aws_session_token = ...
 
 ### AWS SSO
 
-Sử dụng SSO credentials đã cache trong `~/.aws/sso/cache/`. Chạy `aws sso login` trước.
+Sử dụng SSO credentials đã cache trong `~/.aws/cli/cache/`. Chạy `aws sso login` trước.
 
 | Trường | Mô tả |
 |--------|-------|
@@ -288,7 +288,7 @@ IAM user hoặc role cần các quyền tối thiểu sau:
 ## Hạn chế
 
 - **Không có kết nối liên tục.** DynamoDB dựa trên HTTP. Mỗi thao tác là một API request độc lập.
-- **Không có SSH hoặc SSL.** DynamoDB mặc định sử dụng HTTPS.
+- **Không có SSH hoặc SSL.** DynamoDB sử dụng HTTPS qua URLSession với SigV4 request signing.
 - **Không chỉnh sửa schema.** DynamoDB không hỗ trợ ALTER TABLE.
 - **Số item ước tính.** Số item được cập nhật bởi DynamoDB mỗi ~6 giờ.
 - **Phân trang dựa trên cursor.** DynamoDB sử dụng continuation token nội bộ.

@@ -224,6 +224,13 @@ struct ExecuteStatementResponse: Decodable {
     let LastEvaluatedKey: [String: DynamoDBAttributeValue]?
 }
 
+private struct SsoProfileSettings {
+    let accountId: String
+    let roleName: String
+    let startUrl: String
+    let ssoSession: String?
+}
+
 private struct DynamoDBErrorResponse: Decodable {
     let __type: String?
     let message: String?
@@ -657,54 +664,133 @@ final class DynamoDBConnection: @unchecked Sendable {
     }
 
     private func resolveSsoCredentials() throws -> AWSCredentials {
+        let profileName = config.additionalFields["awsProfileName"] ?? "default"
+        let ssoSettings = try parseSsoProfileSettings(profileName: profileName)
         let cliCachePath = NSString("~/.aws/cli/cache").expandingTildeInPath
 
-        guard let enumerator = FileManager.default.enumerator(atPath: cliCachePath) else {
-            throw DynamoDBError.authFailed("Cannot read ~/.aws/cli/cache/")
+        // Compute the expected cache filename from the profile's SSO settings.
+        // The AWS CLI caches credentials using SHA1 of a minified JSON with sorted keys.
+        let cacheKey: String
+        if let sessionName = ssoSettings.ssoSession {
+            // Session-based SSO: {"accountId":"...","roleName":"...","sessionName":"..."}
+            cacheKey = "{\"accountId\":\"\(ssoSettings.accountId)\",\"roleName\":\"\(ssoSettings.roleName)\",\"sessionName\":\"\(sessionName)\"}"
+        } else {
+            // Legacy SSO: {"accountId":"...","roleName":"...","startUrl":"..."}
+            cacheKey = "{\"accountId\":\"\(ssoSettings.accountId)\",\"roleName\":\"\(ssoSettings.roleName)\",\"startUrl\":\"\(ssoSettings.startUrl)\"}"
         }
 
-        var latestToken: (accessKeyId: String, secretAccessKey: String, sessionToken: String, expiresAt: Date)?
+        let cacheFileName = sha1Hex(Data(cacheKey.utf8)) + ".json"
+        let cacheFilePath = (cliCachePath as NSString).appendingPathComponent(cacheFileName)
 
-        while let fileName = enumerator.nextObject() as? String {
-            guard fileName.hasSuffix(".json") else { continue }
-            let filePath = (cliCachePath as NSString).appendingPathComponent(fileName)
-            guard let data = FileManager.default.contents(atPath: filePath) else { continue }
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-
-            guard let accessKeyId = json["AccessKeyId"] as? String,
-                  let secretAccessKey = json["SecretAccessKey"] as? String,
-                  let sessionToken = json["SessionToken"] as? String
-            else { continue }
-
-            let expiresAt: Date
-            if let expiresAtStr = json["Expiration"] as? String {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                guard let parsed = formatter.date(from: expiresAtStr) ?? ISO8601DateFormatter().date(from: expiresAtStr)
-                else { continue }
-                expiresAt = parsed
-            } else {
-                continue
-            }
-
-            guard expiresAt > Date() else { continue }
-
-            if latestToken == nil || expiresAt > latestToken!.expiresAt {
-                latestToken = (accessKeyId, secretAccessKey, sessionToken, expiresAt)
-            }
-        }
-
-        guard let token = latestToken else {
+        guard let data = FileManager.default.contents(atPath: cacheFilePath) else {
             throw DynamoDBError.authFailed(
-                "No valid SSO credentials found in ~/.aws/cli/cache/. Run 'aws sso login' first."
+                "SSO cache file not found for profile '\(profileName)' at \(cacheFilePath). Run 'aws sso login --profile \(profileName)' first."
             )
         }
 
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw DynamoDBError.authFailed("Invalid SSO cache file for profile '\(profileName)'")
+        }
+
+        guard let accessKeyId = json["AccessKeyId"] as? String,
+              let secretAccessKey = json["SecretAccessKey"] as? String,
+              let sessionToken = json["SessionToken"] as? String
+        else {
+            throw DynamoDBError.authFailed(
+                "SSO cache file for profile '\(profileName)' is missing credential fields. Run 'aws sso login --profile \(profileName)' first."
+            )
+        }
+
+        if let expiresAtStr = json["Expiration"] as? String {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let expiresAt = formatter.date(from: expiresAtStr) ?? ISO8601DateFormatter().date(from: expiresAtStr),
+               expiresAt <= Date()
+            {
+                throw DynamoDBError.authFailed(
+                    "SSO credentials for profile '\(profileName)' have expired. Run 'aws sso login --profile \(profileName)' to refresh."
+                )
+            }
+        }
+
         return AWSCredentials(
-            accessKeyId: token.accessKeyId,
-            secretAccessKey: token.secretAccessKey,
-            sessionToken: token.sessionToken
+            accessKeyId: accessKeyId,
+            secretAccessKey: secretAccessKey,
+            sessionToken: sessionToken
         )
+    }
+
+    /// Parse SSO settings from ~/.aws/config for the given profile.
+    private func parseSsoProfileSettings(profileName: String) throws -> SsoProfileSettings {
+        let configPath = NSString("~/.aws/config").expandingTildeInPath
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else {
+            throw DynamoDBError.authFailed("Cannot read ~/.aws/config")
+        }
+
+        // In ~/.aws/config, the default profile is [default], others are [profile <name>]
+        let targetSection = profileName == "default" ? "default" : "profile \(profileName)"
+
+        var currentSection = ""
+        var accountId: String?
+        var roleName: String?
+        var startUrl: String?
+        var ssoSession: String?
+
+        for line in content.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                currentSection = String(trimmed.dropFirst().dropLast())
+                continue
+            }
+            guard currentSection == targetSection else { continue }
+
+            let parts = trimmed.split(separator: "=", maxSplits: 1).map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }
+            guard parts.count == 2 else { continue }
+
+            switch parts[0] {
+            case "sso_account_id":
+                accountId = parts[1]
+            case "sso_role_name":
+                roleName = parts[1]
+            case "sso_start_url":
+                startUrl = parts[1]
+            case "sso_session":
+                ssoSession = parts[1]
+            default:
+                break
+            }
+        }
+
+        guard let resolvedAccountId = accountId, let resolvedRoleName = roleName else {
+            throw DynamoDBError.authFailed(
+                "Profile '\(profileName)' in ~/.aws/config is missing sso_account_id or sso_role_name"
+            )
+        }
+
+        // startUrl is required for legacy SSO (when sso_session is not set)
+        let resolvedStartUrl = startUrl ?? ""
+        if ssoSession == nil && resolvedStartUrl.isEmpty {
+            throw DynamoDBError.authFailed(
+                "Profile '\(profileName)' in ~/.aws/config is missing sso_start_url (required for legacy SSO)"
+            )
+        }
+
+        return SsoProfileSettings(
+            accountId: resolvedAccountId,
+            roleName: resolvedRoleName,
+            startUrl: resolvedStartUrl,
+            ssoSession: ssoSession
+        )
+    }
+
+    private func sha1Hex(_ data: Data) -> String {
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+        data.withUnsafeBytes { ptr in
+            _ = CC_SHA1(ptr.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Helpers

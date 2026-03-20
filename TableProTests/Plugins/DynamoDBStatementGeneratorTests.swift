@@ -92,7 +92,7 @@ struct DynamoDBStatementGeneratorTests {
         #expect(results[0].statement.contains("'active': true"))
     }
 
-    @Test("Insert with NULL type")
+    @Test("Insert with NULL type and non-null value treats as string")
     func insertWithNull() throws {
         let gen = makeGenerator(
             columns: ["id", "data"],
@@ -108,7 +108,7 @@ struct DynamoDBStatementGeneratorTests {
         )
 
         #expect(results.count == 1)
-        #expect(results[0].statement.contains("'data': NULL"))
+        #expect(results[0].statement.contains("'data': 'anything'"))
     }
 
     @Test("Insert with mixed types")
@@ -474,6 +474,192 @@ struct DynamoDBStatementGeneratorTests {
                 insertedRowIndices: [0]
             )
         }
+    }
+
+    // MARK: - String Set (SS)
+
+    @Test("String set formats as PartiQL set literal")
+    func stringSetFormat() throws {
+        let gen = makeGenerator(
+            columns: ["id", "tags"],
+            columnTypeNames: ["S", "SS"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let results = try gen.generateStatements(
+            from: [insertChange()],
+            insertedRowData: [0: ["pk1", "[\"a\",\"b\",\"c\"]"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("'tags': <<'a', 'b', 'c'>>"))
+    }
+
+    @Test("String set escapes single quotes in elements")
+    func stringSetEscapesSingleQuotes() throws {
+        let gen = makeGenerator(
+            columns: ["id", "tags"],
+            columnTypeNames: ["S", "SS"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let results = try gen.generateStatements(
+            from: [insertChange()],
+            insertedRowData: [0: ["pk1", "[\"it's\",\"fine\"]"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("<<'it''s', 'fine'>>"))
+    }
+
+    // MARK: - Number Set (NS)
+
+    @Test("Number set formats as PartiQL set literal")
+    func numberSetFormat() throws {
+        let gen = makeGenerator(
+            columns: ["id", "scores"],
+            columnTypeNames: ["S", "NS"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let results = try gen.generateStatements(
+            from: [insertChange()],
+            insertedRowData: [0: ["pk1", "[1, 2, 3]"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("'scores': <<1, 2, 3>>"))
+    }
+
+    @Test("Number set with invalid element throws invalidNumber")
+    func numberSetInvalidElement() {
+        let gen = makeGenerator(
+            columns: ["id", "scores"],
+            columnTypeNames: ["S", "NS"],
+            keySchema: [("id", "HASH")]
+        )
+
+        #expect(throws: DynamoDBStatementError.self) {
+            _ = try gen.generateStatements(
+                from: [insertChange()],
+                insertedRowData: [0: ["pk1", "[1, \"abc\", 3]"]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    // MARK: - Binary (B, BS)
+
+    @Test("Binary type throws unsupportedBinaryType")
+    func binaryTypeThrows() {
+        let gen = makeGenerator(
+            columns: ["id", "data"],
+            columnTypeNames: ["S", "B"],
+            keySchema: [("id", "HASH")]
+        )
+
+        #expect(throws: DynamoDBStatementError.self) {
+            _ = try gen.generateStatements(
+                from: [insertChange()],
+                insertedRowData: [0: ["pk1", "dGVzdA=="]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    @Test("Binary set type throws unsupportedBinaryType")
+    func binarySetTypeThrows() {
+        let gen = makeGenerator(
+            columns: ["id", "images"],
+            columnTypeNames: ["S", "BS"],
+            keySchema: [("id", "HASH")]
+        )
+
+        #expect(throws: DynamoDBStatementError.self) {
+            _ = try gen.generateStatements(
+                from: [insertChange()],
+                insertedRowData: [0: ["pk1", "[\"dGVzdA==\"]"]],
+                deletedRowIndices: [],
+                insertedRowIndices: [0]
+            )
+        }
+    }
+
+    // MARK: - NULL to value edit
+
+    @Test("NULL type with actual value falls through to string")
+    func nullTypeWithRealValue() throws {
+        let gen = makeGenerator(
+            columns: ["id", "data"],
+            columnTypeNames: ["S", "NULL"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let change = PluginRowChange(
+            rowIndex: 0,
+            type: .update,
+            cellChanges: [
+                PluginCellChange(columnName: "data", oldValue: "NULL", newValue: "hello world")
+            ],
+            originalRow: ["pk1", "NULL"]
+        )
+
+        let results = try gen.generateStatements(
+            from: [change],
+            insertedRowData: [:],
+            deletedRowIndices: [],
+            insertedRowIndices: []
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("SET \"data\" = 'hello world'"))
+    }
+
+    @Test("NULL type with empty value returns NULL")
+    func nullTypeWithEmptyValue() throws {
+        let gen = makeGenerator(
+            columns: ["id", "data"],
+            columnTypeNames: ["S", "NULL"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let results = try gen.generateStatements(
+            from: [insertChange()],
+            insertedRowData: [0: ["pk1", ""]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        // Empty value for NULL type should still produce NULL
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("'data': NULL"))
+    }
+
+    @Test("NULL type with 'null' string returns NULL")
+    func nullTypeWithNullString() throws {
+        let gen = makeGenerator(
+            columns: ["id", "data"],
+            columnTypeNames: ["S", "NULL"],
+            keySchema: [("id", "HASH")]
+        )
+
+        let results = try gen.generateStatements(
+            from: [insertChange()],
+            insertedRowData: [0: ["pk1", "null"]],
+            deletedRowIndices: [],
+            insertedRowIndices: [0]
+        )
+
+        #expect(results.count == 1)
+        #expect(results[0].statement.contains("'data': NULL"))
     }
 
     // MARK: - Identifier Escaping

@@ -70,7 +70,7 @@ aws_session_token = ...
 
 ### AWS SSO
 
-使用 `~/.aws/sso/cache/` 中缓存的 SSO 凭证。需先运行 `aws sso login`。
+使用 `~/.aws/cli/cache/` 中缓存的 SSO 凭证。需先运行 `aws sso login`。
 
 | 字段 | 描述 |
 |------|------|
@@ -288,7 +288,7 @@ IAM 用户或角色至少需要以下权限：
 ## 已知限制
 
 - **无持久连接。** DynamoDB 基于 HTTP，每个操作是独立的 API 请求。
-- **无 SSH 或 SSL 配置。** DynamoDB 默认通过 AWS SDK 使用 HTTPS。
+- **无 SSH 或 SSL 配置。** DynamoDB 通过 URLSession 使用 HTTPS 传输，并使用自定义 SigV4 请求签名。
 - **无模式编辑。** DynamoDB 不支持 ALTER TABLE。
 - **项目数为估计值。** 项目计数由 DynamoDB 约每 6 小时更新一次。
 - **基于游标的分页。** DynamoDB 内部使用续传令牌。

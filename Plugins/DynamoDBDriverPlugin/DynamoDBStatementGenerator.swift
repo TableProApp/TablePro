@@ -12,6 +12,7 @@ import TableProPluginKit
 enum DynamoDBStatementError: LocalizedError {
     case invalidNumber(value: String)
     case invalidBoolean(value: String)
+    case unsupportedBinaryType
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum DynamoDBStatementError: LocalizedError {
             return "Invalid number value: '\(value)'"
         case .invalidBoolean(let value):
             return "Invalid boolean value: '\(value)'. Expected true/false/1/0."
+        case .unsupportedBinaryType:
+            return "Binary types (B, BS) cannot be expressed as PartiQL literals. Use parameter binding instead."
         }
     }
 }
@@ -194,7 +197,17 @@ struct DynamoDBStatementGenerator {
                 throw DynamoDBStatementError.invalidBoolean(value: value)
             }
         case "NULL":
-            return "NULL"
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.lowercased() == "null" {
+                return "NULL"
+            }
+            return "'\(escapePartiQL(value))'"
+        case "SS":
+            return try formatStringSet(value)
+        case "NS":
+            return try formatNumberSet(value)
+        case "B", "BS":
+            throw DynamoDBStatementError.unsupportedBinaryType
         case "S":
             return "'\(escapePartiQL(value))'"
         default:
@@ -203,6 +216,33 @@ struct DynamoDBStatementGenerator {
             }
             return "'\(escapePartiQL(value))'"
         }
+    }
+
+    private func formatStringSet(_ value: String) throws -> String {
+        guard let data = value.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [String]
+        else {
+            return "<<'\(escapePartiQL(value))'>>"
+        }
+        let elements = array.map { "'\(escapePartiQL($0))'" }
+        return "<<\(elements.joined(separator: ", "))>>"
+    }
+
+    private func formatNumberSet(_ value: String) throws -> String {
+        guard let data = value.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [Any]
+        else {
+            throw DynamoDBStatementError.invalidNumber(value: value)
+        }
+        var elements: [String] = []
+        for element in array {
+            let str = "\(element)"
+            guard Int64(str) != nil || Double(str) != nil else {
+                throw DynamoDBStatementError.invalidNumber(value: str)
+            }
+            elements.append(str)
+        }
+        return "<<\(elements.joined(separator: ", "))>>"
     }
 
     private func escapePartiQL(_ value: String) -> String {
