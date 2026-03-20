@@ -1,107 +1,97 @@
 ---
 title: SSH Profiles
-description: Tạo cấu hình SSH tunnel tái sử dụng để chia sẻ giữa nhiều kết nối database
+description: Lưu cấu hình SSH tunnel thành profile tái sử dụng cho nhiều kết nối
 ---
 
 # SSH Profiles
 
-SSH profiles cho phép bạn định nghĩa cấu hình SSH tunnel một lần và tái sử dụng cho nhiều kết nối database. Thay vì nhập cùng SSH host, port, username và cài đặt xác thực cho mỗi kết nối đi qua cùng server, tạo một profile và chọn từ dropdown.
+Khi bạn kết nối MySQL, Redis và PostgreSQL trên cùng server, bạn phải nhập cùng SSH host, port và credentials ba lần. SSH profiles giải quyết vấn đề này: cấu hình tunnel một lần, rồi chọn từ dropdown trên bất kỳ kết nối nào.
 
-## Tạo SSH Profile
+## Tạo Profile
 
 <Steps>
-  <Step title="Mở Form Kết nối">
-    Mở kết nối mới hoặc sẵn có và chuyển sang tab **SSH Tunnel**.
+  <Step title="Mở tab SSH Tunnel">
+    Mở kết nối mới hoặc có sẵn, chuyển sang tab **SSH Tunnel**.
   </Step>
-  <Step title="Bật SSH Tunnel">
-    Bật công tắc **SSH Tunnel**.
+  <Step title="Bật SSH">
+    Bật toggle **Enable SSH Tunnel**.
   </Step>
-  <Step title="Tạo Profile Mới">
-    Nhấp **Use SSH Profile** để chuyển từ cấu hình inline sang chế độ profile, sau đó chọn **Create New Profile...** từ dropdown profile.
+  <Step title="Nhấn Create New Profile">
+    Trong phần **SSH Profile**, nhấn **Create New Profile...**. Một sheet mở ra với đầy đủ các trường SSH.
   </Step>
-  <Step title="Điền Thông tin Profile">
-    Nhập tên profile và cấu hình SSH (host, port, username, phương thức xác thực). Các trường giống cấu hình SSH inline.
-  </Step>
-  <Step title="Lưu">
-    Nhấp **Save** để lưu profile. Profile giờ có sẵn trong dropdown cho tất cả kết nối.
+  <Step title="Cấu hình và lưu">
+    Đặt tên profile (ví dụ "prod-bastion"), điền thông tin SSH server, rồi nhấn **Create**.
   </Step>
 </Steps>
 
-### Các Trường Profile
+### Các trường profile
 
 | Trường | Mô tả |
 |-------|-------------|
-| **Profile Name** | Tên để nhận dạng profile (ví dụ: "Production Bastion", "Staging Jump") |
+| **Name** | Tên hiển thị trong dropdown |
 | **SSH Host** | Hostname hoặc IP của SSH server |
-| **SSH Port** | Cổng SSH server (mặc định `22`) |
-| **SSH User** | Tên người dùng SSH |
-| **Auth Method** | Password, Private Key, hoặc SSH Agent |
-| **Jump Hosts** | Cấu hình multi-hop tùy chọn |
+| **SSH Port** | Mặc định `22` |
+| **Username** | Tên đăng nhập SSH |
+| **Auth Method** | Password, Private Key, SSH Agent, hoặc Keyboard-Interactive |
+| **Jump Hosts** | Chuỗi bastion multi-hop (tùy chọn) |
+| **TOTP** | Xác thực hai yếu tố (tùy chọn) |
 
-Các trường xác thực (password, key file, passphrase, agent socket) phụ thuộc vào phương thức xác thực đã chọn. Hoạt động giống [cài đặt SSH tunnel inline](/vi/databases/ssh-tunneling#phương-thức-xác-thực).
+Các trường xác thực (password, key file, passphrase, agent socket) giống với [cài đặt SSH tunnel inline](/vi/databases/ssh-tunneling#phương-thức-xác-thực).
 
-## Sử dụng SSH Profiles
+## Chọn Profile
 
-1. Mở tab **SSH Tunnel** của kết nối và bật SSH
-2. Nhấp **Use SSH Profile** để chuyển sang chế độ profile
-3. Chọn profile từ dropdown
-4. Cài đặt SSH hiển thị dạng tóm tắt chỉ đọc gồm host, port, user và phương thức xác thực
+1. Vào tab **SSH Tunnel** của kết nối và bật SSH
+2. Mở picker **Profile** và chọn một profile
+3. Kết nối hiển thị tóm tắt chỉ đọc cài đặt của profile
 
-Kết nối lưu tham chiếu đến profile, không phải bản sao cài đặt. Nếu bạn cập nhật profile sau, tất cả kết nối dùng profile đó tự động nhận thay đổi.
+Kết nối lưu tham chiếu đến profile, không phải bản sao. Cập nhật profile sẽ ảnh hưởng đến mọi kết nối dùng nó.
 
-Để chuyển về cài đặt SSH riêng cho từng kết nối, nhấp **Use Inline Config**. Thao tác này tách kết nối khỏi profile và cho phép chỉnh sửa trực tiếp các trường SSH.
+Để quay lại cài đặt SSH riêng cho từng kết nối, chuyển picker về **Inline Configuration**.
 
-## Sửa và Xóa Profile
+## Sửa Profile
 
-### Sửa
+1. Chọn profile trong tab SSH của bất kỳ kết nối nào
+2. Nhấn **Edit Profile...**
+3. Thay đổi và nhấn **Save**
 
-1. Mở kết nối đang dùng profile (hoặc tạo mới và chọn profile)
-2. Nhấp nút **Edit** bên cạnh dropdown profile
-3. Sửa cài đặt và nhấp **Save**
+Tất cả kết nối tham chiếu profile sẽ nhận cấu hình mới khi kết nối lại.
 
-Thay đổi áp dụng cho tất cả kết nối tham chiếu đến profile này.
+## Xóa Profile
 
-### Xóa
-
-1. Mở trình sửa profile
-2. Nhấp **Delete Profile**
+1. Mở trình sửa profile qua **Edit Profile...**
+2. Nhấn **Delete Profile**
 3. Hộp thoại xác nhận hiển thị số kết nối đang dùng profile
-4. Xác nhận xóa. Các kết nối bị ảnh hưởng chuyển về cấu hình SSH inline với cài đặt của profile được sao chép vào, không kết nối nào mất cấu hình SSH.
+4. Xác nhận xóa
 
-## Lưu Cấu hình Hiện tại thành Profile
+Sau khi xóa, các kết nối bị ảnh hưởng hiển thị cảnh báo "profile không còn tồn tại" trong tab SSH. SSH tunneling bị vô hiệu hóa cho những kết nối đó cho đến khi bạn chọn profile khác hoặc chuyển sang cấu hình inline.
 
-Nếu bạn đã có kết nối với cài đặt SSH inline và muốn tái sử dụng cấu hình đó:
+## Lưu cấu hình inline thành Profile
 
-1. Mở tab **SSH Tunnel** của kết nối
-2. Nhấp **Save Current as Profile...**
-3. Nhập tên profile
-4. Cài đặt SSH hiện tại được lưu thành profile mới, và kết nối chuyển sang dùng profile đó
+Nếu bạn đã cấu hình SSH inline trên một kết nối và muốn tái sử dụng:
 
-Hữu ích khi bạn nhận ra nhiều kết nối dùng chung SSH tunnel và muốn hợp nhất.
+1. Vào tab **SSH Tunnel** của kết nối (đang dùng cấu hình inline)
+2. Nhấn **Save Current as Profile...**
+3. Đặt tên profile và nhấn **Create**
+
+Kết nối chuyển sang dùng profile mới. Mật khẩu SSH, key passphrase và TOTP secret được chuyển theo.
 
 ## Đồng bộ iCloud
 
-SSH profiles đồng bộ giữa các Mac khi bật iCloud Sync với danh mục **Connections**. Profile được đồng bộ cùng với kết nối.
+SSH profiles đồng bộ giữa các Mac khi bật iCloud Sync với toggle **SSH Profiles** trong **Settings > Sync**.
 
 <Note>
-Mật khẩu SSH và passphrase key **không** đồng bộ cùng profile theo mặc định. Thông tin xác thực lưu trong macOS Keychain local. Bật **Password sync** trong **Settings** > **Sync** để đồng bộ qua iCloud Keychain (mã hóa đầu cuối bởi Apple).
+Mật khẩu SSH và key passphrase mặc định lưu trong macOS Keychain local. Bật **Password sync** trong **Settings > Sync** để đồng bộ qua iCloud Keychain.
 </Note>
 
-Xem [Đồng bộ iCloud](/vi/features/icloud-sync) để biết chi tiết cấu hình đồng bộ.
+Xem [Đồng bộ iCloud](/vi/features/icloud-sync) để biết chi tiết.
 
-## Trang liên quan
+## Liên quan
 
 <CardGroup cols={2}>
   <Card title="SSH Tunneling" icon="lock" href="/vi/databases/ssh-tunneling">
     Thiết lập và khắc phục sự cố SSH tunnel
   </Card>
   <Card title="Đồng bộ iCloud" icon="cloud" href="/vi/features/icloud-sync">
-    Đồng bộ cài đặt giữa các Mac
-  </Card>
-  <Card title="Quản lý Kết nối" icon="plug" href="/vi/databases/overview">
-    Quản lý tất cả kết nối
-  </Card>
-  <Card title="Phím tắt" icon="keyboard" href="/vi/features/keyboard-shortcuts">
-    Tăng tốc quy trình làm việc
+    Đồng bộ giữa các Mac
   </Card>
 </CardGroup>
