@@ -72,6 +72,16 @@ internal struct QuickSwitcherSheet: View {
             viewModel.moveDown()
             return .handled
         }
+        .onKeyPress(characters: .init(charactersIn: "j"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            viewModel.moveDown()
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "k"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            viewModel.moveUp()
+            return .handled
+        }
     }
 
     // MARK: - Search Toolbar

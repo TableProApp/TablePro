@@ -192,6 +192,16 @@ struct ConnectionSwitcherPopover: View {
             case KeyCode.escape.rawValue:
                 onDismiss?()
                 return nil
+            case KeyCode.j.rawValue where event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.control):
+                if selectedIndex < items.count - 1 {
+                    selectedIndex += 1
+                }
+                return nil
+            case KeyCode.k.rawValue where event.modifierFlags.contains(.control):
+                if selectedIndex > 0 {
+                    selectedIndex -= 1
+                }
+                return nil
             default:
                 return event
             }

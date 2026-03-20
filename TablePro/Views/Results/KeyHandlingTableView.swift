@@ -199,7 +199,28 @@ final class KeyHandlingTableView: NSTableView {
 
         // Handle arrow keys (custom Shift+selection logic)
         let row = selectedRow
-        let isShiftHeld = event.modifierFlags.contains(.shift)
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isShiftHeld = modifiers.contains(.shift)
+
+        // Ctrl+HJKL navigation (arrow key alternatives for keyboards without dedicated arrows)
+        if modifiers.contains(.control) {
+            switch key {
+            case .h:
+                handleLeftArrow(currentRow: row)
+                return
+            case .j:
+                handleDownArrow(currentRow: row, isShiftHeld: isShiftHeld)
+                return
+            case .k:
+                handleUpArrow(currentRow: row, isShiftHeld: isShiftHeld)
+                return
+            case .l:
+                handleRightArrow(currentRow: row)
+                return
+            default:
+                break
+            }
+        }
 
         switch key {
         case .upArrow:

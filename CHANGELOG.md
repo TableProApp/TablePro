@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Reusable SSH tunnel profiles: save SSH configurations once and select them across multiple connections
+- Ctrl+HJKL navigation as arrow key alternative for keyboards without dedicated arrow keys
 
 ### Fixed
 

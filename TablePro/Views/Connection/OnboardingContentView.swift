@@ -64,6 +64,16 @@ struct OnboardingContentView: View {
             goToPage(currentPage + 1)
             return .handled
         }
+        .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control), currentPage > 0 else { return .ignored }
+            goToPage(currentPage - 1)
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control), currentPage < 2 else { return .ignored }
+            goToPage(currentPage + 1)
+            return .handled
+        }
     }
 
     private func goToPage(_ page: Int) {

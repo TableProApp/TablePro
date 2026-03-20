@@ -72,6 +72,14 @@ struct WelcomeWindowView: View {
         filteredConnections.filter { $0.groupId == group.id }
     }
 
+    private var flatVisibleConnections: [DatabaseConnection] {
+        var result = ungroupedConnections
+        for group in activeGroups where !collapsedGroupIds.contains(group.id) {
+            result.append(contentsOf: connections(in: group))
+        }
+        return result
+    }
+
     var body: some View {
         ZStack {
             if showOnboarding {
@@ -316,6 +324,26 @@ struct WelcomeWindowView: View {
             {
                 connectToDatabase(connection)
             }
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "j"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            moveToNextConnection()
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "k"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            moveToPreviousConnection()
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            collapseSelectedGroup()
+            return .handled
+        }
+        .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
+            guard keyPress.modifiers.contains(.control) else { return .ignored }
+            expandSelectedGroup()
             return .handled
         }
     }
@@ -585,6 +613,59 @@ struct WelcomeWindowView: View {
             updated.name = newName
             groupStorage.updateGroup(updated)
             groups = groupStorage.loadGroups()
+        }
+    }
+
+    private func moveToNextConnection() {
+        let visible = flatVisibleConnections
+        guard !visible.isEmpty else { return }
+        guard let currentId = selectedConnectionId,
+              let index = visible.firstIndex(where: { $0.id == currentId }) else {
+            selectedConnectionId = visible.first?.id
+            return
+        }
+        let next = min(index + 1, visible.count - 1)
+        selectedConnectionId = visible[next].id
+    }
+
+    private func moveToPreviousConnection() {
+        let visible = flatVisibleConnections
+        guard !visible.isEmpty else { return }
+        guard let currentId = selectedConnectionId,
+              let index = visible.firstIndex(where: { $0.id == currentId }) else {
+            selectedConnectionId = visible.last?.id
+            return
+        }
+        let prev = max(index - 1, 0)
+        selectedConnectionId = visible[prev].id
+    }
+
+    private func collapseSelectedGroup() {
+        guard let id = selectedConnectionId,
+              let connection = connections.first(where: { $0.id == id }),
+              let groupId = connection.groupId,
+              !collapsedGroupIds.contains(groupId) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            collapsedGroupIds.insert(groupId)
+            selectedConnectionId = nil
+            UserDefaults.standard.set(
+                Array(collapsedGroupIds.map(\.uuidString)),
+                forKey: "com.TablePro.collapsedGroupIds"
+            )
+        }
+    }
+
+    private func expandSelectedGroup() {
+        guard let id = selectedConnectionId,
+              let connection = connections.first(where: { $0.id == id }),
+              let groupId = connection.groupId,
+              collapsedGroupIds.contains(groupId) else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            collapsedGroupIds.remove(groupId)
+            UserDefaults.standard.set(
+                Array(collapsedGroupIds.map(\.uuidString)),
+                forKey: "com.TablePro.collapsedGroupIds"
+            )
         }
     }
 
