@@ -415,8 +415,14 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         let _: EtcdStatusResponse = try await post(path: apiPath("maintenance/status"), body: EmptyBody())
     }
 
+    /// Probes etcd gateway prefixes in order and selects the first that responds
+    /// with a non-404 status. Covers all etcd versions:
+    ///   3.5+  → /v3/  only
+    ///   3.4   → /v3/  + /v3beta/
+    ///   3.3   → /v3beta/ + /v3alpha/
+    ///   3.2-  → /v3alpha/ only
     private func detectApiPrefix() async throws {
-        let candidates = ["v3", "v3beta"]
+        let candidates = ["v3", "v3beta", "v3alpha"]
 
         lock.lock()
         guard let session else {
@@ -439,7 +445,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             do {
                 (_, response) = try await session.data(for: request)
             } catch {
-                throw EtcdError.connectionFailed(error.localizedDescription)
+                // Network-level failure — server is unreachable regardless of prefix
+                throw error
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -450,6 +457,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 continue
             }
 
+            // Any non-404 (200, 401, etc.) means this prefix exists on the server
             lock.lock()
             apiPrefix = candidate
             lock.unlock()
@@ -457,9 +465,9 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             return
         }
 
-        lock.lock()
-        apiPrefix = "v3"
-        lock.unlock()
+        throw EtcdError.connectionFailed(
+            "No supported etcd API found (tried: \(candidates.joined(separator: ", ")))"
+        )
     }
 
     // MARK: - KV Operations
