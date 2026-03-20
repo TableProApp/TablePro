@@ -58,6 +58,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     // SSH Configuration
     @State private var sshProfileId: UUID?
     @State private var sshProfiles: [SSHProfile] = []
+    @State private var showingCreateProfile = false
+    @State private var editingProfile: SSHProfile?
+    @State private var showingSaveAsProfile = false
     @State private var sshEnabled: Bool = false
     @State private var sshHost: String = ""
     @State private var sshPort: String = "22"
@@ -482,10 +485,73 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     Text("\(profile.name) (\(profile.username)@\(profile.host))").tag(UUID?.some(profile.id))
                 }
             }
+
+            HStack(spacing: 12) {
+                Button("Create New Profile...") {
+                    showingCreateProfile = true
+                }
+
+                if sshProfileId != nil {
+                    Button("Edit Profile...") {
+                        if let profileId = sshProfileId {
+                            editingProfile = SSHProfileStorage.shared.profile(for: profileId)
+                        }
+                    }
+                }
+
+                if sshProfileId == nil && sshEnabled && !sshHost.isEmpty {
+                    Button("Save Current as Profile...") {
+                        showingSaveAsProfile = true
+                    }
+                }
+            }
+            .controlSize(.small)
         }
         .onAppear {
             sshProfiles = SSHProfileStorage.shared.loadProfiles()
         }
+        .sheet(isPresented: $showingCreateProfile) {
+            SSHProfileEditorView(existingProfile: nil) { _ in
+                reloadProfiles()
+            }
+        }
+        .sheet(item: $editingProfile) { profile in
+            SSHProfileEditorView(existingProfile: profile) { _ in
+                reloadProfiles()
+            }
+        }
+        .sheet(isPresented: $showingSaveAsProfile) {
+            SSHProfileEditorView(existingProfile: buildProfileFromInlineConfig()) { savedProfile in
+                sshProfileId = savedProfile.id
+                reloadProfiles()
+            }
+        }
+    }
+
+    private func reloadProfiles() {
+        sshProfiles = SSHProfileStorage.shared.loadProfiles()
+        // If the edited/deleted profile no longer exists, clear the selection
+        if let id = sshProfileId, !sshProfiles.contains(where: { $0.id == id }) {
+            sshProfileId = nil
+        }
+    }
+
+    private func buildProfileFromInlineConfig() -> SSHProfile {
+        SSHProfile(
+            name: "",
+            host: sshHost,
+            port: Int(sshPort) ?? 22,
+            username: sshUsername,
+            authMethod: sshAuthMethod,
+            privateKeyPath: sshPrivateKeyPath,
+            useSSHConfig: !selectedSSHConfigHost.isEmpty,
+            agentSocketPath: resolvedSSHAgentSocketPath,
+            jumpHosts: jumpHosts,
+            totpMode: totpMode,
+            totpAlgorithm: totpAlgorithm,
+            totpDigits: totpDigits,
+            totpPeriod: totpPeriod
+        )
     }
 
     private func sshProfileSummarySection(_ profile: SSHProfile) -> some View {
