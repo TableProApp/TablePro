@@ -65,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         PluginManager.shared.loadPlugins()
+        ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
 
         Task { @MainActor in
             LicenseManager.shared.startPeriodicValidation()

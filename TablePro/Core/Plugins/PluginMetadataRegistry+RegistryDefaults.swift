@@ -1118,9 +1118,6 @@ extension PluginMetadataRegistry {
                             placeholder: "AKIA...",
                             section: .authentication
                         ),
-                        // TODO: awsSecretAccessKey and awsSessionToken use .secure fieldType but are stored
-                        // in additionalFields (plain JSON), not Keychain. Needs Keychain migration for
-                        // plugin .secure fields via ConnectionStorage.
                         ConnectionField(
                             id: "awsSecretAccessKey",
                             label: String(localized: "Secret Access Key"),

@@ -7,6 +7,7 @@
 
 import Foundation
 import os
+import TableProPluginKit
 
 /// Service for persisting database connections
 final class ConnectionStorage {
@@ -101,6 +102,9 @@ final class ConnectionStorage {
         deleteSSHPassword(for: connection.id)
         deleteKeyPassphrase(for: connection.id)
         deleteTOTPSecret(for: connection.id)
+
+        let secureFieldIds = Self.secureFieldIds(for: connection.type)
+        deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
     }
 
     /// Duplicate a connection with a new UUID and "(Copy)" suffix
@@ -148,6 +152,13 @@ final class ConnectionStorage {
         }
         if let totpSecret = loadTOTPSecret(for: connection.id) {
             saveTOTPSecret(totpSecret, for: newId)
+        }
+
+        let secureFieldIds = Self.secureFieldIds(for: connection.type)
+        for fieldId in secureFieldIds {
+            if let value = loadPluginSecureField(fieldId: fieldId, for: connection.id) {
+                savePluginSecureField(value, fieldId: fieldId, for: newId)
+            }
         }
 
         return duplicate
@@ -211,6 +222,29 @@ final class ConnectionStorage {
         KeychainHelper.shared.delete(key: key)
     }
 
+    // MARK: - Plugin Secure Field Storage
+
+    func savePluginSecureField(_ value: String, fieldId: String, for connectionId: UUID) {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        KeychainHelper.shared.saveString(value, forKey: key)
+    }
+
+    func loadPluginSecureField(fieldId: String, for connectionId: UUID) -> String? {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        return KeychainHelper.shared.loadString(forKey: key)
+    }
+
+    func deletePluginSecureField(fieldId: String, for connectionId: UUID) {
+        let key = "com.TablePro.plugin.\(fieldId).\(connectionId.uuidString)"
+        KeychainHelper.shared.delete(key: key)
+    }
+
+    func deleteAllPluginSecureFields(for connectionId: UUID, fieldIds: [String]) {
+        for fieldId in fieldIds {
+            deletePluginSecureField(fieldId: fieldId, for: connectionId)
+        }
+    }
+
     // MARK: - TOTP Secret Storage
 
     func saveTOTPSecret(_ secret: String, for connectionId: UUID) {
@@ -226,6 +260,41 @@ final class ConnectionStorage {
     func deleteTOTPSecret(for connectionId: UUID) {
         let key = "com.TablePro.totpsecret.\(connectionId.uuidString)"
         KeychainHelper.shared.delete(key: key)
+    }
+
+    // MARK: - Plugin Secure Field Migration
+
+    private static func secureFieldIds(for databaseType: DatabaseType) -> [String] {
+        (PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .connection.additionalConnectionFields ?? [])
+            .filter(\.isSecure).map(\.id)
+    }
+
+    func migratePluginSecureFieldsIfNeeded() {
+        let migrationKey = "com.TablePro.pluginSecureFieldsMigrated"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+        defer { UserDefaults.standard.set(true, forKey: migrationKey) }
+
+        var connections = loadConnections()
+        var changed = false
+
+        for index in connections.indices {
+            let secureFields = (PluginMetadataRegistry.shared
+                .snapshot(forTypeId: connections[index].type.pluginTypeId)?
+                .connection.additionalConnectionFields ?? [])
+                .filter(\.isSecure)
+            for field in secureFields {
+                if let value = connections[index].additionalFields[field.id], !value.isEmpty {
+                    savePluginSecureField(value, fieldId: field.id, for: connections[index].id)
+                    connections[index].additionalFields.removeValue(forKey: field.id)
+                    changed = true
+                }
+            }
+        }
+
+        if changed {
+            saveConnections(connections)
+        }
     }
 }
 

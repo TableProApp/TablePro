@@ -1,0 +1,1 @@
+../../Plugins/DynamoDBDriverPlugin/DynamoDBStatementGenerator.swift

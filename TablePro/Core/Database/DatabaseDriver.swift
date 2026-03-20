@@ -378,6 +378,18 @@ enum DatabaseDriverFactory {
             fields[key] = value
         }
 
+        let secureFields = PluginManager.shared.additionalConnectionFields(for: connection.type)
+            .filter(\.isSecure)
+        for field in secureFields {
+            if fields[field.id] == nil || fields[field.id]?.isEmpty == true {
+                if let secureValue = ConnectionStorage.shared.loadPluginSecureField(
+                    fieldId: field.id, for: connection.id
+                ) {
+                    fields[field.id] = secureValue
+                }
+            }
+        }
+
         switch connection.type {
         case .mongodb:
             fields["sslCACertPath"] = ssl.caCertificatePath

@@ -90,7 +90,6 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "AKIA...",
             section: .authentication
         ),
-        // TODO: .secure fields stored in additionalFields (plain JSON), not Keychain — needs migration
         ConnectionField(
             id: "awsSecretAccessKey",
             label: String(localized: "Secret Access Key"),
