@@ -122,6 +122,7 @@ final class ConnectionStorage {
             color: connection.color,
             tagId: connection.tagId,
             groupId: connection.groupId,
+            sshProfileId: connection.sshProfileId,
             safeModeLevel: connection.safeModeLevel,
             aiPolicy: connection.aiPolicy,
             redisDatabase: connection.redisDatabase,
@@ -259,6 +260,7 @@ private struct StoredConnection: Codable {
     let color: String
     let tagId: String?
     let groupId: String?
+    let sshProfileId: String?
 
     // Safe mode level
     let safeModeLevel: String
@@ -327,6 +329,7 @@ private struct StoredConnection: Codable {
         self.color = connection.color.rawValue
         self.tagId = connection.tagId?.uuidString
         self.groupId = connection.groupId?.uuidString
+        self.sshProfileId = connection.sshProfileId?.uuidString
 
         // Safe mode level
         self.safeModeLevel = connection.safeModeLevel.rawValue
@@ -361,7 +364,7 @@ private struct StoredConnection: Codable {
         case sshUseSSHConfig, sshAgentSocketPath
         case totpMode, totpAlgorithm, totpDigits, totpPeriod
         case sslMode, sslCaCertificatePath, sslClientCertificatePath, sslClientKeyPath
-        case color, tagId, groupId
+        case color, tagId, groupId, sshProfileId
         case safeModeLevel
         case isReadOnly // Legacy key for migration reading only
         case aiPolicy
@@ -398,6 +401,7 @@ private struct StoredConnection: Codable {
         try container.encode(color, forKey: .color)
         try container.encodeIfPresent(tagId, forKey: .tagId)
         try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
         try container.encode(safeModeLevel, forKey: .safeModeLevel)
         try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
         try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
@@ -448,6 +452,7 @@ private struct StoredConnection: Codable {
         color = try container.decodeIfPresent(String.self, forKey: .color) ?? ConnectionColor.none.rawValue
         tagId = try container.decodeIfPresent(String.self, forKey: .tagId)
         groupId = try container.decodeIfPresent(String.self, forKey: .groupId)
+        sshProfileId = try container.decodeIfPresent(String.self, forKey: .sshProfileId)
         // Migration: read new safeModeLevel first, fall back to old isReadOnly boolean
         if let levelString = try container.decodeIfPresent(String.self, forKey: .safeModeLevel) {
             safeModeLevel = levelString
@@ -492,6 +497,7 @@ private struct StoredConnection: Codable {
         let parsedColor = ConnectionColor(rawValue: color) ?? .none
         let parsedTagId = tagId.flatMap { UUID(uuidString: $0) }
         let parsedGroupId = groupId.flatMap { UUID(uuidString: $0) }
+        let parsedSSHProfileId = sshProfileId.flatMap { UUID(uuidString: $0) }
         let parsedAIPolicy = aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) }
 
         // Merge legacy named keys into additionalFields as fallback
@@ -524,6 +530,7 @@ private struct StoredConnection: Codable {
             color: parsedColor,
             tagId: parsedTagId,
             groupId: parsedGroupId,
+            sshProfileId: parsedSSHProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevel) ?? .silent,
             aiPolicy: parsedAIPolicy,
             redisDatabase: redisDatabase,

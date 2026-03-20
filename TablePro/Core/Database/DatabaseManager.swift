@@ -426,39 +426,61 @@ final class DatabaseManager {
         for connection: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
-        guard connection.sshConfig.enabled else {
+        // Resolve SSH configuration: profile takes priority over inline
+        let sshConfig: SSHConfiguration
+        let isProfile: Bool
+        let secretOwnerId: UUID
+
+        if let profileId = connection.sshProfileId,
+           let profile = SSHProfileStorage.shared.profile(for: profileId) {
+            sshConfig = profile.toSSHConfiguration()
+            secretOwnerId = profileId
+            isProfile = true
+        } else {
+            sshConfig = connection.sshConfig
+            secretOwnerId = connection.id
+            isProfile = false
+        }
+
+        guard sshConfig.enabled else {
             return connection
         }
 
         // Load Keychain credentials off the main thread to avoid blocking UI
-        let connectionId = connection.id
         let (storedSshPassword, keyPassphrase, totpSecret) = await Task.detached {
-            let pwd = ConnectionStorage.shared.loadSSHPassword(for: connectionId)
-            let phrase = ConnectionStorage.shared.loadKeyPassphrase(for: connectionId)
-            let totp = ConnectionStorage.shared.loadTOTPSecret(for: connectionId)
-            return (pwd, phrase, totp)
+            if isProfile {
+                let pwd = SSHProfileStorage.shared.loadSSHPassword(for: secretOwnerId)
+                let phrase = SSHProfileStorage.shared.loadKeyPassphrase(for: secretOwnerId)
+                let totp = SSHProfileStorage.shared.loadTOTPSecret(for: secretOwnerId)
+                return (pwd, phrase, totp)
+            } else {
+                let pwd = ConnectionStorage.shared.loadSSHPassword(for: secretOwnerId)
+                let phrase = ConnectionStorage.shared.loadKeyPassphrase(for: secretOwnerId)
+                let totp = ConnectionStorage.shared.loadTOTPSecret(for: secretOwnerId)
+                return (pwd, phrase, totp)
+            }
         }.value
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword
 
         let tunnelPort = try await SSHTunnelManager.shared.createTunnel(
             connectionId: connection.id,
-            sshHost: connection.sshConfig.host,
-            sshPort: connection.sshConfig.port,
-            sshUsername: connection.sshConfig.username,
-            authMethod: connection.sshConfig.authMethod,
-            privateKeyPath: connection.sshConfig.privateKeyPath,
+            sshHost: sshConfig.host,
+            sshPort: sshConfig.port,
+            sshUsername: sshConfig.username,
+            authMethod: sshConfig.authMethod,
+            privateKeyPath: sshConfig.privateKeyPath,
             keyPassphrase: keyPassphrase,
             sshPassword: sshPassword,
-            agentSocketPath: connection.sshConfig.agentSocketPath,
+            agentSocketPath: sshConfig.agentSocketPath,
             remoteHost: connection.host,
             remotePort: connection.port,
-            jumpHosts: connection.sshConfig.jumpHosts,
-            totpMode: connection.sshConfig.totpMode,
+            jumpHosts: sshConfig.jumpHosts,
+            totpMode: sshConfig.totpMode,
             totpSecret: totpSecret,
-            totpAlgorithm: connection.sshConfig.totpAlgorithm,
-            totpDigits: connection.sshConfig.totpDigits,
-            totpPeriod: connection.sshConfig.totpPeriod
+            totpAlgorithm: sshConfig.totpAlgorithm,
+            totpDigits: sshConfig.totpDigits,
+            totpPeriod: sshConfig.totpPeriod
         )
 
         // Adapt SSL config for tunnel: SSH already authenticates the server,

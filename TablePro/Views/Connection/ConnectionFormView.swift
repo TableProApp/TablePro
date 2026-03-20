@@ -56,6 +56,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     @State private var hasLoadedData = false
 
     // SSH Configuration
+    @State private var sshProfileId: UUID?
     @State private var sshEnabled: Bool = false
     @State private var sshHost: String = ""
     @State private var sshPort: String = "22"
@@ -447,6 +448,59 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             }
 
             if sshEnabled {
+                sshProfileSection
+
+                if let profileId = sshProfileId,
+                   let profile = SSHProfileStorage.shared.profile(for: profileId) {
+                    sshProfileSummarySection(profile)
+                } else if sshProfileId != nil {
+                    Section {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.yellow)
+                            Text("Selected SSH profile no longer exists.")
+                        }
+                        Button("Switch to Inline Configuration") {
+                            sshProfileId = nil
+                        }
+                    }
+                } else {
+                    sshInlineFields
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+    }
+
+    private var sshProfileSection: some View {
+        Section(String(localized: "SSH Profile")) {
+            Picker(String(localized: "Profile"), selection: $sshProfileId) {
+                Text("Inline Configuration").tag(UUID?.none)
+                ForEach(SSHProfileStorage.shared.loadProfiles()) { profile in
+                    Text("\(profile.name) (\(profile.username)@\(profile.host))").tag(UUID?.some(profile.id))
+                }
+            }
+        }
+    }
+
+    private func sshProfileSummarySection(_ profile: SSHProfile) -> some View {
+        Section(String(localized: "Profile Settings")) {
+            LabeledContent("Host", value: profile.host)
+            LabeledContent("Port", value: String(profile.port))
+            LabeledContent("Username", value: profile.username)
+            LabeledContent("Auth Method", value: profile.authMethod.rawValue)
+            if !profile.privateKeyPath.isEmpty {
+                LabeledContent("Key File", value: profile.privateKeyPath)
+            }
+            if !profile.jumpHosts.isEmpty {
+                LabeledContent("Jump Hosts", value: "\(profile.jumpHosts.count)")
+            }
+        }
+    }
+
+    private var sshInlineFields: some View {
+        Group {
                 Section(String(localized: "Server")) {
                     if !sshConfigEntries.isEmpty {
                         Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost)
@@ -644,10 +698,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         .foregroundStyle(.secondary)
                     }
                 }
-            }
         }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
     }
 
     // MARK: - SSL/TLS Tab
@@ -920,7 +971,15 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             type = existing.type
 
             // Load SSH configuration
+            sshProfileId = existing.sshProfileId
             sshEnabled = existing.sshConfig.enabled
+
+            // When using a profile, also set sshEnabled based on profile existence
+            if let profileId = existing.sshProfileId,
+               SSHProfileStorage.shared.profile(for: profileId) != nil {
+                sshEnabled = true
+            }
+
             sshHost = existing.sshConfig.host
             sshPort = String(existing.sshConfig.port)
             sshUsername = existing.sshConfig.username
@@ -1036,6 +1095,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
+            sshProfileId: sshProfileId,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
@@ -1048,18 +1108,21 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         if !password.isEmpty {
             storage.savePassword(password, for: connectionToSave.id)
         }
-        if sshEnabled && (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
-            && !sshPassword.isEmpty
-        {
-            storage.saveSSHPassword(sshPassword, for: connectionToSave.id)
-        }
-        if sshEnabled && sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
-            storage.saveKeyPassphrase(keyPassphrase, for: connectionToSave.id)
-        }
-        if sshEnabled && totpMode == .autoGenerate && !totpSecret.isEmpty {
-            storage.saveTOTPSecret(totpSecret, for: connectionToSave.id)
-        } else {
-            storage.deleteTOTPSecret(for: connectionToSave.id)
+        // Only save SSH secrets per-connection when using inline config (not a profile)
+        if sshEnabled && sshProfileId == nil {
+            if (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
+                && !sshPassword.isEmpty
+            {
+                storage.saveSSHPassword(sshPassword, for: connectionToSave.id)
+            }
+            if sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
+                storage.saveKeyPassphrase(keyPassphrase, for: connectionToSave.id)
+            }
+            if totpMode == .autoGenerate && !totpSecret.isEmpty {
+                storage.saveTOTPSecret(totpSecret, for: connectionToSave.id)
+            } else {
+                storage.deleteTOTPSecret(for: connectionToSave.id)
+            }
         }
 
         // Save to storage
@@ -1199,6 +1262,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
+            sshProfileId: sshProfileId,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,
