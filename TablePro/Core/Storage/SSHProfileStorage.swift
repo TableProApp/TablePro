@@ -14,6 +14,7 @@ final class SSHProfileStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var lastLoadFailed = false
 
     private init() {}
 
@@ -21,18 +22,26 @@ final class SSHProfileStorage {
 
     func loadProfiles() -> [SSHProfile] {
         guard let data = defaults.data(forKey: profilesKey) else {
+            lastLoadFailed = false
             return []
         }
 
         do {
-            return try decoder.decode([SSHProfile].self, from: data)
+            let profiles = try decoder.decode([SSHProfile].self, from: data)
+            lastLoadFailed = false
+            return profiles
         } catch {
             Self.logger.error("Failed to load SSH profiles: \(error)")
+            lastLoadFailed = true
             return []
         }
     }
 
     func saveProfiles(_ profiles: [SSHProfile]) {
+        guard !lastLoadFailed else {
+            Self.logger.warning("Refusing to save SSH profiles: previous load failed (would overwrite existing data)")
+            return
+        }
         do {
             let data = try encoder.encode(profiles)
             defaults.set(data, forKey: profilesKey)
@@ -43,12 +52,14 @@ final class SSHProfileStorage {
 
     func addProfile(_ profile: SSHProfile) {
         var profiles = loadProfiles()
+        guard !lastLoadFailed else { return }
         profiles.append(profile)
         saveProfiles(profiles)
     }
 
     func updateProfile(_ profile: SSHProfile) {
         var profiles = loadProfiles()
+        guard !lastLoadFailed else { return }
         if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
             profiles[index] = profile
             saveProfiles(profiles)
@@ -57,6 +68,7 @@ final class SSHProfileStorage {
 
     func deleteProfile(_ profile: SSHProfile) {
         var profiles = loadProfiles()
+        guard !lastLoadFailed else { return }
         profiles.removeAll { $0.id == profile.id }
         saveProfiles(profiles)
 
