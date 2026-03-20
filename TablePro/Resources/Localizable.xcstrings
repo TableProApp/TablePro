@@ -2324,6 +2324,9 @@
         }
       }
     },
+    "Access Key ID" : {
+
+    },
     "Account ID" : {
 
     },
@@ -4092,6 +4095,9 @@
           }
         }
       }
+    },
+    "AWS Region" : {
+
     },
     "Background" : {
       "localizations" : {
@@ -7429,6 +7435,9 @@
           }
         }
       }
+    },
+    "Custom Endpoint" : {
+
     },
     "Custom Path" : {
       "localizations" : {
@@ -19812,6 +19821,9 @@
     "Profile" : {
 
     },
+    "Profile Name" : {
+
+    },
     "Profile Settings" : {
 
     },
@@ -22450,6 +22462,9 @@
         }
       }
     },
+    "Secret Access Key" : {
+
+    },
     "Section Header" : {
       "localizations" : {
         "tr" : {
@@ -22832,6 +22847,9 @@
           }
         }
       }
+    },
+    "Session Token" : {
+
     },
     "Set DEFAULT" : {
       "localizations" : {

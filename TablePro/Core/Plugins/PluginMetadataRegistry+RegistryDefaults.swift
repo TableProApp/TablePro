@@ -1022,6 +1022,152 @@ extension PluginMetadataRegistry {
                         )
                     ]
                 )
+            )),
+            ("DynamoDB", PluginMetadataSnapshot(
+                displayName: "Amazon DynamoDB", iconName: "dynamodb-icon", defaultPort: 0,
+                requiresAuthentication: true, supportsForeignKeys: false, supportsSchemaEditing: false,
+                isDownloadable: true, primaryUrlScheme: "", parameterStyle: .questionMark,
+                navigationModel: .standard, explainVariants: [],
+                pathFieldRole: .database,
+                supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
+                brandColorHex: "#4053D6",
+                queryLanguageName: "PartiQL", editorLanguage: .sql,
+                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: false,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: false,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false
+                ),
+                schema: PluginMetadataSnapshot.SchemaInfo(
+                    defaultSchemaName: "",
+                    defaultGroupName: "main",
+                    tableEntityName: "Tables",
+                    defaultPrimaryKeyColumn: nil,
+                    immutableColumns: [],
+                    systemDatabaseNames: [],
+                    systemSchemaNames: [],
+                    fileExtensions: [],
+                    databaseGroupingStrategy: .flat,
+                    structureColumnFields: [.name, .type]
+                ),
+                editor: PluginMetadataSnapshot.EditorConfig(
+                    sqlDialect: SQLDialectDescriptor(
+                        identifierQuote: "\"",
+                        keywords: [
+                            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUE", "SET",
+                            "UPDATE", "DELETE", "AND", "OR", "NOT", "IN", "BETWEEN",
+                            "EXISTS", "MISSING", "IS", "NULL", "LIMIT",
+                        ],
+                        functions: [
+                            "begins_with", "contains", "size", "attribute_type",
+                            "attribute_exists", "attribute_not_exists",
+                        ],
+                        dataTypes: ["S", "N", "B", "BOOL", "NULL", "L", "M", "SS", "NS", "BS"]
+                    ),
+                    statementCompletions: [
+                        CompletionEntry(label: "SELECT", insertText: "SELECT"),
+                        CompletionEntry(label: "INSERT INTO", insertText: "INSERT INTO"),
+                        CompletionEntry(label: "UPDATE", insertText: "UPDATE"),
+                        CompletionEntry(label: "DELETE FROM", insertText: "DELETE FROM"),
+                        CompletionEntry(label: "VALUE", insertText: "VALUE"),
+                        CompletionEntry(label: "SET", insertText: "SET"),
+                        CompletionEntry(label: "WHERE", insertText: "WHERE"),
+                        CompletionEntry(label: "begins_with", insertText: "begins_with"),
+                        CompletionEntry(label: "contains", insertText: "contains"),
+                        CompletionEntry(label: "size", insertText: "size"),
+                        CompletionEntry(label: "attribute_type", insertText: "attribute_type"),
+                        CompletionEntry(label: "attribute_exists", insertText: "attribute_exists"),
+                        CompletionEntry(label: "attribute_not_exists", insertText: "attribute_not_exists"),
+                    ],
+                    columnTypesByCategory: [
+                        "String": ["S"],
+                        "Number": ["N"],
+                        "Binary": ["B"],
+                        "Boolean": ["BOOL"],
+                        "Null": ["NULL"],
+                        "List": ["L"],
+                        "Map": ["M"],
+                        "String Set": ["SS"],
+                        "Number Set": ["NS"],
+                        "Binary Set": ["BS"],
+                    ]
+                ),
+                connection: PluginMetadataSnapshot.ConnectionConfig(
+                    additionalConnectionFields: [
+                        ConnectionField(
+                            id: "awsAuthMethod",
+                            label: String(localized: "Auth Method"),
+                            defaultValue: "credentials",
+                            fieldType: .dropdown(options: [
+                                .init(value: "credentials", label: "Access Key + Secret Key"),
+                                .init(value: "profile", label: "AWS Profile"),
+                                .init(value: "sso", label: "AWS SSO"),
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "awsAccessKeyId",
+                            label: String(localized: "Access Key ID"),
+                            placeholder: "AKIA...",
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "awsSecretAccessKey",
+                            label: String(localized: "Secret Access Key"),
+                            placeholder: "wJalr...",
+                            fieldType: .secure,
+                            section: .authentication,
+                            hidesPassword: true
+                        ),
+                        ConnectionField(
+                            id: "awsSessionToken",
+                            label: String(localized: "Session Token"),
+                            placeholder: "Optional (for temporary credentials)",
+                            fieldType: .secure,
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "awsProfileName",
+                            label: String(localized: "Profile Name"),
+                            placeholder: "default",
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "awsRegion",
+                            label: String(localized: "AWS Region"),
+                            defaultValue: "us-east-1",
+                            fieldType: .dropdown(options: [
+                                .init(value: "us-east-1", label: "US East (N. Virginia)"),
+                                .init(value: "us-east-2", label: "US East (Ohio)"),
+                                .init(value: "us-west-1", label: "US West (N. California)"),
+                                .init(value: "us-west-2", label: "US West (Oregon)"),
+                                .init(value: "eu-west-1", label: "Europe (Ireland)"),
+                                .init(value: "eu-west-2", label: "Europe (London)"),
+                                .init(value: "eu-central-1", label: "Europe (Frankfurt)"),
+                                .init(value: "ap-northeast-1", label: "Asia Pacific (Tokyo)"),
+                                .init(value: "ap-southeast-1", label: "Asia Pacific (Singapore)"),
+                                .init(value: "ap-southeast-2", label: "Asia Pacific (Sydney)"),
+                                .init(value: "ap-south-1", label: "Asia Pacific (Mumbai)"),
+                                .init(value: "sa-east-1", label: "South America (São Paulo)"),
+                                .init(value: "ca-central-1", label: "Canada (Central)"),
+                            ]),
+                            section: .authentication
+                        ),
+                        ConnectionField(
+                            id: "awsEndpointUrl",
+                            label: String(localized: "Custom Endpoint"),
+                            placeholder: "http://localhost:8000 (DynamoDB Local)",
+                            section: .authentication
+                        ),
+                    ]
+                )
             ))
         ]
     }

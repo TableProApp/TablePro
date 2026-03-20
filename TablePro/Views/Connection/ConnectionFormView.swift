@@ -40,7 +40,14 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private var hidePasswordField: Bool {
-        authSectionFields.contains { $0.hidesPassword && additionalFieldValues[$0.id] == "true" }
+        authSectionFields.contains { field in
+            guard field.hidesPassword else { return false }
+            if case .toggle = field.fieldType {
+                return additionalFieldValues[field.id] == "true"
+            }
+            // Non-toggle fields (e.g., .secure) with hidesPassword always hide the default password field
+            return true
+        }
     }
 
     @State private var name: String = ""
@@ -271,12 +278,14 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     }
                 }
             } else if PluginManager.shared.connectionMode(for: type) == .apiOnly {
-                Section(String(localized: "Connection")) {
-                    TextField(
-                        String(localized: "Database"),
-                        text: $database,
-                        prompt: Text("database_name")
-                    )
+                if PluginManager.shared.supportsDatabaseSwitching(for: type) {
+                    Section(String(localized: "Connection")) {
+                        TextField(
+                            String(localized: "Database"),
+                            text: $database,
+                            prompt: Text("database_name")
+                        )
+                    }
                 }
             } else {
                 Section(String(localized: "Connection")) {
@@ -961,13 +970,17 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     private var isValid: Bool {
         // Host and port can be empty (will use defaults: localhost and default port)
         let mode = PluginManager.shared.connectionMode(for: type)
-        let requiresDatabase = mode == .fileBased || mode == .apiOnly
-        var basicValid = !name.isEmpty && (requiresDatabase ? !database.isEmpty : true)
+        let supportsDatabaseField = mode == .fileBased
+            || (mode == .apiOnly && PluginManager.shared.supportsDatabaseSwitching(for: type))
+        var basicValid = !name.isEmpty && (supportsDatabaseField ? !database.isEmpty : true)
         if mode == .apiOnly {
             let hasRequiredFields = authSectionFields
                 .filter(\.isRequired)
                 .allSatisfy { !(additionalFieldValues[$0.id] ?? "").isEmpty }
-            basicValid = basicValid && hasRequiredFields && !password.isEmpty
+            basicValid = basicValid && hasRequiredFields
+            if !hidePasswordField {
+                basicValid = basicValid && !password.isEmpty
+            }
         }
         if sshEnabled && sshProfileId == nil {
             let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)

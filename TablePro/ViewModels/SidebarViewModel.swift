@@ -36,9 +36,11 @@ struct LiveTableFetcher: TableFetcher {
             }
         }
         guard let driver = await DatabaseManager.shared.driver(for: connectionId) else {
+            NSLog("[LiveTableFetcher] driver is nil for connectionId: %@", connectionId.uuidString)
             return []
         }
         let fetched = try await driver.fetchTables()
+        NSLog("[LiveTableFetcher] fetched %d tables", fetched.count)
         if let provider = schemaProvider {
             await provider.updateTables(fetched)
         }
@@ -141,10 +143,16 @@ final class SidebarViewModel {
     // MARK: - Lifecycle
 
     func onAppear() {
-        guard tables.isEmpty else { return }
+        guard tables.isEmpty else {
+            NSLog("[SidebarVM] onAppear: tables not empty (%d), skipping", tables.count)
+            return
+        }
         Task { @MainActor in
             if DatabaseManager.shared.driver(for: connectionId) != nil {
+                NSLog("[SidebarVM] onAppear: driver found, loading tables")
                 loadTables()
+            } else {
+                NSLog("[SidebarVM] onAppear: driver is nil for %@", connectionId.uuidString)
             }
         }
     }

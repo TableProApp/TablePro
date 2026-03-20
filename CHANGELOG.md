@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Reusable SSH tunnel profiles: save SSH configurations once and select them across multiple connections
 - Ctrl+HJKL navigation as arrow key alternative for keyboards without dedicated arrow keys
+- Amazon DynamoDB database support with PartiQL queries, AWS IAM/Profile/SSO authentication, GSI/LSI browsing, table scanning, capacity display, and DynamoDB Local support
 
 ### Fixed
 

@@ -42,6 +42,7 @@
                   "databases/oracle",
                   "databases/clickhouse",
                   "databases/cassandra",
+                  "databases/dynamodb",
                   "databases/mssql",
                   "databases/oracle",
                   "databases/ssh-tunneling"
@@ -139,6 +140,7 @@
                   "vi/databases/oracle",
                   "vi/databases/clickhouse",
                   "vi/databases/cassandra",
+                  "vi/databases/dynamodb",
                   "vi/databases/mssql",
                   "vi/databases/oracle",
                   "vi/databases/ssh-tunneling"
@@ -241,6 +243,7 @@
                   "zh/databases/clickhouse",
                   "zh/databases/cassandra",
                   "zh/databases/duckdb",
+                  "zh/databases/dynamodb",
                   "zh/databases/mssql",
                   "zh/databases/oracle",
                   "zh/databases/ssh-tunneling"

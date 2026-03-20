@@ -791,7 +791,10 @@ final class MainContentCoordinator {
 
         let tableName: String?
         let isEditable: Bool
-        if PluginManager.shared.editorLanguage(for: connection.type) != .sql {
+        let usesNoSQLBrowsing = PluginManager.shared.editorLanguage(for: connection.type) != .sql
+            || (DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter)?
+                .queryBuildingPluginDriver != nil
+        if usesNoSQLBrowsing {
             tableName = tabManager.selectedTab?.tableName
             isEditable = tableName != nil
         } else {
