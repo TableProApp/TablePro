@@ -90,8 +90,8 @@ public struct SourceEditor: NSViewControllerRepresentable {
     var highlightProviders: [any HighlightProviding]?
     var undoManager: CEUndoManager?
     var coordinators: [any TextViewCoordinator]
-    weak var completionDelegate: CodeSuggestionDelegate?
-    weak var jumpToDefinitionDelegate: JumpToDefinitionDelegate?
+    var completionDelegate: CodeSuggestionDelegate?
+    var jumpToDefinitionDelegate: JumpToDefinitionDelegate?
 
     public typealias NSViewControllerType = TextViewController
 

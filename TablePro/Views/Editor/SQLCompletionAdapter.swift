@@ -8,11 +8,14 @@
 import AppKit
 import CodeEditSourceEditor
 import CodeEditTextView
+import os
 import SwiftUI
 
 /// Adapts the existing CompletionEngine to CodeEditSourceEditor's suggestion system
 @MainActor
 final class SQLCompletionAdapter: CodeSuggestionDelegate {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLCompletionAdapter")
+
     // MARK: - Properties
 
     private var completionEngine: CompletionEngine?
@@ -60,9 +63,13 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
 
     func completionSuggestionsRequested(
         textView: TextViewController,
-        cursorPosition: CursorPosition
+        cursorPosition: CursorPosition,
+        isManualTrigger: Bool
     ) async -> (windowPosition: CursorPosition, items: [CodeSuggestionEntry])? {
-        guard let completionEngine else { return nil }
+        guard let completionEngine else {
+            Self.logger.debug("Completion skipped: no engine (schema provider was nil at init)")
+            return nil
+        }
 
         if suppressNextCompletion {
             suppressNextCompletion = false
@@ -94,6 +101,8 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             }
         }
 
+        await completionEngine.retrySchemaIfNeeded()
+
         guard let context = await completionEngine.getCompletions(
             text: text,
             cursorPosition: offset
@@ -102,8 +111,9 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         }
 
         // Suppress noisy completions when prefix is empty in contexts where
-        // browsing all items isn't useful (e.g., after "SELECT " or "WHERE ")
-        if context.sqlContext.prefix.isEmpty && context.sqlContext.dotPrefix == nil {
+        // browsing all items isn't useful (e.g., after "SELECT " or "WHERE ").
+        // Manual triggers (Ctrl+Space) always show completions.
+        if !isManualTrigger && context.sqlContext.prefix.isEmpty && context.sqlContext.dotPrefix == nil {
             switch context.sqlContext.clauseType {
             case .from, .join, .into, .set, .insertColumns, .on,
                  .alterTableColumn, .returning, .using, .dropObject, .createIndex:

@@ -7,6 +7,7 @@
 
 import AppKit
 import CodeEditTextView
+import os
 import TextStory
 
 /// Triggers the suggestion window when trigger characters are typed.
@@ -17,11 +18,14 @@ import TextStory
 /// essentially a textview delegate ensures both of those promises are upheld.
 @MainActor
 final class SuggestionTriggerCharacterModel {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "CompletionTrigger")
+
     weak var controller: TextViewController?
     private var lastPosition: NSRange?
 
     func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         guard let controller, let completionDelegate = controller.completionDelegate else {
+            Self.logger.debug("Typing trigger skipped: controller=\(self.controller == nil ? "nil" : "set"), completionDelegate=\(self.controller?.completionDelegate == nil ? "nil" : "set")")
             return
         }
 

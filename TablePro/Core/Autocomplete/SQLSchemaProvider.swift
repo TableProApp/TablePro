@@ -18,6 +18,8 @@ actor SQLSchemaProvider {
     private let maxCachedTables = 50
     private var isLoading = false
     private var lastLoadError: Error?
+    private var lastRetryAttempt: Date?
+    private let retryCooldown: TimeInterval = 30
 
     // Store a weak driver reference to avoid retaining it after disconnect (MEM-9)
     private weak var cachedDriver: (any DatabaseDriver)?
@@ -81,6 +83,15 @@ actor SQLSchemaProvider {
             let evicted = columnAccessOrder.removeFirst()
             columnCache.removeValue(forKey: evicted)
         }
+    }
+
+    func retryLoadSchemaIfNeeded() async {
+        guard lastLoadError != nil, tables.isEmpty, !isLoading else { return }
+        guard let driver = cachedDriver else { return }
+        if let last = lastRetryAttempt, Date().timeIntervalSince(last) < retryCooldown { return }
+        lastRetryAttempt = Date()
+        lastLoadError = nil
+        await loadSchema(using: driver, connection: connectionInfo)
     }
 
     /// Check if schema is loaded
