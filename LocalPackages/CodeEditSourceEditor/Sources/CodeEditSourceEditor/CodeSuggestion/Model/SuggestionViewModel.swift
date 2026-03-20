@@ -10,7 +10,7 @@ import os
 
 @MainActor
 final class SuggestionViewModel: ObservableObject {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "SuggestionVM")
+    private static let logger = Logger(subsystem: "com.CodeEditSourceEditor", category: "SuggestionVM")
     /// The items to be displayed in the window
     @Published var items: [CodeSuggestionEntry] = []
     @Published var selectedIndex: Int = 0

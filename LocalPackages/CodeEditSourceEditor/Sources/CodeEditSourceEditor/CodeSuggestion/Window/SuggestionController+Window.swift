@@ -8,7 +8,7 @@
 import AppKit
 import SwiftUI
 
-final class SuggestionPanel: NSPanel {
+internal final class SuggestionPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 }

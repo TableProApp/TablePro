@@ -18,7 +18,7 @@ import TextStory
 /// essentially a textview delegate ensures both of those promises are upheld.
 @MainActor
 final class SuggestionTriggerCharacterModel {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "CompletionTrigger")
+    private static let logger = Logger(subsystem: "com.CodeEditSourceEditor", category: "CompletionTrigger")
 
     weak var controller: TextViewController?
     private var lastPosition: NSRange?
