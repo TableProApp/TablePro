@@ -6,9 +6,14 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 struct LicenseSettingsView: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseSettingsView")
+    // swiftlint:disable:next force_unwrapping
+    private static let pricingURL = URL(string: "https://tablepro.app/#pricing")!
+
     private let licenseManager = LicenseManager.shared
 
     @State private var licenseKeyInput = ""
@@ -40,7 +45,7 @@ struct LicenseSettingsView: View {
                     .foregroundStyle(.orange)
                 Text("License expires in \(days) day(s)")
                 Spacer()
-                Link(String(localized: "Renew"), destination: URL(string: "https://tablepro.app/pricing")!)
+                Link(String(localized: "Renew"), destination: Self.pricingURL)
                     .controlSize(.small)
             }
             .padding(12)
@@ -174,7 +179,7 @@ struct LicenseSettingsView: View {
 
             HStack {
                 Spacer()
-                Link("Purchase License", destination: URL(string: "https://tablepro.app/pricing")!)
+                Link("Purchase License", destination: Self.pricingURL)
                     .font(.subheadline)
             }
         }
@@ -205,7 +210,7 @@ struct LicenseSettingsView: View {
             activations = response.activations
             maxActivations = response.maxActivations
         } catch {
-            // Silently fail — activations section is informational
+            Self.logger.debug("Failed to load activations: \(error.localizedDescription)")
         }
     }
 

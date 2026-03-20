@@ -132,7 +132,7 @@ struct LicenseAPIErrorResponse: Codable {
 }
 
 /// Information about a single license activation (machine)
-struct LicenseActivationInfo: Codable, Identifiable {
+internal struct LicenseActivationInfo: Codable, Identifiable {
     var id: String { machineId }
     let machineId: String
     let machineName: String
@@ -152,7 +152,7 @@ struct LicenseActivationInfo: Codable, Identifiable {
 }
 
 /// Response from the list activations endpoint
-struct ListActivationsResponse: Codable {
+internal struct ListActivationsResponse: Codable {
     let activations: [LicenseActivationInfo]
     let maxActivations: Int
 
