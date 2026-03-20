@@ -51,8 +51,18 @@ struct ProFeatureGateModifier: ViewModifier {
                         openLicenseSettings()
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Renew License"), destination: URL(string: "https://tablepro.app")!)
+                    Link(String(localized: "Renew License"), destination: URL(string: "https://tablepro.app/pricing")!)
                         .font(.subheadline)
+                case .validationFailed:
+                    Text("License validation failed")
+                        .font(.headline)
+                    Text("Connect to the internet to verify your license.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Retry Validation")) {
+                        Task { await LicenseManager.shared.revalidate() }
+                    }
+                    .buttonStyle(.borderedProminent)
                 case .unlicensed:
                     Text("\(feature.displayName) requires a Pro license")
                         .font(.headline)
@@ -63,7 +73,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         openLicenseSettings()
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Purchase License"), destination: URL(string: "https://tablepro.app")!)
+                    Link(String(localized: "Purchase License"), destination: URL(string: "https://tablepro.app/pricing")!)
                         .font(.subheadline)
                 }
             }

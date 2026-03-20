@@ -52,6 +52,13 @@ final class LicenseAPIClient {
         return try await post(url: url, body: request)
     }
 
+    /// List all activations for a license key
+    func listActivations(licenseKey: String, machineId: String) async throws -> ListActivationsResponse {
+        let url = baseURL.appendingPathComponent("activations")
+        let body = LicenseValidationRequest(licenseKey: licenseKey, machineId: machineId)
+        return try await post(url: url, body: body)
+    }
+
     /// Deactivate a license key from this machine
     func deactivate(request: LicenseDeactivationRequest) async throws {
         let url = baseURL.appendingPathComponent("deactivate")

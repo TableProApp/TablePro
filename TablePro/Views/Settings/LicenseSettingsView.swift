@@ -13,6 +13,9 @@ struct LicenseSettingsView: View {
 
     @State private var licenseKeyInput = ""
     @State private var isActivating = false
+    @State private var activations: [LicenseActivationInfo] = []
+    @State private var maxActivations = 0
+    @State private var isLoadingActivations = false
 
     var body: some View {
         Form {
@@ -24,12 +27,26 @@ struct LicenseSettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .task { await loadActivations() }
     }
 
     // MARK: - Licensed State
 
     @ViewBuilder
     private func licensedSection(_ license: License) -> some View {
+        if licenseManager.isExpiringSoon, let days = licenseManager.daysUntilExpiry {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("License expires in \(days) day(s)")
+                Spacer()
+                Link(String(localized: "Renew"), destination: URL(string: "https://tablepro.app/pricing")!)
+                    .controlSize(.small)
+            }
+            .padding(12)
+            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+        }
+
         Section("License") {
             LabeledContent("Email:", value: license.email)
 
@@ -56,7 +73,61 @@ struct LicenseSettingsView: View {
             }
         }
 
+        Section("Activations (\(activations.count) of \(maxActivations))") {
+            if isLoadingActivations {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .controlSize(.small)
+                    Spacer()
+                }
+            } else if activations.isEmpty {
+                Text("No activations found")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(activations) { activation in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(activation.machineName)
+                                    .fontWeight(
+                                        activation.machineId == LicenseStorage.shared.machineId
+                                            ? .semibold : .regular
+                                    )
+                                if activation.machineId == LicenseStorage.shared.machineId {
+                                    Text("(this Mac)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Text(activation.appVersion + " · " + activation.osVersion)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Refresh") {
+                    Task { await loadActivations() }
+                }
+                .disabled(isLoadingActivations)
+            }
+        }
+
         Section("Maintenance") {
+            HStack {
+                Text("Refresh license status from server")
+                Spacer()
+                Button("Check Status") {
+                    Task { await licenseManager.revalidate() }
+                }
+                .disabled(licenseManager.isValidating)
+            }
+
             HStack {
                 Text("Remove license from this machine")
                 Spacer()
@@ -103,7 +174,7 @@ struct LicenseSettingsView: View {
 
             HStack {
                 Spacer()
-                Link("Purchase License", destination: URL(string: "https://tablepro.app")!)
+                Link("Purchase License", destination: URL(string: "https://tablepro.app/pricing")!)
                     .font(.subheadline)
             }
         }
@@ -120,6 +191,23 @@ struct LicenseSettingsView: View {
     }
 
     // MARK: - Actions
+
+    private func loadActivations() async {
+        guard let license = licenseManager.license else { return }
+        isLoadingActivations = true
+        defer { isLoadingActivations = false }
+
+        do {
+            let response = try await LicenseAPIClient.shared.listActivations(
+                licenseKey: license.key,
+                machineId: LicenseStorage.shared.machineId
+            )
+            activations = response.activations
+            maxActivations = response.maxActivations
+        } catch {
+            // Silently fail — activations section is informational
+        }
+    }
 
     private func activate() async {
         isActivating = true
