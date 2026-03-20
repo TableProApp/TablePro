@@ -49,11 +49,19 @@ struct SSHProfileEditorView: View {
     @State private var showingDeleteConfirmation = false
     @State private var connectionsUsingProfile = 0
 
-    private var isEditing: Bool { existingProfile != nil }
+    private var isStoredProfile: Bool {
+        guard let profile = existingProfile else { return false }
+        return SSHProfileStorage.shared.profile(for: profile.id) != nil
+    }
 
     private var isValid: Bool {
-        !profileName.trimmingCharacters(in: .whitespaces).isEmpty
-            && !host.trimmingCharacters(in: .whitespaces).isEmpty
+        let nameValid = !profileName.trimmingCharacters(in: .whitespaces).isEmpty
+        let hostValid = !host.trimmingCharacters(in: .whitespaces).isEmpty
+        let portValid = port.isEmpty || (Int(port).map { (1...65_535).contains($0) } ?? false)
+        let authValid = authMethod == .password || authMethod == .sshAgent
+            || authMethod == .keyboardInteractive || !privateKeyPath.isEmpty
+        let jumpValid = jumpHosts.allSatisfy(\.isValid)
+        return nameValid && hostValid && portValid && authValid && jumpValid
     }
 
     private var resolvedAgentSocketPath: String {
@@ -266,7 +274,7 @@ struct SSHProfileEditorView: View {
 
     private var bottomBar: some View {
         HStack {
-            if isEditing {
+            if isStoredProfile {
                 Button(role: .destructive) {
                     connectionsUsingProfile = ConnectionStorage.shared.loadConnections()
                         .filter { $0.sshProfileId == existingProfile?.id }.count
@@ -294,7 +302,7 @@ struct SSHProfileEditorView: View {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
 
-            Button(isEditing ? "Save" : "Create") { saveProfile() }
+            Button(isStoredProfile ? "Save" : "Create") { saveProfile() }
                 .keyboardShortcut(.defaultAction)
                 .disabled(!isValid)
         }
@@ -349,7 +357,7 @@ struct SSHProfileEditorView: View {
             totpPeriod: totpPeriod
         )
 
-        if isEditing {
+        if isStoredProfile {
             SSHProfileStorage.shared.updateProfile(profile)
         } else {
             SSHProfileStorage.shared.addProfile(profile)

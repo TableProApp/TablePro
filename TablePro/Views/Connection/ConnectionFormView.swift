@@ -1050,12 +1050,6 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             sshProfileId = existing.sshProfileId
             sshEnabled = existing.sshConfig.enabled
 
-            // When using a profile, also set sshEnabled based on profile existence
-            if let profileId = existing.sshProfileId,
-               SSHProfileStorage.shared.profile(for: profileId) != nil {
-                sshEnabled = true
-            }
-
             sshHost = existing.sshConfig.host
             sshPort = String(existing.sshConfig.port)
             sshUsername = existing.sshConfig.username
@@ -1199,6 +1193,11 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             } else {
                 storage.deleteTOTPSecret(for: connectionToSave.id)
             }
+        } else {
+            // Clean up stale per-connection SSH secrets when using a profile or SSH disabled
+            storage.deleteSSHPassword(for: connectionToSave.id)
+            storage.deleteKeyPassphrase(for: connectionToSave.id)
+            storage.deleteTOTPSecret(for: connectionToSave.id)
         }
 
         // Save to storage
