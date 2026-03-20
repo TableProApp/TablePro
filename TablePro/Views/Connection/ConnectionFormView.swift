@@ -454,8 +454,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if sshEnabled {
                 sshProfileSection
 
-                if let profileId = sshProfileId,
-                   let profile = SSHProfileStorage.shared.profile(for: profileId) {
+                if let profile = selectedSSHProfile {
                     sshProfileSummarySection(profile)
                 } else if sshProfileId != nil {
                     Section {
@@ -533,6 +532,11 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         }
     }
 
+    private var selectedSSHProfile: SSHProfile? {
+        guard let id = sshProfileId else { return nil }
+        return sshProfiles.first { $0.id == id }
+    }
+
     private func reloadProfiles() {
         sshProfiles = SSHProfileStorage.shared.loadProfiles()
         // If the edited/deleted profile no longer exists, clear the selection
@@ -578,8 +582,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         Group {
             Section(String(localized: "Server")) {
                 if !sshConfigEntries.isEmpty {
-                    Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost)
-                    {
+                    Picker(String(localized: "Config Host"), selection: $selectedSSHConfigHost) {
                         Text(String(localized: "Manual")).tag("")
                         ForEach(sshConfigEntries) { entry in
                             Text(entry.displayName).tag(entry.host)
@@ -590,30 +593,19 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     }
                 }
                 if selectedSSHConfigHost.isEmpty || sshConfigEntries.isEmpty {
-                    TextField(
-                        String(localized: "SSH Host"),
-                        text: $sshHost,
-                        prompt: Text("ssh.example.com")
-                    )
+                    TextField(String(localized: "SSH Host"), text: $sshHost, prompt: Text("ssh.example.com"))
                 }
-                TextField(
-                    String(localized: "SSH Port"),
-                    text: $sshPort,
-                    prompt: Text("22")
-                )
-                TextField(
-                    String(localized: "SSH User"),
-                    text: $sshUsername,
-                    prompt: Text("username")
-                )
-                }
+                TextField(String(localized: "SSH Port"), text: $sshPort, prompt: Text("22"))
+                TextField(String(localized: "SSH User"), text: $sshUsername, prompt: Text("username"))
+            }
+
             Section(String(localized: "Authentication")) {
                 Picker(String(localized: "Method"), selection: $sshAuthMethod) {
                     ForEach(SSHAuthMethod.allCases) { method in
                         Text(method.rawValue).tag(method)
                     }
                 }
-            if sshAuthMethod == .password {
+                if sshAuthMethod == .password {
                     SecureField(String(localized: "Password"), text: $sshPassword)
                 } else if sshAuthMethod == .sshAgent {
                     Picker("Agent Socket", selection: $sshAgentSocketOption) {
@@ -622,37 +614,30 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         }
                     }
                     if sshAgentSocketOption == .custom {
-                        TextField(
-                            "Custom Path",
-                            text: $customSSHAgentSocketPath,
-                            prompt: Text("/path/to/agent.sock")
-                        )
+                        TextField("Custom Path", text: $customSSHAgentSocketPath, prompt: Text("/path/to/agent.sock"))
                     }
                     Text("Keys are provided by the SSH agent (e.g. 1Password, ssh-agent).")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if sshAuthMethod == .keyboardInteractive {
                     SecureField(String(localized: "Password"), text: $sshPassword)
-                    Text(
-                        String(localized: "Password is sent via keyboard-interactive challenge-response.")
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text(String(localized: "Password is sent via keyboard-interactive challenge-response."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     LabeledContent(String(localized: "Key File")) {
                         HStack {
-                            TextField(
-                                "", text: $sshPrivateKeyPath, prompt: Text("~/.ssh/id_rsa"))
+                            TextField("", text: $sshPrivateKeyPath, prompt: Text("~/.ssh/id_rsa"))
                             Button(String(localized: "Browse")) { browseForPrivateKey() }
                                 .controlSize(.small)
                         }
                     }
                     SecureField(String(localized: "Passphrase"), text: $keyPassphrase)
                 }
-                }
+            }
 
             if sshAuthMethod == .keyboardInteractive || sshAuthMethod == .password {
-            Section(String(localized: "Two-Factor Authentication")) {
+                Section(String(localized: "Two-Factor Authentication")) {
                     Picker(String(localized: "TOTP"), selection: $totpMode) {
                         ForEach(TOTPMode.allCases) { mode in
                             Text(mode.displayName).tag(mode)
@@ -662,44 +647,32 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     if totpMode == .autoGenerate {
                         SecureField(String(localized: "TOTP Secret"), text: $totpSecret)
                             .help(String(localized: "Base32-encoded secret from your authenticator setup"))
-
                         Picker(String(localized: "Algorithm"), selection: $totpAlgorithm) {
                             ForEach(TOTPAlgorithm.allCases) { algo in
                                 Text(algo.rawValue).tag(algo)
                             }
                         }
-
                         Picker(String(localized: "Digits"), selection: $totpDigits) {
                             Text("6").tag(6)
                             Text("8").tag(8)
                         }
-
                         Picker(String(localized: "Period"), selection: $totpPeriod) {
                             Text("30s").tag(30)
                             Text("60s").tag(60)
                         }
                     } else if totpMode == .promptAtConnect {
-                        Text(
-                            String(
-                                localized:
-                                    "You will be prompted for a verification code each time you connect."
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        Text(String(localized: "You will be prompted for a verification code each time you connect."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                }
+            }
 
             Section {
                 DisclosureGroup(String(localized: "Jump Hosts")) {
                     ForEach($jumpHosts) { $jumpHost in
                         DisclosureGroup {
-                            TextField(
-                                String(localized: "Host"),
-                                text: $jumpHost.host,
-                                prompt: Text("bastion.example.com")
-                            )
+                            TextField(String(localized: "Host"), text: $jumpHost.host, prompt: Text("bastion.example.com"))
                             HStack {
                                 TextField(
                                     String(localized: "Port"),
@@ -710,11 +683,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                                     prompt: Text("22")
                                 )
                                 .frame(width: 80)
-                                TextField(
-                                    String(localized: "Username"),
-                                    text: $jumpHost.username,
-                                    prompt: Text("admin")
-                                )
+                                TextField(String(localized: "Username"), text: $jumpHost.username, prompt: Text("admin"))
                             }
                             Picker(String(localized: "Auth"), selection: $jumpHost.authMethod) {
                                 ForEach(SSHJumpAuthMethod.allCases) { method in
@@ -724,9 +693,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                             if jumpHost.authMethod == .privateKey {
                                 LabeledContent(String(localized: "Key File")) {
                                     HStack {
-                                        TextField(
-                                            "", text: $jumpHost.privateKeyPath,
-                                            prompt: Text("~/.ssh/id_rsa"))
+                                        TextField("", text: $jumpHost.privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
                                         Button(String(localized: "Browse")) {
                                             browseForJumpHostKey(jumpHost: $jumpHost)
                                         }
@@ -745,12 +712,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                                 Spacer()
                                 Button {
                                     let idToRemove = jumpHost.id
-                                    withAnimation {
-                                        jumpHosts.removeAll { $0.id == idToRemove }
-                                    }
+                                    withAnimation { jumpHosts.removeAll { $0.id == idToRemove } }
                                 } label: {
-                                    Image(systemName: "minus.circle.fill")
-                                        .foregroundStyle(.red)
+                                    Image(systemName: "minus.circle.fill").foregroundStyle(.red)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -766,13 +730,11 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         Label(String(localized: "Add Jump Host"), systemImage: "plus")
                     }
 
-                    Text(
-                        "Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    Text("Jump hosts are connected in order before reaching the SSH server above. Only key and agent auth are supported for jumps.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                }
+            }
         }
     }
 
