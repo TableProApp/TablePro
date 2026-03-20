@@ -191,8 +191,17 @@ final class LicenseManager {
 
     // MARK: - Re-validation
 
+    var isExpiringSoon: Bool {
+        guard let days = license?.daysUntilExpiry else { return false }
+        return days >= 0 && days <= 7
+    }
+
+    var daysUntilExpiry: Int? {
+        license?.daysUntilExpiry
+    }
+
     /// Periodic re-validation: refresh license from server, fall back to offline grace period
-    private func revalidate() async {
+    func revalidate() async {
         guard let license else { return }
 
         isValidating = true

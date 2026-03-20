@@ -38,4 +38,5 @@ internal enum ProFeatureAccess {
     case available
     case unlicensed
     case expired
+    case validationFailed
 }

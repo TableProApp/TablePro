@@ -12,6 +12,8 @@ struct ProFeatureGateModifier: ViewModifier {
     let feature: ProFeature
 
     private let licenseManager = LicenseManager.shared
+    // swiftlint:disable:next force_unwrapping
+    private static let pricingURL = URL(string: "https://tablepro.app/#pricing")!
 
     func body(content: Content) -> some View {
         let available = licenseManager.isFeatureAvailable(feature)
@@ -51,8 +53,18 @@ struct ProFeatureGateModifier: ViewModifier {
                         openLicenseSettings()
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Renew License"), destination: URL(string: "https://tablepro.app")!)
+                    Link(String(localized: "Renew License"), destination: Self.pricingURL)
                         .font(.subheadline)
+                case .validationFailed:
+                    Text("License validation failed")
+                        .font(.headline)
+                    Text("Connect to the internet to verify your license.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Retry Validation")) {
+                        Task { await LicenseManager.shared.revalidate() }
+                    }
+                    .buttonStyle(.borderedProminent)
                 case .unlicensed:
                     Text("\(feature.displayName) requires a Pro license")
                         .font(.headline)
@@ -63,7 +75,7 @@ struct ProFeatureGateModifier: ViewModifier {
                         openLicenseSettings()
                     }
                     .buttonStyle(.borderedProminent)
-                    Link(String(localized: "Purchase License"), destination: URL(string: "https://tablepro.app")!)
+                    Link(String(localized: "Purchase License"), destination: Self.pricingURL)
                         .font(.subheadline)
                 }
             }

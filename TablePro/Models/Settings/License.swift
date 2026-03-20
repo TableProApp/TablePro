@@ -131,6 +131,37 @@ struct LicenseAPIErrorResponse: Codable {
     let message: String
 }
 
+/// Information about a single license activation (machine)
+internal struct LicenseActivationInfo: Codable, Identifiable {
+    var id: String { machineId }
+    let machineId: String
+    let machineName: String
+    let appVersion: String
+    let osVersion: String
+    let lastValidatedAt: String?
+    let createdAt: String
+
+    private enum CodingKeys: String, CodingKey {
+        case machineId = "machine_id"
+        case machineName = "machine_name"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
+        case lastValidatedAt = "last_validated_at"
+        case createdAt = "created_at"
+    }
+}
+
+/// Response from the list activations endpoint
+internal struct ListActivationsResponse: Codable {
+    let activations: [LicenseActivationInfo]
+    let maxActivations: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case activations
+        case maxActivations = "max_activations"
+    }
+}
+
 // MARK: - Cached License
 
 /// Local cached license with metadata for offline use
@@ -149,6 +180,12 @@ struct License: Codable, Equatable {
     var isExpired: Bool {
         guard let expiresAt else { return false }
         return expiresAt < Date()
+    }
+
+    /// Days until the license expires (nil for lifetime licenses)
+    var daysUntilExpiry: Int? {
+        guard let expiresAt else { return nil }
+        return Calendar.current.dateComponents([.day], from: Date(), to: expiresAt).day
     }
 
     /// Days since last successful server validation

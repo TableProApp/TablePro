@@ -22,6 +22,8 @@ extension LicenseManager {
         switch status {
         case .expired:
             return .expired
+        case .validationFailed:
+            return .validationFailed
         default:
             return .unlicensed
         }

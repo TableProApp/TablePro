@@ -304,6 +304,9 @@
         }
       }
     },
+    "(this Mac)" : {
+
+    },
     "/path/to/agent.sock" : {
       "localizations" : {
         "tr" : {
@@ -367,6 +370,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "/path/to/database.sqlite"
+          }
+        }
+      }
+    },
+    "%@ (%@@%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (%2$@@%3$@)"
           }
         }
       }
@@ -901,6 +914,9 @@
           }
         }
       }
+    },
+    "%lld connection(s) use this profile. They will fall back to no SSH tunnel." : {
+
     },
     "%lld in · %lld out" : {
       "localizations" : {
@@ -2375,6 +2391,16 @@
         }
       }
     },
+    "Activations (%lld of %lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Activations (%1$lld of %2$lld)"
+          }
+        }
+      }
+    },
     "Active" : {
       "localizations" : {
         "tr" : {
@@ -3700,6 +3726,9 @@
         }
       }
     },
+    "Auth Method" : {
+
+    },
     "Authenticate to execute database operations" : {
       "localizations" : {
         "tr" : {
@@ -4159,6 +4188,9 @@
           }
         }
       }
+    },
+    "Billing:" : {
+
     },
     "Blue" : {
       "localizations" : {
@@ -4774,6 +4806,9 @@
           }
         }
       }
+    },
+    "Check Status" : {
+
     },
     "Choose a query from the list\nto see its full content here." : {
       "localizations" : {
@@ -5894,6 +5929,9 @@
         }
       }
     },
+    "Connect to the internet to verify your license." : {
+
+    },
     "Connected" : {
       "localizations" : {
         "tr" : {
@@ -7007,6 +7045,9 @@
           }
         }
       }
+    },
+    "Create New Profile..." : {
+
     },
     "Create New Tag" : {
       "localizations" : {
@@ -8588,6 +8629,12 @@
         }
       }
     },
+    "Delete Profile" : {
+
+    },
+    "Delete SSH Profile?" : {
+
+    },
     "Delete Theme" : {
       "localizations" : {
         "tr" : {
@@ -9369,6 +9416,9 @@
           }
         }
       }
+    },
+    "Edit Profile..." : {
+
     },
     "Edit Provider" : {
       "localizations" : {
@@ -10239,6 +10289,9 @@
           }
         }
       }
+    },
+    "Expires:" : {
+
     },
     "Explain" : {
       "localizations" : {
@@ -13295,6 +13348,9 @@
         }
       }
     },
+    "Inline Configuration" : {
+
+    },
     "Inline Suggestions" : {
       "localizations" : {
         "tr" : {
@@ -14550,6 +14606,9 @@
         }
       }
     },
+    "License expires in %lld day(s)" : {
+
+    },
     "License Key:" : {
       "localizations" : {
         "tr" : {
@@ -14571,6 +14630,12 @@
           }
         }
       }
+    },
+    "License validation failed" : {
+
+    },
+    "Lifetime" : {
+
     },
     "Light" : {
       "localizations" : {
@@ -15517,6 +15582,9 @@
         }
       }
     },
+    "My Server" : {
+
+    },
     "Name" : {
       "localizations" : {
         "tr" : {
@@ -16084,6 +16152,9 @@
           }
         }
       }
+    },
+    "No activations found" : {
+
     },
     "No active connection" : {
       "localizations" : {
@@ -19738,6 +19809,12 @@
         }
       }
     },
+    "Profile" : {
+
+    },
+    "Profile Settings" : {
+
+    },
     "Prompt at Connect" : {
       "localizations" : {
         "tr" : {
@@ -19804,6 +19881,9 @@
           }
         }
       }
+    },
+    "Purchase License" : {
+
     },
     "Purple" : {
       "localizations" : {
@@ -20740,6 +20820,9 @@
         }
       }
     },
+    "Refresh license status from server" : {
+
+    },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
         "tr" : {
@@ -20903,6 +20986,12 @@
           }
         }
       }
+    },
+    "Renew" : {
+
+    },
+    "Renew License" : {
+
     },
     "Renew License..." : {
       "localizations" : {
@@ -21143,6 +21232,9 @@
           }
         }
       }
+    },
+    "Retry Validation" : {
+
     },
     "Reuse clean table tab" : {
       "extractionState" : "stale",
@@ -21778,6 +21870,9 @@
           }
         }
       }
+    },
+    "Save Current as Profile..." : {
+
     },
     "Save Failed" : {
       "localizations" : {
@@ -22629,6 +22724,9 @@
           }
         }
       }
+    },
+    "Selected SSH profile no longer exists." : {
+
     },
     "Selection" : {
       "localizations" : {
@@ -23955,6 +24053,12 @@
         }
       }
     },
+    "SSH Profile" : {
+
+    },
+    "SSH Profiles:" : {
+
+    },
     "SSH Tunnel" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -24336,6 +24440,9 @@
         }
       }
     },
+    "Status:" : {
+
+    },
     "Stop" : {
       "localizations" : {
         "tr" : {
@@ -24634,6 +24741,9 @@
           }
         }
       }
+    },
+    "Switch to Inline Configuration" : {
+
     },
     "Sync" : {
       "localizations" : {
@@ -25672,6 +25782,9 @@
         }
       }
     },
+    "This profile will be permanently deleted." : {
+
+    },
     "This query may permanently modify or delete data." : {
       "localizations" : {
         "tr" : {
@@ -25860,6 +25973,9 @@
           }
         }
       }
+    },
+    "Tier:" : {
+
     },
     "TIMESTAMPS" : {
       "localizations" : {
