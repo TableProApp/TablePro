@@ -375,6 +375,13 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         do {
             try await detectApiPrefix()
+        } catch let etcdError as EtcdError {
+            lock.lock()
+            session?.invalidateAndCancel()
+            session = nil
+            lock.unlock()
+            Self.logger.error("Connection test failed: \(etcdError.localizedDescription)")
+            throw etcdError
         } catch {
             lock.lock()
             session?.invalidateAndCancel()
@@ -453,19 +460,32 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 throw EtcdError.serverError("Invalid response type")
             }
 
-            if httpResponse.statusCode == 404 {
+            switch httpResponse.statusCode {
+            case 404:
                 continue
+            case 200:
+                lock.lock()
+                apiPrefix = candidate
+                lock.unlock()
+                Self.logger.debug("Detected etcd API prefix: \(candidate)")
+                return
+            case 401 where !config.username.isEmpty:
+                // Auth required but credentials are configured — prefix is valid,
+                // authenticate() will run after detection
+                lock.lock()
+                apiPrefix = candidate
+                lock.unlock()
+                Self.logger.debug("Detected etcd API prefix: \(candidate) (auth required)")
+                return
+            case 401:
+                throw EtcdError.authFailed("Authentication required")
+            default:
+                Self.logger.warning("Prefix probe \(candidate) returned HTTP \(httpResponse.statusCode)")
+                throw EtcdError.serverError("Unexpected HTTP \(httpResponse.statusCode) from \(candidate)/maintenance/status")
             }
-
-            // Any non-404 (200, 401, etc.) means this prefix exists on the server
-            lock.lock()
-            apiPrefix = candidate
-            lock.unlock()
-            Self.logger.debug("Detected etcd API prefix: \(candidate)")
-            return
         }
 
-        throw EtcdError.connectionFailed(
+        throw EtcdError.serverError(
             "No supported etcd API found (tried: \(candidates.joined(separator: ", ")))"
         )
     }
