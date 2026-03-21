@@ -103,7 +103,7 @@ actor SSHTunnelManager {
         for localPort in localPortCandidates() {
             do {
                 let tunnel = try await Task.detached {
-                    try LibSSH2TunnelFactory.createTunnel(
+                    try await LibSSH2TunnelFactory.createTunnel(
                         connectionId: connectionId,
                         config: config,
                         credentials: credentials,

@@ -92,12 +92,6 @@ struct ContentView: View {
                                 payload: payload
                             )
                         }
-                        AppState.shared.isConnected = true
-                        AppState.shared.safeModeLevel = session.connection.safeModeLevel
-                        AppState.shared.editorLanguage = PluginManager.shared.editorLanguage(for: session.connection.type)
-                        AppState.shared.currentDatabaseType = session.connection.type
-                        AppState.shared.supportsDatabaseSwitching = PluginManager.shared.supportsDatabaseSwitching(
-                            for: session.connection.type)
                     }
                 } else {
                     currentSession = nil
@@ -130,20 +124,7 @@ struct ContentView: View {
                     }()
                 guard isOurWindow else { return }
 
-                if let session = DatabaseManager.shared.activeSessions[connectionId] {
-                    AppState.shared.isConnected = true
-                    AppState.shared.safeModeLevel = session.connection.safeModeLevel
-                    AppState.shared.editorLanguage = PluginManager.shared.editorLanguage(for: session.connection.type)
-                    AppState.shared.currentDatabaseType = session.connection.type
-                    AppState.shared.supportsDatabaseSwitching = PluginManager.shared.supportsDatabaseSwitching(
-                        for: session.connection.type)
-                } else {
-                    AppState.shared.isConnected = false
-                    AppState.shared.safeModeLevel = .silent
-                    AppState.shared.editorLanguage = .sql
-                    AppState.shared.currentDatabaseType = nil
-                    AppState.shared.supportsDatabaseSwitching = true
-                }
+                syncAppStateWithCurrentSession()
             }
             .onChange(of: sessionState?.toolbarState.safeModeLevel) { _, newLevel in
                 if let level = newLevel {
@@ -349,11 +330,7 @@ struct ContentView: View {
                 sessionState = nil
                 currentSession = nil
                 columnVisibility = .detailOnly
-                AppState.shared.isConnected = false
-                AppState.shared.safeModeLevel = .silent
-                AppState.shared.editorLanguage = .sql
-                AppState.shared.currentDatabaseType = nil
-                AppState.shared.supportsDatabaseSwitching = true
+                syncAppStateWithCurrentSession()
 
                 let tabbingId = "com.TablePro.main.\(sid.uuidString)"
                 DispatchQueue.main.async {
@@ -379,12 +356,27 @@ struct ContentView: View {
                 payload: payload
             )
         }
-        AppState.shared.isConnected = true
-        AppState.shared.safeModeLevel = newSession.connection.safeModeLevel
-        AppState.shared.editorLanguage = PluginManager.shared.editorLanguage(for: newSession.connection.type)
-        AppState.shared.currentDatabaseType = newSession.connection.type
-        AppState.shared.supportsDatabaseSwitching = PluginManager.shared.supportsDatabaseSwitching(
-            for: newSession.connection.type)
+    }
+
+    /// Single authoritative source for syncing AppState fields with the current session.
+    /// Called from `windowDidBecomeKey` (the correct trigger for per-window AppState)
+    /// and from `handleConnectionStatusChange` on disconnect cleanup.
+    private func syncAppStateWithCurrentSession() {
+        let connectionId = payload?.connectionId ?? currentSession?.id
+        if let connectionId, let session = DatabaseManager.shared.activeSessions[connectionId] {
+            AppState.shared.isConnected = true
+            AppState.shared.safeModeLevel = session.connection.safeModeLevel
+            AppState.shared.editorLanguage = PluginManager.shared.editorLanguage(for: session.connection.type)
+            AppState.shared.currentDatabaseType = session.connection.type
+            AppState.shared.supportsDatabaseSwitching = PluginManager.shared.supportsDatabaseSwitching(
+                for: session.connection.type)
+        } else {
+            AppState.shared.isConnected = false
+            AppState.shared.safeModeLevel = .silent
+            AppState.shared.editorLanguage = .sql
+            AppState.shared.currentDatabaseType = nil
+            AppState.shared.supportsDatabaseSwitching = true
+        }
     }
 
     // MARK: - Actions

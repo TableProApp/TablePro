@@ -26,7 +26,7 @@ struct PluginDialectAdapter: SQLDialectProvider {
 
 // MARK: - Empty Dialect
 
-private struct EmptyDialect: SQLDialectProvider {
+struct EmptyDialect: SQLDialectProvider {
     let identifierQuote = "\""
     let keywords: Set<String> = []
     let functions: Set<String> = []

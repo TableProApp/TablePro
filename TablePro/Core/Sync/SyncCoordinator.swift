@@ -413,61 +413,91 @@ final class SyncCoordinator {
         )
     }
 
-    // TODO: Move storage I/O off @MainActor for large datasets
     private func applyRemoteChanges(_ result: PullResult) {
         let settings = AppSettingsStorage.shared.loadSync()
+        let dirtyConnectionIds = changeTracker.dirtyRecords(for: .connection)
 
         // Suppress change tracking during remote apply to avoid sync loops
         changeTracker.isSuppressed = true
-        defer {
-            changeTracker.isSuppressed = false
-        }
 
-        var connectionsChanged = false
-        var groupsOrTagsChanged = false
+        // Move heavy storage I/O (JSON decode/encode, file reads/writes) off the main thread
+        Task.detached { [changeTracker, conflictResolver] in
+            var connectionsChanged = false
+            var groupsOrTagsChanged = false
+            var conflicts: [SyncConflict] = []
 
-        for record in result.changedRecords {
-            switch record.recordType {
-            case SyncRecordType.connection.rawValue where settings.syncConnections:
-                applyRemoteConnection(record)
-                connectionsChanged = true
-            case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
-                applyRemoteGroup(record)
-                groupsOrTagsChanged = true
-            case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
-                applyRemoteTag(record)
-                groupsOrTagsChanged = true
-            case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
-                applyRemoteSSHProfile(record)
-            case SyncRecordType.settings.rawValue where settings.syncSettings:
-                applyRemoteSettings(record)
-            case SyncRecordType.queryHistory.rawValue where settings.syncQueryHistory:
-                applyRemoteQueryHistory(record)
-            default:
-                break
+            for record in result.changedRecords {
+                switch record.recordType {
+                case SyncRecordType.connection.rawValue where settings.syncConnections:
+                    Self.applyRemoteConnectionOffMain(
+                        record,
+                        dirtyConnectionIds: dirtyConnectionIds,
+                        conflicts: &conflicts
+                    )
+                    connectionsChanged = true
+                case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
+                    Self.applyRemoteGroupOffMain(record)
+                    groupsOrTagsChanged = true
+                case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
+                    Self.applyRemoteTagOffMain(record)
+                    groupsOrTagsChanged = true
+                case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
+                    Self.applyRemoteSSHProfileOffMain(record)
+                case SyncRecordType.settings.rawValue where settings.syncSettings:
+                    Self.applyRemoteSettingsToStorage(record)
+                case SyncRecordType.queryHistory.rawValue where settings.syncQueryHistory:
+                    await Self.applyRemoteQueryHistoryOffMain(record)
+                default:
+                    break
+                }
             }
-        }
 
-        for recordID in result.deletedRecordIDs {
-            let recordName = recordID.recordName
-            if recordName.hasPrefix("Connection_") { connectionsChanged = true }
-            if recordName.hasPrefix("Group_") || recordName.hasPrefix("Tag_") { groupsOrTagsChanged = true }
-            applyRemoteDeletion(recordID)
-        }
+            for recordID in result.deletedRecordIDs {
+                let recordName = recordID.recordName
+                if recordName.hasPrefix("Connection_") { connectionsChanged = true }
+                if recordName.hasPrefix("Group_") || recordName.hasPrefix("Tag_") { groupsOrTagsChanged = true }
+                Self.applyRemoteDeletionOffMain(recordID)
+            }
 
-        // Notify UI so views refresh with pulled data
-        if connectionsChanged || groupsOrTagsChanged {
-            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            // Return to MainActor for state updates and UI notifications
+            await MainActor.run {
+                changeTracker.isSuppressed = false
+
+                for conflict in conflicts {
+                    conflictResolver.addConflict(conflict)
+                }
+
+                // Reload settings into the observable manager so UI picks up changes
+                if settings.syncSettings {
+                    let manager = AppSettingsManager.shared
+                    let storage = AppSettingsStorage.shared
+                    manager.general = storage.loadGeneral()
+                    manager.appearance = storage.loadAppearance()
+                    manager.editor = storage.loadEditor()
+                    manager.dataGrid = storage.loadDataGrid()
+                    manager.history = storage.loadHistory()
+                    manager.tabs = storage.loadTabs()
+                    manager.keyboard = storage.loadKeyboard()
+                    manager.ai = storage.loadAI()
+                }
+
+                if connectionsChanged || groupsOrTagsChanged {
+                    NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+                }
+            }
         }
     }
 
-    private func applyRemoteConnection(_ record: CKRecord) {
+    nonisolated private static func applyRemoteConnectionOffMain(
+        _ record: CKRecord,
+        dirtyConnectionIds: Set<String>,
+        conflicts: inout [SyncConflict]
+    ) {
         guard let remoteConnection = SyncRecordMapper.toConnection(record) else { return }
 
         var connections = ConnectionStorage.shared.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
-            // Check for conflict: if local is also dirty, queue conflict
-            if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
+            if dirtyConnectionIds.contains(remoteConnection.id.uuidString) {
                 let localRecord = SyncRecordMapper.toCKRecord(
                     connections[index],
                     in: CKRecordZone.ID(
@@ -483,7 +513,7 @@ final class SyncCoordinator {
                     localModifiedAt: (localRecord["modifiedAtLocal"] as? Date) ?? Date(),
                     serverModifiedAt: (record["modifiedAtLocal"] as? Date) ?? Date()
                 )
-                conflictResolver.addConflict(conflict)
+                conflicts.append(conflict)
                 return
             }
             connections[index] = remoteConnection
@@ -493,7 +523,7 @@ final class SyncCoordinator {
         ConnectionStorage.shared.saveConnections(connections)
     }
 
-    private func applyRemoteGroup(_ record: CKRecord) {
+    nonisolated private static func applyRemoteGroupOffMain(_ record: CKRecord) {
         guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return }
 
         var groups = GroupStorage.shared.loadGroups()
@@ -505,7 +535,7 @@ final class SyncCoordinator {
         GroupStorage.shared.saveGroups(groups)
     }
 
-    private func applyRemoteTag(_ record: CKRecord) {
+    nonisolated private static func applyRemoteTagOffMain(_ record: CKRecord) {
         guard let remoteTag = SyncRecordMapper.toTag(record) else { return }
 
         var tags = TagStorage.shared.loadTags()
@@ -517,7 +547,7 @@ final class SyncCoordinator {
         TagStorage.shared.saveTags(tags)
     }
 
-    private func applyRemoteSSHProfile(_ record: CKRecord) {
+    nonisolated private static func applyRemoteSSHProfileOffMain(_ record: CKRecord) {
         guard let remoteProfile = SyncRecordMapper.toSSHProfile(record) else { return }
 
         var profiles = SSHProfileStorage.shared.loadProfiles()
@@ -529,14 +559,51 @@ final class SyncCoordinator {
         SSHProfileStorage.shared.saveProfilesWithoutSync(profiles)
     }
 
-    private func applyRemoteSettings(_ record: CKRecord) {
+    nonisolated private static func applyRemoteSettingsToStorage(_ record: CKRecord) {
         guard let category = SyncRecordMapper.settingsCategory(from: record),
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
-        applySettingsData(data, for: category)
+
+        let decoder = JSONDecoder()
+        switch category {
+        case "general":
+            if let settings = try? decoder.decode(GeneralSettings.self, from: data) {
+                AppSettingsStorage.shared.saveGeneral(settings)
+            }
+        case "appearance":
+            if let settings = try? decoder.decode(AppearanceSettings.self, from: data) {
+                AppSettingsStorage.shared.saveAppearance(settings)
+            }
+        case "editor":
+            if let settings = try? decoder.decode(EditorSettings.self, from: data) {
+                AppSettingsStorage.shared.saveEditor(settings)
+            }
+        case "dataGrid":
+            if let settings = try? decoder.decode(DataGridSettings.self, from: data) {
+                AppSettingsStorage.shared.saveDataGrid(settings)
+            }
+        case "history":
+            if let settings = try? decoder.decode(HistorySettings.self, from: data) {
+                AppSettingsStorage.shared.saveHistory(settings)
+            }
+        case "tabs":
+            if let settings = try? decoder.decode(TabSettings.self, from: data) {
+                AppSettingsStorage.shared.saveTabs(settings)
+            }
+        case "keyboard":
+            if let settings = try? decoder.decode(KeyboardSettings.self, from: data) {
+                AppSettingsStorage.shared.saveKeyboard(settings)
+            }
+        case "ai":
+            if let settings = try? decoder.decode(AISettings.self, from: data) {
+                AppSettingsStorage.shared.saveAI(settings)
+            }
+        default:
+            break
+        }
     }
 
-    private func applyRemoteQueryHistory(_ record: CKRecord) {
+    nonisolated private static func applyRemoteQueryHistoryOffMain(_ record: CKRecord) async {
         guard let entryIdString = record["entryId"] as? String,
               let entryId = UUID(uuidString: entryIdString),
               let query = record["query"] as? String,
@@ -562,13 +629,11 @@ final class SyncCoordinator {
             errorMessage: errorMessage
         )
 
-        Task {
-            _ = await QueryHistoryStorage.shared.addHistory(entry)
-            await QueryHistoryStorage.shared.markHistoryEntriesSynced(ids: [entryIdString])
-        }
+        _ = await QueryHistoryStorage.shared.addHistory(entry)
+        await QueryHistoryStorage.shared.markHistoryEntriesSynced(ids: [entryIdString])
     }
 
-    private func applyRemoteDeletion(_ recordID: CKRecord.ID) {
+    nonisolated private static func applyRemoteDeletionOffMain(_ recordID: CKRecord.ID) {
         let recordName = recordID.recordName
 
         if recordName.hasPrefix("Connection_") {
@@ -758,48 +823,6 @@ final class SyncCoordinator {
         case "keyboard": return try? encoder.encode(storage.loadKeyboard())
         case "ai": return try? encoder.encode(storage.loadAI())
         default: return nil
-        }
-    }
-
-    private func applySettingsData(_ data: Data, for category: String) {
-        let manager = AppSettingsManager.shared
-        let decoder = JSONDecoder()
-
-        switch category {
-        case "general":
-            if let settings = try? decoder.decode(GeneralSettings.self, from: data) {
-                manager.general = settings
-            }
-        case "appearance":
-            if let settings = try? decoder.decode(AppearanceSettings.self, from: data) {
-                manager.appearance = settings
-            }
-        case "editor":
-            if let settings = try? decoder.decode(EditorSettings.self, from: data) {
-                manager.editor = settings
-            }
-        case "dataGrid":
-            if let settings = try? decoder.decode(DataGridSettings.self, from: data) {
-                manager.dataGrid = settings
-            }
-        case "history":
-            if let settings = try? decoder.decode(HistorySettings.self, from: data) {
-                manager.history = settings
-            }
-        case "tabs":
-            if let settings = try? decoder.decode(TabSettings.self, from: data) {
-                manager.tabs = settings
-            }
-        case "keyboard":
-            if let settings = try? decoder.decode(KeyboardSettings.self, from: data) {
-                manager.keyboard = settings
-            }
-        case "ai":
-            if let settings = try? decoder.decode(AISettings.self, from: data) {
-                manager.ai = settings
-            }
-        default:
-            break
         }
     }
 

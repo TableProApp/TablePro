@@ -329,13 +329,17 @@ extension AppDelegate {
     }
 
     private func waitForConnection(timeout: Duration) async {
+        let didResume = OSAllocatedUnfairLock(initialState: false)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var didResume = false
             var observer: NSObjectProtocol?
 
             func resumeOnce() {
-                guard !didResume else { return }
-                didResume = true
+                let shouldResume = didResume.withLock { alreadyResumed -> Bool in
+                    if alreadyResumed { return false }
+                    alreadyResumed = true
+                    return true
+                }
+                guard shouldResume else { return }
                 if let obs = observer {
                     NotificationCenter.default.removeObserver(obs)
                 }
