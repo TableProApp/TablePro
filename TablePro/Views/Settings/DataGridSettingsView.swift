@@ -41,6 +41,8 @@ struct DataGridSettingsView: View {
 
                 Toggle("Show alternate row backgrounds", isOn: $settings.showAlternateRows)
 
+                Toggle("Show row numbers", isOn: $settings.showRowNumbers)
+
                 Toggle("Auto-show inspector on row select", isOn: $settings.autoShowInspector)
             }
 

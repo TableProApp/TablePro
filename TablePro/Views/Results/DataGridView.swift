@@ -61,6 +61,7 @@ struct DataGridView: NSViewRepresentable {
     var databaseType: DatabaseType?
     var tableName: String?
     var primaryKeyColumn: String?
+    var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
     var onHideColumn: ((String) -> Void)?
 
@@ -111,6 +112,7 @@ struct DataGridView: NSViewRepresentable {
         rowNumberColumn.resizingMask = []
         rowNumberColumn.headerCell.setAccessibilityLabel(String(localized: "Row number"))
         tableView.addTableColumn(rowNumberColumn)
+        rowNumberColumn.isHidden = !showRowNumbers
 
         // Add data columns (suppress resize notifications during setup)
         context.coordinator.isRebuildingColumns = true
@@ -175,6 +177,14 @@ struct DataGridView: NSViewRepresentable {
         // Don't reload while editing (field editor or overlay)
         if tableView.editedRow >= 0 { return }
         if let editor = context.coordinator.overlayEditor, editor.isActive { return }
+
+        // Sync row number visibility before identity check (setting can change without data change)
+        if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier.rawValue == "__rowNumber__" }) {
+            let shouldHide = !showRowNumbers
+            if rowNumCol.isHidden != shouldHide {
+                rowNumCol.isHidden = shouldHide
+            }
+        }
 
         // Identity-based early-return BEFORE reading settings — avoids
         // AppSettingsManager access on every SwiftUI re-evaluation.

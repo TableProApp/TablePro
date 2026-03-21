@@ -314,6 +314,7 @@ struct DataGridSettings: Codable, Equatable {
     var nullDisplay: String
     var defaultPageSize: Int
     var showAlternateRows: Bool
+    var showRowNumbers: Bool
     var autoShowInspector: Bool
 
     static let `default` = DataGridSettings(
@@ -322,6 +323,7 @@ struct DataGridSettings: Codable, Equatable {
         nullDisplay: "NULL",
         defaultPageSize: 1_000,
         showAlternateRows: true,
+        showRowNumbers: true,
         autoShowInspector: false
     )
 
@@ -331,6 +333,7 @@ struct DataGridSettings: Codable, Equatable {
         nullDisplay: String = "NULL",
         defaultPageSize: Int = 1_000,
         showAlternateRows: Bool = true,
+        showRowNumbers: Bool = true,
         autoShowInspector: Bool = false
     ) {
         self.rowHeight = rowHeight
@@ -338,6 +341,7 @@ struct DataGridSettings: Codable, Equatable {
         self.nullDisplay = nullDisplay
         self.defaultPageSize = defaultPageSize
         self.showAlternateRows = showAlternateRows
+        self.showRowNumbers = showRowNumbers
         self.autoShowInspector = autoShowInspector
     }
 
@@ -349,6 +353,7 @@ struct DataGridSettings: Codable, Equatable {
         nullDisplay = try container.decodeIfPresent(String.self, forKey: .nullDisplay) ?? "NULL"
         defaultPageSize = try container.decodeIfPresent(Int.self, forKey: .defaultPageSize) ?? 1_000
         showAlternateRows = try container.decodeIfPresent(Bool.self, forKey: .showAlternateRows) ?? true
+        showRowNumbers = try container.decodeIfPresent(Bool.self, forKey: .showRowNumbers) ?? true
         autoShowInspector = try container.decodeIfPresent(Bool.self, forKey: .autoShowInspector) ?? false
     }
 
