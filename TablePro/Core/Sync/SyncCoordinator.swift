@@ -565,40 +565,25 @@ final class SyncCoordinator {
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
 
-        let decoder = JSONDecoder()
+        func decode<T: Decodable>(_ type: T.Type, save: (T) -> Void) {
+            do {
+                let settings = try JSONDecoder().decode(type, from: data)
+                save(settings)
+            } catch {
+                logger.debug("Failed to decode remote settings '\(category)': \(error.localizedDescription)")
+            }
+        }
+
+        let storage = AppSettingsStorage.shared
         switch category {
-        case "general":
-            if let settings = try? decoder.decode(GeneralSettings.self, from: data) {
-                AppSettingsStorage.shared.saveGeneral(settings)
-            }
-        case "appearance":
-            if let settings = try? decoder.decode(AppearanceSettings.self, from: data) {
-                AppSettingsStorage.shared.saveAppearance(settings)
-            }
-        case "editor":
-            if let settings = try? decoder.decode(EditorSettings.self, from: data) {
-                AppSettingsStorage.shared.saveEditor(settings)
-            }
-        case "dataGrid":
-            if let settings = try? decoder.decode(DataGridSettings.self, from: data) {
-                AppSettingsStorage.shared.saveDataGrid(settings)
-            }
-        case "history":
-            if let settings = try? decoder.decode(HistorySettings.self, from: data) {
-                AppSettingsStorage.shared.saveHistory(settings)
-            }
-        case "tabs":
-            if let settings = try? decoder.decode(TabSettings.self, from: data) {
-                AppSettingsStorage.shared.saveTabs(settings)
-            }
-        case "keyboard":
-            if let settings = try? decoder.decode(KeyboardSettings.self, from: data) {
-                AppSettingsStorage.shared.saveKeyboard(settings)
-            }
-        case "ai":
-            if let settings = try? decoder.decode(AISettings.self, from: data) {
-                AppSettingsStorage.shared.saveAI(settings)
-            }
+        case "general": decode(GeneralSettings.self, save: storage.saveGeneral)
+        case "appearance": decode(AppearanceSettings.self, save: storage.saveAppearance)
+        case "editor": decode(EditorSettings.self, save: storage.saveEditor)
+        case "dataGrid": decode(DataGridSettings.self, save: storage.saveDataGrid)
+        case "history": decode(HistorySettings.self, save: storage.saveHistory)
+        case "tabs": decode(TabSettings.self, save: storage.saveTabs)
+        case "keyboard": decode(KeyboardSettings.self, save: storage.saveKeyboard)
+        case "ai": decode(AISettings.self, save: storage.saveAI)
         default:
             break
         }

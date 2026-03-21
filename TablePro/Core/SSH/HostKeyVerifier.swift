@@ -101,18 +101,16 @@ internal enum HostKeyVerifier {
             Are you sure you want to continue connecting?
             """)
 
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = title
-                alert.informativeText = message
-                alert.alertStyle = .informational
-                alert.addButton(withTitle: String(localized: "Trust"))
-                alert.addButton(withTitle: String(localized: "Cancel"))
+        return await MainActor.run {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: String(localized: "Trust"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
 
-                let response = alert.runModal()
-                continuation.resume(returning: response == .alertFirstButtonReturn)
-            }
+            let response = alert.runModal()
+            return response == .alertFirstButtonReturn
         }
     }
 
@@ -135,22 +133,20 @@ internal enum HostKeyVerifier {
             Current fingerprint: \(actual)
             """)
 
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                let alert = NSAlert()
-                alert.messageText = title
-                alert.informativeText = message
-                alert.alertStyle = .critical
-                alert.addButton(withTitle: String(localized: "Connect Anyway"))
-                alert.addButton(withTitle: String(localized: "Disconnect"))
+        return await MainActor.run {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: String(localized: "Connect Anyway"))
+            alert.addButton(withTitle: String(localized: "Disconnect"))
 
-                // Make "Disconnect" the default button (Return key) instead of "Connect Anyway"
-                alert.buttons[1].keyEquivalent = "\r"
-                alert.buttons[0].keyEquivalent = ""
+            // Make "Disconnect" the default button (Return key) instead of "Connect Anyway"
+            alert.buttons[1].keyEquivalent = "\r"
+            alert.buttons[0].keyEquivalent = ""
 
-                let response = alert.runModal()
-                continuation.resume(returning: response == .alertFirstButtonReturn)
-            }
+            let response = alert.runModal()
+            return response == .alertFirstButtonReturn
         }
     }
 }

@@ -28,7 +28,7 @@ struct PluginDialectAdapter: SQLDialectProvider {
 
 /// Fallback dialect with no keywords/functions. Internal visibility so SQLFormatterService
 /// can use it as a fallback when resolving dialects off the main thread.
-struct EmptyDialect: SQLDialectProvider {
+internal struct EmptyDialect: SQLDialectProvider {
     let identifierQuote = "\""
     let keywords: Set<String> = []
     let functions: Set<String> = []

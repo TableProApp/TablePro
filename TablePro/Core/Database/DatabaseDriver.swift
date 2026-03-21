@@ -321,7 +321,7 @@ enum DatabaseDriverFactory {
             // If background loading hasn't finished yet, throw a specific error
             // instead of blocking the main thread with synchronous plugin loading.
             if !PluginManager.shared.hasFinishedInitialLoad {
-                throw PluginError.pluginNotLoaded(pluginId)
+                throw PluginError.pluginNotLoaded(connection.type.rawValue)
             }
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
