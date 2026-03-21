@@ -147,7 +147,8 @@ public final class SuggestionController: NSWindowController {
                 }
                 if textView.view.window == nil {
                     self.close()
-                } else if let firstResponder = window.firstResponder as? NSView,
+                } else if textView.view.window === window,
+                          let firstResponder = window.firstResponder as? NSView,
                           !firstResponder.isDescendant(of: textView.view) {
                     self.close()
                 }

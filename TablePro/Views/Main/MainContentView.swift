@@ -785,7 +785,9 @@ struct MainContentView: View {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
         if session.isConnected && coordinator.needsLazyLoad {
-            guard !changeManager.hasChanges else { return }
+            let hasPendingEdits = changeManager.hasChanges
+                || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
+            guard !hasPendingEdits else { return }
             coordinator.needsLazyLoad = false
             if let selectedTab = tabManager.selectedTab,
                !selectedTab.databaseName.isEmpty,

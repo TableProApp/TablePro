@@ -8,11 +8,6 @@
 import Foundation
 
 extension String {
-    private static let hexDumpNumberFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return formatter
-    }()
 
     /// Returns a classic hex dump representation of this string's bytes, or nil if empty.
     ///
@@ -70,7 +65,7 @@ extension String {
         }
 
         if totalCount > maxBytes {
-            let formattedTotal = Self.hexDumpNumberFormatter.string(from: NSNumber(value: totalCount)) ?? "\(totalCount)"
+            let formattedTotal = totalCount.formatted(.number)
             lines.append("... (truncated, \(formattedTotal) bytes total)")
         }
 

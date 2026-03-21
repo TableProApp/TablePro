@@ -18,6 +18,7 @@ struct ContentView: View {
     let payload: EditorTabPayload?
 
     @State private var currentSession: ConnectionSession?
+    @State private var closingSessionId: UUID?
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showNewConnectionSheet = false
     @State private var showEditConnectionSheet = false
@@ -70,6 +71,7 @@ struct ContentView: View {
             // Right sidebar toggle is handled by MainContentView (has the binding)
             // Left sidebar toggle uses native NSSplitViewController.toggleSidebar via responder chain
             .onChange(of: DatabaseManager.shared.currentSessionId, initial: true) { _, newSessionId in
+                guard closingSessionId == nil else { return }
                 let ourConnectionId = payload?.connectionId
                 if ourConnectionId != nil {
                     guard newSessionId == ourConnectionId else { return }
@@ -331,6 +333,7 @@ struct ContentView: View {
     // MARK: - Connection Status
 
     private func handleConnectionStatusChange() {
+        guard closingSessionId == nil else { return }
         let sessions = DatabaseManager.shared.activeSessions
         let connectionId = payload?.connectionId ?? currentSession?.id ?? DatabaseManager.shared.currentSessionId
         guard let sid = connectionId else {
@@ -339,6 +342,7 @@ struct ContentView: View {
         }
         guard let newSession = sessions[sid] else {
             if currentSession?.id == sid {
+                closingSessionId = sid
                 rightPanelState?.teardown()
                 rightPanelState = nil
                 sessionState?.coordinator.teardown()

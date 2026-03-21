@@ -303,7 +303,8 @@ private extension HistoryPanelView {
     }()
 
     func buildSecondaryMetadata(_ entry: QueryHistoryEntry) -> String {
-        var text = "Executed: \(Self.metadataDateFormatter.string(from: entry.executedAt))"
+        let executedAt = Self.metadataDateFormatter.string(from: entry.executedAt)
+        var text = String(localized: "Executed: \(executedAt)")
 
         if !entry.wasSuccessful, let error = entry.errorMessage {
             text += "\nError: \(error)"

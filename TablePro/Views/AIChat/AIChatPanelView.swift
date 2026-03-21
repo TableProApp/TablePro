@@ -45,7 +45,6 @@ struct AIChatPanelView: View {
         }
         .onAppear {
             viewModel.connection = connection
-            viewModel.tables = tables
         }
         .task(id: tables) {
             viewModel.tables = tables
