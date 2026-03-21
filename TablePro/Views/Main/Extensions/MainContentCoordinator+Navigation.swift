@@ -97,6 +97,7 @@ extension MainContentCoordinator {
             }
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
             // database is SELECTed and session state is updated before querying.
+            restoreColumnLayoutForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
             } else {
@@ -119,6 +120,7 @@ extension MainContentCoordinator {
                     toolbarState.isTableTab = true
                 AppState.shared.isTableTab = true
                 }
+                restoreColumnLayoutForTable(tableName)
                 if let dbIndex = Int(currentDatabase) {
                     selectRedisDatabaseAndQuery(dbIndex)
                 }
@@ -190,6 +192,7 @@ extension MainContentCoordinator {
                     AppState.shared.isTableTab = true
                 }
                 preview.window.makeKeyAndOrderFront(nil)
+                previewCoordinator.restoreColumnLayoutForTable(tableName)
                 previewCoordinator.runQuery()
                 return
             }
@@ -216,6 +219,7 @@ extension MainContentCoordinator {
                 toolbarState.isTableTab = true
                 AppState.shared.isTableTab = true
             }
+            restoreColumnLayoutForTable(tableName)
             runQuery()
             return
         }

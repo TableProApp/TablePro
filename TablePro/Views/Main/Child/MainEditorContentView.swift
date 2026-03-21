@@ -473,6 +473,7 @@ struct MainEditorContentView: View {
                 }
                 DispatchQueue.main.async {
                     coordinator.isUpdatingColumnLayout = false
+                    coordinator.saveColumnLayoutForTable()
                 }
             }
         )

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Show/hide row numbers column in data grid (Settings > Data Grid)
+- Persist column widths and order per table across tab switches, view toggles, and app restarts
 
 ## [0.22.0] - 2026-03-21
 

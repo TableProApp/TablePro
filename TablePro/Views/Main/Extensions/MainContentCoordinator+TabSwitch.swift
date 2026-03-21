@@ -26,6 +26,8 @@ extension MainContentCoordinator {
                 tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
             }
             tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
+            saveColumnVisibilityToTab()
+            saveColumnLayoutForTable()
         }
 
         if tabManager.tabs.count > 2 {
