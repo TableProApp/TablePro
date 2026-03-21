@@ -26,6 +26,10 @@ final class SchemaProviderRegistry {
     }
 
     func getOrCreate(for connectionId: UUID) -> SQLSchemaProvider {
+        if let removalTask = removalTasks[connectionId] {
+            removalTask.cancel()
+            removalTasks.removeValue(forKey: connectionId)
+        }
         if let existing = providers[connectionId] {
             return existing
         }

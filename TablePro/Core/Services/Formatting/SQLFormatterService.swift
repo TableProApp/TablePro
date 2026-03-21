@@ -114,7 +114,14 @@ struct SQLFormatterService: SQLFormatterProtocol {
             return cached
         }
 
-        let provider = MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+        let provider: SQLDialectProvider
+        if Thread.isMainThread {
+            provider = MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+        } else {
+            provider = DispatchQueue.main.sync {
+                MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+            }
+        }
         let allKeywords = provider.keywords.union(provider.functions).union(provider.dataTypes)
         let escapedKeywords = allKeywords.map { NSRegularExpression.escapedPattern(for: $0) }
         let pattern = "\\b(\(escapedKeywords.joined(separator: "|")))\\b"
@@ -153,7 +160,14 @@ struct SQLFormatterService: SQLFormatterProtocol {
         }
 
         // Get dialect provider
-        let dialectProvider = MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+        let dialectProvider: SQLDialectProvider
+        if Thread.isMainThread {
+            dialectProvider = MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+        } else {
+            dialectProvider = DispatchQueue.main.sync {
+                MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+            }
+        }
 
         // Format the SQL
         let formatted = formatSQL(sql, dialect: dialectProvider, databaseType: dialect, options: options)

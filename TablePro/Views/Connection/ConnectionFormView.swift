@@ -187,11 +187,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
             connectAfterInstall(connection)
         }
-        .onChange(of: additionalFieldValues) { _, _ in updatePgpassStatus() }
-        .onChange(of: host) { _, _ in updatePgpassStatus() }
-        .onChange(of: port) { _, _ in updatePgpassStatus() }
-        .onChange(of: database) { _, _ in updatePgpassStatus() }
-        .onChange(of: username) { _, _ in updatePgpassStatus() }
+        .onChange(of: pgpassTrigger) { _, _ in updatePgpassStatus() }
     }
 
     // MARK: - Tab Picker Helpers
@@ -997,6 +993,16 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             return basicValid && sshValid && authValid && jumpValid
         }
         return basicValid
+    }
+
+    private var pgpassTrigger: Int {
+        var hasher = Hasher()
+        hasher.combine(host)
+        hasher.combine(port)
+        hasher.combine(database)
+        hasher.combine(username)
+        hasher.combine(additionalFieldValues["usePgpass"])
+        return hasher.finalize()
     }
 
     private func updatePgpassStatus() {

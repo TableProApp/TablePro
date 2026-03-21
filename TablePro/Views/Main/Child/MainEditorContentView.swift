@@ -122,6 +122,10 @@ struct MainEditorContentView: View {
             )
         }
         .onChange(of: tabManager.tabIds) { _, newIds in
+            guard !sortCache.isEmpty || !tabProviderCache.isEmpty else {
+                coordinator.cleanupSortCache(openTabIds: Set(newIds))
+                return
+            }
             let openTabIds = Set(newIds)
             sortCache = sortCache.filter { openTabIds.contains($0.key) }
             coordinator.cleanupSortCache(openTabIds: openTabIds)

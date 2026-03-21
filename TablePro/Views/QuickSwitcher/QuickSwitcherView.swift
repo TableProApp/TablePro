@@ -141,9 +141,7 @@ internal struct QuickSwitcherSheet: View {
             .scrollContentBackground(.hidden)
             .onChange(of: viewModel.selectedItemId) { _, newValue in
                 if let itemId = newValue {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        proxy.scrollTo(itemId, anchor: .center)
-                    }
+                    proxy.scrollTo(itemId, anchor: .center)
                 }
             }
         }

@@ -47,10 +47,8 @@ struct AIChatPanelView: View {
             viewModel.connection = connection
             viewModel.tables = tables
         }
-        .onChange(of: tables) { _, newTables in
-            viewModel.tables = newTables
-        }
         .task(id: tables) {
+            viewModel.tables = tables
             await fetchSchemaContext()
         }
         .alert(
@@ -170,12 +168,13 @@ struct AIChatPanelView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                    ForEach(viewModel.messages) { message in
                         if message.role != .system {
                             // Extra spacing before user messages to separate conversation turns
-                            if message.role == .user
-                                && index > 0
-                                && viewModel.messages[0..<index].contains(where: { $0.role == .assistant })
+                            if message.role == .user,
+                               let msgIndex = viewModel.messages.firstIndex(where: { $0.id == message.id }),
+                               msgIndex > 0,
+                               viewModel.messages[msgIndex - 1].role == .assistant
                             {
                                 Spacer()
                                     .frame(height: 16)

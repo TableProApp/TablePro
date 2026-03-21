@@ -58,7 +58,7 @@ struct SQLEditorView: View {
                 if let controller = coordinator.controller {
                     let currentString = controller.textView.string as NSString
                     let bindingString = text as NSString
-                    if currentString.length != bindingString.length || currentString != bindingString {
+                    if currentString.length != bindingString.length {
                         return
                     }
                 }

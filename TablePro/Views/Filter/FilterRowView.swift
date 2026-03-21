@@ -97,7 +97,6 @@ struct FilterRowView: View {
                 isHovered = hovering
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: isFocused)
     }
 
     // MARK: - Column Menu

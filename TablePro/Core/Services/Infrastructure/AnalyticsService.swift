@@ -69,6 +69,7 @@ final class AnalyticsService {
             while !Task.isCancelled {
                 await self?.sendHeartbeat()
                 try? await Task.sleep(for: .seconds(self?.heartbeatInterval ?? 86_400))
+                guard self != nil else { return }
             }
         }
     }
