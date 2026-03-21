@@ -472,7 +472,7 @@ private struct AIProviderEditorSheet: View {
                     Text("Test")
                 }
             }
-            .disabled(isTesting)
+            .disabled(isTesting || (draft.type.requiresAPIKey && editingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
 
             if case .success = testResult {
                 Text(String(localized: "Connection successful"))
@@ -547,6 +547,11 @@ private struct AIProviderEditorSheet: View {
     // MARK: - Connection Test
 
     func testProvider() {
+        guard !editingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draft.type.requiresAPIKey else {
+            testResult = .failure(String(localized: "API key is required"))
+            return
+        }
+
         let provider = AIProviderFactory.createProvider(for: draft, apiKey: editingAPIKey)
 
         isTesting = true

@@ -18,7 +18,7 @@ final class AnthropicProvider: AIProvider {
 
     init(endpoint: String, apiKey: String) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
-        self.apiKey = apiKey
+        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -94,32 +94,62 @@ final class AnthropicProvider: AIProvider {
     }
 
     func fetchAvailableModels() async throws -> [String] {
-        // Anthropic doesn't have a models endpoint; return known models
-        [
-            "claude-sonnet-4-5-20250514",
-            "claude-haiku-4-5-20251001",
-            "claude-opus-4-20250514"
-        ]
+        guard let url = URL(string: "\(endpoint)/v1/models") else {
+            throw AIProviderError.invalidEndpoint(endpoint)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let models = json["data"] as? [[String: Any]]
+        else {
+            return Self.knownModels
+        }
+
+        let modelIds = models.compactMap { $0["id"] as? String }
+        return modelIds.isEmpty ? Self.knownModels : modelIds
     }
+
+    private static let knownModels = [
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5-20250929",
+        "claude-opus-4-5-20251101"
+    ]
 
     func testConnection() async throws -> Bool {
         let testMessage = AIChatMessage(role: .user, content: "Hi")
         let request = try buildMessagesRequest(
             messages: [testMessage],
-            model: "claude-sonnet-4-5-20250514",
+            model: "claude-haiku-4-5-20251001",
             systemPrompt: nil,
             maxTokens: 1,
             stream: false
         )
 
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             return false
         }
 
-        // 200 = success, 401 = bad key
-        return httpResponse.statusCode == 200
+        let statusCode = httpResponse.statusCode
+
+        // 200 = full success, 400 = key is valid but request was rejected (e.g. billing)
+        if statusCode == 200 || statusCode == 400 {
+            return true
+        }
+
+        let body = String(data: data, encoding: .utf8) ?? ""
+        throw mapHTTPError(statusCode: statusCode, body: body)
     }
 
     // MARK: - Private
@@ -215,15 +245,33 @@ final class AnthropicProvider: AIProvider {
     }
 
     private func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
+        let message = parseErrorMessage(body) ?? body
+
         switch statusCode {
+        case 400:
+            // Billing/credits errors return 400
+            return .serverError(statusCode, message)
         case 401:
-            return .authenticationFailed(body)
+            // Show a clear message instead of raw API error like "x-api-key header is required"
+            return .authenticationFailed("")
         case 429:
             return .rateLimited
         case 404:
-            return .modelNotFound(body)
+            return .modelNotFound(message)
         default:
-            return .serverError(statusCode, body)
+            return .serverError(statusCode, message)
         }
+    }
+
+    /// Extract human-readable message from Anthropic's JSON error response
+    private func parseErrorMessage(_ body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let message = error["message"] as? String
+        else {
+            return nil
+        }
+        return message
     }
 }

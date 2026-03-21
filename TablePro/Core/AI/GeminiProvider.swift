@@ -18,7 +18,7 @@ final class GeminiProvider: AIProvider {
 
     init(endpoint: String, apiKey: String) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
-        self.apiKey = apiKey
+        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -154,13 +154,18 @@ final class GeminiProvider: AIProvider {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
 
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             return false
         }
 
-        return httpResponse.statusCode == 200
+        guard httpResponse.statusCode == 200 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw mapHTTPError(statusCode: httpResponse.statusCode, body: body)
+        }
+
+        return true
     }
 
     // MARK: - Private
@@ -216,16 +221,29 @@ final class GeminiProvider: AIProvider {
         return body
     }
 
+    private func parseErrorMessage(_ body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let message = error["message"] as? String
+        else {
+            return nil
+        }
+        return message
+    }
+
     private func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
+        let message = parseErrorMessage(body) ?? body
+
         switch statusCode {
         case 401, 403:
-            return .authenticationFailed(body)
+            return .authenticationFailed("")
         case 429:
             return .rateLimited
         case 404:
-            return .modelNotFound(body)
+            return .modelNotFound(message)
         default:
-            return .serverError(statusCode, body)
+            return .serverError(statusCode, message)
         }
     }
 }
