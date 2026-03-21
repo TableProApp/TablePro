@@ -422,6 +422,9 @@ final class SyncCoordinator {
 
         // Move heavy storage I/O (JSON decode/encode, file reads/writes) off the main thread
         Task.detached { [changeTracker, conflictResolver] in
+            // Guarantee suppression is reset even on cancellation or error
+            defer { Task { @MainActor in changeTracker.isSuppressed = false } }
+
             var connectionsChanged = false
             var groupsOrTagsChanged = false
             var conflicts: [SyncConflict] = []
@@ -461,8 +464,6 @@ final class SyncCoordinator {
 
             // Return to MainActor for state updates and UI notifications
             await MainActor.run {
-                changeTracker.isSuppressed = false
-
                 for conflict in conflicts {
                     conflictResolver.addConflict(conflict)
                 }
