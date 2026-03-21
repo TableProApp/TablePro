@@ -11,11 +11,22 @@ extension TableViewCoordinator {
         // Only track user-initiated resizes, not programmatic ones during column rebuilds
         guard !isRebuildingColumns else { return }
         hasUserResizedColumns = true
+        scheduleLayoutPersist()
     }
 
     func tableViewColumnDidMove(_ notification: Notification) {
         guard !isRebuildingColumns else { return }
         hasUserResizedColumns = true
+        scheduleLayoutPersist()
+    }
+
+    private func scheduleLayoutPersist() {
+        layoutPersistWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.persistColumnLayoutToStorage()
+        }
+        layoutPersistWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {

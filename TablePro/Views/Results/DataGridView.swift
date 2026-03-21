@@ -61,6 +61,7 @@ struct DataGridView: NSViewRepresentable {
     var databaseType: DatabaseType?
     var tableName: String?
     var primaryKeyColumn: String?
+    var tabType: TabType?
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
     var onHideColumn: ((String) -> Void)?
@@ -271,6 +272,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.databaseType = databaseType
         coordinator.tableName = tableName
         coordinator.primaryKeyColumn = primaryKeyColumn
+        coordinator.tabType = tabType
 
         coordinator.rebuildVisualStateCache()
 
@@ -336,15 +338,11 @@ struct DataGridView: NSViewRepresentable {
                     column.headerCell.setAccessibilityLabel(
                         String(localized: "Column: \(columnName)")
                     )
-                    if let savedWidth = columnLayout.columnWidths[columnName] {
-                        column.width = savedWidth
-                    } else {
-                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                            for: columnName,
-                            columnIndex: index,
-                            rowProvider: rowProvider
-                        )
-                    }
+                    column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                        for: columnName,
+                        columnIndex: index,
+                        rowProvider: rowProvider
+                    )
                     column.minWidth = 30
                     column.resizingMask = .userResizingMask
                     column.isEditable = isEditable
@@ -358,15 +356,11 @@ struct DataGridView: NSViewRepresentable {
                           colIndex < rowProvider.columns.count else { continue }
                     let columnName = rowProvider.columns[colIndex]
                     column.title = columnName
-                    if let savedWidth = columnLayout.columnWidths[columnName] {
-                        column.width = savedWidth
-                    } else {
-                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                            for: columnName,
-                            columnIndex: colIndex,
-                            rowProvider: rowProvider
-                        )
-                    }
+                    column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                        for: columnName,
+                        columnIndex: colIndex,
+                        rowProvider: rowProvider
+                    )
                     column.isEditable = isEditable
                 }
             }
@@ -687,6 +681,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var databaseType: DatabaseType?
     var tableName: String?
     var primaryKeyColumn: String?
+    var tabType: TabType?
 
     /// Check if undo is available
     func canUndo() -> Bool {
@@ -703,6 +698,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// to guarantee layout is saved even when the view is torn down without
     /// a SwiftUI render cycle (e.g., closing a tab).
     func persistColumnLayoutToStorage() {
+        guard tabType == .table else { return }
         guard let tableView, let connectionId, let tableName, !tableName.isEmpty else { return }
         guard !rowProvider.columns.isEmpty else { return }
 
@@ -748,6 +744,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var hasUserResizedColumns: Bool = false
     /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
+    /// Debounced work item for persisting column layout after resize/reorder
+    var layoutPersistWorkItem: DispatchWorkItem?
 
     private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")

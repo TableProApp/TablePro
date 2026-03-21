@@ -329,6 +329,7 @@ struct MainEditorContentView: View {
             databaseType: connection.type,
             tableName: tab.tableName,
             primaryKeyColumn: changeManager.primaryKeyColumn,
+            tabType: tab.tabType,
             showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
             hiddenColumns: columnVisibilityManager.hiddenColumns,
             onHideColumn: { [coordinator] columnName in

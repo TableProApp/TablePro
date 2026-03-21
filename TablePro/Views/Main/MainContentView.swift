@@ -501,6 +501,9 @@ struct MainContentView: View {
                             )
                             tabManager.tabs[tabIndex].query = filteredQuery
                         }
+                        if let tableName = selectedTab.tableName {
+                            coordinator.restoreColumnLayoutForTable(tableName)
+                        }
                         coordinator.executeTableTabQueryDirectly()
                     }
                 } else {
@@ -577,6 +580,9 @@ struct MainContentView: View {
                     {
                         Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
                     } else {
+                        if let tableName = selectedTab.tableName {
+                            coordinator.restoreColumnLayoutForTable(tableName)
+                        }
                         coordinator.executeTableTabQueryDirectly()
                     }
                 } else {
