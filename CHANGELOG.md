@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- High CPU usage (79%+) and energy consumption when idle (#394)
 - etcd connection failing with 404 when gRPC gateway uses a different API prefix (auto-detects `/v3/`, `/v3beta/`, `/v3alpha/`)
 - Data grid editing (delete rows, modify cells, add rows) not working in query tabs (#383)
 

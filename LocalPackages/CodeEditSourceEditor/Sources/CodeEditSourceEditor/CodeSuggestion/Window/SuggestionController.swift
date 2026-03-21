@@ -37,7 +37,7 @@ public final class SuggestionController: NSWindowController {
     /// Holds the observer for the window resign notifications
     private var windowResignObserver: NSObjectProtocol?
     /// Closes autocomplete when first responder changes away from the active text view
-    private var firstResponderObserver: NSObjectProtocol?
+    private var firstResponderKVO: NSKeyValueObservation?
     private var localEventMonitor: Any?
     private var sizeObservers: Set<AnyCancellable> = []
 
@@ -136,26 +136,21 @@ public final class SuggestionController: NSWindowController {
             self?.close()
         }
 
-        // Close when the active text view is removed (e.g., tab closed/switched)
-        if let existingObserver = firstResponderObserver {
-            NotificationCenter.default.removeObserver(existingObserver)
-        }
-        firstResponderObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didUpdateNotification,
-            object: parentWindow,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            guard let textView = self.model.activeTextView else {
-                self.close()
-                return
-            }
-            // Close if text view removed from window or lost first responder
-            if textView.view.window == nil {
-                self.close()
-            } else if let firstResponder = textView.view.window?.firstResponder as? NSView,
-                      !firstResponder.isDescendant(of: textView.view) {
-                self.close()
+        // Close when first responder changes away from the active text view
+        firstResponderKVO?.invalidate()
+        firstResponderKVO = parentWindow.observe(\.firstResponder, options: [.new]) { [weak self] window, _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                guard let textView = self.model.activeTextView else {
+                    self.close()
+                    return
+                }
+                if textView.view.window == nil {
+                    self.close()
+                } else if let firstResponder = window.firstResponder as? NSView,
+                          !firstResponder.isDescendant(of: textView.view) {
+                    self.close()
+                }
             }
         }
 
@@ -174,10 +169,8 @@ public final class SuggestionController: NSWindowController {
             windowResignObserver = nil
         }
 
-        if let observer = firstResponderObserver {
-            NotificationCenter.default.removeObserver(observer)
-            firstResponderObserver = nil
-        }
+        firstResponderKVO?.invalidate()
+        firstResponderKVO = nil
 
         if popover != nil {
             popover?.close()

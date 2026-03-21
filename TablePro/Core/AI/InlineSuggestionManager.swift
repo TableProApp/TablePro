@@ -58,7 +58,6 @@ final class InlineSuggestionManager {
     func install(controller: TextViewController, schemaProvider: SQLSchemaProvider?) {
         self.controller = controller
         self.schemaProvider = schemaProvider
-        installScrollObserver()
     }
 
     func editorDidFocus() {
@@ -87,11 +86,7 @@ final class InlineSuggestionManager {
         removeGhostLayer()
 
         removeKeyEventMonitor()
-
-        if let observer = _scrollObserver.withLock({ $0 }) {
-            NotificationCenter.default.removeObserver(observer)
-            _scrollObserver.withLock { $0 = nil }
-        }
+        removeScrollObserver()
 
         schemaProvider = nil
         controller = nil
@@ -337,6 +332,7 @@ final class InlineSuggestionManager {
 
         textView.layer?.addSublayer(layer)
         ghostLayer = layer
+        installScrollObserver()
     }
 
     private func removeGhostLayer() {
@@ -346,7 +342,6 @@ final class InlineSuggestionManager {
 
     // MARK: - Accept / Dismiss
 
-    /// Accept the current suggestion by inserting it at the cursor
     private func acceptSuggestion() {
         guard let suggestion = currentSuggestion,
               let textView = controller?.textView else { return }
@@ -354,6 +349,7 @@ final class InlineSuggestionManager {
         let offset = suggestionOffset
         removeGhostLayer()
         currentSuggestion = nil
+        removeScrollObserver()
 
         textView.replaceCharacters(
             in: NSRange(location: offset, length: 0),
@@ -361,13 +357,13 @@ final class InlineSuggestionManager {
         )
     }
 
-    /// Dismiss the current suggestion without inserting
     func dismissSuggestion() {
         debounceTimer?.invalidate()
         currentTask?.cancel()
         currentTask = nil
         removeGhostLayer()
         currentSuggestion = nil
+        removeScrollObserver()
     }
 
     // MARK: - Key Event Monitor
@@ -421,6 +417,7 @@ final class InlineSuggestionManager {
     // MARK: - Scroll Observer
 
     private func installScrollObserver() {
+        guard _scrollObserver.withLock({ $0 }) == nil else { return }
         guard let scrollView = controller?.scrollView else { return }
         let contentView = scrollView.contentView
 
@@ -430,15 +427,22 @@ final class InlineSuggestionManager {
                 object: contentView,
                 queue: .main
             ) { [weak self] _ in
-                guard self?.currentSuggestion != nil else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if let suggestion = self.currentSuggestion {
-                        // Reposition the ghost layer after scroll
                         self.showGhostText(suggestion, at: self.suggestionOffset)
                     }
                 }
             }
+        }
+    }
+
+    private func removeScrollObserver() {
+        _scrollObserver.withLock {
+            if let observer = $0 {
+                NotificationCenter.default.removeObserver(observer)
+            }
+            $0 = nil
         }
     }
 }

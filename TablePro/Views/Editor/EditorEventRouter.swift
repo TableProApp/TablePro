@@ -16,13 +16,13 @@ internal final class EditorEventRouter {
     private struct EditorRef {
         weak var coordinator: SQLEditorCoordinator?
         weak var textView: TextView?
+        var windowObserver: NSObjectProtocol?
+        var needsFirstResponderCheck = false
     }
 
     private var editors: [ObjectIdentifier: EditorRef] = [:]
     private var rightClickMonitor: Any?
     private var clipboardMonitor: Any?
-    private var windowUpdateObserver: NSObjectProtocol?
-    private var needsFirstResponderCheck = false
 
     private init() {}
 
@@ -35,15 +35,55 @@ internal final class EditorEventRouter {
         if rightClickMonitor == nil {
             installMonitors()
         }
+
+        if textView.window != nil {
+            installWindowObserver(for: key)
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.editors[key]?.windowObserver == nil else { return }
+                self.installWindowObserver(for: key)
+            }
+        }
     }
 
     internal func unregister(_ coordinator: SQLEditorCoordinator) {
-        editors.removeValue(forKey: ObjectIdentifier(coordinator))
+        let key = ObjectIdentifier(coordinator)
+        if let observer = editors[key]?.windowObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        editors.removeValue(forKey: key)
         purgeStaleEntries()
 
         if editors.isEmpty {
             removeMonitors()
         }
+    }
+
+    // MARK: - Per-Window Observer
+
+    private func installWindowObserver(for key: ObjectIdentifier) {
+        guard editors[key]?.windowObserver == nil,
+              let textView = editors[key]?.textView,
+              let window = textView.window else { return }
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didUpdateNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                guard var ref = self.editors[key], !ref.needsFirstResponderCheck else { return }
+                ref.needsFirstResponderCheck = true
+                self.editors[key] = ref
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.editors[key]?.needsFirstResponderCheck = false
+                    self.editors[key]?.coordinator?.checkFirstResponderChange()
+                }
+            }
+        }
+        editors[key]?.windowObserver = observer
     }
 
     // MARK: - Lookup
@@ -80,25 +120,6 @@ internal final class EditorEventRouter {
                 self.handleKeyDown(event)
             }
         }
-
-        windowUpdateObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didUpdateNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                guard !self.needsFirstResponderCheck else { return }
-                self.needsFirstResponderCheck = true
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.needsFirstResponderCheck = false
-                    for ref in self.editors.values {
-                        ref.coordinator?.checkFirstResponderChange()
-                    }
-                }
-            }
-        }
     }
 
     private func removeMonitors() {
@@ -109,10 +130,6 @@ internal final class EditorEventRouter {
         if let monitor = clipboardMonitor {
             NSEvent.removeMonitor(monitor)
             clipboardMonitor = nil
-        }
-        if let observer = windowUpdateObserver {
-            NotificationCenter.default.removeObserver(observer)
-            windowUpdateObserver = nil
         }
     }
 

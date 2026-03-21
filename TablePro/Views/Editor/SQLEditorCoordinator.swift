@@ -257,9 +257,11 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         if focused {
             vimKeyInterceptor?.editorDidFocus()
             inlineSuggestionManager?.editorDidFocus()
+            vimCursorManager?.resumeBlink()
         } else {
             vimKeyInterceptor?.editorDidBlur()
             inlineSuggestionManager?.editorDidBlur()
+            vimCursorManager?.pauseBlink()
         }
     }
 

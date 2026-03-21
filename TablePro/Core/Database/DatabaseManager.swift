@@ -312,12 +312,14 @@ final class DatabaseManager {
     private func setSession(_ session: ConnectionSession, for connectionId: UUID) {
         activeSessions[connectionId] = session
         connectionStatusVersions[connectionId, default: 0] &+= 1
+        NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
     }
 
     /// Remove a session and clean up its per-connection version counter.
     private func removeSessionEntry(for connectionId: UUID) {
         activeSessions.removeValue(forKey: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
+        NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
     }
 
     #if DEBUG

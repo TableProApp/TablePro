@@ -296,26 +296,12 @@ struct MainContentView: View {
             .onChange(of: currentTab?.resultColumns) { _, newColumns in
                 handleColumnsChange(newColumns: newColumns)
             }
-            .onChange(of: DatabaseManager.shared.connectionStatusVersions[connection.id], initial: true) { _, _ in
-                let sessions = DatabaseManager.shared.activeSessions
-                guard let session = sessions[connection.id] else { return }
-                if session.isConnected && coordinator.needsLazyLoad {
-                    // Don't auto-reload if the user has unsaved changes
-                    guard !changeManager.hasChanges else { return }
-                    coordinator.needsLazyLoad = false
-                    if let selectedTab = tabManager.selectedTab,
-                       !selectedTab.databaseName.isEmpty,
-                       selectedTab.databaseName != session.activeDatabase
-                    {
-                        Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
-                    } else {
-                        coordinator.runQuery()
-                    }
-                }
-                let mappedState = mapSessionStatus(session.status)
-                if mappedState != toolbarState.connectionState {
-                    toolbarState.connectionState = mappedState
-                }
+            .task { handleConnectionStatusChange() }
+            .onReceive(
+                NotificationCenter.default.publisher(for: .connectionStatusDidChange)
+                    .filter { ($0.object as? UUID) == connection.id }
+            ) { _ in
+                handleConnectionStatusChange()
             }
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
@@ -793,6 +779,27 @@ struct MainContentView: View {
               coordinator.tableMetadata?.tableName != tableName
         else { return }
         await coordinator.loadTableMetadata(tableName: tableName)
+    }
+
+    private func handleConnectionStatusChange() {
+        let sessions = DatabaseManager.shared.activeSessions
+        guard let session = sessions[connection.id] else { return }
+        if session.isConnected && coordinator.needsLazyLoad {
+            guard !changeManager.hasChanges else { return }
+            coordinator.needsLazyLoad = false
+            if let selectedTab = tabManager.selectedTab,
+               !selectedTab.databaseName.isEmpty,
+               selectedTab.databaseName != session.activeDatabase
+            {
+                Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
+            } else {
+                coordinator.runQuery()
+            }
+        }
+        let mappedState = mapSessionStatus(session.status)
+        if mappedState != toolbarState.connectionState {
+            toolbarState.connectionState = mappedState
+        }
     }
 
     private func mapSessionStatus(_ status: ConnectionStatus) -> ToolbarConnectionState {
