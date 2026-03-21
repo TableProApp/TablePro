@@ -26302,7 +26302,26 @@
       }
     },
     "Show row numbers" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır numaralarını göster"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiển thị số thứ tự hàng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示行号"
+          }
+        }
+      }
     },
     "Show Structure" : {
       "localizations" : {

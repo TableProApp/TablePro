@@ -44,6 +44,40 @@ struct DataGridSettingsTests {
         #expect(decoded.autoShowInspector == false)
     }
 
+    // MARK: - showRowNumbers
+
+    @Test("showRowNumbers defaults to true")
+    func showRowNumbersDefault() {
+        let settings = DataGridSettings.default
+        #expect(settings.showRowNumbers == true)
+    }
+
+    @Test("showRowNumbers round-trips through Codable")
+    func showRowNumbersCodableRoundTrip() throws {
+        var settings = DataGridSettings.default
+        settings.showRowNumbers = false
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(DataGridSettings.self, from: data)
+        #expect(decoded.showRowNumbers == false)
+    }
+
+    @Test("decoding without showRowNumbers key defaults to true")
+    func showRowNumbersBackwardsCompatibility() throws {
+        let oldJson = """
+        {
+            "rowHeight": 24,
+            "dateFormat": "yyyy-MM-dd HH:mm:ss",
+            "nullDisplay": "NULL",
+            "defaultPageSize": 1000,
+            "showAlternateRows": true
+        }
+        """
+        let data = oldJson.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(DataGridSettings.self, from: data)
+        #expect(decoded.showRowNumbers == true)
+    }
+
     // MARK: - Font Settings
 
     @Test("default font is systemMono at size 13")
