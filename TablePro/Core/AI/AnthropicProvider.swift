@@ -148,6 +148,10 @@ final class AnthropicProvider: AIProvider {
             return true
         }
 
+        if statusCode == 401 {
+            throw AIProviderError.authenticationFailed("")
+        }
+
         let body = String(data: data, encoding: .utf8) ?? ""
         throw mapHTTPError(statusCode: statusCode, body: body)
     }
@@ -239,21 +243,19 @@ final class AnthropicProvider: AIProvider {
         var body = ""
         for try await line in bytes.lines {
             body += line
-            if body.count > 2_000 { break }
+            if (body as NSString).length > 2_000 { break }
         }
         return body
     }
 
     private func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
-        let message = parseErrorMessage(body) ?? body
+        let message = AIProviderError.parseErrorMessage(from: body) ?? body
 
         switch statusCode {
         case 400:
-            // Billing/credits errors return 400
             return .serverError(statusCode, message)
         case 401:
-            // Show a clear message instead of raw API error like "x-api-key header is required"
-            return .authenticationFailed("")
+            return .authenticationFailed(message)
         case 429:
             return .rateLimited
         case 404:
@@ -261,17 +263,5 @@ final class AnthropicProvider: AIProvider {
         default:
             return .serverError(statusCode, message)
         }
-    }
-
-    /// Extract human-readable message from Anthropic's JSON error response
-    private func parseErrorMessage(_ body: String) -> String? {
-        guard let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = json["error"] as? [String: Any],
-              let message = error["message"] as? String
-        else {
-            return nil
-        }
-        return message
     }
 }

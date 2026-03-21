@@ -327,28 +327,17 @@ final class OpenAICompatibleProvider: AIProvider {
         var body = ""
         for try await line in bytes.lines {
             body += line
-            if body.count > 2_000 { break }
+            if (body as NSString).length > 2_000 { break }
         }
         return body
     }
 
-    private func parseErrorMessage(_ body: String) -> String? {
-        guard let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = json["error"] as? [String: Any],
-              let message = error["message"] as? String
-        else {
-            return nil
-        }
-        return message
-    }
-
     private func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
-        let message = parseErrorMessage(body) ?? body
+        let message = AIProviderError.parseErrorMessage(from: body) ?? body
 
         switch statusCode {
         case 401:
-            return .authenticationFailed("")
+            return .authenticationFailed(message)
         case 429:
             return .rateLimited
         case 404:

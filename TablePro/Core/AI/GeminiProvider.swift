@@ -160,9 +160,15 @@ final class GeminiProvider: AIProvider {
             return false
         }
 
-        guard httpResponse.statusCode == 200 else {
+        let statusCode = httpResponse.statusCode
+
+        if statusCode == 401 || statusCode == 403 {
+            throw AIProviderError.authenticationFailed("")
+        }
+
+        guard statusCode == 200 else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw mapHTTPError(statusCode: httpResponse.statusCode, body: body)
+            throw mapHTTPError(statusCode: statusCode, body: body)
         }
 
         return true
@@ -216,28 +222,17 @@ final class GeminiProvider: AIProvider {
         var body = ""
         for try await line in bytes.lines {
             body += line
-            if body.count > 2_000 { break }
+            if (body as NSString).length > 2_000 { break }
         }
         return body
     }
 
-    private func parseErrorMessage(_ body: String) -> String? {
-        guard let data = body.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = json["error"] as? [String: Any],
-              let message = error["message"] as? String
-        else {
-            return nil
-        }
-        return message
-    }
-
     private func mapHTTPError(statusCode: Int, body: String) -> AIProviderError {
-        let message = parseErrorMessage(body) ?? body
+        let message = AIProviderError.parseErrorMessage(from: body) ?? body
 
         switch statusCode {
         case 401, 403:
-            return .authenticationFailed("")
+            return .authenticationFailed(message)
         case 429:
             return .rateLimited
         case 404:

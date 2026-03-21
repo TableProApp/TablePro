@@ -54,4 +54,17 @@ enum AIProviderError: Error, LocalizedError {
             return String(localized: "Streaming failed: \(message)")
         }
     }
+
+    /// Extract human-readable message from provider JSON error responses.
+    /// Supports Anthropic (`{"error":{"message":"..."}}`), OpenAI, and Gemini formats.
+    static func parseErrorMessage(from body: String) -> String? {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let message = error["message"] as? String
+        else {
+            return nil
+        }
+        return message
+    }
 }
