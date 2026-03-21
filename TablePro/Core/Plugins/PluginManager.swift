@@ -61,6 +61,49 @@ final class PluginManager {
 
     private init() {}
 
+    // MARK: - Registry Metadata
+
+    private struct RegistryMetadata: Codable {
+        let version: String
+        let pluginId: String
+    }
+
+    nonisolated private static func metadataURL(for pluginURL: URL) -> URL {
+        pluginURL.deletingLastPathComponent()
+            .appendingPathComponent(pluginURL.lastPathComponent + ".metadata.json")
+    }
+
+    nonisolated private static func readRegistryVersion(for pluginURL: URL) -> String? {
+        let url = metadataURL(for: pluginURL)
+        guard let data = try? Data(contentsOf: url),
+              let metadata = try? JSONDecoder().decode(RegistryMetadata.self, from: data) else {
+            return nil
+        }
+        return metadata.version
+    }
+
+    func saveRegistryMetadata(version: String, pluginId: String, pluginURL: URL) {
+        let metadata = RegistryMetadata(version: version, pluginId: pluginId)
+        let url = Self.metadataURL(for: pluginURL)
+        do {
+            let data = try JSONEncoder().encode(metadata)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            Self.logger.error("Failed to save registry metadata for \(pluginId): \(error.localizedDescription)")
+        }
+    }
+
+    func updatePluginVersion(id: String, version: String) {
+        if let index = plugins.firstIndex(where: { $0.id == id }) {
+            plugins[index].version = version
+        }
+    }
+
+    private func removeRegistryMetadata(for pluginURL: URL) {
+        let url = Self.metadataURL(for: pluginURL)
+        try? FileManager.default.removeItem(at: url)
+    }
+
     private func migrateDisabledPluginsKey() {
         let defaults = UserDefaults.standard
         if let legacy = defaults.stringArray(forKey: Self.legacyDisabledPluginsKey) {
@@ -156,13 +199,14 @@ final class PluginManager {
             }
 
             let driverType = principalClass as? any DriverPlugin.Type
+            let version = readRegistryVersion(for: entry.url) ?? principalClass.pluginVersion
             let loaded = LoadedBundle(
                 url: entry.url,
                 source: entry.source,
                 bundle: bundle,
                 principalClassName: NSStringFromClass(principalClass),
                 pluginName: principalClass.pluginName,
-                pluginVersion: principalClass.pluginVersion,
+                pluginVersion: version,
                 pluginDescription: principalClass.pluginDescription,
                 capabilities: principalClass.capabilities,
                 databaseTypeId: driverType?.databaseTypeId,
@@ -359,13 +403,14 @@ final class PluginManager {
         let disabled = disabledPluginIds
 
         let driverType = principalClass as? any DriverPlugin.Type
+        let version = Self.readRegistryVersion(for: url) ?? principalClass.pluginVersion
         let entry = PluginEntry(
             id: bundleId,
             bundle: bundle,
             url: url,
             source: source,
             name: principalClass.pluginName,
-            version: principalClass.pluginVersion,
+            version: version,
             pluginDescription: principalClass.pluginDescription,
             capabilities: principalClass.capabilities,
             isEnabled: !disabled.contains(bundleId),
@@ -1008,6 +1053,8 @@ final class PluginManager {
         unregisterCapabilities(pluginId: id)
         entry.bundle.unload()
         plugins.remove(at: index)
+
+        removeRegistryMetadata(for: entry.url)
 
         let fm = FileManager.default
         if fm.fileExists(atPath: entry.url.path) {
