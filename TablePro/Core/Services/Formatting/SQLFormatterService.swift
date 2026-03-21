@@ -105,9 +105,8 @@ struct SQLFormatterService: SQLFormatterProtocol {
     private static let keywordRegexLock = NSLock()
     private static var keywordRegexCache: [DatabaseType: NSRegularExpression] = [:]
 
-    /// Get or create the keyword uppercasing regex for a given database type.
-    /// The dialect provider must be pre-resolved on the main actor before calling this method.
-    private static func keywordRegex(for dialect: DatabaseType, provider: SQLDialectProvider) -> NSRegularExpression? {
+    /// Get or create the keyword uppercasing regex for a given database type
+    private static func keywordRegex(for dialect: DatabaseType) -> NSRegularExpression? {
         keywordRegexLock.lock()
         if let cached = keywordRegexCache[dialect] {
             keywordRegexLock.unlock()
@@ -115,6 +114,7 @@ struct SQLFormatterService: SQLFormatterProtocol {
         }
         keywordRegexLock.unlock()
 
+        let provider = resolveDialectProvider(for: dialect)
         let allKeywords = provider.keywords.union(provider.functions).union(provider.dataTypes)
         let escapedKeywords = allKeywords.map { NSRegularExpression.escapedPattern(for: $0) }
         let pattern = "\\b(\(escapedKeywords.joined(separator: "|")))\\b"
@@ -132,15 +132,13 @@ struct SQLFormatterService: SQLFormatterProtocol {
         return regex
     }
 
-    /// Resolve the dialect provider for a given database type.
-    /// Safe to call from any thread: accesses only the thread-safe plugin metadata registry.
     private static func resolveDialectProvider(for dialect: DatabaseType) -> SQLDialectProvider {
-        let descriptor = PluginMetadataRegistry.shared.snapshot(forTypeId: dialect.pluginTypeId)?
-            .editor.sqlDialect
-        if let descriptor {
-            return PluginDialectAdapter(descriptor: descriptor)
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
         }
-        return EmptyDialect()
+        return DispatchQueue.main.sync {
+            MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
+        }
     }
 
     // MARK: - Public API
@@ -207,7 +205,7 @@ struct SQLFormatterService: SQLFormatterProtocol {
 
         // Step 3: Uppercase keywords (now safe - strings removed)
         if options.uppercaseKeywords {
-            result = uppercaseKeywords(result, databaseType: databaseType, provider: dialect)
+            result = uppercaseKeywords(result, databaseType: databaseType)
         }
 
         // Step 4: Restore string literals
@@ -347,8 +345,8 @@ struct SQLFormatterService: SQLFormatterProtocol {
     // MARK: - Keyword Uppercasing (Fix #1: Single-pass optimization)
 
     /// Uppercase keywords using single regex pass with cached pattern (CPU-5)
-    private func uppercaseKeywords(_ sql: String, databaseType: DatabaseType, provider: SQLDialectProvider) -> String {
-        guard let regex = Self.keywordRegex(for: databaseType, provider: provider) else {
+    private func uppercaseKeywords(_ sql: String, databaseType: DatabaseType) -> String {
+        guard let regex = Self.keywordRegex(for: databaseType) else {
             return sql
         }
 

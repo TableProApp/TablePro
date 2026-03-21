@@ -317,12 +317,13 @@ extension DatabaseDriver {
 enum DatabaseDriverFactory {
     static func createDriver(for connection: DatabaseConnection) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
+        // If the plugin isn't registered yet and background loading hasn't finished,
+        // fall back to synchronous loading for this critical code path.
+        if PluginManager.shared.driverPlugins[pluginId] == nil,
+           !PluginManager.shared.hasFinishedInitialLoad {
+            PluginManager.shared.loadPendingPlugins()
+        }
         guard let plugin = PluginManager.shared.driverPlugins[pluginId] else {
-            // If background loading hasn't finished yet, throw a specific error
-            // instead of blocking the main thread with synchronous plugin loading.
-            if !PluginManager.shared.hasFinishedInitialLoad {
-                throw PluginError.pluginNotLoaded(connection.type.rawValue)
-            }
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)
             }

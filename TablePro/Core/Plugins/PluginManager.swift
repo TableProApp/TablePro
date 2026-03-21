@@ -142,14 +142,6 @@ final class PluginManager {
                     logger.error("User plugin \(entry.url.lastPathComponent) has outdated PluginKit v\(pluginKitVersion)")
                     continue
                 }
-
-                // Verify code signature off the main thread (disk I/O in SecStaticCodeCheckValidity)
-                do {
-                    try verifyCodeSignatureStatic(bundle: bundle)
-                } catch {
-                    logger.error("Code signature verification failed for \(entry.url.lastPathComponent): \(error.localizedDescription)")
-                    continue
-                }
             }
 
             // Heavy I/O: dynamic linker resolution, C bridge library initialization
@@ -316,8 +308,7 @@ final class PluginManager {
                     current: pluginKitVersion
                 )
             }
-            // Code signature verification is deferred to loadBundlesOffMain()
-            // to avoid blocking the main thread with SecStaticCodeCheckValidity disk I/O.
+            try verifyCodeSignature(bundle: bundle)
         }
 
         pendingPluginURLs.append((url: url, source: source))
@@ -1057,21 +1048,13 @@ final class PluginManager {
     private static let signingTeamId = "D7HJ5TFYCU"
 
     private func createSigningRequirement() -> SecRequirement? {
-        Self.createSigningRequirementStatic()
-    }
-
-    nonisolated private static func createSigningRequirementStatic() -> SecRequirement? {
         var requirement: SecRequirement?
-        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(signingTeamId)\"" as CFString
+        let requirementString = "anchor apple generic and certificate leaf[subject.OU] = \"\(Self.signingTeamId)\"" as CFString
         SecRequirementCreateWithString(requirementString, SecCSFlags(), &requirement)
         return requirement
     }
 
     private func verifyCodeSignature(bundle: Bundle) throws {
-        try Self.verifyCodeSignatureStatic(bundle: bundle)
-    }
-
-    nonisolated private static func verifyCodeSignatureStatic(bundle: Bundle) throws {
         var staticCode: SecStaticCode?
         let createStatus = SecStaticCodeCreateWithPath(
             bundle.bundleURL as CFURL,
@@ -1081,11 +1064,11 @@ final class PluginManager {
 
         guard createStatus == errSecSuccess, let code = staticCode else {
             throw PluginError.signatureInvalid(
-                detail: describeOSStatus(createStatus)
+                detail: Self.describeOSStatus(createStatus)
             )
         }
 
-        let requirement = createSigningRequirementStatic()
+        let requirement = createSigningRequirement()
 
         let checkStatus = SecStaticCodeCheckValidity(
             code,
@@ -1095,12 +1078,12 @@ final class PluginManager {
 
         guard checkStatus == errSecSuccess else {
             throw PluginError.signatureInvalid(
-                detail: describeOSStatus(checkStatus)
+                detail: Self.describeOSStatus(checkStatus)
             )
         }
     }
 
-    nonisolated private static func describeOSStatus(_ status: OSStatus) -> String {
+    private static func describeOSStatus(_ status: OSStatus) -> String {
         switch status {
         case -67_062: return "bundle is not signed"
         case -67_061: return "code signature is invalid"

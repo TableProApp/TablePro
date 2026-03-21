@@ -15,7 +15,8 @@ internal enum HostKeyVerifier {
     private static let logger = Logger(subsystem: "com.TablePro", category: "HostKeyVerifier")
 
     /// Verify the host key, prompting the user if needed.
-    /// Uses `withCheckedContinuation` to await UI prompts without blocking the cooperative thread pool.
+    /// This method blocks the calling thread while showing UI prompts.
+    /// Must be called from a background thread.
     /// - Parameters:
     ///   - keyData: The raw host key bytes from the SSH session
     ///   - keyType: The key type string (e.g. "ssh-rsa", "ssh-ed25519")
@@ -27,7 +28,7 @@ internal enum HostKeyVerifier {
         keyType: String,
         hostname: String,
         port: Int
-    ) async throws {
+    ) throws {
         let result = HostKeyStore.shared.verify(
             keyData: keyData,
             keyType: keyType,
@@ -42,7 +43,7 @@ internal enum HostKeyVerifier {
 
         case .unknown(let fingerprint, let keyType):
             logger.info("Unknown host key for [\(hostname)]:\(port), prompting user")
-            let accepted = await promptUnknownHost(
+            let accepted = promptUnknownHost(
                 hostname: hostname,
                 port: port,
                 fingerprint: fingerprint,
@@ -61,7 +62,7 @@ internal enum HostKeyVerifier {
 
         case .mismatch(let expected, let actual):
             logger.warning("Host key mismatch for [\(hostname)]:\(port)")
-            let accepted = await promptHostKeyMismatch(
+            let accepted = promptHostKeyMismatch(
                 hostname: hostname,
                 port: port,
                 expected: expected,
@@ -82,14 +83,17 @@ internal enum HostKeyVerifier {
 
     // MARK: - UI Prompts
 
-    /// Show a dialog asking the user whether to trust an unknown host.
-    /// Suspends until the user responds, without blocking any thread.
+    /// Show a dialog asking the user whether to trust an unknown host
+    /// Blocks the calling thread until the user responds.
     private static func promptUnknownHost(
         hostname: String,
         port: Int,
         fingerprint: String,
         keyType: String
-    ) async -> Bool {
+    ) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        var accepted = false
+
         let hostDisplay = "[\(hostname)]:\(port)"
         let title = String(localized: "Unknown SSH Host")
         let message = String(localized: """
@@ -101,7 +105,7 @@ internal enum HostKeyVerifier {
             Are you sure you want to continue connecting?
             """)
 
-        return await MainActor.run {
+        DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = title
             alert.informativeText = message
@@ -110,18 +114,25 @@ internal enum HostKeyVerifier {
             alert.addButton(withTitle: String(localized: "Cancel"))
 
             let response = alert.runModal()
-            return response == .alertFirstButtonReturn
+            accepted = (response == .alertFirstButtonReturn)
+            semaphore.signal()
         }
+
+        semaphore.wait()
+        return accepted
     }
 
-    /// Show a warning dialog about a changed host key (potential MITM attack).
-    /// Suspends until the user responds, without blocking any thread.
+    /// Show a warning dialog about a changed host key (potential MITM attack)
+    /// Blocks the calling thread until the user responds.
     private static func promptHostKeyMismatch(
         hostname: String,
         port: Int,
         expected: String,
         actual: String
-    ) async -> Bool {
+    ) -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        var accepted = false
+
         let hostDisplay = "[\(hostname)]:\(port)"
         let title = String(localized: "SSH Host Key Changed")
         let message = String(localized: """
@@ -133,7 +144,7 @@ internal enum HostKeyVerifier {
             Current fingerprint: \(actual)
             """)
 
-        return await MainActor.run {
+        DispatchQueue.main.async {
             let alert = NSAlert()
             alert.messageText = title
             alert.informativeText = message
@@ -146,7 +157,11 @@ internal enum HostKeyVerifier {
             alert.buttons[0].keyEquivalent = ""
 
             let response = alert.runModal()
-            return response == .alertFirstButtonReturn
+            accepted = (response == .alertFirstButtonReturn)
+            semaphore.signal()
         }
+
+        semaphore.wait()
+        return accepted
     }
 }
