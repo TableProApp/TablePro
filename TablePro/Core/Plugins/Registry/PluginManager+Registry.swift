@@ -68,6 +68,16 @@ extension PluginManager {
         // Move to our temp directory for installPlugin
         try FileManager.default.moveItem(at: tempDownloadURL, to: tempZipURL)
 
-        return try await installPlugin(from: tempZipURL)
+        var entry = try await installPlugin(from: tempZipURL)
+
+        saveRegistryMetadata(
+            version: registryPlugin.version,
+            pluginId: registryPlugin.id,
+            pluginURL: entry.url
+        )
+        entry.version = registryPlugin.version
+        updatePluginVersion(id: entry.id, version: registryPlugin.version)
+
+        return entry
     }
 }

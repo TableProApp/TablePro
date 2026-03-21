@@ -12,7 +12,7 @@ struct PluginEntry: Identifiable {
     let url: URL
     let source: PluginSource
     let name: String
-    let version: String
+    var version: String
     let pluginDescription: String
     let capabilities: [PluginCapability]
     var isEnabled: Bool
