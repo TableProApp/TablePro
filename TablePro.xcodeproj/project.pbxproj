@@ -35,7 +35,6 @@
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
 		5ACE00012F4F00000000000A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000009 /* Sparkle */; };
 		5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000C /* MarkdownUI */; };
-		5A866000D00000000 /* MongoDBDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A866000100000000 /* MongoDBDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ADDB00100000000000000A1 /* DynamoDBConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A1 /* DynamoDBConnection.swift */; };
 		5ADDB00100000000000000A2 /* DynamoDBItemFlattener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A2 /* DynamoDBItemFlattener.swift */; };
@@ -91,13 +90,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A865000000000000;
 			remoteInfo = MySQLDriver;
-		};
-		5A866000B00000000 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5A866000000000000;
-			remoteInfo = MongoDBDriver;
 		};
 		5A868000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -164,7 +156,6 @@
 				5A86B000D00000000 /* JSONExport.tableplugin in Copy Plug-Ins */,
 				5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins */,
 				5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */,
-				5A866000D00000000 /* MongoDBDriver.tableplugin in Copy Plug-Ins */,
 			);
 			name = "Copy Plug-Ins";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -833,7 +824,6 @@
 				5A862000C00000000 /* PBXTargetDependency */,
 				5A863000C00000000 /* PBXTargetDependency */,
 				5A865000C00000000 /* PBXTargetDependency */,
-				5A866000C00000000 /* PBXTargetDependency */,
 				5A868000C00000000 /* PBXTargetDependency */,
 				5A869000C00000000 /* PBXTargetDependency */,
 				5A86A000C00000000 /* PBXTargetDependency */,
@@ -1755,11 +1745,6 @@
 			isa = PBXTargetDependency;
 			target = 5A865000000000000 /* MySQLDriver */;
 			targetProxy = 5A865000B00000000 /* PBXContainerItemProxy */;
-		};
-		5A866000C00000000 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 5A866000000000000 /* MongoDBDriver */;
-			targetProxy = 5A866000B00000000 /* PBXContainerItemProxy */;
 		};
 		5A868000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
