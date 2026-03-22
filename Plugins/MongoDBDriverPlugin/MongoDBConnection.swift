@@ -237,11 +237,13 @@ final class MongoDBConnection: @unchecked Sendable {
             params.append("replicaSet=\(rs)")
         }
 
-        let explicitKeys: Set<String> = [
-            "authSource", "readPreference", "w", "authMechanism", "replicaSet",
-            "connectTimeoutMS", "serverSelectionTimeoutMS", "tls",
-            "tlsAllowInvalidCertificates", "tlsCAFile", "tlsCertificateKeyFile"
+        var explicitKeys: Set<String> = [
+            "connectTimeoutMS", "serverSelectionTimeoutMS",
+            "authSource", "authMechanism", "replicaSet",
+            "tls", "tlsAllowInvalidCertificates", "tlsCAFile", "tlsCertificateKeyFile"
         ]
+        if readPreference != nil, !readPreference!.isEmpty { explicitKeys.insert("readPreference") }
+        if writeConcern != nil, !writeConcern!.isEmpty { explicitKeys.insert("w") }
         for (key, value) in extraUriParams where !explicitKeys.contains(key) {
             let encodedValue = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
             params.append("\(key)=\(encodedValue)")
@@ -385,11 +387,15 @@ final class MongoDBConnection: @unchecked Sendable {
         }
         stateLock.unlock()
 
-        let version = fetchServerVersionSync()
+        #if canImport(CLibMongoc)
+        let version = queue.sync { fetchServerVersionSync() }
         stateLock.lock()
         _cachedServerVersion = version
         stateLock.unlock()
         return version
+        #else
+        return nil
+        #endif
     }
     func currentDatabase() -> String { database }
 

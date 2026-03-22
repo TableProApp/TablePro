@@ -342,7 +342,7 @@ struct ConnectionURLParser {
             host = "127.0.0.1"
         }
 
-        let ext = parseSSHQueryString(queryString)
+        let ext = parseSSHQueryString(queryString, dbType: dbType)
 
         // Oracle-specific: path component is the service name, not the database name
         var oracleServiceName: String?
@@ -415,7 +415,7 @@ struct ConnectionURLParser {
         return ext
     }
 
-    private static func parseSSHQueryString(_ queryString: String?) -> ExtendedParams {
+    private static func parseSSHQueryString(_ queryString: String?, dbType: DatabaseType? = nil) -> ExtendedParams {
         var ext = ExtendedParams()
         guard let queryString else { return ext }
         let params = queryString.split(separator: "&", omittingEmptySubsequences: true)
@@ -436,7 +436,7 @@ struct ConnectionURLParser {
                 ext.agentSocket = value.removingPercentEncoding ?? value
                 continue
             }
-            applyQueryParam(key: String(key), value: value, to: &ext)
+            applyQueryParam(key: String(key), value: value, to: &ext, dbType: dbType)
         }
         return ext
     }

@@ -1542,6 +1542,13 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                     applySSHAgentSocketPath(parsed.agentSocket ?? "")
                 }
             }
+            // Clear stale MongoDB fields before applying new import
+            let mongoKeys = additionalFieldValues.keys.filter {
+                $0.hasPrefix("mongo") || $0.hasPrefix("mongoParam_")
+            }
+            for key in mongoKeys {
+                additionalFieldValues.removeValue(forKey: key)
+            }
             if let authSourceValue = parsed.authSource, !authSourceValue.isEmpty {
                 additionalFieldValues["mongoAuthSource"] = authSourceValue
             }
