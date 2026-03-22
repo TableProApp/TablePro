@@ -32,6 +32,8 @@ struct ParsedConnectionURL {
     let filterValue: String?
     let filterCondition: String?
     let oracleServiceName: String?
+    let useSrv: Bool
+    let mongoQueryParams: [String: String]
 
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
@@ -122,6 +124,8 @@ struct ConnectionURLParser {
             }
         }
 
+        let isSrv = scheme == "mongodb+srv"
+
         if dbType == .sqlite {
             let path = String(trimmed[schemeEnd.upperBound...])
             return .success(ParsedConnectionURL(
@@ -150,7 +154,9 @@ struct ConnectionURLParser {
                 filterOperation: nil,
                 filterValue: nil,
                 filterCondition: nil,
-                oracleServiceName: nil
+                oracleServiceName: nil,
+                useSrv: false,
+                mongoQueryParams: [:]
             ))
         }
 
@@ -181,7 +187,7 @@ struct ConnectionURLParser {
             database = String(database.dropFirst())
         }
 
-        let ext = parseQueryItems(components.queryItems)
+        var ext = parseQueryItems(components.queryItems, dbType: dbType)
 
         var sslMode = ext.sslMode
         // Redis-specific: parse database index from path and handle TLS scheme
@@ -203,10 +209,19 @@ struct ConnectionURLParser {
             database = ""
         }
 
+        // SRV implies TLS and no explicit port
+        if isSrv {
+            ext.useSrv = true
+            if sslMode == nil {
+                sslMode = .required
+            }
+        }
+        let effectivePort = isSrv ? nil : port
+
         return .success(ParsedConnectionURL(
             type: dbType,
             host: host,
-            port: port,
+            port: effectivePort,
             database: database,
             username: username,
             password: password,
@@ -229,7 +244,9 @@ struct ConnectionURLParser {
             filterOperation: ext.filterOperation,
             filterValue: ext.filterValue,
             filterCondition: ext.filterCondition,
-            oracleServiceName: oracleServiceName
+            oracleServiceName: oracleServiceName,
+            useSrv: ext.useSrv,
+            mongoQueryParams: ext.mongoQueryParams
         ))
     }
 
@@ -360,7 +377,9 @@ struct ConnectionURLParser {
             filterOperation: ext.filterOperation,
             filterValue: ext.filterValue,
             filterCondition: ext.filterCondition,
-            oracleServiceName: oracleServiceName
+            oracleServiceName: oracleServiceName,
+            useSrv: ext.useSrv,
+            mongoQueryParams: ext.mongoQueryParams
         ))
     }
 
@@ -382,14 +401,16 @@ struct ConnectionURLParser {
         var filterOperation: String?
         var filterValue: String?
         var filterCondition: String?
+        var useSrv: Bool = false
+        var mongoQueryParams: [String: String] = [:]
     }
 
-    private static func parseQueryItems(_ queryItems: [URLQueryItem]?) -> ExtendedParams {
+    private static func parseQueryItems(_ queryItems: [URLQueryItem]?, dbType: DatabaseType? = nil) -> ExtendedParams {
         var ext = ExtendedParams()
         guard let queryItems else { return ext }
         for item in queryItems {
             guard let value = item.value, !value.isEmpty else { continue }
-            applyQueryParam(key: item.name, value: value, to: &ext)
+            applyQueryParam(key: item.name, value: value, to: &ext, dbType: dbType)
         }
         return ext
     }
@@ -420,7 +441,7 @@ struct ConnectionURLParser {
         return ext
     }
 
-    private static func applyQueryParam(key: String, value: String, to ext: inout ExtendedParams) {
+    private static func applyQueryParam(key: String, value: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
         switch key {
         case "sslmode":
             ext.sslMode = parseSSLMode(value)
@@ -456,8 +477,18 @@ struct ConnectionURLParser {
             if ext.sslMode == nil, let intValue = Int(value) {
                 ext.sslMode = parseTlsModeInteger(intValue)
             }
+        case "tls", "ssl":
+            if value.lowercased() == "true" && ext.sslMode == nil {
+                ext.sslMode = .required
+            }
+        case "authMechanism", "authmechanism":
+            ext.mongoQueryParams["authMechanism"] = value
+        case "replicaSet", "replicaset":
+            ext.mongoQueryParams["replicaSet"] = value
         default:
-            break
+            if dbType == .mongodb {
+                ext.mongoQueryParams[key] = value
+            }
         }
     }
 

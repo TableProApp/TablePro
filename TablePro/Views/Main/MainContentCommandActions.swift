@@ -541,7 +541,6 @@ final class MainContentCommandActions {
 
     private func handleDatabaseDidConnect() {
         Task { @MainActor in
-            await coordinator?.loadSchema()
             if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }

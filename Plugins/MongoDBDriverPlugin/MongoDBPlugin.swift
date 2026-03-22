@@ -41,6 +41,30 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
                 .init(value: "3", label: "3"),
             ])
         ),
+        ConnectionField(
+            id: "mongoUseSrv",
+            label: "Use SRV Record",
+            defaultValue: "false",
+            fieldType: .toggle,
+            section: .advanced
+        ),
+        ConnectionField(
+            id: "mongoAuthMechanism",
+            label: "Auth Mechanism",
+            fieldType: .dropdown(options: [
+                .init(value: "", label: "Default"),
+                .init(value: "SCRAM-SHA-1", label: "SCRAM-SHA-1"),
+                .init(value: "SCRAM-SHA-256", label: "SCRAM-SHA-256"),
+                .init(value: "MONGODB-X509", label: "X.509"),
+                .init(value: "MONGODB-AWS", label: "AWS IAM"),
+            ]),
+            section: .authentication
+        ),
+        ConnectionField(
+            id: "mongoReplicaSet",
+            label: "Replica Set",
+            section: .advanced
+        ),
     ]
 
     // MARK: - UI/Capability Metadata

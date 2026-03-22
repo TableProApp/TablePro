@@ -400,6 +400,16 @@ final class PluginManager {
         }
 
         let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
+
+        // Skip user-installed plugin if a built-in version already exists
+        if source == .userInstalled,
+           let existing = plugins.first(where: { $0.id == bundleId }),
+           existing.source == .builtIn
+        {
+            Self.logger.info("Skipping user-installed '\(bundleId)' — built-in version already loaded")
+            return existing
+        }
+
         let disabled = disabledPluginIds
 
         let driverType = principalClass as? any DriverPlugin.Type

@@ -398,6 +398,21 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["mongoWriteConcern"] = newValue ?? "" }
     }
 
+    var mongoUseSrv: Bool {
+        get { additionalFields["mongoUseSrv"] == "true" }
+        set { additionalFields["mongoUseSrv"] = newValue ? "true" : "" }
+    }
+
+    var mongoAuthMechanism: String? {
+        get { additionalFields["mongoAuthMechanism"]?.nilIfEmpty }
+        set { additionalFields["mongoAuthMechanism"] = newValue ?? "" }
+    }
+
+    var mongoReplicaSet: String? {
+        get { additionalFields["mongoReplicaSet"]?.nilIfEmpty }
+        set { additionalFields["mongoReplicaSet"] = newValue ?? "" }
+    }
+
     var mssqlSchema: String? {
         get { additionalFields["mssqlSchema"]?.nilIfEmpty }
         set { additionalFields["mssqlSchema"] = newValue ?? "" }
@@ -437,6 +452,9 @@ struct DatabaseConnection: Identifiable, Hashable {
         mongoAuthSource: String? = nil,
         mongoReadPreference: String? = nil,
         mongoWriteConcern: String? = nil,
+        mongoUseSrv: Bool = false,
+        mongoAuthMechanism: String? = nil,
+        mongoReplicaSet: String? = nil,
         redisDatabase: Int? = nil,
         mssqlSchema: String? = nil,
         oracleServiceName: String? = nil,
@@ -467,6 +485,9 @@ struct DatabaseConnection: Identifiable, Hashable {
             if let v = mongoAuthSource { fields["mongoAuthSource"] = v }
             if let v = mongoReadPreference { fields["mongoReadPreference"] = v }
             if let v = mongoWriteConcern { fields["mongoWriteConcern"] = v }
+            if mongoUseSrv { fields["mongoUseSrv"] = "true" }
+            if let v = mongoAuthMechanism { fields["mongoAuthMechanism"] = v }
+            if let v = mongoReplicaSet { fields["mongoReplicaSet"] = v }
             if let v = mssqlSchema { fields["mssqlSchema"] = v }
             if let v = oracleServiceName { fields["oracleServiceName"] = v }
             self.additionalFields = fields

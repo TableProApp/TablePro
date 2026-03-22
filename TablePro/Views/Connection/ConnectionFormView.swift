@@ -1545,6 +1545,22 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if let authSourceValue = parsed.authSource, !authSourceValue.isEmpty {
                 additionalFieldValues["mongoAuthSource"] = authSourceValue
             }
+            if parsed.useSrv {
+                additionalFieldValues["mongoUseSrv"] = "true"
+                if sslMode == .disabled {
+                    sslMode = .required
+                }
+            }
+            for (key, value) in parsed.mongoQueryParams where !value.isEmpty {
+                switch key {
+                case "authMechanism":
+                    additionalFieldValues["mongoAuthMechanism"] = value
+                case "replicaSet":
+                    additionalFieldValues["mongoReplicaSet"] = value
+                default:
+                    additionalFieldValues["mongoParam_\(key)"] = value
+                }
+            }
             if parsed.type.pluginTypeId == "Redis", !parsed.database.isEmpty {
                 additionalFieldValues["redisDatabase"] = parsed.database
             }

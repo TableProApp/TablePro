@@ -36,6 +36,18 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
     // MARK: - Connection Management
 
     func connect() async throws {
+        let useSrv = config.additionalFields["mongoUseSrv"] == "true"
+        let authMechanism = config.additionalFields["mongoAuthMechanism"]
+        let replicaSet = config.additionalFields["mongoReplicaSet"]
+
+        var extraParams: [String: String] = [:]
+        for (key, value) in config.additionalFields where key.hasPrefix("mongoParam_") {
+            let paramName = String(key.dropFirst("mongoParam_".count))
+            if !paramName.isEmpty {
+                extraParams[paramName] = value
+            }
+        }
+
         let conn = MongoDBConnection(
             host: config.host,
             port: config.port,
@@ -47,7 +59,11 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             sslClientCertPath: config.additionalFields["sslClientCertPath"] ?? "",
             authSource: config.additionalFields["mongoAuthSource"],
             readPreference: config.additionalFields["mongoReadPreference"],
-            writeConcern: config.additionalFields["mongoWriteConcern"]
+            writeConcern: config.additionalFields["mongoWriteConcern"],
+            useSrv: useSrv,
+            authMechanism: authMechanism,
+            replicaSet: replicaSet,
+            extraUriParams: extraParams
         )
 
         try await conn.connect()
