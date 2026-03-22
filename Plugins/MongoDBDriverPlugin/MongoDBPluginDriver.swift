@@ -199,7 +199,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
 
         let docs = try await conn.find(
             database: currentDb, collection: table,
-            filter: "{}", sort: nil, projection: nil, skip: 0, limit: 500
+            filter: "{}", sort: nil, projection: nil, skip: 0, limit: 50
         ).docs
 
         if docs.isEmpty {
@@ -293,7 +293,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             throw MongoDBPluginError.notConnected
         }
 
-        let count = try await conn.countDocuments(database: currentDb, collection: table, filter: "{}")
+        let count = try await conn.estimatedDocumentCount(database: currentDb, collection: table)
         return Int(count)
     }
 

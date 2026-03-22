@@ -476,6 +476,29 @@ final class MongoDBConnection: @unchecked Sendable {
         #endif
     }
 
+    func estimatedDocumentCount(database: String, collection: String) async throws -> Int64 {
+        #if canImport(CLibMongoc)
+        resetCancellation()
+        return try await pluginDispatchAsync(on: queue) { [self] in
+            guard !isShuttingDown, let client = self.client else {
+                throw MongoDBError.notConnected
+            }
+            try checkCancelled()
+            let col = try getCollection(client, database: database, collection: collection)
+            defer { mongoc_collection_destroy(col) }
+
+            var error = bson_error_t()
+            let count = mongoc_collection_estimated_document_count(col, nil, nil, nil, &error)
+            if count < 0 {
+                throw makeError(error)
+            }
+            return count
+        }
+        #else
+        throw MongoDBError.libmongocUnavailable
+        #endif
+    }
+
     func insertOne(database: String, collection: String, document: String) async throws -> String? {
         #if canImport(CLibMongoc)
         resetCancellation()
