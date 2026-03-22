@@ -269,35 +269,31 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             }
 
             if type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type) {
-                Section {
-                    VStack(spacing: 8) {
-                        if isInstallingPlugin {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text(String(localized: "Installing \(type.rawValue) plugin…"))
-                                .foregroundStyle(.secondary)
-                        } else if let error = pluginInstallError {
-                            Text(error)
-                                .foregroundStyle(.red)
-                                .font(.caption)
-                            Button(String(localized: "Retry")) {
-                                pluginInstallError = nil
-                                installPlugin(for: type)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        } else {
-                            Text(String(localized: "The \(type.rawValue) plugin is not installed."))
-                                .foregroundStyle(.secondary)
-                            Button(String(localized: "Install Plugin")) {
-                                installPlugin(for: type)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
+                ContentUnavailableView {
+                    Label(type.rawValue, image: type.iconName)
+                } description: {
+                    if isInstallingPlugin {
+                        Text("Installing plugin…")
+                    } else if let error = pluginInstallError {
+                        Text(error)
+                    } else {
+                        Text("This plugin is not installed yet.")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                } actions: {
+                    if isInstallingPlugin {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else if pluginInstallError != nil {
+                        Button("Retry") {
+                            pluginInstallError = nil
+                            installPlugin(for: type)
+                        }
+                    } else {
+                        Button("Install Plugin") {
+                            installPlugin(for: type)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 }
             } else if PluginManager.shared.connectionMode(for: type) == .fileBased {
                 Section(String(localized: "Database File")) {
