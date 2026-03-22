@@ -10,16 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Keyboard focus navigation (Tab, Ctrl+J/K/N/P, arrow keys) for connection list, quick switcher, and database switcher
-
-### Fixed
-
-- DuckDB: TIMESTAMPTZ, TIMETZ, and other temporal columns displaying as null (#424)
-- Onboarding "Get Started" button not rendering on macOS 15 until window loses focus (#420)
 - MongoDB `mongodb+srv://` URI support with SRV toggle, Auth Mechanism dropdown, and Replica Set field (#419)
 
 ### Changed
 
 - MongoDB `authSource` defaults to database name per MongoDB URI spec instead of always "admin"
+
+### Fixed
+
+- Onboarding "Get Started" button not rendering on macOS 15 until window loses focus (#420)
 - MongoDB collection loading uses `estimatedDocumentCount` and smaller schema sample for faster sidebar population
 
 ## [0.22.1] - 2026-03-22
