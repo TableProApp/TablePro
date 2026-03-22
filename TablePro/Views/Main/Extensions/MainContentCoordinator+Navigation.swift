@@ -478,6 +478,23 @@ extension MainContentCoordinator {
         }
     }
 
+    func initRedisKeyTreeIfNeeded() {
+        guard connection.type == .redis else { return }
+        guard sidebarViewModel?.redisKeyTreeViewModel == nil else { return }
+
+        let vm = RedisKeyTreeViewModel()
+        sidebarViewModel?.redisKeyTreeViewModel = vm
+        let sidebarState = SharedSidebarState.forConnection(connectionId)
+        sidebarState.redisKeyTreeViewModel = vm
+
+        let connId = connectionId
+        let database = toolbarState.databaseName
+        let separator = connection.additionalFields["redisSeparator"] ?? ":"
+        Task {
+            await vm.loadKeys(connectionId: connId, database: database, separator: separator)
+        }
+    }
+
     // MARK: - Redis Key Tree Navigation
 
     func browseRedisNamespace(_ prefix: String) {

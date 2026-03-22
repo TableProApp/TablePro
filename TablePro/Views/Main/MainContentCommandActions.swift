@@ -545,6 +545,7 @@ final class MainContentCommandActions {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
             coordinator?.reloadSidebar()
+            coordinator?.initRedisKeyTreeIfNeeded()
         }
     }
 
