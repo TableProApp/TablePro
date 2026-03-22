@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct RedisKeyTreeView: View {
+internal struct RedisKeyTreeView: View {
     let nodes: [RedisKeyNode]
     @Binding var expandedPrefixes: Set<String>
     let isLoading: Bool

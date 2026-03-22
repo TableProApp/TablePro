@@ -58,8 +58,7 @@ internal final class RedisKeyTreeViewModel {
             rootNodes = Self.buildTree(keys: keys, separator: separator)
         } catch {
             Self.logger.error("Failed to load Redis keys: \(error.localizedDescription, privacy: .public)")
-            rootNodes = []
-            allKeys = []
+            clear()
         }
     }
 

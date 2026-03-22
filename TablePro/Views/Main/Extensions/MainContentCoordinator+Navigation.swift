@@ -498,16 +498,15 @@ extension MainContentCoordinator {
     // MARK: - Redis Key Tree Navigation
 
     func browseRedisNamespace(_ prefix: String) {
-        guard let index = tabManager.selectedTabIndex else { return }
+        let separator = connection.additionalFields["redisSeparator"] ?? ":"
         let escapedPrefix = prefix.replacingOccurrences(of: "\"", with: "\\\"")
         let query = "SCAN 0 MATCH \"\(escapedPrefix)*\" COUNT 200"
-        tabManager.tabs[index].query = query
-        tabManager.tabs[index].title = prefix.hasSuffix(":") ? String(prefix.dropLast()) : prefix
+        let title = prefix.hasSuffix(separator) ? String(prefix.dropLast(separator.count)) : prefix
+        tabManager.addTab(initialQuery: query, title: title)
         runQuery()
     }
 
     func openRedisKey(_ keyName: String, keyType: String) {
-        guard let index = tabManager.selectedTabIndex else { return }
         let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
         let query: String
         switch keyType.lowercased() {
@@ -524,8 +523,7 @@ extension MainContentCoordinator {
         default:
             query = "GET \"\(escapedKey)\""
         }
-        tabManager.tabs[index].query = query
-        tabManager.tabs[index].title = keyName
+        tabManager.addTab(initialQuery: query, title: keyName)
         runQuery()
     }
 }
