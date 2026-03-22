@@ -240,7 +240,7 @@ struct DataChangeManagerExtendedTests {
         let state = manager.saveState()
         manager.clearChanges()
         #expect(!manager.hasChanges)
-        manager.restoreState(from: state, tableName: "test_table")
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
         #expect(manager.hasChanges)
     }
 
@@ -250,7 +250,7 @@ struct DataChangeManagerExtendedTests {
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie", "c@test.com"])
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table")
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
         #expect(manager.isRowDeleted(2))
     }
 
@@ -263,7 +263,7 @@ struct DataChangeManagerExtendedTests {
         )
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table")
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
         #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
     }
 
@@ -276,7 +276,7 @@ struct DataChangeManagerExtendedTests {
         )
         let state = manager.saveState()
         manager.clearChanges()
-        manager.restoreState(from: state, tableName: "test_table")
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
         manager.recordCellChange(
             rowIndex: 0, columnIndex: 2, columnName: "email",
             oldValue: "a@test.com", newValue: "b@test.com"
@@ -289,7 +289,7 @@ struct DataChangeManagerExtendedTests {
     func emptyStateRoundTrip() {
         let manager = makeManager()
         let state = manager.saveState()
-        manager.restoreState(from: state, tableName: "test_table")
+        manager.restoreState(from: state, tableName: "test_table", databaseType: .mysql)
         #expect(!manager.hasChanges)
         #expect(manager.changes.isEmpty)
     }
