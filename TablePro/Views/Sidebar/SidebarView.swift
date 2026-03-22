@@ -68,6 +68,11 @@ struct SidebarView: View {
             schemaProvider: schemaProvider
         )
         vm.debouncedSearchText = sidebarState.searchText
+        if databaseType == .redis {
+            let keyTreeVM = sidebarState.redisKeyTreeViewModel ?? RedisKeyTreeViewModel()
+            vm.redisKeyTreeViewModel = keyTreeVM
+            sidebarState.redisKeyTreeViewModel = keyTreeVM
+        }
         _viewModel = State(wrappedValue: vm)
         self.activeTableName = activeTableName
         self.connectionId = connectionId

@@ -460,6 +460,15 @@ extension MainContentCoordinator {
             }
             toolbarState.databaseName = database
             executeTableTabQueryDirectly()
+
+            let separator = connection.additionalFields["redisSeparator"] ?? ":"
+            Task {
+                await sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
+                    connectionId: connId,
+                    database: database,
+                    separator: separator
+                )
+            }
         }
     }
 
