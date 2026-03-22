@@ -258,6 +258,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         .tag(t)
                     }
                 }
+                .disabled(isInstallingPlugin)
                 TextField(
                     String(localized: "Name"),
                     text: $name,
@@ -961,7 +962,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         Text("Test Connection")
                     }
                 }
-                .disabled(isTesting || !isValid)
+                .disabled(isTesting || isInstallingPlugin || !isValid)
 
                 Spacer()
 
@@ -993,7 +994,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 }
                 .keyboardShortcut(.return)
                 .buttonStyle(.borderedProminent)
-                .disabled(!isValid)
+                .disabled(isInstallingPlugin || !isValid)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -1500,6 +1501,13 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
         Task {
             do {
                 try await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
+                if type == databaseType {
+                    for field in PluginManager.shared.additionalConnectionFields(for: databaseType) {
+                        if additionalFieldValues[field.id] == nil, let defaultValue = field.defaultValue {
+                            additionalFieldValues[field.id] = defaultValue
+                        }
+                    }
+                }
             } catch {
                 pluginInstallError = error.localizedDescription
             }
