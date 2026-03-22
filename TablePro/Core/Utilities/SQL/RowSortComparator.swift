@@ -9,8 +9,8 @@ import Foundation
 
 /// Type-aware row value comparator for grid sorting.
 /// Uses String.compare with .numeric option and type-specific fast paths for integer/decimal columns.
-enum RowSortComparator {
-    static func compare(_ lhs: String, _ rhs: String, columnType: ColumnType?) -> ComparisonResult {
+internal enum RowSortComparator {
+    internal static func compare(_ lhs: String, _ rhs: String, columnType: ColumnType?) -> ComparisonResult {
         if let columnType {
             switch columnType {
             case .integer:

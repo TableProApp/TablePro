@@ -6,10 +6,8 @@
 import Foundation
 
 /// Advises on tab eviction budget based on system memory.
-enum MemoryPressureAdvisor {
-    /// Returns the number of inactive tabs that should be kept in memory.
-    /// Scales with total physical memory since macOS manages virtual memory pressure.
-    static func budgetForInactiveTabs() -> Int {
+internal enum MemoryPressureAdvisor {
+    internal static func budgetForInactiveTabs() -> Int {
         let totalBytes = ProcessInfo.processInfo.physicalMemory
         let gb: UInt64 = 1_073_741_824
 
@@ -24,9 +22,7 @@ enum MemoryPressureAdvisor {
         }
     }
 
-    /// Rough estimate of a tab's memory footprint in bytes.
-    /// Uses 64 bytes per cell as average (16B String struct + ~48B backing store).
-    static func estimatedFootprint(rowCount: Int, columnCount: Int) -> Int {
+    internal static func estimatedFootprint(rowCount: Int, columnCount: Int) -> Int {
         rowCount * columnCount * 64
     }
 }
