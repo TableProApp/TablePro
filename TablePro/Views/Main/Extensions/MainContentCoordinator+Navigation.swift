@@ -462,6 +462,12 @@ extension MainContentCoordinator {
             executeTableTabQueryDirectly()
 
             let separator = connection.additionalFields["redisSeparator"] ?? ":"
+            if sidebarViewModel?.redisKeyTreeViewModel == nil {
+                let vm = RedisKeyTreeViewModel()
+                sidebarViewModel?.redisKeyTreeViewModel = vm
+                let sidebarState = SharedSidebarState.forConnection(connId)
+                sidebarState.redisKeyTreeViewModel = vm
+            }
             Task {
                 await sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
                     connectionId: connId,
