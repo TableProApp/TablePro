@@ -127,6 +127,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
 
     @State private var pluginInstallConnection: DatabaseConnection?
     @State private var isInstallingPlugin: Bool = false
+    @State private var pluginInstallError: String?
 
     // Tab selection
     @State private var selectedTab: FormTab = .general
@@ -275,6 +276,16 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                                 .controlSize(.small)
                             Text(String(localized: "Installing \(type.rawValue) plugin…"))
                                 .foregroundStyle(.secondary)
+                        } else if let error = pluginInstallError {
+                            Text(error)
+                                .foregroundStyle(.red)
+                                .font(.caption)
+                            Button(String(localized: "Retry")) {
+                                pluginInstallError = nil
+                                installPlugin(for: type)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                         } else {
                             Text(String(localized: "The \(type.rawValue) plugin is not installed."))
                                 .foregroundStyle(.secondary)
@@ -1482,8 +1493,12 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     private func installPlugin(for databaseType: DatabaseType) {
         isInstallingPlugin = true
         Task {
-            defer { isInstallingPlugin = false }
-            try? await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
+            do {
+                try await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
+            } catch {
+                pluginInstallError = error.localizedDescription
+            }
+            isInstallingPlugin = false
         }
     }
 
