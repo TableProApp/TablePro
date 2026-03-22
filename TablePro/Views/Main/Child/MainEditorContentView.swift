@@ -435,7 +435,9 @@ struct MainEditorContentView: View {
                     ? (row1[sortCol.columnIndex] ?? "") : ""
                 let val2 = sortCol.columnIndex < row2.count
                     ? (row2[sortCol.columnIndex] ?? "") : ""
-                let result = val1.localizedStandardCompare(val2)
+                let colType = sortCol.columnIndex < tab.columnTypes.count
+                    ? tab.columnTypes[sortCol.columnIndex] : nil
+                let result = RowSortComparator.compare(val1, val2, columnType: colType)
                 if result == .orderedSame { continue }
                 return sortCol.direction == .ascending
                     ? result == .orderedAscending

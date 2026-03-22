@@ -132,11 +132,23 @@ extension MainContentCoordinator {
                 && !$0.pendingChanges.hasChanges
         }
 
+        // Sort by oldest first, breaking ties by largest estimated footprint first
         let sorted = candidates.sorted {
-            ($0.lastExecutedAt ?? .distantFuture) < ($1.lastExecutedAt ?? .distantFuture)
+            let t0 = $0.lastExecutedAt ?? .distantFuture
+            let t1 = $1.lastExecutedAt ?? .distantFuture
+            if t0 != t1 { return t0 < t1 }
+            let size0 = MemoryPressureAdvisor.estimatedFootprint(
+                rowCount: $0.rowBuffer.rows.count,
+                columnCount: $0.rowBuffer.columns.count
+            )
+            let size1 = MemoryPressureAdvisor.estimatedFootprint(
+                rowCount: $1.rowBuffer.rows.count,
+                columnCount: $1.rowBuffer.columns.count
+            )
+            return size0 > size1
         }
 
-        let maxInactiveLoaded = 2
+        let maxInactiveLoaded = MemoryPressureAdvisor.budgetForInactiveTabs()
         guard sorted.count > maxInactiveLoaded else { return }
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 

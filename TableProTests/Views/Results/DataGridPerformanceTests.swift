@@ -21,13 +21,13 @@ struct SortKeyCachingTests {
         }
 
         var indices1 = Array(0..<rows.count)
-        indices1.sort { keys[$0].localizedStandardCompare(keys[$1]) == .orderedAscending }
+        indices1.sort { keys[$0].compare(keys[$1], options: [.numeric]) == .orderedAscending }
 
         var indices2 = Array(0..<rows.count)
         indices2.sort {
             let v1 = sortColumnIndex < rows[$0].count ? (rows[$0][sortColumnIndex] ?? "") : ""
             let v2 = sortColumnIndex < rows[$1].count ? (rows[$1][sortColumnIndex] ?? "") : ""
-            return v1.localizedStandardCompare(v2) == .orderedAscending
+            return RowSortComparator.compare(v1, v2, columnType: nil) == .orderedAscending
         }
 
         #expect(indices1 == indices2)
@@ -42,17 +42,17 @@ struct SortKeyCachingTests {
             ["Bob", "35"],
         ]
 
-        let sortKeys: [[String]] = rows.map { row in
-            [row[0] ?? "", row[1] ?? ""]
-        }
-
         var indices = Array(0..<rows.count)
         indices.sort { i1, i2 in
-            let result = sortKeys[i1][0].localizedStandardCompare(sortKeys[i2][0])
+            let v1 = rows[i1][0] ?? ""
+            let v2 = rows[i2][0] ?? ""
+            let result = RowSortComparator.compare(v1, v2, columnType: nil)
             if result != .orderedSame {
                 return result == .orderedAscending
             }
-            let result2 = sortKeys[i1][1].localizedStandardCompare(sortKeys[i2][1])
+            let w1 = rows[i1][1] ?? ""
+            let w2 = rows[i2][1] ?? ""
+            let result2 = RowSortComparator.compare(w1, w2, columnType: nil)
             return result2 == .orderedDescending
         }
 
@@ -78,7 +78,7 @@ struct SortKeyCachingTests {
         }
 
         var indices = Array(0..<rows.count)
-        indices.sort { keys[$0].localizedStandardCompare(keys[$1]) == .orderedAscending }
+        indices.sort { keys[$0].compare(keys[$1], options: [.numeric]) == .orderedAscending }
 
         // Empty string (nil) sorts first, then Alice, then Charlie
         #expect(rows[indices[0]][0] == nil)

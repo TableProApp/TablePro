@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Reduce memory and CPU usage: flatten row storage, cache cell display values, lazy-load BLOB/TEXT columns
+- Improve performance: faster sorting, lower memory usage, adaptive tab eviction
 
 ## [0.23.0] - 2026-03-22
 

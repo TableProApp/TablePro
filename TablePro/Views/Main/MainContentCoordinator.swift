@@ -1125,6 +1125,7 @@ final class MainContentCoordinator {
             let tabId = tab.id
             let resultVersion = tab.resultVersion
             let sortColumns = currentSort.columns
+            let colTypes = tab.columnTypes
 
             if rows.count > 10_000 {
                 // Large dataset: sort on background thread to avoid UI freeze
@@ -1136,7 +1137,11 @@ final class MainContentCoordinator {
 
                 let sortStartTime = Date()
                 let task = Task.detached { [weak self] in
-                    let sortedIndices = Self.multiColumnSortIndices(rows: rows, sortColumns: sortColumns)
+                    let sortedIndices = Self.multiColumnSortIndices(
+                        rows: rows,
+                        sortColumns: sortColumns,
+                        columnTypes: colTypes
+                    )
                     let sortDuration = Date().timeIntervalSince(sortStartTime)
 
                     await MainActor.run { [weak self] in
@@ -1194,37 +1199,35 @@ final class MainContentCoordinator {
     /// Returns an array of indices into the original `rows` array, sorted by the given columns.
     nonisolated private static func multiColumnSortIndices(
         rows: [[String?]],
-        sortColumns: [SortColumn]
+        sortColumns: [SortColumn],
+        columnTypes: [ColumnType] = []
     ) -> [Int] {
         // Fast path: single-column sort avoids intermediate key array allocation
         if sortColumns.count == 1 {
             let col = sortColumns[0]
             let colIndex = col.columnIndex
             let ascending = col.direction == .ascending
+            let colType = colIndex < columnTypes.count ? columnTypes[colIndex] : nil
             var indices = Array(0..<rows.count)
             indices.sort { i1, i2 in
                 let v1 = colIndex < rows[i1].count ? (rows[i1][colIndex] ?? "") : ""
                 let v2 = colIndex < rows[i2].count ? (rows[i2][colIndex] ?? "") : ""
-                let cmp = v1.localizedStandardCompare(v2)
+                let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
             return indices
         }
 
-        // Pre-extract sort keys for each row to avoid repeated access during comparison
-        let sortKeys: [[String]] = rows.map { row in
-            sortColumns.map { sortCol in
-                sortCol.columnIndex < row.count
-                    ? (row[sortCol.columnIndex] ?? "") : ""
-            }
-        }
-
         var indices = Array(0..<rows.count)
         indices.sort { i1, i2 in
-            let keys1 = sortKeys[i1]
-            let keys2 = sortKeys[i2]
-            for (colIdx, sortCol) in sortColumns.enumerated() {
-                let result = keys1[colIdx].localizedStandardCompare(keys2[colIdx])
+            let row1 = rows[i1]
+            let row2 = rows[i2]
+            for sortCol in sortColumns {
+                let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex] ?? "") : ""
+                let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex] ?? "") : ""
+                let colType = sortCol.columnIndex < columnTypes.count
+                    ? columnTypes[sortCol.columnIndex] : nil
+                let result = RowSortComparator.compare(v1, v2, columnType: colType)
                 if result == .orderedSame { continue }
                 return sortCol.direction == .ascending
                     ? result == .orderedAscending
