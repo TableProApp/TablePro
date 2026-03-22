@@ -7,6 +7,7 @@
 //  and deduplication logic in QueryTabManager.
 //
 
+import AppKit
 import Foundation
 @testable import TablePro
 import Testing
@@ -188,5 +189,76 @@ struct PersistedTabSourceFileURLTests {
         let decoded = try JSONDecoder().decode(PersistedTab.self, from: data)
 
         #expect(decoded.sourceFileURL == nil)
+    }
+}
+
+// MARK: - WindowLifecycleMonitor Source File Tracking Tests
+
+@Suite("WindowLifecycleMonitor source file tracking")
+@MainActor
+struct WindowLifecycleMonitorSourceFileTests {
+    @Test("window(forSourceFile:) returns nil for unregistered URL")
+    func unregisteredURLReturnsNil() {
+        let url = URL(fileURLWithPath: "/tmp/unknown.sql")
+        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
+    }
+
+    @Test("registerSourceFile and window(forSourceFile:) round-trip when window is alive")
+    func registerAndFindSourceFile() {
+        let url = URL(fileURLWithPath: "/tmp/registered.sql")
+        let windowId = UUID()
+        let window = NSWindow()
+
+        WindowLifecycleMonitor.shared.register(
+            window: window,
+            connectionId: UUID(),
+            windowId: windowId
+        )
+        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
+
+        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) === window)
+
+        WindowLifecycleMonitor.shared.unregisterSourceFile(url)
+        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
+    }
+
+    @Test("unregisterSourceFiles(for:) removes all files for a window")
+    func unregisterAllFilesForWindow() {
+        let url1 = URL(fileURLWithPath: "/tmp/file1.sql")
+        let url2 = URL(fileURLWithPath: "/tmp/file2.sql")
+        let windowId = UUID()
+        let window = NSWindow()
+
+        WindowLifecycleMonitor.shared.register(
+            window: window,
+            connectionId: UUID(),
+            windowId: windowId
+        )
+        WindowLifecycleMonitor.shared.registerSourceFile(url1, windowId: windowId)
+        WindowLifecycleMonitor.shared.registerSourceFile(url2, windowId: windowId)
+
+        WindowLifecycleMonitor.shared.unregisterSourceFiles(for: windowId)
+
+        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url1) == nil)
+        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url2) == nil)
+
+        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
+    }
+
+    @Test("window(forSourceFile:) returns nil after window is unregistered")
+    func returnsNilAfterWindowUnregistered() {
+        let url = URL(fileURLWithPath: "/tmp/closed.sql")
+        let windowId = UUID()
+        let window = NSWindow()
+
+        WindowLifecycleMonitor.shared.register(
+            window: window,
+            connectionId: UUID(),
+            windowId: windowId
+        )
+        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
+        WindowLifecycleMonitor.shared.unregisterWindow(for: windowId)
+
+        #expect(WindowLifecycleMonitor.shared.window(forSourceFile: url) == nil)
     }
 }

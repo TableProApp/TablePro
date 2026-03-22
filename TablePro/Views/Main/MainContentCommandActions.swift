@@ -574,6 +574,11 @@ final class MainContentCommandActions {
 
         Task { @MainActor in
             for url in urls {
+                if let existingWindow = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
+                    existingWindow.makeKeyAndOrderFront(nil)
+                    continue
+                }
+
                 let content = await Task.detached(priority: .userInitiated) { () -> String? in
                     do {
                         return try String(contentsOf: url, encoding: .utf8)

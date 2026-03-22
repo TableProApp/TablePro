@@ -511,6 +511,9 @@ struct MainContentView: View {
                     coordinator.needsLazyLoad = true
                 }
             }
+            if let sourceURL = payload.sourceFileURL {
+                WindowLifecycleMonitor.shared.registerSourceFile(sourceURL, windowId: windowId)
+            }
             return
         }
 
