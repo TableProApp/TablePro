@@ -282,7 +282,6 @@ private actor DuckDBConnectionActor {
             columnTypeNames.append(Self.typeName(for: colType))
         }
 
-
         var rows: [[String?]] = []
         var truncated = false
 
@@ -295,15 +294,13 @@ private actor DuckDBConnectionActor {
             var rowData: [String?] = []
 
             for col in 0..<colCount {
-                let colIdx = Int(col)
-
                 if duckdb_value_is_null(&result, col, row) {
                     rowData.append(nil)
                 } else if let valPtr = duckdb_value_varchar(&result, col, row) {
                     rowData.append(String(cString: valPtr))
                     duckdb_free(valPtr)
                 } else {
-                    rowData.append(Self.extractFallbackValue(&result, col: col, row: row, type: columnTypes[colIdx]))
+                    rowData.append(Self.extractFallbackValue(&result, col: col, row: row, type: columnTypes[Int(col)]))
                 }
             }
 
@@ -440,7 +437,9 @@ private actor DuckDBConnectionActor {
             }
         }
 
-        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(query)) AS _tz_cast"
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            .hasSuffix(";") ? String(query.dropLast()) : query
+        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(trimmedQuery)) AS _tz_cast"
         var patchResult = duckdb_result()
         guard duckdb_query(connection, wrappedQuery, &patchResult) == DuckDBSuccess else { return }
         defer { duckdb_destroy_result(&patchResult) }
