@@ -266,7 +266,21 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 }
             }
 
-            if PluginManager.shared.connectionMode(for: type) == .fileBased {
+            if type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type) {
+                Section {
+                    VStack(spacing: 8) {
+                        Text(String(localized: "The \(type.rawValue) plugin is not installed."))
+                            .foregroundStyle(.secondary)
+                        Button(String(localized: "Install Plugin")) {
+                            installPlugin(for: type)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+            } else if PluginManager.shared.connectionMode(for: type) == .fileBased {
                 Section(String(localized: "Database File")) {
                     HStack {
                         TextField(
@@ -1454,6 +1468,12 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if response == .OK, let url = panel.url {
                 database = url.path(percentEncoded: false)
             }
+        }
+    }
+
+    private func installPlugin(for databaseType: DatabaseType) {
+        Task {
+            try? await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
         }
     }
 
