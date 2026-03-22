@@ -647,6 +647,14 @@ final class PluginManager {
         return types.sorted { $0.rawValue < $1.rawValue }
     }
 
+    var allAvailableDatabaseTypes: [DatabaseType] {
+        var types = Set(availableDatabaseTypes)
+        for type in DatabaseType.allKnownTypes {
+            types.insert(type)
+        }
+        return types.sorted { $0.rawValue < $1.rawValue }
+    }
+
     // MARK: - Driver Availability
 
     func isDriverAvailable(for databaseType: DatabaseType) -> Bool {

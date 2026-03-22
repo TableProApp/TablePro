@@ -27,7 +27,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     private var isNew: Bool { connectionId == nil }
 
     private var availableDatabaseTypes: [DatabaseType] {
-        PluginManager.shared.availableDatabaseTypes
+        PluginManager.shared.allAvailableDatabaseTypes
     }
 
     private var additionalConnectionFields: [ConnectionField] {
@@ -237,9 +237,12 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                             HStack {
                                 Text(t.rawValue)
                                 if t.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: t) {
-                                    Image(systemName: "arrow.down.circle")
-                                        .foregroundStyle(.secondary)
+                                    Text("Not Installed")
                                         .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
                                 }
                             }
                         } icon: {
