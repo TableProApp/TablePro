@@ -184,6 +184,7 @@ struct OnboardingContentView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .opacity(currentPage == 2 ? 0 : 1)
+            .frame(minWidth: 110, alignment: .leading)
 
             Spacer()
 
@@ -200,23 +201,25 @@ struct OnboardingContentView: View {
 
             Spacer()
 
-            Group {
+            ZStack {
                 if currentPage < 2 {
                     Button("Continue") {
                         goToPage(currentPage + 1)
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
+                    .transition(.opacity)
                 } else {
                     Button("Get Started") {
                         completeOnboarding()
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.opacity)
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: currentPage)
+            .animation(.easeInOut(duration: 0.25), value: currentPage)
+            .frame(minWidth: 110, alignment: .trailing)
         }
         .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.xl)
         .padding(.bottom, ThemeEngine.shared.activeTheme.spacing.lg)
