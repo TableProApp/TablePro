@@ -262,6 +262,21 @@ JSON values are automatically compacted (minified) when saved to the database.
   />
 </Frame>
 
+### Hex Editor (BLOB/Binary)
+
+Double-clicking a BLOB, BINARY, or VARBINARY cell opens a hex editor popover:
+
+- **Hex dump display**: Read-only view showing offset, hex bytes, and ASCII representation
+- **Editable hex input**: Space-separated hex bytes (e.g., `48 65 6C 6C 6F`) for editing
+- **Live validation**: Byte count updates as you type, invalid hex is flagged in red
+- **Save/Cancel**: Explicit buttons to commit or discard changes
+
+BLOB values display as compact hex (`0x48656C6C6F...`) in the grid. The right sidebar also provides a hex editor for the selected cell.
+
+<Note>
+For BLOBs larger than 10 KB, the editable hex is truncated and read-only. Use an external hex editor for large binary data.
+</Note>
+
 ### Multi-Row Editing
 
 Operate on multiple rows at once:
