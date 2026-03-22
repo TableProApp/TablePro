@@ -4,10 +4,11 @@
 //
 
 import Foundation
+import Observation
 import os
 
 @MainActor @Observable
-final class RedisKeyTreeViewModel {
+internal final class RedisKeyTreeViewModel {
     private static let logger = Logger(subsystem: "com.TablePro", category: "RedisKeyTree")
     private static let maxKeys = 50_000
 
@@ -26,13 +27,13 @@ final class RedisKeyTreeViewModel {
         defer { isLoading = false }
 
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            rootNodes = []
+            clear()
             return
         }
 
         do {
-            let query = "SCAN 0 MATCH \"*\" COUNT \(Self.maxKeys)"
-            let result = try await driver.execute(query: query)
+            // Use KEYS command for simplicity — returns all keys matching pattern
+            let result = try await driver.execute(query: "KEYS *")
 
             let keyColumnIndex = result.columns.firstIndex(of: "Key") ?? 0
             let typeColumnIndex = result.columns.firstIndex(of: "Type") ?? 1
@@ -43,6 +44,7 @@ final class RedisKeyTreeViewModel {
                       let keyName = row[keyColumnIndex] else { continue }
                 let keyType = typeColumnIndex < row.count ? (row[typeColumnIndex] ?? "string") : "string"
                 keys.append((key: keyName, type: keyType))
+                if keys.count >= Self.maxKeys { break }
             }
 
             isTruncated = keys.count >= Self.maxKeys
@@ -81,9 +83,7 @@ final class RedisKeyTreeViewModel {
 
         var root = TrieNode()
         for entry in keys {
-            let separatorChar: Character = separator.first ?? ":"
-            let parts = entry.key.split(separator: separatorChar, omittingEmptySubsequences: false)
-                .map(String.init)
+            let parts = entry.key.components(separatedBy: separator)
             root.insert(parts: parts, fullKey: entry.key, keyType: entry.type)
         }
 

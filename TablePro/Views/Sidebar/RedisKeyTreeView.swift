@@ -78,6 +78,9 @@ struct RedisKeyTreeView: View {
                 .background(.quaternary, in: Capsule())
         }
         .contentShape(Rectangle())
+        .onTapGesture {
+            onSelectNamespace?(fullPrefix)
+        }
     }
 
     private func keyLabel(name: String, fullKey: String, keyType: String) -> some View {
