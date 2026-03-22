@@ -253,21 +253,9 @@ struct SidebarView: View {
                 if viewModel.databaseType == .redis, let keyTreeVM = viewModel.redisKeyTreeViewModel {
                     Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                         RedisKeyTreeView(
-                            nodes: {
-                                if viewModel.debouncedSearchText.isEmpty {
-                                    return keyTreeVM.rootNodes
-                                }
-                                let result = keyTreeVM.filteredNodes(searchText: viewModel.debouncedSearchText)
-                                return result.nodes
-                            }(),
+                            nodes: keyTreeVM.displayNodes(searchText: viewModel.debouncedSearchText),
                             expandedPrefixes: Binding(
-                                get: {
-                                    if !viewModel.debouncedSearchText.isEmpty {
-                                        let result = keyTreeVM.filteredNodes(searchText: viewModel.debouncedSearchText)
-                                        return keyTreeVM.expandedPrefixes.union(result.expandAll)
-                                    }
-                                    return keyTreeVM.expandedPrefixes
-                                },
+                                get: { keyTreeVM.expandedPrefixes },
                                 set: { keyTreeVM.expandedPrefixes = $0 }
                             ),
                             isLoading: keyTreeVM.isLoading,

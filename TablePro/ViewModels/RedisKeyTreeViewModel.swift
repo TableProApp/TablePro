@@ -62,25 +62,13 @@ final class RedisKeyTreeViewModel {
         isTruncated = false
     }
 
-    func filteredNodes(searchText: String) -> (nodes: [RedisKeyNode], expandAll: Set<String>) {
-        guard !searchText.isEmpty else { return (rootNodes, []) }
+    func displayNodes(searchText: String) -> [RedisKeyNode] {
+        guard !searchText.isEmpty else { return rootNodes }
 
         let filtered = allKeys.filter { $0.key.localizedCaseInsensitiveContains(searchText) }
-        if filtered.isEmpty { return ([], []) }
+        if filtered.isEmpty { return [] }
 
-        let tree = Self.buildTree(keys: filtered, separator: separator)
-        var allPrefixes: Set<String> = []
-        Self.collectPrefixes(tree, into: &allPrefixes)
-        return (tree, allPrefixes)
-    }
-
-    private static func collectPrefixes(_ nodes: [RedisKeyNode], into result: inout Set<String>) {
-        for node in nodes {
-            if case .namespace(_, let prefix, let children, _) = node {
-                result.insert(prefix)
-                collectPrefixes(children, into: &result)
-            }
-        }
+        return Self.buildTree(keys: filtered, separator: separator)
     }
 
     // MARK: - Tree Building (Pure Function)
