@@ -40,6 +40,7 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 |-------|-------------|
 | **Password** | Redis server password (AUTH) |
 | **Database** | Database index (0-15, default `0`) |
+| **Key Separator** | Character used to group keys into namespaces (default `:`) |
 
 <Tip>
 For local development without authentication, leave the password field empty. Redis defaults to database index `0`.
@@ -131,13 +132,17 @@ Connect to Redis through an SSH tunnel for secure access to remote servers. See 
 
 ### Namespace Browsing
 
-After connecting, the sidebar groups keys by their colon-separated prefix. Keys named `user:1`, `user:2`, and `session:abc` appear under `user` and `session` namespaces:
+After connecting, the sidebar groups keys by their separator character (default `:`) into a collapsible tree. Keys named `user:1`, `user:2`, and `session:abc` appear under `user` and `session` namespace folders:
 
-1. Click the connection name in the sidebar
-2. Expand a namespace to see its keys
-3. Click a key to view its value
+1. Connect to Redis and select a database
+2. The **Keys** section in the sidebar shows namespaces with key counts
+3. Expand a namespace to see sub-namespaces and individual keys
+4. Click a key to view its value in the data grid
+5. Click a namespace to browse all keys under that prefix
 
-Keys without a colon separator are grouped under a root namespace.
+Keys without a separator appear at the root level. Multi-level nesting is supported (e.g., `app:cache:session:1`).
+
+To change the separator character, go to the connection settings and set the **Key Separator** field in the Advanced section (default `:`).
 
 ### Key-Value Viewing
 

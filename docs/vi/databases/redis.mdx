@@ -40,6 +40,7 @@ TablePro hỗ trợ Redis 6.0 trở lên. Key được nhóm theo namespace phâ
 |-------|-------------|
 | **Password** | Mật khẩu Redis (AUTH) |
 | **Database** | Chỉ số database (0-15, mặc định `0`) |
+| **Key Separator** | Ký tự phân tách nhóm key theo namespace (mặc định `:`) |
 
 <Tip>
 Cho dev local không bật xác thực, để trống password. Redis mặc định dùng database index `0`.
@@ -131,13 +132,17 @@ Kết nối Redis qua SSH tunnel để truy cập an toàn server từ xa. Xem [
 
 ### Duyệt Namespace
 
-Sau khi kết nối, sidebar nhóm key theo tiền tố dấu hai chấm. Key tên `user:1`, `user:2` và `session:abc` nằm trong namespace `user` và `session`:
+Sau khi kết nối, sidebar nhóm key theo ký tự phân tách (mặc định `:`) thành cây có thể mở rộng/thu gọn. Key tên `user:1`, `user:2` và `session:abc` nằm trong thư mục namespace `user` và `session`:
 
-1. Nhấp tên kết nối trong sidebar
-2. Mở rộng namespace để xem key
-3. Nhấp key để xem giá trị
+1. Kết nối Redis và chọn database
+2. Mục **Keys** trong sidebar hiển thị namespace với số lượng key
+3. Mở rộng namespace để xem sub-namespace và key
+4. Nhấp key để xem giá trị trong data grid
+5. Nhấp namespace để duyệt tất cả key theo tiền tố đó
 
-Key không có dấu hai chấm nằm trong namespace gốc.
+Key không có ký tự phân tách hiển thị ở cấp gốc. Hỗ trợ lồng nhiều cấp (VD: `app:cache:session:1`).
+
+Để thay đổi ký tự phân tách, vào cài đặt kết nối và đặt trường **Key Separator** trong mục Advanced (mặc định `:`).
 
 ### Xem Key-Value
 
