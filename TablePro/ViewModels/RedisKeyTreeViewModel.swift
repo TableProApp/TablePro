@@ -18,7 +18,13 @@ internal final class RedisKeyTreeViewModel {
     var isTruncated = false
     var separator: String = ":"
 
-    private var allKeys: [(key: String, type: String)] = []
+    private(set) var allKeys: [(key: String, type: String)] = []
+
+    /// Test-only setter for allKeys
+    var allKeysForTesting: [(key: String, type: String)] {
+        get { allKeys }
+        set { allKeys = newValue }
+    }
 
     func loadKeys(connectionId: UUID, database: String, separator: String) async {
         self.separator = separator
