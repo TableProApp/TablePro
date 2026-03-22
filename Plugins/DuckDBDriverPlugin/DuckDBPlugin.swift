@@ -187,7 +187,9 @@ private actor DuckDBConnectionActor {
             duckdb_destroy_result(&result)
         }
 
-        return Self.extractResult(from: &result, startTime: startTime)
+        var raw = Self.extractResult(from: &result, startTime: startTime)
+        Self.patchTzColumns(&raw, query: query, connection: conn)
+        return raw
     }
 
     func executePrepared(_ query: String, parameters: [String?]) throws -> DuckDBRawResult {
@@ -251,7 +253,9 @@ private actor DuckDBConnectionActor {
             duckdb_destroy_result(&result)
         }
 
-        return Self.extractResult(from: &result, startTime: startTime)
+        var raw = Self.extractResult(from: &result, startTime: startTime)
+        Self.patchTzColumns(&raw, query: query, connection: conn)
+        return raw
     }
 
     private static func extractResult(
@@ -264,6 +268,7 @@ private actor DuckDBConnectionActor {
 
         var columns: [String] = []
         var columnTypeNames: [String] = []
+        var columnTypes: [duckdb_type] = []
 
         for i in 0..<colCount {
             if let namePtr = duckdb_column_name(&result, i) {
@@ -273,8 +278,10 @@ private actor DuckDBConnectionActor {
             }
 
             let colType = duckdb_column_type(&result, i)
+            columnTypes.append(colType)
             columnTypeNames.append(Self.typeName(for: colType))
         }
+
 
         var rows: [[String?]] = []
         var truncated = false
@@ -288,13 +295,15 @@ private actor DuckDBConnectionActor {
             var rowData: [String?] = []
 
             for col in 0..<colCount {
+                let colIdx = Int(col)
+
                 if duckdb_value_is_null(&result, col, row) {
                     rowData.append(nil)
                 } else if let valPtr = duckdb_value_varchar(&result, col, row) {
                     rowData.append(String(cString: valPtr))
                     duckdb_free(valPtr)
                 } else {
-                    rowData.append(nil)
+                    rowData.append(Self.extractFallbackValue(&result, col: col, row: row, type: columnTypes[colIdx]))
                 }
             }
 
@@ -344,15 +353,162 @@ private actor DuckDBConnectionActor {
         case DUCKDB_TYPE_UUID: return "UUID"
         case DUCKDB_TYPE_UNION: return "UNION"
         case DUCKDB_TYPE_BIT: return "BIT"
+        case DUCKDB_TYPE_TIMESTAMP_TZ: return "TIMESTAMPTZ"
+        case DUCKDB_TYPE_TIME_TZ: return "TIMETZ"
+        case DUCKDB_TYPE_TIME_NS: return "TIME_NS"
+        case DUCKDB_TYPE_UHUGEINT: return "UHUGEINT"
+        case DUCKDB_TYPE_ARRAY: return "ARRAY"
         default: return "VARCHAR"
         }
+    }
+
+    private static func extractFallbackValue(
+        _ result: inout duckdb_result, col: idx_t, row: idx_t, type: duckdb_type
+    ) -> String? {
+        switch type {
+        case DUCKDB_TYPE_TIMESTAMP, DUCKDB_TYPE_TIMESTAMP_S, DUCKDB_TYPE_TIMESTAMP_MS, DUCKDB_TYPE_TIMESTAMP_NS:
+            let ts = duckdb_value_timestamp(&result, col, row)
+            return formatTimestamp(ts)
+
+        case DUCKDB_TYPE_DATE:
+            let date = duckdb_value_date(&result, col, row)
+            let d = duckdb_from_date(date)
+            return String(format: "%04d-%02d-%02d", d.year, d.month, d.day)
+
+        case DUCKDB_TYPE_TIME, DUCKDB_TYPE_TIME_NS:
+            let time = duckdb_value_time(&result, col, row)
+            return formatTime(duckdb_from_time(time))
+
+        case DUCKDB_TYPE_BOOLEAN:
+            return duckdb_value_boolean(&result, col, row) ? "true" : "false"
+
+        case DUCKDB_TYPE_TINYINT:
+            return String(duckdb_value_int8(&result, col, row))
+        case DUCKDB_TYPE_SMALLINT:
+            return String(duckdb_value_int16(&result, col, row))
+        case DUCKDB_TYPE_INTEGER:
+            return String(duckdb_value_int32(&result, col, row))
+        case DUCKDB_TYPE_BIGINT:
+            return String(duckdb_value_int64(&result, col, row))
+        case DUCKDB_TYPE_UTINYINT:
+            return String(duckdb_value_uint8(&result, col, row))
+        case DUCKDB_TYPE_USMALLINT:
+            return String(duckdb_value_uint16(&result, col, row))
+        case DUCKDB_TYPE_UINTEGER:
+            return String(duckdb_value_uint32(&result, col, row))
+        case DUCKDB_TYPE_UBIGINT:
+            return String(duckdb_value_uint64(&result, col, row))
+        case DUCKDB_TYPE_FLOAT:
+            return String(duckdb_value_float(&result, col, row))
+        case DUCKDB_TYPE_DOUBLE:
+            return String(duckdb_value_double(&result, col, row))
+
+        case DUCKDB_TYPE_HUGEINT:
+            let h = duckdb_value_hugeint(&result, col, row)
+            return formatHugeInt(upper: h.upper, lower: h.lower)
+
+        case DUCKDB_TYPE_UHUGEINT:
+            let u = duckdb_value_uhugeint(&result, col, row)
+            return formatUHugeInt(upper: u.upper, lower: u.lower)
+
+        default:
+            return nil
+        }
+    }
+
+    /// DuckDB v1.5.0 C API: duckdb_value_varchar returns nil for TIMESTAMPTZ and TIMETZ,
+    /// and duckdb_value_is_null is unreliable for these types. The only reliable method
+    /// is re-executing the query with TZ columns cast to VARCHAR at the SQL level.
+    private static func patchTzColumns(
+        _ raw: inout DuckDBRawResult, query: String, connection: duckdb_connection
+    ) {
+        let tzTypes: Set<String> = ["TIMESTAMPTZ", "TIMETZ"]
+        let tzColIndices = raw.columnTypeNames.enumerated().compactMap { idx, name in
+            tzTypes.contains(name) ? idx : nil
+        }
+        guard !tzColIndices.isEmpty, !raw.rows.isEmpty else { return }
+
+        var castExprs: [String] = []
+        for (i, name) in raw.columns.enumerated() {
+            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
+            if tzColIndices.contains(i) {
+                castExprs.append(
+                    "CASE WHEN \"\(escaped)\" IS NULL THEN NULL ELSE CAST(\"\(escaped)\" AS VARCHAR) END AS \"\(escaped)\""
+                )
+            } else {
+                castExprs.append("\"\(escaped)\"")
+            }
+        }
+
+        let wrappedQuery = "SELECT \(castExprs.joined(separator: ", ")) FROM (\(query)) AS _tz_cast"
+        var patchResult = duckdb_result()
+        guard duckdb_query(connection, wrappedQuery, &patchResult) == DuckDBSuccess else { return }
+        defer { duckdb_destroy_result(&patchResult) }
+
+        let patchRowCount = min(duckdb_row_count(&patchResult), UInt64(raw.rows.count))
+        for row in 0..<patchRowCount {
+            for colIdx in tzColIndices {
+                if duckdb_value_is_null(&patchResult, idx_t(colIdx), row) {
+                    raw.rows[Int(row)][colIdx] = nil
+                } else if let ptr = duckdb_value_varchar(&patchResult, idx_t(colIdx), row) {
+                    raw.rows[Int(row)][colIdx] = String(cString: ptr)
+                    duckdb_free(ptr)
+                }
+            }
+        }
+    }
+
+    private static func formatTimestamp(_ ts: duckdb_timestamp) -> String {
+        let parts = duckdb_from_timestamp(ts)
+        let d = parts.date
+        let t = parts.time
+        let micros = t.micros % 1_000_000
+        if micros == 0 {
+            return String(
+                format: "%04d-%02d-%02d %02d:%02d:%02d",
+                d.year, d.month, d.day, t.hour, t.min, t.sec
+            )
+        }
+        return String(
+            format: "%04d-%02d-%02d %02d:%02d:%02d.%06d",
+            d.year, d.month, d.day, t.hour, t.min, t.sec, micros
+        )
+    }
+
+    private static func formatTime(_ t: duckdb_time_struct) -> String {
+        let micros = t.micros % 1_000_000
+        if micros == 0 {
+            return String(format: "%02d:%02d:%02d", t.hour, t.min, t.sec)
+        }
+        return String(format: "%02d:%02d:%02d.%06d", t.hour, t.min, t.sec, micros)
+    }
+
+    private static func formatHugeInt(upper: Int64, lower: UInt64) -> String {
+        if upper == 0 {
+            return String(lower)
+        }
+        if upper == -1, lower > Int64.max.magnitude {
+            let val = ~upper
+            let low = ~lower &+ 1
+            return "-\(formatUHugeInt(upper: UInt64(val), lower: low))"
+        }
+        return formatUHugeInt(upper: UInt64(upper), lower: lower)
+    }
+
+    private static func formatUHugeInt(upper: UInt64, lower: UInt64) -> String {
+        if upper == 0 {
+            return String(lower)
+        }
+        let upperDecimal = Decimal(upper) * Decimal(sign: .plus, exponent: 0, significand: Decimal(UInt64.max) + 1)
+        let result = upperDecimal + Decimal(lower)
+        return "\(result)"
     }
 }
 
 private struct DuckDBRawResult: Sendable {
     let columns: [String]
     let columnTypeNames: [String]
-    let rows: [[String?]]
+    var rows: [[String?]]
     let rowsAffected: Int
     let executionTime: TimeInterval
     let isTruncated: Bool

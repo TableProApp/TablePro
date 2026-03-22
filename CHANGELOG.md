@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DuckDB: TIMESTAMPTZ, TIMETZ, and other temporal columns displaying as null (#424)
 - Onboarding "Get Started" button not rendering on macOS 15 until window loses focus (#420)
 - MongoDB collection loading uses `estimatedDocumentCount` and smaller schema sample for faster sidebar population
 
