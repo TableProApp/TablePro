@@ -275,6 +275,21 @@ struct HexEditorTests {
         let parsed = service.parseHex(formatted!)
         #expect(parsed == original)
     }
+
+    @Test("parseHex rejects truncated hex string ending with ellipsis")
+    func parseRejectsTruncatedHex() {
+        let result = BlobFormattingService.shared.parseHex("48 65 6C …")
+        #expect(result == nil)
+    }
+
+    @Test("formattedAsEditableHex returns truncated string with ellipsis for large data")
+    func editableHexTruncationHasEllipsis() {
+        let largeString = String(repeating: "X", count: 20_000)
+        let hex = largeString.formattedAsEditableHex()
+        #expect(hex != nil)
+        #expect(hex!.hasSuffix("…"))
+        #expect(BlobFormattingService.shared.parseHex(hex!) == nil)
+    }
 }
 
 // swiftlint:enable force_unwrapping

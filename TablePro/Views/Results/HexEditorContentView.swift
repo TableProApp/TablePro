@@ -16,7 +16,9 @@ struct HexEditorContentView: View {
     @State private var hexDumpText: String
     @State private var editableHex: String
     @State private var isValid: Bool = true
+    @State private var isTruncated: Bool = false
     @State private var byteCount: Int = 0
+    @State private var validateWorkItem: DispatchWorkItem?
 
     init(
         initialValue: String?,
@@ -29,9 +31,13 @@ struct HexEditorContentView: View {
 
         let service = BlobFormattingService.shared
         if let value = initialValue, !value.isEmpty {
+            let editHex = service.format(value, for: .edit) ?? ""
+            let truncated = editHex.hasSuffix("…")
             self._hexDumpText = State(initialValue: service.format(value, for: .detail) ?? "")
-            self._editableHex = State(initialValue: service.format(value, for: .edit) ?? "")
+            self._editableHex = State(initialValue: editHex)
             self._byteCount = State(initialValue: value.data(using: .isoLatin1)?.count ?? 0)
+            self._isTruncated = State(initialValue: truncated)
+            self._isValid = State(initialValue: !truncated)
         } else {
             self._hexDumpText = State(initialValue: "")
             self._editableHex = State(initialValue: "")
@@ -59,8 +65,12 @@ struct HexEditorContentView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
 
-                    if !isValid, !editableHex.isEmpty {
-                        Text("Invalid hex")
+                    if isTruncated {
+                        Text(String(localized: "Truncated — read only"))
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if !isValid, !editableHex.isEmpty {
+                        Text(String(localized: "Invalid hex"))
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
@@ -79,14 +89,14 @@ struct HexEditorContentView: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save") { saveHex() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!isValid)
+                    .disabled(!isValid || isTruncated)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
         .frame(width: 520, height: 400)
         .onChange(of: editableHex) { _, newValue in
-            validateHex(newValue)
+            scheduleValidation(newValue)
         }
     }
 
@@ -110,20 +120,38 @@ struct HexEditorContentView: View {
         onDismiss()
     }
 
+    private func scheduleValidation(_ hex: String) {
+        validateWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [hex] in
+            validateHex(hex)
+        }
+        validateWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+    }
+
     private func validateHex(_ hex: String) {
         if hex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             isValid = true
+            isTruncated = false
             byteCount = 0
             hexDumpText = ""
             return
         }
 
+        if hex.hasSuffix("…") {
+            isTruncated = true
+            isValid = false
+            return
+        }
+
+        isTruncated = false
         if let parsed = BlobFormattingService.shared.parseHex(hex) {
             isValid = true
             byteCount = parsed.data(using: .isoLatin1)?.count ?? 0
             hexDumpText = parsed.formattedAsHexDump() ?? ""
         } else {
             isValid = false
+            byteCount = 0
         }
     }
 }
