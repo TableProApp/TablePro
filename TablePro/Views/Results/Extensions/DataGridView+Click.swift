@@ -104,6 +104,13 @@ extension TableViewCoordinator {
             return
         }
 
+        // BLOB columns use hex editor popover
+        if columnIndex < rowProvider.columnTypes.count,
+           rowProvider.columnTypes[columnIndex].isBlobType {
+            showBlobEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+
         // Multiline values use the overlay editor instead of inline field editor
         if let value = rowProvider.value(atRow: row, column: columnIndex),
            value.containsLineBreak {

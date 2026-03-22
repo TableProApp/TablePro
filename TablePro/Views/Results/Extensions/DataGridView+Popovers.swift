@@ -101,6 +101,33 @@ extension TableViewCoordinator {
         }
     }
 
+    func showBlobEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
+        let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 520, height: 400)
+        ) { [weak self] dismiss in
+            HexEditorContentView(
+                initialValue: currentValue,
+                onCommit: { newValue in
+                    self?.commitPopoverEdit(
+                        tableView: tableView,
+                        row: row,
+                        column: column,
+                        columnIndex: columnIndex,
+                        newValue: newValue
+                    )
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     func showEnumPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
         let columnName = rowProvider.columns[columnIndex]
