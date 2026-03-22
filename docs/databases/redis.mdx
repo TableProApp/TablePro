@@ -10,163 +10,48 @@ TablePro supports Redis 6.0 and later. Keys are grouped by colon-separated names
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  <Step title="Create Connection">
+    Click **New Connection**, select **Redis**, enter host/port/password/database, and click **Create**
   </Step>
-  <Step title="Select Redis">
-    Choose **Redis** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, password (if required), and database index
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+  <Step title="Test Connection">
+    Click **Test Connection** to verify
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP | `localhost` |
-| **Port** | Redis server port | `6379` |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Password** | Redis server password (AUTH) |
-| **Database** | Database index (0-15, default `0`) |
-| **Key Separator** | Character used to group keys into namespaces (default `:`) |
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `6379` | |
+| **Password** | - | Leave empty for local dev |
+| **Database** | `0` | 0-15 |
+| **Key Separator** | `:` | Groups keys by prefix in sidebar |
 
 <Tip>
-For local development without authentication, leave the password field empty. Redis defaults to database index `0`.
+Open URLs like `redis://:password@host:6379/0` or `rediss://` (TLS) from your browser. See [Connection URL Reference](/databases/connection-urls#redis).
 </Tip>
-
-## Connection URL Format
-
-Import connections using a Redis URL.
-
-The `rediss://` scheme (note the double `s`) indicates a TLS-encrypted connection.
-
-See [Connection URL Reference](/databases/connection-urls#redis) for the full Redis URL format.
 
 ## Example Configurations
 
-### Local Development Server
+**Local**: host `localhost:6379`, no password
+**Docker**: host `localhost:6379` (or mapped port), password from `REDIS_PASSWORD` env
+**Redis Cloud**: Requires SSL/TLS, enable in connection form
+**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production
 
-```
-Name:     Local Redis
-Host:     localhost
-Port:     6379
-Password: (empty)
-Database: 0
-```
+## SSL/TLS
 
-### Docker Redis Container
-
-```
-Name:     Docker Redis
-Host:     localhost
-Port:     6379 (or your mapped port)
-Password: (password from REDIS_PASSWORD env var)
-Database: 0
-```
-
-### Redis Cloud / Managed Service
-
-```
-Name:     Redis Cloud
-Host:     redis-12345.c1.us-east-1-2.ec2.cloud.redislabs.com
-Port:     12345
-Password: (your Redis Cloud password)
-Database: 0
-```
-
-<Note>
-Managed Redis services typically require SSL/TLS. Enable it in the SSL/TLS section of the connection form.
-</Note>
-
-### Remote Server
-
-```
-Name:     Production Cache
-Host:     redis.example.com
-Port:     6379
-Password: (secure password)
-Database: 0
-```
-
-<Warning>
-For production Redis instances, consider using [SSH tunneling](/databases/ssh-tunneling) for secure connections.
-</Warning>
-
-## SSL/TLS Connections
-
-Configure SSL in the **SSL/TLS** section of the connection form.
-
-| SSL Mode | Description |
-|----------|-------------|
-| **Disabled** | No SSL encryption |
-| **Required** | Require SSL encryption |
-| **Verify CA** | Require SSL and verify the server certificate against a CA |
-
-For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS.
-
-<Tip>
-Use the `rediss://` URL scheme when importing connections that require TLS.
-</Tip>
-
-<Note>
-If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
-</Note>
-
-## SSH Tunnel Support
-
-Connect to Redis through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for setup instructions.
+Configure in **SSL/TLS** section. Managed services require SSL/TLS. Use `rediss://` URL scheme for TLS connections. For alternatives, use [SSH tunneling](/databases/ssh-tunneling).
 
 ## Features
 
-### Namespace Browsing
+**Namespace Browsing**: Keys grouped by separator (default `:`) in sidebar tree. `user:1`, `user:2` appear under `user` folder. Multi-level nesting supported (e.g., `app:cache:session:1`). Change separator in Advanced settings.
 
-After connecting, the sidebar groups keys by their separator character (default `:`) into a collapsible tree. Keys named `user:1`, `user:2`, and `session:abc` appear under `user` and `session` namespace folders:
+**Key-Value Viewing**: String (plain text), Hash (key-value rows), List (with index), Set (individual rows), Sorted Set (with scores), JSON (syntax-highlighted).
 
-1. Connect to Redis and select a database
-2. The **Keys** section in the sidebar shows namespaces with key counts
-3. Expand a namespace to see sub-namespaces and individual keys
-4. Click a key to view its value in the data grid
-5. Click a namespace to browse all keys under that prefix
+**TTL Management**: View TTL for each key. `-1` = no expiration, `-2` = doesn't exist. Update TTL directly from interface.
 
-Keys without a separator appear at the root level. Multi-level nesting is supported (e.g., `app:cache:session:1`).
-
-To change the separator character, go to the connection settings and set the **Key Separator** field in the Advanced section (default `:`).
-
-### Key-Value Viewing
-
-Values display in the data grid with type-aware formatting:
-
-- **String** values show as plain text
-- **Hash** fields display as key-value pairs in rows
-- **List** elements display with their index
-- **Set** members show as individual rows
-- **Sorted Set** members display with their scores
-- **JSON** values are syntax-highlighted
-
-### TTL Management
-
-View and manage the time-to-live (TTL) for keys:
-
-- TTL is displayed alongside each key in the data grid
-- Keys with no expiration show `-1`
-- Keys that do not exist show `-2`
-- Set or update TTL values directly from the interface
-
-### Redis CLI
-
-Execute Redis commands directly in the editor tab:
+**Redis CLI** (execute commands directly):
 
 ```redis
 -- Key operations
@@ -204,111 +89,16 @@ INFO
 DBSIZE
 ```
 
-### Supported Commands
-
-TablePro supports the full set of Redis commands:
-
-| Category | Commands |
-|----------|----------|
-| **String** | GET, SET, MGET, MSET, INCR, DECR, APPEND |
-| **Hash** | HGET, HSET, HGETALL, HDEL, HKEYS, HVALS, HLEN |
-| **List** | LPUSH, RPUSH, LPOP, RPOP, LRANGE, LLEN, LINDEX |
-| **Set** | SADD, SREM, SMEMBERS, SISMEMBER, SCARD, SUNION |
-| **Sorted Set** | ZADD, ZREM, ZRANGE, ZRANGEBYSCORE, ZCARD, ZSCORE |
-| **Key** | DEL, EXISTS, EXPIRE, TTL, TYPE, RENAME, KEYS, SCAN |
-| **Server** | PING, INFO, DBSIZE, FLUSHDB, SELECT |
-
-Commands not listed above are still sent to the server and their responses display in the results pane.
+**Supported Commands**: String (GET, SET, INCR, DECR), Hash (HGET, HSET, HGETALL), List (LPUSH, RPUSH, LRANGE), Set (SADD, SMEMBERS), Sorted Set (ZADD, ZRANGE), Key (DEL, EXPIRE, SCAN), Server (PING, INFO). All commands sent to server.
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check Redis is running (`brew services start redis`), verify correct port in `redis.conf`, check `bind` directive.
 
-**Symptoms**: "Connection refused" or timeout
+**Auth failed**: Verify password matches `requirepass` in `redis.conf`. For Redis 6.0+ ACL: `ACL SETUSER myuser on >password ~* +@all`
 
-**Causes and Solutions**:
+**Timeout**: Verify host/port, check network and firewall, whitelist IP for cloud-hosted Redis.
 
-1. **Redis server not running**
-   ```bash
-   # Check if Redis is running
-   redis-cli ping
+**Limitations**: Cluster mode unsupported, Pub/Sub and Streams limited in grid (work in CLI), large keys paginated.
 
-   # Start Redis (macOS with Homebrew)
-   brew services start redis
-   ```
-
-2. **Wrong port**
-   - Verify the port in Redis config file (`redis.conf`)
-   - Check your configuration
-
-3. **Redis not listening on the expected address**
-   - Check `bind` directive in `redis.conf`
-   - For remote connections, add the client IP or use `0.0.0.0`
-
-### Authentication Failed
-
-**Symptoms**: "NOAUTH Authentication required" or "ERR invalid password"
-
-**Solutions**:
-
-1. Verify the password matches `requirepass` in `redis.conf`
-2. For Redis 6.0+ with ACL:
-   ```redis
-   ACL LIST
-   ACL SETUSER myuser on >password ~* +@all
-   ```
-
-### Connection Timeout
-
-**Symptoms**: Connection hangs or times out
-
-**Solutions**:
-
-1. Verify the host and port are correct
-2. Check network connectivity and firewall rules
-3. For cloud-hosted Redis, ensure your IP is whitelisted
-
-## Known Limitations
-
-- **Cluster mode**: Redis Cluster with automatic sharding is not supported. Connect to individual nodes directly.
-- **Pub/Sub**: Real-time Pub/Sub subscriptions are not supported in the current version.
-- **Streams**: Redis Streams (XADD, XREAD, etc.) are not supported in the data grid, but commands work in the CLI.
-- **Modules**: RedisJSON, RediSearch, and other module commands work via the CLI but may lack specialized UI support.
-- **Large keys**: Keys with millions of elements (large lists, sets, or hashes) are paginated to prevent memory issues.
-
-## Performance Tips
-
-### Large Databases
-
-For Redis instances with millions of keys:
-
-1. Use namespace browsing to filter keys by prefix
-2. Use `SCAN` instead of `KEYS` for pattern matching in the CLI
-3. Pagination is applied automatically when browsing large collections
-
-### Memory Monitoring
-
-Check memory usage for your Redis instance:
-
-```redis
-INFO memory
-MEMORY USAGE mykey
-DBSIZE
-```
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote Redis servers
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the query editor features
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export Redis data
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Browse and edit key-value data in the data grid
-  </Card>
-</CardGroup>
+**Performance**: Use namespace browsing for filtering, use `SCAN` instead of `KEYS` in CLI, check memory with `INFO memory`.

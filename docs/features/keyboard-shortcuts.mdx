@@ -293,20 +293,10 @@ Results are grouped by type (tables, views, system tables, databases, schemas, r
 
 ## Global Shortcuts
 
-### Standard macOS
-
 | Action | Shortcut |
 |--------|----------|
 | Quit application | `Cmd+Q` |
-| Hide application | `Cmd+H` |
-| Hide others | `Cmd+Option+H` |
-| Show all | - |
 | Preferences | `Cmd+,` |
-
-### Help
-
-| Action | Shortcut |
-|--------|----------|
 | Search documentation | `Cmd+?` |
 
 ## Customizing Shortcuts
@@ -354,17 +344,7 @@ System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassig
 
 ### Resetting to Defaults
 
-Click **Reset to Defaults** at the bottom of the Keyboard settings to restore all shortcuts to their original values.
-
-### Shortcut Categories
-
-| Category | Examples |
-|----------|----------|
-| **File** | New Connection, New Query Tab, Close Tab, Save Changes |
-| **Edit** | Copy as CSV, Copy as JSON, Export, Import |
-| **View** | Toggle Sidebar, Toggle Cell Inspector, Query History |
-| **Tabs** | Next Tab, Previous Tab |
-| **AI** | Toggle AI Chat, Explain with AI, Optimize with AI |
+Click **Reset to Defaults** to restore all shortcuts to their original values.
 
 <Note>
 Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS convention and cannot be customized.
@@ -372,153 +352,16 @@ Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS conventi
 
 ## Tips for Efficiency
 
-### Most Used Shortcuts
-
-Start with these five:
+Master these five shortcuts first:
 
 1. `Cmd+Enter` - Execute query
 2. `Cmd+N` - New connection
 3. `Cmd+Y` - Query history
 4. `Cmd+F` - Find
-5. `Cmd+C` / `Cmd+V` - Copy/Paste
+5. `Cmd+S` - Save changes
 
-### Workflow Tips
-
-**Quick query iteration**:
-1. Write query in editor
-2. `Cmd+Enter` to run
-3. Make changes
-4. `Cmd+Enter` again
-
-**Exploring data**:
-1. Click table in sidebar
-2. View data in grid
-3. `Cmd+Enter` with custom query
-4. `Cmd+Y` to find previous queries
-
-**Editing data**:
-1. Navigate with arrow keys
-2. `Enter` to edit cell
-3. Type new value
-4. `Tab` to move to next cell
-5. `Cmd+S` to save all changes
-
-### Memory Techniques
-
-**Group by context**:
-- All `Cmd+` shortcuts are primary actions
-- Add `Shift` for variations (e.g., `Cmd+Z` undo -> `Cmd+Shift+Z` redo)
-- Add `Option` for alternatives
-
-**Common patterns**:
-- `Cmd+[letter]` - Common action (N=new, W=close, Q=quit)
-- `Cmd+Shift+[letter]` - Variation of common action
-- Arrow keys - Navigation
-- `Tab` / `Shift+Tab` - Next/Previous
-
-## Cheat Sheet
-
-```
-=== SQL Editor ===
-Cmd+Enter      Execute query
-Opt+Cmd+E      Explain query
-Opt+Cmd+F      Format SQL
-Cmd+F          Find
-Cmd+Z          Undo
-Cmd+Shift+Z    Redo
-
-=== Data Grid ===
-Arrow keys     Navigate cells
-Enter          Edit cell
-Tab            Next cell
-Cmd+C          Copy
-Delete         Delete row
-
-=== Data Changes ===
-Cmd+S          Commit changes
-Cmd+Z          Undo
-Cmd+Shift+Z    Redo
-Cmd+Shift+P    Preview SQL
-
-=== Tabs ===
-Cmd+T          New query tab
-Cmd+W          Close tab
-Cmd+1-9        Switch to tab N
-Cmd+Shift+[    Previous tab
-Cmd+Shift+]    Next tab
-
-=== Vim Mode (when enabled) ===
-Escape         Normal mode
-i/a/o          Enter Insert mode
-v/V            Visual / Visual Line
-h/j/k/l        Left/Down/Up/Right
-w/b/e          Word motions
-^/_            First non-blank char
-dd/yy/cc       Delete/Yank/Change line
-:w             Execute query
-:q             Close tab
-
-=== Application ===
-Cmd+N          New connection
-Cmd+Y          Query history
-Cmd+Shift+L    Toggle AI Chat
-Cmd+L          Explain with AI
-Cmd+Opt+L      Optimize with AI
-Cmd+,          Settings
-Cmd+P          Quick Switcher
-Cmd+W          Close window
-Cmd+Q          Quit
-```
+Most other shortcuts follow patterns: `Cmd+` for primary actions, add `Shift` or `Option` for variations.
 
 ## Accessibility
 
-### VoiceOver Support
-
-TablePro works with macOS VoiceOver:
-
-- Navigate with `Control+Option+Arrow` keys
-- Interact with `Control+Option+Space`
-- All UI elements are labeled
-
-### Keyboard-Only Navigation
-
-TablePro is fully usable without a mouse:
-
-1. `Tab` moves between major UI sections
-2. Arrow keys navigate within sections
-3. `Enter` or `Space` activates controls
-4. `Escape` dismisses dialogs/menus
-
-## Troubleshooting
-
-### Shortcut Not Working
-
-1. **Check focus**: Make sure the correct panel has focus
-2. **Check conflicts**: Another app may be capturing the shortcut
-3. **Check modifiers**: Verify you're pressing the right modifier keys
-
-### System-Wide Conflicts
-
-If a shortcut doesn't work, check **System Settings** > **Keyboard** > **Keyboard Shortcuts** for conflicts with:
-
-- Mission Control
-- Spotlight
-- Input Sources
-- App Shortcuts
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Practice editor shortcuts
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Master grid navigation
-  </Card>
-  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
-    Use history shortcuts
-  </Card>
-  <Card title="Settings" icon="gear" href="/customization/settings">
-    Configure TablePro
-  </Card>
-</CardGroup>
+TablePro is fully keyboard-navigable. Tab moves between UI sections, arrow keys navigate within them. VoiceOver is supported with standard `Control+Option` navigation.

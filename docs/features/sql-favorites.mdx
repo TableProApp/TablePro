@@ -7,53 +7,9 @@ description: Save frequently used queries with optional keyword shortcuts for au
 
 Save queries you run often as favorites. Organize them in folders, assign keyword shortcuts, and insert them from the sidebar or type a keyword to expand via autocomplete.
 
-## Saving a favorite
+Right-click in the editor or Query History and pick **Save as Favorite**, or click **+ New Favorite** in the Favorites sidebar. Enter a name, optional autocomplete keyword, SQL, and scope (global or per-connection).
 
-Three ways to save a query:
-
-- **Right-click in the editor** and pick **Save as Favorite...**
-- **Right-click a history entry** in the Query History panel and pick **Save as Favorite**
-- Click **+ New Favorite** in the Favorites sidebar tab
-
-The dialog has four fields:
-
-| Field | Description |
-|-------|-------------|
-| Name | A short name for the query |
-| Keyword | Optional alias that expands to the full query via autocomplete |
-| Query | The SQL text |
-| Global | When on, the favorite shows in every connection |
-
-## Sidebar tab
-
-The sidebar has a **Tables / Favorites** segmented control at the top. Switch to the **Favorites** tab to see your saved queries.
-
-The Favorites tab supports:
-
-- **Folders** with nesting (right-click a folder to rename, add subfolders, or delete)
-- **Search** that filters by name, keyword, and query text
-- **Double-click** to insert the query into the current editor
-- **Context menu** to edit, copy query, insert, run in a new tab, move to a folder, or delete
-- **Multi-select** with Cmd+click, then Delete key to remove selected items
-
-### Folders
-
-Create folders from the **+ folder** button at the bottom of the sidebar, or from a folder's context menu. Deleting a folder moves its children up to the parent level rather than deleting them.
-
-To move a favorite between folders, right-click it and use the **Move to** submenu.
-
-## Keyword expansion
-
-Assign a keyword to a favorite and it appears as an autocomplete suggestion with a star icon. Selecting it replaces the typed keyword with the full query.
-
-Keywords must be unique per scope (global or per-connection). The dialog warns if a keyword shadows a SQL keyword like `SELECT` or `WHERE`, but does not block saving.
-
-### Scope
-
-- **Global** favorites are visible in all connections.
-- **Connection-scoped** favorites are visible only in the connection they were created for.
-
-New favorites created from the sidebar default to connection-scoped. Favorites saved from the history panel are always global.
+Switch to the **Favorites** tab to browse saved queries. Organize with folders (right-click to manage). Double-click a favorite to insert it, or right-click to edit, copy, run, move, or delete. Assign a unique keyword to expand as an autocomplete suggestion. Global favorites visible in all connections; connection-scoped only in that connection.
 
 ## Storage
 

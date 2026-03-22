@@ -10,44 +10,25 @@ TablePro supports MySQL 5.7+, MySQL 8.0+, and MariaDB 10.x+. Both databases shar
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select Database Type">
-    Choose **MySQL** or **MariaDB** from the type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, username, password, and optionally a default database
+  <Step title="Create Connection">
+    Click **New Connection**, select **MySQL** or **MariaDB**, enter host/port/username/password, and click **Create**
   </Step>
   <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+    Click **Test Connection** to verify
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP | `localhost` |
-| **Port** | MySQL server port | `3306` |
-| **Username** | MySQL user | `root` |
-| **Password** | User password | - |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Database** | Default database to use after connecting |
+| Field | Default |
+|-------|---------|
+| **Host** | `localhost` |
+| **Port** | `3306` |
+| **Username** | `root` |
+| **Database** | Leave empty to see all databases (optional) |
 
 <Tip>
-Leaving the database field empty shows all databases the user has access to.
-</Tip>
-
-<Tip>
-You can also connect by opening a `mysql://` or `mariadb://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
+Open URLs like `mysql://user:pass@host/db` from your browser to connect directly. See [Connection URL Reference](/databases/connection-urls) for details.
 </Tip>
 
 {/* Screenshot: MySQL connection form */}
@@ -66,105 +47,18 @@ You can also connect by opening a `mysql://` or `mariadb://` URL from your brows
 
 ## Example Configurations
 
-### Local Development Server
-
-```
-Name:     Local MySQL
-Host:     localhost
-Port:     3306
-Username: root
-Password: (your password)
-Database: (empty)
-```
-
-### Docker MySQL Container
-
-```
-Name:     Docker MySQL
-Host:     localhost
-Port:     3306 (or your mapped port)
-Username: root
-Password: (password from MYSQL_ROOT_PASSWORD)
-Database: (empty)
-```
-
-### MAMP Pro
-
-```
-Name:     MAMP MySQL
-Host:     localhost
-Port:     8889 (MAMP default)
-Username: root
-Password: root
-Database: (empty)
-```
-
-### Remote Server
-
-```
-Name:     Production DB
-Host:     db.example.com
-Port:     3306
-Username: app_user
-Password: (secure password)
-Database: production
-```
-
-<Warning>
-For production databases, consider using [SSH tunneling](/databases/ssh-tunneling) for secure connections.
-</Warning>
+**Local**: host `localhost:3306`, user `root`
+**Docker**: host `localhost:3306` (or mapped port), password from `MYSQL_ROOT_PASSWORD` env
+**MAMP Pro**: host `localhost:8889`, user/pass `root:root`
+**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for production servers
 
 ## MySQL vs MariaDB
 
-TablePro uses the same driver for both. A few differences to note:
-
-| Feature | MySQL 8.0 | MariaDB 10.x |
-|---------|-----------|--------------|
-| Default auth | `caching_sha2_password` | `mysql_native_password` |
-| JSON support | Native | Compatible |
-| Window functions | Yes | Yes |
-| CTEs | Yes | Yes |
-
-<Note>
-If you encounter authentication issues with MySQL 8.0, see the [Authentication Troubleshooting](#mysql-80-authentication) section.
-</Note>
+Same driver for both. MySQL 8.0 defaults to `caching_sha2_password` auth (vs MariaDB's `mysql_native_password`). Both support JSON, window functions, and CTEs.
 
 ## Features
 
-### Browsing Databases
-
-After connecting, the sidebar shows all databases accessible to your user:
-
-1. Click the connection name in the sidebar
-2. Expand a database to see its tables
-3. Click a table to view its contents
-
-{/* Screenshot: Sidebar showing expanded MySQL database with tables */}
-<Frame caption="Database browser">
-  <img
-    className="block dark:hidden"
-    src="/images/mysql-database-browser.png"
-    alt="Database browser"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mysql-database-browser-dark.png"
-    alt="Database browser"
-  />
-</Frame>
-
-### Table Information
-
-For each table, TablePro shows:
-
-- **Structure**: Column definitions, types, and constraints
-- **Indexes**: All indexes including primary keys
-- **Foreign Keys**: Relationships to other tables
-- **DDL**: The CREATE TABLE statement
-
-### Query Execution
-
-Execute queries with full MySQL syntax support:
+Sidebar shows all accessible databases, tables, structure (columns, indexes, foreign keys), and DDL. Full MySQL syntax support for queries:
 
 ```sql
 -- Select with JSON
@@ -194,158 +88,16 @@ SELECT * FROM category_tree;
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check MySQL is running (`brew services start mysql`), verify correct port/host, ensure `skip-networking` is not set.
 
-**Symptoms**: "Connection refused" or "Can't connect to MySQL server"
+**Access denied**: Verify credentials and user privileges with `SHOW GRANTS FOR 'user'@'host';`
 
-**Causes and Solutions**:
+**MySQL 8.0 auth issues**: Use native password with `ALTER USER 'username'@'localhost' IDENTIFIED WITH mysql_native_password BY 'password';` or set `default_authentication_plugin=mysql_native_password` in `my.cnf`.
 
-1. **MySQL server not running**
-   ```bash
-   # Check if MySQL is running
-   mysqladmin ping -h localhost -u root -p
+### SSL/TLS
 
-   # Start MySQL (macOS with Homebrew)
-   brew services start mysql
-   ```
-
-2. **Wrong port**
-   - Verify the port in MySQL: `SHOW VARIABLES LIKE 'port';`
-   - Check your configuration file
-
-3. **MySQL not listening on TCP**
-   - Check `skip-networking` is not set in `my.cnf`
-   - Ensure `bind-address` includes your client IP
-
-### Access Denied
-
-**Symptoms**: "Access denied for user 'xxx'@'localhost'"
-
-**Solutions**:
-
-1. Verify username and password
-2. Check user privileges:
-   ```sql
-   SHOW GRANTS FOR 'username'@'localhost';
-   ```
-3. Grant necessary permissions:
-   ```sql
-   GRANT ALL PRIVILEGES ON database_name.* TO 'username'@'localhost';
-   FLUSH PRIVILEGES;
-   ```
-
-### MySQL 8.0 Authentication
-
-MySQL 8.0 defaults to `caching_sha2_password`, which may cause connection issues.
-
-**Option 1**: Use native password for a specific user
-```sql
-ALTER USER 'username'@'localhost'
-IDENTIFIED WITH mysql_native_password BY 'password';
-```
-
-**Option 2**: Change the default authentication method
-```ini
-# In my.cnf
-[mysqld]
-default_authentication_plugin=mysql_native_password
-```
-
-### SSL/TLS Connections
-
-Configure SSL in the **SSL/TLS** section of the connection form.
-
-| SSL Mode | MySQL Behavior |
-|----------|----------------|
-| **Disabled** | SSL is explicitly disabled |
-| **Preferred** | Uses SSL if the server supports it, falls back to unencrypted |
-| **Required** | Enforces SSL encryption (`MYSQL_OPT_SSL_ENFORCE`) |
-| **Verify CA** | Enforces SSL and verifies the server certificate against the CA |
-| **Verify Identity** | Enforces SSL, verifies CA, and validates the server hostname |
-
-For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate file. Optionally provide client certificate and key files for mutual TLS.
-
-<Tip>
-Most cloud MySQL providers (AWS RDS, Google Cloud SQL, Azure) require SSL. Use **Verify CA** with the provider's CA certificate for best security.
-</Tip>
-
-<Note>
-If you don't need SSL but want encrypted connections, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel.
-</Note>
-
-{/* Screenshot: MySQL SSL/TLS configuration */}
-<Frame caption="MySQL SSL/TLS configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/mysql-ssl-config.png"
-    alt="MySQL SSL/TLS configuration"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mysql-ssl-config-dark.png"
-    alt="MySQL SSL/TLS configuration"
-  />
-</Frame>
+Configure in **SSL/TLS** section. Cloud providers (AWS RDS, Google Cloud SQL, Azure) typically require SSL. Use **Verify CA** with the provider's certificate. Optionally provide client cert/key for mutual TLS. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
 
 ## Performance Tips
 
-### Large Result Sets
-
-For tables with millions of rows:
-
-1. Use `LIMIT` in your queries
-2. Enable pagination in the data grid settings
-3. Create appropriate indexes for common queries
-
-### Complex Queries
-
-1. Use `EXPLAIN` to analyze query plans:
-   ```sql
-   EXPLAIN SELECT * FROM users WHERE email LIKE '%@example.com';
-   ```
-
-2. Monitor query execution time in the results panel
-
-## Startup Commands
-
-Set session variables that apply automatically on every connection. Configure these in the **Advanced** tab of the connection form.
-
-Typical MySQL startup commands:
-
-```sql
-SET time_zone = '+00:00';
-SET NAMES utf8mb4;
-SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE';
-SET group_concat_max_len = 1000000;
-```
-
-For example, setting `time_zone` ensures all `DATETIME` and `TIMESTAMP` queries return results in UTC regardless of the server's configured timezone. This is especially useful when your application servers and database server are in different timezones.
-
-See [Startup Commands](/databases/overview#startup-commands) for more details.
-
-## Character Sets
-
-TablePro defaults to UTF-8 (utf8mb4) for MySQL connections, which handles international characters, emoji, and special symbols correctly.
-
-If you encounter encoding issues, verify your table/column character sets:
-
-```sql
-SHOW CREATE TABLE table_name;
-```
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote MySQL servers
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the SQL editor features
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export MySQL data
-  </Card>
-  <Card title="Table Structure" icon="table" href="/features/table-structure">
-    View and modify table structures
-  </Card>
-</CardGroup>
+Use `LIMIT` for large tables, enable pagination, create indexes, and use `EXPLAIN` for slow queries. Set session variables (timezone, encoding) via [Startup Commands](/databases/overview#startup-commands).

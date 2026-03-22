@@ -197,55 +197,13 @@ xcrun stapler staple build/Release/TablePro-arm64.app
 
 ## Troubleshooting
 
-### Build Failures
+**Missing libraries**: Run `scripts/download-libs.sh` and verify libraries exist for your architecture.
 
-**Missing library errors**:
-```
-ld: library not found for -lmariadb
-```
+**Code signing errors**: Build script disables signing. For manual builds, add `CODE_SIGN_IDENTITY=""` and `CODE_SIGNING_REQUIRED=NO`.
 
-Fix:
-1. Check `Libs/` directory exists
-2. Run `scripts/build-release.sh` to prepare libraries
-3. Verify `libmariadb.a` exists for the target architecture
+**Architecture mismatch**: Clean build and ensure libraries match target. Use the build script.
 
-**Code signing errors**:
-```
-Code signing is required for product type 'Application'
-```
-
-Fix: The build script disables code signing. For manual builds, add:
-```
-CODE_SIGN_IDENTITY=""
-CODE_SIGNING_REQUIRED=NO
-```
-
-**Architecture mismatch**:
-```
-building for macOS-arm64 but attempting to link with file built for macOS-x86_64
-```
-
-Fix:
-1. Clean build folder
-2. Make sure libraries match the target architecture
-3. Use the build script, which handles library architecture
-
-### Xcode Issues
-
-**Scheme not found**:
-1. Open Xcode
-2. Product > Scheme > Manage Schemes
-3. Check that the TablePro scheme is enabled
-
-**Derived data issues**:
-```bash
-rm -rf ~/Library/Developer/Xcode/DerivedData
-```
-
-**Index issues**:
-```bash
-rm -rf ~/Library/Developer/Xcode/DerivedData/*/Index
-```
+**Xcode issues**: Delete derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData`
 
 ## CI/CD
 
@@ -324,19 +282,3 @@ Typical sizes (v0.1.1):
 | DMG (arm64) | ~3.5 MB |
 | DMG (x86_64) | ~3.5 MB |
 
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Setup" icon="wrench" href="/development/setup">
-    Development environment setup
-  </Card>
-  <Card title="Architecture" icon="sitemap" href="/development/architecture">
-    Codebase architecture
-  </Card>
-  <Card title="Code Style" icon="code" href="/development/code-style">
-    Coding conventions
-  </Card>
-  <Card title="GitHub" icon="github" href="https://github.com/datlechin/tablepro">
-    Source repository
-  </Card>
-</CardGroup>

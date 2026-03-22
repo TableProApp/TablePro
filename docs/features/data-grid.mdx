@@ -23,27 +23,7 @@ Query results and table contents render in a spreadsheet-style grid. Edit cells 
 
 ## Viewing Data
 
-### Opening Tables
-
-To view a table's contents:
-
-1. Expand a database in the sidebar
-2. Click on a table name
-3. The data grid loads the table contents
-
-Or run a query:
-
-```sql
-SELECT * FROM users;
-```
-
-### Result Information
-
-The data grid header shows:
-
-- **Row count**: Number of rows returned
-- **Execution time**: How long the query took
-- **Affected rows**: For UPDATE/DELETE queries
+Click a table in the sidebar or run a `SELECT` query to load data into the grid. The header shows row count, execution time, and affected rows for UPDATE/DELETE queries.
 
 ## Column Features
 
@@ -79,22 +59,6 @@ Sorting is done locally on the loaded data. For server-side sorting, use `ORDER 
   />
 </Frame>
 
-### Column Types
-
-Each data type gets appropriate rendering:
-
-| Type | Display |
-|------|---------|
-| Text/Varchar | Plain text |
-| Integer | Right-aligned numbers |
-| Decimal/Float | Formatted numbers |
-| Boolean | True/False |
-| Date/Time | Formatted date strings |
-| NULL | Styled "NULL" indicator |
-| JSON | Formatted JSON (expandable) |
-| ENUM | Dropdown popover editor |
-| SET | Checkbox popover editor |
-| Binary/BLOB | Binary indicator |
 
 ## Data Editing
 
@@ -120,12 +84,6 @@ To edit a cell:
   />
 </Frame>
 
-### Edit Modes
-
-| Mode | Trigger | Description |
-|------|---------|-------------|
-| View | Default | Read-only display |
-| Edit | Double-click | Modify cell value |
 
 ### Date/Time Picker
 
@@ -341,22 +299,9 @@ See [Change Tracking](/features/change-tracking) for full details on how changes
 Editing is available for simple `SELECT * FROM table` queries. Complex queries with joins or aggregations are read-only.
 </Warning>
 
-### Adding New Rows
+### Adding and Deleting Rows
 
-To add a new row:
-
-1. Click the **+** button in the toolbar (or use keyboard shortcut)
-2. Fill in the values for each column
-3. Apply changes to save
-
-### Deleting Rows
-
-To delete rows:
-
-1. Select the row(s) to delete
-2. Click the **Delete** button or press `Delete` key
-3. Confirm the deletion
-4. Apply changes to execute
+Click the **+** button to add a new row, or select row(s) and press `Delete` to remove them. Changes are queued until you click **Commit**.
 
 ## Change Indicators
 
@@ -417,61 +362,16 @@ When no row is selected, the Cell Inspector shows table metadata:
 Connections with Safe Mode set to Read-Only and complex query results are not editable. Editing is disabled in the Cell Inspector for those contexts. See [Safe Mode](/features/safe-mode) for details.
 </Note>
 
-## Navigation
+## Keyboard Navigation
 
-### Keyboard Navigation
+Use arrow keys to move between cells. Press `Enter` to edit, `Escape` to cancel. `Tab` / `Shift+Tab` move to the next/previous cell. `Cmd+Home` / `Cmd+End` jump to first/last row.
 
-| Key | Action |
-|-----|--------|
-| Arrow keys | Move between cells |
-| `Tab` | Move to next cell |
-| `Shift+Tab` | Move to previous cell |
-| `Enter` | Edit selected cell |
-| `Escape` | Cancel edit / Deselect |
-| `Home` | Go to first cell in row |
-| `End` | Go to last cell in row |
-| `Cmd+Home` | Go to first row |
-| `Cmd+End` | Go to last row |
-| `Page Up` | Scroll up one page |
-| `Page Down` | Scroll down one page |
 
-### Mouse Navigation
+## Selecting & Copying
 
-- **Click**: Select a cell
-- **Double-click**: Edit a cell
-- **Click + drag**: Select multiple cells
-- **Scroll wheel**: Vertical scrolling
-- **Shift + scroll**: Horizontal scrolling
+Click a cell to select it. Drag to select a range, or Shift+click to select a range. Click row numbers to select entire rows, or Cmd+click for multiple non-contiguous rows.
 
-## Selection
-
-### Selecting Cells
-
-- **Single cell**: Click the cell
-- **Cell range**: Click and drag, or click first cell then Shift+click last cell
-- **Entire row**: Click the row number
-- **Multiple rows**: Click row number and drag, or Cmd+click for non-contiguous
-
-### Copying Data
-
-1. Select the cells or rows to copy
-2. Press `Cmd+C`
-3. Paste into another application
-
-Multiple copy formats:
-
-| Format | Shortcut | Description |
-|--------|----------|-------------|
-| Tab-separated | `Cmd+C` | Default copy, compatible with spreadsheets |
-| CSV | `Cmd+Shift+C` | Comma-separated values |
-| JSON | `Cmd+Option+J` | JSON array of objects |
-| TSV | Available from context menu | Tab-separated with header |
-
-The default tab-separated format works with:
-- Excel
-- Numbers
-- Google Sheets
-- Text editors
+Select cells and press `Cmd+C` for TSV, `Cmd+Shift+C` for CSV, or `Cmd+Option+J` for JSON.
 
 {/* Screenshot: Copy options in context menu */}
 <Frame caption="Copy options in context menu">
@@ -489,30 +389,7 @@ The default tab-separated format works with:
 
 ## Pagination
 
-Large result sets are paginated.
-
-### Page Controls
-
-- **First page**: Go to the beginning
-- **Previous page**: Go back one page
-- **Page number**: Current page / total pages
-- **Next page**: Go forward one page
-- **Last page**: Go to the end
-
-### Page Size
-
-Configure the default page size in **Settings** > **Data Grid**:
-
-| Option | Rows per Page |
-|--------|---------------|
-| Small | 100 |
-| Medium | 500 |
-| Large | 1,000 |
-| Custom | 10 - 100,000 |
-
-<Tip>
-Smaller page sizes load faster and use less memory. Use larger sizes when you need to see more data at once.
-</Tip>
+Large result sets are paginated. Configure page size in **Settings** > **Data Grid** (Small: 100, Medium: 500, Large: 1,000, Custom: 10–100,000). Smaller pages load faster.
 
 {/* Screenshot: Pagination controls with page navigation */}
 <Frame caption="Pagination controls with page navigation">
@@ -528,109 +405,10 @@ Smaller page sizes load faster and use less memory. Use larger sizes when you ne
   />
 </Frame>
 
-## NULL Values
+## NULL Values and Display
 
-NULL values are visually distinct:
+NULL values show as styled "NULL" text (customizable in **Settings** > **Data Grid**). Configure date format, row height, and alternate row colors in the same settings panel.
 
-- Styled text showing "NULL" (customizable)
-- Different color from regular values
-- Cannot be confused with the string "NULL"
-
-{/* Screenshot: Data grid showing NULL values */}
-<Frame caption="NULL value display">
-  <img
-    className="block dark:hidden"
-    src="/images/null-values.png"
-    alt="NULL values"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/null-values-dark.png"
-    alt="NULL values"
-  />
-</Frame>
-
-### Customizing NULL Display
-
-In **Settings** > **Data Grid**:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **NULL Display** | "NULL" | Text shown for NULL values |
-
-## Date Formatting
-
-Configure how dates are displayed:
-
-| Format | Example |
-|--------|---------|
-| ISO 8601 | 2024-12-31 23:59:59 |
-| ISO Date | 2024-12-31 |
-| US Long | 12/31/2024 11:59:59 PM |
-| US Short | 12/31/2024 |
-| EU Long | 31/12/2024 23:59:59 |
-| EU Short | 31/12/2024 |
-
-Configure in **Settings** > **Data Grid** > **Date Format**.
-
-## Row Height
-
-Adjust row height for readability:
-
-| Option | Height | Best For |
-|--------|--------|----------|
-| Compact | 20px | Dense data, more rows visible |
-| Normal | 24px | Standard viewing |
-| Comfortable | 28px | Better readability |
-| Spacious | 32px | Accessibility, touch |
-
-Configure in **Settings** > **Data Grid** > **Row Height**.
-
-{/* Screenshot: Row height comparison: Compact, Normal, Comfortable, Spacious */}
-<Frame caption="Row height comparison: Compact, Normal, Comfortable, Spacious">
-  <img
-    className="block dark:hidden"
-    src="/images/row-height-options.png"
-    alt="Row height comparison: Compact, Normal, Comfortable, Spacious"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/row-height-options-dark.png"
-    alt="Row height comparison: Compact, Normal, Comfortable, Spacious"
-  />
-</Frame>
-
-## Alternate Row Colors
-
-Alternating row colors make scanning easier:
-
-- **On**: Every other row has a subtle background color
-- **Off**: All rows have the same background
-
-Configure in **Settings** > **Data Grid** > **Show Alternate Rows**.
-
-{/* Screenshot: Data grid with alternate row colors */}
-<Frame caption="Data grid with alternate row colors">
-  <img
-    className="block dark:hidden"
-    src="/images/alternate-row-colors.png"
-    alt="Data grid with alternate row colors"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/alternate-row-colors-dark.png"
-    alt="Data grid with alternate row colors"
-  />
-</Frame>
-
-## Row Numbers
-
-The row number column (`#`) shows sequential numbers for each row. You can hide it if you prefer a cleaner view:
-
-- **On**: Row numbers visible as the first column (default)
-- **Off**: Row number column hidden
-
-Configure in **Settings** > **Data Grid** > **Show Row Numbers**.
 
 ## MongoDB Collections
 
@@ -660,77 +438,4 @@ When you make changes (insert, update, delete) in the data grid, the preview sho
 - Updates generate `db.collection.updateOne({filter}, {$set: {...}})`
 - Deletes generate `db.collection.deleteMany({_id: {$in: [...]}})`
 
-## Working with Large Datasets
 
-### Performance Tips
-
-1. **Use LIMIT**: Always limit results when exploring
-   ```sql
-   SELECT * FROM large_table LIMIT 100;
-   ```
-
-2. **Select specific columns**: Avoid `SELECT *` for tables with many columns
-   ```sql
-   SELECT id, name, email FROM users;
-   ```
-
-3. **Use pagination**: Let the data grid paginate results
-
-4. **Filter at the database**: Use WHERE clauses instead of loading all data
-   ```sql
-   SELECT * FROM orders WHERE status = 'pending';
-   ```
-
-### Memory Usage
-
-The data grid loads data in pages to manage memory:
-
-- Only visible pages are kept in memory
-- Scrolling loads new pages as needed
-- Large BLOB/TEXT columns are loaded on demand
-
-## Export Options
-
-Export data directly from the data grid:
-
-1. Run your query or open a table
-2. Click the **Export** button
-3. Choose format: CSV, JSON, SQL
-4. Select destination
-
-See [Import & Export](/features/import-export) for detailed export options.
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Copy selection | `Cmd+C` |
-| Copy as CSV | `Cmd+Shift+C` |
-| Copy as JSON | `Cmd+Option+J` |
-| Select all | `Cmd+A` |
-| Delete row | `Delete` |
-| Edit cell | `Enter` |
-| Cancel edit | `Escape` |
-| Undo | `Cmd+Z` |
-| Redo | `Cmd+Shift+Z` |
-| Commit changes | `Cmd+S` |
-| Navigate | Arrow keys |
-| Next cell | `Tab` |
-| Previous cell | `Shift+Tab` |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write queries for the data grid
-  </Card>
-  <Card title="Import & Export" icon="file-import" href="/features/import-export">
-    Export data from the grid
-  </Card>
-  <Card title="Table Structure" icon="table-columns" href="/features/table-structure">
-    View table definitions
-  </Card>
-  <Card title="Settings" icon="gear" href="/customization/settings">
-    Configure data grid options
-  </Card>
-</CardGroup>

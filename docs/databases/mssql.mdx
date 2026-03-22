@@ -13,128 +13,31 @@ FreeTDS must be built before connecting to SQL Server. Run `scripts/build-freetd
 
 ## Quick Setup
 
-<Steps>
-  <Step title="Build FreeTDS">
-    Run `scripts/build-freetds.sh` from the repository root if you haven't already
-  </Step>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select SQL Server">
-    Choose **SQL Server** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, username, password, and database name
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
-  </Step>
-</Steps>
+Run `scripts/build-freetds.sh` first. Click **New Connection**, select **SQL Server**, enter host/port/credentials/database, and click **Create**.
 
 ## Connection Settings
 
-### Required Fields
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP address | `localhost` |
-| **Port** | SQL Server port | `1433` |
-| **Username** | SQL Server login name | `sa` |
-| **Password** | Login password | - |
-| **Database** | Database name to connect to | - |
-
-<Note>
-TablePro uses SQL Server Authentication (username and password). Windows Authentication is not supported.
-</Note>
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `1433` | |
+| **Username** | `sa` | SQL Server Authentication only (no Windows Auth) |
+| **Database** | - | |
 
 ## Example Configurations
 
-### Local Development Server
-
-```
-Name:     Local SQL Server
-Host:     localhost
-Port:     1433
-Username: sa
-Password: (your password)
-Database: master
-```
-
-### Docker SQL Server Container
-
-Start a SQL Server 2022 container for local testing:
-
-```bash
-docker run \
-  -e "ACCEPT_EULA=Y" \
-  -e "SA_PASSWORD=YourStrong@Passw0rd" \
-  -p 1433:1433 \
-  --name sql-server \
-  -d mcr.microsoft.com/mssql/server:2022-latest
-```
-
-Then connect with:
-
-```
-Name:     Docker SQL Server
-Host:     localhost
-Port:     1433
-Username: sa
-Password: YourStrong@Passw0rd
-Database: master
-```
-
-<Tip>
-The `SA_PASSWORD` must meet SQL Server's complexity requirements: at least 8 characters with uppercase, lowercase, digits, and symbols.
-</Tip>
-
-### Remote Server
-
-```
-Name:     Production SQL Server
-Host:     sql.example.com
-Port:     1433
-Username: app_user
-Password: (secure password)
-Database: myapp_production
-```
-
-### Azure SQL Database
-
-```
-Name:     Azure SQL
-Host:     myserver.database.windows.net
-Port:     1433
-Username: admin@myserver
-Password: (your password)
-Database: mydb
-```
-
-<Note>
-Azure SQL Database may require the username to include the server suffix (e.g., `user@servername`) depending on your authentication configuration.
-</Note>
+**Local**: host `localhost:1433`, user `sa`, database `master`
+**Docker**: `mcr.microsoft.com/mssql/server:2022-latest`, env `ACCEPT_EULA=Y`, `SA_PASSWORD` must have uppercase/lowercase/digits/symbols
+**Remote**: Standard credentials
+**Azure SQL**: Host `server.database.windows.net`, user may need `user@servername` suffix
 
 ## Features
 
-### Schema Selection
+**Schema Selection**: Default schema is `dbo`. Switch with **Cmd+K**. Shows accessible schemas and tables.
 
-SQL Server organizes objects into schemas within a database. The default schema is `dbo`. TablePro displays all schemas your login has access to and lists tables within each.
+**Table Info**: Columns (types, nullability, defaults), indexes (clustered/non-clustered), foreign keys, DDL with constraints.
 
-Switch schemas with the database switcher (**Cmd+K**), which shows available schemas for the current database.
-
-### Table Browsing
-
-For each table, TablePro shows:
-
-- **Structure**: Columns with SQL Server data types, nullability, and default values
-- **Indexes**: Clustered and non-clustered indexes
-- **Foreign Keys**: Relationships to other tables
-- **DDL**: The table definition including constraints
-
-### Query Editor
-
-Write and execute T-SQL in the SQL editor. Pagination uses SQL Server's standard offset syntax:
+**Query Editor** (T-SQL, pagination with OFFSET/FETCH):
 
 ```sql
 -- Paginated results
@@ -160,131 +63,18 @@ WHERE TABLE_TYPE = 'BASE TABLE'
 ORDER BY TABLE_SCHEMA, TABLE_NAME;
 ```
 
-### Schema Editing
+**Schema Editing** (T-SQL with bracket notation): `ALTER TABLE [dbo].[users] ADD [col] TYPE;` `EXEC sp_rename 'dbo.table.old', 'new', 'COLUMN';` `DROP COLUMN [field];` `CREATE INDEX [IX_name] ON [dbo].[table] ([col]);`
 
-Modify table structure via T-SQL ALTER TABLE. SQL Server uses bracket notation for identifiers:
+**Foreign Keys**: Displayed in structure. Manual query: `SELECT fk.name FROM sys.foreign_keys fk...`
 
-```sql
--- Add a column
-ALTER TABLE [dbo].[users] ADD [last_login] DATETIME2 NULL;
-
--- Rename a column (requires sp_rename)
-EXEC sp_rename 'dbo.users.old_name', 'new_name', 'COLUMN';
-
--- Drop a column
-ALTER TABLE [dbo].[users] DROP COLUMN [legacy_field];
-
--- Add an index
-CREATE INDEX [IX_users_email] ON [dbo].[users] ([email]);
-```
-
-### Foreign Keys
-
-TablePro displays foreign key relationships in the table structure view. To inspect foreign keys manually:
-
-```sql
-SELECT
-    fk.name AS fk_name,
-    OBJECT_NAME(fk.parent_object_id) AS parent_table,
-    COL_NAME(fkc.parent_object_id, fkc.parent_column_id) AS parent_column,
-    OBJECT_NAME(fk.referenced_object_id) AS referenced_table,
-    COL_NAME(fkc.referenced_object_id, fkc.referenced_column_id) AS referenced_column
-FROM sys.foreign_keys fk
-JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
-ORDER BY parent_table, fk_name;
-```
-
-## Authentication
-
-TablePro uses SQL Server Authentication only. Provide a SQL Server login name and password in the connection form.
-
-**Windows Authentication** (Integrated Security / Kerberos) is not supported.
-
-To create a SQL Server login:
-
-```sql
--- Create a login
-CREATE LOGIN app_user WITH PASSWORD = 'StrongPassword1!';
-
--- Create a database user for that login
-USE mydb;
-CREATE USER app_user FOR LOGIN app_user;
-
--- Grant permissions
-ALTER ROLE db_datareader ADD MEMBER app_user;
-ALTER ROLE db_datawriter ADD MEMBER app_user;
-```
+**Authentication**: SQL Server Authentication only (username/password). No Windows Auth. Create login: `CREATE LOGIN user WITH PASSWORD = 'StrongPassword1!'; CREATE USER user FOR LOGIN user; ALTER ROLE db_datareader ADD MEMBER user;`
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Enable TCP/IP in SQL Server Configuration Manager, verify SQL Server service running, check firewall port 1433, ensure Docker started.
 
-**Symptoms**: "Unable to connect" or timeout when connecting
+**Login failed**: Verify credentials, check mixed-mode authentication enabled: `SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');` Set to 2 for mixed mode.
 
-**Causes and Solutions**:
+**FreeTDS not found**: Run `scripts/build-freetds.sh` to compile and place library.
 
-1. **SQL Server not running or not accepting TCP connections**
-
-   SQL Server Browser and TCP/IP protocol must be enabled:
-   - Open SQL Server Configuration Manager
-   - Enable TCP/IP under "SQL Server Network Configuration"
-   - Ensure SQL Server service is running
-
-2. **Port 1433 blocked by firewall**
-   - For Windows Firewall, add an inbound rule for TCP port 1433
-   - For cloud VMs, check the security group / firewall rules
-
-3. **Docker container not started**
-   ```bash
-   docker start sql-server
-   docker logs sql-server
-   ```
-
-### Login Failed
-
-**Symptoms**: "Login failed for user" error
-
-**Solutions**:
-
-1. Verify the username and password
-2. Confirm SQL Server Authentication is enabled (not Windows-only mode):
-   ```sql
-   -- Check server authentication mode (1 = Windows only, 2 = mixed mode)
-   SELECT SERVERPROPERTY('IsIntegratedSecurityOnly');
-   ```
-3. Enable mixed-mode authentication in SQL Server Management Studio under Server Properties > Security, then restart the SQL Server service
-
-### FreeTDS Not Found
-
-**Symptoms**: "FreeTDS library not found" or linker error on launch
-
-**Solution**: Run the build script from the repository root:
-
-```bash
-scripts/build-freetds.sh
-```
-
-This compiles FreeTDS and places the static library where the Xcode project expects it.
-
-## Known Limitations
-
-- **Windows Authentication not supported.** Only SQL Server Authentication (username + password) works.
-- **Named instances** (e.g., `HOSTNAME\INSTANCENAME`) are not yet supported. Connect via IP address and explicit port instead.
-- **`NTEXT`, `TEXT`, `IMAGE` columns** (deprecated since SQL Server 2005) may show limited editing support. Use `NVARCHAR(MAX)`, `VARCHAR(MAX)`, and `VARBINARY(MAX)` in new schemas.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote SQL Server instances
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the SQL editor features
-  </Card>
-  <Card title="Change Tracking" icon="pen" href="/features/change-tracking">
-    Edit rows and save changes with SQL preview
-  </Card>
-  <Card title="Table Structure" icon="table" href="/features/table-structure">
-    View and modify table structures
-  </Card>
-</CardGroup>
+**Limitations**: SQL Server Auth only, no Windows Auth, named instances unsupported (use IP:port), NTEXT/TEXT/IMAGE deprecated (use *MAX types).

@@ -9,33 +9,21 @@ Download, install, and run your first query.
 
 ## Step 1: Download TablePro
 
-The fastest way is via [Homebrew](https://brew.sh):
-
+Via Homebrew (fastest):
 ```bash
 brew install --cask tablepro
 ```
 
-<Tip>
-If you installed via Homebrew, skip to [Step 3](#step-3-create-your-first-connection).
-</Tip>
-
-Alternatively, download manually:
-
-1. Visit the [GitHub Releases page](https://github.com/datlechin/tablepro/releases)
-2. Download the DMG file for your Mac:
-   - **Apple Silicon** (M1/M2/M3/M4/M5): `TablePro-arm64.dmg`
-   - **Intel**: `TablePro-x86_64.dmg`
-
-<Note>
-Not sure which chip your Mac has? Click the Apple menu and select **About This Mac**. Look for "Chip" (Apple Silicon) or "Processor" (Intel).
-</Note>
+Or manually: Download from [GitHub Releases](https://github.com/datlechin/tablepro/releases):
+- **Apple Silicon (M1+)**: `TablePro-arm64.dmg`
+- **Intel**: `TablePro-x86_64.dmg`
 
 ## Step 2: Install TablePro
 
-1. Open the downloaded DMG file
-2. Drag **TablePro** to your **Applications** folder
+1. Open the DMG file
+2. Drag **TablePro** to **Applications**
 3. Eject the DMG
-4. Open TablePro from your Applications folder
+4. Launch TablePro
 
 {/* Screenshot: DMG installation window showing drag to Applications */}
 <Frame caption="Drag TablePro to Applications">
@@ -53,19 +41,12 @@ Not sure which chip your Mac has? Click the Apple menu and select **About This M
 
 ## Step 3: Create Your First Connection
 
-The Welcome screen appears on launch. Create a new database connection from here.
+Click **New Connection** and fill in your database details. Common examples:
 
-### For MySQL/MariaDB
-
-1. Click **New Connection**
-2. Select **MySQL** or **MariaDB** as the database type
-3. Fill in the connection details:
-   - **Name**: A friendly name for this connection (e.g., "Local MySQL")
-   - **Host**: `localhost` (or your server address)
-   - **Port**: `3306` (default)
-   - **Username**: Your database username (e.g., `root`)
-   - **Password**: Your database password
-   - **Database**: (Optional) Default database to connect to
+**MySQL**: Host `localhost`, port `3306`, username/password
+**PostgreSQL**: Host `localhost`, port `5432`, username/password
+**SQLite**: Browse to `.sqlite` or `.db` file (no auth required)
+**MongoDB**: Host `localhost`, port `27017`, optional username/password
 
 {/* Screenshot: Connection form with MySQL selected and fields filled in */}
 <Frame caption="Creating a MySQL connection">
@@ -80,58 +61,6 @@ The Welcome screen appears on launch. Create a new database connection from here
     alt="MySQL connection form"
   />
 </Frame>
-
-### For PostgreSQL
-
-1. Click **New Connection**
-2. Select **PostgreSQL** as the database type
-3. Fill in the connection details:
-   - **Name**: A friendly name (e.g., "Local PostgreSQL")
-   - **Host**: `localhost` (or your server address)
-   - **Port**: `5432` (default)
-   - **Username**: Your database username (e.g., `postgres`)
-   - **Password**: Your database password
-   - **Database**: The database name to connect to
-
-### For Amazon Redshift
-
-1. Click **New Connection**
-2. Select **Amazon Redshift** as the database type
-3. Fill in the connection details:
-   - **Name**: A friendly name (e.g., "Redshift Warehouse")
-   - **Host**: Your cluster endpoint (e.g., `my-cluster.abc123.us-east-1.redshift.amazonaws.com`)
-   - **Port**: `5439` (default)
-   - **Username**: Your Redshift username (e.g., `awsuser`)
-   - **Password**: Your password
-   - **Database**: The database name (usually `dev`)
-
-### For SQLite
-
-1. Click **New Connection**
-2. Select **SQLite** as the database type
-3. Click **Browse** to select your SQLite database file
-4. Give your connection a name
-
-<Tip>
-SQLite databases don't require authentication. Just select the `.sqlite` or `.db` file on your Mac.
-</Tip>
-
-### For MongoDB
-
-1. Click **New Connection**
-2. Select **MongoDB** as the database type
-3. Fill in the connection details:
-   - **Name**: A friendly name (e.g., "Local MongoDB")
-   - **Host**: `localhost` (or your server address)
-   - **Port**: `27017` (default)
-   - **Username**: Your database username (if authentication is enabled)
-   - **Password**: Your database password
-   - **Database**: The database name to connect to
-   - **Auth Database**: Authentication database (defaults to `admin`)
-
-<Tip>
-For local MongoDB instances without authentication, you only need the host and port. Connections use the `mongodb://` URI protocol internally.
-</Tip>
 
 ## Step 4: Test and Connect
 
@@ -187,32 +116,8 @@ SELECT * FROM users LIMIT 10;
 3. Press `Cmd+Enter` to execute the query
 4. View the results in the data grid below
 
-## Next Steps
+## What's Next
 
-You're all set. Here's what to explore next:
+Explore [connections](/databases/overview), [SSH tunneling](/databases/ssh-tunneling), [keyboard shortcuts](/features/keyboard-shortcuts), or [AI features](/features/ai-chat).
 
-<CardGroup cols={2}>
-  <Card title="Database Connections" icon="plug" href="/databases/overview">
-    Manage and organize your connections.
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Syntax highlighting, autocomplete, and multi-cursor editing.
-  </Card>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect to remote databases through SSH.
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Speed up your workflow with keyboard shortcuts.
-  </Card>
-  <Card title="AI SQL Assistant" icon="sparkles" href="/features/ai-chat">
-    Write, explain, and optimize SQL with AI.
-  </Card>
-</CardGroup>
-
-## Need Help?
-
-If you run into issues:
-
-- Check the [Installation guide](/installation) for system requirements and troubleshooting
-- Review the database-specific guides for connection troubleshooting
-- [Open an issue](https://github.com/datlechin/tablepro/issues) on GitHub
+Need help? Check [Installation](/installation) or [open an issue](https://github.com/datlechin/tablepro/issues) on GitHub.

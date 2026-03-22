@@ -23,12 +23,7 @@ Passwords are not synced by default. Enable **Password sync** under the Connecti
 
 ## Enabling iCloud Sync
 
-1. Open **Settings** (`Cmd+,`) and select the **Sync** tab
-2. Toggle **iCloud Sync** on
-3. Choose which categories to sync using the per-category toggles
-4. Click **Sync Now** or wait for the next automatic sync
-
-Sync is off by default. You must opt in explicitly.
+Open **Settings** (`Cmd+,`) > **Sync**, toggle iCloud Sync on, choose which categories to sync, and click **Sync Now**. Sync is off by default.
 
 {/* Screenshot: Sync settings tab */}
 <Frame caption="iCloud Sync settings">
@@ -44,65 +39,11 @@ Sync is off by default. You must opt in explicitly.
   />
 </Frame>
 
-## Sync categories
+Each data type has its own toggle: Connections, Groups & Tags, App Settings, and Query History (with a configurable limit: 100, 500, 1,000, or unlimited). Enable **Passwords** to sync credentials via iCloud Keychain (end-to-end encrypted). Off by default.
 
-Each data type has its own toggle. Sync connections but not history, or settings but not connections.
+TablePro auto-syncs on app launch, when you switch back to it, and 2 seconds after you modify synced data. Use the **Sync Now** button to trigger a manual sync.
 
-| Category | What it includes |
-|----------|-----------------|
-| **Connections** | Connection details, with optional password sync sub-toggle |
-| **Groups & Tags** | Connection groups and color tags |
-| **App Settings** | Preferences from all 8 settings categories |
-| **Query History** | Past queries up to the configured limit |
-
-### History limit
-
-Control how many history entries sync across devices:
-
-| Option | Description |
-|--------|-------------|
-| **100** | Last 100 queries |
-| **500** | Last 500 queries |
-| **1,000** | Last 1,000 queries |
-| **Unlimited** | All query history |
-
-<Tip>
-Start with 500. Unlimited history sync can slow down initial sync on large histories.
-</Tip>
-
-### Password sync
-
-When **Connections** sync is enabled, an additional **Passwords** toggle appears. This syncs all connection credentials (database passwords, SSH passwords, key passphrases, and TOTP secrets) using Apple's iCloud Keychain.
-
-- Uses the same end-to-end encryption as Safari passwords
-- Apple cannot read your passwords, even on their servers
-- Toggling off migrates all passwords back to local-only storage
-- Password sync is off by default -- you must opt in explicitly on each Mac
-
-<Tip>
-iCloud Keychain sync is handled entirely by macOS. Passwords never pass through TablePro's CloudKit sync.
-</Tip>
-
-## Automatic sync
-
-TablePro auto-syncs in three situations:
-
-- **App launch** -- pulls the latest data from iCloud
-- **App foreground** -- syncs when you switch back to TablePro
-- **Local edits** -- pushes changes 2 seconds after you modify synced data (debounced to avoid excess writes)
-
-Use the **Sync Now** button in **Settings** > **Sync** to trigger a manual sync at any time.
-
-## Conflict resolution
-
-When the same record is modified on two Macs before syncing, TablePro prompts you to choose:
-
-| Option | Description |
-|--------|-------------|
-| **Keep This Mac's Version** | Discard the remote change, keep local |
-| **Keep Other Version** | Discard the local change, use the remote version |
-
-Conflicts are resolved per-record, not per-category. Editing a connection on Mac A and a different connection on Mac B causes no conflict.
+When the same record changes on two Macs, you choose to keep the local or remote version. Conflicts are per-record, not per-category.
 
 {/* Screenshot: Conflict resolution dialog */}
 <Frame caption="Sync conflict resolution">
@@ -118,16 +59,7 @@ Conflicts are resolved per-record, not per-category. Editing a connection on Mac
   />
 </Frame>
 
-## Sync status indicator
-
-The welcome window footer shows the current sync status:
-
-| Status | Meaning |
-|--------|---------|
-| **Synced** | All data is up to date |
-| **Syncing** | Sync in progress |
-| **Error** | Sync failed (hover for details) |
-| **Off** | iCloud Sync is disabled |
+The welcome window footer shows sync status: Synced, Syncing, Error (hover for details), or Off.
 
 {/* Screenshot: Sync status in welcome window footer */}
 <Frame caption="Sync status indicator in welcome window">
@@ -143,50 +75,7 @@ The welcome window footer shows the current sync status:
   />
 </Frame>
 
-## Pro license requirement
+iCloud Sync requires a Pro license. When a license expires, sync stops but local data remains. Re-activate your license to resume.
 
-iCloud Sync requires an active Pro license. Without one, the Sync settings tab shows a "Pro required" overlay.
+If no records sync, confirm iCloud is signed in and iCloud Drive is enabled, then click **Sync Now**. For "iCloud account unavailable," sign in via **System Settings** > **Apple Account**.
 
-When a license expires:
-
-- Sync stops immediately
-- All previously synced data stays on each Mac as local data
-- Re-activating a license resumes sync from where it left off
-
-## Troubleshooting
-
-### No records syncing
-
-1. Confirm iCloud is signed in: **System Settings** > **Apple Account** > **iCloud**
-2. Check that iCloud Drive is enabled
-3. Verify the specific category toggle is on in **Settings** > **Sync**
-4. Click **Sync Now** to force a sync attempt
-
-### Stale data on one Mac
-
-Click **Sync Now** on the Mac with outdated data. If the problem persists, toggle iCloud Sync off and on again. This forces a full re-sync.
-
-### "iCloud account unavailable" error
-
-TablePro requires an active iCloud account. Sign in via **System Settings** > **Apple Account**. Corporate Managed Apple IDs work as long as iCloud Drive is not restricted by MDM policy.
-
-### Sync stopped after license expired
-
-This is expected. Sync requires an active Pro license. Renew or re-activate your license to resume syncing.
-
-## Related pages
-
-<CardGroup cols={2}>
-  <Card title="Settings" icon="gear" href="/customization/settings">
-    All settings categories
-  </Card>
-  <Card title="License" icon="key" href="/customization/settings#license-settings">
-    License activation and management
-  </Card>
-  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
-    Browse previous queries
-  </Card>
-  <Card title="Safe Mode" icon="shield" href="/features/safe-mode">
-    Per-connection query execution controls
-  </Card>
-</CardGroup>

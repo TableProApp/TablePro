@@ -25,37 +25,37 @@ Open settings via **TablePro** > **Settings** or `Cmd+,`.
 
 <CardGroup cols={2}>
   <Card title="General" icon="gear">
-    Language, startup behavior, software updates, and basic preferences
+    Language, startup behavior, updates
   </Card>
   <Card title="Appearance" icon="palette" href="/customization/appearance">
-    Theme engine with 9 presets, custom themes, colors, and fonts
+    Themes, colors, and fonts
   </Card>
   <Card title="Editor" icon="code" href="/customization/editor-settings">
-    SQL editor font, size, and behavior
+    SQL editor configuration
   </Card>
   <Card title="Data Grid" icon="table">
-    Row height, date formats, and display
+    Row height, date format, display
   </Card>
   <Card title="Tabs" icon="rectangle-on-rectangle">
     Tab reuse behavior
   </Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">
-    Customize keyboard shortcuts
+    Custom shortcuts
   </Card>
   <Card title="AI" icon="sparkles" href="/features/ai-chat">
-    AI provider configuration and chat settings
+    AI provider setup
   </Card>
   <Card title="History" icon="clock-rotate-left">
-    Query history retention settings
+    History retention
   </Card>
   <Card title="Plugins" icon="puzzle-piece">
-    Manage database driver plugins
+    Manage drivers
   </Card>
   <Card title="Sync" icon="cloud" href="/features/icloud-sync">
-    iCloud sync for connections, settings, and history across Macs (Pro)
+    iCloud sync (Pro)
   </Card>
   <Card title="License" icon="key">
-    License activation and management
+    License activation
   </Card>
 </CardGroup>
 
@@ -556,94 +556,8 @@ Then restart TablePro.
 Resetting preferences does not affect saved connections or query history.
 </Warning>
 
-## Settings by Feature
-
-### Connection-Related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| Language | General | App display language |
-| Startup behavior | General | What to do on launch |
-| Query timeout | General | Maximum query execution time |
-| Auto-check updates | General | Check for updates automatically |
-| Share analytics | General | Share anonymous usage data |
-| Auto-reconnect | Connections | Reconnect on disconnect |
-| Safe Mode | Connections | Per-connection query execution controls |
-
-### Editor-Related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| Font family | Editor | Monospace font choice |
-| Font size | Editor | Text size (11--18 pt, clamped to range) |
-| Line numbers | Editor | Show/hide line numbers |
-| Word wrap | Editor | Wrap long lines |
-| Tab width | Editor | Spaces per tab (1--16) |
-| Vim mode | Editor | Enable Vim keybindings (Normal/Insert/Visual modes) in the SQL editor |
-
-See [Editor Settings](/customization/editor-settings) for details.
-
-### Display-Related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| Theme | Appearance | 9 built-in presets + custom themes |
-| Theme colors | Appearance | Editor syntax, data grid, UI, sidebar, toolbar colors |
-| Theme fonts | Appearance | Editor and data grid font family/size (moved from Editor/Data Grid tabs) |
-| Row height | Data Grid | Grid row height |
-| Date format | Data Grid | Date display format |
-| Font family | Data Grid | Monospace font for data cells |
-| Font size | Data Grid | Data cell text size (10-18 pt) |
-
-See [Appearance](/customization/appearance) for details.
-
-### Keyboard-Related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| Shortcut bindings | Keyboard | Customize menu keyboard shortcuts |
-| Reset to Defaults | Keyboard | Restore all shortcuts to original values |
-
-### Sync-related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| iCloud Sync | Sync | Enable/disable iCloud sync (Pro) |
-| Sync Connections | Sync | Sync connection details across Macs |
-| Sync Groups & Tags | Sync | Sync connection organization |
-| Sync App Settings | Sync | Sync preferences across Macs |
-| Sync Query History | Sync | Sync query history with configurable limit |
-| History Limit | Sync | Max history entries to sync (100/500/1,000/unlimited) |
-
-### Filter-Related
-
-| Setting | Location | Description |
-|---------|----------|-------------|
-| Default column | Filters | Column pre-selected for new filters (Raw SQL, Primary Key, Any Column) |
-| Default operator | Filters | Operator pre-selected for new filters |
-| Panel state | Filters | Filter panel behavior on open (Hidden, Always Show, Restore Last) |
-
-See [Filtering](/features/filtering) for details.
-
 ## Keyboard Shortcut
 
 | Action | Shortcut |
 |--------|----------|
 | Open Settings | `Cmd+,` |
-
-## Related Pages
-
-<CardGroup cols={2}>
-  <Card title="Appearance" icon="palette" href="/customization/appearance">
-    Theme and color settings
-  </Card>
-  <Card title="Editor Settings" icon="code" href="/customization/editor-settings">
-    SQL editor configuration
-  </Card>
-  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
-    History feature details
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Data grid features
-  </Card>
-</CardGroup>

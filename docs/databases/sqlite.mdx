@@ -10,136 +10,28 @@ SQLite is a self-contained, file-based database engine. No server required. The 
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select SQLite">
-    Choose **SQLite** from the database type selector
-  </Step>
-  <Step title="Select Database File">
-    Click **Browse** and select your `.sqlite`, `.db`, or `.sqlite3` file
-  </Step>
   <Step title="Create Connection">
-    Give your connection a name and click **Create**
+    Click **New Connection**, select **SQLite**, browse for your `.sqlite`/`.db`/`.sqlite3` file, and click **Create**
   </Step>
 </Steps>
 
-## Connection Settings
+File-based database, no server/auth required. Double-click `.duckdb` files in Finder to open directly.
 
-SQLite connections are simple since no server is involved:
+## Common Locations
 
-| Field | Description |
-|-------|-------------|
-| **Name** | A friendly name for this connection |
-| **File Path** | Full path to the SQLite database file |
+**macOS apps**: Safari (`~/Library/Safari/History.db`), Photos (`~/Pictures/Photos Library.photoslibrary/database/Photos.sqlite`), Messages (`~/Library/Messages/chat.db`)
 
-{/* Screenshot: SQLite connection form with file browser */}
-<Frame caption="SQLite connection form">
-  <img
-    className="block dark:hidden"
-    src="/images/sqlite-connection.png"
-    alt="SQLite connection"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/sqlite-connection-dark.png"
-    alt="SQLite connection"
-  />
-</Frame>
+**Development**: Rails (`./db/development.sqlite3`), Django (`./db.sqlite3`), iOS Simulator (`~/Library/Developer/CoreSimulator/...`), Core Data
 
-<Note>
-No username, password, or network settings are needed for SQLite databases.
-</Note>
-
-## Common SQLite Locations
-
-### Application Databases
-
-Many macOS applications use SQLite:
-
-| Application | Database Location |
-|-------------|-------------------|
-| Safari | `~/Library/Safari/History.db` |
-| Photos | `~/Pictures/Photos Library.photoslibrary/database/Photos.sqlite` |
-| Messages | `~/Library/Messages/chat.db` |
-| Notes | `~/Library/Group Containers/group.com.apple.notes/NoteStore.sqlite` |
+**Create new**: Point to a non-existent file path and TablePro creates it on connect. Or use `sqlite3 ~/path/to/new.db "SELECT 1;"`
 
 <Warning>
-System databases may be locked while their parent applications are running. Quit the application before opening its database.
+System databases may be locked. Quit their parent app before opening.
 </Warning>
-
-### Development Databases
-
-Common development database locations:
-
-```
-# Ruby on Rails
-./db/development.sqlite3
-
-# Django
-./db.sqlite3
-
-# iOS Simulator
-~/Library/Developer/CoreSimulator/Devices/*/data/Containers/Data/Application/*/Documents/*.sqlite
-
-# Core Data
-*.sqlite (in app's container)
-```
-
-### Creating a New Database
-
-To create a new SQLite database:
-
-1. Create a new connection
-2. Enter a path for a file that doesn't exist yet
-3. TablePro creates the file when you connect
-
-Or from the command line:
-
-```bash
-sqlite3 ~/Documents/newdatabase.sqlite "SELECT 1;"
-```
 
 ## Features
 
-### Database Browser
-
-The sidebar shows all tables and views in your SQLite database:
-
-{/* Screenshot: Sidebar with SQLite tables expanded */}
-<Frame caption="SQLite table browser">
-  <img
-    className="block dark:hidden"
-    src="/images/sqlite-browser.png"
-    alt="SQLite browser"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/sqlite-browser-dark.png"
-    alt="SQLite browser"
-  />
-</Frame>
-
-### Table Information
-
-For each table, TablePro shows:
-
-- **Structure**: Column names, types, and constraints
-- **Indexes**: All indexes including UNIQUE constraints
-- **DDL**: The CREATE TABLE statement
-
-### SQLite System Tables
-
-TablePro can display SQLite's internal tables:
-
-| Table | Purpose |
-|-------|---------|
-| `sqlite_master` | Schema information |
-| `sqlite_sequence` | AUTOINCREMENT tracking |
-
-### Query Execution
-
-Execute queries with full SQLite syntax:
+Sidebar shows tables, views, and system tables (`sqlite_master`, `sqlite_sequence`). Table info displays structure (columns, constraints), indexes, and DDL. Full SQLite syntax support:
 
 ```sql
 -- JSON functions (SQLite 3.38+)
@@ -173,215 +65,24 @@ VALUES ('theme', 'dark')
 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 ```
 
-## SQLite Data Types
+## Type System
 
-SQLite uses a dynamic type system with type affinity:
+SQLite uses dynamic typing with affinity: TEXT (strings), INTEGER (ints), REAL (floats), NUMERIC (flexible), BLOB (binary). Types are hints, not strict constraints.
 
-| Affinity | Description | Examples |
-|----------|-------------|----------|
-| TEXT | String data | `VARCHAR`, `TEXT`, `CLOB` |
-| INTEGER | Signed integer | `INT`, `INTEGER`, `BIGINT` |
-| REAL | Floating point | `REAL`, `DOUBLE`, `FLOAT` |
-| NUMERIC | Numeric or text | `DECIMAL`, `BOOLEAN`, `DATE` |
-| BLOB | Binary data | `BLOB`, raw bytes |
+## Performance
 
-<Note>
-SQLite accepts any data type in any column (except INTEGER PRIMARY KEY). The type is a hint, not a constraint.
-</Note>
-
-## Working with Large Files
-
-### File Size
-
-SQLite databases can grow large. TablePro handles:
-
-- Databases up to several GB
-- Tables with millions of rows
-- BLOB data (images, files)
-
-### Performance Tips
-
-1. **Use pagination**: Enable pagination in settings for large tables
-2. **Add indexes**: Create indexes for frequently queried columns
-3. **Use LIMIT**: Always limit result sets when exploring
-4. **Vacuum periodically**: Reclaim space with `VACUUM`
-
-```sql
--- Check database size
-SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();
-
--- Analyze tables for query optimization
-ANALYZE;
-
--- Reclaim unused space
-VACUUM;
-```
+Enable pagination for large tables, add indexes on frequently queried columns, use `LIMIT` in exploratory queries. Compact with `VACUUM;` and update stats with `ANALYZE;`.
 
 ## Troubleshooting
 
-### Database is Locked
+**Locked database**: Close other apps using it, wait for queries to finish, or check for WAL files (`database.sqlite-wal`, `database.sqlite-shm`).
 
-**Symptoms**: "database is locked" or "database table is locked"
+**Can't open**: Verify path exists, check permissions (`chmod 644`), avoid special characters in paths.
 
-**Causes**:
-- Another application has the database open
-- A previous query is still running
-- Write-ahead logging (WAL) mode conflicts
+**Corrupt database**: Run `PRAGMA integrity_check;` to check, try `.recover` to repair: `sqlite3 corrupt.sqlite ".recover" | sqlite3 recovered.sqlite`
 
-**Solutions**:
+**Changes not visible**: Right-click connection and select **Refresh**, or disconnect/reconnect.
 
-1. Close other applications using the database
-2. Wait for running queries to complete
-3. Check for WAL files:
-   ```bash
-   ls -la /path/to/database.sqlite*
-   # You might see: database.sqlite-wal, database.sqlite-shm
-   ```
+**PRAGMA commands**: Check version (`SELECT sqlite_version();`), table info (`PRAGMA table_info(users);`), enable foreign keys (`PRAGMA foreign_keys = ON;`), switch to WAL mode (`PRAGMA journal_mode = WAL;`)
 
-### Cannot Open Database
-
-**Symptoms**: "unable to open database file"
-
-**Causes and Solutions**:
-
-1. **File doesn't exist**: Verify the path is correct
-2. **Permission denied**: Check file permissions
-   ```bash
-   ls -la /path/to/database.sqlite
-   chmod 644 /path/to/database.sqlite
-   ```
-3. **Path contains special characters**: Use absolute paths without spaces
-
-### Corrupt Database
-
-**Symptoms**: "database disk image is malformed"
-
-**Recovery options**:
-
-1. **Check integrity**:
-   ```sql
-   PRAGMA integrity_check;
-   ```
-
-2. **Attempt recovery**:
-   ```bash
-   sqlite3 corrupt.sqlite ".recover" | sqlite3 recovered.sqlite
-   ```
-
-3. **Restore from backup** (if available)
-
-### Schema Changes Not Visible
-
-**Symptoms**: Tables or columns you created aren't showing
-
-**Solution**: Refresh the connection:
-1. Right-click the connection
-2. Select **Refresh**
-
-Or disconnect and reconnect.
-
-## SQLite Pragmas
-
-TablePro supports SQLite PRAGMA commands for configuration:
-
-```sql
--- Check SQLite version
-SELECT sqlite_version();
-
--- Show table info
-PRAGMA table_info(users);
-
--- Check foreign keys are enabled
-PRAGMA foreign_keys;
-
--- Enable foreign key enforcement
-PRAGMA foreign_keys = ON;
-
--- Check journal mode
-PRAGMA journal_mode;
-
--- Use WAL mode for better concurrency
-PRAGMA journal_mode = WAL;
-```
-
-{/* Screenshot: SQLite PRAGMA results */}
-<Frame caption="SQLite PRAGMA query results">
-  <img
-    className="block dark:hidden"
-    src="/images/sqlite-pragma-results.png"
-    alt="SQLite PRAGMA results"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/sqlite-pragma-results-dark.png"
-    alt="SQLite PRAGMA results"
-  />
-</Frame>
-
-## Backup and Restore
-
-### Manual Backup
-
-SQLite databases are just files. To backup:
-
-```bash
-# Simple copy (ensure database is not being written to)
-cp database.sqlite database-backup.sqlite
-
-# SQLite backup command (safer, handles locks)
-sqlite3 database.sqlite ".backup backup.sqlite"
-```
-
-### Export to SQL
-
-Export your database as SQL statements:
-
-```bash
-sqlite3 database.sqlite .dump > backup.sql
-```
-
-### Restore from SQL
-
-```bash
-sqlite3 newdatabase.sqlite < backup.sql
-```
-
-## Differences from Server Databases
-
-| Feature | SQLite | MySQL/PostgreSQL |
-|---------|--------|------------------|
-| Server required | No | Yes |
-| Multiple connections | Limited | Unlimited |
-| User authentication | No | Yes |
-| Network access | File-based | TCP/IP |
-| Concurrent writes | Limited | Full support |
-| Stored procedures | No | Yes |
-| Data types | Dynamic | Static |
-
-## Common Use Cases
-
-SQLite is ideal for:
-
-- **Local development**: Prototype applications quickly
-- **Embedded apps**: Mobile apps, desktop apps
-- **Single-user apps**: Personal databases
-- **Data analysis**: Quick data exploration
-- **Testing**: Unit tests with isolated databases
-- **Prototyping**: Before migrating to a server database
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write and execute SQL queries
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View and edit your data
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export SQLite data
-  </Card>
-  <Card title="Table Structure" icon="table-columns" href="/features/table-structure">
-    View and modify table structures
-  </Card>
-</CardGroup>
+**Backup**: Copy file directly, use `sqlite3 db.sqlite ".backup backup.sqlite"` to handle locks safely, or `sqlite3 db.sqlite .dump > backup.sql` for SQL export.

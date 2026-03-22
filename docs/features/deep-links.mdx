@@ -45,11 +45,7 @@ open "redis://localhost:6379" -a TablePro
 open "sqlite:///Users/me/data/app.db" -a TablePro
 ```
 
-### How It Works
-
-1. **Saved connection match:** TablePro checks if a saved connection matches the URL's host, port, database, and username. If found, it reuses that connection (including its stored password).
-2. **Active session match:** If the connection is already open, TablePro brings the existing window to front instead of creating a duplicate.
-3. **New transient connection:** If no match is found, TablePro creates a temporary connection and connects immediately. Passwords in the URL are used for the initial connection but not saved.
+TablePro checks if a saved connection matches the URL. If found, it reuses that connection. If the connection is already open, the existing window comes to front. Otherwise, a temporary connection is created.
 
 ### Query Parameters
 
@@ -138,16 +134,6 @@ open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgres
 
 Supported `type` values: `MySQL`, `MariaDB`, `PostgreSQL`, `SQLite`, `MongoDB` (case-insensitive).
 
-## Behavior Details
-
-- **Connection name matching** is case-insensitive. `Production`, `production`, and `PRODUCTION` all match the same connection.
-- **Spaces and special characters** in names are percent-encoded automatically by browsers and macOS.
-- **Already connected:** if the connection is already active, TablePro skips reconnecting and opens the requested tab directly.
-- **App not running:** macOS launches TablePro first, then delivers the URL.
-
-<Warning>
-Passwords are never included in deep link URLs. For imported connections, the user must enter the password manually in the connection form.
-</Warning>
 
 ## Terminal Usage
 

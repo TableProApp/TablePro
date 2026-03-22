@@ -21,23 +21,7 @@ Browse column definitions, indexes, foreign keys, and the DDL (CREATE TABLE stat
   />
 </Frame>
 
-## Accessing Table Structure
-
-To view a table's structure:
-
-<Steps>
-  <Step title="Select a Table">
-    Click on a table name in the sidebar
-  </Step>
-  <Step title="Open Structure Tab">
-    Click the **Structure** tab (below the data grid)
-  </Step>
-  <Step title="Explore">
-    Navigate between Columns, Indexes, Foreign Keys, and DDL tabs
-  </Step>
-</Steps>
-
-Or right-click a table and select **Show Structure**.
+Click a table in the sidebar, then click the **Structure** tab below the data grid. Or right-click a table and select **Show Structure**.
 
 ## Columns Tab
 
@@ -68,47 +52,7 @@ The Columns tab lists all column definitions:
 | **Extra** | Additional attributes (AUTO_INCREMENT, etc.) |
 | **Key** | Primary key (PRI), Foreign key (FOR), etc. |
 
-### Copy as TSV
 
-Right-click the structure grid to copy column definitions as TSV (tab-separated values). Useful for pasting into spreadsheets or documentation tools.
-
-### Data Types by Database
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    Common MySQL data types:
-
-    | Category | Types |
-    |----------|-------|
-    | Numeric | INT, BIGINT, DECIMAL, FLOAT, DOUBLE |
-    | String | VARCHAR, TEXT, CHAR, ENUM |
-    | Date/Time | DATE, DATETIME, TIMESTAMP, TIME |
-    | Binary | BLOB, BINARY, VARBINARY |
-    | JSON | JSON |
-  </Tab>
-  <Tab title="PostgreSQL">
-    Common PostgreSQL data types:
-
-    | Category | Types |
-    |----------|-------|
-    | Numeric | INTEGER, BIGINT, NUMERIC, REAL |
-    | String | VARCHAR, TEXT, CHAR |
-    | Date/Time | DATE, TIMESTAMP, TIMESTAMPTZ, TIME |
-    | Binary | BYTEA |
-    | Special | JSON, JSONB, ARRAY, UUID, INET |
-  </Tab>
-  <Tab title="SQLite">
-    SQLite type affinities:
-
-    | Affinity | Description |
-    |----------|-------------|
-    | TEXT | String data |
-    | INTEGER | Signed integers |
-    | REAL | Floating point |
-    | NUMERIC | Numeric or text |
-    | BLOB | Binary data |
-  </Tab>
-</Tabs>
 
 ## Indexes Tab
 
@@ -138,15 +82,6 @@ View all indexes defined on the table:
 | **Unique** | Whether the index enforces uniqueness |
 | **Primary** | Whether this is the primary key |
 
-### Index Types
-
-| Type | Usage |
-|------|-------|
-| **PRIMARY** | Primary key constraint |
-| **UNIQUE** | Unique constraint/index |
-| **INDEX** | Regular index for performance |
-| **FULLTEXT** | Full-text search (MySQL) |
-| **SPATIAL** | Geospatial data (PostGIS) |
 
 ## Foreign Keys Tab
 
@@ -176,15 +111,6 @@ View foreign key relationships:
 | **On Delete** | Action when referenced row is deleted |
 | **On Update** | Action when referenced row is updated |
 
-### Referential Actions
-
-| Action | Description |
-|--------|-------------|
-| **RESTRICT** | Prevent delete/update if referenced |
-| **CASCADE** | Delete/update referencing rows |
-| **SET NULL** | Set referencing column to NULL |
-| **SET DEFAULT** | Set to default value |
-| **NO ACTION** | Similar to RESTRICT (deferred check) |
 
 ## DDL Tab
 
@@ -204,76 +130,9 @@ View the CREATE TABLE statement for the table:
   />
 </Frame>
 
-### Copying DDL
+Open the DDL tab, select all with `Cmd+A`, and copy with `Cmd+C`. Use it to recreate tables, document schemas, or track changes in version control.
 
-1. Open the DDL tab
-2. Select all (`Cmd+A`)
-3. Copy (`Cmd+C`)
 
-Use DDL for:
-
-- Recreating tables in another database
-- Version control of schema changes
-- Documentation
-- Creating similar tables
-
-### DDL Examples
-
-<Tabs>
-  <Tab title="MySQL">
-    ```sql
-    CREATE TABLE `users` (
-      `id` int NOT NULL AUTO_INCREMENT,
-      `email` varchar(255) NOT NULL,
-      `name` varchar(100) DEFAULT NULL,
-      `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (`id`),
-      UNIQUE KEY `email` (`email`),
-      KEY `created_at` (`created_at`)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    ```
-  </Tab>
-  <Tab title="PostgreSQL">
-    ```sql
-    CREATE TABLE users (
-      id SERIAL PRIMARY KEY,
-      email VARCHAR(255) NOT NULL UNIQUE,
-      name VARCHAR(100),
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP WITH TIME ZONE
-    );
-
-    CREATE INDEX idx_users_created_at ON users(created_at);
-    ```
-  </Tab>
-  <Tab title="SQLite">
-    ```sql
-    CREATE TABLE users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT NOT NULL UNIQUE,
-      name TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT
-    );
-
-    CREATE INDEX idx_users_created_at ON users(created_at);
-    ```
-  </Tab>
-</Tabs>
-
-## Table Metadata
-
-Additional table information may be displayed:
-
-| Property | Description |
-|----------|-------------|
-| **Engine** | Storage engine (MySQL: InnoDB, MyISAM) |
-| **Collation** | Character collation |
-| **Row Count** | Approximate row count |
-| **Data Size** | Table data size |
-| **Index Size** | Index data size |
-| **Comment** | Table comment/description |
 
 ## Modifying Structure
 
@@ -322,19 +181,7 @@ Edit table structure visually, no SQL required:
 3. Confirm the removal
 4. Apply changes
 
-#### Type Picker
-
-When editing the **Type** column, a searchable popover appears with database-specific data types organized by category:
-
-| Category | Examples |
-|----------|----------|
-| **Numeric** | INT, BIGINT, DECIMAL, FLOAT, DOUBLE |
-| **String** | VARCHAR, TEXT, CHAR, ENUM |
-| **Date & Time** | DATE, DATETIME, TIMESTAMP, TIME |
-| **Binary** | BLOB, BINARY, BYTEA |
-| **Other** | JSON, JSONB, UUID, BOOLEAN |
-
-The available types match your connected database (MySQL, PostgreSQL, or SQLite). Type a custom type directly for parametric types like `VARCHAR(255)` or `NUMERIC(10,2)`.
+A searchable popover shows database-specific data types organized by category. Type a custom type directly for parametric types like `VARCHAR(255)` or `NUMERIC(10,2)`.
 
 {/* Screenshot: Type picker popover in Structure editor */}
 <Frame caption="Type picker popover with searchable, categorized data types">
@@ -368,14 +215,7 @@ Before applying structure changes, TablePro shows the generated ALTER TABLE SQL.
   />
 </Frame>
 
-### Undo/Redo
-
-Structure changes support full undo/redo:
-
-- Press `Cmd+Z` to undo a change
-- Press `Cmd+Shift+Z` to redo a change
-- Changes are tracked until applied to the database
-- See [Change Tracking](/features/change-tracking) for details
+Press `Cmd+Z` to undo or `Cmd+Shift+Z` to redo structure changes until you apply them to the database.
 
 {/* Screenshot: Undo and redo for structure changes */}
 <Frame caption="Undo and redo for structure changes">
@@ -465,32 +305,6 @@ After making schema changes:
 2. **Via menu**: View > Refresh
 3. **Automatically**: Changes made in TablePro refresh automatically
 
-## Best Practices
-
-### Schema Design
-
-1. **Use appropriate data types**: Choose the smallest type that fits your data
-2. **Add indexes for queries**: Index columns used in WHERE and JOIN
-3. **Define foreign keys**: Maintain referential integrity
-4. **Use NOT NULL**: When columns should always have values
-5. **Add defaults**: Provide sensible defaults for optional columns
-
-### Naming Conventions
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Tables | Plural, snake_case | `users`, `order_items` |
-| Columns | Singular, snake_case | `user_id`, `created_at` |
-| Indexes | `idx_table_columns` | `idx_users_email` |
-| Foreign Keys | `fk_table_reference` | `fk_orders_user` |
-| Primary Keys | `id` or `table_id` | `id`, `user_id` |
-
-### Performance Considerations
-
-1. **Primary keys**: Every table should have a primary key
-2. **Foreign key indexes**: Index foreign key columns
-3. **Composite indexes**: Order columns by selectivity
-4. **Avoid over-indexing**: Indexes slow down writes
 
 ## MongoDB Collections
 
@@ -519,41 +333,3 @@ The DDL tab for MongoDB shows:
 Structure modification (adding/removing fields) is not available for MongoDB collections since MongoDB is schema-less. To modify the schema, edit documents directly in the data grid.
 </Note>
 
-## Troubleshooting
-
-### Structure Not Loading
-
-1. Check database connection
-2. Verify user has permissions to view schema
-3. Refresh the connection
-
-### Missing Columns
-
-1. Refresh the table structure
-2. Check if column was added in a transaction not yet committed
-3. Verify you're looking at the correct database/schema
-
-### DDL Syntax Errors
-
-When copying DDL to another database:
-
-1. Check database-specific syntax differences
-2. Adjust data types for target database
-3. Remove unsupported features (e.g., MySQL ENGINE for PostgreSQL)
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write ALTER TABLE queries
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View table data
-  </Card>
-  <Card title="Import & Export" icon="file-import" href="/features/import-export">
-    Export schema and data
-  </Card>
-  <Card title="Connection Management" icon="plug" href="/databases/overview">
-    Manage database connections
-  </Card>
-</CardGroup>

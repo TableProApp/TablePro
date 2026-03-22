@@ -34,28 +34,6 @@ Permanently deletes a table and all its data.
   />
 </Frame>
 
-**Options by database:**
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Temporarily disables foreign key validation |
-    | **Cascade** | Not supported |
-  </Tab>
-  <Tab title="PostgreSQL">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Not supported (use CASCADE instead) |
-    | **Cascade** | Drop all dependent objects (views, foreign keys) |
-  </Tab>
-  <Tab title="SQLite">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Temporarily disables foreign key validation |
-    | **Cascade** | Not supported |
-  </Tab>
-</Tabs>
 
 <Warning>
 Dropping a table is irreversible. Always backup important data before dropping tables.
@@ -70,28 +48,6 @@ Removes all rows while keeping the table structure intact.
 3. Configure options in the confirmation dialog
 4. Click **OK** to execute
 
-**Options by database:**
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Temporarily disables foreign key validation |
-    | **Cascade** | Not supported for TRUNCATE |
-  </Tab>
-  <Tab title="PostgreSQL">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Not supported (use CASCADE instead) |
-    | **Cascade** | Truncate all tables linked by foreign keys |
-  </Tab>
-  <Tab title="SQLite">
-    | Option | Description |
-    |--------|-------------|
-    | **Ignore foreign key checks** | Temporarily disables foreign key validation |
-    | **Cascade** | Not supported |
-  </Tab>
-</Tabs>
 
 <Note>
 Truncate is faster than `DELETE FROM table` because it skips per-row delete logs. It also resets auto-increment counters.
@@ -134,34 +90,7 @@ Create a new view by opening a SQL editor tab with a template:
 4. Modify the view name and SELECT query
 5. Execute the query to create the view
 
-The template adapts to your database type:
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    ```sql
-    CREATE VIEW view_name AS
-    SELECT column1, column2
-    FROM table_name
-    WHERE condition;
-    ```
-  </Tab>
-  <Tab title="PostgreSQL">
-    ```sql
-    CREATE OR REPLACE VIEW view_name AS
-    SELECT column1, column2
-    FROM table_name
-    WHERE condition;
-    ```
-  </Tab>
-  <Tab title="SQLite">
-    ```sql
-    CREATE VIEW IF NOT EXISTS view_name AS
-    SELECT column1, column2
-    FROM table_name
-    WHERE condition;
-    ```
-  </Tab>
-</Tabs>
+The template adapts to your database type (MySQL, PostgreSQL, or SQLite).
 
 {/* Screenshot: Create View with SQL template */}
 <Frame caption="Create View with SQL template">
@@ -231,24 +160,7 @@ The sidebar context menu adapts for views:
 
 ## Database Operations
 
-### Create Database
-
-Create a new database from the UI (MySQL/MariaDB):
-
-<Steps>
-  <Step title="Open Database Switcher">
-    Click the database name in the toolbar or press `Cmd+K` to open the database switcher
-  </Step>
-  <Step title="Click Create">
-    Click the **Create** button in the database switcher toolbar
-  </Step>
-  <Step title="Configure">
-    Enter a name, select character set and collation
-  </Step>
-  <Step title="Create">
-    Click **Create** to execute
-  </Step>
-</Steps>
+Create a new database (MySQL/MariaDB) by clicking the database name in the toolbar or pressing `Cmd+K`, then clicking **Create**. Enter a name, character set, and collation, then click **Create**.
 
 {/* Screenshot: Create database dialog */}
 <Frame caption="Create database dialog">
@@ -264,14 +176,6 @@ Create a new database from the UI (MySQL/MariaDB):
   />
 </Frame>
 
-Available character sets and collations:
-
-| Charset | Collations |
-|---------|------------|
-| **utf8mb4** | utf8mb4_unicode_ci, utf8mb4_general_ci, utf8mb4_bin |
-| **utf8** | utf8_unicode_ci, utf8_general_ci, utf8_bin |
-| **latin1** | latin1_swedish_ci, latin1_general_ci, latin1_bin |
-| **ascii** | ascii_general_ci, ascii_bin |
 
 ### Database Switcher
 
@@ -326,28 +230,3 @@ Select **Show All Tables** from the sidebar to auto-execute `listCollections` an
 **Truncate** is not available for MongoDB collections. To remove all documents while keeping the collection, use `db.collection.deleteMany({})` in the MQL editor.
 </Note>
 
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Delete selected table(s) | `Cmd+Delete` |
-| Copy table name | `Cmd+C` (in sidebar) |
-| Export table | `Cmd+E` (in sidebar) |
-| Import data | `Cmd+I` (in sidebar) |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Table Structure" icon="table-columns" href="/features/table-structure">
-    View and modify existing table schemas
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View and edit table data
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write DDL and DML queries
-  </Card>
-  <Card title="Import & Export" icon="file-import" href="/features/import-export">
-    Import and export table data
-  </Card>
-</CardGroup>

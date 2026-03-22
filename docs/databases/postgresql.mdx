@@ -10,39 +10,25 @@ TablePro supports PostgreSQL 12 and later via the libpq C connector. Schema brow
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  <Step title="Create Connection">
+    Click **New Connection**, select **PostgreSQL**, enter host/port/username/password/database, and click **Create**
   </Step>
-  <Step title="Select PostgreSQL">
-    Choose **PostgreSQL** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, username, password, and database name
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+  <Step title="Test Connection">
+    Click **Test Connection** to verify
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP | `localhost` |
-| **Port** | PostgreSQL server port | `5432` |
-| **Username** | PostgreSQL user | `postgres` |
-| **Password** | User password | - |
-| **Database** | Database name to connect to | - |
-
-<Warning>
-Unlike MySQL, PostgreSQL requires specifying a database name to connect.
-</Warning>
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `5432` | |
+| **Username** | `postgres` | |
+| **Database** | - | **Required** (unlike MySQL) |
 
 <Tip>
-You can also connect by opening a `postgresql://` URL from your browser or terminal. See [Connection URL Reference](/databases/connection-urls) for details.
+Open URLs like `postgresql://user:pass@host/db` directly to connect. See [Connection URL Reference](/databases/connection-urls).
 </Tip>
 
 {/* Screenshot: PostgreSQL connection form */}
@@ -61,134 +47,15 @@ You can also connect by opening a `postgresql://` URL from your browser or termi
 
 ## Example Configurations
 
-### Local Development Server
-
-```
-Name:     Local PostgreSQL
-Host:     localhost
-Port:     5432
-Username: postgres
-Password: (your password)
-Database: postgres
-```
-
-### Docker PostgreSQL Container
-
-```
-Name:     Docker Postgres
-Host:     localhost
-Port:     5432 (or your mapped port)
-Username: postgres
-Password: (password from POSTGRES_PASSWORD)
-Database: postgres
-```
-
-### Homebrew PostgreSQL
-
-```
-Name:     Homebrew Postgres
-Host:     localhost
-Port:     5432
-Username: (your macOS username)
-Password: (empty for local trust auth)
-Database: postgres
-```
-
-<Tip>
-Homebrew PostgreSQL often uses "trust" authentication for local connections, meaning no password is required.
-</Tip>
-
-### Remote Server
-
-```
-Name:     Production DB
-Host:     db.example.com
-Port:     5432
-Username: app_user
-Password: (secure password)
-Database: myapp_production
-```
-
-### Cloud Databases
-
-#### Amazon RDS
-
-```
-Name:     AWS RDS Postgres
-Host:     mydb.abc123.us-east-1.rds.amazonaws.com
-Port:     5432
-Username: postgres
-Password: (your RDS password)
-Database: postgres
-```
-
-#### Heroku Postgres
-
-```
-Name:     Heroku Postgres
-Host:     ec2-xx-xxx-xxx-xxx.compute-1.amazonaws.com
-Port:     5432
-Username: (from DATABASE_URL)
-Password: (from DATABASE_URL)
-Database: (from DATABASE_URL)
-```
-
-<Note>
-Parse your Heroku `DATABASE_URL` to extract host, port, username, password, and database name.
-</Note>
+**Local**: host `localhost:5432`, user `postgres`, "trust" auth (no password) with Homebrew
+**Docker**: host `localhost:5432`, password from `POSTGRES_PASSWORD` env
+**AWS RDS**: Use endpoint hostname, standard credentials
+**Heroku**: Parse `DATABASE_URL` for credentials
+**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
 
 ## Features
 
-### Schema Support
-
-PostgreSQL organizes tables into schemas. TablePro displays:
-
-1. All schemas accessible to your user
-2. Tables within each schema
-3. The search path order
-
-{/* Screenshot: Sidebar showing PostgreSQL schemas and tables */}
-<Frame caption="PostgreSQL schema browser">
-  <img
-    className="block dark:hidden"
-    src="/images/postgresql-schema-browser.png"
-    alt="Schema browser"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/postgresql-schema-browser-dark.png"
-    alt="Schema browser"
-  />
-</Frame>
-
-### Database Switching
-
-Switch between PostgreSQL databases and schemas with the database switcher (**Cmd+K**):
-
-1. Press **Cmd+K** to open the switcher. It lists databases for PostgreSQL connections
-2. Select the target database (for example, `app`, `analytics`, or `postgres`)
-3. The sidebar, queries, and toolbar update after the connection reconnects
-
-<Tip>
-System databases (`postgres`, `template0`, `template1`) are marked as system entries.
-</Tip>
-
-<Note>
-Database switching reconnects your PostgreSQL session to the selected database.
-</Note>
-
-### Table Information
-
-For each table, TablePro shows:
-
-- **Structure**: Columns with PostgreSQL-specific types
-- **Indexes**: Including partial and expression indexes
-- **Constraints**: Primary keys, foreign keys, check constraints
-- **DDL**: The CREATE TABLE statement
-
-### Query Execution
-
-Execute queries with full PostgreSQL syntax:
+Sidebar displays all accessible schemas and tables. Switch databases/schemas with **Cmd+K**. Table info shows structure (columns, indexes, constraints) and DDL. Full PostgreSQL syntax support:
 
 ```sql
 -- JSONB queries
@@ -226,297 +93,30 @@ ORDER BY rank DESC;
 
 ### PostgreSQL-Specific Types
 
-TablePro renders PostgreSQL's rich type system correctly:
-
-| Type | Display |
-|------|---------|
-| `jsonb` | Formatted JSON |
-| `array` | Array notation |
-| `uuid` | UUID string |
-| `inet` | IP address |
-| `timestamp with time zone` | Localized timestamp |
-| `interval` | Human-readable duration |
-| `bytea` | Binary data indicator |
+Supports `jsonb` (formatted JSON), `array`, `uuid`, `inet` (IP), `timestamp with time zone`, `interval`, `bytea` (binary).
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check server is running (`brew services start postgresql@16`), verify `listen_addresses` in `postgresql.conf`, ensure firewall allows port 5432.
 
-**Symptoms**: "Connection refused" or "could not connect to server"
+**Auth failed**: Check `pg_hba.conf` for correct auth method (`md5`/`scram-sha-256` for passwords, `trust` for local dev). Reset password with `ALTER USER postgres WITH PASSWORD 'newpassword';`
 
-**Causes and Solutions**:
+**Database doesn't exist**: Connect to `postgres` database and create it with `CREATE DATABASE myapp;`
 
-1. **PostgreSQL server not running**
-   ```bash
-   # Check if PostgreSQL is running
-   pg_isready -h localhost -p 5432
+**Permission denied**: Grant access with `GRANT ALL ON DATABASE/SCHEMA/TABLES TO username;`
 
-   # Start PostgreSQL (macOS with Homebrew)
-   brew services start postgresql@16
-   ```
+**SSL/TLS**: Cloud providers (AWS RDS, Heroku, Supabase) typically require SSL. Use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
 
-2. **PostgreSQL not accepting connections**
-   - Check `listen_addresses` in `postgresql.conf`
-   - For remote connections, set `listen_addresses = '*'`
+## Advanced Configuration
 
-3. **Firewall blocking connections**
-   - Check macOS firewall settings
-   - Verify port 5432 is accessible
+**Startup Commands** (Advanced tab): Set session variables like `SET timezone = 'UTC'; SET search_path TO myschema, public;` to apply automatically on connect.
 
-### Authentication Failed
+**~/.pgpass Support**: Use format `hostname:port:database:username:password` with wildcards (`*`). Must have `chmod 0600` permissions.
 
-**Symptoms**: "password authentication failed" or "Peer authentication failed"
+**Pre-Connect Script** (Advanced tab): Run a shell script before connecting (e.g., to refresh credentials from a secrets manager). 10-second timeout.
 
-**Understanding pg_hba.conf**:
+**PostgreSQL Extensions**: PostGIS, hstore, ltree work out of the box. Check with `SELECT * FROM pg_extension;`
 
-PostgreSQL uses `pg_hba.conf` to control authentication. Common entries:
+**Performance**: Use `EXPLAIN ANALYZE` for query optimization. `LIMIT` large exploratory queries, create indexes, enable pagination.
 
-```
-# TYPE  DATABASE        USER            ADDRESS                 METHOD
-local   all             all                                     trust
-host    all             all             127.0.0.1/32            md5
-host    all             all             ::1/128                 md5
-```
-
-**Solutions**:
-
-1. **For password auth**: Ensure `md5` or `scram-sha-256` is set
-2. **For local development**: Use `trust` (no password required)
-3. **Reset password if forgotten**:
-   ```sql
-   ALTER USER postgres WITH PASSWORD 'newpassword';
-   ```
-
-### Database Does Not Exist
-
-**Symptoms**: "database 'xyz' does not exist"
-
-**Solution**: Connect to an existing database first (usually `postgres`), then create your database:
-
-```sql
-CREATE DATABASE myapp;
-```
-
-### Permission Denied
-
-**Symptoms**: "permission denied for table" or "permission denied for schema"
-
-**Solutions**:
-
-1. Check current permissions:
-   ```sql
-   SELECT * FROM information_schema.role_table_grants
-   WHERE grantee = 'username';
-   ```
-
-2. Grant necessary permissions:
-   ```sql
-   GRANT ALL ON DATABASE mydb TO username;
-   GRANT ALL ON SCHEMA public TO username;
-   GRANT ALL ON ALL TABLES IN SCHEMA public TO username;
-   ```
-
-### SSL/TLS Connections
-
-Configure SSL in the **SSL/TLS** section of the connection form.
-
-| SSL Mode | PostgreSQL `sslmode` | Description |
-|----------|---------------------|-------------|
-| **Disabled** | `disable` | No SSL encryption |
-| **Preferred** | `prefer` | Use SSL if available, fall back to unencrypted |
-| **Required** | `require` | Require SSL, but don't verify certificates |
-| **Verify CA** | `verify-ca` | Require SSL and verify the server certificate against a CA |
-| **Verify Identity** | `verify-full` | Require SSL, verify CA, and verify the server hostname |
-
-For **Verify CA** and **Verify Identity** modes, provide the path to your CA certificate (root certificate). You can also provide optional client certificate and key files for mutual TLS.
-
-<Tip>
-Cloud providers like AWS RDS, Heroku, and Supabase typically require SSL. Use **Required** or **Verify CA** depending on your security needs.
-</Tip>
-
-<Note>
-If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
-</Note>
-
-{/* Screenshot: PostgreSQL SSL/TLS configuration */}
-<Frame caption="PostgreSQL SSL/TLS configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/postgresql-ssl-config.png"
-    alt="PostgreSQL SSL/TLS configuration"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/postgresql-ssl-config-dark.png"
-    alt="PostgreSQL SSL/TLS configuration"
-  />
-</Frame>
-
-## Startup Commands
-
-Set session variables that apply automatically on every connection. Configure these in the **Advanced** tab of the connection form.
-
-Typical PostgreSQL startup commands:
-
-```sql
-SET timezone = 'UTC';
-SET search_path TO myschema, public;
-SET statement_timeout = '30s';
-SET work_mem = '256MB';
-SET client_encoding = 'UTF8';
-```
-
-Setting `search_path` is useful when your tables live in a non-default schema. Instead of qualifying every table name (`myschema.users`), set the search path once and query tables by name directly.
-
-Setting `timezone` ensures all `timestamptz` queries return results in the same zone, regardless of the server or client OS timezone.
-
-See [Startup Commands](/databases/overview#startup-commands) for more details.
-
-## ~/.pgpass File Support
-
-TablePro supports the standard PostgreSQL `~/.pgpass` file for password-less authentication. This is useful for environments where passwords are managed by external secrets tools.
-
-### Setup
-
-1. Create `~/.pgpass` with entries in the format: `hostname:port:database:username:password`
-2. Set permissions: `chmod 0600 ~/.pgpass`
-3. In the connection form, enable **Use ~/.pgpass** in the Authentication section
-4. Leave the password field blank
-
-### Format
-
-Each line in `~/.pgpass` follows this format:
-
-```
-hostname:port:database:username:password
-```
-
-Use `*` as a wildcard to match any value:
-
-```
-# Match any database on localhost for user postgres
-localhost:5432:*:postgres:mypassword
-
-# Match any host/port/database for a specific user
-*:*:*:deploy_user:deploy_password
-```
-
-Escape literal colons with `\:` and backslashes with `\\`.
-
-### Validation
-
-The connection form shows live status when **Use ~/.pgpass** is enabled:
-
-- **Green**: `~/.pgpass` found with a matching entry
-- **Yellow**: File not found, or no matching entry
-- **Red**: File has incorrect permissions (needs `chmod 0600`)
-
-<Warning>
-libpq silently ignores `~/.pgpass` if file permissions are not exactly `0600`. TablePro surfaces this as a clear warning in the connection form.
-</Warning>
-
-<Note>
-When using SSH tunneling, libpq connects to `127.0.0.1` on the local tunnel port, not the remote host. Use wildcards (`*`) for host and port in your `~/.pgpass` entries to match tunneled connections.
-</Note>
-
-## Pre-Connect Script
-
-Run a shell script before each connection attempt. This is useful for refreshing credentials, updating `~/.pgpass`, or performing pre-flight checks.
-
-### Setup
-
-1. Open the **Advanced** tab in the connection form
-2. Enter your script in the **Pre-Connect Script** field
-3. The script runs via `/bin/bash -c` before each connection
-
-### Behavior
-
-- The script inherits the parent environment (HOME, PATH, etc.)
-- Non-zero exit code aborts the connection with an error message
-- 10-second timeout: the script is terminated if it takes too long
-- Only runs on explicit connect, not on automatic reconnections
-
-### Example: Refresh pgpass from secrets manager
-
-```bash
-#!/bin/bash
-vault read -field=password secret/postgres > ~/.pgpass_entry
-echo "db.example.com:5432:mydb:app_user:$(cat ~/.pgpass_entry)" > ~/.pgpass
-chmod 0600 ~/.pgpass
-rm ~/.pgpass_entry
-```
-
-## PostgreSQL Extensions
-
-TablePro works with databases using popular extensions:
-
-| Extension | Support |
-|-----------|---------|
-| `postgis` | Displays geometry/geography types |
-| `pg_trgm` | Full query support |
-| `uuid-ossp` | UUID display |
-| `hstore` | Key-value display |
-| `ltree` | Tree path display |
-
-To see installed extensions:
-
-```sql
-SELECT * FROM pg_extension;
-```
-
-## Performance Tips
-
-### Query Analysis
-
-Use `EXPLAIN ANALYZE` to understand query performance:
-
-```sql
-EXPLAIN ANALYZE
-SELECT * FROM users WHERE email LIKE '%@example.com';
-```
-
-### Connection Limits
-
-PostgreSQL has a default connection limit. Monitor connections:
-
-```sql
-SELECT count(*) FROM pg_stat_activity;
-```
-
-### Large Tables
-
-For tables with millions of rows:
-
-1. Always use `LIMIT` in exploratory queries
-2. Create appropriate indexes
-3. Use pagination in the data grid
-
-## Differences from MySQL
-
-If you're coming from MySQL:
-
-| MySQL | PostgreSQL |
-|-------|------------|
-| `SHOW DATABASES` | `\l` or query `pg_database` |
-| `SHOW TABLES` | `\dt` or query `information_schema.tables` |
-| `DESCRIBE table` | `\d table` or query `information_schema.columns` |
-| `AUTO_INCREMENT` | `SERIAL` or `GENERATED AS IDENTITY` |
-| `LIMIT x, y` | `LIMIT y OFFSET x` |
-| Backtick quotes | Double quotes for identifiers |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote PostgreSQL servers
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the SQL editor features
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export PostgreSQL data
-  </Card>
-  <Card title="Table Structure" icon="table" href="/features/table-structure">
-    View and modify table structures
-  </Card>
-</CardGroup>
+**MySQL Migration Notes**: Use `SERIAL` (not `AUTO_INCREMENT`), `LIMIT y OFFSET x` syntax, double quotes for identifiers, `GENERATED AS IDENTITY` for new schemas.

@@ -10,237 +10,43 @@ TablePro connects to Amazon Redshift, AWS's columnar data warehouse based on Pos
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select Redshift">
-    Choose **Amazon Redshift** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in your cluster endpoint, port, username, password, and database name
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+  <Step title="Create Connection">
+    Click **New Connection**, select **Amazon Redshift**, enter cluster endpoint/port/credentials/database, and click **Create**
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | - | Cluster endpoint (find in AWS Console) |
+| **Port** | `5439` | Redshift port |
+| **Database** | `dev` | **Required** (default database in every cluster) |
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Redshift cluster endpoint | - |
-| **Port** | Redshift server port | `5439` |
-| **Username** | Redshift user | - |
-| **Password** | User password | - |
-| **Database** | Database name to connect to | `dev` |
-
-<Warning>
-Redshift requires a database name. The default database created with every cluster is `dev`.
-</Warning>
-
-## Example Configurations
-
-### Redshift Cluster
-
-```
-Name:     Production Warehouse
-Host:     my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com
-Port:     5439
-Username: awsuser
-Password: (your password)
-Database: dev
-```
-
-### Redshift Serverless
-
-```
-Name:     Serverless Warehouse
-Host:     my-workgroup.123456789012.us-west-2.redshift-serverless.amazonaws.com
-Port:     5439
-Username: admin
-Password: (your password)
-Database: dev
-```
-
-<Tip>
-Find your cluster endpoint in the AWS Console under Amazon Redshift > Clusters > your cluster > Properties. The endpoint includes the port, but enter host and port separately in TablePro.
-</Tip>
+Example: `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439`
 
 ## Features
 
-### Schema Support
+**Schemas**: Like PostgreSQL. Switch with **Cmd+K**. Default schema is `public`. Tables show metadata from `svv_table_info`: distribution style, sort keys, table size.
 
-Redshift organizes tables into schemas, just like PostgreSQL. TablePro displays:
+**Query Execution**: Full Redshift SQL support with COPY/UNLOAD for S3, window functions, ANALYZE COMPRESSION. Export to CSV/JSON/SQL/XLSX. Import from CSV/JSON/SQL/XLSX.
 
-1. All schemas accessible to your user
-2. Tables within each schema
-3. The search path order
+**DDL**: Shows DISTKEY, SORTKEY, DISTSTYLE, ENCODE directives. Foreign keys (informational only, not enforced).
 
-### Schema Switching
+**SSL/TLS**: Use **Required** or **Verify CA** for production.
 
-Switch between Redshift schemas with the database switcher (**Cmd+K**):
-
-1. Press **Cmd+K** to open the switcher
-2. Select the target schema
-3. The sidebar, queries, and toolbar update to reflect the selected schema
-
-<Tip>
-The default schema is `public`. System schemas like `pg_catalog` and `information_schema` are filtered from the list.
-</Tip>
-
-### Table Browsing and Data Viewing
-
-Browse tables, views, and late-binding views. The data grid paginates large warehouse tables. Redshift-specific metadata from `svv_table_info` is available in the table info panel: distribution style, sort keys, and table size.
-
-### Query Execution
-
-Execute queries with Redshift SQL syntax. The editor highlights Redshift-specific functions and keywords.
-
-```sql
--- Window functions
-SELECT
-    category,
-    product,
-    revenue,
-    RANK() OVER (PARTITION BY category ORDER BY revenue DESC) as rank
-FROM sales;
-
--- COPY from S3
-COPY sales FROM 's3://mybucket/data/sales/'
-IAM_ROLE 'arn:aws:iam::123456789012:role/MyRedshiftRole'
-FORMAT AS PARQUET;
-
--- UNLOAD to S3
-UNLOAD ('SELECT * FROM sales WHERE year = 2024')
-TO 's3://mybucket/export/sales_2024_'
-IAM_ROLE 'arn:aws:iam::123456789012:role/MyRedshiftRole'
-FORMAT AS CSV;
-
--- Analyze compression
-ANALYZE COMPRESSION sales;
-```
-
-### Data Export
-
-Export query results or table data in multiple formats:
-
-- CSV
-- JSON
-- SQL (INSERT statements)
-- XLSX
-
-### Data Import
-
-Import data from CSV, JSON, SQL, and XLSX files into Redshift tables.
-
-### DDL Generation
-
-View the DDL (CREATE TABLE statement) for any table, including Redshift-specific clauses: DISTKEY, SORTKEY, DISTSTYLE, and ENCODE directives.
-
-### Foreign Key Navigation
-
-Redshift supports foreign key definitions, though they are informational only (not enforced by the engine). TablePro displays these relationships and allows navigation between related tables.
-
-## SSL/TLS
-
-Redshift connections support SSL/TLS encryption, using the same configuration as PostgreSQL:
-
-| SSL Mode | Description |
-|----------|-------------|
-| **Disabled** | No SSL encryption |
-| **Preferred** | Use SSL if available, fall back to unencrypted |
-| **Required** | Require SSL, but don't verify certificates |
-| **Verify CA** | Require SSL and verify the server certificate against a CA |
-| **Verify Identity** | Require SSL, verify CA, and verify the server hostname |
-
-<Tip>
-AWS Redshift endpoints support SSL by default. Use **Required** or **Verify CA** for production connections.
-</Tip>
-
-## SSH Tunnel Support
-
-Connect to Redshift through an SSH tunnel if your cluster is in a private VPC. Configure the SSH tunnel in the connection form's SSH tab. TablePro routes the Redshift connection through the tunnel.
+**SSH Tunnels**: Supported for private VPC clusters.
 
 ## Limitations
 
-Redshift is a columnar data warehouse, not a general-purpose RDBMS. Several PostgreSQL features are absent or work differently:
-
-| Feature | Redshift Behavior |
-|---------|------------------|
-| **Indexes** | No traditional B-tree indexes. Uses DISTKEY and SORTKEY for data distribution and sort order. These columns appear in the Structure tab. |
-| **ALTER TABLE** | Limited support. Cannot rename columns. Type changes restricted to widening VARCHAR or changing numeric precision. |
-| **Enum types** | Not supported. No CREATE TYPE for custom enums. |
-| **Sequences** | Not supported. Use IDENTITY columns instead. |
-| **Foreign keys** | Informational only. Defined in DDL but not enforced by the engine. |
-| **Triggers** | Not supported. |
-| **Stored procedures** | Supported, but with a restricted PL/pgSQL subset. |
-
-### DISTKEY and SORTKEY
-
-Instead of traditional indexes, Redshift distributes data across nodes using distribution keys and sorts data within each node using sort keys. TablePro displays DISTKEY and SORTKEY designations in the Structure tab for each table, showing how your data is physically organized.
+Columnar warehouse (not general-purpose RDBMS): No traditional indexes (uses DISTKEY/SORTKEY), limited ALTER TABLE (no column rename), no enums/sequences/triggers, foreign keys informational only, restricted PL/pgSQL.
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check security group allows port 5439, verify cluster is publicly accessible (or use SSH tunnel), ensure cluster isn't paused.
 
-**Symptoms**: "Connection refused" or timeout
+**Auth failed**: Verify master username/password in AWS Console, check IAM credentials, verify database access.
 
-**Common causes**:
+**Slow queries**: Check distribution style with `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`, run `ANALYZE` to update stats, use `EXPLAIN`, match SORTKEY to WHERE/JOIN predicates.
 
-1. **Security group not configured**: Your IP must be allowed in the Redshift cluster's VPC security group (inbound rule on port 5439).
-2. **Cluster not publicly accessible**: If `Publicly Accessible` is No in the cluster properties, you need an SSH tunnel or VPN.
-3. **Cluster paused**: Redshift clusters can be paused to save costs. Resume the cluster in the AWS Console.
-
-### Authentication Failed
-
-**Symptoms**: "password authentication failed"
-
-**Solutions**:
-
-1. Verify your master username and password in the AWS Console
-2. For IAM-based auth, ensure your credentials are current
-3. Check that the user has been granted access to the specified database
-
-### Query Performance
-
-Redshift is optimized for analytical queries on large datasets. If queries are slow:
-
-1. Check your table's distribution style: `SELECT * FROM svv_table_info WHERE "table" = 'your_table'`
-2. Run `ANALYZE` to update table statistics
-3. Use `EXPLAIN` to review the query plan
-4. Ensure SORTKEY columns match your common WHERE and JOIN predicates
-
-## Differences from PostgreSQL
-
-If you're coming from PostgreSQL:
-
-| PostgreSQL | Redshift |
-|------------|----------|
-| Default port 5432 | Default port 5439 |
-| B-tree, GIN, GiST indexes | DISTKEY + SORTKEY only |
-| `CREATE INDEX` | Not supported |
-| Full constraint enforcement | Foreign keys informational only |
-| `SERIAL` / `GENERATED AS IDENTITY` | `IDENTITY(seed, step)` |
-| Rich type system (JSONB, arrays, etc.) | Limited types (no arrays, limited JSON via SUPER type) |
-| `pg_stat_activity` | `stv_recents`, `svl_qlog` |
-| Row-oriented storage | Columnar storage |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect to Redshift clusters in private VPCs
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write and execute Redshift queries
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export Redshift data
-  </Card>
-  <Card title="Table Structure" icon="table" href="/features/table-structure">
-    View DISTKEY, SORTKEY, and column definitions
-  </Card>
-</CardGroup>
+**PostgreSQL differences**: Port 5439, use `IDENTITY(seed, step)` not `SERIAL`, no arrays/rich types, query activity via `stv_recents`/`svl_qlog` not `pg_stat_activity`.

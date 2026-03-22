@@ -61,35 +61,7 @@ All write operations are blocked. The UI disables:
 
 Read queries (SELECT) execute normally.
 
-## NoSQL Databases
+NoSQL databases (MongoDB, Redis, etc.) can't be parsed for read vs. write operations, so all operations are treated as writes. This means every query in Alert/Safe Mode triggers a confirmation, and Read-Only blocks everything.
 
-NoSQL databases (MongoDB, Redis, DynamoDB, Cloudflare D1, Etcd, Cassandra) don't use SQL, so TablePro cannot distinguish between read and write operations by parsing the query text. All operations on these database types are treated as write operations for safe mode purposes. This means:
+The current safe mode level is shown as a badge in the toolbar. Click it to change levels. Safe mode gates apply to query execution, saving cell edits, table operations, and sidebar changes. The Silent level still shows dangerous query warnings (DROP/TRUNCATE/DELETE-without-WHERE).
 
-- **Alert/Safe Mode**: Every query triggers the confirmation dialog
-- **Read-Only**: All operations are blocked
-
-## Toolbar Badge
-
-The current safe mode level is shown as a badge in the toolbar. Click it to change the level for the active connection without opening the connection form.
-
-## Where Safe Mode Applies
-
-Safe mode gates are enforced at these points:
-
-- **Query execution**: Running queries from the SQL editor
-- **Save changes**: Committing cell edits, row insertions, and deletions
-- **Table operations**: Truncating or dropping tables from the sidebar
-- **Sidebar changes**: Renaming tables, modifying structure via the sidebar
-
-The `silent` level preserves the existing dangerous query warning (DROP/TRUNCATE/DELETE-without-WHERE) as a safety net.
-
-## Related Pages
-
-<CardGroup cols={2}>
-  <Card title="Change Tracking" icon="arrows-rotate" href="/features/change-tracking">
-    How edits are tracked and committed
-  </Card>
-  <Card title="Table Operations" icon="table" href="/features/table-operations">
-    Truncate, drop, and other table-level actions
-  </Card>
-</CardGroup>

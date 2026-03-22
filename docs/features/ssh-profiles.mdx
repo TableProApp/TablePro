@@ -7,91 +7,10 @@ description: Save SSH tunnel configurations as reusable profiles shared across c
 
 When you connect to MySQL, Redis, and PostgreSQL on the same remote server, you'd normally enter the same SSH host, port, and credentials three times. SSH profiles fix that: define the tunnel config once, then pick it from a dropdown on any connection.
 
-## Creating a Profile
+Create a profile in any connection's **SSH Tunnel** tab by clicking **Create New Profile...** and filling in host, port, username, and auth method. Once created, select the profile from the **Profile** picker in other connections. Updating a profile affects all connections using it.
 
-<Steps>
-  <Step title="Open the SSH Tunnel tab">
-    Open a new or existing connection and go to the **SSH Tunnel** tab.
-  </Step>
-  <Step title="Enable SSH">
-    Turn on the **Enable SSH Tunnel** toggle.
-  </Step>
-  <Step title="Click Create New Profile">
-    In the **SSH Profile** section, click **Create New Profile...**. A sheet opens with all the SSH fields.
-  </Step>
-  <Step title="Configure and save">
-    Give the profile a name (e.g. "prod-bastion"), fill in the SSH server details, and click **Create**.
-  </Step>
-</Steps>
-
-### Profile fields
-
-| Field | Description |
-|-------|-------------|
-| **Name** | Label for this profile — shows in the dropdown |
-| **SSH Host** | Hostname or IP of the SSH server |
-| **SSH Port** | Default `22` |
-| **Username** | SSH login user |
-| **Auth Method** | Password, Private Key, SSH Agent, or Keyboard-Interactive |
-| **Jump Hosts** | Optional multi-hop bastion chain |
-| **TOTP** | Optional two-factor (auto-generate or prompt) |
-
-Auth-specific fields (password, key file, passphrase, agent socket) match the [inline SSH tunnel settings](/databases/ssh-tunneling#authentication-methods).
-
-## Selecting a Profile
-
-1. Go to a connection's **SSH Tunnel** tab and enable SSH
-2. Open the **Profile** picker and select a profile
-3. The connection shows a read-only summary of the profile's settings
-
-The connection stores a reference to the profile — not a copy. Updating the profile later affects every connection that uses it.
-
-To go back to per-connection SSH settings, switch the picker back to **Inline Configuration**.
-
-## Editing a Profile
-
-1. Select the profile in any connection's SSH tab
-2. Click **Edit Profile...**
-3. Change what you need and click **Save**
-
-All connections referencing the profile get the updated config on next connect.
-
-## Deleting a Profile
-
-1. Open the profile editor via **Edit Profile...**
-2. Click **Delete Profile**
-3. A confirmation dialog shows how many connections use this profile
-4. Confirm deletion
-
-After deletion, affected connections show a "profile no longer exists" warning in the SSH tab. SSH tunneling is disabled for those connections until you select a different profile or switch to inline configuration.
-
-## Saving Inline Config as a Profile
-
-If you already configured SSH inline on a connection and want to reuse it:
-
-1. Go to the connection's **SSH Tunnel** tab (with inline config active)
-2. Click **Save Current as Profile...**
-3. Name the profile and click **Create**
-
-The connection switches to using the new profile. Your SSH password, key passphrase, and TOTP secret carry over.
+To edit a profile, select it and click **Edit Profile...**. To delete, click **Edit Profile...** then **Delete Profile**. You can also save an existing inline SSH config as a profile by clicking **Save Current as Profile...**.
 
 ## iCloud Sync
 
-SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Sync**.
-
-<Note>
-SSH passwords and key passphrases stay in the local macOS Keychain by default. Turn on **Password sync** in **Settings > Sync** to sync credentials via iCloud Keychain.
-</Note>
-
-See [iCloud Sync](/features/icloud-sync) for setup details.
-
-## Related
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    SSH tunnel setup and troubleshooting
-  </Card>
-  <Card title="iCloud Sync" icon="cloud" href="/features/icloud-sync">
-    Sync across Macs
-  </Card>
-</CardGroup>
+SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Sync**. SSH passwords and key passphrases stay local by default. Turn on **Password sync** in **Settings > Sync** to sync credentials via iCloud Keychain.

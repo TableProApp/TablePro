@@ -281,51 +281,10 @@ To export all data from a table:
 Export multiple tables at once by selecting them in the export dialog's tree view. When exporting as SQL, each table can have individual options for structure (DDL), DROP statements, and data.
 </Tip>
 
-### Exporting Structure Only
-
-To export just the table structure (DDL):
-
-1. Open the table's **Structure** tab
-2. Go to the **DDL** sub-tab
-3. Copy the CREATE TABLE statement
-
-Or use database-specific commands:
-
-```sql
--- MySQL
-SHOW CREATE TABLE users;
-
--- PostgreSQL
-pg_dump -s -t users database_name
-```
-
-### Export Progress
-
-When exporting large datasets, a progress indicator shows:
-
-- **Rows processed** out of total rows
-- **Current table** being exported (for multi-table exports)
 
 ## Clipboard Paste (CSV/TSV)
 
-Paste tabular data from your clipboard directly into the data grid. TablePro auto-detects whether the content is CSV (comma-separated) or TSV (tab-separated).
-
-**How it works:**
-
-1. Copy data from a spreadsheet, text editor, or other source
-2. Select a row in the data grid
-3. Press `Cmd+V` to paste
-
-The CSV parser is RFC 4180-compliant and handles:
-
-- Quoted fields with commas inside (e.g., `"New York, NY"`)
-- Escaped double quotes (e.g., `"He said ""hello"""`)
-- Multi-line values within quoted fields
-- Automatic header row detection (skips if column names match)
-
-<Tip>
-Format is auto-detected: if the data contains more tabs than commas, it parses as TSV; otherwise CSV. Data from Excel or Google Sheets is typically tab-separated.
-</Tip>
+Paste tabular data directly into the data grid. Press `Cmd+V` after selecting a row. Format is auto-detected: tabs parse as TSV, commas as CSV.
 
 ## Import Data
 
@@ -377,14 +336,6 @@ TablePro imports **SQL files** (`.sql` and `.sql.gz`). Statements execute direct
 | Wrap in transaction | Execute all statements within a single transaction | Yes |
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
-<Tip>
-Wrapping in a transaction ensures that if any statement fails, all changes roll back, leaving your database in a consistent state.
-</Tip>
-
-<Tip>
-Import options (wrap in transaction, disable foreign key checks) persist across app launches. Change them once and they stick.
-</Tip>
-
 ### SQL Preview
 
 Before running the import, the dialog shows:
@@ -421,129 +372,4 @@ During import, a progress indicator shows:
 
 ### Error Handling
 
-Import stops on the first error. If the import is wrapped in a transaction, all changes roll back automatically.
-
-When an error occurs, TablePro displays:
-
-- **Failed statement** -- the SQL statement that caused the error
-- **Line number** -- where the statement appears in the file
-- **Error message** -- the error returned by the database
-
-<Warning>
-There is no "skip errors" mode. If a statement fails, the import halts. Use "Wrap in transaction" to ensure partial imports roll back cleanly.
-</Warning>
-
-## Compression
-
-### Compressed Export
-
-Gzip compression is available for **SQL export only**:
-
-- Enable "Compress with gzip" in the SQL export settings
-- Output is saved with a `.sql.gz` extension
-- Significantly reduces file size for large SQL dumps
-
-<Note>
-Gzip compression is not available for CSV, JSON, or XLSX exports.
-</Note>
-
-### Compressed Import
-
-- TablePro auto-detects `.sql.gz` files during import
-- Files are decompressed on-the-fly -- no manual decompression needed
-- Works identically to importing a regular `.sql` file
-
-## Best Practices
-
-### Exporting
-
-1. **Filter first**: Export only what you need
-   ```sql
-   SELECT * FROM orders WHERE status = 'completed' AND year(created_at) = 2024;
-   ```
-
-2. **Consider file size**: Use LIMIT for very large tables
-   ```sql
-   SELECT * FROM logs ORDER BY created_at DESC LIMIT 100000;
-   ```
-
-3. **Choose appropriate format**:
-   - CSV for data analysis tools
-   - JSON for APIs/web
-   - SQL for database migration
-   - MQL for MongoDB backup/restore via `mongosh`
-   - XLSX for sharing with non-technical users in Excel
-
-4. **Use gzip for large SQL exports**: Compression reduces file size significantly
-
-### Importing
-
-1. **Backup first**: Always backup your database before running SQL imports
-
-2. **Test with a small file first**: Verify your import settings on a subset before running a large import
-
-3. **Use transactions**: Keep "Wrap in transaction" enabled so failed imports roll back automatically
-
-4. **Disable foreign key checks**: When importing dumps that reference tables in a specific order, keep this enabled to avoid constraint errors
-
-5. **Check encoding**: Make sure the encoding setting matches your SQL file's actual encoding to avoid character corruption
-
-## Troubleshooting
-
-### Export Issues
-
-**"File too large"**
-- Use LIMIT in your query
-- Export in batches
-- Enable gzip compression for SQL exports
-- Choose a more compact format (CSV vs JSON)
-
-**"Character encoding issues"**
-- Verify database encoding
-- Export with UTF-8 encoding
-- Check for special characters
-
-### Import Issues
-
-**"Syntax error in SQL"**
-- Verify the SQL file was exported from a compatible database engine
-- Check that the file encoding matches the setting in the import dialog
-- Open the file in a text editor to inspect the problematic line
-
-**"Duplicate key error"**
-- The data contains duplicates for unique or primary key columns
-- Include DROP TABLE statements in your SQL export to start fresh
-- Or manually drop the target table before importing
-
-**"Foreign key constraint"**
-- Enable "Disable foreign key checks" in the import options
-- Or ensure parent tables are created before child tables in your SQL file
-
-**"Transaction rolled back"**
-- A statement in the file caused an error, rolling back the entire import
-- Check the error message and line number to identify the problematic statement
-- Fix the SQL file and re-import
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Export | `Cmd+Shift+E` |
-| Import | `Cmd+Shift+I` |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View data before exporting
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Filter data with queries
-  </Card>
-  <Card title="Table Structure" icon="table-columns" href="/features/table-structure">
-    Export schema DDL
-  </Card>
-  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
-    Re-run import queries
-  </Card>
-</CardGroup>
+Import stops on the first error. If wrapped in a transaction, all changes roll back automatically. Check the error message and line number to identify the problematic statement.

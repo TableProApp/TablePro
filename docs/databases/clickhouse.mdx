@@ -7,147 +7,29 @@ description: Connect to ClickHouse databases with TablePro
 
 TablePro supports ClickHouse via its HTTP interface. ClickHouse is a column-oriented OLAP database built for real-time analytics on large datasets. TablePro connects over HTTP (port 8123 by default), not the native TCP protocol.
 
-## Install Plugin
-
-The ClickHouse driver is available as a downloadable plugin. When you select ClickHouse in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
-
-1. Open **Settings** > **Plugins** > **Browse**
-2. Find **ClickHouse Driver** and click **Install**
-3. The plugin downloads and loads immediately - no restart needed
-
 ## Quick Setup
 
-<Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select ClickHouse">
-    Choose **ClickHouse** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, username, password, and database name
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
-  </Step>
-</Steps>
+Click **New Connection**, select **ClickHouse**, enter host/port/credentials/database, and click **Create**. Plugin auto-installs or use **Settings** > **Plugins** > **Browse** > **ClickHouse Driver**.
 
 ## Connection Settings
 
-### Required Fields
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `8123` | HTTP port (not 9000 native TCP) |
+| **Username** | `default` | Set password in production |
+| **Database** | `default` | |
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP address | `localhost` |
-| **Port** | ClickHouse HTTP port | `8123` |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Username** | ClickHouse user | `default` |
-| **Password** | User password (empty by default for local installs) |
-| **Database** | Database to connect to | `default` |
-
-<Tip>
-ClickHouse ships with a `default` user that has no password on fresh installs. For production servers, always set a password or configure access control.
-</Tip>
-
-## HTTP Interface
-
-TablePro connects to ClickHouse through its HTTP API, not the native TCP protocol (port 9000). The HTTP interface is enabled by default on port 8123 and supports all SQL operations.
-
-If your ClickHouse server uses HTTPS, enable SSL/TLS in the connection form. The default HTTPS port is 8443.
-
-<Note>
-Some ClickHouse cloud providers only expose the HTTP(S) interface. TablePro works with these out of the box since it uses HTTP natively.
-</Note>
+Uses HTTP API (HTTPS on port 8443 with SSL/TLS enabled). Cloud providers typically expose HTTP(S) only.
 
 ## Example Configurations
 
-### Local Development Server
+**Local**: host `localhost:8123`, user `default`, empty password
+**Docker**: `clickhouse/clickhouse-server:latest`, set `CLICKHOUSE_USER`/`CLICKHOUSE_PASSWORD` env
+**ClickHouse Cloud**: Port 8443, enable SSL/TLS
+**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for unencrypted HTTP
 
-```
-Name:     Local ClickHouse
-Host:     localhost
-Port:     8123
-Username: default
-Password: (empty)
-Database: default
-```
-
-### Docker ClickHouse Container
-
-Start a ClickHouse container for local testing:
-
-```bash
-docker run -d \
-  --name clickhouse \
-  -p 8123:8123 \
-  -p 9000:9000 \
-  -e CLICKHOUSE_USER=default \
-  -e CLICKHOUSE_PASSWORD=secret \
-  clickhouse/clickhouse-server:latest
-```
-
-Then connect with:
-
-```
-Name:     Docker ClickHouse
-Host:     localhost
-Port:     8123
-Username: default
-Password: secret
-Database: default
-```
-
-### ClickHouse Cloud
-
-```
-Name:     ClickHouse Cloud
-Host:     abc123.us-east-1.aws.clickhouse.cloud
-Port:     8443
-Username: default
-Password: (your cloud password)
-Database: default
-```
-
-<Note>
-ClickHouse Cloud requires HTTPS (port 8443). Enable SSL/TLS in the connection form.
-</Note>
-
-### Remote Server
-
-```
-Name:     Production ClickHouse
-Host:     clickhouse.example.com
-Port:     8123
-Username: app_user
-Password: (secure password)
-Database: analytics
-```
-
-<Warning>
-For production ClickHouse instances, consider using [SSH tunneling](/databases/ssh-tunneling) if the HTTP port is not encrypted.
-</Warning>
-
-## SSL/TLS Connections
-
-TablePro supports SSL/TLS encryption for ClickHouse connections. Configure SSL in the **SSL/TLS** section of the connection form.
-
-| SSL Mode | Description |
-|----------|-------------|
-| **Disabled** | No SSL encryption (HTTP on port 8123) |
-| **Required** | Require SSL encryption (HTTPS, typically port 8443) |
-
-<Tip>
-ClickHouse Cloud and most managed ClickHouse services require HTTPS. Set the port to 8443 and enable SSL.
-</Tip>
-
-## SSH Tunnel Support
-
-You can connect to ClickHouse through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for detailed setup instructions.
+**SSL/TLS**: Enable in connection form for HTTPS (port 8443). Cloud requires HTTPS.
 
 ## Features
 
@@ -164,9 +46,7 @@ For each table, TablePro shows:
 - **DDL**: The full CREATE TABLE statement including engine and settings
 - **Parts**: Partition and part details from `system.parts` (rows, disk size, active status)
 
-### Engine Information
-
-ClickHouse tables use storage engines that determine how data is stored and queried. TablePro displays the engine type and its parameters in the table structure view. Common engines:
+**Engines**:
 
 | Engine | Use Case |
 |--------|----------|
@@ -178,9 +58,7 @@ ClickHouse tables use storage engines that determine how data is stored and quer
 | **Memory** | In-memory tables for temporary data |
 | **Distributed** | Queries across shards in a cluster |
 
-### Sorting Keys and Partition Keys
-
-ClickHouse tables are ordered by their sorting key (ORDER BY clause in the table definition). TablePro displays the sorting key, partition key, and primary key in the table structure view. These are critical for query performance since ClickHouse reads data in sorted order.
+**Sorting/Partition Keys**: Critical for performance (ClickHouse reads sorted order).
 
 ### Data Skipping Indices
 
@@ -330,29 +208,7 @@ ORDER BY sum(bytes_on_disk) DESC;
 
 ## Known Limitations
 
-- **No foreign keys.** ClickHouse does not support foreign key constraints. Referential integrity must be managed at the application level.
-- **No transactions.** ClickHouse has no multi-statement transaction support. Each statement executes independently.
-- **Asynchronous mutations.** UPDATE and DELETE operations run as background mutations via `ALTER TABLE UPDATE` and `ALTER TABLE DELETE`. They are not instant: on large tables, mutations may take seconds to minutes. Check mutation progress with:
-  ```sql
-  SELECT * FROM system.mutations WHERE is_done = 0;
-  ```
-- **No auto-increment.** ClickHouse does not support auto-increment columns.
-- **Primary key is immutable.** The primary key and sorting key cannot be changed after table creation.
-- **INSERT-optimized.** ClickHouse is designed for batch inserts, not single-row writes. Inserting one row at a time works but is not efficient for bulk loading.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote ClickHouse servers
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the query editor features
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export ClickHouse data
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Browse and edit data in the data grid
-  </Card>
-</CardGroup>
+- No foreign keys or multi-statement transactions
+- No auto-increment; primary key and sorting key are immutable after creation
+- UPDATE/DELETE run as asynchronous background mutations via `ALTER TABLE` — check progress with `SELECT * FROM system.mutations WHERE is_done = 0`
+- Designed for batch inserts, not single-row writes

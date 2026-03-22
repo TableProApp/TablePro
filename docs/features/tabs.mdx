@@ -198,27 +198,7 @@ The duplicated tab is inserted immediately after the original.
 
 Each tab stores all of its state, preserved when switching between tabs.
 
-### State Properties
-
-| Property | Description |
-|----------|-------------|
-| **Tab ID** | Unique identifier (UUID) |
-| **Title** | Display name shown in the tab bar |
-| **SQL Content** | The query text in the SQL editor |
-| **Tab Type** | Query or table |
-| **Table Name** | Associated table name (for table tabs) |
-| **Result Columns** | Column names from the last query |
-| **Result Rows** | Row data from the last query (cached) |
-| **Column Types** | Data type metadata for formatting |
-| **Execution Time** | Duration of the last query |
-| **Error Message** | Error from the last failed query |
-| **Is Editable** | Whether inline editing is enabled |
-| **Pagination State** | Current page, page size, total rows |
-| **Sort State** | Sort column and direction |
-| **Filter State** | Active filters and visibility |
-| **Pending Changes** | Queued data modifications |
-| **Selected Rows** | Currently selected row indices |
-| **Result Version** | Cache invalidation counter |
+Each tab stores its full state: SQL content, results, pagination, sorting, filters, pending changes, and selection.
 
 ### Per-Tab Change Tracking
 
@@ -245,22 +225,7 @@ Tabs persist across app restarts.
 | Pin state | Execution time |
 | -- | Preview tab state (preview tabs are discarded) |
 
-### How Persistence Works
-
-<Steps>
-  <Step title="Debounced Auto-Save">
-    Tab state auto-saves 500ms after any change (debounced to avoid rapid successive writes)
-  </Step>
-  <Step title="Per-Connection Storage">
-    Each database connection has its own saved tab state, stored in UserDefaults with a connection-specific key
-  </Step>
-  <Step title="Restoration on Connect">
-    When you reconnect to a database, TablePro restores saved tabs and re-executes queries for table tabs
-  </Step>
-  <Step title="Window Close Handling">
-    When you close a window, any pending debounced save flushes immediately to prevent data loss
-  </Step>
-</Steps>
+Tab state auto-saves 500ms after any change. When you reconnect to a database, TablePro restores your tabs and re-executes table queries.
 
 ### Last Query Memory
 
@@ -312,16 +277,7 @@ Query tabs execute the full query and receive all results. For large result sets
 - Pagination slices the result array without re-querying
 - Sorting is done locally on the cached results
 
-### Page Size Configuration
-
-Configure the default page size in **Settings** > **Data Grid**:
-
-| Option | Rows per Page |
-|--------|---------------|
-| Small | 100 |
-| Medium | 500 |
-| Large | 1,000 |
-| Custom | 10 - 100,000 |
+Configure page size in **Settings** > **Data Grid**: Small (100), Medium (500), Large (1,000), or Custom (10–100,000).
 
 ## Tab Context Menu
 
@@ -348,51 +304,4 @@ Right-click any tab to access the context menu:
   />
 </Frame>
 
-## Keyboard Shortcuts
 
-| Action | Shortcut |
-|--------|----------|
-| New query tab | `Cmd+T` |
-| Close current tab | `Cmd+W` |
-| Switch to tab 1-9 | `Cmd+1` through `Cmd+9` |
-| Previous tab | `Cmd+Shift+[` or `Cmd+Option+Left` |
-| Next tab | `Cmd+Shift+]` or `Cmd+Option+Right` |
-
-## Best Practices
-
-### Organize by Task
-
-Use separate tabs for different tasks: one for exploring data, another for writing migration queries, another for testing. This keeps your workspace organized.
-
-### Pin Important Tabs
-
-Pin tabs with queries you refer to frequently. This prevents them from being accidentally closed.
-
-### Use Table Tabs for Browsing
-
-When you just need to look at data, click the table in the sidebar to open a table tab. This gives you pagination, editing, and structure view without writing SQL.
-
-### Use Query Tabs for Complex Work
-
-For joins, aggregations, subqueries, and multi-statement operations, use query tabs. The SQL editor gives you full control over what executes.
-
-### Close Unused Tabs
-
-While tabs are lightweight, closing tabs you no longer need keeps the tab bar clean and makes navigation easier.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write queries in query tabs
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View and edit query results
-  </Card>
-  <Card title="Query History" icon="clock-rotate-left" href="/features/query-history">
-    Access previously executed queries
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    All keyboard shortcuts
-  </Card>
-</CardGroup>

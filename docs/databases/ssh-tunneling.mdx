@@ -37,27 +37,14 @@ flowchart LR
 
 ## When to Use SSH Tunneling
 
-- Database server is in a private network
-- Database server only accepts local connections
-- You need to encrypt the database connection
-- You want to access databases through a bastion/jump host
+- Database in private network
+- Database accepts local connections only
+- Need to encrypt database connection
+- Access via bastion/jump host
 
-## Setting Up SSH Tunneling
+## Setting Up
 
-<Steps>
-  <Step title="Create or Edit Connection">
-    Open the connection form for your database
-  </Step>
-  <Step title="Enable SSH Tunnel">
-    Toggle the **SSH Tunnel** switch to ON
-  </Step>
-  <Step title="Configure SSH Settings">
-    Enter your SSH server details and authentication
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection** to verify the tunnel works
-  </Step>
-</Steps>
+Open connection form, toggle **SSH Tunnel** ON, enter SSH server details and auth, click **Test Connection**.
 
 {/* Screenshot: Connection form with SSH section expanded */}
 <Frame caption="SSH tunnel configuration">
@@ -534,77 +521,6 @@ If tunnels still drop:
   />
 </Frame>
 
-## Security Considerations
+## Security Best Practices
 
-### Best Practices
-
-1. **Use key-based authentication** instead of passwords
-2. **Use Ed25519 or RSA keys** with 4096+ bits
-3. **Protect your private keys** with a passphrase
-4. **Limit SSH access** to specific users/IPs on the server
-5. **Use a dedicated jump host** rather than direct database access
-
-### What Gets Encrypted
-
-| Data | Encrypted |
-|------|-----------|
-| SSH connection | Yes |
-| Database credentials | Yes (through tunnel) |
-| Query data | Yes (through tunnel) |
-| Local stored passwords | Yes (macOS Keychain) |
-
-### What to Avoid
-
-- Don't share private keys
-- Don't use password authentication on production servers
-- Don't store SSH passwords in plain text
-- Don't expose database ports directly to the internet
-
-## SSH Agent Authentication
-
-With SSH Agent auth, your private keys never leave the agent process — 1Password, Secretive, or the built-in macOS `ssh-agent` hold the keys and sign on behalf of TablePro.
-
-### Setup
-
-1. Pick **SSH Agent** as the authentication method
-2. Choose an **Agent Socket** option from the dropdown
-3. Select **SSH_AUTH_SOCK** to use the system default
-4. Select **1Password** to use `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`
-5. Select **Custom Path** to enter another socket path manually
-
-### Verify Your Agent
-
-Confirm the agent has keys loaded:
-
-```bash
-# List keys in the agent
-ssh-add -l
-
-# If empty, add a key
-ssh-add ~/.ssh/id_ed25519
-```
-
-### Agent Socket Options
-
-| Option | Behavior |
-|--------|----------|
-| `SSH_AUTH_SOCK` | Uses the current `SSH_AUTH_SOCK` environment variable |
-| `1Password` | Uses `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock` |
-| `Custom Path` | Lets you enter another socket path, such as the one shown in Secretive preferences |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="MySQL Connection" icon="database" href="/databases/mysql">
-    MySQL-specific settings and features
-  </Card>
-  <Card title="PostgreSQL Connection" icon="database" href="/databases/postgresql">
-    PostgreSQL-specific settings and features
-  </Card>
-  <Card title="Connection Management" icon="plug" href="/databases/overview">
-    Managing all your connections
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Speed up your workflow
-  </Card>
-</CardGroup>
+Use key-based authentication with Ed25519 or RSA 4096+ bits, protect keys with a passphrase, and never expose database ports directly to the internet. SSH Agent (1Password, Secretive, or `ssh-agent`) keeps private keys in a separate process — use it instead of storing passphrases.

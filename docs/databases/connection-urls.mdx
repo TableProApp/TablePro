@@ -188,44 +188,13 @@ cassandra://host:9042                        # no auth, no default keyspace
 postgresql+ssh://ubuntu@bastion/dbuser@10.0.0.5/mydb?usePrivateKey=true
 ```
 
-## How Direct URL Opening Works
+## Opening URLs from Browser or Terminal
 
-When you open a database URL from a browser or terminal, TablePro handles it automatically:
-
-1. **Matching saved connection**: if host, port, database, and username all match an existing saved connection, TablePro connects using that connection (including its saved password)
-2. **No match**: TablePro creates a temporary session. The password from the URL is stored in Keychain for the session but the connection is not saved to your list
-
-To open a URL from the terminal:
-
+Launch and connect from browser/terminal:
 ```bash
 open "postgresql://user:pass@localhost:5432/mydb"
 open "mysql://root@localhost/shop?table=products"
 open "postgresql+ssh://ubuntu@bastion/user:pass@10.0.0.5/mydb?usePrivateKey=true"
 ```
 
-<Note>
-To save the connection permanently, use **Import from URL** in the New Connection form instead. That fills in all fields so you can review them and click **Create**.
-</Note>
-
-## Full Example
-
-A URL that connects via SSH, opens a specific schema and table, pre-applies a filter, and sets a color tag:
-
-```
-postgresql+ssh://deploy@bastion.example.com:22/dbuser:dbpass@10.0.1.5:5432/analytics?schema=public&table=events&column=type&value=purchase&statusColor=FF9500&env=staging
-```
-
-Breaking it down:
-
-| Part | Value |
-|------|-------|
-| SSH user | `deploy` |
-| SSH host | `bastion.example.com:22` |
-| DB user / pass | `dbuser` / `dbpass` |
-| DB host / port | `10.0.1.5:5432` |
-| Database | `analytics` |
-| Schema | `public` |
-| Table | `events` |
-| Filter | `type = purchase` |
-| Color | orange (`FF9500`) |
-| Tag | `staging` |
+Uses saved connection if matched, otherwise temporary session. To save, use **Import from URL** in New Connection form.

@@ -206,11 +206,7 @@ Undo moves the action to the redo stack. Redo moves it back.
 Undo and redo are context-aware. When the SQL editor is focused, `Cmd+Z` undoes text edits. When the data grid is focused, it undoes data changes.
 </Tip>
 
-### Stack Behavior
-
-- Undo/redo stacks are maintained per-tab
-- Committing or discarding changes clears both stacks
-- New changes after an undo clear the redo stack (standard undo behavior)
+Undo/redo stacks are maintained per-tab. Committing or discarding changes clears both stacks. The stack works the same for both data and schema changes.
 
 ## Schema Changes
 
@@ -253,15 +249,7 @@ In the Structure tab, pending changes show with visual indicators:
   />
 </Frame>
 
-### Schema Undo & Redo
-
-Schema changes have their own undo/redo stack, separate from data changes:
-
-- Up to 100 undo levels
-- New actions clear the redo stack
-- Supports all schema operation types
-
-### Previewing Schema SQL
+## Previewing Schema SQL
 
 Before applying schema changes, preview the generated SQL:
 
@@ -300,190 +288,42 @@ Copy individual SQL statements from the preview sheet using the copy button next
 
 ## SQL Generation
 
-TablePro generates database-specific SQL for both data and schema changes.
-
-### Data SQL (`SQLStatementGenerator`)
-
-Data changes produce parameterized statements to prevent SQL injection:
+Data changes produce parameterized statements to prevent SQL injection. Schema changes produce ALTER TABLE statements with database-specific syntax:
 
 <Tabs>
   <Tab title="MySQL/MariaDB">
     ```sql
-    -- UPDATE with LIMIT 1 for safety
     UPDATE `users` SET `name` = ? WHERE `id` = ? LIMIT 1
-
-    -- INSERT
     INSERT INTO `users` (`name`, `email`) VALUES (?, ?)
-
-    -- DELETE (with PK)
     DELETE FROM `users` WHERE `id` = ? OR `id` = ?
 
-    -- DELETE (without PK, matches all columns)
-    DELETE FROM `users` WHERE `name` = ? AND `email` = ? LIMIT 1
-    ```
-  </Tab>
-  <Tab title="PostgreSQL">
-    ```sql
-    -- UPDATE with positional parameters
-    UPDATE "users" SET "name" = $1 WHERE "id" = $2
-
-    -- INSERT
-    INSERT INTO "users" ("name", "email") VALUES ($1, $2)
-
-    -- DELETE (with PK)
-    DELETE FROM "users" WHERE "id" = $1 OR "id" = $2
-    ```
-  </Tab>
-  <Tab title="SQLite">
-    ```sql
-    -- UPDATE
-    UPDATE "users" SET "name" = ? WHERE "id" = ?
-
-    -- INSERT
-    INSERT INTO "users" ("name", "email") VALUES (?, ?)
-
-    -- DELETE
-    DELETE FROM "users" WHERE "id" = ? OR "id" = ?
-    ```
-  </Tab>
-</Tabs>
-
-### Schema SQL (`SchemaStatementGenerator`)
-
-Schema changes produce ALTER TABLE statements with database-specific syntax:
-
-<Tabs>
-  <Tab title="MySQL/MariaDB">
-    ```sql
-    -- Add column
     ALTER TABLE `users` ADD COLUMN `phone` VARCHAR(20) NOT NULL
-
-    -- Modify column
     ALTER TABLE `users` MODIFY COLUMN `name` VARCHAR(200) NOT NULL
-
-    -- Drop column
-    ALTER TABLE `users` DROP COLUMN `phone`
-
-    -- Add index
-    CREATE INDEX `idx_email` ON `users` (`email`) USING BTREE
-
-    -- Drop foreign key
-    ALTER TABLE `orders` DROP FOREIGN KEY `fk_orders_user`
     ```
   </Tab>
   <Tab title="PostgreSQL">
     ```sql
-    -- Add column
+    UPDATE "users" SET "name" = $1 WHERE "id" = $2
+    INSERT INTO "users" ("name", "email") VALUES ($1, $2)
+    DELETE FROM "users" WHERE "id" = $1 OR "id" = $2
+
     ALTER TABLE "users" ADD COLUMN "phone" VARCHAR(20) NOT NULL
-
-    -- Modify column (multiple statements)
-    ALTER TABLE "users" RENAME COLUMN "name" TO "full_name";
-    ALTER TABLE "users" ALTER COLUMN "full_name" TYPE VARCHAR(200);
-    ALTER TABLE "users" ALTER COLUMN "full_name" SET NOT NULL
-
-    -- Drop column
-    ALTER TABLE "users" DROP COLUMN "phone"
-
-    -- Add index
-    CREATE INDEX "idx_email" ON "users" ("email")
-
-    -- Drop constraint
-    ALTER TABLE "orders" DROP CONSTRAINT "fk_orders_user"
+    ALTER TABLE "users" ALTER COLUMN "name" TYPE VARCHAR(200)
     ```
   </Tab>
   <Tab title="SQLite">
     ```sql
-    -- Add column
+    UPDATE "users" SET "name" = ? WHERE "id" = ?
+    INSERT INTO "users" ("name", "email") VALUES (?, ?)
+    DELETE FROM "users" WHERE "id" = ?
+
     ALTER TABLE "users" ADD COLUMN "phone" TEXT
-
-    -- Drop column
-    ALTER TABLE "users" DROP COLUMN "phone"
-
-    -- Add index
     CREATE INDEX "idx_email" ON "users" ("email")
     ```
 
     <Warning>
-    SQLite has limited ALTER TABLE support. Modifying columns and dropping foreign keys require table recreation, which is not currently supported in the visual editor. Use the SQL editor for these operations.
+    SQLite has limited ALTER TABLE support. Use the SQL editor for modifications that require table recreation.
     </Warning>
   </Tab>
 </Tabs>
 
-### SQL Function Support
-
-When editing cells, TablePro recognizes common SQL functions and inserts them as literals rather than quoted strings:
-
-| Function | Database |
-|----------|----------|
-| `NOW()` | MySQL, MariaDB |
-| `CURRENT_TIMESTAMP` | All |
-| `CURDATE()` | MySQL, MariaDB |
-| `CURRENT_DATE` | All |
-| `SYSDATE()` | MySQL |
-| `UTC_TIMESTAMP()` | MySQL, MariaDB |
-
-### Dependency Ordering
-
-Schema changes are automatically sorted by dependency order before execution:
-
-1. Drop foreign keys (must come first to avoid constraint violations)
-2. Drop indexes
-3. Drop/modify columns
-4. Add columns
-5. Modify primary key
-6. Add indexes
-7. Add foreign keys
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Commit changes | `Cmd+S` |
-| Undo | `Cmd+Z` |
-| Redo | `Cmd+Shift+Z` |
-| Delete selected rows | `Delete` or `Cmd+Delete` |
-| Edit cell | `Enter` or double-click |
-| Cancel edit | `Escape` |
-
-## Best Practices
-
-### Review Before Committing
-
-Check your pending changes before committing. The visual indicators in the data grid make it easy to spot unintended edits.
-
-### Use Undo Liberally
-
-The undo stack clears when you commit, so take advantage of it while editing. It costs nothing to undo and redo while working.
-
-### Commit Frequently
-
-Avoid accumulating too many changes before committing. Smaller, more frequent commits are easier to verify and less risky if something goes wrong.
-
-### Preview Schema Changes
-
-Always use the SQL preview when modifying table structure. This shows the exact ALTER TABLE statements before they execute.
-
-### Backup Before Destructive Changes
-
-When dropping columns or making other destructive schema changes, back up your table first:
-
-```sql
-CREATE TABLE users_backup AS SELECT * FROM users;
-```
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View and edit data in the grid
-  </Card>
-  <Card title="Table Structure" icon="table-columns" href="/features/table-structure">
-    Modify table schemas visually
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write and execute raw SQL
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    All keyboard shortcuts
-  </Card>
-</CardGroup>

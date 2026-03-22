@@ -54,13 +54,9 @@ open TablePro.xcodeproj
 
 ### Step 3: Configure Signing
 
-1. Select the **TablePro** target in the project navigator
+1. Select **TablePro** target
 2. Go to **Signing & Capabilities**
-3. Change **Team** to your own Apple Developer account
-
-<Info>
-The project ships with the maintainer's team ID. You must switch it to your own to build locally. A free Apple Developer account works for development builds.
-</Info>
+3. Change **Team** to your own Apple Developer account (free account works for development)
 
 ### Step 4: Build and Run
 
@@ -224,118 +220,17 @@ SwiftFormat options:
 
 ## Development Workflow
 
-### Making Changes
+1. Create feature branch: `git checkout -b feature/my-feature`
+2. Make changes
+3. Lint: `swiftlint lint` and `swiftformat --lint .`
+4. Test: `xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation`
+5. Commit: `git commit -m "Add my feature"`
+6. Push: `git push origin feature/my-feature`
 
-1. Create a feature branch:
-   ```bash
-   git checkout -b feature/my-feature
-   ```
-
-2. Make your changes
-
-3. Run linting:
-   ```bash
-   swiftlint lint
-   swiftformat --lint .
-   ```
-
-4. Run tests:
-   ```bash
-   xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
-   ```
-
-5. Commit:
-   ```bash
-   git add .
-   git commit -m "Add my feature"
-   ```
-
-6. Push and open a pull request:
-   ```bash
-   git push origin feature/my-feature
-   ```
-
-### Debugging
-
-1. Set breakpoints by clicking line numbers
-2. Use `po` in the debug console to print objects
-3. Use the Variables View to inspect state
-4. Use Console.app for system logs
-
-### Logging
-
-TablePro uses OSLog:
-
-```swift
-import os
-
-private static let logger = Logger(subsystem: "com.TablePro", category: "ComponentName")
-
-// Usage
-logger.debug("Connection established")
-logger.info("Query executed in \(duration)s")
-logger.error("Failed to connect: \(error.localizedDescription)")
-```
-
-## Common Tasks
-
-### Adding a New View
-
-1. Create the SwiftUI view in the appropriate `Views/` subfolder
-2. Follow existing naming (`FeatureNameView.swift`)
-3. Use `@Observable` or `@StateObject` for state management
-4. Add to navigation/routing as needed
-
-### Adding a Database Feature
-
-1. Create a new plugin bundle under `Plugins/`, or modify an existing driver plugin
-2. Implement `PluginDatabaseDriver` protocol methods
-3. Update `PluginDriverAdapter` if bridging new protocol methods
-4. Add UI in relevant view components
-5. Add tests
-
-### Modifying Settings
-
-1. Add to the appropriate settings struct in `AppSettings.swift`
-2. Update `SettingsView` to display the setting
-3. Use the setting throughout the app via `@AppStorage` or settings manager
+**Logging**: Use OSLog with `Logger(subsystem: "com.TablePro", category: "Name")`.
 
 ## Troubleshooting
 
-### Build Fails
-
-1. Clean build folder: `Cmd+Shift+K`
-2. Delete derived data:
-   ```bash
-   rm -rf ~/Library/Developer/Xcode/DerivedData
-   ```
-3. Close and reopen Xcode
-4. Check for Xcode updates
-
-### SwiftLint Errors
-
-1. Read the error message
-2. Check `.swiftlint.yml` for rule configuration
-3. Fix the issue or disable the rule if appropriate
-4. Run `swiftlint --fix` for auto-fixable issues
-
-### Missing Libraries or Secrets.xcconfig
-
-Run `scripts/download-libs.sh` and `touch Secrets.xcconfig` at the repo root. See [Step 1](#step-1-clone-and-bootstrap).
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Architecture" icon="sitemap" href="/development/architecture">
-    Understand the codebase structure
-  </Card>
-  <Card title="Code Style" icon="code" href="/development/code-style">
-    Follow coding conventions
-  </Card>
-  <Card title="Building" icon="hammer" href="/development/building">
-    Build release versions
-  </Card>
-  <Card title="GitHub" icon="github" href="https://github.com/datlechin/tablepro">
-    View the source code
-  </Card>
-</CardGroup>
+**Build fails**: Clean with `Cmd+Shift+K`, delete derived data, close/reopen Xcode.
+**SwiftLint errors**: Run `swiftlint --fix` for auto-fixable issues.
+**Missing libraries**: Run `scripts/download-libs.sh` and `touch Secrets.xcconfig`.

@@ -156,20 +156,14 @@ The `databaseTypeIds` field maps registry entries to `DatabaseType.pluginTypeId`
 | Oracle | `"Oracle"` |
 | ClickHouse | `"ClickHouse"` |
 
-## Publishing a Plugin Release
+## Publishing a Plugin
 
-1. Tag the commit: `git tag plugin-oracle-v1.0.0 && git push --tags`
-2. The `build-plugin.yml` CI workflow builds both architectures (arm64 + x86_64), signs, creates a GitHub release with ZIP artifacts, and automatically updates the plugin registry with a `binaries` array
-3. The app fetches the updated manifest on next **Browse** visit (with ETag caching)
+Tag commit: `git tag plugin-oracle-v1.0.0 && git push --tags`. CI builds both architectures, signs, creates release, and updates registry. App fetches on next **Browse** visit.
 
-## Auto-Install Flow
+## Auto-Install
 
-When a user selects a downloadable database type (Oracle or ClickHouse):
-
-1. `DatabaseType.isDownloadablePlugin` returns `true`
-2. `PluginManager.isDriverAvailable(for:)` returns `false` (no loaded driver)
-3. The connection form shows a download badge and triggers `installPluginForType`
-4. `PluginManager.installMissingPlugin(for:)` fetches the registry, finds the plugin by matching `databaseTypeIds`, and calls `installFromRegistry`
-5. The ZIP is downloaded, SHA-256 verified, extracted, code-signature verified, and loaded
-
-If the user tries to connect to an existing connection with a missing plugin, the same flow triggers via an alert prompt.
+When user selects downloadable database type (Oracle, ClickHouse):
+1. Check if plugin is loaded
+2. Show download badge if missing
+3. Fetch registry, find plugin by `databaseTypeIds`, download ZIP
+4. Verify SHA-256, extract, verify signature, load plugin

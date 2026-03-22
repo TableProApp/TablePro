@@ -21,141 +21,16 @@ The filter panel builds WHERE clauses without writing SQL. Pick columns, operato
   />
 </Frame>
 
-## Overview
-
-The filtering system has five parts:
-
-- **Filter Panel** — visual builder for WHERE clause conditions
-- **Quick Search** — instant search across all visible columns
-- **Filter Presets** — save and load named filter configurations
-- **SQL Preview** — inspect the generated WHERE clause before applying
-- **Per-Tab State** — each tab remembers its own filters independently
 
 ## Filter Panel
 
-### Opening the Filter Panel
-
-Toggle the filter panel:
-
-- Click the **Filter** button in the toolbar
-- Or press `Cmd+F`
-
-The panel appears above the data grid. The quick search field is automatically focused when the panel opens.
-
-### Building Filters
-
-Each filter row has three parts:
-
-1. **Column** — which column to filter on
-2. **Operator** — the comparison operator
-3. **Value** — the value to compare against
-
-{/* Screenshot: Single filter row showing column, operator, and value */}
-<Frame caption="A single filter row">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-row.png"
-    alt="Filter row"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-row-dark.png"
-    alt="Filter row"
-  />
-</Frame>
-
-### Adding and Managing Filters
-
-| Action | How |
-|--------|-----|
-| Add a filter | Click the **+** button in the header |
-| Duplicate a filter | Click the duplicate icon on the filter row |
-| Remove a filter | Click the **x** button on the filter row |
-| Focus a filter | Click anywhere on the row |
-
-### AND / OR Logic
-
-Toggle between AND and OR logic using the segmented control in the filter header:
-
-- **AND** — all filters must match (intersection)
-- **OR** — any filter can match (union)
-
-<Tip>
-AND mode narrows results progressively. OR mode finds rows matching any of several conditions.
-</Tip>
-
-{/* Screenshot: AND/OR logic toggle in filter header */}
-<Frame caption="AND/OR logic toggle in filter header">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-and-or-toggle.png"
-    alt="AND/OR logic toggle in filter header"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-and-or-toggle-dark.png"
-    alt="AND/OR logic toggle in filter header"
-  />
-</Frame>
-
-### Selecting and Applying Filters
-
-Each filter row has a checkbox for selective application:
-
-| Action | Description |
-|--------|-------------|
-| **Select/deselect** | Toggle the checkbox on individual filters |
-| **Select All** | Use the "Select All" checkbox in the footer |
-| **Apply single** | Click the play button on a filter row to apply just that filter |
-| **Apply All** | Click **Apply All** in the footer to apply all selected filters |
-| **Unset** | Click **Unset** to clear all applied filters and reload unfiltered data |
-
-<Note>
-Only valid filters with complete column, operator, and value (where required) can be applied. Invalid filters show a disabled play button.
-</Note>
-
-{/* Screenshot: Select All checkbox and Apply All button */}
-<Frame caption="Select All checkbox and Apply All button">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-select-all.png"
-    alt="Select All checkbox and Apply All button"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-select-all-dark.png"
-    alt="Select All checkbox and Apply All button"
-  />
-</Frame>
+Click the **Filter** button or press `Cmd+F` to open the filter panel. Each filter row specifies a column, operator, and value. Click **+** to add filters, use the AND/OR toggle to control logic, and click **Apply All** to activate selected filters. Click **Unset** to clear all filters.
 
 ## Operators
 
-The filter builder supports 18 operators:
+The filter builder supports 18 operators: equals, not equals, contains, starts with, ends with, greater than (>), greater or equal (>=), less than (<), less or equal (<=), IS NULL, IS NOT NULL, IS EMPTY, IS NOT EMPTY, IN, NOT IN, BETWEEN, and REGEX.
 
-| Operator | Display Name | Requires Value | Description |
-|----------|-------------|----------------|-------------|
-| `=` | equals | Yes | Exact match |
-| `!=` | not equals | Yes | Excludes exact match |
-| CONTAINS | contains | Yes | Substring match (LIKE %value%) |
-| NOT CONTAINS | not contains | Yes | Excludes substring |
-| STARTS WITH | starts with | Yes | Prefix match (LIKE value%) |
-| ENDS WITH | ends with | Yes | Suffix match (LIKE %value) |
-| `>` | greater than | Yes | Greater than comparison |
-| `>=` | greater or equal | Yes | Greater than or equal |
-| `<` | less than | Yes | Less than comparison |
-| `<=` | less or equal | Yes | Less than or equal |
-| IS NULL | is NULL | No | Column value is NULL |
-| IS NOT NULL | is not NULL | No | Column value is not NULL |
-| IS EMPTY | is empty | No | Column value is empty string |
-| IS NOT EMPTY | is not empty | No | Column value is not empty string |
-| IN | in list | Yes | Value in comma-separated list |
-| NOT IN | not in list | Yes | Value not in comma-separated list |
-| BETWEEN | between | Yes (two values) | Value between two bounds |
-| REGEX | matches regex | Yes | Regular expression match |
-
-### Operators Without Values
-
-IS NULL, IS NOT NULL, IS EMPTY, and IS NOT EMPTY hide the value field and show a dash indicator instead. No input needed.
+Operators without values (IS NULL, IS NOT NULL, IS EMPTY, IS NOT EMPTY) hide the value field.
 
 ### BETWEEN Operator
 
@@ -359,100 +234,9 @@ If filters exist but none are valid, the preview shows a message indicating what
 
 ## Per-Tab Filter State
 
-Each tab maintains its own independent filter state.
-
-### How It Works
-
-- Opening a table creates a fresh filter state for that tab
-- Switching between tabs preserves each tab's filters
-- Applied filters remain active when you switch away and return
-- Filter panel visibility is remembered per tab
-
-### State Components
-
-Each tab stores:
-
-| Component | Description |
-|-----------|-------------|
-| **Filter list** | All filter rows (applied or not) |
-| **Applied filters** | Currently active filters affecting the query |
-| **Panel visibility** | Whether the filter panel is shown or hidden |
+Each tab maintains its own independent filter state, including the filter list, applied filters, and panel visibility. Switching between tabs preserves each tab's filters.
 
 ## Filter Settings
 
-Configure default filter behavior in the settings popover.
+Click the **gear** icon to configure default column (Raw SQL, Primary Key, or any column), default operator (= or Contains), and panel behavior on open (Always Hide, Always Show, or Restore Last Filter).
 
-### Accessing Settings
-
-Click the **gear** icon in the filter panel header to open the settings popover.
-
-{/* Screenshot: Filter settings popover */}
-<Frame caption="Filter settings">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-settings.png"
-    alt="Filter settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-settings-dark.png"
-    alt="Filter settings"
-  />
-</Frame>
-
-### Default Column
-
-Controls which column is pre-selected when adding a new filter:
-
-| Option | Description |
-|--------|-------------|
-| **Raw SQL** | New filters default to Raw SQL mode |
-| **Primary Key** | New filters default to the table's primary key column |
-| **Any Column** | New filters default to the first available column |
-
-### Default Operator
-
-Controls which operator is pre-selected when adding a new filter:
-
-| Option | Description |
-|--------|-------------|
-| **Equal (=)** | Default to exact match |
-| **Contains** | Default to substring match |
-
-### Panel State on Open
-
-Controls the filter panel behavior when opening a table:
-
-| Option | Description |
-|--------|-------------|
-| **Always Hide** | Filter panel starts hidden (default) |
-| **Always Show** | Filter panel is always visible when opening a table |
-| **Restore Last Filter** | Restores the last filters used on that specific table |
-
-<Tip>
-"Restore Last Filter" remembers filters per table name. If you frequently filter the same table with the same conditions, this saves setup time every session.
-</Tip>
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Toggle filter panel / Quick search | `Cmd+F` |
-| Apply filter (in value field) | `Enter` |
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View and navigate filtered results
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write WHERE clauses manually
-  </Card>
-  <Card title="Import & Export" icon="file-import" href="/features/import-export">
-    Export filtered data
-  </Card>
-  <Card title="Settings" icon="gear" href="/customization/settings">
-    Configure application preferences
-  </Card>
-</CardGroup>

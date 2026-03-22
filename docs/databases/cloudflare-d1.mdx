@@ -213,27 +213,10 @@ D1 uses SQLite's SQL syntax. Key points:
 
 ## Known Limitations
 
-- **No persistent connections.** Each query is an independent HTTP request to the Cloudflare API. There is no connection pooling or session state between requests.
-- **No transactions.** D1 does not support multi-statement transactions across API calls. Each SQL statement executes independently and auto-commits.
-- **No SSH or SSL configuration.** D1 is accessed exclusively via HTTPS through the Cloudflare API. No custom SSL certificates or SSH tunnels are needed or supported.
-- **No schema editing UI.** Table structure changes must be done via SQL (ALTER TABLE, etc.) in the query editor.
-- **10 GB database limit.** Each D1 database is capped at 10 GB. For larger datasets, consider sharding across multiple databases.
-- **API rate limits.** The Cloudflare API has rate limits that may affect heavy usage. TablePro surfaces rate limit errors with retry timing.
-- **No import.** Bulk data import is not supported through the plugin. Use `wrangler d1 execute` with SQL files for bulk loading.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the query editor features
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Browse and edit data in the data grid
-  </Card>
-  <Card title="Export" icon="file-export" href="/features/import-export">
-    Export D1 data to various formats
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Speed up your workflow
-  </Card>
-</CardGroup>
+- No persistent connections — each query is an independent HTTP request with no session state
+- No multi-statement transactions — each SQL statement auto-commits independently
+- No schema editing UI — use SQL in the query editor for ALTER TABLE
+- 10 GB database limit per D1 database — shard for larger datasets
+- API rate limits apply — TablePro shows rate limit errors with retry timing
+- No bulk import through the plugin — use `wrangler d1 execute` with SQL files
+- No custom SSL/SSH — D1 is HTTPS-only via Cloudflare API

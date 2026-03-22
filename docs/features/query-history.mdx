@@ -21,51 +21,9 @@ Every query you execute is automatically saved to a local SQLite database. Searc
   />
 </Frame>
 
-## Accessing History
+Click **View** > **Query History**, press `Cmd+Y`, or click the **History** icon in the toolbar. Recent queries also appear in the sidebar.
 
-### History Panel
-
-Open the history panel:
-
-1. Click **View** > **Query History**
-2. Or press `Cmd+Y`
-3. Or click the **History** icon in the toolbar
-
-### History in Sidebar
-
-Recent queries also appear in the sidebar under the active connection.
-
-## History Features
-
-### Query List
-
-The history panel displays:
-
-| Column | Description |
-|--------|-------------|
-| **Query** | The SQL text (truncated if long) |
-| **Time** | When the query was executed |
-| **Duration** | Execution time |
-| **Status** | Success or error |
-| **Database** | Database/connection used |
-
-### Sorting
-
-Sort history by:
-
-- **Time**: Most recent first (default)
-- **Duration**: Slowest queries first
-- **Query text**: Alphabetically
-
-Click column headers to change sort order.
-
-### Filtering
-
-Filter queries by:
-
-- **Connection**: Show only queries from a specific connection
-- **Status**: Show only successful or failed queries
-- **Time range**: Today, this week, this month, all time
+The history panel shows your executed queries with execution time, status, and database. Sort by time (most recent first), duration, or query text. Filter by connection, status (success/error), or time range (today, week, month, all time).
 
 {/* Screenshot: History panel with filter controls */}
 <Frame caption="History panel with filter controls">
@@ -105,20 +63,6 @@ SELECT users  -- Find all queries containing "SELECT" and "users"
   />
 </Frame>
 
-### Search Tips
-
-- Search is case-insensitive
-- Partial matches are included
-- Search looks at the full query text
-
-**Example searches**:
-
-| Search | Finds |
-|--------|-------|
-| `users` | Queries mentioning "users" |
-| `JOIN orders` | Queries joining orders table |
-| `WHERE created` | Queries filtering by created |
-| `UPDATE users SET` | Update statements on users |
 
 ## Using History
 
@@ -167,55 +111,6 @@ To modify a historical query:
 
 The original history entry is preserved. A new entry is created for the modified query.
 
-## History Storage
-
-### Where History is Stored
-
-Query history lives in:
-
-```
-~/Library/Application Support/TablePro/query_history.db
-```
-
-This SQLite database contains:
-
-- Query text
-- Execution timestamp
-- Duration
-- Connection/database info
-- Success/failure status
-- Error messages (if failed)
-
-### History Retention
-
-Configure retention in **Settings** > **History**:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Entries** | 10,000 | Maximum queries to store |
-| **Max Days** | 90 | Delete queries older than this |
-| **Auto Cleanup** | On | Automatically remove old entries |
-
-<Tip>
-Set **Max Entries** to 0 for unlimited history (may slow searches with very large histories).
-</Tip>
-
-### Clearing History
-
-To clear all history:
-
-1. Open **Settings** > **History**
-2. Click **Clear All History**
-3. Confirm the action
-
-<Warning>
-Clearing history cannot be undone. Consider exporting important queries first.
-</Warning>
-
-To clear history for a specific connection:
-
-1. Right-click the connection in sidebar
-2. Select **Clear History**
 
 ## Query Details
 
@@ -237,31 +132,8 @@ For long queries, click to expand and see the full text:
   />
 </Frame>
 
-### Execution Details
 
-Each history entry includes:
-
-| Detail | Description |
-|--------|-------------|
-| **Started** | Timestamp when execution began |
-| **Duration** | How long the query took |
-| **Rows affected** | Number of rows returned/modified |
-| **Error** | Error message if query failed |
-
-### Failed Queries
-
-Failed queries show:
-
-- The error message
-- The query that caused the error
-- Timestamp of the failure
-
-This is useful for debugging:
-
-1. Find the failed query
-2. Read the error message
-3. Load into editor
-4. Fix and re-run
+Failed queries show the error message, the query that failed, and the timestamp. Load a failed query into the editor to fix and re-run.
 
 {/* Screenshot: Failed query entry with error message */}
 <Frame caption="Failed query entry with error message">
@@ -277,93 +149,16 @@ This is useful for debugging:
   />
 </Frame>
 
-## Best Practices
+## Storage
 
-### Annotating Queries
+Query history is stored in `~/Library/Application Support/TablePro/query_history.db` (a local SQLite database with FTS5 full-text search).
 
-Add comments to important queries for easier searching:
+Configure retention in **Settings** > **History**:
 
-```sql
--- Monthly revenue report 2024
-SELECT
-    DATE_FORMAT(created_at, '%Y-%m') as month,
-    SUM(total) as revenue
-FROM orders
-WHERE created_at >= '2024-01-01'
-GROUP BY month;
-```
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Max Entries** | 10,000 | Maximum queries to store |
+| **Max Days** | 90 | Delete queries older than this |
+| **Auto Cleanup** | On | Automatically remove old entries |
 
-Now search for "Monthly revenue report" to find it.
-
-### Organizing with Comments
-
-Use consistent comment patterns:
-
-```sql
--- [REPORT] User growth
--- [DEBUG] Performance issue
--- [ADMIN] Data cleanup
--- [TEMP] Testing query
-```
-
-### Exporting Important Queries
-
-For queries you want to keep permanently:
-
-1. Find the query in history
-2. Copy to a SQL file
-3. Save in version control
-
-## Keyboard Shortcuts
-
-| Action | Shortcut |
-|--------|----------|
-| Open history | `Cmd+Y` |
-| Search history | `Cmd+F` (when history is open) |
-| Load selected query | `Enter` or double-click |
-| Copy query | `Cmd+C` |
-
-## Troubleshooting
-
-### History Not Saving
-
-1. Check disk space -- history needs storage
-2. Verify TablePro has write permissions
-3. Check if history is disabled in settings
-
-### Slow History Search
-
-For very large histories:
-
-1. Reduce **Max Entries** in settings
-2. Clear old history
-3. Use more specific search terms
-
-### Missing Old Queries
-
-Check **Max Days** setting -- queries older than this limit are automatically deleted.
-
-To prevent automatic deletion:
-1. Open **Settings** > **History**
-2. Set **Max Days** to 0 (unlimited)
-
-### Duplicate Entries
-
-Each execution creates a new history entry, even for identical queries. This is intentional: it tracks when each query was run.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Write and execute queries
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    View query results
-  </Card>
-  <Card title="Settings" icon="gear" href="/customization/settings">
-    Configure history options
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Learn all shortcuts
-  </Card>
-</CardGroup>
+To clear all history, open **Settings** > **History** and click **Clear All History**. For a specific connection, right-click it in the sidebar and select **Clear History**.

@@ -23,125 +23,39 @@ The Oracle driver is available as a downloadable plugin. When you select Oracle 
 
 <Steps>
   <Step title="Install Oracle Instant Client">
-    Download and install Oracle Instant Client Basic package for macOS
+    Download Basic package for macOS from Oracle
   </Step>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select Oracle">
-    Choose **Oracle** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, username, password, and service name
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+  <Step title="Create Connection">
+    Click **New Connection**, select **Oracle**, enter host/port/username/password/service name, click **Create**
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP address | `localhost` |
-| **Port** | Oracle listener port | `1521` |
-| **Username** | Oracle username | - |
-| **Password** | User password | - |
-| **Service Name** | Oracle service name (e.g., `ORCL`, `XEPDB1`) | - |
-
-<Note>
-TablePro connects using Oracle service names, not SIDs. If you have a SID, check your `tnsnames.ora` for the corresponding service name, or use the SID as the service name (works in most configurations).
-</Note>
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `1521` | Listener port |
+| **Service Name** | - | **Required**. Use service name not SID. Check `tnsnames.ora` if unclear. |
+| **Username** | - | Requires username/password auth (no OS auth) |
 
 ## Example Configurations
 
-### Local Development (Oracle XE)
+**Local (Oracle XE)**: host `localhost:1521`, user `system`, service `XEPDB1`
 
-```
-Name:         Local Oracle XE
-Host:         localhost
-Port:         1521
-Username:     system
-Password:     (your password)
-Service Name: XEPDB1
-```
+**Docker**: `gvenzl/oracle-xe:21-slim` image, same config as local
 
-### Docker Oracle Container
+**Remote**: Standard host/port/credentials, service name from DBA
 
-Start an Oracle XE 21c container for local testing:
-
-```bash
-docker run \
-  -e ORACLE_PASSWORD=YourStrong@Passw0rd \
-  -p 1521:1521 \
-  --name oracle-xe \
-  -d gvenzl/oracle-xe:21-slim
-```
-
-Then connect with:
-
-```
-Name:         Docker Oracle XE
-Host:         localhost
-Port:         1521
-Username:     system
-Password:     YourStrong@Passw0rd
-Service Name: XEPDB1
-```
-
-<Tip>
-The `gvenzl/oracle-xe` Docker image is a community-maintained lightweight Oracle XE image, ideal for local development and testing.
-</Tip>
-
-### Remote Server
-
-```
-Name:         Production Oracle
-Host:         oracle.example.com
-Port:         1521
-Username:     app_user
-Password:     (secure password)
-Service Name: PRODDB
-```
-
-### Oracle Cloud (Autonomous Database)
-
-```
-Name:         Oracle Cloud ADB
-Host:         adb.region.oraclecloud.com
-Port:         1522
-Username:     ADMIN
-Password:     (your password)
-Service Name: mydb_tp
-```
-
-<Note>
-Oracle Autonomous Database uses port 1522 by default and requires TLS. Download the wallet from the Oracle Cloud Console for mTLS connections.
-</Note>
+**Oracle Cloud (ADB)**: Port 1522, service name format `mydb_tp`, requires TLS wallet download from Oracle Cloud Console
 
 ## Features
 
-### Schema Selection
+**Schema Selection**: Each user is a schema. Switch with **⌘K**. Shows available schemas and objects.
 
-Oracle organizes objects into schemas, where each schema corresponds to a database user. TablePro lists all accessible schemas and their objects.
+**Table Info**: Structure (columns, types, nullability, defaults), indexes (B-tree, bitmap), foreign keys, DDL via DBMS_METADATA.
 
-Switch schemas using the database switcher (**⌘K**), which shows available schemas for the current connection.
-
-### Table Browsing
-
-For each table, TablePro shows:
-
-- **Structure**: Columns with Oracle data types, nullability, and default values
-- **Indexes**: B-tree and bitmap indexes
-- **Foreign Keys**: Relationships to other tables
-- **DDL**: The table definition via DBMS_METADATA
-
-### Query Editor
-
-Write and execute SQL and PL/SQL in the editor. Pagination uses Oracle 12c row limiting:
+**Query Editor**: SQL/PL/SQL support. Pagination uses OFFSET/FETCH syntax:
 
 ```sql
 -- Paginated results
@@ -166,138 +80,18 @@ FROM user_tables
 ORDER BY table_name;
 ```
 
-### Schema Editing
+**Schema Editing**: ALTER TABLE with double quotes for case-sensitive names. Supports ADD, RENAME COLUMN, MODIFY, DROP, CREATE INDEX.
 
-Modify table structure via ALTER TABLE statements. Oracle uses double-quote notation for case-sensitive identifiers:
+**Foreign Keys**: Displayed in structure. Manual query: `SELECT c.constraint_name FROM all_constraints c WHERE constraint_type = 'R' AND owner = 'HR'`
 
-```sql
--- Add a column
-ALTER TABLE "HR"."EMPLOYEES" ADD ("LAST_LOGIN" TIMESTAMP);
-
--- Rename a column
-ALTER TABLE "HR"."EMPLOYEES" RENAME COLUMN "OLD_NAME" TO "NEW_NAME";
-
--- Modify a column
-ALTER TABLE "HR"."EMPLOYEES" MODIFY ("SALARY" NUMBER(12,2));
-
--- Drop a column
-ALTER TABLE "HR"."EMPLOYEES" DROP COLUMN "LEGACY_FIELD";
-
--- Add an index
-CREATE INDEX "IX_EMP_EMAIL" ON "HR"."EMPLOYEES" ("EMAIL");
-```
-
-### Foreign Keys
-
-TablePro displays foreign key relationships in the table structure view. To inspect foreign keys manually:
-
-```sql
-SELECT
-    c.constraint_name,
-    cc.column_name,
-    r.table_name AS referenced_table,
-    rc.column_name AS referenced_column
-FROM all_constraints c
-JOIN all_cons_columns cc
-    ON c.constraint_name = cc.constraint_name AND c.owner = cc.owner
-JOIN all_constraints r
-    ON c.r_constraint_name = r.constraint_name AND c.r_owner = r.owner
-JOIN all_cons_columns rc
-    ON r.constraint_name = rc.constraint_name AND r.owner = rc.owner
-WHERE c.constraint_type = 'R'
-    AND c.owner = 'HR'
-ORDER BY c.constraint_name;
-```
-
-## Authentication
-
-TablePro uses Oracle database authentication (username and password). OS authentication and wallet-based authentication are not supported.
-
-To create an Oracle user:
-
-```sql
--- Create a user (schema)
-CREATE USER app_user IDENTIFIED BY "StrongPassword1!";
-
--- Grant basic privileges
-GRANT CREATE SESSION TO app_user;
-GRANT SELECT ANY TABLE TO app_user;
-GRANT INSERT ANY TABLE TO app_user;
-GRANT UPDATE ANY TABLE TO app_user;
-GRANT DELETE ANY TABLE TO app_user;
-```
+**Authentication**: Username/password only (no OS auth or wallet). Create user: `CREATE USER app_user IDENTIFIED BY "Password1!"; GRANT CREATE SESSION, SELECT ANY TABLE TO app_user;`
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check listener running (`lsnrctl status`), verify port 1521 open, if Docker check `docker start oracle-xe`
 
-**Symptoms**: "Unable to connect" or timeout
+**Invalid service name**: Verify service exists: `SELECT value FROM v$parameter WHERE name = 'service_names';` List services: `lsnrctl services`
 
-**Causes and Solutions**:
+**Instant Client not found**: Download Basic package, extract to `/usr/local/oracle/instantclient`, set `DYLD_LIBRARY_PATH`
 
-1. **Oracle listener not running**
-
-   Check and start the listener:
-   ```bash
-   lsnrctl status
-   lsnrctl start
-   ```
-
-2. **Port 1521 blocked by firewall**
-   - Check firewall rules for TCP port 1521
-   - For cloud VMs, verify security group settings
-
-3. **Docker container not started**
-   ```bash
-   docker start oracle-xe
-   docker logs oracle-xe
-   ```
-
-### Invalid Service Name
-
-**Symptoms**: "ORA-12514: TNS:listener does not currently know of service requested"
-
-**Solutions**:
-
-1. Verify the service name:
-   ```sql
-   SELECT value FROM v$parameter WHERE name = 'service_names';
-   ```
-2. Check registered services on the listener:
-   ```bash
-   lsnrctl services
-   ```
-
-### Oracle Instant Client Not Found
-
-**Symptoms**: "Oracle Instant Client not found" or library loading error
-
-**Solution**: Install Oracle Instant Client:
-
-1. Download Basic package from [Oracle Instant Client](https://www.oracle.com/database/technologies/instant-client.html)
-2. Extract to a directory (e.g., `/usr/local/oracle/instantclient`)
-3. Set `DYLD_LIBRARY_PATH` or copy libraries to a system path
-
-## Known Limitations
-
-- **OS authentication not supported.** Only username/password authentication works.
-- **Wallet-based authentication** (mTLS for Oracle Cloud) is not yet supported.
-- **LONG and LONG RAW columns** (deprecated) may show limited editing support. Use CLOB and BLOB in new schemas.
-- **PL/SQL execution** is limited to single anonymous blocks. Package/procedure creation should use the query editor.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote Oracle instances
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the SQL editor features
-  </Card>
-  <Card title="Change Tracking" icon="pen" href="/features/change-tracking">
-    Edit rows and save changes with SQL preview
-  </Card>
-  <Card title="Table Structure" icon="table" href="/features/table-structure">
-    View and modify table structures
-  </Card>
-</CardGroup>
+**Limitations**: Username/password only, LONG/LONG RAW limited (use CLOB/BLOB), PL/SQL limited to anonymous blocks.

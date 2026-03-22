@@ -39,16 +39,6 @@ Available monospace fonts:
 **System Mono** automatically uses the best available system monospace font.
 </Tip>
 
-### Font Availability
-
-| Font | Availability |
-|------|--------------|
-| System Mono | Always available |
-| SF Mono | macOS 10.12+ |
-| Menlo | macOS 10.6+ |
-| Monaco | macOS Classic |
-| Courier New | Standard system font |
-
 If a selected font isn't available, TablePro falls back to System Mono.
 
 {/* Screenshot: Font family selector */}
@@ -128,10 +118,8 @@ Line numbers are useful for:
 
 | Option | Description |
 |--------|-------------|
-| **On** | Subtly highlight the line with cursor (default) |
-| **Off** | No highlight on current line |
-
-Helps track your cursor position in long queries.
+| **On** | Highlight the line with cursor (default) |
+| **Off** | No highlight |
 
 {/* Screenshot: Current line highlight */}
 <Frame caption="Current line highlighting in the editor">
@@ -153,18 +141,6 @@ Helps track your cursor position in long queries.
 |--------|-------------|
 | **Off** | Long lines scroll horizontally (default) |
 | **On** | Long lines wrap to next line |
-
-**Enable word wrap when**:
-
-- Working on narrow screens
-- Queries have long lines
-- You want to avoid horizontal scrolling
-
-**Disable word wrap when**:
-
-- You prefer consistent line lengths
-- Working with pre-formatted queries
-- You need to see query structure clearly
 
 {/* Screenshot: Word wrap */}
 <Frame caption="Word wrap: wrapped vs horizontal scrolling">
@@ -259,94 +235,7 @@ See [Autocomplete](/features/autocomplete) for details.
 
 All changes apply immediately. No restart required.
 
-## Recommended Configurations
-
-### Default (Balanced)
-
-```
-Font Family: System Mono
-Font Size: 13 pt
-Line Numbers: On
-Current Line: On
-Tab Width: 4
-Auto Indent: On
-Word Wrap: Off
-```
-
-### Compact (More Code Visible)
-
-```
-Font Family: SF Mono
-Font Size: 11 pt
-Line Numbers: On
-Current Line: On
-Tab Width: 2
-Auto Indent: On
-Word Wrap: Off
-```
-
-### Comfortable (Easy Reading)
-
-```
-Font Family: Menlo
-Font Size: 15 pt
-Line Numbers: On
-Current Line: On
-Tab Width: 4
-Auto Indent: On
-Word Wrap: On
-```
-
-### Minimal (Clean Interface)
-
-```
-Font Family: Monaco
-Font Size: 13 pt
-Line Numbers: Off
-Current Line: Off
-Tab Width: 4
-Auto Indent: On
-Word Wrap: Off
-```
-
-### Accessibility
-
-```
-Font Family: System Mono
-Font Size: 18 pt
-Line Numbers: On
-Current Line: On
-Tab Width: 4
-Auto Indent: On
-Word Wrap: On
-```
-
-## Syntax Highlighting
-
-SQL syntax is highlighted automatically:
-
-| Element | Color (Dark) | Color (Light) |
-|---------|--------------|---------------|
-| Keywords | Pink | Pink |
-| Strings | Green | Green |
-| Numbers | Blue | Blue |
-| Comments | Gray | Gray |
-| Functions | Default | Default |
-| Identifiers | White | Black |
-
-Colors adapt to the current theme.
-
-### Highlighted Keywords
-
-SQL keywords that are highlighted:
-
-- `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `DROP`
-- `FROM`, `WHERE`, `JOIN`, `ON`, `GROUP BY`, `ORDER BY`, `HAVING`
-- `AND`, `OR`, `NOT`, `IN`, `LIKE`, `BETWEEN`, `IS NULL`
-- `INNER`, `LEFT`, `RIGHT`, `OUTER`, `CROSS`, `UNION`
-- And many more SQL standard keywords
-
-## Keyboard Shortcuts in Editor
+## Keyboard Shortcuts
 
 | Action | Shortcut |
 |--------|----------|
@@ -357,45 +246,3 @@ SQL keywords that are highlighted:
 | Replace | `Cmd+Option+F` |
 | Select All | `Cmd+A` |
 | Go to Line | `Cmd+G` |
-
-See [Keyboard Shortcuts](/features/keyboard-shortcuts) for the complete list.
-
-## Troubleshooting
-
-### Font Not Appearing Correctly
-
-1. Verify the font is installed on your system
-2. Try a different font
-3. Restart TablePro
-
-### Settings Not Saving
-
-1. Check disk permissions
-2. Verify preferences file is writable:
-   ```bash
-   ls -la ~/Library/Preferences/com.TablePro.plist
-   ```
-3. Try resetting preferences
-
-### Editor Feels Slow
-
-1. Reduce font size (larger fonts render slower)
-2. Disable word wrap for long queries
-3. Check for very large queries in the editor
-
-## Related Pages
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Editor features and usage
-  </Card>
-  <Card title="Autocomplete" icon="wand-magic-sparkles" href="/features/autocomplete">
-    Autocomplete functionality
-  </Card>
-  <Card title="Appearance" icon="palette" href="/customization/appearance">
-    Theme and colors
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    All keyboard shortcuts
-  </Card>
-</CardGroup>

@@ -10,55 +10,26 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
 ## Quick Setup
 
 <Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  <Step title="Create Connection">
+    Click **New Connection**, select **MongoDB**, enter host/port/username/password/database, and click **Create**
   </Step>
-  <Step title="Select MongoDB">
-    Choose **MongoDB** from the database type selector
-  </Step>
-  <Step title="Enter Connection Details">
-    Fill in host, port, authentication database, username, and password
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
+  <Step title="Test Connection">
+    Click **Test Connection** to verify
   </Step>
 </Steps>
 
 ## Connection Settings
 
-### Required Fields
+| Field | Default | Notes |
+|-------|---------|-------|
+| **Host** | `localhost` | |
+| **Port** | `27017` | |
+| **Database** | - | Database name to connect to |
+| **Username** | - | Leave empty for local dev without auth |
+| **Password** | - | |
+| **Auth Database** | `admin` | Database to authenticate against |
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| **Name** | Connection identifier | - |
-| **Host** | Server hostname or IP | `localhost` |
-| **Port** | MongoDB server port | `27017` |
-| **Database** | Database name to connect to | - |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| **Username** | MongoDB user for authentication |
-| **Password** | User password |
-| **Auth Database** | Authentication database (defaults to `admin`) |
-
-<Tip>
-For local development without authentication, leave the username and password fields empty.
-</Tip>
-
-### Advanced Settings
-
-Configure read preference and write concern in the **Advanced** tab. These apply only to MongoDB connections.
-
-| Field | Description | Options |
-|-------|-------------|---------|
-| **Read Preference** | Controls which replica set members receive read operations | Default, Primary, Primary Preferred, Secondary, Secondary Preferred, Nearest |
-| **Write Concern** | Controls the acknowledgment level for write operations | Default, Majority, 1, 2, 3 |
-
-<Tip>
-Defaults work for most cases. Use **Secondary Preferred** or **Nearest** to distribute read load across replica members. Use **Majority** write concern for stronger durability.
-</Tip>
+**Advanced** (Optional): Configure **Read Preference** (primary, secondary, nearest) and **Write Concern** (majority for stronger durability) for replica sets.
 
 {/* Screenshot: MongoDB connection form */}
 <Frame caption="MongoDB connection form">
@@ -76,148 +47,24 @@ Defaults work for most cases. Use **Secondary Preferred** or **Nearest** to dist
 
 ## Example Configurations
 
-### Local Development Server
+**Local**: host `localhost:27017`, no auth, database `myapp`
+**Docker**: host `localhost:27017` (or mapped port), password from `MONGO_INITDB_ROOT_PASSWORD` env, auth DB `admin`
+**MongoDB Atlas**: Enable SSL/TLS in connection form
+**Remote**: Use [SSH tunneling](/databases/ssh-tunneling) for secure access
 
-```
-Name:     Local MongoDB
-Host:     localhost
-Port:     27017
-Username: (empty)
-Password: (empty)
-Database: myapp
-```
+## SSL/TLS
 
-### Docker MongoDB Container
-
-```
-Name:     Docker MongoDB
-Host:     localhost
-Port:     27017 (or your mapped port)
-Username: root
-Password: (password from MONGO_INITDB_ROOT_PASSWORD)
-Database: admin
-```
-
-### MongoDB Atlas
-
-```
-Name:     Atlas Cluster
-Host:     cluster0.abc123.mongodb.net
-Port:     27017
-Username: atlas_user
-Password: (your Atlas password)
-Database: myapp
-```
-
-<Note>
-MongoDB Atlas requires SSL/TLS. Enable it in the SSL/TLS section of the connection form.
-</Note>
-
-### Remote Server
-
-```
-Name:     Production DB
-Host:     db.example.com
-Port:     27017
-Username: app_user
-Password: (secure password)
-Database: production
-```
-
-<Warning>
-For production databases, consider using [SSH tunneling](/databases/ssh-tunneling) for secure connections.
-</Warning>
-
-## SSL/TLS Connections
-
-Configure SSL in the **SSL/TLS** section of the connection form.
-
-| SSL Mode | Description |
-|----------|-------------|
-| **Disabled** | No SSL encryption |
-| **Required** | Require SSL encryption |
-| **Verify CA** | Require SSL and verify the server certificate against a CA |
-
-For **Verify CA** mode, provide the path to your CA certificate file. You can also provide optional client certificate and key files for mutual TLS.
-
-<Tip>
-MongoDB Atlas always requires SSL/TLS. Use **Required** or **Verify CA** when connecting to Atlas clusters.
-</Tip>
-
-<Note>
-If you'd rather skip SSL certificate setup, [SSH tunneling](/databases/ssh-tunneling) encrypts all traffic through an SSH tunnel instead.
-</Note>
-
-{/* Screenshot: MongoDB SSL/TLS configuration */}
-<Frame caption="MongoDB SSL/TLS configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/mongodb-ssl-config.png"
-    alt="MongoDB SSL/TLS configuration"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mongodb-ssl-config-dark.png"
-    alt="MongoDB SSL/TLS configuration"
-  />
-</Frame>
-
-## SSH Tunnel Support
-
-Connect to MongoDB through an SSH tunnel for secure access to remote servers. See [SSH Tunneling](/databases/ssh-tunneling) for setup instructions.
+Configure in **SSL/TLS** section. MongoDB Atlas requires SSL/TLS - use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
 
 ## Features
 
-### Collection Browsing
+**Collection Browsing**: Sidebar shows all collections. Click to view documents in data grid.
 
-After connecting, the sidebar shows all collections in the selected database:
+**Document Viewing**: Top-level fields as columns, nested objects as formatted JSON, arrays as JSON arrays, ObjectIds as strings, BSON types formatted appropriately. Schema inferred by sampling.
 
-1. Click the connection name in the sidebar
-2. Expand a database to see its collections
-3. Click a collection to view its documents
+**Collection Duplication**: Open **Create Table**, click **Duplicate**, select source collection. Uses `aggregate` with `$out`, recreates indexes. Result named `originalName_copy`.
 
-{/* Screenshot: Sidebar showing MongoDB collections */}
-<Frame caption="MongoDB collection browser">
-  <img
-    className="block dark:hidden"
-    src="/images/mongodb-collection-browser.png"
-    alt="Collection browser"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/mongodb-collection-browser-dark.png"
-    alt="Collection browser"
-  />
-</Frame>
-
-### Document Viewing
-
-Documents display in the data grid with fields as columns:
-
-- **Top-level fields** appear as individual columns
-- **Nested objects** render as formatted JSON strings
-- **Arrays** show as JSON arrays
-- **ObjectId** values display as their string representation
-- **BSON types** (Date, Decimal128, Binary, etc.) render with appropriate formatting
-
-<Tip>
-Schema is inferred by sampling documents in the collection. Columns reflect the union of all fields found across sampled documents.
-</Tip>
-
-### Collection Duplication
-
-Duplicate an existing collection including all documents and indexes:
-
-1. Open the **Create Table** dialog
-2. Click **Duplicate** in the toolbar
-3. Select the source collection from the list
-4. TablePro copies all documents using `aggregate` with `$out` and recreates non-primary indexes
-
-The duplicated collection is named `originalName_copy` (with numeric suffix if the name already exists).
-
-### MongoDB Shell Queries
-
-Execute queries using MongoDB Shell (MQL) syntax in the editor:
+**MongoDB Shell Queries** (MQL syntax):
 
 ```javascript
 // Find documents with filtering
@@ -244,161 +91,16 @@ db.users.countDocuments({ role: "admin" })
 db.products.distinct("category")
 ```
 
-### CRUD Operations
-
-#### Insert Documents
-
-```javascript
-// Insert one document
-db.users.insertOne({
-  name: "John Doe",
-  email: "john@example.com",
-  age: 30,
-  tags: ["developer", "admin"]
-})
-
-// Insert multiple documents
-db.users.insertMany([
-  { name: "Alice", email: "alice@example.com" },
-  { name: "Bob", email: "bob@example.com" }
-])
-```
-
-#### Update Documents
-
-```javascript
-// Update one document
-db.users.updateOne(
-  { email: "john@example.com" },
-  { $set: { age: 31, updatedAt: new Date() } }
-)
-
-// Update multiple documents
-db.users.updateMany(
-  { active: false },
-  { $set: { status: "inactive" } }
-)
-```
-
-#### Delete Documents
-
-```javascript
-// Delete one document
-db.users.deleteOne({ email: "john@example.com" })
-
-// Delete multiple documents
-db.users.deleteMany({ active: false, lastLogin: { $lt: ISODate("2024-01-01") } })
-```
+**CRUD**: Insert with `insertOne()`/`insertMany()`, update with `updateOne()`/`updateMany()`, delete with `deleteOne()`/`deleteMany()`.
 
 ## Troubleshooting
 
-### Connection Refused
+**Connection refused**: Check MongoDB is running (`brew services start mongodb-community`), verify host/port in `mongod.conf`, check `bindIp` setting.
 
-**Symptoms**: "Connection refused" or "couldn't connect to server"
+**Auth failed**: Verify username/password/auth database. Check user roles with `db.getUsers();` Create user with `db.createUser({user:"appuser", pwd:"password", roles:[{role:"readWrite", db:"myapp"}]})`
 
-**Causes and Solutions**:
+**Timeout**: Verify host/port, check network and firewall, whitelist IP in MongoDB Atlas.
 
-1. **MongoDB server not running**
-   ```bash
-   # Check if MongoDB is running
-   mongosh --eval "db.runCommand({ ping: 1 })"
+**Limitations**: Transactions need replica set/sharded cluster, schema inferred by sampling, capped collections restricted, GridFS not browsable, change streams unsupported.
 
-   # Start MongoDB (macOS with Homebrew)
-   brew services start mongodb-community
-   ```
-
-2. **Wrong port**
-   - Verify the port in MongoDB config file (`mongod.conf`)
-   - Check your configuration
-
-3. **MongoDB not listening on the expected address**
-   - Check `bindIp` in `mongod.conf`
-   - For remote connections, add the client IP or use `0.0.0.0`
-
-### Authentication Failed
-
-**Symptoms**: "Authentication failed" or "command find requires authentication"
-
-**Solutions**:
-
-1. Verify username, password, and authentication database
-2. Check user roles:
-   ```javascript
-   db.getUsers()
-   ```
-3. Create or update user credentials:
-   ```javascript
-   db.createUser({
-     user: "appuser",
-     pwd: "password",
-     roles: [{ role: "readWrite", db: "myapp" }]
-   })
-   ```
-
-### Connection Timeout
-
-**Symptoms**: Connection hangs or times out
-
-**Solutions**:
-
-1. Verify the host and port are correct
-2. Check network connectivity and firewall rules
-3. For MongoDB Atlas, ensure your IP is whitelisted in the Network Access settings
-
-## Known Limitations
-
-- **Transactions**: Multi-document transactions require a replica set or sharded cluster. Standalone instances do not support transactions.
-- **Schema inference**: Since MongoDB is schema-less, column structure is inferred by sampling documents. Collections with highly varied document structures may not show all fields.
-- **Capped collections**: Some operations (update, delete) may be restricted on capped collections.
-- **GridFS**: GridFS file storage is not directly browsable through the collection browser.
-- **Change streams**: Real-time change streams are not supported in the current version.
-
-## Performance Tips
-
-### Large Collections
-
-For collections with millions of documents:
-
-1. Always use filters or `limit()` in your queries
-2. Enable pagination in the data grid settings
-3. Create appropriate indexes for common query patterns
-
-### Index Management
-
-Monitor and create indexes for better performance:
-
-```javascript
-// List existing indexes
-db.users.getIndexes()
-
-// Create an index
-db.users.createIndex({ email: 1 }, { unique: true })
-
-// Create a compound index
-db.orders.createIndex({ customerId: 1, date: -1 })
-```
-
-### Query Analysis
-
-Use `explain()` to understand query performance:
-
-```javascript
-db.users.find({ age: { $gte: 18 } }).explain("executionStats")
-```
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Connect securely to remote MongoDB servers
-  </Card>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the query editor features
-  </Card>
-  <Card title="Import/Export" icon="file-import" href="/features/import-export">
-    Import and export MongoDB data
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Browse and edit documents in the data grid
-  </Card>
-</CardGroup>
+**Performance**: Use filters, `limit()`, pagination, indexes. Analyze with `explain("executionStats")`.

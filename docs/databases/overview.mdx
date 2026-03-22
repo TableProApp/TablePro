@@ -242,23 +242,14 @@ SSL/TLS is not available for SQLite connections (file-based, no network involved
   />
 </Frame>
 
-## Connection Colors
+## Organizing Connections
 
-Assign colors to connections for quick visual identification:
+Assign colors and tags to connections for quick visual identification. Colors tint the toolbar when you connect (red for production, green for development), and tags group connections in the sidebar.
 
-| Color | Suggested Use |
-|-------|---------------|
-| None | Default, neutral connections |
-| Red | Production databases |
-| Orange | Staging environments |
-| Yellow | Testing databases |
-| Green | Development/local |
-| Blue | Shared databases |
-| Purple | Special purpose |
-| Pink | Personal projects |
+Create connection groups by right-clicking in the connection list or using the folder icon. Groups collapse/expand and persist between sessions.
 
 {/* Screenshot: Connection form showing color picker */}
-<Frame caption="Connection color picker">
+<Frame caption="Connection color picker and organization">
   <img
     className="block dark:hidden"
     src="/images/connection-colors.png"
@@ -270,67 +261,6 @@ Assign colors to connections for quick visual identification:
     alt="Color picker"
   />
 </Frame>
-
-### Environment Color Indicator
-
-When a connection has a color, the window toolbar takes on a subtle tint of that color. This gives you an at-a-glance cue of which environment you're in, similar to how Safari tints its toolbar based on website colors.
-
-- **Red-tinted toolbar** = production database
-- **Green-tinted toolbar** = development/local
-- No tint = no color assigned (default)
-
-The tint is subtle enough to not interfere with readability while still being noticeable at a glance.
-
-## Connection Tags
-
-Tags organize connections into logical groups:
-
-1. In the connection form, click the **Tag** field
-2. Select an existing tag or create a new one
-3. Tags appear in the sidebar for easy filtering
-
-Common tag examples:
-- "Work"
-- "Personal"
-- "Client Projects"
-- "Archive"
-
-{/* Screenshot: Connection tags */}
-<Frame caption="Connection tags for organization">
-  <img
-    className="block dark:hidden"
-    src="/images/connection-tags.png"
-    alt="Connection tags"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/connection-tags-dark.png"
-    alt="Connection tags"
-  />
-</Frame>
-
-## Connection Groups
-
-Groups organize connections into collapsible folders on the Welcome screen:
-
-1. Right-click in the connection list and choose **New Group**, or use the folder icon button next to the search bar
-2. Name the group and pick a color
-3. Drag connections into the group, or assign a group in the connection form's **Appearance** section
-
-### Managing Groups
-
-| Action | How |
-|--------|-----|
-| **Create** | Click the folder icon or right-click > New Group |
-| **Rename** | Right-click the group header > Rename |
-| **Change color** | Right-click the group header > Change Color |
-| **Delete** | Right-click the group header > Delete Group (connections are moved to Ungrouped) |
-
-Groups collapse/expand by clicking the chevron. The collapsed state persists between sessions.
-
-<Tip>
-Combine groups with colors for a quick visual overview: put all production connections in a "Production" group with a red header, development in a green "Development" group, and so on.
-</Tip>
 
 ## Quick Connection Switching
 
@@ -371,27 +301,7 @@ Faster than creating separate connections for each database on the same server.
 
 ## Dock Menu Quick Connect
 
-Open a saved connection directly from the macOS Dock without going through the Welcome screen.
-
-Right-click the TablePro icon in the Dock to access the Dock menu:
-
-| Menu Item | Description |
-|-----------|-------------|
-| **Show Welcome Window** | Opens the Welcome screen |
-| **Open Connection** | Submenu listing all saved connections with database type icons |
-
-### How to Quick Connect from the Dock
-
-1. Right-click the TablePro icon in the Dock
-2. Hover over **Open Connection**
-3. Click a connection name from the submenu
-4. TablePro opens and connects automatically
-
-If the connection fails (e.g., server unreachable), TablePro falls back to the Welcome screen so you can review or edit the connection settings.
-
-<Tip>
-Each connection in the Dock menu displays its database type icon (MySQL, MariaDB, PostgreSQL, or SQLite), making it easy to identify the right connection at a glance.
-</Tip>
+Right-click the TablePro icon in the Dock and select a saved connection under **Open Connection** to connect directly without the Welcome screen. If the connection fails, you'll fall back to the Welcome screen to review settings.
 
 ## Creating Databases
 
@@ -431,14 +341,7 @@ Before saving a connection, test it:
   />
 </Frame>
 
-### Common Test Failures
-
-| Error | Possible Cause | Solution |
-|-------|----------------|----------|
-| "Connection refused" | Server not running | Start your database server |
-| "Authentication failed" | Wrong credentials | Verify username/password |
-| "Host not found" | Invalid server address | Check hostname/IP |
-| "Connection timed out" | Network/firewall issue | Check network connectivity |
+Most test failures are due to the server being down, wrong credentials, or network/firewall blocking the port. Verify the host is reachable and credentials are correct before contacting support.
 
 ## Connection Health Monitoring
 
@@ -512,115 +415,11 @@ Startup commands are useful for enforcing consistent session settings across tea
 Startup commands run on every connection, including auto-reconnects. They are database-specific: use MySQL syntax for MySQL connections, PostgreSQL syntax for PostgreSQL, and so on.
 </Note>
 
-## Editing Connections
+## Editing and Deleting Connections
 
-To modify an existing connection:
+Right-click a connection to edit or delete it. Changes take effect on the next connection. Deleting a connection only removes the saved settings — your actual database is unaffected.
 
-1. Right-click the connection in the sidebar
-2. Select **Edit Connection**
-3. Make your changes
-4. Click **Save**
+## Backup and Restore
 
-<Warning>
-Changes take effect on the next connection. If currently connected, disconnect and reconnect.
-</Warning>
+Connections are stored in `~/Library/Preferences/com.TablePro.plist`. Passwords are in the macOS Keychain. To backup, copy the `.plist` file — but note that you'll need to re-enter passwords after restoring since Keychain entries don't transfer.
 
-## Deleting Connections
-
-To remove a connection:
-
-1. Right-click the connection in the sidebar
-2. Select **Delete Connection**
-3. Confirm the deletion
-
-<Note>
-Deleting a connection removes the saved settings and credentials. It does not affect your actual database.
-</Note>
-
-## Connection Storage
-
-### Where Connections are Stored
-
-| Data | Location | Storage Type |
-|------|----------|--------------|
-| Connection settings | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
-| All app settings | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
-| Passwords | macOS Keychain | Encrypted |
-| SSH keys | Referenced by path | Not copied |
-
-### Backup and Restore
-
-To backup your connections and settings:
-
-```bash
-# Backup connections and all settings
-cp ~/Library/Preferences/com.TablePro.plist ~/Desktop/tablepro-backup.plist
-```
-
-To restore:
-
-```bash
-# Close TablePro first, then restore
-cp ~/Desktop/tablepro-backup.plist ~/Library/Preferences/com.TablePro.plist
-```
-
-<Warning>
-The backup file does not include passwords (stored in Keychain) or SSH private keys. You'll need to re-enter passwords after restoring.
-</Warning>
-
-## Default Ports
-
-TablePro auto-fills the port when you select a database type:
-
-| Database | Default Port |
-|----------|-------------|
-| MySQL | 3306 |
-| MariaDB | 3306 |
-| PostgreSQL | 5432 |
-| Amazon Redshift | 5439 |
-| SQLite | N/A (file-based) |
-| MongoDB | 27017 |
-| Redis | 6379 |
-| Microsoft SQL Server | 1433 |
-| Oracle Database | 1521 |
-| ClickHouse | 8123 |
-| Cassandra | 9042 |
-| ScyllaDB | 9042 |
-
-## Related Guides
-
-<CardGroup cols={2}>
-  <Card title="MySQL/MariaDB" icon="database" href="/databases/mysql">
-    Detailed MySQL and MariaDB connection guide
-  </Card>
-  <Card title="PostgreSQL" icon="database" href="/databases/postgresql">
-    PostgreSQL-specific connection options
-  </Card>
-  <Card title="SQLite" icon="file" href="/databases/sqlite">
-    Working with SQLite databases
-  </Card>
-  <Card title="MongoDB" icon="leaf" href="/databases/mongodb">
-    MongoDB connection and MQL queries
-  </Card>
-  <Card title="Redis" icon="database" href="/databases/redis">
-    Redis key-value browsing and CLI
-  </Card>
-  <Card title="Microsoft SQL Server" icon="database" href="/databases/mssql">
-    SQL Server connections via FreeTDS
-  </Card>
-  <Card title="Oracle Database" icon="database" href="/databases/oracle">
-    Oracle Database connections via OCI
-  </Card>
-  <Card title="Amazon Redshift" icon="database" href="/databases/redshift">
-    Redshift data warehouse connections
-  </Card>
-  <Card title="ClickHouse" icon="database" href="/databases/clickhouse">
-    ClickHouse OLAP database connections
-  </Card>
-  <Card title="Cassandra / ScyllaDB" icon="database" href="/databases/cassandra">
-    Cassandra and ScyllaDB CQL connections
-  </Card>
-  <Card title="SSH Tunneling" icon="lock" href="/databases/ssh-tunneling">
-    Secure connections through SSH
-  </Card>
-</CardGroup>

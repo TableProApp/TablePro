@@ -76,107 +76,13 @@ You pick one active theme at a time. There is no separate "light theme" and "dar
 
 ## Customizing Themes
 
-Select a theme in the sidebar, then edit it directly in the right panel.
+Select a theme and edit directly. For built-in themes, you can always edit fonts, and you can modify colors/layout by duplicating first.
 
-### Fonts Tab
+Built-in themes auto-duplicate when you make changes, preserving the original.
 
-Always editable, even on built-in themes. If you change a font on a built-in theme, TablePro auto-duplicates it as a custom theme so the original stays untouched.
+## Import, Export & Registry
 
-Four settings:
-
-- **Editor font family** (used in the SQL editor)
-- **Editor font size**
-- **Data grid font family** (used in result grid cells)
-- **Data grid font size**
-
-A live preview updates as you change values.
-
-<Tip>
-If you only want to change fonts without touching colors, just adjust the font fields. The auto-duplicate handles the rest.
-</Tip>
-
-### Colors Tab
-
-Defines 50+ colors across 5 categories. For built-in themes, the Colors tab shows a "Duplicate to customize" prompt. Duplicate first, then edit freely.
-
-| Category | What It Controls |
-|----------|-----------------|
-| **Editor** | Background, text, cursor, current line highlight, selection, line numbers, invisibles, and 8 syntax colors (keyword, string, number, comment, null, operator, function, type) |
-| **Data Grid** | Background, text, alternate row, null value, boolean true/false, row number, modified/inserted/deleted row highlights, focus border |
-| **Interface** | Window/control/card backgrounds, borders, primary/secondary/tertiary text, accent color, selection, hover, status colors (success/warning/error/info), badge colors |
-| **Sidebar** | Background, text, selected item, hover, section header |
-| **Toolbar** | Secondary text, tertiary text |
-
-Each color is edited via a hex color picker.
-
-### Layout Tab
-
-Defines 30+ layout tokens across 6 sections. Same lock behavior as Colors: built-in themes require duplication before editing.
-
-| Section | Tokens |
-|---------|--------|
-| **Typography** | Font sizes: tiny (9), caption (10), small (11), medium (12), body (13), title3 (15), title2 (17) |
-| **Spacing** | Scale from xxxs (2) to xl (24), plus list row insets |
-| **Icon Sizes** | 9 sizes from tinyDot (6) to massive (64) |
-| **Corner Radius** | Small (4), medium (6), large (8) |
-| **Row Heights** | Compact (24), table (32), comfortable (44) |
-| **Animations** | Durations: fast (0.1s), normal (0.15s), smooth (0.2s), slow (0.3s) |
-
-Values in parentheses are defaults.
-
-## Import and Export
-
-### Exporting a Theme
-
-1. Select the theme in the sidebar
-2. Click the **gear** menu at the bottom of the sidebar
-3. Choose **Export...**
-4. Pick a save location
-
-The exported `.json` file contains all colors, fonts, and layout tokens.
-
-### Importing a Theme
-
-1. Click the **+** menu at the bottom of the sidebar
-2. Choose **Import...**
-3. Select a `.json` theme file
-
-The imported theme appears in the "Custom" section.
-
-<Note>
-Custom themes are stored as JSON files in `~/Library/Application Support/TablePro/Themes/`.
-</Note>
-
-## Registry Themes
-
-Install community-created themes from the plugin registry without leaving the app.
-
-### Installing a Theme
-
-1. Go to **Settings > Plugins > Browse**
-2. Filter by **Themes** category
-3. Click **Install Theme** on the theme you want
-4. The theme appears in the "Registry" section of **Settings > Appearance**
-
-Registry themes are read-only. To customize one, duplicate it first: the copy appears in the "Custom" section and is fully editable.
-
-### Uninstalling a Theme
-
-1. Select the registry theme in **Settings > Appearance**
-2. Click the **gear** menu
-3. Choose **Uninstall**
-
-If the uninstalled theme was active, TablePro falls back to Default Light.
-
-<Note>
-Registry themes are stored in `~/Library/Application Support/TablePro/Themes/Registry/`. They use a `registry.*` ID prefix to avoid conflicts with built-in and custom themes.
-</Note>
-
-### Theme File Format
-
-Theme files are JSON with these top-level keys: `id`, `name`, `version`, `appearance`, `author`, `editor`, `dataGrid`, `ui`, `sidebar`, `toolbar`, `fonts`, `spacing`, `typography`, `iconSizes`, `cornerRadius`, `rowHeights`, `animations`.
-
-All fields are optional on import. Missing fields fall back to Default Light values.
+Export custom themes as JSON. Import themes from files or install from the plugin registry (**Settings > Plugins > Browse**, filter by Themes). Registry themes are read-only — duplicate to customize.
 
 ## Connection Colors
 
@@ -272,19 +178,3 @@ These appear on:
   />
 </Frame>
 
-## Related Settings
-
-<CardGroup cols={2}>
-  <Card title="Editor Settings" icon="code" href="/customization/editor-settings">
-    Font and editor appearance
-  </Card>
-  <Card title="Settings Overview" icon="gear" href="/customization/settings">
-    All settings categories
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Configure data display
-  </Card>
-  <Card title="Connections" icon="plug" href="/databases/overview">
-    Connection color settings
-  </Card>
-</CardGroup>

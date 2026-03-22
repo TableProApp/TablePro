@@ -7,83 +7,17 @@ description: Connect to Amazon DynamoDB with PartiQL queries, GSI/LSI browsing, 
 
 TablePro supports Amazon DynamoDB, AWS's fully managed NoSQL key-value and document database. Connect using IAM credentials, AWS profiles, or SSO. Browse tables, run PartiQL queries, inspect GSI/LSI indexes, and edit items directly in the data grid.
 
-## Install Plugin
-
-The DynamoDB driver is available as a downloadable plugin. When you select DynamoDB in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
-
-1. Open **Settings** > **Plugins** > **Browse**
-2. Find **DynamoDB Driver** and click **Install**
-3. The plugin downloads and loads immediately - no restart needed
-
 ## Quick Setup
 
-<Steps>
-  <Step title="Open Connection Form">
-    Click **New Connection** from the Welcome screen or **File** > **New Connection**
-  </Step>
-  <Step title="Select Amazon DynamoDB">
-    Choose **Amazon DynamoDB** from the database type selector
-  </Step>
-  <Step title="Configure Authentication">
-    Select your auth method and enter AWS credentials (see below)
-  </Step>
-  <Step title="Test and Connect">
-    Click **Test Connection**, then **Create**
-  </Step>
-</Steps>
+Click **New Connection**, select **DynamoDB**, choose auth method (Access Key, AWS Profile, SSO), enter credentials and region. Plugin auto-installs or use **Settings** > **Plugins** > **Browse** > **DynamoDB Driver**.
 
 ## Authentication Methods
 
-DynamoDB supports three authentication methods:
+**Access Key + Secret Key**: IAM credentials. Optional session token for temporary creds from STS.
 
-### Access Key + Secret Key
+**AWS Profile**: Read from `~/.aws/credentials`. Format: `[profile_name]` with `aws_access_key_id`, `aws_secret_access_key`, optional `aws_session_token`.
 
-Use IAM user credentials directly. Best for development and simple setups.
-
-| Field | Description |
-|-------|-------------|
-| **Access Key ID** | IAM access key (starts with `AKIA`) |
-| **Secret Access Key** | IAM secret key |
-| **Session Token** | Optional. Required for temporary credentials from STS |
-| **Region** | AWS region (e.g., `us-east-1`) |
-
-### AWS Profile
-
-Read credentials from `~/.aws/credentials`. Best when you manage multiple AWS accounts.
-
-| Field | Description |
-|-------|-------------|
-| **Profile Name** | Profile name in `~/.aws/credentials` (default: `default`) |
-| **Region** | AWS region |
-
-```ini
-# ~/.aws/credentials
-[default]
-aws_access_key_id = AKIA...
-aws_secret_access_key = wJalr...
-
-[staging]
-aws_access_key_id = AKIA...
-aws_secret_access_key = ...
-aws_session_token = ...
-```
-
-### AWS SSO
-
-Use cached SSO credentials from `~/.aws/cli/cache/`. Run `aws sso login` first.
-
-| Field | Description |
-|-------|-------------|
-| **Region** | AWS region |
-
-```bash
-# Login via SSO before connecting
-aws sso login --profile my-sso-profile
-```
-
-<Warning>
-SSO credentials expire. If your connection fails with an auth error, run `aws sso login` again.
-</Warning>
+**AWS SSO**: Use cached credentials from `~/.aws/cli/cache/`. Run `aws sso login --profile my-sso-profile` before connecting. Credentials expire (re-login if auth fails).
 
 ## Connection Settings
 
@@ -103,73 +37,22 @@ SSO credentials expire. If your connection fails with an auth error, run `aws ss
 
 ## DynamoDB Local
 
-For local development, use [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html):
-
-```bash
-# Start DynamoDB Local with Docker
-docker run -p 8000:8000 amazon/dynamodb-local
-```
-
-Then set:
-- **Auth Method**: Access Key + Secret Key
-- **Access Key ID**: `fakeAccessKey` (any non-empty value)
-- **Secret Access Key**: `fakeSecretKey` (any non-empty value)
-- **Custom Endpoint**: `http://localhost:8000`
-
-<Tip>
-DynamoDB Local does not validate credentials, but the fields must be non-empty.
-</Tip>
+Docker: `docker run -p 8000:8000 amazon/dynamodb-local`
+Config: Auth Method = Access Key, Access Key/Secret = any non-empty, Custom Endpoint = `http://localhost:8000`
 
 ## Example Configurations
 
-### AWS Production
-
-```
-Name:            Production DynamoDB
-Auth Method:     Access Key + Secret Key
-Access Key ID:   AKIAIOSFODNN7EXAMPLE
-Secret Access Key: wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-Region:          us-east-1
-```
-
-### AWS Profile
-
-```
-Name:            Staging DynamoDB
-Auth Method:     AWS Profile
-Profile Name:    staging
-Region:          us-west-2
-```
-
-### DynamoDB Local
-
-```
-Name:            Local DynamoDB
-Auth Method:     Access Key + Secret Key
-Access Key ID:   fakeAccessKey
-Secret Access Key: fakeSecretKey
-Region:          us-east-1
-Custom Endpoint: http://localhost:8000
-```
+**AWS Production**: Standard Access Key method with credentials from IAM
+**AWS Profile**: Select profile from `~/.aws/credentials`
+**DynamoDB Local**: Fake credentials (non-empty required), Custom Endpoint = `http://localhost:8000`
 
 ## Features
 
-### Table Browsing
+**Table Browsing**: Sidebar lists all tables. Shows data (grid), structure (key schema with types S/N/B), indexes (primary, GSI, LSI), DDL (key schema, billing, throughput, count, size).
 
-After connecting, the sidebar lists all DynamoDB tables. For each table, TablePro shows:
+**Schemaless Discovery**: Tables are schemaless. TablePro samples items to discover attributes, infers types by majority vote. Keys always first columns.
 
-- **Data**: Items displayed in a tabular grid with all discovered attributes as columns
-- **Structure**: Key schema attributes with their DynamoDB types (S, N, B)
-- **Indexes**: Primary key, Global Secondary Indexes (GSI), and Local Secondary Indexes (LSI) with projection types
-- **DDL**: Table description including key schema, billing mode, throughput, indexes, item count, and table size
-
-### Schemaless Column Discovery
-
-DynamoDB tables are schemaless: different items can have different attributes. TablePro samples items to discover all attribute names and infers column types by majority vote. Key attributes (partition key, sort key) always appear as the first columns.
-
-### PartiQL Queries
-
-Write and execute [PartiQL](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.html) queries in the editor:
+**PartiQL Queries** ([reference](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ql-reference.html)):
 
 ```sql
 -- Select items
@@ -193,51 +76,15 @@ WHERE customerId = 'cust001' AND orderDate BETWEEN '2024-01-01' AND '2024-12-31'
 Table names in PartiQL must be quoted with double quotes: `"TableName"`. String values use single quotes: `'value'`.
 </Tip>
 
-### Data Types
+**Data Types**: S (string), N (number), B (binary), BOOL, NULL, L (JSON array), M (JSON object), SS (string set), NS (number set), BS (binary set).
 
-DynamoDB attribute values display with type-aware formatting:
+**Data Editing**: Edit cells, insert rows, delete rows. Generates PartiQL: `INSERT INTO "Table" VALUE { ... }`, `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`, `DELETE FROM "Table" WHERE pk = 'pkVal'`. Keys cannot be modified (delete/re-insert).
 
-| DynamoDB Type | Display |
-|---------------|---------|
-| **S** (String) | Plain text |
-| **N** (Number) | Numeric value |
-| **B** (Binary) | Base64-encoded string |
-| **BOOL** | `true` / `false` |
-| **NULL** | `NULL` |
-| **L** (List) | JSON array |
-| **M** (Map) | JSON object |
-| **SS** (String Set) | JSON array of strings |
-| **NS** (Number Set) | JSON array of numbers |
-| **BS** (Binary Set) | JSON array of base64 strings |
+**Smart Optimization**: Partition key equality uses Query API (not Scan) for speed and lower read capacity.
 
-### Data Editing
+**Capacity/Metrics**: Billing mode (PAY_PER_REQUEST/PROVISIONED with RCU/WCU), approximate item count, table size, GSI/LSI details.
 
-Edit cell values, insert rows, and delete rows directly in the data grid. Changes generate PartiQL statements:
-
-- **Insert**: `INSERT INTO "Table" VALUE { ... }`
-- **Update**: `UPDATE "Table" SET attr = 'val' WHERE pk = 'pkVal'`
-- **Delete**: `DELETE FROM "Table" WHERE pk = 'pkVal'`
-
-<Note>
-Key attributes (partition key and sort key) cannot be modified. To change a key value, delete the item and insert a new one.
-</Note>
-
-### Smart Query Optimization
-
-When filtering by partition key with an equality condition, TablePro automatically uses the DynamoDB Query API instead of Scan. Query is significantly faster and consumes less read capacity.
-
-### Capacity and Metrics
-
-Table metadata displays:
-
-- **Billing mode**: PAY_PER_REQUEST or PROVISIONED with RCU/WCU values
-- **Item count**: Approximate number of items (updated by DynamoDB every ~6 hours)
-- **Table size**: Total storage used
-- **Index details**: GSI/LSI key schemas, projection types, and status
-
-### Export
-
-Export query results or table data to CSV, JSON, SQL, and other formats.
+**Export**: CSV, JSON, SQL, other formats.
 
 ## IAM Permissions
 
@@ -273,71 +120,12 @@ For read-only access, remove the write actions (`PutItem`, `UpdateItem`, `Delete
 
 ## Troubleshooting
 
-### Authentication Failed
+**Auth failed**: Verify Access Key/Secret/profile/SSO credentials. For SSO, run `aws sso login`. For expired creds, refresh.
 
-**Symptoms**: "Authentication failed" or "UnrecognizedClientException"
+**Access denied**: Check IAM permissions, verify resource ARNs, check SCP/permission boundaries.
 
-**Solutions**:
+**Region mismatch**: Verify correct region selected. Tables are region-specific.
 
-1. Verify your Access Key ID and Secret Access Key are correct
-2. Check that the credentials have not expired or been rotated
-3. For AWS Profile, verify the profile exists in `~/.aws/credentials`
-4. For SSO, run `aws sso login` to refresh credentials
+**Throughput exceeded**: Wait and retry, switch to on-demand billing, use filters to reduce scans.
 
-### Access Denied
-
-**Symptoms**: "AccessDeniedException" on specific operations
-
-**Solutions**:
-
-1. Check IAM permissions - the user/role needs DynamoDB access
-2. Verify the resource ARN if using resource-level permissions
-3. Check for restrictive SCP or permission boundaries
-
-### Region Mismatch
-
-**Symptoms**: Tables not found or empty table list
-
-**Solutions**:
-
-1. Verify you selected the correct AWS region
-2. DynamoDB tables are region-specific - a table in `us-east-1` is not visible from `eu-west-1`
-
-### Throughput Exceeded
-
-**Symptoms**: "ProvisionedThroughputExceededException"
-
-**Solutions**:
-
-1. The table's provisioned read/write capacity has been exceeded
-2. Wait and retry - the plugin does not include automatic retry
-3. Consider switching to on-demand billing mode
-4. Use filters to reduce the number of items scanned
-
-## Known Limitations
-
-- **No persistent connections.** DynamoDB is HTTP-based. Each operation is an independent API request.
-- **No SSH or SSL configuration.** DynamoDB uses HTTPS transport via URLSession with custom SigV4 request signing. No custom SSL certificates or SSH tunnels are needed.
-- **Schema editing unavailable.** DynamoDB does not support ALTER TABLE. Table structure is defined at creation time.
-- **Approximate item counts.** The item count shown in table metadata is approximate and updated by DynamoDB every ~6 hours.
-- **Cursor-based pagination.** DynamoDB uses continuation tokens internally. Jumping to an arbitrary page requires scanning through all preceding items.
-- **Transactions not exposed.** DynamoDB transactions (TransactWriteItems/TransactGetItems) are not exposed in the UI. Use the AWS Console or CLI for transactional operations.
-- **DAX unsupported.** DynamoDB Accelerator (DAX) in-memory caching is not supported.
-- **Global Tables management unavailable.** Multi-region Global Tables configuration is not available through the plugin.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="SQL Editor" icon="code" href="/features/sql-editor">
-    Master the query editor with PartiQL
-  </Card>
-  <Card title="Data Grid" icon="table" href="/features/data-grid">
-    Browse and edit DynamoDB items
-  </Card>
-  <Card title="Export" icon="file-export" href="/features/import-export">
-    Export DynamoDB data to various formats
-  </Card>
-  <Card title="Keyboard Shortcuts" icon="keyboard" href="/features/keyboard-shortcuts">
-    Speed up your workflow
-  </Card>
-</CardGroup>
+**Limitations**: No persistent connections (independent HTTP requests), no schema editing (structure at creation), item counts updated ~6h, cursor-based pagination (scan to jump), no transactions in UI, no DAX/Global Tables, HTTPS only with SigV4.

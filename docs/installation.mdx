@@ -7,24 +7,12 @@ description: Install TablePro via Homebrew or DMG on macOS 14.0+
 
 ## System Requirements
 
-### Minimum Requirements
+- **macOS**: 14.0 (Sonoma) or later
+- **Processor**: Apple Silicon (M1+) or Intel x86_64
+- **Memory**: 4 GB minimum (8 GB recommended)
+- **Storage**: ~200 MB free disk space
 
-| Requirement | Specification |
-|-------------|---------------|
-| **macOS Version** | macOS 14.0 (Sonoma) or later |
-| **Processor** | Apple Silicon (M1/M2/M3/M4/M5) or Intel x86_64 |
-| **Memory** | 4 GB RAM minimum |
-| **Storage** | ~200 MB free disk space (app is ~50 MB; extra space for query history, tab state, and plugins) |
-
-### Recommended
-
-- **macOS**: Latest version for best performance
-- **Memory**: 8 GB RAM or more for large databases
-- **Storage**: SSD for faster query history and tab persistence
-
-<Note>
 TablePro uses native Apple frameworks only. No Java, .NET, or other runtimes needed.
-</Note>
 
 ## Install via Homebrew
 
@@ -60,34 +48,17 @@ brew zap tablepro
 
 ### From GitHub Releases
 
-1. Go to the [TablePro Releases](https://github.com/datlechin/tablepro/releases) page
-2. Find the latest release
-3. Download the right DMG for your Mac:
+1. Go to [GitHub Releases](https://github.com/datlechin/tablepro/releases)
+2. Download the DMG for your Mac:
+   - **Apple Silicon (M1+)**: `TablePro-arm64.dmg`
+   - **Intel**: `TablePro-x86_64.dmg`
 
-| Architecture | File | For Macs with |
-|--------------|------|---------------|
-| Apple Silicon | `TablePro-arm64.dmg` | M1, M2, M3, M4, M5 chips |
-| Intel | `TablePro-x86_64.dmg` | Intel processors |
-
-### Checking Your Mac's Architecture
-
-1. Click the **Apple menu** () in the menu bar
-2. Select **About This Mac**
-3. Look for:
-   - **Chip**: Apple M1/M2/M3/M4/M5 = Apple Silicon
-   - **Processor**: Intel = x86_64
+Check your architecture: **Apple menu > About This Mac** → look for Chip (Apple Silicon) or Processor (Intel).
 
 ## Installation Steps
 
-### Standard Installation
-
-1. **Open the DMG file**
-   - Double-click the downloaded `.dmg` file
-   - A new Finder window appears
-
-2. **Drag to Applications**
-   - Drag the TablePro icon to the Applications folder shortcut
-   - Wait for the copy to complete
+1. Open the DMG file (double-click)
+2. Drag **TablePro** to the **Applications** folder shortcut
 
 {/* Screenshot: DMG window with drag-to-Applications illustration */}
 <Frame caption="Drag TablePro to Applications">
@@ -103,119 +74,30 @@ brew zap tablepro
   />
 </Frame>
 
-3. **Eject the DMG**
-   - Right-click the mounted DMG in Finder sidebar
-   - Select **Eject**
-
-4. **Launch TablePro**
-   - Open **Finder** > **Applications**
-   - Double-click **TablePro**
+3. Eject the DMG (right-click > Eject)
+4. Open **Finder > Applications** and launch **TablePro**
 
 ## Updating TablePro
 
-### Automatic Updates
+TablePro checks for updates automatically via Sparkle. Check manually: **TablePro > Check for Updates...**.
 
-TablePro checks for updates in the background via [Sparkle](https://sparkle-project.org/) and notifies you when a new version is available.
-
-### Manual Update Check
-
-To check manually:
-
-1. Open **TablePro** menu in the menu bar
-2. Click **Check for Updates...**
-
-### Update Settings
-
-Configure update behavior in **Settings** > **General** > **Software Update**:
-
-- Enable or disable automatic update checks
-- Set the check frequency
-
-<Tip>
-Connections and settings are stored separately from the app binary and persist across updates.
-</Tip>
-
-### Data Storage Locations
-
-| Data | Location | Storage Type |
-|------|----------|--------------|
-| **Connections** | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
-| **Settings** | `~/Library/Preferences/com.TablePro.plist` | UserDefaults |
-| **Passwords** | macOS Keychain (secure storage) | Keychain |
-| **Query History** | `~/Library/Application Support/TablePro/query_history.db` | SQLite |
+Connections and settings persist across updates.
 
 ## Uninstallation
 
-### Remove the Application
+1. Quit TablePro
+2. Drag **TablePro** from **Finder > Applications** to Trash
 
-1. Quit TablePro if it's running
-2. Open **Finder** > **Applications**
-3. Drag **TablePro** to the Trash
-
-### Remove Application Data (Optional)
-
-To delete all TablePro data:
-
+To delete all data (connections and history):
 ```bash
-# Remove application support data
 rm -rf ~/Library/Application\ Support/TablePro
-
-# Remove preferences
 rm ~/Library/Preferences/com.TablePro.plist
-
-# Remove Keychain items (via Keychain Access app)
-# Search for "TablePro" and delete related items
 ```
-
-<Warning>
-This deletes all saved connections and query history. Export anything important first.
-</Warning>
 
 ## Troubleshooting
 
-### Application crashes on launch
+**Crashes on launch**: Verify correct architecture, macOS 14.0+, and check Console.app for logs.
 
-1. Check that you downloaded the correct architecture version
-2. Verify you're running macOS 14.0 or later
-3. Try removing and reinstalling the application
-4. Check Console.app for crash logs
+**Connection issues**: Confirm database server is running and not blocked by firewall.
 
-### Connection issues after installation
-
-If TablePro opens but can't connect to databases:
-
-1. Verify your database server is running
-2. Check firewall settings (System Settings > Network > Firewall)
-3. Make sure the database server accepts connections from localhost
-
-## Building from Source
-
-For developers who want to build TablePro from source:
-
-1. Clone the repository:
-```bash
-git clone https://github.com/datlechin/tablepro.git
-cd tablepro
-```
-
-2. Open the Xcode project:
-```bash
-open TablePro.xcodeproj
-```
-
-3. Build and run:
-   - Select the **TablePro** scheme
-   - Press `Cmd+R` to build and run
-
-See the [Development Setup](/development/setup) guide for detailed instructions.
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Quick Start" icon="rocket" href="/quickstart">
-    Connect to your first database
-  </Card>
-  <Card title="Database Connections" icon="database" href="/databases/overview">
-    Connection management and organization
-  </Card>
-</CardGroup>
+See [Development Setup](/development/setup) for building from source.
