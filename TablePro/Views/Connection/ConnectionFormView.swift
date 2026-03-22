@@ -126,6 +126,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     @State private var testSucceeded: Bool = false
 
     @State private var pluginInstallConnection: DatabaseConnection?
+    @State private var isInstallingPlugin: Bool = false
 
     // Tab selection
     @State private var selectedTab: FormTab = .general
@@ -269,13 +270,20 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type) {
                 Section {
                     VStack(spacing: 8) {
-                        Text(String(localized: "The \(type.rawValue) plugin is not installed."))
-                            .foregroundStyle(.secondary)
-                        Button(String(localized: "Install Plugin")) {
-                            installPlugin(for: type)
+                        if isInstallingPlugin {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text(String(localized: "Installing \(type.rawValue) plugin…"))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(String(localized: "The \(type.rawValue) plugin is not installed."))
+                                .foregroundStyle(.secondary)
+                            Button(String(localized: "Install Plugin")) {
+                                installPlugin(for: type)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -1472,7 +1480,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private func installPlugin(for databaseType: DatabaseType) {
+        isInstallingPlugin = true
         Task {
+            defer { isInstallingPlugin = false }
             try? await PluginManager.shared.installMissingPlugin(for: databaseType) { _ in }
         }
     }
