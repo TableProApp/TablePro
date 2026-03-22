@@ -81,6 +81,11 @@ internal struct FavoritesTabView: View {
             deleteSelectedFavorites()
         }
         .onChange(of: selectedFavoriteIds) { oldIds, newIds in
+            if newIds.isEmpty {
+                lastInsertedFavoriteId = nil
+                return
+            }
+
             let added = newIds.subtracting(oldIds)
             guard added.count == 1,
                   newIds.count == 1,
@@ -91,11 +96,6 @@ internal struct FavoritesTabView: View {
             if let favorite = allFavorites.first(where: { "fav-\($0.id)" == selectedId }) {
                 coordinator?.insertFavorite(favorite)
                 lastInsertedFavoriteId = selectedId
-            }
-        }
-        .onChange(of: selectedFavoriteIds) {
-            if selectedFavoriteIds.isEmpty {
-                lastInsertedFavoriteId = nil
             }
         }
     }
