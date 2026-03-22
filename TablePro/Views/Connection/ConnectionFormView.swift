@@ -187,6 +187,8 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if !visibleTabs.contains(selectedTab) {
                 selectedTab = .general
             }
+            isInstallingPlugin = false
+            pluginInstallError = nil
         }
         .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
             connectAfterInstall(connection)
@@ -292,7 +294,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                             }
                         } else {
                             HStack(spacing: 6) {
-                                Text("Not installed")
+                                Text("Not Installed")
                                     .foregroundStyle(.secondary)
                                 Button("Install") {
                                     installPlugin(for: type)
