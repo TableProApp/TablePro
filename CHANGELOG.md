@@ -9,9 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Tab key focus navigation for connection list, quick switcher, and database switcher
-- Ctrl+N/P as alternative to Ctrl+J/K for navigating lists
-- Auto-focus search field in quick switcher and database switcher dialogs
+- Keyboard focus navigation (Tab, Ctrl+J/K/N/P, arrow keys) for connection list, quick switcher, and database switcher
 
 ## [0.22.1] - 2026-03-22
 

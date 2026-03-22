@@ -138,12 +138,12 @@ struct DatabaseSwitcherSheet: View {
             moveSelection(up: false)
             return .handled
         }
-        .onKeyPress(characters: .init(charactersIn: "j"), phases: .down) { keyPress in
+        .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             moveSelection(up: false)
             return .handled
         }
-        .onKeyPress(characters: .init(charactersIn: "k"), phases: .down) { keyPress in
+        .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             moveSelection(up: true)
             return .handled
