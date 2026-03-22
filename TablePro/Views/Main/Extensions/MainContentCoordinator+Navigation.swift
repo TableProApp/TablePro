@@ -462,4 +462,38 @@ extension MainContentCoordinator {
             executeTableTabQueryDirectly()
         }
     }
+
+    // MARK: - Redis Key Tree Navigation
+
+    func browseRedisNamespace(_ prefix: String) {
+        guard let index = tabManager.selectedTabIndex else { return }
+        let escapedPrefix = prefix.replacingOccurrences(of: "\"", with: "\\\"")
+        let query = "SCAN 0 MATCH \"\(escapedPrefix)*\" COUNT 200"
+        tabManager.tabs[index].query = query
+        tabManager.tabs[index].title = prefix.hasSuffix(":") ? String(prefix.dropLast()) : prefix
+        runQuery()
+    }
+
+    func openRedisKey(_ keyName: String, keyType: String) {
+        guard let index = tabManager.selectedTabIndex else { return }
+        let escapedKey = keyName.replacingOccurrences(of: "\"", with: "\\\"")
+        let query: String
+        switch keyType.lowercased() {
+        case "hash":
+            query = "HGETALL \"\(escapedKey)\""
+        case "list":
+            query = "LRANGE \"\(escapedKey)\" 0 -1"
+        case "set":
+            query = "SMEMBERS \"\(escapedKey)\""
+        case "zset":
+            query = "ZRANGE \"\(escapedKey)\" 0 -1 WITHSCORES"
+        case "stream":
+            query = "XRANGE \"\(escapedKey)\" - +"
+        default:
+            query = "GET \"\(escapedKey)\""
+        }
+        tabManager.tabs[index].query = query
+        tabManager.tabs[index].title = keyName
+        runQuery()
+    }
 }

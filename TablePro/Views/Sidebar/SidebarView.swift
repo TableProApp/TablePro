@@ -244,6 +244,30 @@ struct SidebarView: View {
                             }
                         }
                 }
+
+                if viewModel.databaseType == .redis, let keyTreeVM = viewModel.redisKeyTreeViewModel {
+                    Section(isExpanded: $viewModel.isRedisKeysExpanded) {
+                        RedisKeyTreeView(
+                            nodes: viewModel.debouncedSearchText.isEmpty
+                                ? keyTreeVM.rootNodes
+                                : keyTreeVM.filteredNodes(searchText: viewModel.debouncedSearchText),
+                            expandedPrefixes: Binding(
+                                get: { keyTreeVM.expandedPrefixes },
+                                set: { keyTreeVM.expandedPrefixes = $0 }
+                            ),
+                            isLoading: keyTreeVM.isLoading,
+                            isTruncated: keyTreeVM.isTruncated,
+                            onSelectNamespace: { prefix in
+                                coordinator?.browseRedisNamespace(prefix)
+                            },
+                            onSelectKey: { key, keyType in
+                                coordinator?.openRedisKey(key, keyType: keyType)
+                            }
+                        )
+                    } header: {
+                        Text("Keys")
+                    }
+                }
             }
         }
         .listStyle(.sidebar)

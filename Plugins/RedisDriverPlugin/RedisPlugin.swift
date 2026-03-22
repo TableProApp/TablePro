@@ -28,6 +28,13 @@ final class RedisPlugin: NSObject, TableProPlugin, DriverPlugin {
             defaultValue: "0",
             fieldType: .stepper(range: ConnectionField.IntRange(0...15))
         ),
+        ConnectionField(
+            id: "redisSeparator",
+            label: String(localized: "Key Separator"),
+            defaultValue: ":",
+            fieldType: .text,
+            section: .advanced
+        ),
     ]
     static let additionalDatabaseTypeIds: [String] = []
 

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Redis key namespace tree view with collapse/expand grouping in sidebar (#418)
 - Keyboard focus navigation (Tab, Ctrl+J/K/N/P, arrow keys) for connection list, quick switcher, and database switcher
 - MongoDB `mongodb+srv://` URI support with SRV toggle, Auth Mechanism dropdown, and Replica Set field (#419)
 - Show all available database types in connection form with install status badge (#418)
