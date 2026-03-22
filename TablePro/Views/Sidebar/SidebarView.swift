@@ -248,7 +248,7 @@ struct SidebarView: View {
                         }
                 }
 
-                if viewModel.databaseType == .redis, let keyTreeVM = viewModel.redisKeyTreeViewModel {
+                if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                     Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                         RedisKeyTreeView(
                             nodes: keyTreeVM.displayNodes(searchText: viewModel.debouncedSearchText),

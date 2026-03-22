@@ -480,12 +480,12 @@ extension MainContentCoordinator {
 
     func initRedisKeyTreeIfNeeded() {
         guard connection.type == .redis else { return }
-        guard sidebarViewModel?.redisKeyTreeViewModel == nil else { return }
+        let sidebarState = SharedSidebarState.forConnection(connectionId)
+        guard sidebarState.redisKeyTreeViewModel == nil else { return }
 
         let vm = RedisKeyTreeViewModel()
-        sidebarViewModel?.redisKeyTreeViewModel = vm
-        let sidebarState = SharedSidebarState.forConnection(connectionId)
         sidebarState.redisKeyTreeViewModel = vm
+        sidebarViewModel?.redisKeyTreeViewModel = vm
 
         let connId = connectionId
         let database = toolbarState.databaseName
