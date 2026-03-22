@@ -162,6 +162,12 @@ extension AppDelegate {
         window.isOpaque = false
         window.backgroundColor = .clear
         window.titlebarAppearsTransparent = true
+
+        window.makeKeyAndOrderFront(nil)
+
+        if let textField = window.contentView?.firstEditableTextField() {
+            window.makeFirstResponder(textField)
+        }
     }
 
     private func configureConnectionFormWindowStyle(_ window: NSWindow) {

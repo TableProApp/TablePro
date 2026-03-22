@@ -14,6 +14,12 @@ import SwiftUI
 
 struct WelcomeWindowView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WelcomeWindowView")
+
+    private enum FocusField {
+        case search
+        case connectionList
+    }
+
     private let storage = ConnectionStorage.shared
     private let groupStorage = GroupStorage.shared
     private let dbManager = DatabaseManager.shared
@@ -26,7 +32,8 @@ struct WelcomeWindowView: View {
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showDeleteConfirmation = false
     @State private var hoveredConnectionId: UUID?
-    @State private var selectedConnectionId: UUID?  // For keyboard navigation
+    @State private var selectedConnectionId: UUID?
+    @FocusState private var focus: FocusField?
     @State private var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
     @State private var groups: [ConnectionGroup] = []
     @State private var collapsedGroupIds: Set<UUID> = {
@@ -271,6 +278,37 @@ struct WelcomeWindowView: View {
                     TextField("Search for connection...", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .focused($focus, equals: .search)
+                        .onKeyPress(.return) {
+                            if let id = selectedConnectionId,
+                                let connection = connections.first(where: { $0.id == id })
+                            {
+                                connectToDatabase(connection)
+                            }
+                            return .handled
+                        }
+                        .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
+                            guard keyPress.modifiers.contains(.control) else { return .ignored }
+                            moveToNextConnection()
+                            focus = .connectionList
+                            return .handled
+                        }
+                        .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
+                            guard keyPress.modifiers.contains(.control) else { return .ignored }
+                            moveToPreviousConnection()
+                            focus = .connectionList
+                            return .handled
+                        }
+                        .onKeyPress(.downArrow) {
+                            moveToNextConnection()
+                            focus = .connectionList
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) {
+                            moveToPreviousConnection()
+                            focus = .connectionList
+                            return .handled
+                        }
                 }
                 .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.sm)
                 .padding(.vertical, 6)
@@ -311,57 +349,62 @@ struct WelcomeWindowView: View {
     /// - Return key: connects to selected row
     /// - Arrow keys: native keyboard navigation
     private var connectionList: some View {
-        List(selection: $selectedConnectionId) {
-            ForEach(ungroupedConnections) { connection in
-                connectionRow(for: connection)
-            }
-            .onMove { from, to in
-                guard searchText.isEmpty else { return }
-                moveUngroupedConnections(from: from, to: to)
-            }
+        ScrollViewReader { proxy in
+            List(selection: $selectedConnectionId) {
+                ForEach(ungroupedConnections) { connection in
+                    connectionRow(for: connection)
+                }
+                .onMove { from, to in
+                    guard searchText.isEmpty else { return }
+                    moveUngroupedConnections(from: from, to: to)
+                }
 
-            ForEach(activeGroups) { group in
-                Section {
-                    if !collapsedGroupIds.contains(group.id) {
-                        ForEach(connections(in: group)) { connection in
-                            connectionRow(for: connection)
+                ForEach(activeGroups) { group in
+                    Section {
+                        if !collapsedGroupIds.contains(group.id) {
+                            ForEach(connections(in: group)) { connection in
+                                connectionRow(for: connection)
+                            }
                         }
+                    } header: {
+                        groupHeader(for: group)
                     }
-                } header: {
-                    groupHeader(for: group)
                 }
             }
-        }
-        .listStyle(.inset)
-        .scrollContentBackground(.hidden)
-        .environment(\.defaultMinListRowHeight, 44)
-        .onKeyPress(.return) {
-            if let id = selectedConnectionId,
-                let connection = connections.first(where: { $0.id == id })
-            {
-                connectToDatabase(connection)
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .focused($focus, equals: .connectionList)
+            .environment(\.defaultMinListRowHeight, 44)
+            .onKeyPress(.return) {
+                if let id = selectedConnectionId,
+                    let connection = connections.first(where: { $0.id == id })
+                {
+                    connectToDatabase(connection)
+                }
+                return .handled
             }
-            return .handled
-        }
-        .onKeyPress(characters: .init(charactersIn: "j"), phases: .down) { keyPress in
-            guard keyPress.modifiers.contains(.control) else { return .ignored }
-            moveToNextConnection()
-            return .handled
-        }
-        .onKeyPress(characters: .init(charactersIn: "k"), phases: .down) { keyPress in
-            guard keyPress.modifiers.contains(.control) else { return .ignored }
-            moveToPreviousConnection()
-            return .handled
-        }
-        .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
-            guard keyPress.modifiers.contains(.control) else { return .ignored }
-            collapseSelectedGroup()
-            return .handled
-        }
-        .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
-            guard keyPress.modifiers.contains(.control) else { return .ignored }
-            expandSelectedGroup()
-            return .handled
+            .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                moveToNextConnection()
+                scrollToSelection(proxy)
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                moveToPreviousConnection()
+                scrollToSelection(proxy)
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "h"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                collapseSelectedGroup()
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "l"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.control) else { return .ignored }
+                expandSelectedGroup()
+                return .handled
+            }
         }
     }
 
@@ -655,6 +698,12 @@ struct WelcomeWindowView: View {
         }
         let prev = max(index - 1, 0)
         selectedConnectionId = visible[prev].id
+    }
+
+    private func scrollToSelection(_ proxy: ScrollViewProxy) {
+        if let id = selectedConnectionId {
+            proxy.scrollTo(id, anchor: .center)
+        }
     }
 
     private func collapseSelectedGroup() {

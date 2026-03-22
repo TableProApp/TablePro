@@ -22,6 +22,13 @@ internal struct QuickSwitcherSheet: View {
 
     @State private var viewModel = QuickSwitcherViewModel()
 
+    private enum FocusField {
+        case search
+        case itemList
+    }
+
+    @FocusState private var focus: FocusField?
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -59,6 +66,7 @@ internal struct QuickSwitcherSheet: View {
                 databaseType: databaseType
             )
         }
+        .defaultFocus($focus, .search)
         .onExitCommand { dismiss() }
         .onKeyPress(.return) {
             openSelectedItem()
@@ -95,6 +103,7 @@ internal struct QuickSwitcherSheet: View {
             TextField("Search tables, views, databases...", text: $viewModel.searchText)
                 .textFieldStyle(.plain)
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .focused($focus, equals: .search)
 
             if !viewModel.searchText.isEmpty {
                 Button(action: { viewModel.searchText = "" }) {
@@ -139,6 +148,7 @@ internal struct QuickSwitcherSheet: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .focused($focus, equals: .itemList)
             .onChange(of: viewModel.selectedItemId) { _, newValue in
                 if let itemId = newValue {
                     proxy.scrollTo(itemId, anchor: .center)

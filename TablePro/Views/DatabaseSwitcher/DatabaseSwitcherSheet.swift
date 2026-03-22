@@ -24,6 +24,13 @@ struct DatabaseSwitcherSheet: View {
     @State private var viewModel: DatabaseSwitcherViewModel
     @State private var showCreateDialog = false
 
+    private enum FocusField {
+        case search
+        case databaseList
+    }
+
+    @FocusState private var focus: FocusField?
+
     private var isSchemaMode: Bool { viewModel.isSchemaMode }
 
     /// The active name used for current-badge comparison, depending on mode.
@@ -106,6 +113,7 @@ struct DatabaseSwitcherSheet: View {
         }
         .frame(width: 420, height: 480)
         .background(Color(nsColor: .windowBackgroundColor))
+        .defaultFocus($focus, .search)
         .task { await viewModel.fetchDatabases() }
         .sheet(isPresented: $showCreateDialog) {
             CreateDatabaseSheet { name, charset, collation in
@@ -158,6 +166,7 @@ struct DatabaseSwitcherSheet: View {
                     text: $viewModel.searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                    .focused($focus, equals: .search)
 
                 if !viewModel.searchText.isEmpty {
                     Button(action: { viewModel.searchText = "" }) {
@@ -235,6 +244,7 @@ struct DatabaseSwitcherSheet: View {
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
+            .focused($focus, equals: .databaseList)
             .onChange(of: viewModel.selectedDatabase) { _, newValue in
                 if let item = newValue {
                     withAnimation(.easeInOut(duration: 0.15)) {
