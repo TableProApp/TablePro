@@ -11,6 +11,7 @@ import SwiftUI
 internal struct FavoritesTabView: View {
     @State private var viewModel: FavoritesSidebarViewModel
     @State private var selectedFavoriteIds: Set<String> = []
+    @State private var lastInsertedFavoriteId: String?
     @State private var folderToDelete: SQLFavoriteFolder?
     @State private var showDeleteFolderAlert = false
     @FocusState private var isRenameFocused: Bool
@@ -78,6 +79,24 @@ internal struct FavoritesTabView: View {
         .scrollContentBackground(.hidden)
         .onDeleteCommand {
             deleteSelectedFavorites()
+        }
+        .onChange(of: selectedFavoriteIds) { oldIds, newIds in
+            let added = newIds.subtracting(oldIds)
+            guard added.count == 1,
+                  newIds.count == 1,
+                  let selectedId = added.first,
+                  selectedId != lastInsertedFavoriteId else { return }
+
+            let allFavorites = collectFavorites(from: viewModel.filteredItems(searchText: searchText))
+            if let favorite = allFavorites.first(where: { "fav-\($0.id)" == selectedId }) {
+                coordinator?.insertFavorite(favorite)
+                lastInsertedFavoriteId = selectedId
+            }
+        }
+        .onChange(of: selectedFavoriteIds) {
+            if selectedFavoriteIds.isEmpty {
+                lastInsertedFavoriteId = nil
+            }
         }
     }
 
