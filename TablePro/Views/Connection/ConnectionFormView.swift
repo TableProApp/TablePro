@@ -269,30 +269,37 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             }
 
             if type.isDownloadablePlugin && !PluginManager.shared.isDriverLoaded(for: type) {
-                ContentUnavailableView {
-                    Label(type.rawValue, image: type.iconName)
-                } description: {
-                    if isInstallingPlugin {
-                        Text("Installing plugin…")
-                    } else if let error = pluginInstallError {
-                        Text(error)
-                    } else {
-                        Text("This plugin is not installed yet.")
-                    }
-                } actions: {
-                    if isInstallingPlugin {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else if pluginInstallError != nil {
-                        Button("Retry") {
-                            pluginInstallError = nil
-                            installPlugin(for: type)
+                Section {
+                    LabeledContent(String(localized: "Plugin")) {
+                        if isInstallingPlugin {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Installing…")
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if let error = pluginInstallError {
+                            HStack(spacing: 6) {
+                                Text(error)
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                                    .lineLimit(2)
+                                Button("Retry") {
+                                    pluginInstallError = nil
+                                    installPlugin(for: type)
+                                }
+                                .controlSize(.small)
+                            }
+                        } else {
+                            HStack(spacing: 6) {
+                                Text("Not installed")
+                                    .foregroundStyle(.secondary)
+                                Button("Install") {
+                                    installPlugin(for: type)
+                                }
+                                .controlSize(.small)
+                            }
                         }
-                    } else {
-                        Button("Install Plugin") {
-                            installPlugin(for: type)
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
             } else if PluginManager.shared.connectionMode(for: type) == .fileBased {
