@@ -48,6 +48,9 @@ struct SSHProfileEditorView: View {
     // Deletion
     @State private var showingDeleteConfirmation = false
     @State private var connectionsUsingProfile = 0
+    @State private var isTesting = false
+    @State private var testSucceeded = false
+    @State private var testTask: Task<Void, Never>?
 
     private var isStoredProfile: Bool {
         guard let profile = existingProfile else { return false }
@@ -94,6 +97,21 @@ struct SSHProfileEditorView: View {
         .onAppear {
             sshConfigEntries = SSHConfigParser.parse()
             loadExistingProfile()
+        }
+        .onChange(of: host) { _, _ in testSucceeded = false }
+        .onChange(of: port) { _, _ in testSucceeded = false }
+        .onChange(of: username) { _, _ in testSucceeded = false }
+        .onChange(of: authMethod) { _, _ in testSucceeded = false }
+        .onChange(of: sshPassword) { _, _ in testSucceeded = false }
+        .onChange(of: privateKeyPath) { _, _ in testSucceeded = false }
+        .onChange(of: keyPassphrase) { _, _ in testSucceeded = false }
+        .onChange(of: agentSocketOption) { _, _ in testSucceeded = false }
+        .onChange(of: customAgentSocketPath) { _, _ in testSucceeded = false }
+        .onChange(of: totpMode) { _, _ in testSucceeded = false }
+        .onChange(of: totpSecret) { _, _ in testSucceeded = false }
+        .onChange(of: jumpHosts) { _, _ in testSucceeded = false }
+        .onDisappear {
+            testTask?.cancel()
         }
     }
 
@@ -297,6 +315,20 @@ struct SSHProfileEditorView: View {
                 }
             }
 
+            Button(action: testSSHConnection) {
+                HStack(spacing: 6) {
+                    if isTesting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: testSucceeded ? "checkmark.circle.fill" : "bolt.horizontal")
+                            .foregroundStyle(testSucceeded ? .green : .secondary)
+                    }
+                    Text("Test Connection")
+                }
+            }
+            .disabled(isTesting || !isValid)
+
             Spacer()
 
             Button("Cancel") { dismiss() }
@@ -384,6 +416,62 @@ struct SSHProfileEditorView: View {
 
         onSave?(profile)
         dismiss()
+    }
+
+    private func testSSHConnection() {
+        isTesting = true
+        testSucceeded = false
+        let window = NSApp.keyWindow
+
+        // Use .none for promptAtConnect during test — avoids showing an uncontextualized
+        // TOTP modal. The SSH connection is still tested (auth without TOTP).
+        let testTotpMode: TOTPMode = totpMode == .promptAtConnect ? .none : totpMode
+
+        let config = SSHConfiguration(
+            enabled: true,
+            host: host,
+            port: Int(port) ?? 22,
+            username: username,
+            authMethod: authMethod,
+            privateKeyPath: privateKeyPath,
+            agentSocketPath: resolvedAgentSocketPath,
+            jumpHosts: jumpHosts,
+            totpMode: testTotpMode,
+            totpAlgorithm: totpAlgorithm,
+            totpDigits: totpDigits,
+            totpPeriod: totpPeriod
+        )
+
+        let credentials = SSHTunnelCredentials(
+            sshPassword: sshPassword.isEmpty ? nil : sshPassword,
+            keyPassphrase: keyPassphrase.isEmpty ? nil : keyPassphrase,
+            totpSecret: totpSecret.isEmpty ? nil : totpSecret,
+            totpProvider: nil
+        )
+
+        testTask = Task {
+            do {
+                try await SSHTunnelManager.shared.testSSHProfile(
+                    config: config,
+                    credentials: credentials
+                )
+                await MainActor.run {
+                    isTesting = false
+                    testSucceeded = true
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    isTesting = false
+                    testSucceeded = false
+                    AlertHelper.showErrorSheet(
+                        title: String(localized: "SSH Connection Test Failed"),
+                        message: error.localizedDescription,
+                        window: window
+                    )
+                }
+            }
+        }
     }
 
     private func deleteProfile() {

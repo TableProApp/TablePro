@@ -11,6 +11,10 @@ Create a profile in any connection's **SSH Tunnel** tab by clicking **Create New
 
 To edit a profile, select it and click **Edit Profile...**. To delete, click **Edit Profile...** then **Delete Profile**. You can also save an existing inline SSH config as a profile by clicking **Save Current as Profile...**.
 
+## Testing a Profile
+
+Click **Test Connection** in the profile editor to verify your SSH settings without using the profile in a database connection. TablePro connects to the SSH server, performs the handshake, verifies the host key, and authenticates. A green checkmark appears on success; an error dialog shows the failure reason otherwise.
+
 ## iCloud Sync
 
 SSH profiles sync across Macs when iCloud Sync is enabled with the **SSH Profiles** toggle on in **Settings > Sync**. SSH passwords and key passphrases stay local by default. Turn on **Password sync** in **Settings > Sync** to sync credentials via iCloud Keychain.

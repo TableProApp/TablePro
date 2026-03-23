@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Test Connection button in SSH profile editor to validate SSH connectivity independently
+
 ### Changed
 
 - Improve performance: faster sorting, lower memory usage, adaptive tab eviction

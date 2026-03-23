@@ -41,7 +41,85 @@ internal enum LibSSH2TunnelFactory {
     ) throws -> LibSSH2Tunnel {
         _ = initialized
 
-        // Connect to the SSH server (or first jump host if jumps are configured)
+        let chain = try buildAuthenticatedChain(
+            config: config,
+            credentials: credentials,
+            queueLabel: "com.TablePro.ssh.hop.\(connectionId.uuidString)"
+        )
+
+        do {
+            // Bind local listening socket
+            let listenFD = try bindListenSocket(port: localPort)
+
+            let tunnel = LibSSH2Tunnel(
+                connectionId: connectionId,
+                localPort: localPort,
+                session: chain.session,
+                socketFD: chain.socketFD,
+                listenFD: listenFD,
+                jumpChain: chain.jumpHops.map { hop in
+                    LibSSH2Tunnel.JumpHop(
+                        session: hop.session,
+                        socket: hop.socket,
+                        channel: hop.channel,
+                        relayTask: hop.relayTask
+                    )
+                }
+            )
+
+            logger.info(
+                "Tunnel created: \(config.host):\(config.port) -> 127.0.0.1:\(localPort) -> \(remoteHost):\(remotePort)"
+            )
+
+            return tunnel
+        } catch {
+            cleanupChain(chain, reason: "Error")
+            throw error
+        }
+    }
+
+    /// Test SSH connectivity without creating a full tunnel.
+    /// Connects, performs handshake, verifies host key, authenticates, then cleans up.
+    static func testConnection(
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials
+    ) throws {
+        _ = initialized
+
+        let chain = try buildAuthenticatedChain(
+            config: config,
+            credentials: credentials,
+            queueLabel: "com.TablePro.ssh.test-hop"
+        )
+
+        logger.info("SSH test connection successful to \(config.host):\(config.port)")
+        cleanupChain(chain, reason: "Test complete")
+    }
+
+    // MARK: - Shared Chain Builder
+
+    /// Result of building an authenticated SSH chain (possibly through jump hosts).
+    private struct AuthenticatedChain {
+        let session: OpaquePointer
+        let socketFD: Int32
+        let initialSocketFD: Int32
+        let jumpHops: [HopInfo]
+
+        struct HopInfo {
+            let session: OpaquePointer
+            let socket: Int32
+            let channel: OpaquePointer
+            let relayTask: Task<Void, Never>?
+        }
+    }
+
+    /// Connects to the SSH server (possibly through jump hosts), verifies host keys,
+    /// and authenticates at each hop. Returns the final authenticated session.
+    private static func buildAuthenticatedChain(
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials,
+        queueLabel: String
+    ) throws -> AuthenticatedChain {
         let targetHost: String
         let targetPort: Int
 
@@ -57,7 +135,7 @@ internal enum LibSSH2TunnelFactory {
 
         do {
             let session = try createSession(socketFD: socketFD)
-            var jumpHops: [LibSSH2Tunnel.JumpHop] = []
+            var jumpHops: [AuthenticatedChain.HopInfo] = []
             var currentSession = session
             var currentSocketFD = socketFD
 
@@ -76,7 +154,6 @@ internal enum LibSSH2TunnelFactory {
 
                 if !config.jumpHosts.isEmpty {
                     let jumps = config.jumpHosts
-                    // First hop session is already `session` above
 
                     for jumpIndex in 0..<jumps.count {
                         // Determine next hop target
@@ -108,7 +185,7 @@ internal enum LibSSH2TunnelFactory {
 
                         // Each hop's session needs its own serial queue for libssh2 calls
                         let hopSessionQueue = DispatchQueue(
-                            label: "com.TablePro.ssh.hop.\(connectionId.uuidString).\(jumpIndex)",
+                            label: "\(queueLabel).\(jumpIndex)",
                             qos: .utility
                         )
 
@@ -121,7 +198,7 @@ internal enum LibSSH2TunnelFactory {
                             sessionQueue: hopSessionQueue
                         )
 
-                        let hop = LibSSH2Tunnel.JumpHop(
+                        let hop = AuthenticatedChain.HopInfo(
                             session: currentSession,
                             socket: currentSocketFD,
                             channel: channel,
@@ -173,23 +250,12 @@ internal enum LibSSH2TunnelFactory {
                     }
                 }
 
-                // Bind local listening socket
-                let listenFD = try bindListenSocket(port: localPort)
-
-                let tunnel = LibSSH2Tunnel(
-                    connectionId: connectionId,
-                    localPort: localPort,
+                return AuthenticatedChain(
                     session: currentSession,
                     socketFD: currentSocketFD,
-                    listenFD: listenFD,
-                    jumpChain: jumpHops
+                    initialSocketFD: socketFD,
+                    jumpHops: jumpHops
                 )
-
-                logger.info(
-                    "Tunnel created: \(config.host):\(config.port) -> 127.0.0.1:\(localPort) -> \(remoteHost):\(remotePort)"
-                )
-
-                return tunnel
             } catch {
                 // Clean up currentSession if it differs from all hop sessions
                 // (happens when a nextSession was created but failed auth/verify)
@@ -220,6 +286,32 @@ internal enum LibSSH2TunnelFactory {
         } catch {
             Darwin.close(socketFD)
             throw error
+        }
+    }
+
+    /// Clean up all resources in an authenticated chain.
+    private static func cleanupChain(_ chain: AuthenticatedChain, reason: String) {
+        // Disconnect the final session
+        tablepro_libssh2_session_disconnect(chain.session, reason)
+        libssh2_session_free(chain.session)
+        if chain.socketFD != chain.initialSocketFD {
+            Darwin.close(chain.socketFD)
+        }
+
+        // Clean up jump hops in reverse order:
+        // First pass: cancel relays and shutdown sockets to break relay loops
+        for hop in chain.jumpHops.reversed() {
+            hop.relayTask?.cancel()
+            shutdown(hop.socket, SHUT_RDWR)
+        }
+        // Second pass: free channels, sessions, and close sockets
+        // Note: relay task owns fds[0] via defer, so we only close hop.socket
+        // (which is the SSH socket for that hop, not the relay socketpair fd)
+        for hop in chain.jumpHops.reversed() {
+            libssh2_channel_free(hop.channel)
+            tablepro_libssh2_session_disconnect(hop.session, reason)
+            libssh2_session_free(hop.session)
+            Darwin.close(hop.socket)
         }
     }
 

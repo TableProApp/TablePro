@@ -171,6 +171,19 @@ actor SSHTunnelManager {
         }
     }
 
+    /// Test SSH connectivity without creating a tunnel.
+    func testSSHProfile(
+        config: SSHConfiguration,
+        credentials: SSHTunnelCredentials
+    ) async throws {
+        try await Task.detached {
+            try LibSSH2TunnelFactory.testConnection(
+                config: config,
+                credentials: credentials
+            )
+        }.value
+    }
+
     /// Check if a tunnel exists for a connection
     func hasTunnel(connectionId: UUID) -> Bool {
         guard let tunnel = tunnels[connectionId] else { return false }
