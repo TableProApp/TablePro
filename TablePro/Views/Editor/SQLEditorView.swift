@@ -126,6 +126,7 @@ struct SQLEditorView: View {
         .onDisappear {
             teardownFavoritesObserver()
             coordinator.destroy()
+            completionAdapter = nil
         }
         .onChange(of: coordinator.vimMode) { _, newMode in
             vimMode = newMode

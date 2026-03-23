@@ -146,7 +146,22 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
 
+        // Release closure captures to break potential retain cycles
+        onCloseTab = nil
+        onExecuteQuery = nil
+        onAIExplain = nil
+        onAIOptimize = nil
+        onSaveAsFavorite = nil
+        schemaProvider = nil
+        contextMenu = nil
+        vimEngine = nil
+        vimCursorManager = nil
+
+        // Release editor controller heavy state
+        controller?.releaseHeavyState()
+
         EditorEventRouter.shared.unregister(self)
+        Self.logger.debug("SQLEditorCoordinator destroyed")
         cleanupMonitors()
     }
 

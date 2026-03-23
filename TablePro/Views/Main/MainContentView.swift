@@ -272,7 +272,11 @@ struct MainContentView: View {
                     // If no more windows for this connection, disconnect.
                     // Tab state is NOT cleared here — it's preserved for next reconnect.
                     // Only handleTabsChange(count=0) clears state (user explicitly closed all tabs).
-                    guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else { return }
+                    guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else {
+                        // Hint malloc to return freed pages to the OS
+                        malloc_zone_pressure_relief(nil, 0)
+                        return
+                    }
 
                     let hasVisibleWindow = NSApp.windows.contains { window in
                         window.isVisible && (window.subtitle == connectionName
@@ -281,6 +285,11 @@ struct MainContentView: View {
                     if !hasVisibleWindow {
                         await DatabaseManager.shared.disconnectSession(connectionId)
                     }
+
+                    // Give SwiftUI/AppKit time to deallocate view hierarchies,
+                    // then hint malloc to return freed pages to the OS
+                    try? await Task.sleep(for: .seconds(2))
+                    malloc_zone_pressure_relief(nil, 0)
                 }
             }
             .onChange(of: pendingChangeTrigger) {

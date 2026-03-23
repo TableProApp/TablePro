@@ -66,7 +66,12 @@ final class TableRowData {
 /// Direct-access methods `value(atRow:column:)` and `rowValues(at:)` avoid
 /// heap allocations by reading straight from the source `[String?]` array.
 final class InMemoryRowProvider: RowProvider {
-    private let rowBuffer: RowBuffer
+    private weak var rowBuffer: RowBuffer?
+    /// Strong reference only when the provider created its own buffer (convenience init).
+    /// External buffers are owned by QueryTab, so we hold them weakly.
+    private var ownedBuffer: RowBuffer?
+    private static let emptyBuffer = RowBuffer()
+    private var safeBuffer: RowBuffer { rowBuffer ?? Self.emptyBuffer }
     private var sortIndices: [Int]?
     private var appendedRows: [[String?]] = []
     private(set) var columns: [String]
@@ -86,7 +91,7 @@ final class InMemoryRowProvider: RowProvider {
 
     /// Number of rows coming from the buffer (respecting sort indices count when present)
     private var bufferRowCount: Int {
-        sortIndices?.count ?? rowBuffer.rows.count
+        sortIndices?.count ?? safeBuffer.rows.count
     }
 
     init(
@@ -130,6 +135,7 @@ final class InMemoryRowProvider: RowProvider {
             columnEnumValues: columnEnumValues,
             columnNullable: columnNullable
         )
+        ownedBuffer = buffer
     }
 
     func fetchRows(offset: Int, limit: Int) -> [TableRowData] {
@@ -157,7 +163,7 @@ final class InMemoryRowProvider: RowProvider {
         guard rowIndex < totalRowCount else { return }
         let sourceIndex = resolveSourceIndex(rowIndex)
         if let bufferIdx = sourceIndex.bufferIndex {
-            rowBuffer.rows[bufferIdx][columnIndex] = value
+            safeBuffer.rows[bufferIdx][columnIndex] = value
             displayCache.removeValue(forKey: bufferIdx)
         } else if let appendedIdx = sourceIndex.appendedIndex {
             appendedRows[appendedIdx][columnIndex] = value
@@ -215,9 +221,17 @@ final class InMemoryRowProvider: RowProvider {
         displayCache.removeAll()
     }
 
+    /// Release cached data to free memory when this provider is no longer active.
+    func releaseData() {
+        displayCache.removeAll()
+        appendedRows.removeAll()
+        sortIndices = nil
+        ownedBuffer = nil
+    }
+
     /// Update rows by replacing the buffer contents and clearing appended rows
     func updateRows(_ newRows: [[String?]]) {
-        rowBuffer.rows = newRows
+        safeBuffer.rows = newRows
         appendedRows.removeAll()
         sortIndices = nil
         displayCache.removeAll()
@@ -242,7 +256,7 @@ final class InMemoryRowProvider: RowProvider {
         } else {
             if let sorted = sortIndices {
                 let bufferIdx = sorted[index]
-                rowBuffer.rows.remove(at: bufferIdx)
+                safeBuffer.rows.remove(at: bufferIdx)
                 var newIndices = sorted
                 newIndices.remove(at: index)
                 for i in newIndices.indices where newIndices[i] > bufferIdx {
@@ -250,7 +264,7 @@ final class InMemoryRowProvider: RowProvider {
                 }
                 sortIndices = newIndices
             } else {
-                rowBuffer.rows.remove(at: index)
+                safeBuffer.rows.remove(at: index)
             }
         }
         displayCache.removeAll()
@@ -297,9 +311,9 @@ final class InMemoryRowProvider: RowProvider {
             return appendedRows[displayIndex - bCount]
         }
         if let sorted = sortIndices {
-            return rowBuffer.rows[sorted[displayIndex]]
+            return safeBuffer.rows[sorted[displayIndex]]
         }
-        return rowBuffer.rows[displayIndex]
+        return safeBuffer.rows[displayIndex]
     }
 }
 

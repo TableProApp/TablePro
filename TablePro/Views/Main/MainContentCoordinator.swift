@@ -46,6 +46,10 @@ enum ActiveSheet: Identifiable {
 final class MainContentCoordinator {
     static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
 
+    /// Posted during teardown so DataGridView coordinators can release cell views.
+    /// Object is the connection UUID.
+    static let teardownNotification = Notification.Name("MainContentCoordinator.teardown")
+
     // MARK: - Dependencies
 
     let connection: DatabaseConnection
@@ -124,6 +128,9 @@ final class MainContentCoordinator {
     /// Continuation for callers that need to await the result of a fire-and-forget save
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
     @ObservationIgnored internal var saveCompletionContinuation: CheckedContinuation<Bool, Never>?
+
+    /// Called during teardown to let the view layer release cached row providers and sort data.
+    @ObservationIgnored var onTeardown: (() -> Void)?
 
     /// True while a database switch is in progress. Guards against
     /// side-effect window creation during the switch cascade.
@@ -334,6 +341,7 @@ final class MainContentCoordinator {
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
         _didTeardown.withLock { $0 = true }
+
         unregisterFromPersistence()
         for observer in urlFilterObservers {
             NotificationCenter.default.removeObserver(observer)
@@ -351,17 +359,43 @@ final class MainContentCoordinator {
         currentQueryTask = nil
         changeManagerUpdateTask?.cancel()
         changeManagerUpdateTask = nil
+        redisDatabaseSwitchTask?.cancel()
+        redisDatabaseSwitchTask = nil
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
+
+        // Let the view layer release cached row providers before we drop RowBuffers.
+        // Called synchronously here because SwiftUI onChange handlers don't fire
+        // reliably on disappearing views.
+        onTeardown?()
+        onTeardown = nil
+
+        // Notify DataGridView coordinators to release NSTableView cell views
+        NotificationCenter.default.post(
+            name: Self.teardownNotification,
+            object: connection.id
+        )
 
         // Release heavy data so memory drops even if SwiftUI delays deallocation
         for tab in tabManager.tabs {
             tab.rowBuffer.evict()
         }
         querySortCache.removeAll()
+        cachedTableColumnTypes.removeAll()
+        cachedTableColumnNames.removeAll()
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil
+
+        // Release change manager state — pluginDriver holds a strong reference
+        // to the entire database driver which prevents deallocation
+        changeManager.clearChanges()
+        changeManager.pluginDriver = nil
+
+        // Release metadata and filter state
+        tableMetadata = nil
+        filterStateManager.filters.removeAll()
+        filterStateManager.appliedFilters.removeAll()
 
         SchemaProviderRegistry.shared.release(for: connection.id)
         SchemaProviderRegistry.shared.purgeUnused()

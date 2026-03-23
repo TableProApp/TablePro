@@ -166,6 +166,9 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        if let connectionId {
+            context.coordinator.observeTeardown(connectionId: connectionId)
+        }
 
         return scrollView
     }
@@ -632,6 +635,7 @@ struct DataGridView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(observer)
             coordinator.themeObserver = nil
         }
+        coordinator.rowProvider = InMemoryRowProvider(rows: [], columns: [])
     }
 
     func makeCoordinator() -> TableViewCoordinator {
@@ -839,11 +843,62 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
+    /// Subscribe to coordinator teardown to release NSTableView cell views.
+    func observeTeardown(connectionId: UUID) {
+        teardownObserver = NotificationCenter.default.addObserver(
+            forName: MainContentCoordinator.teardownNotification,
+            object: connectionId,
+            queue: nil
+        ) { [weak self] _ in
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                self.releaseData()
+            }
+        }
+    }
+
+    /// Release all data and cell views from the NSTableView.
+    /// Called during coordinator teardown to free memory while SwiftUI holds the view.
+    private func releaseData() {
+        overlayEditor?.dismiss(commit: false)
+        rowProvider = InMemoryRowProvider(rows: [], columns: [])
+        rowVisualStateCache.removeAll()
+        cachedRowCount = 0
+        cachedColumnCount = 0
+        // Remove columns and reload to release cell views
+        if let tableView {
+            while let col = tableView.tableColumns.last {
+                tableView.removeTableColumn(col)
+            }
+            tableView.reloadData()
+        }
+        // Release closures
+        onRefresh = nil
+        onCellEdit = nil
+        onDeleteRows = nil
+        onCopyRows = nil
+        onPasteRows = nil
+        onUndo = nil
+        onRedo = nil
+        onSort = nil
+        onAddRow = nil
+        onUndoInsert = nil
+        onFilterColumn = nil
+        onHideColumn = nil
+        onNavigateFK = nil
+        getVisualState = nil
+    }
+
+    private var teardownObserver: NSObjectProtocol?
+
     deinit {
         if let observer = settingsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = themeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = teardownObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }

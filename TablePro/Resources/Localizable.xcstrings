@@ -27182,6 +27182,9 @@
         }
       }
     },
+    "SSH Connection Test Failed" : {
+
+    },
     "SSH connection timed out" : {
       "localizations" : {
         "tr" : {

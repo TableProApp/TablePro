@@ -290,9 +290,30 @@ public class TextViewController: NSViewController {
         self.gutterView.setNeedsDisplay(self.gutterView.frame)
     }
 
+    /// Release heavy resources (tree-sitter, highlighter, text storage) early,
+    /// without waiting for deinit. Call when the editor is no longer visible but
+    /// SwiftUI may keep the controller alive in @State.
+    public func releaseHeavyState() {
+        if let highlighter {
+            textView?.removeStorageDelegate(highlighter)
+        }
+        highlighter = nil
+        treeSitterClient = nil
+        highlightProviders.removeAll()
+        textCoordinators.values().forEach { $0.destroy() }
+        textCoordinators.removeAll()
+        cancellables.forEach { $0.cancel() }
+        cancellables.removeAll()
+        if let localEventMonitor {
+            NSEvent.removeMonitor(localEventMonitor)
+        }
+        localEventMonitor = nil
+        textView?.setText("")
+    }
+
     deinit {
         if let highlighter {
-            textView.removeStorageDelegate(highlighter)
+            textView?.removeStorageDelegate(highlighter)
         }
         highlighter = nil
         highlightProviders.removeAll()
