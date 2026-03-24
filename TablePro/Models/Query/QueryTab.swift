@@ -272,8 +272,10 @@ final class RowBuffer {
     }
 
     deinit {
+        #if DEBUG
         Logger(subsystem: "com.TablePro", category: "RowBuffer")
             .debug("RowBuffer deallocated — columns: \(self.columns.count), evicted: \(self.isEvicted)")
+        #endif
     }
 }
 
@@ -684,7 +686,9 @@ final class QueryTabManager {
     }
 
     deinit {
+        #if DEBUG
         Logger(subsystem: "com.TablePro", category: "QueryTabManager")
             .debug("QueryTabManager deallocated")
+        #endif
     }
 }

@@ -112,11 +112,13 @@ extension AppDelegate {
     }
 
     func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == WindowId.welcome
+        guard let rawValue = window.identifier?.rawValue else { return false }
+        return rawValue == WindowId.welcome || rawValue.hasPrefix("\(WindowId.welcome)-")
     }
 
     private func isConnectionFormWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == WindowId.connectionForm
+        guard let rawValue = window.identifier?.rawValue else { return false }
+        return rawValue == WindowId.connectionForm || rawValue.hasPrefix("\(WindowId.connectionForm)-")
     }
 
     // MARK: - Welcome Window

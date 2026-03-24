@@ -848,12 +848,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         teardownObserver = NotificationCenter.default.addObserver(
             forName: MainContentCoordinator.teardownNotification,
             object: connectionId,
-            queue: nil
+            queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                self.releaseData()
-            }
+            self?.releaseData()
         }
     }
 
