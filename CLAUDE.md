@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightweight alternative to TablePlus. macOS 14.0+, Swift 5.9, Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
-- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework. Built-in (bundled in app): MySQL, PostgreSQL, SQLite, CSV, JSON, SQL export. Separately distributed via plugin registry: ClickHouse, MSSQL, MongoDB, Redis, Oracle, DuckDB, XLSX, MQL, SQLImport
+- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework. Built-in (bundled in app): MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, Redis, CSV, JSON, SQL export, XLSX, MQL, SQLImport, DynamoDB. Separately distributed via plugin registry: MongoDB, Oracle, DuckDB, Cassandra, Etcd, CloudflareD1
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` — pre-built `libmariadb*.a`, `libpq*.a`, etc. Downloaded from GitHub Releases via `scripts/download-libs.sh` (not in git)
 - **SPM deps**: CodeEditSourceEditor (`main` branch, tree-sitter editor), Sparkle (2.8.1, auto-update), OracleNIO. Managed via Xcode, no `Package.swift`.
@@ -79,10 +79,10 @@ Plugin bundles under `Plugins/`:
 | MySQLDriverPlugin      | MySQL, MariaDB       | CMariaDB             | Built-in     |
 | PostgreSQLDriverPlugin | PostgreSQL, Redshift | CLibPQ               | Built-in     |
 | SQLiteDriverPlugin     | SQLite               | (Foundation sqlite3) | Built-in     |
-| ClickHouseDriverPlugin | ClickHouse           | (URLSession HTTP)    | Registry     |
-| MSSQLDriverPlugin      | SQL Server           | CFreeTDS             | Registry     |
+| ClickHouseDriverPlugin | ClickHouse           | (URLSession HTTP)    | Built-in     |
+| MSSQLDriverPlugin      | SQL Server           | CFreeTDS             | Built-in     |
+| RedisDriverPlugin      | Redis                | CRedis               | Built-in     |
 | MongoDBDriverPlugin    | MongoDB              | CLibMongoc           | Registry     |
-| RedisDriverPlugin      | Redis                | CRedis               | Registry     |
 | DuckDBDriverPlugin     | DuckDB               | CDuckDB              | Registry     |
 | OracleDriverPlugin     | Oracle               | OracleNIO (SPM)      | Registry     |
 

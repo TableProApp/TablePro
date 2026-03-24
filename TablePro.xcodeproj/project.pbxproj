@@ -26,6 +26,12 @@
 		5A86B000D00000000 /* JSONExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86B000100000000 /* JSONExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86C000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86C000100000000 /* SQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A863000D00000000 /* ClickHouseDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A863000100000000 /* ClickHouseDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A864000D00000000 /* MSSQLDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A864000100000000 /* MSSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A867000D00000000 /* RedisDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A867000100000000 /* RedisDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86D000100000000 /* XLSXExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86E000100000000 /* MQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86D000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86E000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -126,6 +132,41 @@
 			remoteGlobalIDString = 5A86C000000000000;
 			remoteInfo = SQLExport;
 		};
+		5A864000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A864000000000000;
+			remoteInfo = MSSQLDriver;
+		};
+		5A867000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A867000000000000;
+			remoteInfo = RedisDriver;
+		};
+		5A86D000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86D000000000000;
+			remoteInfo = XLSXExport;
+		};
+		5A86E000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86E000000000000;
+			remoteInfo = MQLExport;
+		};
+		5A86F000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A86F000000000000;
+			remoteInfo = SQLImport;
+		};
 		5ABCC5AB2F43856700EAF3FC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
@@ -152,9 +193,15 @@
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins */,
+				5A863000D00000000 /* ClickHouseDriver.tableplugin in Copy Plug-Ins */,
+				5A864000D00000000 /* MSSQLDriver.tableplugin in Copy Plug-Ins */,
+				5A867000D00000000 /* RedisDriver.tableplugin in Copy Plug-Ins */,
 				5A86A000D00000000 /* CSVExport.tableplugin in Copy Plug-Ins */,
 				5A86B000D00000000 /* JSONExport.tableplugin in Copy Plug-Ins */,
 				5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins */,
+				5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins */,
+				5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins */,
+				5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */,
 				5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */,
 			);
 			name = "Copy Plug-Ins";
@@ -823,12 +870,17 @@
 				5A861000C00000000 /* PBXTargetDependency */,
 				5A862000C00000000 /* PBXTargetDependency */,
 				5A863000C00000000 /* PBXTargetDependency */,
+				5A864000C00000000 /* PBXTargetDependency */,
 				5A865000C00000000 /* PBXTargetDependency */,
+				5A867000C00000000 /* PBXTargetDependency */,
 				5A868000C00000000 /* PBXTargetDependency */,
 				5A869000C00000000 /* PBXTargetDependency */,
 				5A86A000C00000000 /* PBXTargetDependency */,
 				5A86B000C00000000 /* PBXTargetDependency */,
 				5A86C000C00000000 /* PBXTargetDependency */,
+				5A86D000C00000000 /* PBXTargetDependency */,
+				5A86E000C00000000 /* PBXTargetDependency */,
+				5A86F000C00000000 /* PBXTargetDependency */,
 				5ADDB00000000000000000C1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
@@ -1770,6 +1822,31 @@
 			isa = PBXTargetDependency;
 			target = 5A86C000000000000 /* SQLExport */;
 			targetProxy = 5A86C000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A864000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A864000000000000 /* MSSQLDriver */;
+			targetProxy = 5A864000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A867000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A867000000000000 /* RedisDriver */;
+			targetProxy = 5A867000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A86D000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86D000000000000 /* XLSXExport */;
+			targetProxy = 5A86D000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A86E000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86E000000000000 /* MQLExport */;
+			targetProxy = 5A86E000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A86F000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A86F000000000000 /* SQLImport */;
+			targetProxy = 5A86F000B00000000 /* PBXContainerItemProxy */;
 		};
 		5ABCC5AC2F43856700EAF3FC /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
