@@ -109,7 +109,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         case .keys(let pattern):
             let result = try await conn.executeCommand(["KEYS", pattern])
-            return result.stringArrayValue?.count ?? 0
+            return result.arrayValue?.count ?? 0
 
         case .dbsize:
             let result = try await conn.executeCommand(["DBSIZE"])
@@ -200,7 +200,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         // Get total database count from CONFIG GET databases
         let configResult = try await conn.executeCommand(["CONFIG", "GET", "databases"])
         var maxDatabases = 16
-        if let array = configResult.stringArrayValue, array.count >= 2, let count = Int(array[1]) {
+        if let array = configResult.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {
             maxDatabases = count
         }
 
@@ -310,7 +310,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         let result = try await conn.executeCommand(["CONFIG", "GET", "databases"])
         var maxDatabases = 16
-        if let array = result.stringArrayValue, array.count >= 2, let count = Int(array[1]) {
+        if let array = result.arrayValue, array.count >= 2, let count = Int(redisReplyToString(array[1])) {
             maxDatabases = count
         }
         return (0 ..< maxDatabases).map { "db\($0)" }
@@ -627,9 +627,10 @@ private extension RedisPluginDriver {
 
         case .keys(let pattern):
             let result = try await conn.executeCommand(["KEYS", pattern])
-            guard let keys = result.stringArrayValue else {
+            guard let items = result.arrayValue else {
                 return buildEmptyKeyResult(startTime: startTime)
             }
+            let keys = items.map { redisReplyToString($0) }
             let capped = Array(keys.prefix(PluginRowLimits.defaultMax))
             let keysTruncated = keys.count > PluginRowLimits.defaultMax
             return try await buildKeyBrowseResult(
@@ -1298,10 +1299,10 @@ private extension RedisPluginDriver {
             var entryStrings: [String] = []
             for entry in entries {
                 guard let parts = entry.arrayValue, parts.count >= 2,
-                      let entryId = parts[0].stringValue,
                       let fields = parts[1].arrayValue else {
                     continue
                 }
+                let entryId = redisReplyToString(parts[0])
                 var fieldPairs: [String] = []
                 var j = 0
                 while j + 1 < fields.count {
@@ -1560,10 +1561,10 @@ private extension RedisPluginDriver {
         var rows: [[String?]] = []
         for entry in entries {
             guard let entryParts = entry.arrayValue, entryParts.count >= 2,
-                  let entryId = entryParts[0].stringValue,
                   let fields = entryParts[1].arrayValue else {
                 continue
             }
+            let entryId = redisReplyToString(entryParts[0])
 
             var fieldPairs: [String] = []
             var i = 0

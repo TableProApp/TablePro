@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-select connections in Welcome window (Cmd+Click, Shift+Click) with bulk delete (⌘⌫), Move to Group, and multi-connect
+- Drag-and-drop connections between groups, reorder within groups, and reorder groups
 - ClickHouse, MSSQL, Redis, XLSX Export, MQL Export, and SQL Import now ship as built-in plugins
 - Large document safety caps for syntax highlighting (skip >5MB, throttle >50KB)
 - Lazy-load full values for LONGTEXT/MEDIUMTEXT/CLOB columns in the detail pane sidebar
@@ -16,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Detail pane showing truncated values for LONGTEXT/MEDIUMTEXT/CLOB columns, preventing correct editing
+- Redis hash/list/set/zset/stream views showing empty or misaligned rows when values contained binary, null, or integer types
 
 ## [0.23.2] - 2026-03-24
 
