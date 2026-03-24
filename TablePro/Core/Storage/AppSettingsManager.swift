@@ -17,6 +17,12 @@ import os
 final class AppSettingsManager {
     static let shared = AppSettingsManager()
 
+    deinit {
+        if let observer = accessibilityTextSizeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+    }
+
     // MARK: - Published Settings
 
     var general: GeneralSettings {

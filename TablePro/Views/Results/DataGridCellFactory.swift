@@ -25,9 +25,6 @@ final class DataGridCellFactory {
     /// Large dataset threshold - above this, disable expensive visual features
     private let largeDatasetThreshold = 5_000
 
-    /// Maximum characters to render in a cell (for performance with very large text)
-
-
     // MARK: - Cached Settings
 
     /// Cached NULL display string (updated via settings notification)

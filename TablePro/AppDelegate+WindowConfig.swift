@@ -100,18 +100,22 @@ extension AppDelegate {
 
     // MARK: - Window Identification
 
+    private enum WindowId {
+        static let main = "main"
+        static let welcome = "welcome"
+        static let connectionForm = "connection-form"
+    }
+
     func isMainWindow(_ window: NSWindow) -> Bool {
-        guard let identifier = window.identifier?.rawValue else { return false }
-        return identifier.contains("main")
+        window.identifier?.rawValue == WindowId.main
     }
 
     func isWelcomeWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == "welcome" ||
-            window.title.lowercased().contains("welcome")
+        window.identifier?.rawValue == WindowId.welcome
     }
 
     private func isConnectionFormWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue.contains("connection-form") == true
+        window.identifier?.rawValue == WindowId.connectionForm
     }
 
     // MARK: - Welcome Window
@@ -259,10 +263,7 @@ extension AppDelegate {
 
             if remainingMainWindows == 0 {
                 NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
-
-                DispatchQueue.main.async {
-                    self.openWelcomeWindow()
-                }
+                openWelcomeWindow()
             }
         }
     }
@@ -273,13 +274,9 @@ extension AppDelegate {
 
         if isWelcomeWindow(window),
            window.occlusionState.contains(.visible),
-           NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) {
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                if self.isWelcomeWindow(window), window.isVisible {
-                    window.close()
-                }
-            }
+           NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }),
+           window.isVisible {
+            window.close()
         }
     }
 

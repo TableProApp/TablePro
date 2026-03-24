@@ -134,8 +134,10 @@ extension MainContentCoordinator {
                     updatedTab.errorMessage = nil
                     tabManager.tabs[idx] = updatedTab
 
-                    changeManager.clearChanges()
-                    changeManager.reloadVersion += 1
+                    if tabManager.selectedTabId == tabId {
+                        changeManager.clearChangesAndUndoHistory()
+                        changeManager.reloadVersion += 1
+                    }
                 }
             } catch {
                 // Rollback on failure

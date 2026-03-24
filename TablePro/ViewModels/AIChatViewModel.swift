@@ -88,7 +88,9 @@ final class AIChatViewModel {
 
     // MARK: - Private
 
-    private var streamingTask: Task<Void, Never>?
+    /// nonisolated(unsafe) is required because deinit is not @MainActor-isolated,
+    /// so accessing a @MainActor property from deinit requires opting out of isolation.
+    @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private var lastUsedFeature: AIFeature = .chat
     private let chatStorage = AIChatStorage.shared
@@ -99,6 +101,10 @@ final class AIChatViewModel {
 
     init() {
         loadConversations()
+    }
+
+    deinit {
+        streamingTask?.cancel()
     }
 
     // MARK: - Actions

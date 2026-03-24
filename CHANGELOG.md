@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- MongoDB Atlas connections failing to authenticate (#438)
+- MongoDB TLS certificate verification skipped for SRV connections
+- Active tab data no longer refreshes when switching back to the app window
+- Undo history preserved when switching between database tables
+- Health monitor now detects stuck queries beyond the configured timeout
+- SSH tunnel closure errors now logged instead of silently discarded
+- Schema/database restore errors during reconnect now logged
+
+## [0.23.1] - 2026-03-24
+
 ### Added
 
 - Test Connection button in SSH profile editor to validate SSH connectivity independently
@@ -1003,7 +1015,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/datlechin/tablepro/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/datlechin/tablepro/compare/v0.23.1...HEAD
+[0.23.1]: https://github.com/datlechin/tablepro/compare/v0.23.0...v0.23.1
 [0.23.0]: https://github.com/datlechin/tablepro/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/datlechin/tablepro/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/datlechin/tablepro/compare/v0.21.0...v0.22.0

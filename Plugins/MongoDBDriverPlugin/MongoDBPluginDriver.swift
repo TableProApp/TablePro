@@ -36,7 +36,10 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
     // MARK: - Connection Management
 
     func connect() async throws {
+        // Auto-enable SRV for Atlas hostnames (*.mongodb.net) even if the toggle wasn't set,
+        // since Atlas clusters only resolve via SRV records.
         let useSrv = config.additionalFields["mongoUseSrv"] == "true"
+            || config.host.hasSuffix(".mongodb.net")
         let authMechanism = config.additionalFields["mongoAuthMechanism"]
         let replicaSet = config.additionalFields["mongoReplicaSet"]
 
@@ -54,7 +57,9 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             user: config.username,
             password: config.password,
             database: currentDb,
-            sslMode: config.additionalFields["sslMode"] ?? "Disabled",
+            sslMode: useSrv && (config.additionalFields["sslMode"] ?? "Disabled") == "Disabled"
+                ? "Required"
+                : config.additionalFields["sslMode"] ?? "Disabled",
             sslCACertPath: config.additionalFields["sslCACertPath"] ?? "",
             sslClientCertPath: config.additionalFields["sslClientCertPath"] ?? "",
             authSource: config.additionalFields["mongoAuthSource"],

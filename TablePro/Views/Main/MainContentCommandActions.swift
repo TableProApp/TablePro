@@ -375,7 +375,7 @@ final class MainContentCommandActions {
     }
 
     private func discardAndClose() {
-        coordinator?.changeManager.clearChanges()
+        coordinator?.changeManager.clearChangesAndUndoHistory()
         pendingTruncates.wrappedValue.removeAll()
         pendingDeletes.wrappedValue.removeAll()
         rightPanelState.editState.clearEdits()

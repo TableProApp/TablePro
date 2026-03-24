@@ -64,12 +64,13 @@ final class AnalyticsService {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             // Initial delay before first heartbeat (let connections establish)
-            try? await Task.sleep(for: .seconds(self?.initialDelay ?? 10))
+            guard let delay = self?.initialDelay else { return }
+            try? await Task.sleep(for: .seconds(delay))
 
             while !Task.isCancelled {
-                await self?.sendHeartbeat()
-                try? await Task.sleep(for: .seconds(self?.heartbeatInterval ?? 86_400))
-                guard self != nil else { return }
+                guard let target = self else { return }
+                await target.sendHeartbeat()
+                try? await Task.sleep(for: .seconds(target.heartbeatInterval))
             }
         }
     }

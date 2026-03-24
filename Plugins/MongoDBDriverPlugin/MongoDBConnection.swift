@@ -190,6 +190,8 @@ final class MongoDBConnection: @unchecked Sendable {
         let effectiveAuthSource: String
         if let source = authSource, !source.isEmpty {
             effectiveAuthSource = source
+        } else if useSrv {
+            effectiveAuthSource = "admin"
         } else if !database.isEmpty {
             effectiveAuthSource = database
         } else {
@@ -206,8 +208,7 @@ final class MongoDBConnection: @unchecked Sendable {
         let sslEnabled = ["Preferred", "Required", "Verify CA", "Verify Identity"].contains(sslMode)
         if sslEnabled {
             params.append("tls=true")
-            let verifiesCert = sslMode == "Verify CA" || sslMode == "Verify Identity"
-            if !verifiesCert {
+            if sslMode == "Preferred" {
                 params.append("tlsAllowInvalidCertificates=true")
             }
             if !sslCACertPath.isEmpty {

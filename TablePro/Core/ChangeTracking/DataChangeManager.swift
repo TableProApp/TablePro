@@ -125,7 +125,8 @@ final class DataChangeManager {
 
     // MARK: - Configuration
 
-    /// Clear all changes (called after successful save)
+    /// Clear all tracked changes, preserving undo/redo history.
+    /// Use when changes are invalidated but undo context may still be relevant.
     func clearChanges() {
         changes.removeAll()
         changeIndex.removeAll()
@@ -134,9 +135,16 @@ final class DataChangeManager {
         modifiedCells.removeAll()
         insertedRowData.removeAll()
         changedRowIndices.removeAll()
-        undoManager.clearAll()
         hasChanges = false
         reloadVersion += 1
+    }
+
+    /// Clear all tracked changes AND undo/redo history.
+    /// Use after successful save, explicit discard, or new query execution
+    /// where undo context is no longer meaningful.
+    func clearChangesAndUndoHistory() {
+        clearChanges()
+        undoManager.clearAll()
     }
 
     /// Atomically configure the manager for a new table

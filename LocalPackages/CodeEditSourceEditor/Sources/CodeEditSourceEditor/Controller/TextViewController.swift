@@ -300,7 +300,8 @@ public class TextViewController: NSViewController {
         highlighter = nil
         treeSitterClient = nil
         highlightProviders.removeAll()
-        textCoordinators.values().forEach { $0.destroy() }
+        // Don't call textCoordinators.destroy() here — the caller (coordinator.destroy())
+        // is already a coordinator, so calling back into destroy() causes infinite recursion.
         textCoordinators.removeAll()
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()

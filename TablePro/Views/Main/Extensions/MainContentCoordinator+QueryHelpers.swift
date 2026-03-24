@@ -192,8 +192,8 @@ extension MainContentCoordinator {
         // Clear stale edit state immediately so the save banner
         // doesn't linger while Phase 2 metadata loads in background.
         // Only clear if there are no pending edits from the user.
-        if isEditable && !changeManager.hasChanges {
-            changeManager.clearChanges()
+        if tabManager.selectedTabId == tabId, isEditable, !changeManager.hasChanges {
+            changeManager.clearChangesAndUndoHistory()
         }
     }
 

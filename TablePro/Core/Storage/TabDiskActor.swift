@@ -68,17 +68,17 @@ internal actor TabDiskActor {
 
     // MARK: - Public API
 
-    /// Save tab state for a connection. Errors are logged internally.
-    internal func save(connectionId: UUID, tabs: [PersistedTab], selectedTabId: UUID?) {
+    /// Save tab state for a connection. Throws on encoding or disk write failure.
+    internal func save(connectionId: UUID, tabs: [PersistedTab], selectedTabId: UUID?) throws {
         let state = TabDiskState(tabs: tabs, selectedTabId: selectedTabId)
+        let data = try encoder.encode(state)
+        let fileURL = tabStateFileURL(for: connectionId)
+        try data.write(to: fileURL, options: .atomic)
+    }
 
-        do {
-            let data = try encoder.encode(state)
-            let fileURL = tabStateFileURL(for: connectionId)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            Self.logger.error("Failed to save tab state for \(connectionId): \(error.localizedDescription)")
-        }
+    /// Log a save error from callers that handle errors externally.
+    nonisolated static func logSaveError(connectionId: UUID, error: Error) {
+        logger.error("Failed to save tab state for \(connectionId): \(error.localizedDescription)")
     }
 
     /// Load tab state for a connection. Returns nil if the file is missing or corrupt.
