@@ -163,7 +163,8 @@ final class InMemoryRowProvider: RowProvider {
         guard rowIndex < totalRowCount else { return }
         let sourceIndex = resolveSourceIndex(rowIndex)
         if let bufferIdx = sourceIndex.bufferIndex {
-            safeBuffer.rows[bufferIdx][columnIndex] = value
+            guard let buffer = rowBuffer else { return }
+            buffer.rows[bufferIdx][columnIndex] = value
             displayCache.removeValue(forKey: bufferIdx)
         } else if let appendedIdx = sourceIndex.appendedIndex {
             appendedRows[appendedIdx][columnIndex] = value
@@ -231,7 +232,8 @@ final class InMemoryRowProvider: RowProvider {
 
     /// Update rows by replacing the buffer contents and clearing appended rows
     func updateRows(_ newRows: [[String?]]) {
-        safeBuffer.rows = newRows
+        guard let buffer = rowBuffer else { return }
+        buffer.rows = newRows
         appendedRows.removeAll()
         sortIndices = nil
         displayCache.removeAll()
@@ -254,9 +256,10 @@ final class InMemoryRowProvider: RowProvider {
             guard appendedIdx < appendedRows.count else { return }
             appendedRows.remove(at: appendedIdx)
         } else {
+            guard let buffer = rowBuffer else { return }
             if let sorted = sortIndices {
                 let bufferIdx = sorted[index]
-                safeBuffer.rows.remove(at: bufferIdx)
+                buffer.rows.remove(at: bufferIdx)
                 var newIndices = sorted
                 newIndices.remove(at: index)
                 for i in newIndices.indices where newIndices[i] > bufferIdx {
@@ -264,7 +267,7 @@ final class InMemoryRowProvider: RowProvider {
                 }
                 sortIndices = newIndices
             } else {
-                safeBuffer.rows.remove(at: index)
+                buffer.rows.remove(at: index)
             }
         }
         displayCache.removeAll()
