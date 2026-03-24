@@ -252,11 +252,13 @@ extension AppDelegate {
 
             // Explicitly attach to existing tab group — automatic tabbing
             // doesn't work when tabbingIdentifier is set after window creation.
-            if let existingWindow = NSApp.windows.first(where: {
-                $0 !== window && isMainWindow($0) && $0.isVisible
-                    && $0.tabbingIdentifier == resolvedIdentifier
-            }) {
+            let mainWindows = NSApp.windows.filter { $0 !== window && isMainWindow($0) && $0.isVisible }
+            windowLogger.info(
+                "New main window: resolved=\(resolvedIdentifier), pendingId=\(pendingId?.uuidString ?? "nil"), existing=\(mainWindows.map { $0.tabbingIdentifier })"
+            )
+            if let existingWindow = mainWindows.first(where: { $0.tabbingIdentifier == resolvedIdentifier }) {
                 existingWindow.addTabbedWindow(window, ordered: .above)
+                window.makeKeyAndOrderFront(nil)
             }
         }
     }
