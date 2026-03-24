@@ -81,6 +81,8 @@ class Highlighter: NSObject {
     /// Counts upwards to provide unique IDs for new highlight providers.
     private var providerIdCounter: Int
 
+    public var maxHighlightableLength: Int = 5_000_000
+
     // MARK: - Init
 
     init(
@@ -226,6 +228,7 @@ extension Highlighter: @preconcurrency NSTextStorageDelegate {
         // This method is called whenever attributes are updated, so to avoid re-highlighting the entire document
         // each time an attribute is applied, we check to make sure this is in response to an edit.
         guard editedMask.contains(.editedCharacters) else { return }
+        guard textView?.textStorage.length ?? 0 <= maxHighlightableLength else { return }
 
         styleContainer.storageUpdated(editedRange: editedRange, changeInLength: delta)
 
@@ -276,6 +279,7 @@ extension Highlighter: StyledRangeContainerDelegate {
 
 extension Highlighter: VisibleRangeProviderDelegate {
     func visibleSetDidUpdate(_ newIndices: IndexSet) {
+        guard textView?.textStorage.length ?? 0 <= maxHighlightableLength else { return }
         highlightProviders.forEach { $0.highlightInvalidRanges() }
     }
 }

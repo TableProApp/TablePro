@@ -32,6 +32,8 @@ class HighlightProviderState {
     /// The length to chunk ranges into when passing to the highlighter.
     private static let rangeChunkLimit = 4096
 
+    private static let largeDocThreshold = 50_000
+
     // MARK: - State
 
     /// A unique identifier for this provider. Used by the delegate to determine the source of results.
@@ -120,8 +122,11 @@ class HighlightProviderState {
 
     /// Accumulates all pending ranges and calls `queryHighlights`.
     func highlightInvalidRanges() {
+        let docLength = visibleRangeProvider?.documentRange.length ?? 0
+        let maxRanges = docLength > Self.largeDocThreshold ? 2 : Int.max
+
         var ranges: [NSRange] = []
-        while let nextRange = getNextRange() {
+        while ranges.count < maxRanges, let nextRange = getNextRange() {
             ranges.append(nextRange)
             pendingSet.insert(range: nextRange)
         }

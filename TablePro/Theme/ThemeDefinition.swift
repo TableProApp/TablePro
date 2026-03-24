@@ -177,6 +177,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
     var selection: String
     var lineNumber: String
     var invisibles: String
+    var currentStatementHighlight: String
     var syntax: SyntaxColors
 
     static let defaultLight = EditorThemeColors(
@@ -187,6 +188,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
         selection: "#B4D8FD",
         lineNumber: "#747478",
         invisibles: "#D6D6D6",
+        currentStatementHighlight: "#F0F4FA",
         syntax: .defaultLight
     )
 
@@ -198,6 +200,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
         selection: String,
         lineNumber: String,
         invisibles: String,
+        currentStatementHighlight: String,
         syntax: SyntaxColors
     ) {
         self.background = background
@@ -207,6 +210,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
         self.selection = selection
         self.lineNumber = lineNumber
         self.invisibles = invisibles
+        self.currentStatementHighlight = currentStatementHighlight
         self.syntax = syntax
     }
 
@@ -222,6 +226,8 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
         selection = try container.decodeIfPresent(String.self, forKey: .selection) ?? fallback.selection
         lineNumber = try container.decodeIfPresent(String.self, forKey: .lineNumber) ?? fallback.lineNumber
         invisibles = try container.decodeIfPresent(String.self, forKey: .invisibles) ?? fallback.invisibles
+        currentStatementHighlight = try container.decodeIfPresent(String.self, forKey: .currentStatementHighlight)
+            ?? fallback.currentStatementHighlight
         syntax = try container.decodeIfPresent(SyntaxColors.self, forKey: .syntax) ?? fallback.syntax
     }
 }
