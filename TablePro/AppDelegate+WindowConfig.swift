@@ -329,8 +329,8 @@ extension AppDelegate {
     }
 
     func closeRestoredMainWindows() {
-        DispatchQueue.main.async {
-            for window in NSApp.windows where window.identifier?.rawValue.contains("main") == true {
+        DispatchQueue.main.async { [weak self] in
+            for window in NSApp.windows where self?.isMainWindow(window) == true {
                 window.close()
             }
         }

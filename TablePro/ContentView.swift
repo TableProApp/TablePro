@@ -114,7 +114,8 @@ struct ContentView: View {
                 // Match by checking if the window is registered for our connectionId
                 // in WindowLifecycleMonitor (subtitle may not be set yet on first appear).
                 guard let notificationWindow = notification.object as? NSWindow,
-                      notificationWindow.identifier?.rawValue.contains("main") == true,
+                      let windowId = notificationWindow.identifier?.rawValue,
+                      windowId == "main" || windowId.hasPrefix("main-"),
                       let connectionId = payload?.connectionId
                 else { return }
 

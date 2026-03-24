@@ -10,12 +10,14 @@
 import AppKit
 
 extension NSApplication {
-    /// Close all windows whose identifier contains the given ID.
-    /// Legacy workaround from when the minimum was macOS 13. Now that macOS 14+ is the minimum,
-    /// callers could use SwiftUI's `dismissWindow(id:)` instead.
+    /// Close all windows whose identifier matches the given ID (exact or SwiftUI-suffixed).
+    /// SwiftUI appends "-AppWindow-N" to WindowGroup IDs, so we match by prefix.
     func closeWindows(withId id: String) {
-        for window in windows where window.identifier?.rawValue.contains(id) == true {
-            window.close()
+        for window in windows {
+            guard let rawValue = window.identifier?.rawValue else { continue }
+            if rawValue == id || rawValue.hasPrefix("\(id)-") {
+                window.close()
+            }
         }
     }
 }
