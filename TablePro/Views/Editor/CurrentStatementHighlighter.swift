@@ -36,8 +36,9 @@ final class CurrentStatementHighlighter {
     }
 
     func handleTextChange() {
-        // Text changed — invalidate cached range and schedule update
-        lastHighlightedRange = nil
+        // Clear emphasis immediately so stale ranges don't cause drawing crashes.
+        // The debounced update will re-apply with the correct range.
+        clearHighlight()
         scheduleUpdate()
     }
 
@@ -92,7 +93,8 @@ final class CurrentStatementHighlighter {
         let stmtNS = located.sql as NSString
         let stmtRange = NSRange(location: located.offset, length: stmtNS.length)
 
-        guard stmtRange.length > 0 else {
+        // Validate range is within document bounds
+        guard stmtRange.length > 0, NSMaxRange(stmtRange) <= docLength else {
             clearHighlight()
             return
         }
