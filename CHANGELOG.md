@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- MongoDB Atlas connections failing to authenticate (#438)
+- MongoDB TLS certificate verification skipped for SRV connections
+
 ## [0.23.1] - 2026-03-24
 
 ### Added
