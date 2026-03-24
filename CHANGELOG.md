@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Health monitor now detects stuck queries beyond the configured timeout
 - SSH tunnel closure errors now logged instead of silently discarded
 - Schema/database restore errors during reconnect now logged
-- Memory not reclaimed after closing many tabs (RowBuffer, NSTableView cell views, editor state now released during teardown)
-- New tabs opening as separate windows instead of attaching to connection tab group
-- Sidebar table clicks not opening table tabs (isKeyWindow not set after WindowAccessor migration)
+- Memory not released after closing tabs
+- New tabs opening as separate windows instead of joining the connection tab group
+- Clicking tables in sidebar not opening table tabs
 
 ## [0.23.1] - 2026-03-24
 
