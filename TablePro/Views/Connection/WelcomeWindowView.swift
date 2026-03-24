@@ -115,6 +115,7 @@ struct WelcomeWindowView: View {
         .frame(minWidth: 650, minHeight: 400)
         .onAppear {
             loadConnections()
+            focus = .search
         }
         .confirmationDialog(
             connectionsToDelete.count == 1
@@ -241,6 +242,7 @@ struct WelcomeWindowView: View {
             // Footer hints
             HStack(spacing: 16) {
                 SyncStatusIndicator()
+                KeyboardHint(keys: "↵", label: "Connect")
                 KeyboardHint(keys: "⌘N", label: "New")
                 KeyboardHint(keys: "⌘,", label: "Settings")
             }
@@ -300,6 +302,13 @@ struct WelcomeWindowView: View {
                         .focused($focus, equals: .search)
                         .onKeyPress(.return) {
                             connectSelectedConnections()
+                            return .handled
+                        }
+                        .onKeyPress(.escape) {
+                            if !searchText.isEmpty {
+                                searchText = ""
+                            }
+                            focus = .connectionList
                             return .handled
                         }
                         .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
@@ -416,6 +425,17 @@ struct WelcomeWindowView: View {
                 guard !toDelete.isEmpty else { return .ignored }
                 connectionsToDelete = toDelete
                 showDeleteConfirmation = true
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "a"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.command) else { return .ignored }
+                selectedConnectionIds = Set(flatVisibleConnections.map(\.id))
+                return .handled
+            }
+            .onKeyPress(.escape) {
+                if !selectedConnectionIds.isEmpty {
+                    selectedConnectionIds = []
+                }
                 return .handled
             }
             .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
@@ -661,17 +681,11 @@ struct WelcomeWindowView: View {
                 Button {
                     moveConnections(targets, toGroup: group.id)
                 } label: {
-                    HStack {
-                        if !group.color.isDefault {
-                            Circle()
-                                .fill(group.color.color)
-                                .frame(width: 8, height: 8)
-                        }
+                    if !group.color.isDefault {
+                        Label(group.name, systemImage: "circle.fill")
+                            .foregroundStyle(group.color.color)
+                    } else {
                         Text(group.name)
-                        if currentGroupId == group.id {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
                     }
                 }
                 .disabled(currentGroupId == group.id)
