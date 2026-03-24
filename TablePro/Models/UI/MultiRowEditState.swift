@@ -117,12 +117,24 @@ final class MultiRowEditState {
             var isPendingNull = false
             var isPendingDefault = false
 
+            let isExcluded = excludedColumnNames.contains(columnName)
+            var preservedOriginalValue: String? = originalValue
+            var preservedIsTruncated = isExcluded
+            var preservedIsLoadingFullValue = isExcluded
+
             if !columnsChanged, !selectionChanged, colIndex < fields.count {
                 let oldField = fields[colIndex]
+                // Preserve pending edits when original data matches
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues {
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
+                }
+                // Preserve resolved truncation state — don't reset already-fetched full values
+                if isExcluded && !oldField.isTruncated && oldField.columnName == columnName {
+                    preservedOriginalValue = oldField.originalValue
+                    preservedIsTruncated = false
+                    preservedIsLoadingFullValue = false
                 }
             }
 
@@ -131,20 +143,18 @@ final class MultiRowEditState {
                 pendingValue = originalValue ?? ""
             }
 
-            let isExcluded = excludedColumnNames.contains(columnName)
-
             newFields.append(FieldEditState(
                 columnIndex: colIndex,
                 columnName: columnName,
                 columnTypeEnum: columnTypeEnum,
                 isLongText: isLongText,
-                originalValue: originalValue,
+                originalValue: preservedOriginalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
                 isPendingNull: isPendingNull,
                 isPendingDefault: isPendingDefault,
-                isTruncated: isExcluded,
-                isLoadingFullValue: isExcluded
+                isTruncated: preservedIsTruncated,
+                isLoadingFullValue: preservedIsLoadingFullValue
             ))
         }
 

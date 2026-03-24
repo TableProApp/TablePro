@@ -102,10 +102,11 @@ struct EditableFieldView: View {
                         .controlSize(.small)
                 }
         } else if isTruncated {
-            TextField(placeholderText, text: .constant(""))
-                .textFieldStyle(.roundedBorder)
+            Text("Failed to load full value")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                .disabled(true)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 4)
         } else if isPendingNull || isPendingDefault {
             TextField(isPendingNull ? "NULL" : "DEFAULT", text: .constant(""))
                 .textFieldStyle(.roundedBorder)

@@ -936,6 +936,7 @@ struct MainContentView: View {
 
                 lazyLoadTask?.cancel()
                 lazyLoadTask = Task { @MainActor in
+                    let expectedRowIndex = rowIndex
                     do {
                         let fullValues = try await capturedCoordinator.fetchFullValuesForExcludedColumns(
                             tableName: tableName,
@@ -943,7 +944,9 @@ struct MainContentView: View {
                             primaryKeyValue: pkValue,
                             excludedColumnNames: excludedList
                         )
-                        guard !Task.isCancelled else { return }
+                        guard !Task.isCancelled,
+                              capturedEditState.selectedRowIndices.count == 1,
+                              capturedEditState.selectedRowIndices.first == expectedRowIndex else { return }
                         capturedEditState.applyFullValues(fullValues)
                     } catch {
                         guard !Task.isCancelled else { return }

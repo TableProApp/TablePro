@@ -9,7 +9,9 @@ import Foundation
 import os
 import TableProPluginKit
 
-private let lazyLoadLogger = Logger(subsystem: "com.TablePro", category: "LazyLoadColumns")
+private enum LazyLoadLog {
+    static let logger = Logger(subsystem: "com.TablePro", category: "LazyLoadColumns")
+}
 
 extension MainContentCoordinator {
     func fetchFullValuesForExcludedColumns(
@@ -40,7 +42,7 @@ extension MainContentCoordinator {
 
         let query = "SELECT \(quotedCols.joined(separator: ", ")) FROM \(quotedTable) WHERE \(quotedPK) = \(placeholder) LIMIT 1"
 
-        lazyLoadLogger.debug("Lazy-loading excluded columns: \(excludedColumnNames.joined(separator: ", "), privacy: .public)")
+        LazyLoadLog.logger.debug("Lazy-loading excluded columns: \(excludedColumnNames.joined(separator: ", "), privacy: .public)")
 
         let result = try await driver.executeParameterized(
             query: query,
@@ -48,7 +50,7 @@ extension MainContentCoordinator {
         )
 
         guard let row = result.rows.first else {
-            lazyLoadLogger.warning("No row returned for lazy-load query")
+            LazyLoadLog.logger.warning("No row returned for lazy-load query")
             return [:]
         }
 
