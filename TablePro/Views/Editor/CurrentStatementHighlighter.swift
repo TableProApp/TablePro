@@ -20,6 +20,9 @@ final class CurrentStatementHighlighter {
     private var lastHighlightedRange: NSRange?
     private var generation: UInt64 = 0
     private let backgroundLayer = CALayer()
+    /// Saved current-line highlight color to restore when statement highlight is inactive.
+    private var savedLineHighlightColor: NSColor?
+    private var isLineHighlightSuppressed = false
 
     func install(controller: TextViewController) {
         self.controller = controller
@@ -30,6 +33,7 @@ final class CurrentStatementHighlighter {
     func uninstall() {
         debounceWorkItem?.cancel()
         debounceWorkItem = nil
+        restoreLineHighlight()
         backgroundLayer.removeFromSuperlayer()
         lastHighlightedRange = nil
         controller = nil
@@ -121,10 +125,29 @@ final class CurrentStatementHighlighter {
         )
         backgroundLayer.isHidden = false
         CATransaction.commit()
+
+        suppressLineHighlight()
     }
 
     private func clearHighlight() {
         lastHighlightedRange = nil
         backgroundLayer.isHidden = true
+        restoreLineHighlight()
+    }
+
+    /// Hide the editor's built-in current-line highlight to avoid double-highlight.
+    private func suppressLineHighlight() {
+        guard !isLineHighlightSuppressed else { return }
+        let selMgr = controller?.textView.selectionManager
+        savedLineHighlightColor = selMgr?.selectedLineBackgroundColor
+        selMgr?.selectedLineBackgroundColor = .clear
+        isLineHighlightSuppressed = true
+    }
+
+    /// Restore the editor's built-in current-line highlight.
+    private func restoreLineHighlight() {
+        guard isLineHighlightSuppressed else { return }
+        controller?.textView.selectionManager?.selectedLineBackgroundColor = savedLineHighlightColor ?? .clear
+        isLineHighlightSuppressed = false
     }
 }
