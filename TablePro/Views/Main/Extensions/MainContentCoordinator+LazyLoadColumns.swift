@@ -13,7 +13,7 @@ private enum LazyLoadLog {
     static let logger = Logger(subsystem: "com.TablePro", category: "LazyLoadColumns")
 }
 
-extension MainContentCoordinator {
+internal extension MainContentCoordinator {
     func fetchFullValuesForExcludedColumns(
         tableName: String,
         primaryKeyColumn: String,
@@ -40,7 +40,7 @@ extension MainContentCoordinator {
             placeholder = "?"
         }
 
-        let query = "SELECT \(quotedCols.joined(separator: ", ")) FROM \(quotedTable) WHERE \(quotedPK) = \(placeholder) LIMIT 1"
+        let query = "SELECT \(quotedCols.joined(separator: ", ")) FROM \(quotedTable) WHERE \(quotedPK) = \(placeholder)"
 
         LazyLoadLog.logger.debug("Lazy-loading excluded columns: \(excludedColumnNames.joined(separator: ", "), privacy: .public)")
 

@@ -949,7 +949,9 @@ struct MainContentView: View {
                               capturedEditState.selectedRowIndices.first == expectedRowIndex else { return }
                         capturedEditState.applyFullValues(fullValues)
                     } catch {
-                        guard !Task.isCancelled else { return }
+                        guard !Task.isCancelled,
+                              capturedEditState.selectedRowIndices.count == 1,
+                              capturedEditState.selectedRowIndices.first == expectedRowIndex else { return }
                         for i in 0..<capturedEditState.fields.count where capturedEditState.fields[i].isLoadingFullValue {
                             capturedEditState.fields[i].isLoadingFullValue = false
                         }
