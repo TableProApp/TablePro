@@ -214,6 +214,12 @@ extension AppDelegate {
     @objc func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         let windowId = ObjectIdentifier(window)
+        NSLog("[WindowConfig] didBecomeKey: id=%@, isMain=%d, configured=%d, title=%@, tabbing=%@",
+              window.identifier?.rawValue ?? "nil",
+              isMainWindow(window) ? 1 : 0,
+              configuredWindows.contains(windowId) ? 1 : 0,
+              window.title,
+              window.tabbingIdentifier)
 
         if isWelcomeWindow(window) && isHandlingFileOpen {
             window.close()
