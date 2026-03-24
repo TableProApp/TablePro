@@ -9,9 +9,11 @@
 
 import AppKit
 import Foundation
+import OSLog
 
 @MainActor
 internal final class WindowLifecycleMonitor {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "WindowLifecycleMonitor")
     internal static let shared = WindowLifecycleMonitor()
 
     private struct Entry {
@@ -41,6 +43,9 @@ internal final class WindowLifecycleMonitor {
     internal func register(window: NSWindow, connectionId: UUID, windowId: UUID, isPreview: Bool = false) {
         // Remove any existing entry for this windowId to avoid duplicate observers
         if let existing = entries[windowId] {
+            if existing.window !== window {
+                Self.logger.warning("Re-registering windowId \(windowId) with a different NSWindow")
+            }
             if let observer = existing.observer {
                 NotificationCenter.default.removeObserver(observer)
             }

@@ -48,7 +48,11 @@ internal final class TabPersistenceCoordinator {
             ? selectedTabId : nonPreviewTabs.first?.id
 
         Task {
-            await TabDiskActor.shared.save(connectionId: connId, tabs: persisted, selectedTabId: normalizedSelectedId)
+            do {
+                try await TabDiskActor.shared.save(connectionId: connId, tabs: persisted, selectedTabId: normalizedSelectedId)
+            } catch {
+                TabDiskActor.logSaveError(connectionId: connId, error: error)
+            }
         }
     }
 
@@ -59,7 +63,11 @@ internal final class TabPersistenceCoordinator {
         let selectedId = selectedTabId
 
         Task {
-            await TabDiskActor.shared.save(connectionId: connId, tabs: persistedTabs, selectedTabId: selectedId)
+            do {
+                try await TabDiskActor.shared.save(connectionId: connId, tabs: persistedTabs, selectedTabId: selectedId)
+            } catch {
+                TabDiskActor.logSaveError(connectionId: connId, error: error)
+            }
         }
     }
 

@@ -315,12 +315,15 @@ extension DatabaseDriver {
 /// Factory for creating database drivers via plugin lookup
 @MainActor
 enum DatabaseDriverFactory {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
+
     static func createDriver(for connection: DatabaseConnection) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
         // If the plugin isn't registered yet and background loading hasn't finished,
         // fall back to synchronous loading for this critical code path.
         if PluginManager.shared.driverPlugins[pluginId] == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
+            logger.warning("Plugin '\(pluginId)' not loaded yet — performing synchronous load")
             PluginManager.shared.loadPendingPlugins()
         }
         guard let plugin = PluginManager.shared.driverPlugins[pluginId] else {

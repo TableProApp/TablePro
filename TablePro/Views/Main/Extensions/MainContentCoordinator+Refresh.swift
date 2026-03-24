@@ -29,7 +29,7 @@ extension MainContentCoordinator {
                 let confirmed = await confirmDiscardChanges(action: .refresh, window: window)
                 if confirmed {
                     onDiscard()
-                    changeManager.clearChanges()
+                    changeManager.clearChangesAndUndoHistory()
                     // Only execute query if we're in a table tab
                     // Query tabs should not auto-execute on refresh (use Cmd+Enter to execute)
                     if let tabIndex = tabManager.selectedTabIndex,

@@ -192,6 +192,11 @@ struct MainContentView: View {
     /// Split into two halves to help the Swift type checker with the long modifier chain.
     private var bodyContent: some View {
         bodyContentCore
+            .background {
+                WindowAccessor { window in
+                    configureWindow(window)
+                }
+            }
             .task(id: currentTab?.tableName) {
                 // Only load metadata after the tab has executed at least once —
                 // avoids a redundant DB query racing with the initial data query
@@ -215,33 +220,7 @@ struct MainContentView: View {
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
 
-                // Register NSWindow reference and set per-connection tab grouping
-                DispatchQueue.main.async {
-                    // Find our window by title rather than keyWindow to avoid races
-                    // when multiple windows open simultaneously
-                    let targetTitle = windowTitle
-                    let window = NSApp.keyWindow
-                        ?? NSApp.windows.first { $0.isVisible && $0.title == targetTitle }
-                    guard let window else { return }
-                    let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
-                    if isPreview {
-                        window.subtitle = "\(connection.name) — Preview"
-                    } else {
-                        window.subtitle = connection.name
-                    }
-                    window.tabbingIdentifier = "com.TablePro.main.\(connection.id.uuidString)"
-                    window.tabbingMode = .preferred
-                    coordinator.windowId = windowId
-
-                    WindowLifecycleMonitor.shared.register(
-                        window: window,
-                        connectionId: connection.id,
-                        windowId: windowId,
-                        isPreview: isPreview
-                    )
-                    viewWindow = window
-                    isKeyWindow = window.isKeyWindow
-                }
+                // Window registration is handled by WindowAccessor in .background
             }
             .onDisappear {
                 // Mark teardown intent synchronously so deinit doesn't warn
@@ -273,14 +252,7 @@ struct MainContentView: View {
                     // Tab state is NOT cleared here — it's preserved for next reconnect.
                     // Only handleTabsChange(count=0) clears state (user explicitly closed all tabs).
                     guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else { return }
-
-                    let hasVisibleWindow = NSApp.windows.contains { window in
-                        window.isVisible && (window.subtitle == connectionName
-                            || window.subtitle == "\(connectionName) — Preview")
-                    }
-                    if !hasVisibleWindow {
-                        await DatabaseManager.shared.disconnectSession(connectionId)
-                    }
+                    await DatabaseManager.shared.disconnectSession(connectionId)
                 }
             }
             .onChange(of: pendingChangeTrigger) {
@@ -353,13 +325,12 @@ struct MainContentView: View {
 
                 // Schedule row data eviction for inactive native window-tabs.
                 // 5s delay avoids thrashing when quickly switching between tabs.
-                // Skip eviction entirely if the active tab has unsaved in-memory changes,
-                // since evictInactiveRowData only checks tab-level pendingChanges.
+                // Per-tab pendingChanges checks inside evictInactiveRowData() protect
+                // tabs with unsaved changes from eviction.
                 evictionTask?.cancel()
                 evictionTask = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(5))
                     guard !Task.isCancelled else { return }
-                    guard !changeManager.hasChanges else { return }
                     coordinator.evictInactiveRowData()
                 }
             }
@@ -605,6 +576,30 @@ struct MainContentView: View {
             || AppState.shared.hasStructureChanges
     }
 
+    /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
+    private func configureWindow(_ window: NSWindow) {
+        let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
+        if isPreview {
+            window.subtitle = "\(connection.name) — Preview"
+        } else {
+            window.subtitle = connection.name
+        }
+        window.tabbingIdentifier = "com.TablePro.main.\(connection.id.uuidString)"
+        window.tabbingMode = .preferred
+        coordinator.windowId = windowId
+
+        WindowLifecycleMonitor.shared.register(
+            window: window,
+            connectionId: connection.id,
+            windowId: windowId,
+            isPreview: isPreview
+        )
+        viewWindow = window
+
+        // Update command actions window reference now that it's available
+        commandActions?.window = window
+    }
+
     private func setupCommandActions() {
         let actions = MainContentCommandActions(
             coordinator: coordinator,
@@ -621,16 +616,8 @@ struct MainContentView: View {
             rightPanelState: rightPanelState,
             editingCell: $editingCell
         )
-        actions.window = NSApp.keyWindow
+        actions.window = viewWindow
         commandActions = actions
-
-        // Safety fallback: if window wasn't key yet at onAppear time,
-        // retry on next run loop when the window is guaranteed to be visible
-        if actions.window == nil {
-            DispatchQueue.main.async { [weak actions] in
-                actions?.window = NSApp.keyWindow
-            }
-        }
     }
 
     // MARK: - Database Switcher

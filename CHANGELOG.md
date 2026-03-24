@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MongoDB Atlas connections failing to authenticate (#438)
 - MongoDB TLS certificate verification skipped for SRV connections
+- Active tab data no longer refreshes when switching back to the app window
+- Undo history preserved when switching between database tables
+- Health monitor now detects stuck queries beyond the configured timeout
+- SSH tunnel closure errors now logged instead of silently discarded
+- Schema/database restore errors during reconnect now logged
 
 ## [0.23.1] - 2026-03-24
 
