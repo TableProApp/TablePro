@@ -6530,7 +6530,26 @@
       }
     },
     "Connect %lld Connections" : {
-
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connect %lld Connection"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connect %lld Connections"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "Connect Anyway" : {
       "localizations" : {
@@ -9307,7 +9326,26 @@
       }
     },
     "Delete %lld Connections" : {
-
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Connection"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Delete %lld Connections"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "Delete Check Constraint" : {
       "extractionState" : "stale",
