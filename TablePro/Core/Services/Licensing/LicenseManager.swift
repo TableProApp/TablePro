@@ -93,9 +93,9 @@ final class LicenseManager {
             }
 
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(self?.revalidationInterval ?? 604_800))
-                guard self != nil else { return }
-                await self?.revalidate()
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(self.revalidationInterval))
+                await self.revalidate()
             }
         }
     }

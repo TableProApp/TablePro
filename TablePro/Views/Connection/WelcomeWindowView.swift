@@ -755,26 +755,15 @@ struct WelcomeWindowView: View {
 
     /// Focus the connection form window as soon as it's available
     private func focusConnectionFormWindow() {
-        // Poll rapidly until window is found (much faster than fixed delay)
-        func attemptFocus(remainingAttempts: Int = 10) {
-            for window in NSApp.windows {
-                if window.identifier?.rawValue.contains("connection-form") == true
-                    || window.title == "Connection"
-                {
+        Task { @MainActor in
+            for _ in 0..<10 {
+                for window in NSApp.windows where
+                    window.identifier?.rawValue == "connection-form" {
                     window.makeKeyAndOrderFront(nil)
                     return
                 }
+                try? await Task.sleep(for: .milliseconds(20))
             }
-            // Window not found yet, try again in 20ms
-            if remainingAttempts > 0 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-                    attemptFocus(remainingAttempts: remainingAttempts - 1)
-                }
-            }
-        }
-        // Start immediately on next run loop
-        DispatchQueue.main.async {
-            attemptFocus()
         }
     }
 }

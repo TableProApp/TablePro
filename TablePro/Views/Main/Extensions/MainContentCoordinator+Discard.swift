@@ -74,7 +74,7 @@ extension MainContentCoordinator {
 
         pendingTruncates.removeAll()
         pendingDeletes.removeAll()
-        changeManager.clearChanges()
+        changeManager.clearChangesAndUndoHistory()
 
         if let index = tabManager.selectedTabIndex {
             tabManager.tabs[index].pendingChanges = TabPendingChanges()

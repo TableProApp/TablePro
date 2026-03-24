@@ -204,13 +204,17 @@ final class MainContentCoordinator {
         }
     }()
 
-    /// Evict row data for all tabs in this coordinator to free memory.
+    /// Evict row data for background tabs in this coordinator to free memory.
     /// Called when the coordinator's native window-tab becomes inactive.
-    /// Data is re-fetched automatically when the tab becomes active again.
+    /// The currently selected tab is kept in memory so the user sees no
+    /// refresh flicker when switching back — matching native macOS behavior.
+    /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
+        let selectedId = tabManager.selectedTabId
         for tab in tabManager.tabs where !tab.rowBuffer.isEvicted
             && !tab.resultRows.isEmpty
             && !tab.pendingChanges.hasChanges
+            && tab.id != selectedId
         {
             tab.rowBuffer.evict()
         }
@@ -351,6 +355,8 @@ final class MainContentCoordinator {
         currentQueryTask = nil
         changeManagerUpdateTask?.cancel()
         changeManagerUpdateTask = nil
+        redisDatabaseSwitchTask?.cancel()
+        redisDatabaseSwitchTask = nil
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
@@ -933,7 +939,7 @@ final class MainContentCoordinator {
                         guard let self else { return }
                         guard capturedGeneration == queryGeneration else { return }
                         guard !Task.isCancelled else { return }
-                        changeManager.clearChanges()
+                        changeManager.clearChangesAndUndoHistory()
                     }
                 }
             } catch {

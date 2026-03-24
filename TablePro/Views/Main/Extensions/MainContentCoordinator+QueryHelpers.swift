@@ -193,7 +193,7 @@ extension MainContentCoordinator {
         // doesn't linger while Phase 2 metadata loads in background.
         // Only clear if there are no pending edits from the user.
         if isEditable && !changeManager.hasChanges {
-            changeManager.clearChanges()
+            changeManager.clearChangesAndUndoHistory()
         }
     }
 

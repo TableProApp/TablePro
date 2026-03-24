@@ -88,7 +88,7 @@ final class AIChatViewModel {
 
     // MARK: - Private
 
-    private var streamingTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private var lastUsedFeature: AIFeature = .chat
     private let chatStorage = AIChatStorage.shared
@@ -99,6 +99,10 @@ final class AIChatViewModel {
 
     init() {
         loadConversations()
+    }
+
+    deinit {
+        streamingTask?.cancel()
     }
 
     // MARK: - Actions

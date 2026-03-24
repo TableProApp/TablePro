@@ -35,7 +35,6 @@ actor ConnectionHealthMonitor {
     // MARK: - Configuration
 
     private static let pingInterval: TimeInterval = 30.0
-    private static let initialBackoffDelays: [TimeInterval] = [2.0, 4.0, 8.0]
     private static let maxBackoffDelay: TimeInterval = 120.0
 
     // MARK: - Dependencies
@@ -227,15 +226,7 @@ actor ConnectionHealthMonitor {
     /// Uses the initial delay table for the first few attempts, then doubles
     /// the previous delay for subsequent attempts, capped at `maxBackoffDelay`.
     private func backoffDelay(for attempt: Int) -> TimeInterval {
-        let delays = Self.initialBackoffDelays
-        if attempt <= delays.count {
-            return delays[attempt - 1]
-        }
-        // Exponential: last seed delay * 2^(attempt - seedCount)
-        let lastSeed = delays[delays.count - 1]
-        let exponent = attempt - delays.count
-        let computed = lastSeed * pow(2.0, Double(exponent))
-        return min(computed, Self.maxBackoffDelay)
+        ExponentialBackoff.delay(for: attempt, maxDelay: Self.maxBackoffDelay)
     }
 
     // MARK: - State Transitions
