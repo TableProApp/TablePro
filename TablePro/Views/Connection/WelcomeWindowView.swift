@@ -681,11 +681,16 @@ struct WelcomeWindowView: View {
                 Button {
                     moveConnections(targets, toGroup: group.id)
                 } label: {
-                    if !group.color.isDefault {
-                        Label(group.name, systemImage: "circle.fill")
-                            .foregroundStyle(group.color.color)
-                    } else {
+                    HStack {
+                        if !group.color.isDefault {
+                            Image(systemName: "circle.fill")
+                                .foregroundStyle(group.color.color)
+                        }
                         Text(group.name)
+                        if currentGroupId == group.id {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
                     }
                 }
                 .disabled(currentGroupId == group.id)
