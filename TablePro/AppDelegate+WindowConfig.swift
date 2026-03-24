@@ -239,14 +239,24 @@ extension AppDelegate {
             let existingIdentifier = NSApp.windows
                 .first { $0 !== window && isMainWindow($0) && $0.isVisible }?
                 .tabbingIdentifier
-            window.tabbingIdentifier = TabbingIdentifierResolver.resolve(
+            let resolvedIdentifier = TabbingIdentifierResolver.resolve(
                 pendingConnectionId: pendingId,
                 existingIdentifier: existingIdentifier
             )
+            window.tabbingIdentifier = resolvedIdentifier
             configuredWindows.insert(windowId)
 
             if !NSWindow.allowsAutomaticWindowTabbing {
                 NSWindow.allowsAutomaticWindowTabbing = true
+            }
+
+            // Explicitly attach to existing tab group — automatic tabbing
+            // doesn't work when tabbingIdentifier is set after window creation.
+            if let existingWindow = NSApp.windows.first(where: {
+                $0 !== window && isMainWindow($0) && $0.isVisible
+                    && $0.tabbingIdentifier == resolvedIdentifier
+            }) {
+                existingWindow.addTabbedWindow(window, ordered: .above)
             }
         }
     }
