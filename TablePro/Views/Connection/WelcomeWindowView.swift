@@ -29,10 +29,10 @@ struct WelcomeWindowView: View {
     @State private var showNewConnectionSheet = false
     @State private var showEditConnectionSheet = false
     @State private var connectionToEdit: DatabaseConnection?
-    @State private var connectionToDelete: DatabaseConnection?
+    @State private var connectionsToDelete: [DatabaseConnection] = []
     @State private var showDeleteConfirmation = false
     @State private var hoveredConnectionId: UUID?
-    @State private var selectedConnectionId: UUID?
+    @State private var selectedConnectionIds: Set<UUID> = []
     @FocusState private var focus: FocusField?
     @State private var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
     @State private var groups: [ConnectionGroup] = []
@@ -41,6 +41,7 @@ struct WelcomeWindowView: View {
         return Set(strings.compactMap { UUID(uuidString: $0) })
     }()
     @State private var showNewGroupSheet = false
+    @State private var pendingMoveToNewGroup: [DatabaseConnection] = []
     @State private var showActivationSheet = false
     @State private var pluginInstallConnection: DatabaseConnection?
 
@@ -88,6 +89,14 @@ struct WelcomeWindowView: View {
         return result
     }
 
+    private var selectedConnections: [DatabaseConnection] {
+        connections.filter { selectedConnectionIds.contains($0.id) }
+    }
+
+    private var isMultipleSelection: Bool {
+        selectedConnectionIds.count > 1
+    }
+
     var body: some View {
         ZStack {
             if showOnboarding {
@@ -109,16 +118,23 @@ struct WelcomeWindowView: View {
             loadConnections()
         }
         .confirmationDialog(
-            "Delete Connection",
-            isPresented: $showDeleteConfirmation,
-            presenting: connectionToDelete
-        ) { connection in
-            Button("Delete", role: .destructive) {
-                deleteConnection(connection)
+            connectionsToDelete.count == 1
+                ? String(localized: "Delete Connection")
+                : String(localized: "Delete \(connectionsToDelete.count) Connections"),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                deleteSelectedConnections()
             }
-            Button("Cancel", role: .cancel) {}
-        } message: { connection in
-            Text("Are you sure you want to delete \"\(connection.name)\"?")
+            Button(String(localized: "Cancel"), role: .cancel) {
+                connectionsToDelete = []
+            }
+        } message: {
+            if connectionsToDelete.count == 1, let first = connectionsToDelete.first {
+                Text("Are you sure you want to delete \"\(first.name)\"?")
+            } else {
+                Text("Are you sure you want to delete \(connectionsToDelete.count) connections? This cannot be undone.")
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .newConnection)) { _ in
             openWindow(id: "connection-form", value: nil as UUID?)
@@ -131,6 +147,10 @@ struct WelcomeWindowView: View {
                 let group = ConnectionGroup(name: name, color: color)
                 groupStorage.addGroup(group)
                 groups = groupStorage.loadGroups()
+                if !pendingMoveToNewGroup.isEmpty {
+                    moveConnections(pendingMoveToNewGroup, toGroup: group.id)
+                    pendingMoveToNewGroup = []
+                }
             }
         }
         .sheet(isPresented: $showActivationSheet) {
@@ -254,7 +274,7 @@ struct WelcomeWindowView: View {
                 .buttonStyle(.plain)
                 .help("New Connection (⌘N)")
 
-                Button(action: { showNewGroupSheet = true }) {
+                Button(action: { pendingMoveToNewGroup = []; showNewGroupSheet = true }) {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -280,11 +300,15 @@ struct WelcomeWindowView: View {
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                         .focused($focus, equals: .search)
                         .onKeyPress(.return) {
-                            if let id = selectedConnectionId,
-                                let connection = connections.first(where: { $0.id == id })
-                            {
-                                connectToDatabase(connection)
-                            }
+                            connectSelectedConnections()
+                            return .handled
+                        }
+                        .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
+                            guard keyPress.modifiers.contains(.command) else { return .ignored }
+                            let toDelete = selectedConnections
+                            guard !toDelete.isEmpty else { return .ignored }
+                            connectionsToDelete = toDelete
+                            showDeleteConfirmation = true
                             return .handled
                         }
                         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
@@ -350,7 +374,7 @@ struct WelcomeWindowView: View {
     /// - Arrow keys: native keyboard navigation
     private var connectionList: some View {
         ScrollViewReader { proxy in
-            List(selection: $selectedConnectionId) {
+            List(selection: $selectedConnectionIds) {
                 ForEach(ungroupedConnections) { connection in
                     connectionRow(for: connection)
                 }
@@ -365,10 +389,18 @@ struct WelcomeWindowView: View {
                             ForEach(connections(in: group)) { connection in
                                 connectionRow(for: connection)
                             }
+                            .onMove { from, to in
+                                guard searchText.isEmpty else { return }
+                                moveGroupedConnections(in: group, from: from, to: to)
+                            }
                         }
                     } header: {
                         groupHeader(for: group)
                     }
+                }
+                .onMove { from, to in
+                    guard searchText.isEmpty else { return }
+                    moveGroups(from: from, to: to)
                 }
             }
             .listStyle(.inset)
@@ -376,11 +408,15 @@ struct WelcomeWindowView: View {
             .focused($focus, equals: .connectionList)
             .environment(\.defaultMinListRowHeight, 44)
             .onKeyPress(.return) {
-                if let id = selectedConnectionId,
-                    let connection = connections.first(where: { $0.id == id })
-                {
-                    connectToDatabase(connection)
-                }
+                connectSelectedConnections()
+                return .handled
+            }
+            .onKeyPress(characters: .init(charactersIn: "\u{7F}\u{08}"), phases: .down) { keyPress in
+                guard keyPress.modifiers.contains(.command) else { return .ignored }
+                let toDelete = selectedConnections
+                guard !toDelete.isEmpty else { return .ignored }
+                connectionsToDelete = toDelete
+                showDeleteConfirmation = true
                 return .handled
             }
             .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
@@ -409,30 +445,11 @@ struct WelcomeWindowView: View {
     }
 
     private func connectionRow(for connection: DatabaseConnection) -> some View {
-        ConnectionRow(
-            connection: connection,
-            onConnect: { connectToDatabase(connection) },
-            onEdit: {
-                openWindow(id: "connection-form", value: connection.id as UUID?)
-                focusConnectionFormWindow()
-            },
-            onDuplicate: {
-                duplicateConnection(connection)
-            },
-            onCopyURL: {
-                let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
-                let sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-                let url = ConnectionURLFormatter.format(connection, password: pw, sshPassword: sshPw)
-                ClipboardService.shared.writeText(url)
-            },
-            onDelete: {
-                connectionToDelete = connection
-                showDeleteConfirmation = true
-            }
-        )
-        .tag(connection.id)
-        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
-        .listRowSeparator(.hidden)
+        ConnectionRow(connection: connection, onConnect: { connectToDatabase(connection) })
+            .tag(connection.id)
+            .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+            .listRowSeparator(.hidden)
+            .contextMenu { contextMenuContent(for: connection) }
     }
 
     private func groupHeader(for group: ConnectionGroup) -> some View {
@@ -554,6 +571,134 @@ struct WelcomeWindowView: View {
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private func contextMenuContent(for connection: DatabaseConnection) -> some View {
+        if isMultipleSelection, selectedConnectionIds.contains(connection.id) {
+            Button { connectSelectedConnections() } label: {
+                Label(
+                    String(localized: "Connect \(selectedConnectionIds.count) Connections"),
+                    systemImage: "play.fill"
+                )
+            }
+
+            Divider()
+
+            moveToGroupMenu(for: selectedConnections)
+
+            if selectedConnections.contains(where: { $0.groupId != nil }) {
+                Button { removeFromGroup(selectedConnections) } label: {
+                    Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                connectionsToDelete = selectedConnections
+                showDeleteConfirmation = true
+            } label: {
+                Label(
+                    String(localized: "Delete \(selectedConnectionIds.count) Connections"),
+                    systemImage: "trash"
+                )
+            }
+        } else {
+            Button { connectToDatabase(connection) } label: {
+                Label(String(localized: "Connect"), systemImage: "play.fill")
+            }
+
+            Divider()
+
+            Button {
+                openWindow(id: "connection-form", value: connection.id as UUID?)
+                focusConnectionFormWindow()
+            } label: {
+                Label(String(localized: "Edit"), systemImage: "pencil")
+            }
+
+            Button { duplicateConnection(connection) } label: {
+                Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
+            }
+
+            Button {
+                let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
+                let sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
+                let url = ConnectionURLFormatter.format(connection, password: pw, sshPassword: sshPw)
+                ClipboardService.shared.writeText(url)
+            } label: {
+                Label(String(localized: "Copy as URL"), systemImage: "link")
+            }
+
+            Divider()
+
+            moveToGroupMenu(for: [connection])
+
+            if connection.groupId != nil {
+                Button { removeFromGroup([connection]) } label: {
+                    Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
+                }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                connectionsToDelete = [connection]
+                showDeleteConfirmation = true
+            } label: {
+                Label(String(localized: "Delete"), systemImage: "trash")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func moveToGroupMenu(for targets: [DatabaseConnection]) -> some View {
+        Menu(String(localized: "Move to Group")) {
+            ForEach(groups) { group in
+                Button {
+                    moveConnections(targets, toGroup: group.id)
+                } label: {
+                    HStack {
+                        if !group.color.isDefault {
+                            Circle()
+                                .fill(group.color.color)
+                                .frame(width: 8, height: 8)
+                        }
+                        Text(group.name)
+                    }
+                }
+            }
+
+            if !groups.isEmpty {
+                Divider()
+            }
+
+            Button {
+                pendingMoveToNewGroup = targets
+                showNewGroupSheet = true
+            } label: {
+                Label(String(localized: "New Group..."), systemImage: "folder.badge.plus")
+            }
+        }
+    }
+
+    private func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
+        let ids = Set(targets.map(\.id))
+        for i in connections.indices where ids.contains(connections[i].id) {
+            connections[i].groupId = groupId
+        }
+        storage.saveConnections(connections)
+    }
+
+    private func removeFromGroup(_ targets: [DatabaseConnection]) {
+        let ids = Set(targets.map(\.id))
+        for i in connections.indices where ids.contains(connections[i].id) {
+            connections[i].groupId = nil
+        }
+        storage.saveConnections(connections)
+    }
+
     // MARK: - Actions
 
     private func loadConnections() {
@@ -568,7 +713,8 @@ struct WelcomeWindowView: View {
     }
 
     private func connectToDatabase(_ connection: DatabaseConnection) {
-        // Open main window first, then connect in background
+        // Set pendingConnectionId so AppDelegate assigns the correct per-connection tabbingIdentifier
+        WindowOpener.shared.pendingConnectionId = connection.id
         openWindow(id: "main", value: EditorTabPayload(connectionId: connection.id))
         NSApplication.shared.closeWindows(withId: "welcome")
 
@@ -620,10 +766,18 @@ struct WelcomeWindowView: View {
         }
     }
 
-    private func deleteConnection(_ connection: DatabaseConnection) {
-        connections.removeAll { $0.id == connection.id }
-        storage.deleteConnection(connection)
-        storage.saveConnections(connections)
+    private func connectSelectedConnections() {
+        for connection in selectedConnections {
+            connectToDatabase(connection)
+        }
+    }
+
+    private func deleteSelectedConnections() {
+        let idsToDelete = Set(connectionsToDelete.map(\.id))
+        storage.deleteConnections(connectionsToDelete)
+        connections.removeAll { idsToDelete.contains($0.id) }
+        selectedConnectionIds.subtract(idsToDelete)
+        connectionsToDelete = []
     }
 
     private func duplicateConnection(_ connection: DatabaseConnection) {
@@ -679,41 +833,43 @@ struct WelcomeWindowView: View {
     private func moveToNextConnection() {
         let visible = flatVisibleConnections
         guard !visible.isEmpty else { return }
-        guard let currentId = selectedConnectionId,
-              let index = visible.firstIndex(where: { $0.id == currentId }) else {
-            selectedConnectionId = visible.first?.id
+        let anchorId = visible.last(where: { selectedConnectionIds.contains($0.id) })?.id
+        guard let anchorId,
+              let index = visible.firstIndex(where: { $0.id == anchorId }) else {
+            selectedConnectionIds = Set([visible[0].id])
             return
         }
         let next = min(index + 1, visible.count - 1)
-        selectedConnectionId = visible[next].id
+        selectedConnectionIds = [visible[next].id]
     }
 
     private func moveToPreviousConnection() {
         let visible = flatVisibleConnections
         guard !visible.isEmpty else { return }
-        guard let currentId = selectedConnectionId,
-              let index = visible.firstIndex(where: { $0.id == currentId }) else {
-            selectedConnectionId = visible.last?.id
+        let anchorId = visible.first(where: { selectedConnectionIds.contains($0.id) })?.id
+        guard let anchorId,
+              let index = visible.firstIndex(where: { $0.id == anchorId }) else {
+            selectedConnectionIds = Set([visible[visible.count - 1].id])
             return
         }
         let prev = max(index - 1, 0)
-        selectedConnectionId = visible[prev].id
+        selectedConnectionIds = [visible[prev].id]
     }
 
     private func scrollToSelection(_ proxy: ScrollViewProxy) {
-        if let id = selectedConnectionId {
+        if let id = selectedConnectionIds.first {
             proxy.scrollTo(id, anchor: .center)
         }
     }
 
     private func collapseSelectedGroup() {
-        guard let id = selectedConnectionId,
+        guard let id = selectedConnectionIds.first,
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               !collapsedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
             collapsedGroupIds.insert(groupId)
-            // Keep selectedConnectionId so Ctrl+L can derive the groupId to expand.
+            // Keep selectedConnectionIds so Ctrl+L can derive the groupId to expand.
             // The List won't show a highlight for the hidden row.
             UserDefaults.standard.set(
                 Array(collapsedGroupIds.map(\.uuidString)),
@@ -723,7 +879,7 @@ struct WelcomeWindowView: View {
     }
 
     private func expandSelectedGroup() {
-        guard let id = selectedConnectionId,
+        guard let id = selectedConnectionIds.first,
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
               collapsedGroupIds.contains(groupId) else { return }
@@ -737,7 +893,14 @@ struct WelcomeWindowView: View {
     }
 
     private func moveUngroupedConnections(from source: IndexSet, to destination: Int) {
-        let ungroupedIndices = connections.indices.filter { connections[$0].groupId == nil }
+        let validGroupIds = Set(groups.map(\.id))
+        let ungroupedIndices = connections.indices.filter { index in
+            guard let groupId = connections[index].groupId else { return true }
+            return !validGroupIds.contains(groupId)
+        }
+
+        guard source.allSatisfy({ $0 < ungroupedIndices.count }),
+              destination <= ungroupedIndices.count else { return }
 
         let globalSource = IndexSet(source.map { ungroupedIndices[$0] })
         let globalDestination: Int
@@ -751,6 +914,49 @@ struct WelcomeWindowView: View {
 
         connections.move(fromOffsets: globalSource, toOffset: globalDestination)
         storage.saveConnections(connections)
+    }
+
+    private func moveGroupedConnections(in group: ConnectionGroup, from source: IndexSet, to destination: Int) {
+        let groupIndices = connections.indices.filter { connections[$0].groupId == group.id }
+
+        guard source.allSatisfy({ $0 < groupIndices.count }),
+              destination <= groupIndices.count else { return }
+
+        let globalSource = IndexSet(source.map { groupIndices[$0] })
+        let globalDestination: Int
+        if destination < groupIndices.count {
+            globalDestination = groupIndices[destination]
+        } else if let last = groupIndices.last {
+            globalDestination = last + 1
+        } else {
+            globalDestination = 0
+        }
+
+        connections.move(fromOffsets: globalSource, toOffset: globalDestination)
+        storage.saveConnections(connections)
+    }
+
+    private func moveGroups(from source: IndexSet, to destination: Int) {
+        let active = activeGroups
+        guard source.allSatisfy({ $0 < active.count }),
+              destination <= active.count else { return }
+
+        let activeGroupIndices = active.compactMap { activeGroup in
+            groups.firstIndex(where: { $0.id == activeGroup.id })
+        }
+
+        let globalSource = IndexSet(source.map { activeGroupIndices[$0] })
+        let globalDestination: Int
+        if destination < activeGroupIndices.count {
+            globalDestination = activeGroupIndices[destination]
+        } else if let last = activeGroupIndices.last {
+            globalDestination = last + 1
+        } else {
+            globalDestination = 0
+        }
+
+        groups.move(fromOffsets: globalSource, toOffset: globalDestination)
+        groupStorage.saveGroups(groups)
     }
 
     /// Focus the connection form window as soon as it's available
@@ -773,10 +979,6 @@ struct WelcomeWindowView: View {
 private struct ConnectionRow: View {
     let connection: DatabaseConnection
     var onConnect: (() -> Void)?
-    var onEdit: (() -> Void)?
-    var onDuplicate: (() -> Void)?
-    var onCopyURL: (() -> Void)?
-    var onDelete: (() -> Void)?
 
     private var displayTag: ConnectionTag? {
         guard let tagId = connection.tagId else { return nil }
@@ -791,7 +993,9 @@ private struct ConnectionRow: View {
                 .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
                 .foregroundStyle(connection.displayColor)
                 .frame(
-                    width: ThemeEngine.shared.activeTheme.iconSizes.medium, height: ThemeEngine.shared.activeTheme.iconSizes.medium)
+                    width: ThemeEngine.shared.activeTheme.iconSizes.medium,
+                    height: ThemeEngine.shared.activeTheme.iconSizes.medium
+                )
 
             // Connection info
             VStack(alignment: .leading, spacing: 2) {
@@ -826,39 +1030,6 @@ private struct ConnectionRow: View {
         .overlay(
             DoubleClickView { onConnect?() }
         )
-        .contextMenu {
-            if let onConnect = onConnect {
-                Button(action: onConnect) {
-                    Label("Connect", systemImage: "play.fill")
-                }
-                Divider()
-            }
-
-            if let onEdit = onEdit {
-                Button(action: onEdit) {
-                    Label("Edit", systemImage: "pencil")
-                }
-            }
-
-            if let onDuplicate = onDuplicate {
-                Button(action: onDuplicate) {
-                    Label("Duplicate", systemImage: "doc.on.doc")
-                }
-            }
-
-            if let onCopyURL = onCopyURL {
-                Button(action: onCopyURL) {
-                    Label("Copy as URL", systemImage: "link")
-                }
-            }
-
-            if let onDelete = onDelete {
-                Divider()
-                Button(role: .destructive, action: onDelete) {
-                    Label("Delete", systemImage: "trash")
-                }
-            }
-        }
     }
 
     private var connectionSubtitle: String {
@@ -869,31 +1040,6 @@ private struct ConnectionRow: View {
             return connection.database.isEmpty ? connection.type.rawValue : connection.database
         }
         return connection.host
-    }
-}
-
-// MARK: - EnvironmentBadge
-
-private struct EnvironmentBadge: View {
-    let connection: DatabaseConnection
-
-    private var environment: ConnectionEnvironment {
-        if connection.sshConfig.enabled {
-            return .ssh
-        }
-        if connection.host.contains("prod") || connection.name.lowercased().contains("prod") {
-            return .production
-        }
-        if connection.host.contains("staging") || connection.name.lowercased().contains("staging") {
-            return .staging
-        }
-        return .local
-    }
-
-    var body: some View {
-        Text("(\(environment.rawValue.lowercased()))")
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-            .foregroundStyle(environment.badgeColor)
     }
 }
 
@@ -934,23 +1080,6 @@ private struct KeyboardHint: View {
                         .fill(Color(nsColor: .quaternaryLabelColor))
                 )
             Text(label)
-        }
-    }
-}
-
-// MARK: - ConnectionEnvironment Extension
-
-private extension ConnectionEnvironment {
-    var badgeColor: Color {
-        switch self {
-        case .local:
-            return Color(nsColor: .systemGreen)
-        case .ssh:
-            return Color(nsColor: .systemBlue)
-        case .staging:
-            return Color(nsColor: .systemOrange)
-        case .production:
-            return Color(nsColor: .systemRed)
         }
     }
 }

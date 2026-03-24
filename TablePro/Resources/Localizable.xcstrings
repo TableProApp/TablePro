@@ -179,6 +179,7 @@
       }
     },
     "(%@)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -3920,6 +3921,9 @@
         }
       }
     },
+    "Are you sure you want to delete %lld connections? This cannot be undone." : {
+
+    },
     "Are you sure you want to delete this connection? This cannot be undone." : {
       "localizations" : {
         "tr" : {
@@ -6524,6 +6528,9 @@
           }
         }
       }
+    },
+    "Connect %lld Connections" : {
+
     },
     "Connect Anyway" : {
       "localizations" : {
@@ -9298,6 +9305,9 @@
           }
         }
       }
+    },
+    "Delete %lld Connections" : {
+
     },
     "Delete Check Constraint" : {
       "extractionState" : "stale",
@@ -12270,6 +12280,9 @@
           }
         }
       }
+    },
+    "Failed to load full value" : {
+
     },
     "Failed to load plugin registry" : {
       "extractionState" : "stale",
@@ -17574,6 +17587,9 @@
         }
       }
     },
+    "Move to Group" : {
+
+    },
     "Move Up" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18113,6 +18129,9 @@
           }
         }
       }
+    },
+    "New Group..." : {
+
     },
     "New Jump Host" : {
       "localizations" : {
@@ -23568,6 +23587,9 @@
           }
         }
       }
+    },
+    "Remove from Group" : {
+
     },
     "Remove license from this machine" : {
       "localizations" : {

@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Multi-select connections in Welcome window (Cmd+Click, Shift+Click) with bulk delete (⌘⌫), Move to Group, and multi-connect
-- Drag-and-drop connections between groups, reorder within groups, and reorder groups
+- Reorder connections within groups and reorder groups in Welcome window
 - ClickHouse, MSSQL, Redis, XLSX Export, MQL Export, and SQL Import now ship as built-in plugins
 - Large document safety caps for syntax highlighting (skip >5MB, throttle >50KB)
 - Lazy-load full values for LONGTEXT/MEDIUMTEXT/CLOB columns in the detail pane sidebar

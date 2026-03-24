@@ -107,6 +107,25 @@ final class ConnectionStorage {
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
     }
 
+    /// Batch-delete multiple connections and clean up their Keychain entries
+    func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
+        for conn in connectionsToDelete {
+            SyncChangeTracker.shared.markDeleted(.connection, id: conn.id.uuidString)
+        }
+        let idsToDelete = Set(connectionsToDelete.map(\.id))
+        var all = loadConnections()
+        all.removeAll { idsToDelete.contains($0.id) }
+        saveConnections(all)
+        for conn in connectionsToDelete {
+            deletePassword(for: conn.id)
+            deleteSSHPassword(for: conn.id)
+            deleteKeyPassphrase(for: conn.id)
+            deleteTOTPSecret(for: conn.id)
+            let fields = Self.secureFieldIds(for: conn.type)
+            deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
+        }
+    }
+
     /// Duplicate a connection with a new UUID and "(Copy)" suffix
     /// Copies all passwords from source connection to the duplicate
     func duplicateConnection(_ connection: DatabaseConnection) -> DatabaseConnection {

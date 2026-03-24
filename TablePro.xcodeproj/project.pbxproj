@@ -12,11 +12,14 @@
 		5A862000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A862000100000000 /* SQLiteDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A863000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A863000D00000000 /* ClickHouseDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A863000100000000 /* ClickHouseDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A864000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A864000D00000000 /* MSSQLDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A864000100000000 /* MSSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A865000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A865000100000000 /* MySQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A866000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A867000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A867000D00000000 /* RedisDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A867000100000000 /* RedisDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A868000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A868000100000000 /* PostgreSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A869000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -26,15 +29,12 @@
 		5A86B000D00000000 /* JSONExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86B000100000000 /* JSONExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86C000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86C000D00000000 /* SQLExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86C000100000000 /* SQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A863000D00000000 /* ClickHouseDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A863000100000000 /* ClickHouseDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A864000D00000000 /* MSSQLDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A864000100000000 /* MSSQLDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A867000D00000000 /* RedisDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A867000100000000 /* RedisDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86D000100000000 /* XLSXExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86E000100000000 /* MQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86D000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86D000D00000000 /* XLSXExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86D000100000000 /* XLSXExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86E000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86E000100000000 /* MQLExport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
@@ -90,12 +90,26 @@
 			remoteGlobalIDString = 5A863000000000000;
 			remoteInfo = ClickHouseDriver;
 		};
+		5A864000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A864000000000000;
+			remoteInfo = MSSQLDriver;
+		};
 		5A865000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 5A865000000000000;
 			remoteInfo = MySQLDriver;
+		};
+		5A867000B00000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A867000000000000;
+			remoteInfo = RedisDriver;
 		};
 		5A868000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -131,20 +145,6 @@
 			proxyType = 1;
 			remoteGlobalIDString = 5A86C000000000000;
 			remoteInfo = SQLExport;
-		};
-		5A864000B00000000 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5A864000000000000;
-			remoteInfo = MSSQLDriver;
-		};
-		5A867000B00000000 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5A867000000000000;
-			remoteInfo = RedisDriver;
 		};
 		5A86D000B00000000 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -1793,10 +1793,20 @@
 			target = 5A863000000000000 /* ClickHouseDriver */;
 			targetProxy = 5A863000B00000000 /* PBXContainerItemProxy */;
 		};
+		5A864000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A864000000000000 /* MSSQLDriver */;
+			targetProxy = 5A864000B00000000 /* PBXContainerItemProxy */;
+		};
 		5A865000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5A865000000000000 /* MySQLDriver */;
 			targetProxy = 5A865000B00000000 /* PBXContainerItemProxy */;
+		};
+		5A867000C00000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A867000000000000 /* RedisDriver */;
+			targetProxy = 5A867000B00000000 /* PBXContainerItemProxy */;
 		};
 		5A868000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1822,16 +1832,6 @@
 			isa = PBXTargetDependency;
 			target = 5A86C000000000000 /* SQLExport */;
 			targetProxy = 5A86C000B00000000 /* PBXContainerItemProxy */;
-		};
-		5A864000C00000000 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 5A864000000000000 /* MSSQLDriver */;
-			targetProxy = 5A864000B00000000 /* PBXContainerItemProxy */;
-		};
-		5A867000C00000000 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 5A867000000000000 /* RedisDriver */;
-			targetProxy = 5A867000B00000000 /* PBXContainerItemProxy */;
 		};
 		5A86D000C00000000 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
