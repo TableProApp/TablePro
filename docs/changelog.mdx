@@ -4,6 +4,20 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="March 24, 2026" description="v0.23.2">
+  ### Bug Fixes
+
+  - MongoDB Atlas connections failing to authenticate (#438)
+  - MongoDB TLS certificate verification skipped for SRV connections
+  - Active tab data no longer refreshes when switching back to the app window
+  - Undo history preserved when switching between database tables
+  - Health monitor now detects stuck queries beyond the configured timeout
+  - SSH tunnel closure and schema restore errors during reconnect now logged instead of silently discarded
+  - Memory not released after closing tabs
+  - New tabs opening as separate windows instead of joining the connection tab group
+  - Clicking tables in sidebar not opening table tabs
+</Update>
+
 <Update label="March 24, 2026" description="v0.23.1">
   ### New Features
 
