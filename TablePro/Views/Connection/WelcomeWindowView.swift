@@ -31,7 +31,6 @@ struct WelcomeWindowView: View {
     @State private var connectionToEdit: DatabaseConnection?
     @State private var connectionsToDelete: [DatabaseConnection] = []
     @State private var showDeleteConfirmation = false
-    @State private var hoveredConnectionId: UUID?
     @State private var selectedConnectionIds: Set<UUID> = []
     @FocusState private var focus: FocusField?
     @State private var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
@@ -946,12 +945,12 @@ struct WelcomeWindowView: View {
 
     private func moveGroups(from source: IndexSet, to destination: Int) {
         let active = activeGroups
-        guard source.allSatisfy({ $0 < active.count }),
-              destination <= active.count else { return }
-
         let activeGroupIndices = active.compactMap { activeGroup in
             groups.firstIndex(where: { $0.id == activeGroup.id })
         }
+
+        guard source.allSatisfy({ $0 < activeGroupIndices.count }),
+              destination <= activeGroupIndices.count else { return }
 
         let globalSource = IndexSet(source.map { activeGroupIndices[$0] })
         let globalDestination: Int
