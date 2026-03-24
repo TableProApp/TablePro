@@ -88,6 +88,8 @@ final class AIChatViewModel {
 
     // MARK: - Private
 
+    /// nonisolated(unsafe) is required because deinit is not @MainActor-isolated,
+    /// so accessing a @MainActor property from deinit requires opting out of isolation.
     @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private var lastUsedFeature: AIFeature = .chat

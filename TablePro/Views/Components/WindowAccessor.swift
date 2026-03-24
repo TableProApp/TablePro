@@ -13,16 +13,19 @@ struct WindowAccessor: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: WindowAccessorView, context: Context) {}
+    func updateNSView(_ nsView: WindowAccessorView, context: Context) {
+        nsView.onWindow = onWindow
+    }
 }
 
 final class WindowAccessorView: NSView {
     var onWindow: ((NSWindow) -> Void)?
+    private weak var capturedWindow: NSWindow?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if let window {
-            onWindow?(window)
-        }
+        guard let window, window !== capturedWindow else { return }
+        capturedWindow = window
+        onWindow?(window)
     }
 }
