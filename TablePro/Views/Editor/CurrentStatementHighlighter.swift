@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Highlights the background of the SQL statement under the cursor.
-//  Uses NSTextStorage backgroundColor attribute so syntax colors are preserved.
+//  Uses a CALayer behind text so syntax colors and cursor are preserved.
 //
 
 import AppKit
@@ -19,15 +19,19 @@ final class CurrentStatementHighlighter {
     private var debounceWorkItem: DispatchWorkItem?
     private var lastHighlightedRange: NSRange?
     private var generation: UInt64 = 0
+    private let backgroundLayer = CALayer()
 
     func install(controller: TextViewController) {
         self.controller = controller
+        backgroundLayer.zPosition = -1
+        controller.textView.layer?.addSublayer(backgroundLayer)
     }
 
     func uninstall() {
         debounceWorkItem?.cancel()
         debounceWorkItem = nil
-        clearHighlight()
+        backgroundLayer.removeFromSuperlayer()
+        lastHighlightedRange = nil
         controller = nil
     }
 
@@ -59,10 +63,6 @@ final class CurrentStatementHighlighter {
             return
         }
 
-        guard let storage = textView.textStorage else {
-            clearHighlight()
-            return
-        }
         let docLength = (textView.string as NSString).length
 
         guard docLength > 0, docLength < Self.maxDocumentLength else {
@@ -78,7 +78,6 @@ final class CurrentStatementHighlighter {
 
         let cursorPos = cursor.range.location
 
-        // Skip if single statement (no semicolons)
         let nsString = textView.string as NSString
         guard nsString.range(of: ";").location != NSNotFound else {
             clearHighlight()
@@ -99,23 +98,33 @@ final class CurrentStatementHighlighter {
         }
 
         if stmtRange == lastHighlightedRange { return }
-
-        // Remove old highlight, apply new one
-        if let old = lastHighlightedRange, NSMaxRange(old) <= storage.length {
-            storage.removeAttribute(.backgroundColor, range: old)
-        }
         lastHighlightedRange = stmtRange
 
+        // Get bounding rect from layout manager via the rounded path
+        guard let path = textView.layoutManager?.roundedPathForRange(stmtRange, cornerRadius: 0) else {
+            clearHighlight()
+            return
+        }
+        let rect = path.bounds
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         let color = ThemeEngine.shared.colors.editor.currentStatementHighlight
-        storage.addAttribute(.backgroundColor, value: color, range: stmtRange)
+        backgroundLayer.backgroundColor = color.cgColor
+        backgroundLayer.cornerRadius = 3
+        // Extend to full width of the text view
+        backgroundLayer.frame = CGRect(
+            x: 0,
+            y: rect.origin.y,
+            width: textView.frame.width,
+            height: rect.height
+        )
+        backgroundLayer.isHidden = false
+        CATransaction.commit()
     }
 
     private func clearHighlight() {
-        if let storage = controller?.textView.textStorage,
-           let old = lastHighlightedRange,
-           NSMaxRange(old) <= storage.length {
-            storage.removeAttribute(.backgroundColor, range: old)
-        }
         lastHighlightedRange = nil
+        backgroundLayer.isHidden = true
     }
 }
