@@ -3,55 +3,37 @@
     <channel>
         <title>TablePro</title>
         <item>
-            <title>0.23.0</title>
-            <pubDate>Sun, 22 Mar 2026 15:06:29 +0000</pubDate>
-            <sparkle:version>44</sparkle:version>
-            <sparkle:shortVersionString>0.23.0</sparkle:shortVersionString>
+            <title>0.23.1</title>
+            <pubDate>Tue, 24 Mar 2026 01:34:22 +0000</pubDate>
+            <sparkle:version>45</sparkle:version>
+            <sparkle:shortVersionString>0.23.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
 <ul>
-<li>Redis key namespace tree view with collapse/expand grouping in sidebar (#418)</li>
-<li>Keyboard focus navigation (Tab, Ctrl+J/K/N/P, arrow keys) for connection list, quick switcher, and database switcher</li>
-<li>MongoDB `mongodb+srv://` URI support with SRV toggle, Auth Mechanism dropdown, and Replica Set field (#419)</li>
-<li>Show all available database types in connection form with install status badge (#418)</li>
+<li>Test Connection button in SSH profile editor to validate SSH connectivity independently</li>
 </ul>
 <h3>Changed</h3>
 <ul>
-<li>MongoDB `authSource` defaults to database name per MongoDB URI spec instead of always "admin"</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li>DuckDB: TIMESTAMPTZ, TIMETZ, and other temporal columns displaying as null (#424)</li>
-<li>Onboarding "Get Started" button not rendering on macOS 15 until window loses focus (#420)</li>
-<li>MongoDB collection loading uses `estimatedDocumentCount` and smaller schema sample for faster sidebar population</li>
+<li>Improve performance: faster sorting, lower memory usage, adaptive tab eviction</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.23.0/TablePro-0.23.0-arm64.zip" length="20687910" type="application/octet-stream" sparkle:edSignature="EbWpEbT3qEwxjFw2/hNcpje11QLne0v9l62v/W+9ygaN/lpqgC2ebhQNW4eIZFn2F/xF9uUfNL6/uBkFelvkDA=="/>
+            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.23.1/TablePro-0.23.1-arm64.zip" length="20712387" type="application/octet-stream" sparkle:edSignature="0S4aj/EoVreJ2xy+8JPfbwwQXjl5LB3qZV7fe2sNYhq6zSNlAoh0H8IBMq2RP6Q4yoXdKL+4HdxgtIYu4GEuDw=="/>
         </item>
         <item>
-            <title>0.23.0</title>
-            <pubDate>Sun, 22 Mar 2026 15:06:29 +0000</pubDate>
-            <sparkle:version>44</sparkle:version>
-            <sparkle:shortVersionString>0.23.0</sparkle:shortVersionString>
+            <title>0.23.1</title>
+            <pubDate>Tue, 24 Mar 2026 01:34:22 +0000</pubDate>
+            <sparkle:version>45</sparkle:version>
+            <sparkle:shortVersionString>0.23.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
 <ul>
-<li>Redis key namespace tree view with collapse/expand grouping in sidebar (#418)</li>
-<li>Keyboard focus navigation (Tab, Ctrl+J/K/N/P, arrow keys) for connection list, quick switcher, and database switcher</li>
-<li>MongoDB `mongodb+srv://` URI support with SRV toggle, Auth Mechanism dropdown, and Replica Set field (#419)</li>
-<li>Show all available database types in connection form with install status badge (#418)</li>
+<li>Test Connection button in SSH profile editor to validate SSH connectivity independently</li>
 </ul>
 <h3>Changed</h3>
 <ul>
-<li>MongoDB `authSource` defaults to database name per MongoDB URI spec instead of always "admin"</li>
-</ul>
-<h3>Fixed</h3>
-<ul>
-<li>DuckDB: TIMESTAMPTZ, TIMETZ, and other temporal columns displaying as null (#424)</li>
-<li>Onboarding "Get Started" button not rendering on macOS 15 until window loses focus (#420)</li>
-<li>MongoDB collection loading uses `estimatedDocumentCount` and smaller schema sample for faster sidebar population</li>
+<li>Improve performance: faster sorting, lower memory usage, adaptive tab eviction</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.23.0/TablePro-0.23.0-x86_64.zip" length="20176728" type="application/octet-stream" sparkle:edSignature="CmX8kskiL8WY30IkKsGf5/Z7bvkPqDEZCocRrGCxSH2JxN2xJtIhKU8qm4wPw7viufzBqwcli1RwMVN4HyyaDg=="/>
+            <enclosure url="https://github.com/datlechin/TablePro/releases/download/v0.23.1/TablePro-0.23.1-x86_64.zip" length="20196846" type="application/octet-stream" sparkle:edSignature="qvKiJiz99y42LSULIKvmNid/9AhRJXAZeLb5XAQ4isFhh0pHgkRQrnVn1pYZSIYmlfmWaiiZOrBXyIDgXWt8Dw=="/>
         </item>
     </channel>
 </rss>
