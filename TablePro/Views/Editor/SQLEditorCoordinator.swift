@@ -29,7 +29,6 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeWorkItem: DispatchWorkItem?
-    @ObservationIgnored private var statementHighlighter: CurrentStatementHighlighter?
     @ObservationIgnored private var wasEditorFocused = false
     @ObservationIgnored private var didDestroy = false
 
@@ -87,8 +86,6 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             self.applyHorizontalScrollFix(controller: controller)
             self.installAIContextMenu(controller: controller)
             self.installInlineSuggestionManager(controller: controller)
-            self.statementHighlighter = CurrentStatementHighlighter()
-            self.statementHighlighter?.install(controller: controller)
             self.installVimModeIfEnabled(controller: controller)
             if let textView = controller.textView {
                 EditorEventRouter.shared.register(self, textView: textView)
@@ -104,7 +101,6 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         DispatchQueue.main.async { [weak self] in
             self?.inlineSuggestionManager?.handleTextChange()
             self?.vimCursorManager?.updatePosition()
-            self?.statementHighlighter?.handleTextChange()
         }
 
         // Throttle frame-change notification — during rapid typing, only the
@@ -126,7 +122,6 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
-        statementHighlighter?.handleCursorChange()
         inlineSuggestionManager?.handleSelectionChange()
         vimCursorManager?.updatePosition()
 
@@ -147,9 +142,6 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         didDestroy = true
 
         uninstallVimKeyInterceptor()
-
-        statementHighlighter?.uninstall()
-        statementHighlighter = nil
 
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
