@@ -107,7 +107,8 @@ extension AppDelegate {
     }
 
     func isMainWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == WindowId.main
+        guard let rawValue = window.identifier?.rawValue else { return false }
+        return rawValue == WindowId.main || rawValue.hasPrefix("\(WindowId.main)-")
     }
 
     func isWelcomeWindow(_ window: NSWindow) -> Bool {
@@ -214,12 +215,6 @@ extension AppDelegate {
     @objc func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         let windowId = ObjectIdentifier(window)
-        NSLog("[WindowConfig] didBecomeKey: id=%@, isMain=%d, configured=%d, title=%@, tabbing=%@",
-              window.identifier?.rawValue ?? "nil",
-              isMainWindow(window) ? 1 : 0,
-              configuredWindows.contains(windowId) ? 1 : 0,
-              window.title,
-              window.tabbingIdentifier)
 
         if isWelcomeWindow(window) && isHandlingFileOpen {
             window.close()
@@ -258,11 +253,10 @@ extension AppDelegate {
 
             // Explicitly attach to existing tab group — automatic tabbing
             // doesn't work when tabbingIdentifier is set after window creation.
-            let mainWindows = NSApp.windows.filter { $0 !== window && isMainWindow($0) && $0.isVisible }
-            windowLogger.info(
-                "New main window: resolved=\(resolvedIdentifier), pendingId=\(pendingId?.uuidString ?? "nil"), existing=\(mainWindows.map { $0.tabbingIdentifier })"
-            )
-            if let existingWindow = mainWindows.first(where: { $0.tabbingIdentifier == resolvedIdentifier }) {
+            if let existingWindow = NSApp.windows.first(where: {
+                $0 !== window && isMainWindow($0) && $0.isVisible
+                    && $0.tabbingIdentifier == resolvedIdentifier
+            }) {
                 existingWindow.addTabbedWindow(window, ordered: .above)
                 window.makeKeyAndOrderFront(nil)
             }
