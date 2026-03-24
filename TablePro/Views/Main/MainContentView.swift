@@ -600,6 +600,7 @@ struct MainContentView: View {
             isPreview: isPreview
         )
         viewWindow = window
+        isKeyWindow = window.isKeyWindow
 
         // Update command actions window reference now that it's available
         commandActions?.window = window
