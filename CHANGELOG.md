@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ClickHouse, MSSQL, Redis, XLSX Export, MQL Export, and SQL Import now ship as built-in plugins
 - Large document safety caps for syntax highlighting (skip >5MB, throttle >50KB)
+- Lazy-load full values for LONGTEXT/MEDIUMTEXT/CLOB columns in the detail pane sidebar
+
+### Fixed
+
+- Detail pane showing truncated values for LONGTEXT/MEDIUMTEXT/CLOB columns, preventing correct editing
 
 ## [0.23.2] - 2026-03-24
 

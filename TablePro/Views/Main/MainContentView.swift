@@ -44,6 +44,7 @@ struct MainContentView: View {
     @State private var commandActions: MainContentCommandActions?
     @State private var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State private var inspectorUpdateTask: Task<Void, Never>?
+    @State private var lazyLoadTask: Task<Void, Never>?
     @State private var pendingTabSwitch: Task<Void, Never>?
     @State private var evictionTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
@@ -870,12 +871,20 @@ struct MainContentView: View {
             modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
         }
 
+        let excludedNames: Set<String>
+        if let tableName = tab.tableName {
+            excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
+        } else {
+            excludedNames = []
+        }
+
         rightPanelState.editState.configure(
             selectedRowIndices: selectedRowIndices,
             allRows: allRows,
             columns: tab.resultColumns,
             columnTypes: columnTypes,
-            externallyModifiedColumns: modifiedColumns
+            externallyModifiedColumns: modifiedColumns,
+            excludedColumnNames: excludedNames
         )
 
         guard isSidebarEditable else {
@@ -892,7 +901,14 @@ struct MainContentView: View {
             for rowIndex in capturedEditState.selectedRowIndices {
                 guard rowIndex < tab.resultRows.count else { continue }
                 let originalRow = tab.resultRows[rowIndex]
-                let oldValue = columnIndex < originalRow.count ? originalRow[columnIndex] : nil
+
+                // Use full (lazy-loaded) original value if available, not truncated row data
+                let oldValue: String?
+                if columnIndex < capturedEditState.fields.count, !capturedEditState.fields[columnIndex].isTruncated {
+                    oldValue = capturedEditState.fields[columnIndex].originalValue
+                } else {
+                    oldValue = columnIndex < originalRow.count ? originalRow[columnIndex] : nil
+                }
 
                 capturedCoordinator.changeManager.recordCellChange(
                     rowIndex: rowIndex,
@@ -902,6 +918,40 @@ struct MainContentView: View {
                     newValue: newValue,
                     originalRow: originalRow
                 )
+            }
+        }
+
+        // Lazy-load full values for excluded columns when a single row is selected
+        if !excludedNames.isEmpty,
+           selectedRowIndices.count == 1,
+           let tableName = tab.tableName,
+           let pkColumn = tab.primaryKeyColumn,
+           let rowIndex = selectedRowIndices.first,
+           rowIndex < tab.resultRows.count {
+            let row = tab.resultRows[rowIndex]
+            if let pkColIndex = tab.resultColumns.firstIndex(of: pkColumn),
+               pkColIndex < row.count,
+               let pkValue = row[pkColIndex] {
+                let excludedList = Array(excludedNames)
+
+                lazyLoadTask?.cancel()
+                lazyLoadTask = Task { @MainActor in
+                    do {
+                        let fullValues = try await capturedCoordinator.fetchFullValuesForExcludedColumns(
+                            tableName: tableName,
+                            primaryKeyColumn: pkColumn,
+                            primaryKeyValue: pkValue,
+                            excludedColumnNames: excludedList
+                        )
+                        guard !Task.isCancelled else { return }
+                        capturedEditState.applyFullValues(fullValues)
+                    } catch {
+                        guard !Task.isCancelled else { return }
+                        for i in 0..<capturedEditState.fields.count where capturedEditState.fields[i].isLoadingFullValue {
+                            capturedEditState.fields[i].isLoadingFullValue = false
+                        }
+                    }
+                }
             }
         }
     }
