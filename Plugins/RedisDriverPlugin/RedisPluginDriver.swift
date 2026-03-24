@@ -1237,12 +1237,12 @@ private extension RedisPluginDriver {
             return truncatePreview(reply.stringValue)
 
         case "hash":
-            let array: [String]
+            let array: [RedisReply]
             if case .array(let scanResult) = reply,
                scanResult.count == 2,
-               let items = scanResult[1].stringArrayValue {
+               let items = scanResult[1].arrayValue {
                 array = items
-            } else if let items = reply.stringArrayValue, !items.isEmpty {
+            } else if let items = reply.arrayValue, !items.isEmpty {
                 array = items
             } else {
                 return "{}"
@@ -1251,39 +1251,41 @@ private extension RedisPluginDriver {
             var pairs: [String] = []
             var idx = 0
             while idx + 1 < array.count {
+                let field = redisReplyToString(array[idx])
+                let value = redisReplyToString(array[idx + 1])
                 pairs.append(
-                    "\"\(escapeJsonString(array[idx]))\":\"\(escapeJsonString(array[idx + 1]))\""
+                    "\"\(escapeJsonString(field))\":\"\(escapeJsonString(value))\""
                 )
                 idx += 2
             }
             return truncatePreview("{\(pairs.joined(separator: ","))}")
 
         case "list":
-            guard let items = reply.stringArrayValue else { return "[]" }
-            let quoted = items.map { "\"\(escapeJsonString($0))\"" }
+            guard let items = reply.arrayValue else { return "[]" }
+            let quoted = items.map { "\"\(escapeJsonString(redisReplyToString($0)))\"" }
             return truncatePreview("[\(quoted.joined(separator: ", "))]")
 
         case "set":
-            let members: [String]
+            let members: [RedisReply]
             if case .array(let scanResult) = reply,
                scanResult.count == 2,
-               let items = scanResult[1].stringArrayValue {
+               let items = scanResult[1].arrayValue {
                 members = items
-            } else if let items = reply.stringArrayValue {
+            } else if let items = reply.arrayValue {
                 members = items
             } else {
                 return "[]"
             }
-            let quoted = members.map { "\"\(escapeJsonString($0))\"" }
+            let quoted = members.map { "\"\(escapeJsonString(redisReplyToString($0)))\"" }
             return truncatePreview("[\(quoted.joined(separator: ", "))]")
 
         case "zset":
             // Parse WITHSCORES result: alternating member, score pairs
-            guard let items = reply.stringArrayValue, !items.isEmpty else { return "[]" }
+            guard let items = reply.arrayValue, !items.isEmpty else { return "[]" }
             var pairs: [String] = []
             var i = 0
             while i + 1 < items.count {
-                pairs.append("\(items[i]):\(items[i + 1])")
+                pairs.append("\(redisReplyToString(items[i])):\(redisReplyToString(items[i + 1]))")
                 i += 2
             }
             return truncatePreview(pairs.joined(separator: ", "))
@@ -1297,13 +1299,13 @@ private extension RedisPluginDriver {
             for entry in entries {
                 guard let parts = entry.arrayValue, parts.count >= 2,
                       let entryId = parts[0].stringValue,
-                      let fields = parts[1].stringArrayValue else {
+                      let fields = parts[1].arrayValue else {
                     continue
                 }
                 var fieldPairs: [String] = []
                 var j = 0
                 while j + 1 < fields.count {
-                    fieldPairs.append("\(fields[j])=\(fields[j + 1])")
+                    fieldPairs.append("\(redisReplyToString(fields[j]))=\(redisReplyToString(fields[j + 1]))")
                     j += 2
                 }
                 entryStrings.append("\(entryId): \(fieldPairs.joined(separator: ", "))")
@@ -1435,7 +1437,7 @@ private extension RedisPluginDriver {
     }
 
     func buildHashResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let array = result.stringArrayValue, !array.isEmpty else {
+        guard let items = result.arrayValue, !items.isEmpty else {
             return PluginQueryResult(
                 columns: ["Field", "Value"],
                 columnTypeNames: ["String", "String"],
@@ -1447,8 +1449,8 @@ private extension RedisPluginDriver {
 
         var rows: [[String?]] = []
         var i = 0
-        while i + 1 < array.count {
-            rows.append([array[i], array[i + 1]])
+        while i + 1 < items.count {
+            rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])])
             i += 2
         }
 
@@ -1462,7 +1464,7 @@ private extension RedisPluginDriver {
     }
 
     func buildListResult(_ result: RedisReply, startOffset: Int = 0, startTime: Date) -> PluginQueryResult {
-        guard let array = result.stringArrayValue else {
+        guard let items = result.arrayValue else {
             return PluginQueryResult(
                 columns: ["Index", "Value"],
                 columnTypeNames: ["Int64", "String"],
@@ -1472,8 +1474,8 @@ private extension RedisPluginDriver {
             )
         }
 
-        let rows = array.enumerated().map { index, value -> [String?] in
-            [String(startOffset + index), value]
+        let rows = items.enumerated().map { index, item -> [String?] in
+            [String(startOffset + index), redisReplyToString(item)]
         }
 
         return PluginQueryResult(
@@ -1486,7 +1488,7 @@ private extension RedisPluginDriver {
     }
 
     func buildSetResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let array = result.stringArrayValue else {
+        guard let items = result.arrayValue else {
             return PluginQueryResult(
                 columns: ["Member"],
                 columnTypeNames: ["String"],
@@ -1496,7 +1498,7 @@ private extension RedisPluginDriver {
             )
         }
 
-        let rows = array.map { [$0] as [String?] }
+        let rows = items.map { [redisReplyToString($0)] as [String?] }
 
         return PluginQueryResult(
             columns: ["Member"],
@@ -1508,7 +1510,7 @@ private extension RedisPluginDriver {
     }
 
     func buildSortedSetResult(_ result: RedisReply, withScores: Bool, startTime: Date) -> PluginQueryResult {
-        guard let array = result.stringArrayValue else {
+        guard let items = result.arrayValue else {
             return PluginQueryResult(
                 columns: withScores ? ["Member", "Score"] : ["Member"],
                 columnTypeNames: withScores ? ["String", "Double"] : ["String"],
@@ -1521,8 +1523,8 @@ private extension RedisPluginDriver {
         if withScores {
             var rows: [[String?]] = []
             var i = 0
-            while i + 1 < array.count {
-                rows.append([array[i], array[i + 1]])
+            while i + 1 < items.count {
+                rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])])
                 i += 2
             }
             return PluginQueryResult(
@@ -1533,7 +1535,7 @@ private extension RedisPluginDriver {
                 executionTime: Date().timeIntervalSince(startTime)
             )
         } else {
-            let rows = array.map { [$0] as [String?] }
+            let rows = items.map { [redisReplyToString($0)] as [String?] }
             return PluginQueryResult(
                 columns: ["Member"],
                 columnTypeNames: ["String"],
@@ -1559,14 +1561,14 @@ private extension RedisPluginDriver {
         for entry in entries {
             guard let entryParts = entry.arrayValue, entryParts.count >= 2,
                   let entryId = entryParts[0].stringValue,
-                  let fields = entryParts[1].stringArrayValue else {
+                  let fields = entryParts[1].arrayValue else {
                 continue
             }
 
             var fieldPairs: [String] = []
             var i = 0
             while i + 1 < fields.count {
-                fieldPairs.append("\(fields[i])=\(fields[i + 1])")
+                fieldPairs.append("\(redisReplyToString(fields[i]))=\(redisReplyToString(fields[i + 1]))")
                 i += 2
             }
             rows.append([entryId, fieldPairs.joined(separator: ", ")])
@@ -1582,7 +1584,7 @@ private extension RedisPluginDriver {
     }
 
     func buildConfigResult(_ result: RedisReply, startTime: Date) -> PluginQueryResult {
-        guard let array = result.stringArrayValue, !array.isEmpty else {
+        guard let items = result.arrayValue, !items.isEmpty else {
             return PluginQueryResult(
                 columns: ["Parameter", "Value"],
                 columnTypeNames: ["String", "String"],
@@ -1594,8 +1596,8 @@ private extension RedisPluginDriver {
 
         var rows: [[String?]] = []
         var i = 0
-        while i + 1 < array.count {
-            rows.append([array[i], array[i + 1]])
+        while i + 1 < items.count {
+            rows.append([redisReplyToString(items[i]), redisReplyToString(items[i + 1])])
             i += 2
         }
 
