@@ -587,7 +587,8 @@ struct WelcomeWindowView: View {
 
             moveToGroupMenu(for: selectedConnections)
 
-            if selectedConnections.contains(where: { $0.groupId != nil }) {
+            let validGroupIds = Set(groups.map(\.id))
+            if selectedConnections.contains(where: { $0.groupId.map { validGroupIds.contains($0) } ?? false }) {
                 Button { removeFromGroup(selectedConnections) } label: {
                     Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
                 }
@@ -635,7 +636,7 @@ struct WelcomeWindowView: View {
 
             moveToGroupMenu(for: [connection])
 
-            if connection.groupId != nil {
+            if let groupId = connection.groupId, groups.contains(where: { $0.id == groupId }) {
                 Button { removeFromGroup([connection]) } label: {
                     Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
                 }
@@ -654,6 +655,8 @@ struct WelcomeWindowView: View {
 
     @ViewBuilder
     private func moveToGroupMenu(for targets: [DatabaseConnection]) -> some View {
+        let isSingle = targets.count == 1
+        let currentGroupId = isSingle ? targets.first?.groupId : nil
         Menu(String(localized: "Move to Group")) {
             ForEach(groups) { group in
                 Button {
@@ -666,8 +669,13 @@ struct WelcomeWindowView: View {
                                 .frame(width: 8, height: 8)
                         }
                         Text(group.name)
+                        if currentGroupId == group.id {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
                     }
                 }
+                .disabled(currentGroupId == group.id)
             }
 
             if !groups.isEmpty {
