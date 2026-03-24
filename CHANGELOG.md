@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Large document safety caps for syntax highlighting (skip >5MB, throttle >50KB)
 
-## [0.23.2] - 2026-03-24 main
+## [0.23.2] - 2026-03-24
 
 ### Fixed
 

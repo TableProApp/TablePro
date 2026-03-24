@@ -177,6 +177,7 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
     var selection: String
     var lineNumber: String
     var invisibles: String
+    /// Reserved for future current-statement background highlight in the query editor.
     var currentStatementHighlight: String
     var syntax: SyntaxColors
 
