@@ -1235,7 +1235,7 @@ private extension RedisPluginDriver {
     func formatPreviewReply(_ reply: RedisReply, type: String) -> String? {
         switch type.lowercased() {
         case "string":
-            return truncatePreview(reply.stringValue)
+            return truncatePreview(redisReplyToString(reply))
 
         case "hash":
             let array: [RedisReply]

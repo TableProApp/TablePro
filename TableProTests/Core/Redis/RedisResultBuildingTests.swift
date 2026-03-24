@@ -162,7 +162,7 @@ struct RedisReplyToStringTests {
 
     @Test("data with valid UTF-8 returns the decoded string")
     func dataValidUtf8() {
-        let data = "some text".data(using: .utf8)!
+        let data = Data("some text".utf8)
         #expect(testRedisReplyToString(.data(data)) == "some text")
     }
 
@@ -282,9 +282,9 @@ struct RedisHashResultTests {
         ])
 
         // Old (buggy) behavior: stringArrayValue drops the .data entry
-        let buggyArray = reply.stringArrayValue!
+        let buggyArray = reply.stringArrayValue
         // Would be ["field1", "field2", "value2"] — only 3 elements, pairs are misaligned
-        #expect(buggyArray.count == 3)
+        #expect(buggyArray?.count == 3)
         #expect(buggyArray == ["field1", "field2", "value2"])
 
         // Fixed behavior: arrayValue + redisReplyToString preserves all entries
@@ -303,7 +303,7 @@ struct RedisHashResultTests {
         ])
 
         // Old (buggy) behavior: stringArrayValue drops .integer
-        let buggyArray = reply.stringArrayValue!
+        let buggyArray = reply.stringArrayValue
         #expect(buggyArray == ["counter", "name", "test"])
 
         // Fixed behavior: integer is converted to "100"
