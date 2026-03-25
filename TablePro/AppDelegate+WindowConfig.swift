@@ -195,14 +195,21 @@ extension AppDelegate {
             // Keep trying to close the welcome window until a main window is visible.
             // DuckDB and other slow-connecting databases may take several seconds,
             // so we poll repeatedly rather than giving up after 700ms.
+            var suppressed = false
             for attempt in 0 ..< 30 {
                 try? await Task.sleep(for: .milliseconds(attempt < 4 ? 200 : 500))
                 guard let self else { return }
                 if self.closeWelcomeWindowIfMainExists() {
+                    suppressed = true
                     break
                 }
             }
             guard let self else { return }
+            if !suppressed {
+                // Timed out — restore welcome window so the app isn't left windowless
+                windowLogger.warning("Welcome window suppression timed out after 15s, restoring welcome window")
+                self.openWelcomeWindow()
+            }
             self.fileOpenSuppressionCount = max(0, self.fileOpenSuppressionCount - 1)
             if self.fileOpenSuppressionCount == 0 {
                 self.isHandlingFileOpen = false
