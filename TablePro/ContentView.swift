@@ -157,9 +157,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        if let currentSession = currentSession, let rightPanelState, let sessionState {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                // MARK: - Sidebar (Left) - Table Browser
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // MARK: - Sidebar (Left) - Table Browser
+            if let currentSession = currentSession, let sessionState {
                 VStack(spacing: 0) {
                     SidebarView(
                         tables: sessionTablesBinding,
@@ -197,9 +197,12 @@ struct ContentView: View {
                     placement: .sidebar,
                     prompt: sidebarSearchPrompt(for: currentSession.connection.id)
                 )
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
-            } detail: {
-                // MARK: - Detail (Main workspace with optional right sidebar)
+            } else {
+                Color.clear
+            }
+        } detail: {
+            // MARK: - Detail (Main workspace with optional right sidebar)
+            if let currentSession = currentSession, let rightPanelState, let sessionState {
                 HStack(spacing: 0) {
                     MainContentView(
                         connection: currentSession.connection,
@@ -235,21 +238,21 @@ struct ContentView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.2), value: rightPanelState.isPresented)
-            }
-            .navigationTitle(windowTitle)
-            .navigationSubtitle(currentSession.connection.name)
-        } else {
-            VStack(spacing: 16) {
-                ProgressView()
-                    .scaleEffect(1.5)
+            } else {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
 
-                Text("Connecting...")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                    Text("Connecting...")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle("TablePro")
         }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
+        .navigationTitle(windowTitle)
+        .navigationSubtitle(currentSession?.connection.name ?? "")
     }
 
     // Removed: newConnectionSheet and editConnectionSheet helpers
