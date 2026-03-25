@@ -310,6 +310,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
     private let config: DriverConnectionConfig
     private let lock = NSLock()
     private var session: URLSession?
+    private var sessionGeneration: UInt64 = 0
     private var currentTask: URLSessionDataTask?
     private var authToken: String?
     private var _isAuthenticating = false
@@ -408,6 +409,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     func disconnect() {
         lock.lock()
+        sessionGeneration &+= 1
         currentTask?.cancel()
         currentTask = nil
         session?.invalidateAndCancel()
@@ -539,11 +541,12 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
     func watch(key: String, prefix: Bool, timeout: TimeInterval) async throws -> [EtcdWatchEvent] {
         lock.lock()
-        guard let session else {
+        guard session != nil else {
             lock.unlock()
             throw EtcdError.notConnected
         }
         let token = authToken
+        let generation = sessionGeneration
         lock.unlock()
 
         let b64Key = Self.base64Encode(key)
@@ -571,7 +574,13 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
             group.addTask {
                 let data: Data = try await withCheckedThrowingContinuation { continuation in
-                    let task = session.dataTask(with: request) { data, _, error in
+                    self.lock.lock()
+                    guard self.sessionGeneration == generation, let currentSession = self.session else {
+                        self.lock.unlock()
+                        continuation.resume(throwing: EtcdError.notConnected)
+                        return
+                    }
+                    let task = currentSession.dataTask(with: request) { data, _, error in
                         if let error {
                             // URLError.cancelled is expected when we cancel after timeout
                             if (error as? URLError)?.code == .cancelled {
@@ -583,7 +592,6 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                         }
                         continuation.resume(returning: data ?? Data())
                     }
-                    self.lock.lock()
                     self.currentTask = task
                     self.lock.unlock()
                     collectedData.setTask(task)
@@ -698,6 +706,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             throw EtcdError.notConnected
         }
         let token = authToken
+        let generation = sessionGeneration
         lock.unlock()
 
         guard let url = URL(string: "\(baseUrl)/\(path)") else {
@@ -714,7 +723,13 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
         let (data, response) = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-                let task = session.dataTask(with: request) { data, response, error in
+                self.lock.lock()
+                guard self.sessionGeneration == generation, let currentSession = self.session else {
+                    self.lock.unlock()
+                    continuation.resume(throwing: EtcdError.notConnected)
+                    return
+                }
+                let task = currentSession.dataTask(with: request) { data, response, error in
                     if let error {
                         continuation.resume(throwing: error)
                         return
@@ -725,8 +740,6 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                     }
                     continuation.resume(returning: (data, response))
                 }
-
-                self.lock.lock()
                 self.currentTask = task
                 self.lock.unlock()
 
@@ -806,15 +819,22 @@ internal final class EtcdHttpClient: @unchecked Sendable {
         request.httpBody = try JSONEncoder().encode(authReq)
 
         lock.lock()
-        guard let session else {
+        guard session != nil else {
             lock.unlock()
             throw EtcdError.notConnected
         }
+        let generation = sessionGeneration
         lock.unlock()
 
         let (data, response) = try await withCheckedThrowingContinuation {
             (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            let task = session.dataTask(with: request) { data, response, error in
+            self.lock.lock()
+            guard self.sessionGeneration == generation, let currentSession = self.session else {
+                self.lock.unlock()
+                continuation.resume(throwing: EtcdError.notConnected)
+                return
+            }
+            let task = currentSession.dataTask(with: request) { data, response, error in
                 if let error {
                     continuation.resume(throwing: error)
                     return
@@ -825,6 +845,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 }
                 continuation.resume(returning: (data, response))
             }
+            self.lock.unlock()
             task.resume()
         }
 
