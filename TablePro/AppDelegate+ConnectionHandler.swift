@@ -70,6 +70,7 @@ extension AppDelegate {
         openNewConnectionWindow(for: connection)
 
         Task { @MainActor in
+            defer { self.endFileOpenSuppression() }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -116,6 +117,7 @@ extension AppDelegate {
         openNewConnectionWindow(for: connection)
 
         Task { @MainActor in
+            defer { self.endFileOpenSuppression() }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -161,6 +163,7 @@ extension AppDelegate {
         openNewConnectionWindow(for: connection)
 
         Task { @MainActor in
+            defer { self.endFileOpenSuppression() }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -206,6 +209,7 @@ extension AppDelegate {
         openNewConnectionWindow(for: connection)
 
         Task { @MainActor in
+            defer { self.endFileOpenSuppression() }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -252,7 +256,7 @@ extension AppDelegate {
                 case .genericDatabaseFile(let url, let dbType): self.handleGenericDatabaseFile(url, type: dbType)
                 }
             }
-            self.scheduleWelcomeWindowSuppression()
+            // Flag management is handled by endFileOpenSuppression() in each handler
         }
     }
 

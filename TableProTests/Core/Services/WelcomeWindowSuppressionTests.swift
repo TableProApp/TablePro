@@ -218,35 +218,69 @@ struct WelcomeWindowSuppressionTests {
         #expect(delegate.isHandlingFileOpen == true)
     }
 
-    @Test("fileOpenSuppressionCount decrement to zero resets isHandlingFileOpen")
-    func countZeroResetsFlag() {
+    @Test("endFileOpenSuppression — decrement to zero resets isHandlingFileOpen")
+    func endSuppressionResetsFlag() {
         let delegate = makeAppDelegate()
         delegate.isHandlingFileOpen = true
         delegate.fileOpenSuppressionCount = 1
 
-        // Simulate what scheduleWelcomeWindowSuppression does at the end
-        delegate.fileOpenSuppressionCount = max(0, delegate.fileOpenSuppressionCount - 1)
-        if delegate.fileOpenSuppressionCount == 0 {
-            delegate.isHandlingFileOpen = false
-        }
+        delegate.endFileOpenSuppression()
 
         #expect(delegate.fileOpenSuppressionCount == 0)
         #expect(delegate.isHandlingFileOpen == false)
     }
 
-    @Test("fileOpenSuppressionCount decrement keeps flag true while count > 0")
-    func countPositiveKeepsFlag() {
+    @Test("endFileOpenSuppression — keeps flag true while count > 0")
+    func endSuppressionKeepsFlagWhilePositive() {
         let delegate = makeAppDelegate()
         delegate.isHandlingFileOpen = true
         delegate.fileOpenSuppressionCount = 2
 
-        // Simulate one decrement
-        delegate.fileOpenSuppressionCount = max(0, delegate.fileOpenSuppressionCount - 1)
-        if delegate.fileOpenSuppressionCount == 0 {
-            delegate.isHandlingFileOpen = false
-        }
+        delegate.endFileOpenSuppression()
 
         #expect(delegate.fileOpenSuppressionCount == 1)
         #expect(delegate.isHandlingFileOpen == true)
+    }
+
+    // MARK: - Main Window Becomes Key
+
+    @Test("windowDidBecomeKey — main window appearing closes welcome during file open")
+    func windowDidBecomeKeyMainWindowClosesWelcome() {
+        let delegate = makeAppDelegate()
+        delegate.isHandlingFileOpen = true
+
+        let welcome = makeWindow(identifier: "welcome")
+        welcome.orderFront(nil)
+        defer { welcome.close() }
+
+        let mainWin = makeWindow(identifier: "main")
+        mainWin.orderFront(nil)
+        defer { mainWin.close() }
+
+        // Simulate main window becoming key — should close welcome
+        let notification = Notification(name: NSWindow.didBecomeKeyNotification, object: mainWin)
+        delegate.windowDidBecomeKey(notification)
+
+        #expect(!welcome.isVisible)
+    }
+
+    @Test("windowDidBecomeKey — main window does not close welcome when not handling file open")
+    func windowDidBecomeKeyMainWindowNoEffectWhenNotHandling() {
+        let delegate = makeAppDelegate()
+        delegate.isHandlingFileOpen = false
+
+        let welcome = makeWindow(identifier: "welcome")
+        welcome.orderFront(nil)
+        defer { welcome.close() }
+
+        let mainWin = makeWindow(identifier: "main")
+        mainWin.orderFront(nil)
+        defer { mainWin.close() }
+
+        let notification = Notification(name: NSWindow.didBecomeKeyNotification, object: mainWin)
+        delegate.windowDidBecomeKey(notification)
+
+        // Welcome should remain visible — no suppression active
+        #expect(welcome.isVisible)
     }
 }

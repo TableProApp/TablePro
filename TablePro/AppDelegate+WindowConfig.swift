@@ -190,20 +190,13 @@ extension AppDelegate {
 
     // MARK: - Welcome Window Suppression
 
-    func scheduleWelcomeWindowSuppression() {
-        // The actual welcome window closing is event-driven:
-        // - windowDidBecomeKey closes welcome when a main window appears
-        // - Connection handlers close welcome on success, reopen on failure
-        // This method just manages the suppression counter after a brief delay
-        // to allow those event-driven handlers to fire.
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let self else { return }
-            self.closeWelcomeWindowIfMainExists()
-            self.fileOpenSuppressionCount = max(0, self.fileOpenSuppressionCount - 1)
-            if self.fileOpenSuppressionCount == 0 {
-                self.isHandlingFileOpen = false
-            }
+    /// Called by connection handlers when the file-open connection attempt finishes
+    /// (success or failure). Decrements the suppression counter and resets the flag
+    /// when all outstanding file opens have completed.
+    func endFileOpenSuppression() {
+        fileOpenSuppressionCount = max(0, fileOpenSuppressionCount - 1)
+        if fileOpenSuppressionCount == 0 {
+            isHandlingFileOpen = false
         }
     }
 

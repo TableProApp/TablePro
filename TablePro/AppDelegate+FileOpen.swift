@@ -53,7 +53,7 @@ extension AppDelegate {
             suppressWelcomeWindow()
             Task { @MainActor in
                 for url in databaseURLs { self.handleDatabaseURL(url) }
-                self.scheduleWelcomeWindowSuppression()
+                // Flag management is handled by endFileOpenSuppression() in each handler
             }
         }
 
@@ -72,7 +72,7 @@ extension AppDelegate {
                         self.handleGenericDatabaseFile(url, type: dbType)
                     }
                 }
-                self.scheduleWelcomeWindowSuppression()
+                // Flag management is handled by endFileOpenSuppression() in each handler
             }
         }
 
@@ -87,7 +87,7 @@ extension AppDelegate {
                     window.close()
                 }
                 NotificationCenter.default.post(name: .openSQLFiles, object: sqlFiles)
-                scheduleWelcomeWindowSuppression()
+                endFileOpenSuppression()
             } else {
                 queuedFileURLs.append(contentsOf: sqlFiles)
                 openWelcomeWindow()

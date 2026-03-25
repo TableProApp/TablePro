@@ -197,8 +197,10 @@ struct ContentView: View {
                     placement: .sidebar,
                     prompt: sidebarSearchPrompt(for: currentSession.connection.id)
                 )
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
             } else {
                 Color.clear
+                    .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
             }
         } detail: {
             // MARK: - Detail (Main workspace with optional right sidebar)
@@ -250,7 +252,6 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
         .navigationTitle(windowTitle)
         .navigationSubtitle(currentSession?.connection.name ?? "")
     }
