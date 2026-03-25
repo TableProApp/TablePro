@@ -116,6 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }
 

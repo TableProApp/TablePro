@@ -1754,5 +1754,5 @@ private struct StartupCommandsEditor: NSViewRepresentable {
 }
 
 #Preview("Edit Connection") {
-    ConnectionFormView(connectionId: DatabaseConnection.sampleConnections[0].id)
+    ConnectionFormView(connectionId: DatabaseConnection.preview.id)
 }

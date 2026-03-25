@@ -500,10 +500,10 @@ struct DatabaseConnection: Identifiable, Hashable {
     }
 }
 
-// MARK: - Sample Data for Development
+// MARK: - Preview Data
 
 extension DatabaseConnection {
-    static let sampleConnections: [DatabaseConnection] = []
+    static let preview = DatabaseConnection(name: "Preview Connection")
 }
 
 // MARK: - Codable Conformance

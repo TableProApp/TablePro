@@ -728,13 +728,7 @@ struct WelcomeWindowView: View {
     // MARK: - Actions
 
     private func loadConnections() {
-        let saved = storage.loadConnections()
-        if saved.isEmpty {
-            connections = DatabaseConnection.sampleConnections
-            storage.saveConnections(connections)
-        } else {
-            connections = saved
-        }
+        connections = storage.loadConnections()
         loadGroups()
     }
 
