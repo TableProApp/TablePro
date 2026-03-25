@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Saved connections disappearing after normal app quit (Cmd+Q) while persisting after force quit (#452)
 - Detail pane showing truncated values for LONGTEXT/MEDIUMTEXT/CLOB columns, preventing correct editing
 - Redis hash/list/set/zset/stream views showing empty or misaligned rows when values contained binary, null, or integer types
 
