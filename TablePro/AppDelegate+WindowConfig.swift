@@ -191,25 +191,15 @@ extension AppDelegate {
     // MARK: - Welcome Window Suppression
 
     func scheduleWelcomeWindowSuppression() {
+        // The actual welcome window closing is event-driven:
+        // - windowDidBecomeKey closes welcome when a main window appears
+        // - Connection handlers close welcome on success, reopen on failure
+        // This method just manages the suppression counter after a brief delay
+        // to allow those event-driven handlers to fire.
         Task { @MainActor [weak self] in
-            // Keep trying to close the welcome window until a main window is visible.
-            // DuckDB and other slow-connecting databases may take several seconds,
-            // so we poll repeatedly rather than giving up after 700ms.
-            var suppressed = false
-            for attempt in 0 ..< 30 {
-                try? await Task.sleep(for: .milliseconds(attempt < 4 ? 200 : 500))
-                guard let self else { return }
-                if self.closeWelcomeWindowIfMainExists() {
-                    suppressed = true
-                    break
-                }
-            }
+            try? await Task.sleep(for: .milliseconds(500))
             guard let self else { return }
-            if !suppressed {
-                // Timed out — restore welcome window so the app isn't left windowless
-                windowLogger.warning("Welcome window suppression timed out after 15s, restoring welcome window")
-                self.openWelcomeWindow()
-            }
+            self.closeWelcomeWindowIfMainExists()
             self.fileOpenSuppressionCount = max(0, self.fileOpenSuppressionCount - 1)
             if self.fileOpenSuppressionCount == 0 {
                 self.isHandlingFileOpen = false
@@ -253,6 +243,10 @@ extension AppDelegate {
         if isConnectionFormWindow(window) && !configuredWindows.contains(windowId) {
             configureConnectionFormWindowStyle(window)
             configuredWindows.insert(windowId)
+        }
+
+        if isMainWindow(window) && isHandlingFileOpen {
+            closeWelcomeWindowIfMainExists()
         }
 
         if isMainWindow(window) && !configuredWindows.contains(windowId) {
