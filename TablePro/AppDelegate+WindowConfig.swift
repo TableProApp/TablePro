@@ -67,6 +67,7 @@ extension AppDelegate {
         let connections = ConnectionStorage.shared.loadConnections()
         guard let connection = connections.first(where: { $0.id == connectionId }) else { return }
 
+        WindowOpener.shared.pendingConnectionId = connection.id
         NotificationCenter.default.post(name: .openMainWindow, object: connection.id)
 
         Task { @MainActor in
@@ -244,7 +245,18 @@ extension AppDelegate {
 
         if isMainWindow(window) && !configuredWindows.contains(windowId) {
             window.tabbingMode = .preferred
+            window.isRestorable = false
             let pendingId = MainActor.assumeIsolated { WindowOpener.shared.consumePendingConnectionId() }
+
+            // If no code opened this window (pendingId is nil), this is a
+            // SwiftUI WindowGroup state restoration — not a window we created.
+            // Hide it (orderOut, not close) to break the close→restore loop.
+            if pendingId == nil && !isAutoReconnecting {
+                configuredWindows.insert(windowId)
+                window.orderOut(nil)
+                return
+            }
+
             let existingIdentifier = NSApp.windows
                 .first { $0 !== window && isMainWindow($0) && $0.isVisible }?
                 .tabbingIdentifier
@@ -311,12 +323,15 @@ extension AppDelegate {
             return
         }
 
+        isAutoReconnecting = true
+
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-
+            WindowOpener.shared.pendingConnectionId = connection.id
             NotificationCenter.default.post(name: .openMainWindow, object: connection.id)
 
             Task { @MainActor in
+                defer { self.isAutoReconnecting = false }
                 do {
                     try await DatabaseManager.shared.connectToSession(connection)
 

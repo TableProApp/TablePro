@@ -55,33 +55,41 @@ extension AppDelegate {
             ConnectionStorage.shared.savePassword(parsed.password, for: connection.id)
         }
 
-        if DatabaseManager.shared.activeSessions[connection.id]?.driver != nil {
-            handlePostConnectionActions(parsed, connectionId: connection.id)
+        // Check if already connected or connecting (by ID or by params).
+        // This catches duplicates from URL handler, auto-reconnect, or any other source.
+        if DatabaseManager.shared.activeSessions[connection.id] != nil {
+            if DatabaseManager.shared.activeSessions[connection.id]?.driver != nil {
+                handlePostConnectionActions(parsed, connectionId: connection.id)
+            }
             bringConnectionWindowToFront(connection.id)
             return
         }
 
-        if let activeId = findActiveSessionByParams(parsed) {
-            handlePostConnectionActions(parsed, connectionId: activeId)
-            bringConnectionWindowToFront(activeId)
+        if let existingId = findSessionByParams(parsed) {
+            if DatabaseManager.shared.activeSessions[existingId]?.driver != nil {
+                handlePostConnectionActions(parsed, connectionId: existingId)
+            }
+            bringConnectionWindowToFront(existingId)
             return
         }
 
-        // Skip if already connecting this connection from a URL (prevents duplicates)
+        // Skip if already connecting this connection from a URL (prevents duplicates).
+        // Use param key to catch transient connections with different UUIDs
+        // even before connectToSession creates the session.
+        let paramKey = Self.paramKey(for: parsed)
         guard !connectingURLConnectionIds.contains(connection.id),
-              !isConnectingByParams(parsed) else { return }
+              !connectingURLParamKeys.contains(paramKey) else {
+            return
+        }
         connectingURLConnectionIds.insert(connection.id)
+        connectingURLParamKeys.insert(paramKey)
 
         Task { @MainActor in
             defer {
                 self.connectingURLConnectionIds.remove(connection.id)
-                self.endFileOpenSuppression()
+                self.connectingURLParamKeys.remove(paramKey)
             }
             do {
-                // Connect before opening the window so the session is already
-                // in activeSessions when ContentView.init runs. This avoids a
-                // SwiftUI bug where toolbar items are dropped when the detail
-                // view transitions from "Connecting..." to MainContentView.
                 try await DatabaseManager.shared.connectToSession(connection)
                 self.openNewConnectionWindow(for: connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -125,13 +133,12 @@ extension AppDelegate {
             type: .sqlite
         )
 
-        guard !connectingURLConnectionIds.contains(connection.id) else { return }
-        connectingURLConnectionIds.insert(connection.id)
+        guard !connectingFilePaths.contains(filePath) else { return }
+        connectingFilePaths.insert(filePath)
 
         Task { @MainActor in
             defer {
-                self.connectingURLConnectionIds.remove(connection.id)
-                self.endFileOpenSuppression()
+                self.connectingFilePaths.remove(filePath)
             }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
@@ -176,13 +183,12 @@ extension AppDelegate {
             type: .duckdb
         )
 
-        guard !connectingURLConnectionIds.contains(connection.id) else { return }
-        connectingURLConnectionIds.insert(connection.id)
+        guard !connectingFilePaths.contains(filePath) else { return }
+        connectingFilePaths.insert(filePath)
 
         Task { @MainActor in
             defer {
-                self.connectingURLConnectionIds.remove(connection.id)
-                self.endFileOpenSuppression()
+                self.connectingFilePaths.remove(filePath)
             }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
@@ -227,13 +233,12 @@ extension AppDelegate {
             type: dbType
         )
 
-        guard !connectingURLConnectionIds.contains(connection.id) else { return }
-        connectingURLConnectionIds.insert(connection.id)
+        guard !connectingFilePaths.contains(filePath) else { return }
+        connectingFilePaths.insert(filePath)
 
         Task { @MainActor in
             defer {
-                self.connectingURLConnectionIds.remove(connection.id)
-                self.endFileOpenSuppression()
+                self.connectingFilePaths.remove(filePath)
             }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
@@ -251,7 +256,9 @@ extension AppDelegate {
     // MARK: - Unified Queue
 
     func scheduleQueuedURLProcessing() {
-        guard !isProcessingQueuedURLs else { return }
+        guard !isProcessingQueuedURLs else {
+            return
+        }
         isProcessingQueuedURLs = true
 
         Task { @MainActor [weak self] in
@@ -389,9 +396,9 @@ extension AppDelegate {
 
     // MARK: - Session Lookup
 
-    private func findActiveSessionByParams(_ parsed: ParsedConnectionURL) -> UUID? {
+    /// Finds any session (connected or still connecting) matching the parsed URL params.
+    private func findSessionByParams(_ parsed: ParsedConnectionURL) -> UUID? {
         for (id, session) in DatabaseManager.shared.activeSessions {
-            guard session.driver != nil else { continue }
             let conn = session.connection
             if conn.type == parsed.type
                 && conn.host == parsed.host
@@ -405,19 +412,9 @@ extension AppDelegate {
         return nil
     }
 
-    /// Checks if a connection matching the parsed params is already in-flight.
-    private func isConnectingByParams(_ parsed: ParsedConnectionURL) -> Bool {
-        for (id, session) in DatabaseManager.shared.activeSessions {
-            guard session.driver == nil else { continue }
-            let conn = session.connection
-            if conn.type == parsed.type
-                && conn.host == parsed.host
-                && conn.database == parsed.database
-                && (parsed.username.isEmpty || conn.username == parsed.username) {
-                return connectingURLConnectionIds.contains(id)
-            }
-        }
-        return false
+    /// Normalized key for deduplicating connection attempts by URL params.
+    static func paramKey(for parsed: ParsedConnectionURL) -> String {
+        "\(parsed.type.rawValue):\(parsed.username)@\(parsed.host):\(parsed.port ?? 0)/\(parsed.database)"
     }
 
     func bringConnectionWindowToFront(_ connectionId: UUID) {

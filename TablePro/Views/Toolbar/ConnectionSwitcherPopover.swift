@@ -346,6 +346,7 @@ struct ConnectionSwitcherPopover: View {
         let currentWindow = NSApp.keyWindow
         let previousMode = currentWindow?.tabbingMode ?? .preferred
         currentWindow?.tabbingMode = .disallowed
+        WindowOpener.shared.pendingConnectionId = payload.connectionId
         openWindow(id: "main", value: payload)
         // Restore after the next run loop to let window creation complete
         DispatchQueue.main.async {

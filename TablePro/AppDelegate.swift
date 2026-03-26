@@ -44,9 +44,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// True while a queued URL polling task is active — prevents duplicate pollers
     var isProcessingQueuedURLs = false
 
-    /// ConnectionIds currently being connected from URL/file handlers.
+    /// True while auto-reconnect is in progress at startup
+    var isAutoReconnecting = false
+
+    /// ConnectionIds currently being connected from URL handlers.
     /// Prevents duplicate connections when the same URL is opened twice rapidly.
     var connectingURLConnectionIds = Set<UUID>()
+
+    /// Normalized param keys for URLs currently being connected.
+    /// Catches duplicates even before connectToSession creates the session.
+    var connectingURLParamKeys = Set<String>()
+
+    /// File paths currently being connected from file-open handlers.
+    /// Prevents duplicate connections when the same file is opened twice rapidly.
+    var connectingFilePaths = Set<String>()
 
     // MARK: - NSApplicationDelegate
 

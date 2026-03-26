@@ -53,7 +53,9 @@ extension AppDelegate {
             suppressWelcomeWindow()
             Task { @MainActor in
                 for url in databaseURLs { self.handleDatabaseURL(url) }
-                // Flag management is handled by endFileOpenSuppression() in each handler
+                // endFileOpenSuppression is called here to match suppressWelcomeWindow above.
+                // Individual handlers no longer manage this flag.
+                self.endFileOpenSuppression()
             }
         }
 
@@ -72,7 +74,7 @@ extension AppDelegate {
                         self.handleGenericDatabaseFile(url, type: dbType)
                     }
                 }
-                // Flag management is handled by endFileOpenSuppression() in each handler
+                self.endFileOpenSuppression()
             }
         }
 

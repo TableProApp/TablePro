@@ -1303,6 +1303,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private func connectToDatabase(_ connection: DatabaseConnection) {
+        WindowOpener.shared.pendingConnectionId = connection.id
         openWindow(id: "main", value: EditorTabPayload(connectionId: connection.id))
         NSApplication.shared.closeWindows(withId: "welcome")
 
@@ -1335,6 +1336,7 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private func connectAfterInstall(_ connection: DatabaseConnection) {
+        WindowOpener.shared.pendingConnectionId = connection.id
         openWindow(id: "main", value: EditorTabPayload(connectionId: connection.id))
         NSApplication.shared.closeWindows(withId: "welcome")
 

@@ -795,6 +795,7 @@ struct WelcomeWindowView: View {
     }
 
     private func connectAfterInstall(_ connection: DatabaseConnection) {
+        WindowOpener.shared.pendingConnectionId = connection.id
         openWindow(id: "main", value: EditorTabPayload(connectionId: connection.id))
         NSApplication.shared.closeWindows(withId: "welcome")
 

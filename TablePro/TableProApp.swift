@@ -544,7 +544,6 @@ private struct OpenWindowHandler: View {
                 if let payload = notification.object as? EditorTabPayload {
                     openWindow(id: "main", value: payload)
                 } else if let connectionId = notification.object as? UUID {
-                    // Legacy: connection ID only — open default query tab
                     openWindow(id: "main", value: EditorTabPayload(connectionId: connectionId))
                 }
             }
