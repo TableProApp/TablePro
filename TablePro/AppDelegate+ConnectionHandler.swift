@@ -289,7 +289,7 @@ extension AppDelegate {
                 case .genericDatabaseFile(let url, let dbType): self.handleGenericDatabaseFile(url, type: dbType)
                 }
             }
-            // Flag management is handled by endFileOpenSuppression() in each handler
+            self.endFileOpenSuppression()
         }
     }
 
@@ -414,7 +414,8 @@ extension AppDelegate {
 
     /// Normalized key for deduplicating connection attempts by URL params.
     static func paramKey(for parsed: ParsedConnectionURL) -> String {
-        "\(parsed.type.rawValue):\(parsed.username)@\(parsed.host):\(parsed.port ?? 0)/\(parsed.database)"
+        let rdb = parsed.redisDatabase.map { "/redis:\($0)" } ?? ""
+        return "\(parsed.type.rawValue):\(parsed.username)@\(parsed.host):\(parsed.port ?? 0)/\(parsed.database)\(rdb)"
     }
 
     func bringConnectionWindowToFront(_ connectionId: UUID) {
