@@ -12,6 +12,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     private(set) var status: ConnectionStatus = .disconnected
     private let pluginDriver: any PluginDatabaseDriver
     private var columnTypeCache: [String: ColumnType] = [:]
+    private let classifier = ColumnTypeClassifier()
 
     var serverVersion: String? { pluginDriver.serverVersion }
     var parameterStyle: ParameterStyle { pluginDriver.parameterStyle }
@@ -423,66 +424,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     private func mapColumnType(rawTypeName: String) -> ColumnType {
         if let cached = columnTypeCache[rawTypeName] { return cached }
-        let result = classifyColumnType(rawTypeName: rawTypeName)
+        let result = classifier.classify(rawTypeName: rawTypeName)
         columnTypeCache[rawTypeName] = result
         return result
-    }
-
-    private func classifyColumnType(rawTypeName: String) -> ColumnType {
-        let upper = rawTypeName.uppercased()
-
-        if upper.contains("BOOL") {
-            return .boolean(rawType: rawTypeName)
-        }
-
-        if upper == "INT" || upper == "INTEGER" || upper == "BIGINT" || upper == "SMALLINT"
-            || upper == "TINYINT" || upper == "MEDIUMINT" || upper.hasSuffix("SERIAL") {
-            return .integer(rawType: rawTypeName)
-        }
-
-        if upper == "FLOAT" || upper == "DOUBLE" || upper == "DECIMAL" || upper == "NUMERIC"
-            || upper == "REAL" || upper == "NUMBER" || upper.hasPrefix("DECIMAL(")
-            || upper.hasPrefix("NUMERIC(") || upper.hasPrefix("NUMBER(") {
-            return .decimal(rawType: rawTypeName)
-        }
-
-        if upper == "DATE" {
-            return .date(rawType: rawTypeName)
-        }
-
-        if upper.contains("TIMESTAMP") {
-            return .timestamp(rawType: rawTypeName)
-        }
-
-        if upper == "DATETIME" {
-            return .datetime(rawType: rawTypeName)
-        }
-
-        if upper == "TIME" {
-            return .timestamp(rawType: rawTypeName)
-        }
-
-        if upper == "JSON" || upper == "JSONB" {
-            return .json(rawType: rawTypeName)
-        }
-
-        if upper == "BLOB" || upper == "BYTEA" || upper == "BINARY" || upper == "VARBINARY"
-            || upper.hasPrefix("BINARY(") || upper.hasPrefix("VARBINARY(") || upper == "RAW" {
-            return .blob(rawType: rawTypeName)
-        }
-
-        if upper.hasPrefix("ENUM") {
-            return .enumType(rawType: rawTypeName, values: nil)
-        }
-
-        if upper.hasPrefix("SET(") {
-            return .set(rawType: rawTypeName, values: nil)
-        }
-
-        if upper == "GEOMETRY" || upper == "POINT" || upper == "LINESTRING" || upper == "POLYGON" {
-            return .spatial(rawType: rawTypeName)
-        }
-
-        return .text(rawType: rawTypeName)
     }
 }

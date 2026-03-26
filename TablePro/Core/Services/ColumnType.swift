@@ -88,8 +88,8 @@ enum ColumnType: Equatable {
             return true
         }
 
-        // PostgreSQL/SQLite CLOB type
-        if raw == "CLOB" {
+        // PostgreSQL/SQLite CLOB type, MSSQL NTEXT type
+        if raw == "CLOB" || raw == "NTEXT" {
             return true
         }
 
@@ -210,6 +210,48 @@ enum ColumnType: Equatable {
 
         // Trim whitespace from values
         values = values.map { $0.trimmingCharacters(in: .whitespaces) }
+
+        return values.isEmpty ? nil : values
+    }
+
+    /// Parse enum values from ClickHouse Enum8/Enum16 syntax: "Enum8('a' = 1, 'b' = 2)"
+    static func parseClickHouseEnumValues(from typeString: String) -> [String]? {
+        let upper = typeString.uppercased()
+        guard upper.hasPrefix("ENUM8(") || upper.hasPrefix("ENUM16(") else {
+            return nil
+        }
+
+        guard let openParen = typeString.firstIndex(of: "("),
+              let closeParen = typeString.lastIndex(of: ")") else {
+            return nil
+        }
+
+        let inner = String(typeString[typeString.index(after: openParen)..<closeParen])
+
+        // Parse quoted values, ignoring the " = N" assignment suffixes
+        var values: [String] = []
+        var current = ""
+        var inQuote = false
+        var escaped = false
+
+        for char in inner {
+            if escaped {
+                current.append(char)
+                escaped = false
+            } else if char == "\\" {
+                escaped = true
+            } else if char == "'" {
+                if inQuote {
+                    values.append(current)
+                    current = ""
+                    inQuote = false
+                } else {
+                    inQuote = true
+                }
+            } else if inQuote {
+                current.append(char)
+            }
+        }
 
         return values.isEmpty ? nil : values
     }

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Enum/set picker support for PostgreSQL custom enums, ClickHouse Enum8/Enum16, and DuckDB ENUM types
+- Boolean picker for MSSQL BIT columns and MySQL TINYINT(1) convention
+- Correct type classification for ClickHouse Nullable()/LowCardinality() wrappers, MSSQL MONEY/IMAGE/DATETIME2, DuckDB unsigned integers, and parameterized MySQL integer types
+
 ## [0.24.1] - 2026-03-26
 
 ### Fixed

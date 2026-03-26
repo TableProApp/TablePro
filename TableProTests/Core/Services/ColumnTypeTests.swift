@@ -236,4 +236,68 @@ struct ColumnTypeTests {
         let type = ColumnType.set(rawType: nil, values: nil)
         #expect(type.badgeLabel == "set")
     }
+
+    // MARK: - isLongText for NTEXT
+
+    @Test("NTEXT is long text")
+    func ntextIsLongText() {
+        let type = ColumnType.text(rawType: "NTEXT")
+        #expect(type.isLongText)
+    }
+
+    @Test("NTEXT is not very long text")
+    func ntextIsNotVeryLongText() {
+        let type = ColumnType.text(rawType: "NTEXT")
+        #expect(!type.isVeryLongText)
+    }
+
+    // MARK: - parseClickHouseEnumValues
+
+    @Test("parses Enum8 with values and assignments")
+    func parseEnum8Values() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('active' = 1, 'inactive' = 2)")
+        #expect(result == ["active", "inactive"])
+    }
+
+    @Test("parses Enum16 with single value")
+    func parseEnum16SingleValue() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum16('only' = 1)")
+        #expect(result == ["only"])
+    }
+
+    @Test("parses Enum8 with escaped quotes")
+    func parseEnum8EscapedQuotes() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('it\\'s' = 1, 'ok' = 2)")
+        #expect(result == ["it's", "ok"])
+    }
+
+    @Test("parses Enum8 with negative assignments")
+    func parseEnum8NegativeAssignments() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('a' = -1, 'b' = 0, 'c' = 1)")
+        #expect(result == ["a", "b", "c"])
+    }
+
+    @Test("parses Enum8 with spaces in values")
+    func parseEnum8WithSpaces() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8('hello world' = 1, 'foo bar' = 2)")
+        #expect(result == ["hello world", "foo bar"])
+    }
+
+    @Test("returns nil for regular ENUM prefix")
+    func parseClickHouseReturnsNilForRegularEnum() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "ENUM('a','b')")
+        #expect(result == nil)
+    }
+
+    @Test("returns nil for non-enum type")
+    func parseClickHouseReturnsNilForNonEnum() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "String")
+        #expect(result == nil)
+    }
+
+    @Test("returns nil for empty Enum8")
+    func parseClickHouseEmptyEnum() {
+        let result = ColumnType.parseClickHouseEnumValues(from: "Enum8()")
+        #expect(result == nil)
+    }
 }

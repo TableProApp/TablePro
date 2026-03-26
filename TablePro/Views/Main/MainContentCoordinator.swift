@@ -994,9 +994,11 @@ final class MainContentCoordinator {
     ) async -> [String: [String]] {
         var result: [String: [String]] = [:]
 
-        // Build enum/set value lookup map from column types (MySQL/MariaDB)
+        // Build enum/set value lookup map from column types (MySQL/MariaDB + ClickHouse Enum8/Enum16)
         for col in columnInfo {
             if let values = ColumnType.parseEnumValues(from: col.dataType) {
+                result[col.name] = values
+            } else if let values = ColumnType.parseClickHouseEnumValues(from: col.dataType) {
                 result[col.name] = values
             }
         }
