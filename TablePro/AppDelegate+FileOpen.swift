@@ -78,6 +78,12 @@ extension AppDelegate {
             }
         }
 
+        // Connection share files
+        let connectionShareFiles = urls.filter { $0.pathExtension.lowercased() == "tablepro" }
+        for url in connectionShareFiles {
+            handleConnectionShareFile(url)
+        }
+
         let sqlFiles = urls.filter { $0.pathExtension.lowercased() == "sql" }
         if !sqlFiles.isEmpty {
             if DatabaseManager.shared.currentSession != nil {
@@ -198,6 +204,13 @@ extension AppDelegate {
         if let openWindow = WindowOpener.shared.openWindow {
             openWindow(id: "connection-form", value: connection.id)
         }
+    }
+
+    // MARK: - Connection Share Import
+
+    private func handleConnectionShareFile(_ url: URL) {
+        openWelcomeWindow()
+        NotificationCenter.default.post(name: .connectionShareFileOpened, object: url)
     }
 
     // MARK: - Plugin Install
