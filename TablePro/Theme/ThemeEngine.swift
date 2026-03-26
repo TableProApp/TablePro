@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import Foundation
 import Observation
 import os
@@ -92,7 +91,7 @@ internal final class ThemeEngine {
 
     // MARK: - Editor Behavioral Settings (read from AppSettingsManager)
 
-    /// These are not theme properties but are needed by makeEditorTheme()
+    /// These are not theme properties but are needed by makeTPEditorTheme()
     @ObservationIgnored var highlightCurrentLine: Bool = true
     @ObservationIgnored var showLineNumbers: Bool = true
     @ObservationIgnored var tabWidth: Int = 4
@@ -223,38 +222,24 @@ internal final class ThemeEngine {
         self.wordWrap = wordWrap
     }
 
-    // MARK: - CodeEditSourceEditor Theme
+    // MARK: - TPEditor Theme
 
-    func makeEditorTheme() -> EditorTheme {
+    func makeTPEditorTheme() -> TPEditorTheme {
         let c = colors.editor
-
-        let textAttr = EditorTheme.Attribute(color: srgb(c.text))
-        let commentAttr = EditorTheme.Attribute(color: srgb(c.comment))
-        let keywordAttr = EditorTheme.Attribute(color: srgb(c.keyword), bold: true)
-        let stringAttr = EditorTheme.Attribute(color: srgb(c.string))
-        let numberAttr = EditorTheme.Attribute(color: srgb(c.number))
-        let variableAttr = EditorTheme.Attribute(color: srgb(c.null))
-        let typeAttr = EditorTheme.Attribute(color: srgb(c.type))
-
         let lineHighlight: NSColor = highlightCurrentLine ? c.currentLineHighlight : .clear
-
-        return EditorTheme(
-            text: textAttr,
-            insertionPoint: srgb(c.cursor),
-            invisibles: EditorTheme.Attribute(color: srgb(c.invisibles)),
+        return TPEditorTheme(
             background: srgb(c.background),
-            lineHighlight: srgb(lineHighlight),
+            text: srgb(c.text),
+            cursor: srgb(c.cursor),
             selection: srgb(c.selection),
-            keywords: keywordAttr,
-            commands: keywordAttr,
-            types: typeAttr,
-            attributes: variableAttr,
-            variables: variableAttr,
-            values: variableAttr,
-            numbers: numberAttr,
-            strings: stringAttr,
-            characters: stringAttr,
-            comments: commentAttr
+            lineHighlight: srgb(lineHighlight),
+            keyword: srgb(c.keyword),
+            string: srgb(c.string),
+            number: srgb(c.number),
+            comment: srgb(c.comment),
+            type: srgb(c.type),
+            variable: srgb(c.null),
+            invisible: srgb(c.invisibles)
         )
     }
 

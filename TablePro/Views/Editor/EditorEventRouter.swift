@@ -3,21 +3,18 @@
 //  TablePro
 //
 //  Shared event router that installs one set of process-global monitors
-//  and dispatches to the correct editor by window, replacing per-editor monitors.
+//  and dispatches to the correct editor by window.
 //
 
 @preconcurrency import AppKit
-import CodeEditTextView
 
 @MainActor
 internal final class EditorEventRouter {
     internal static let shared = EditorEventRouter()
 
     private struct EditorRef {
-        weak var coordinator: SQLEditorCoordinator?
-        weak var textView: TextView?
+        weak var textView: TPTextView?
         var windowObserver: NSObjectProtocol?
-        var needsFirstResponderCheck = false
     }
 
     private var editors: [ObjectIdentifier: EditorRef] = [:]
@@ -28,26 +25,17 @@ internal final class EditorEventRouter {
 
     // MARK: - Registration
 
-    internal func register(_ coordinator: SQLEditorCoordinator, textView: TextView) {
-        let key = ObjectIdentifier(coordinator)
-        editors[key] = EditorRef(coordinator: coordinator, textView: textView)
+    internal func register(textView: TPTextView) {
+        let key = ObjectIdentifier(textView)
+        editors[key] = EditorRef(textView: textView)
 
         if rightClickMonitor == nil {
             installMonitors()
         }
-
-        if textView.window != nil {
-            installWindowObserver(for: key)
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.editors[key]?.windowObserver == nil else { return }
-                self.installWindowObserver(for: key)
-            }
-        }
     }
 
-    internal func unregister(_ coordinator: SQLEditorCoordinator) {
-        let key = ObjectIdentifier(coordinator)
+    internal func unregister(textView: TPTextView) {
+        let key = ObjectIdentifier(textView)
         if let observer = editors[key]?.windowObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -59,60 +47,24 @@ internal final class EditorEventRouter {
         }
     }
 
-    // MARK: - Per-Window Observer
-
-    private func installWindowObserver(for key: ObjectIdentifier) {
-        guard editors[key]?.windowObserver == nil,
-              let textView = editors[key]?.textView,
-              let window = textView.window else { return }
-
-        let observer = NotificationCenter.default.addObserver(
-            forName: NSWindow.didUpdateNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            MainActor.assumeIsolated {
-                guard var ref = self.editors[key], !ref.needsFirstResponderCheck else { return }
-                ref.needsFirstResponderCheck = true
-                self.editors[key] = ref
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    self.editors[key]?.needsFirstResponderCheck = false
-                    self.editors[key]?.coordinator?.checkFirstResponderChange()
-                }
-            }
-        }
-        editors[key]?.windowObserver = observer
-    }
-
     // MARK: - Lookup
 
-    private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {
+    private func textView(for window: NSWindow?) -> TPTextView? {
         guard let window else { return nil }
         for ref in editors.values {
-            guard let coordinator = ref.coordinator, let textView = ref.textView,
-                  textView.window === window else { continue }
-            return (coordinator, textView)
+            guard let textView = ref.textView, textView.window === window else { continue }
+            return textView
         }
         return nil
     }
 
     private func purgeStaleEntries() {
-        editors = editors.filter { $0.value.coordinator != nil && $0.value.textView != nil }
+        editors = editors.filter { $0.value.textView != nil }
     }
 
     // MARK: - Monitor Installation
 
     private func installMonitors() {
-        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] nsEvent in
-            guard let self else { return nsEvent }
-            nonisolated(unsafe) let event = nsEvent
-            return MainActor.assumeIsolated {
-                self.handleRightClick(event)
-            }
-        }
-
         clipboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] nsEvent in
             guard let self else { return nsEvent }
             nonisolated(unsafe) let event = nsEvent
@@ -135,18 +87,8 @@ internal final class EditorEventRouter {
 
     // MARK: - Event Handlers
 
-    private func handleRightClick(_ event: NSEvent) -> NSEvent? {
-        guard let (coordinator, textView) = editor(for: event.window) else { return event }
-
-        let locationInView = textView.convert(event.locationInWindow, from: nil)
-        guard textView.bounds.contains(locationInView) else { return event }
-
-        coordinator.showContextMenu(for: event, in: textView)
-        return nil
-    }
-
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        guard let (_, textView) = editor(for: event.window),
+        guard let textView = textView(for: event.window),
               textView.window?.firstResponder === textView else {
             return event
         }

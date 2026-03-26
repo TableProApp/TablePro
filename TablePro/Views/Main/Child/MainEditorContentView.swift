@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import CodeEditSourceEditor
 import SwiftUI
 
 /// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation

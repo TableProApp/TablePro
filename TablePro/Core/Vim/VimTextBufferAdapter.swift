@@ -2,19 +2,18 @@
 //  VimTextBufferAdapter.swift
 //  TablePro
 //
-//  Adapts CodeEditTextView's TextView to the VimTextBuffer protocol
+//  Adapts NSTextView (TPTextView) to the VimTextBuffer protocol
 //
 
 import AppKit
-import CodeEditTextView
 import Foundation
 
-/// Bridges CodeEditTextView's TextView to VimTextBuffer for the Vim engine
+/// Bridges NSTextView to VimTextBuffer for the Vim engine
 @MainActor
 final class VimTextBufferAdapter: VimTextBuffer {
-    private weak var textView: TextView?
+    private weak var textView: NSTextView?
 
-    init(textView: TextView) {
+    init(textView: NSTextView) {
         self.textView = textView
     }
 
@@ -259,13 +258,8 @@ final class VimTextBufferAdapter: VimTextBuffer {
         let currentRange = textView.selectedRange()
         guard clampedRange != currentRange else { return }
 
-        textView.selectionManager.setSelectedRange(clampedRange)
-        // CodeEditTextView's setSelectedRange (singular) doesn't call setNeedsDisplay,
-        // so selection highlights (drawn in draw(_:)) won't render without this.
-        if clampedRange.length > 0 {
-            textView.needsDisplay = true
-        }
-        textView.scrollToRange(clampedRange)
+        textView.setSelectedRange(clampedRange)
+        textView.scrollRangeToVisible(clampedRange)
     }
 
     func replaceCharacters(in range: NSRange, with string: String) {

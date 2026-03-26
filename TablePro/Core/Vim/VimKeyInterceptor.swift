@@ -6,7 +6,6 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
 import os
 
 /// Intercepts keyboard events and routes them through the Vim engine
@@ -15,7 +14,7 @@ final class VimKeyInterceptor {
     private let engine: VimEngine
     private weak var inlineSuggestionManager: InlineSuggestionManager?
     private let _monitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
-    private weak var controller: TextViewController?
+    private weak var textView: NSTextView?
     private let _popupCloseObserver = OSAllocatedUnfairLock<Any?>(initialState: nil)
     private(set) var isEditorFocused = false
 
@@ -29,33 +28,12 @@ final class VimKeyInterceptor {
         self.inlineSuggestionManager = inlineSuggestionManager
     }
 
-    /// Install the interceptor on a controller (does not install the event monitor until editor is focused)
-    func install(controller: TextViewController) {
-        self.controller = controller
+    /// Install the interceptor on a text view (does not install the event monitor until editor is focused)
+    func install(textView: NSTextView) {
+        self.textView = textView
         uninstall()
 
-        _popupCloseObserver.withLock { $0 = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            MainActor.assumeIsolated {
-                guard let self,
-                      let closingWindow = notification.object as? NSWindow,
-                      closingWindow.windowController is SuggestionController,
-                      let editorWindow = self.controller?.textView.window,
-                      editorWindow.childWindows?.contains(closingWindow) == true,
-                      let currentEvent = NSApp.currentEvent,
-                      currentEvent.type == .keyDown,
-                      currentEvent.keyCode == 53,
-                      self.engine.mode != .normal else {
-                    return
-                }
-                self.inlineSuggestionManager?.dismissSuggestion()
-                _ = self.engine.process("\u{1B}", shift: false)
-            }
-        }
-        }
+        // TODO: Wire to TPCompletionController
     }
 
     func editorDidFocus() {
@@ -110,8 +88,7 @@ final class VimKeyInterceptor {
     // MARK: - Event Handling
 
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
-        // Only intercept when our text view is first responder
-        guard let textView = controller?.textView,
+        guard let textView,
               event.window === textView.window,
               textView.window?.firstResponder === textView else {
             return event
@@ -163,11 +140,6 @@ final class VimKeyInterceptor {
     }
 
     private func closeSuggestionPopup() {
-        guard let window = controller?.textView.window else { return }
-        for childWindow in window.childWindows ?? [] {
-            if childWindow.windowController is SuggestionController {
-                childWindow.windowController?.close()
-            }
-        }
+        // TODO: Wire to TPCompletionController
     }
 }

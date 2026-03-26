@@ -6,7 +6,6 @@
 //  Separates view logic from presentation for better maintainability.
 //
 
-import CodeEditSourceEditor
 import Foundation
 import Observation
 import os
@@ -89,7 +88,7 @@ final class MainContentCoordinator {
     // MARK: - Published State
 
     var schemaProvider: SQLSchemaProvider
-    var cursorPositions: [CursorPosition] = []
+    var cursorPositions: [NSRange] = []
     var tableMetadata: TableMetadata?
     // Removed: showErrorAlert and errorAlertMessage - errors now display inline
     var activeSheet: ActiveSheet?
@@ -533,11 +532,11 @@ final class MainContentCoordinator {
         if tabManager.tabs[index].tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
+                  firstCursor.length > 0 {
             // Execute selected text only
             let nsQuery = fullQuery as NSString
             let clampedRange = NSIntersectionRange(
-                firstCursor.range,
+                firstCursor,
                 NSRange(location: 0, length: nsQuery.length)
             )
             sql = nsQuery.substring(with: clampedRange)
@@ -545,7 +544,7 @@ final class MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.location ?? 0
             )
         }
 
@@ -716,10 +715,10 @@ final class MainContentCoordinator {
         if tabManager.tabs[index].tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
+                  firstCursor.length > 0 {
             let nsQuery = fullQuery as NSString
             let clampedRange = NSIntersectionRange(
-                firstCursor.range,
+                firstCursor,
                 NSRange(location: 0, length: nsQuery.length)
             )
             sql = nsQuery.substring(with: clampedRange)
@@ -727,7 +726,7 @@ final class MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.location ?? 0
             )
         }
 

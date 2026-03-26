@@ -2,7 +2,7 @@
 //  SQLEditorCoordinatorTests.swift
 //  TableProTests
 //
-//  Tests for SQLEditorCoordinator destroy() lifecycle.
+//  Tests for SQLEditorCoordinator lifecycle.
 //
 
 import Foundation
@@ -12,31 +12,24 @@ import Testing
 @MainActor
 @Suite("SQLEditorCoordinator")
 struct SQLEditorCoordinatorTests {
-    @Test("Initial isDestroyed is false")
-    func initialIsDestroyedIsFalse() {
+    @Test("Fresh coordinator vimMode is .normal")
+    func initialVimMode() {
         let coordinator = SQLEditorCoordinator()
-        #expect(coordinator.isDestroyed == false)
+        #expect(coordinator.vimMode == .normal)
     }
 
-    @Test("destroy() sets isDestroyed to true")
-    func destroySetsIsDestroyedTrue() {
+    @Test("destroy() can be called without install")
+    func destroyWithoutInstall() {
         let coordinator = SQLEditorCoordinator()
         coordinator.destroy()
-        #expect(coordinator.isDestroyed == true)
+        #expect(coordinator.vimMode == .normal)
     }
 
-    @Test("destroy() can be called multiple times safely")
-    func destroyIsIdempotent() {
+    @Test("destroy() is idempotent")
+    func destroyIdempotent() {
         let coordinator = SQLEditorCoordinator()
         coordinator.destroy()
         coordinator.destroy()
-        coordinator.destroy()
-        #expect(coordinator.isDestroyed == true)
-    }
-
-    @Test("destroy() resets vimMode to .normal")
-    func destroyResetsVimMode() {
-        let coordinator = SQLEditorCoordinator()
         coordinator.destroy()
         #expect(coordinator.vimMode == .normal)
     }

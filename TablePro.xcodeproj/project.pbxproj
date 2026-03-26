@@ -36,9 +36,6 @@
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
-		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
-		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
-		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
 		5ACE00012F4F00000000000A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000009 /* Sparkle */; };
 		5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F00000000000C /* MarkdownUI */; };
 		5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -560,9 +557,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */,
-				5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */,
-				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
 				5ACE00012F4F00000000000A /* Sparkle in Frameworks */,
 				5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */,
 			);
@@ -888,9 +882,6 @@
 			);
 			name = TablePro;
 			packageProductDependencies = (
-				5ACE00012F4F000000000002 /* CodeEditSourceEditor */,
-				5ACE00012F4F000000000003 /* CodeEditLanguages */,
-				5ACE00012F4F000000000007 /* CodeEditTextView */,
 				5ACE00012F4F000000000009 /* Sparkle */,
 				5ACE00012F4F00000000000C /* MarkdownUI */,
 			);
@@ -1408,10 +1399,8 @@
 			mainGroup = 5A1091BE2EF17EDC0055EA7C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */,
 				5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				5ACE00012F4F00000000000B /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
-				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -3485,17 +3474,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = LocalPackages/CodeEditLanguages;
-		};
-		5A0000012F4F000000000101 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditSourceEditor" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = LocalPackages/CodeEditSourceEditor;
-		};
-/* End XCLocalSwiftPackageReference section */
-
 /* Begin XCRemoteSwiftPackageReference section */
 		5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -3524,18 +3502,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		5ACE00012F4F000000000002 /* CodeEditSourceEditor */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CodeEditSourceEditor;
-		};
-		5ACE00012F4F000000000003 /* CodeEditLanguages */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CodeEditLanguages;
-		};
-		5ACE00012F4F000000000007 /* CodeEditTextView */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CodeEditTextView;
-		};
 		5ACE00012F4F000000000009 /* Sparkle */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5ACE00012F4F000000000008 /* XCRemoteSwiftPackageReference "Sparkle" */;

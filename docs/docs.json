@@ -62,6 +62,7 @@
               "features/keyboard-shortcuts",
               "features/deep-links",
               "features/safe-mode",
+              "features/connection-sharing",
               "features/icloud-sync",
               "features/ssh-profiles"
             ]

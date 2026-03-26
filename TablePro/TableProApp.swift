@@ -5,7 +5,6 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
-import CodeEditTextView
 import Observation
 import Sparkle
 import SwiftUI
@@ -264,9 +263,9 @@ struct AppMenuCommands: Commands {
             Button("Undo") {
                 // Check if first responder is a text view (SQL editor)
                 if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
+                   firstResponder is NSTextView {
                     // Send undo: (with colon) through responder chain —
-                    // CodeEditTextView.TextView responds to undo: via @objc func undo(_:)
+                    // NSTextView responds to undo: via the standard responder chain
                     NSApp.sendAction(#selector(TableProResponderActions.undo(_:)), to: nil, from: nil)
                 } else {
                     // Data grid undo
@@ -278,7 +277,7 @@ struct AppMenuCommands: Commands {
             Button("Redo") {
                 // Check if first responder is a text view (SQL editor)
                 if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
+                   firstResponder is NSTextView {
                     // Send redo: (with colon) through responder chain
                     NSApp.sendAction(#selector(TableProResponderActions.redo(_:)), to: nil, from: nil)
                 } else {

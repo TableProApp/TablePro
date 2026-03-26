@@ -5,7 +5,6 @@
 //  SQL query editor wrapper with toolbar
 //
 
-import CodeEditSourceEditor
 import os
 import SwiftUI
 import TableProPluginKit
@@ -17,7 +16,7 @@ struct QueryEditorView: View {
     @Environment(AppState.self) private var appState
 
     @Binding var queryText: String
-    @Binding var cursorPositions: [CursorPosition]
+    @Binding var cursorPositions: [NSRange]
     var onExecute: () -> Void
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
@@ -42,7 +41,7 @@ struct QueryEditorView: View {
 
             Divider()
 
-            // SQL Editor (CodeEditSourceEditor-based with tree-sitter highlighting)
+            // SQL Editor (TPEditorView with tree-sitter highlighting)
             SQLEditorView(
                 text: $queryText,
                 cursorPositions: $cursorPositions,
@@ -163,7 +162,7 @@ struct QueryEditorView: View {
         let formatter = SQLFormatterService()
         let options = SQLFormatterOptions.default
 
-        let cursorOffset = cursorPositions.first?.range.location ?? 0
+        let cursorOffset = cursorPositions.first?.location ?? 0
 
         do {
             // Format SQL with cursor preservation
@@ -177,7 +176,7 @@ struct QueryEditorView: View {
             // Update text and cursor position
             queryText = result.formattedSQL
             if let newCursor = result.cursorOffset {
-                cursorPositions = [CursorPosition(range: NSRange(location: newCursor, length: 0))]
+                cursorPositions = [NSRange(location: newCursor, length: 0)]
             }
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")

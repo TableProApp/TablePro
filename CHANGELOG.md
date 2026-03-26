@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace CodeEditSourceEditor/CodeEditTextView (252 files, 25K+ LOC third-party) with native NSTextView-based SQL editor (~1,500 LOC)
+- Horizontal scrolling now uses Apple's standard NSTextContainer configuration instead of workarounds
+- Find/Replace uses NSTextView's built-in Find Bar instead of custom implementation
+- Syntax highlighting uses NSLayoutManager temporary attributes (Apple-recommended pattern)
+- Line numbers use standard NSRulerView instead of custom CoreText gutter
+
+### Fixed
+
+- Horizontal scrolling broken in SQL editor due to upstream variable shadowing bug (#448)
+- Home/End keys not working in SQL editor (#448)
+
 ## [0.24.2] - 2026-03-26
 
 ### Fixed

@@ -1,24 +1,6 @@
 {
-  "originHash" : "a7a6b62d3a1069b1ea8b6d44c1a52d154af36b1945f05d7b91799e978f549468",
+  "originHash" : "dd76830143a065506f36f79b16f458c7b26738898cf79d72ae1d7b03f9432dd8",
   "pins" : [
-    {
-      "identity" : "codeeditsymbols",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CodeEditApp/CodeEditSymbols.git",
-      "state" : {
-        "revision" : "ae69712b08571c4469c2ed5cd38ad9f19439793e",
-        "version" : "0.2.3"
-      }
-    },
-    {
-      "identity" : "codeedittextview",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CodeEditApp/CodeEditTextView.git",
-      "state" : {
-        "revision" : "d7ac3f11f22ec2e820187acce8f3a3fb7aa8ddec",
-        "version" : "0.12.1"
-      }
-    },
     {
       "identity" : "networkimage",
       "kind" : "remoteSourceControl",
@@ -35,15 +17,6 @@
       "state" : {
         "revision" : "182c0f032326b5d437f80eb991570381cb48eb02",
         "version" : "1.0.0-rc.4"
-      }
-    },
-    {
-      "identity" : "rearrange",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/Rearrange",
-      "state" : {
-        "revision" : "f1d74e1642956f0300756ad8d1d64e9034857bc3",
-        "version" : "2.0.0"
       }
     },
     {
@@ -197,51 +170,6 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
-      }
-    },
-    {
-      "identity" : "swiftlintplugin",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/lukepistrol/SwiftLintPlugin",
-      "state" : {
-        "revision" : "a3877065a7d72ee40e1fa64e13b9e33e846c667c",
-        "version" : "0.63.1"
-      }
-    },
-    {
-      "identity" : "swifttreesitter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/SwiftTreeSitter.git",
-      "state" : {
-        "revision" : "08ef81eb8620617b55b08868126707ad72bf754f",
-        "version" : "0.25.0"
-      }
-    },
-    {
-      "identity" : "textformation",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/TextFormation",
-      "state" : {
-        "revision" : "b1ce9a14bd86042bba4de62236028dc4ce9db6a1",
-        "version" : "0.9.0"
-      }
-    },
-    {
-      "identity" : "textstory",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/TextStory",
-      "state" : {
-        "revision" : "91df6fc9bd817f9712331a4a3e826f7bdc823e1d",
-        "version" : "0.9.1"
-      }
-    },
-    {
-      "identity" : "tree-sitter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tree-sitter/tree-sitter",
-      "state" : {
-        "revision" : "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
-        "version" : "0.25.10"
       }
     }
   ],

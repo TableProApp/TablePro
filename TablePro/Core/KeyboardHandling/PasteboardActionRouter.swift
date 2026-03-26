@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import CodeEditTextView
 
 enum CopyAction {
     case textCopy
@@ -27,7 +26,7 @@ enum PasteboardActionRouter {
         hasTableSelection: Bool
     ) -> CopyAction {
         if let responder = firstResponder,
-           responder is NSTextView || responder is TextView {
+           responder is NSTextView || responder is TPTextView {
             return .textCopy
         } else if hasRowSelection {
             return .copyRows
@@ -43,7 +42,7 @@ enum PasteboardActionRouter {
         isCurrentTabEditable: Bool
     ) -> PasteAction {
         if let responder = firstResponder,
-           responder is NSTextView || responder is TextView {
+           responder is NSTextView || responder is TPTextView {
             return .textPaste
         } else if isCurrentTabEditable {
             return .pasteRows

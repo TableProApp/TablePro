@@ -2,18 +2,16 @@
 //  SQLCodePreview.swift
 //  TablePro
 //
-//  Read-only SQL code preview with tree-sitter syntax highlighting
+//  Read-only SQL code preview with syntax highlighting
 //
 
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
 
-/// Read-only SQL code preview with syntax highlighting powered by CodeEditSourceEditor
+/// Read-only SQL code preview with syntax highlighting powered by TPEditorView
 struct SQLCodePreview: View {
     @Binding var text: String
 
-    @State private var editorState = SourceEditorState()
+    @State private var cursorRange = NSRange(location: 0, length: 0)
     @State private var editorConfiguration = makeConfiguration()
     @Environment(\.colorScheme) private var colorScheme
 
@@ -21,11 +19,10 @@ struct SQLCodePreview: View {
         if text.isEmpty {
             Color(nsColor: .textBackgroundColor)
         } else {
-            SourceEditor(
-                $text,
-                language: .sql,
-                configuration: editorConfiguration,
-                state: $editorState
+            TPEditorView(
+                text: $text,
+                cursorRange: $cursorRange,
+                configuration: editorConfiguration
             )
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration()
@@ -35,24 +32,18 @@ struct SQLCodePreview: View {
 
     // MARK: - Configuration
 
-    private static func makeConfiguration() -> SourceEditorConfiguration {
-        SourceEditorConfiguration(
-            appearance: .init(
-                theme: TableProEditorTheme.make(),
-                font: ThemeEngine.shared.editorFonts.font,
-                wrapLines: false
-            ),
-            behavior: .init(
-                isEditable: false
-            ),
-            layout: .init(
-                contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
-            ),
-            peripherals: .init(
-                showGutter: true,
-                showMinimap: false,
-                showFoldingRibbon: false
-            )
+    private static func makeConfiguration() -> TPEditorConfiguration {
+        let theme = ThemeEngine.shared
+        return TPEditorConfiguration(
+            font: theme.editorFonts.font,
+            theme: theme.makeTPEditorTheme(),
+            wrapLines: false,
+            showLineNumbers: true,
+            showCurrentLineHighlight: false,
+            tabWidth: 4,
+            autoIndent: false,
+            isEditable: false,
+            contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
         )
     }
 }

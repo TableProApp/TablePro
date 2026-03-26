@@ -1,0 +1,148 @@
+---
+title: Connection Sharing
+description: Export, import, and share database connections with your team
+---
+
+# Connection Sharing
+
+Export connections to a `.tablepro` file and share it with your team. Passwords stay in your Keychain -- only connection details are exported.
+
+## Export
+
+Right-click connections in the welcome window > **Export Selected Connections...**, or use **File** > **Export Connections...**. TablePro saves a `.tablepro` JSON file.
+
+{/* Screenshot: Export connections */}
+<Frame caption="Export connections">
+  <img className="block dark:hidden" src="/images/connection-export.png" alt="Export connections" />
+  <img className="hidden dark:block" src="/images/connection-export-dark.png" alt="Export connections" />
+</Frame>
+
+**Included:** host, port, username, database type, SSH/SSL config, color, tag, group, safe mode, startup commands.
+
+**Never included (unless encrypted):** database password, SSH password, key passphrase, TOTP secret.
+
+### Encrypted export <sup>Pro</sup>
+
+Check **Include Credentials** to encrypt the file with a passphrase (AES-256). Your colleague enters the same passphrase on import.
+
+## Import
+
+- **File** > **Import Connections...** and pick a `.tablepro` file
+- Double-click a `.tablepro` file in Finder
+- Drag a `.tablepro` file onto the dock icon or welcome window
+
+A preview sheet shows each connection before importing:
+
+| Badge | Meaning |
+|-------|---------|
+| Green | Ready |
+| Yellow | SSH key or SSL cert path not found on your machine |
+| Orange | Duplicate (same name + host + port + type exists) |
+
+For duplicates: **Skip**, **Replace**, or **Import as Copy**.
+
+Passwords are blank after import. Enter them when you first connect.
+
+## Share via Link
+
+Right-click a connection > **Copy as Link**. Copies a `tablepro://import?...` URL to your clipboard. Paste it in Slack, a wiki, or a README. No passwords in the link.
+
+```
+tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin&database=mydb
+```
+
+## Drag and Drop
+
+Drag a connection from the sidebar to Finder to create a `.tablepro` file. Drag a `.tablepro` file onto TablePro to import.
+
+## Linked Folders <sup>Pro</sup>
+
+Point TablePro at a shared directory. It watches for `.tablepro` files and keeps your sidebar in sync.
+
+**Settings** (`Cmd+,`) > **Sync** > **Linked Folders** > **Add Folder...**
+
+{/* Screenshot: Linked Folders settings */}
+<Frame caption="Linked Folders">
+  <img className="block dark:hidden" src="/images/linked-folders.png" alt="Linked Folders" />
+  <img className="hidden dark:block" src="/images/linked-folders-dark.png" alt="Linked Folders" />
+</Frame>
+
+- Linked connections are **read-only** (edit the source file)
+- Each person enters their own password (local Keychain)
+- Subfolders map to connection groups
+- Works with Git repos, Dropbox, network drives
+
+```
+team-db-configs/            # shared Git repo
+  backend/
+    production.tablepro
+    staging.tablepro
+  data-team/
+    warehouses.tablepro
+```
+
+Commit `.tablepro` files to a repo. Everyone clones and links the folder. Passwords never touch Git.
+
+## Environment Variables <sup>Pro</sup>
+
+Reference env vars in `.tablepro` files:
+
+```json
+{
+  "host": "${DB_HOST}",
+  "username": "$DB_USER"
+}
+```
+
+Resolved at connection time. Works with `.env` files, 1Password CLI (`op run`), and direnv.
+
+## File Format
+
+Plain JSON. Minimum required fields: `name`, `host`, `type`.
+
+```json
+{
+  "formatVersion": 1,
+  "connections": [
+    {
+      "name": "Production",
+      "host": "db.example.com",
+      "port": 3306,
+      "type": "MySQL",
+      "username": "deploy",
+      "tagName": "production",
+      "sshConfig": {
+        "enabled": true,
+        "host": "bastion.example.com",
+        "username": "deploy",
+        "authMethod": "SSH Agent"
+      }
+    }
+  ],
+  "groups": [{ "name": "Backend", "color": "Blue" }],
+  "tags": [{ "name": "production", "color": "Red" }]
+}
+```
+
+Groups and tags are matched by name on import. Missing ones are created automatically. SSH key paths use `~/` for portability across machines.
+
+## Free vs Pro
+
+| Feature | Free | Pro |
+|---------|------|-----|
+| Export/import `.tablepro` files | Yes | Yes |
+| Share via link | Yes | Yes |
+| Drag and drop | Yes | Yes |
+| Encrypted export (with credentials) | -- | Yes |
+| Linked Folders (auto-sync from directory) | -- | Yes |
+| Environment variable references | -- | Yes |
+
+## Connection Sharing vs iCloud Sync
+
+| | Sharing | iCloud Sync <sup>Pro</sup> |
+|---|---|---|
+| **For** | Team | Your own Macs |
+| **Transport** | Files, links, Git | CloudKit |
+| **Passwords** | Per-user | Optional sync |
+
+Both work independently.

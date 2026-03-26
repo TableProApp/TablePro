@@ -5,7 +5,6 @@
 //  ClickHouse-specific coordinator methods: progress tracking, EXPLAIN variants.
 //
 
-import CodeEditSourceEditor
 import Foundation
 import TableProPluginKit
 
@@ -34,10 +33,10 @@ extension MainContentCoordinator {
         if tabManager.tabs[index].tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
-                  firstCursor.range.length > 0 {
+                  firstCursor.length > 0 {
             let nsQuery = fullQuery as NSString
             let clampedRange = NSIntersectionRange(
-                firstCursor.range,
+                firstCursor,
                 NSRange(location: 0, length: nsQuery.length)
             )
             sql = nsQuery.substring(with: clampedRange)
@@ -45,7 +44,7 @@ extension MainContentCoordinator {
         } else {
             sql = SQLStatementScanner.statementAtCursor(
                 in: fullQuery,
-                cursorPosition: cursorPositions.first?.range.location ?? 0
+                cursorPosition: cursorPositions.first?.location ?? 0
             )
         }
 

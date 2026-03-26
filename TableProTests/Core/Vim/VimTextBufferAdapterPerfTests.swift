@@ -7,33 +7,21 @@
 //
 
 import AppKit
-import CodeEditTextView
 @testable import TablePro
 import Testing
 
 @Suite("VimTextBufferAdapter Incremental LineCount")
 @MainActor
 struct VimTextBufferAdapterPerfTests {
-    private final class StubDelegate: TextViewDelegate {}
 
-    private func makeTextView(string: String) -> TextView {
-        let textView = TextView(
-            string: string,
-            font: .monospacedSystemFont(ofSize: 12, weight: .regular),
-            textColor: .labelColor,
-            lineHeightMultiplier: 1.0,
-            wrapLines: false,
-            isEditable: true,
-            isSelectable: true,
-            letterSpacing: 1.0,
-            delegate: StubDelegate()
-        )
+    private func makeTextView(string: String) -> NSTextView {
+        let textView = NSTextView()
+        textView.string = string
         textView.frame = NSRect(x: 0, y: 0, width: 500, height: 500)
-        textView.layout()
         return textView
     }
 
-    private func makeAdapter(string: String) -> (VimTextBufferAdapter, TextView) {
+    private func makeAdapter(string: String) -> (VimTextBufferAdapter, NSTextView) {
         let textView = makeTextView(string: string)
         let adapter = VimTextBufferAdapter(textView: textView)
         return (adapter, textView)

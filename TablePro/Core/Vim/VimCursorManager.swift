@@ -6,14 +6,8 @@
 //  Shows a block cursor (character-width rectangle) in Normal/Visual modes
 //  and hides it to show the default I-beam cursor in Insert mode.
 //
-//  On macOS 14+, CodeEditTextView uses NSTextInsertionIndicator (system cursor)
-//  instead of its internal CursorView. Setting insertionPointColor only affects
-//  CursorView, so we must directly set displayMode on NSTextInsertionIndicator
-//  subviews to hide/show the I-beam.
-//
 
 import AppKit
-import CodeEditTextView
 import os
 
 /// Manages Vim-style block cursor rendering on the text view
@@ -23,7 +17,7 @@ final class VimCursorManager {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "VimCursor")
 
-    private weak var textView: TextView?
+    private weak var textView: NSTextView?
     private var blockCursorLayer: CALayer?
     private var isBlockCursorActive = false
     private var isPaused = false
@@ -35,7 +29,7 @@ final class VimCursorManager {
     // MARK: - Install / Uninstall
 
     /// Store the text view reference and show the block cursor for Normal mode
-    func install(textView: TextView) {
+    func install(textView: NSTextView) {
         appObservers.forEach { NotificationCenter.default.removeObserver($0) }
         appObservers.removeAll()
 
@@ -114,7 +108,7 @@ final class VimCursorManager {
 
         // Ensure system cursor stays hidden (it can be recreated during selection changes).
         // Hide immediately, then defer another hide to catch cursor views that
-        // CodeEditTextView creates after the selection change notification fires
+        // NSTextView may create the insertion indicator after the selection change notification fires
         // (e.g., double-click word selection recreates NSTextInsertionIndicator views).
         hideSystemCursor()
         scheduleDeferredHide()
@@ -125,7 +119,8 @@ final class VimCursorManager {
             return
         }
 
-        guard let rect = textView.layoutManager.rectForOffset(offset) else {
+        let rect = cursorRect(at: offset)
+        guard rect != .zero else {
             removeBlockCursorLayer()
             return
         }
@@ -194,23 +189,26 @@ final class VimCursorManager {
         DispatchQueue.main.async(execute: workItem)
     }
 
-    /// Hide the system I-beam cursor (NSTextInsertionIndicator on macOS 14+)
+    private func cursorRect(at offset: Int) -> NSRect {
+        guard let textView,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else { return .zero }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: offset, length: 1),
+            actualCharacterRange: nil
+        )
+        return layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+    }
+
     private func hideSystemCursor() {
-        guard let textView else { return }
-        for subview in textView.subviews {
-            if let indicator = subview as? NSTextInsertionIndicator {
-                indicator.displayMode = .hidden
-            }
+        if let tpTextView = textView as? TPTextView {
+            tpTextView.suppressSystemCursor = true
         }
     }
 
-    /// Restore the system I-beam cursor to automatic display
     private func showSystemCursor() {
-        guard let textView else { return }
-        for subview in textView.subviews {
-            if let indicator = subview as? NSTextInsertionIndicator {
-                indicator.displayMode = .automatic
-            }
+        if let tpTextView = textView as? TPTextView {
+            tpTextView.suppressSystemCursor = false
         }
     }
 }

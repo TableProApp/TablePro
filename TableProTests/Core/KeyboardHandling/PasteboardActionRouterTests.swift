@@ -4,7 +4,6 @@
 //
 
 import AppKit
-import CodeEditTextView
 import Testing
 @testable import TablePro
 
@@ -25,9 +24,9 @@ struct PasteboardActionRouterTests {
         #expect(action == .textCopy)
     }
 
-    @Test("CodeEditTextView.TextView first responder returns textCopy")
-    func copyWithCodeEditTextView() {
-        let textView = TextView(string: "")
+    @Test("TPTextView first responder returns textCopy")
+    func copyWithTPTextView() {
+        let textView = TPTextView()
         let action = PasteboardActionRouter.resolveCopyAction(
             firstResponder: textView,
             hasRowSelection: true,
@@ -78,9 +77,9 @@ struct PasteboardActionRouterTests {
         #expect(action == .textPaste)
     }
 
-    @Test("CodeEditTextView.TextView first responder returns textPaste")
-    func pasteWithCodeEditTextView() {
-        let textView = TextView(string: "")
+    @Test("TPTextView first responder returns textPaste")
+    func pasteWithTPTextView() {
+        let textView = TPTextView()
         let action = PasteboardActionRouter.resolvePasteAction(
             firstResponder: textView,
             isCurrentTabEditable: true

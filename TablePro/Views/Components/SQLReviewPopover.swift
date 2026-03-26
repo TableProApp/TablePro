@@ -6,20 +6,19 @@
 //
 
 import AppKit
-import CodeEditLanguages
-import CodeEditSourceEditor
 import SwiftUI
 import TableProPluginKit
 
-/// Popover view that displays SQL statements with tree-sitter syntax highlighting for review before commit.
+/// Popover view that displays SQL statements with syntax highlighting for review before commit.
 struct SQLReviewPopover: View {
     let statements: [String]
     var databaseType: DatabaseType = .mysql
 
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
-    @State private var isEditorReady = false
-    @State private var editorState = SourceEditorState()
+    @State private var combinedSQLState = ""
+    @State private var cursorRange = NSRange(location: 0, length: 0)
+    @State private var editorConfiguration: TPEditorConfiguration?
 
     /// All statements joined for display
     private var combinedSQL: String {
@@ -86,13 +85,8 @@ struct SQLReviewPopover: View {
             dismiss()
         }
         .onAppear {
-            // Defer SourceEditor creation to avoid toolbar layout crash
-            DispatchQueue.main.async {
-                isEditorReady = true
-            }
-        }
-        .onDisappear {
-            isEditorReady = false
+            combinedSQLState = combinedSQL
+            editorConfiguration = Self.makeConfiguration()
         }
     }
 
@@ -143,12 +137,11 @@ struct SQLReviewPopover: View {
 
     @ViewBuilder
     private var editorView: some View {
-        if isEditorReady {
-            SourceEditor(
-                .constant(combinedSQL),
-                language: PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage,
-                configuration: Self.makeConfiguration(),
-                state: $editorState
+        if let config = editorConfiguration {
+            TPEditorView(
+                text: $combinedSQLState,
+                cursorRange: $cursorRange,
+                configuration: config
             )
             .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
             .overlay(
@@ -156,7 +149,6 @@ struct SQLReviewPopover: View {
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
         } else {
-            // Lightweight placeholder while SourceEditor loads
             Color(nsColor: .textBackgroundColor)
                 .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
                 .overlay(
@@ -168,25 +160,19 @@ struct SQLReviewPopover: View {
 
     // MARK: - Configuration
 
-    private static func makeConfiguration() -> SourceEditorConfiguration {
-        SourceEditorConfiguration(
-            appearance: .init(
-                theme: TableProEditorTheme.make(),
-                font: NSFont.monospacedSystemFont(
-                    ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular),
-                wrapLines: true
-            ),
-            behavior: .init(
-                isEditable: false
-            ),
-            layout: .init(
-                contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-            ),
-            peripherals: .init(
-                showGutter: false,
-                showMinimap: false,
-                showFoldingRibbon: false
-            )
+    private static func makeConfiguration() -> TPEditorConfiguration {
+        let theme = ThemeEngine.shared
+        return TPEditorConfiguration(
+            font: NSFont.monospacedSystemFont(
+                ofSize: theme.activeTheme.typography.medium, weight: .regular),
+            theme: theme.makeTPEditorTheme(),
+            wrapLines: true,
+            showLineNumbers: false,
+            showCurrentLineHighlight: false,
+            tabWidth: 4,
+            autoIndent: false,
+            isEditable: false,
+            contentInsets: NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         )
     }
 

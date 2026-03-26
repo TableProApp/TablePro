@@ -8,8 +8,6 @@
 //
 
 @preconcurrency import AppKit
-import CodeEditSourceEditor
-import CodeEditTextView
 import os
 
 /// Manages Copilot-style inline SQL suggestions rendered as ghost text
@@ -19,7 +17,7 @@ final class InlineSuggestionManager {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "InlineSuggestion")
 
-    private weak var controller: TextViewController?
+    private weak var textView: NSTextView?
     private var debounceTimer: Timer?
     private var currentTask: Task<Void, Never>?
     private let _keyEventMonitor = OSAllocatedUnfairLock<Any?>(initialState: nil)
@@ -54,9 +52,9 @@ final class InlineSuggestionManager {
 
     // MARK: - Install / Uninstall
 
-    /// Install the manager on a TextViewController
-    func install(controller: TextViewController, schemaProvider: SQLSchemaProvider?) {
-        self.controller = controller
+    /// Install the manager on a text view
+    func install(textView: NSTextView, schemaProvider: SQLSchemaProvider?) {
+        self.textView = textView
         self.schemaProvider = schemaProvider
     }
 
@@ -89,7 +87,7 @@ final class InlineSuggestionManager {
         removeScrollObserver()
 
         schemaProvider = nil
-        controller = nil
+        textView = nil
     }
 
     // MARK: - Text Change Handling
@@ -104,9 +102,9 @@ final class InlineSuggestionManager {
     func handleSelectionChange() {
         // If cursor moved away from the suggestion offset, dismiss
         guard currentSuggestion != nil else { return }
-        guard let controller else { return }
+        guard let textView else { return }
 
-        let cursorOffset = controller.cursorPositions.first?.range.location ?? NSNotFound
+        let cursorOffset = textView.selectedRange().location
         if cursorOffset != suggestionOffset {
             dismissSuggestion()
         }
@@ -131,19 +129,14 @@ final class InlineSuggestionManager {
     private func isEnabled() -> Bool {
         let settings = AppSettingsManager.shared.ai
         guard settings.inlineSuggestEnabled else { return false }
-        guard let controller else { return false }
-        guard let textView = controller.textView else { return false }
+        guard let textView else { return false }
 
-        // Must be first responder
         guard textView.window?.firstResponder === textView else { return false }
 
-        // Must have a single cursor with no selection
-        guard let cursor = controller.cursorPositions.first,
-              cursor.range.length == 0 else { return false }
+        let range = textView.selectedRange()
+        guard range.length == 0 else { return false }
 
-        // Must have some text
-        let text = textView.string
-        guard (text as NSString).length > 0 else { return false }
+        guard (textView.string as NSString).length > 0 else { return false }
 
         return true
     }
@@ -171,9 +164,9 @@ final class InlineSuggestionManager {
 
     private func requestSuggestion() {
         guard isEnabled() else { return }
-        guard let controller, let textView = controller.textView else { return }
+        guard let textView else { return }
 
-        let cursorOffset = controller.cursorPositions.first?.range.location ?? 0
+        let cursorOffset = textView.selectedRange().location
         guard cursorOffset > 0 else { return }
 
         let fullText = textView.string
@@ -295,8 +288,15 @@ final class InlineSuggestionManager {
     // MARK: - Ghost Text Rendering
 
     private func showGhostText(_ text: String, at offset: Int) {
-        guard let textView = controller?.textView else { return }
-        guard let rect = textView.layoutManager.rectForOffset(offset) else { return }
+        guard let textView else { return }
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else { return }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: NSRange(location: offset, length: 0),
+            actualCharacterRange: nil
+        )
+        let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+        guard rect != .zero else { return }
 
         removeGhostLayer()
 
@@ -321,7 +321,6 @@ final class InlineSuggestionManager {
         )
 
         // Position the layer at the cursor location
-        // isFlipped = true in CodeEditTextView, so y=0 is top — coords match layoutManager directly
         layer.frame = CGRect(
             x: rect.origin.x,
             y: rect.origin.y,
@@ -344,7 +343,7 @@ final class InlineSuggestionManager {
 
     private func acceptSuggestion() {
         guard let suggestion = currentSuggestion,
-              let textView = controller?.textView else { return }
+              let textView else { return }
 
         let offset = suggestionOffset
         removeGhostLayer()
@@ -379,7 +378,7 @@ final class InlineSuggestionManager {
 
                 guard self.currentSuggestion != nil else { return event }
 
-                guard let textView = self.controller?.textView,
+                guard let textView = self.textView,
                       event.window === textView.window,
                       textView.window?.firstResponder === textView else { return event }
 
@@ -418,7 +417,7 @@ final class InlineSuggestionManager {
 
     private func installScrollObserver() {
         guard _scrollObserver.withLock({ $0 }) == nil else { return }
-        guard let scrollView = controller?.scrollView else { return }
+        guard let scrollView = textView?.enclosingScrollView else { return }
         let contentView = scrollView.contentView
 
         _scrollObserver.withLock {
