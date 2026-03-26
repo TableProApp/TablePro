@@ -69,6 +69,22 @@
 			</array>
 		</dict>
 		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>tablepro</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>TablePro Connection</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.tablepro.connection-share</string>
+			</array>
+		</dict>
+		<dict>
 			<key>CFBundleTypeName</key>
 			<string>DuckDB Database</string>
 			<key>CFBundleTypeRole</key>
@@ -151,6 +167,24 @@
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.tablepro.connection-share</string>
+			<key>UTTypeDescription</key>
+			<string>TablePro Connection</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>tablepro</string>
+				</array>
+			</dict>
+		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.tablepro.plugin</string>

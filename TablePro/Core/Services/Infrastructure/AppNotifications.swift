@@ -19,6 +19,7 @@ extension Notification.Name {
     static let connectionUpdated = Notification.Name("connectionUpdated")
     static let connectionStatusDidChange = Notification.Name("connectionStatusDidChange")
     static let databaseDidConnect = Notification.Name("databaseDidConnect")
+    static let connectionShareFileOpened = Notification.Name("connectionShareFileOpened")
 
     // MARK: - License
 
