@@ -44,6 +44,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// True while a queued URL polling task is active — prevents duplicate pollers
     var isProcessingQueuedURLs = false
 
+    /// ConnectionIds currently being connected from URL/file handlers.
+    /// Prevents duplicate connections when the same URL is opened twice rapidly.
+    var connectingURLConnectionIds = Set<UUID>()
+
     // MARK: - NSApplicationDelegate
 
     func application(_ application: NSApplication, open urls: [URL]) {

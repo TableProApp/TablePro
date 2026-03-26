@@ -67,12 +67,23 @@ extension AppDelegate {
             return
         }
 
-        openNewConnectionWindow(for: connection)
+        // Skip if already connecting this connection from a URL (prevents duplicates)
+        guard !connectingURLConnectionIds.contains(connection.id),
+              !isConnectingByParams(parsed) else { return }
+        connectingURLConnectionIds.insert(connection.id)
 
         Task { @MainActor in
-            defer { self.endFileOpenSuppression() }
+            defer {
+                self.connectingURLConnectionIds.remove(connection.id)
+                self.endFileOpenSuppression()
+            }
             do {
+                // Connect before opening the window so the session is already
+                // in activeSessions when ContentView.init runs. This avoids a
+                // SwiftUI bug where toolbar items are dropped when the detail
+                // view transitions from "Connecting..." to MainContentView.
                 try await DatabaseManager.shared.connectToSession(connection)
+                self.openNewConnectionWindow(for: connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
                     window.close()
                 }
@@ -114,12 +125,17 @@ extension AppDelegate {
             type: .sqlite
         )
 
-        openNewConnectionWindow(for: connection)
+        guard !connectingURLConnectionIds.contains(connection.id) else { return }
+        connectingURLConnectionIds.insert(connection.id)
 
         Task { @MainActor in
-            defer { self.endFileOpenSuppression() }
+            defer {
+                self.connectingURLConnectionIds.remove(connection.id)
+                self.endFileOpenSuppression()
+            }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
+                self.openNewConnectionWindow(for: connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
                     window.close()
                 }
@@ -160,12 +176,17 @@ extension AppDelegate {
             type: .duckdb
         )
 
-        openNewConnectionWindow(for: connection)
+        guard !connectingURLConnectionIds.contains(connection.id) else { return }
+        connectingURLConnectionIds.insert(connection.id)
 
         Task { @MainActor in
-            defer { self.endFileOpenSuppression() }
+            defer {
+                self.connectingURLConnectionIds.remove(connection.id)
+                self.endFileOpenSuppression()
+            }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
+                self.openNewConnectionWindow(for: connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
                     window.close()
                 }
@@ -206,12 +227,17 @@ extension AppDelegate {
             type: dbType
         )
 
-        openNewConnectionWindow(for: connection)
+        guard !connectingURLConnectionIds.contains(connection.id) else { return }
+        connectingURLConnectionIds.insert(connection.id)
 
         Task { @MainActor in
-            defer { self.endFileOpenSuppression() }
+            defer {
+                self.connectingURLConnectionIds.remove(connection.id)
+                self.endFileOpenSuppression()
+            }
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
+                self.openNewConnectionWindow(for: connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
                     window.close()
                 }
@@ -377,6 +403,21 @@ extension AppDelegate {
             }
         }
         return nil
+    }
+
+    /// Checks if a connection matching the parsed params is already in-flight.
+    private func isConnectingByParams(_ parsed: ParsedConnectionURL) -> Bool {
+        for (id, session) in DatabaseManager.shared.activeSessions {
+            guard session.driver == nil else { continue }
+            let conn = session.connection
+            if conn.type == parsed.type
+                && conn.host == parsed.host
+                && conn.database == parsed.database
+                && (parsed.username.isEmpty || conn.username == parsed.username) {
+                return connectingURLConnectionIds.contains(id)
+            }
+        }
+        return false
     }
 
     func bringConnectionWindowToFront(_ connectionId: UUID) {

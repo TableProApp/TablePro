@@ -256,9 +256,6 @@ struct ContentView: View {
         .navigationSubtitle(currentSession?.connection.name ?? "")
     }
 
-    // Removed: newConnectionSheet and editConnectionSheet helpers
-    // Connection forms are now handled by the separate connection-form window
-
     // MARK: - Session State Bindings
 
     /// Generic helper to create bindings that update session state
@@ -375,6 +372,10 @@ struct ContentView: View {
             return
         }
         currentSession = newSession
+        // Update window title on first session connect (fixes cold-launch stale title)
+        if payload?.tableName == nil, windowTitle == "SQL Query" || windowTitle.hasSuffix(" Query") {
+            windowTitle = newSession.connection.name
+        }
         if rightPanelState == nil {
             rightPanelState = RightPanelState()
         }
