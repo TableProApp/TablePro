@@ -102,7 +102,7 @@ struct ColumnTypeClassifier {
         for key in [
             "INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "MEDIUMINT",
             "SERIAL", "BIGSERIAL", "SMALLSERIAL",
-            "INT2", "INT4", "INT8",
+            "INT2", "INT4",
             "INT8", "INT16", "INT32", "INT64", "INT128", "INT256",
             "UINT8", "UINT16", "UINT32", "UINT64", "UINT128", "UINT256",
             "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "HUGEINT", "UHUGEINT"

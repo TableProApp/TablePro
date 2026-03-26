@@ -101,6 +101,12 @@ struct ColumnTypeClassifierTests {
             #expect(result.isEnumType)
         }
 
+        @Test("Nullable(Enum8('a' = 1, 'b' = 2)) classifies as enum")
+        func nullableEnumMultiValue() {
+            let result = classifier.classify(rawTypeName: "Nullable(Enum8('a' = 1, 'b' = 2))")
+            #expect(result.isEnumType)
+        }
+
         @Test("Empty string classifies as text")
         func emptyString() {
             let result = classifier.classify(rawTypeName: "")
