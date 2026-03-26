@@ -33,7 +33,7 @@ extension TableViewCoordinator {
 
     func copyRows(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
-        let columnTypes = (rowProvider as? InMemoryRowProvider)?.columnTypes
+        let columnTypes = rowProvider.columnTypes
         var lines: [String] = []
 
         for index in sortedIndices {
@@ -48,7 +48,7 @@ extension TableViewCoordinator {
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
-        let columnTypes = (rowProvider as? InMemoryRowProvider)?.columnTypes
+        let columnTypes = rowProvider.columnTypes
         var lines: [String] = []
 
         // Add header row
@@ -102,8 +102,8 @@ extension TableViewCoordinator {
         guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
 
         let value = rowProvider.value(atRow: rowIndex, column: columnIndex) ?? "NULL"
-        let columnTypes = (rowProvider as? InMemoryRowProvider)?.columnTypes
-        let columnType = columnTypes.flatMap { $0.indices.contains(columnIndex) ? $0[columnIndex] : nil }
+        let columnTypes = rowProvider.columnTypes
+        let columnType = columnTypes.indices.contains(columnIndex) ? columnTypes[columnIndex] : nil
         let copyValue = BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
         ClipboardService.shared.writeText(copyValue)
     }
@@ -143,8 +143,7 @@ extension TableViewCoordinator {
     func copyRowsAsJson(at indices: Set<Int>) {
         let rows = indices.sorted().compactMap { rowProvider.rowValues(at: $0) }
         guard !rows.isEmpty else { return }
-        let columnTypes = (rowProvider as? InMemoryRowProvider)?.columnTypes
-            ?? Array(repeating: ColumnType.text(rawType: nil), count: rowProvider.columns.count)
+        let columnTypes = rowProvider.columnTypes
         let converter = JsonRowConverter(columns: rowProvider.columns, columnTypes: columnTypes)
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }

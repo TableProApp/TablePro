@@ -54,12 +54,8 @@ private let kbdintCallback: @convention(c) (
         let prompt = prompts[i]
         let promptText: String
         if let textPtr = prompt.text, prompt.length > 0 {
-            promptText = String(
-                bytesNoCopy: UnsafeMutableRawPointer(mutating: textPtr),
-                length: Int(prompt.length),
-                encoding: .utf8,
-                freeWhenDone: false
-            ) ?? ""
+            let buffer = UnsafeBufferPointer(start: textPtr, count: Int(prompt.length))
+            promptText = String(decoding: buffer, as: UTF8.self)
         } else {
             promptText = ""
         }

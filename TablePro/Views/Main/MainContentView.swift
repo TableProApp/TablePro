@@ -230,7 +230,6 @@ struct MainContentView: View {
 
                 let capturedWindowId = windowId
                 let connectionId = connection.id
-                let connectionName = connection.name
                 Task { @MainActor in
                     // Grace period: SwiftUI fires onDisappear transiently during tab group
                     // merges/splits, then re-fires onAppear shortly after. The onAppear

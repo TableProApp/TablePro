@@ -469,7 +469,7 @@ extension MainContentCoordinator {
                 sidebarState.redisKeyTreeViewModel = vm
             }
             Task {
-                await sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
+                await self.sidebarViewModel?.redisKeyTreeViewModel?.loadKeys(
                     connectionId: connId,
                     database: database,
                     separator: separator

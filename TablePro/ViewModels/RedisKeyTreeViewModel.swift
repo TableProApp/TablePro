@@ -86,7 +86,7 @@ internal final class RedisKeyTreeViewModel {
                 .map { .key(name: $0.key, fullKey: $0.key, keyType: $0.type) }
         }
 
-        var root = TrieNode()
+        let root = TrieNode()
         for entry in keys {
             let parts = entry.key.components(separatedBy: separator)
             root.insert(parts: parts, fullKey: entry.key, keyType: entry.type)

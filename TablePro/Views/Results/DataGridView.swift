@@ -838,8 +838,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self, let tableView = self.tableView else { return }
-            Self.updateVisibleCellFonts(tableView: tableView)
+            MainActor.assumeIsolated {
+                guard let self, let tableView = self.tableView else { return }
+                Self.updateVisibleCellFonts(tableView: tableView)
+            }
         }
     }
 
@@ -850,7 +852,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: connectionId,
             queue: .main
         ) { [weak self] _ in
-            self?.releaseData()
+            MainActor.assumeIsolated {
+                self?.releaseData()
+            }
         }
     }
 
