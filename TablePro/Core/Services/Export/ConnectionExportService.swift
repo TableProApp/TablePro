@@ -49,7 +49,7 @@ struct ImportItem: Identifiable {
     let status: ImportItemStatus
 }
 
-enum ImportResolution {
+enum ImportResolution: Hashable {
     case importNew
     case skip
     case replace(existingId: UUID)

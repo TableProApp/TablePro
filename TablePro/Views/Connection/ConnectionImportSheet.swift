@@ -55,7 +55,7 @@ struct ConnectionImportSheet: View {
         HStack {
             Image(systemName: "square.and.arrow.down")
                 .font(.title2)
-                .foregroundStyle(.accent)
+                .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Import Connections")
                     .font(.headline)
@@ -219,31 +219,4 @@ struct ConnectionImportSheet: View {
     }
 }
 
-// MARK: - ImportResolution + Hashable
 
-extension ImportResolution: @retroactive Hashable {
-    func hash(into hasher: inout Hasher) {
-        switch self {
-        case .importNew:
-            hasher.combine(0)
-        case .skip:
-            hasher.combine(1)
-        case .replace(let id):
-            hasher.combine(2)
-            hasher.combine(id)
-        case .importAsCopy:
-            hasher.combine(3)
-        }
-    }
-
-    static func == (lhs: ImportResolution, rhs: ImportResolution) -> Bool {
-        switch (lhs, rhs) {
-        case (.importNew, .importNew), (.skip, .skip), (.importAsCopy, .importAsCopy):
-            return true
-        case (.replace(let lhsId), .replace(let rhsId)):
-            return lhsId == rhsId
-        default:
-            return false
-        }
-    }
-}
