@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - XLSX export producing corrupted files that Excel cannot open (#464)
+- Deep link cold launch missing toolbar and duplicate windows (#465)
 
 ### Added
 
