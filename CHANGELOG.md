@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- XLSX export producing corrupted files that Excel cannot open (#464)
+
 ### Added
 
 - Enum/set picker support for PostgreSQL custom enums, ClickHouse Enum8/Enum16, and DuckDB ENUM types

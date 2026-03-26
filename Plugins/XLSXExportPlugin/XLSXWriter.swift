@@ -265,7 +265,9 @@ final class XLSXWriter {
         d.appendUTF8("<cellXfs count=\"2\">")
         d.appendUTF8("<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>")
         d.appendUTF8("<xf numFmtId=\"0\" fontId=\"1\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>")
-        d.appendUTF8("</cellXfs></styleSheet>")
+        d.appendUTF8("</cellXfs>")
+        d.appendUTF8("<cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles>")
+        d.appendUTF8("</styleSheet>")
         return d
     }
 
@@ -309,7 +311,9 @@ private extension Data {
         } ?? self.append(contentsOf: string.utf8)
     }
 
-    /// Append XML-escaped text directly to Data without creating intermediate Strings
+    /// Append XML-escaped text directly to Data without creating intermediate Strings.
+    /// Strips XML 1.0 illegal control characters (0x00–0x08, 0x0B, 0x0C, 0x0E–0x1F)
+    /// that can appear in binary/hex database columns and would produce malformed XML.
     mutating func appendXMLEscaped(_ text: String) {
         for byte in text.utf8 {
             switch byte {
@@ -323,6 +327,10 @@ private extension Data {
                 append(contentsOf: [0x26, 0x71, 0x75, 0x6F, 0x74, 0x3B]) // &quot;
             case 0x27: // '
                 append(contentsOf: [0x26, 0x61, 0x70, 0x6F, 0x73, 0x3B]) // &apos;
+            case 0x09, 0x0A, 0x0D: // Tab, LF, CR — allowed in XML 1.0
+                append(byte)
+            case 0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F: // Illegal XML 1.0 control chars
+                break // Strip silently
             default:
                 append(byte)
             }
@@ -360,7 +368,7 @@ private enum ZipBuilder {
 
             // Local file header
             output.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])  // Signature
-            output.appendUInt16(20)                                 // Version needed
+            output.appendUInt16(10)                                 // Version needed (1.0 for store)
             output.appendUInt16(0)                                  // Flags
             output.appendUInt16(0)                                  // Compression: stored
             output.appendUInt16(0)                                  // Mod time
@@ -375,8 +383,8 @@ private enum ZipBuilder {
 
             // Central directory entry
             centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
-            centralDirectory.appendUInt16(20)
-            centralDirectory.appendUInt16(20)
+            centralDirectory.appendUInt16(20)                           // Version made by (2.0)
+            centralDirectory.appendUInt16(10)                           // Version needed (1.0 for store)
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt16(0)
