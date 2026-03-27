@@ -155,16 +155,20 @@ enum ConnectionExportService {
             let aiPolicy: String? = connection.aiPolicy?.rawValue
 
             // Filter secure fields from additionalFields
-            var filteredFields = connection.additionalFields
-            let secureFieldIds = PluginMetadataRegistry.shared
-                .snapshot(forTypeId: connection.type.pluginTypeId)?
-                .connection.additionalConnectionFields
-                .filter(\.isSecure)
-                .map(\.id) ?? []
-            for fieldId in secureFieldIds {
-                filteredFields.removeValue(forKey: fieldId)
+            // If plugin metadata is unavailable, omit all fields to avoid leaking secrets
+            let additionalFields: [String: String]?
+            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+                var filteredFields = connection.additionalFields
+                let secureFieldIds = snapshot.connection.additionalConnectionFields
+                    .filter(\.isSecure)
+                    .map(\.id)
+                for fieldId in secureFieldIds {
+                    filteredFields.removeValue(forKey: fieldId)
+                }
+                additionalFields = filteredFields.isEmpty ? nil : filteredFields
+            } else {
+                additionalFields = nil
             }
-            let additionalFields: [String: String]? = filteredFields.isEmpty ? nil : filteredFields
 
             let exportable = ExportableConnection(
                 name: connection.name,
@@ -222,10 +226,12 @@ enum ConnectionExportService {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
 
-        guard let data = try? encoder.encode(envelope) else {
+        do {
+            return try encoder.encode(envelope)
+        } catch {
+            logger.error("Encoding failed: \(error)")
             throw ConnectionExportError.encodingFailed
         }
-        return data
     }
 
     static func exportConnections(_ connections: [DatabaseConnection], to url: URL) throws {

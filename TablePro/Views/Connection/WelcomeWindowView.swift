@@ -518,7 +518,7 @@ struct WelcomeWindowView: View {
                         let envelope = ConnectionExportService.buildEnvelope(for: [connection])
                         let data = try ConnectionExportService.encode(envelope)
                         let tempURL = FileManager.default.temporaryDirectory
-                            .appendingPathComponent("\(connection.name).tablepro")
+                            .appendingPathComponent("\(connection.name)-\(connection.id.uuidString).tablepro")
                         try data.write(to: tempURL, options: .atomic)
                         completion(tempURL, true, nil)
                     } catch {

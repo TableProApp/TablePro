@@ -239,11 +239,11 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("Export Connections...") {
+            Button(String(localized: "Export Connections...")) {
                 NotificationCenter.default.post(name: .exportConnections, object: nil)
             }
 
-            Button("Import Connections...") {
+            Button(String(localized: "Import Connections...")) {
                 NotificationCenter.default.post(name: .importConnections, object: nil)
             }
 
