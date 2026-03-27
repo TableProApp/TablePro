@@ -22,7 +22,7 @@ struct ConnectionExportOptionsSheet: View {
 
     private var canExport: Bool {
         if includeCredentials {
-            return passphrase.count >= 8 && passphrase == confirmPassphrase
+            return (passphrase as NSString).length >= 8 && passphrase == confirmPassphrase
         }
         return true
     }
@@ -86,28 +86,34 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     private func performExport() {
+        let shouldEncrypt = includeCredentials && isProAvailable
+        let capturedPassphrase = passphrase
+        let capturedConnections = connections
+
+        // Zero passphrase state before dismissing
+        passphrase = ""
+        confirmPassphrase = ""
         dismiss()
 
-        // Delay slightly to let sheet dismiss before showing NSSavePanel
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.tableproConnectionShare]
-            let defaultName = connections.count == 1
-                ? "\(connections[0].name).tablepro"
+            let defaultName = capturedConnections.count == 1
+                ? "\(capturedConnections[0].name).tablepro"
                 : "Connections.tablepro"
             panel.nameFieldStringValue = defaultName
             panel.canCreateDirectories = true
             guard panel.runModal() == .OK, let url = panel.url else { return }
 
             do {
-                if includeCredentials {
+                if shouldEncrypt {
                     try ConnectionExportService.exportConnectionsEncrypted(
-                        connections,
+                        capturedConnections,
                         to: url,
-                        passphrase: passphrase
+                        passphrase: capturedPassphrase
                     )
                 } else {
-                    try ConnectionExportService.exportConnections(connections, to: url)
+                    try ConnectionExportService.exportConnections(capturedConnections, to: url)
                 }
             } catch {
                 AlertHelper.showErrorSheet(

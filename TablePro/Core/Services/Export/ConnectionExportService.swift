@@ -350,8 +350,8 @@ enum ConnectionExportService {
         let decryptedData: Data
         do {
             decryptedData = try ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
-        } catch let error as ConnectionExportCryptoError {
-            throw ConnectionExportError.decryptionFailed(error.localizedDescription ?? "Unknown error")
+        } catch {
+            throw ConnectionExportError.decryptionFailed(error.localizedDescription)
         }
         return try decodeData(decryptedData)
     }
@@ -528,7 +528,7 @@ enum ConnectionExportService {
 
         for item in preview.items {
             let resolution = resolutions[item.id] ?? .skip
-            let envelopeIndex = itemIndexMap[item.id] ?? 0
+            guard let envelopeIndex = itemIndexMap[item.id] else { continue }
 
             switch resolution {
             case .skip:

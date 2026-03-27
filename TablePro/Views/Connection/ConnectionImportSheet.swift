@@ -20,6 +20,8 @@ struct ConnectionImportSheet: View {
     @State private var encryptedData: Data?
     @State private var passphrase = ""
     @State private var passphraseError: String?
+    @State private var isDecrypting = false
+    @State private var wasEncryptedImport = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -246,7 +248,7 @@ struct ConnectionImportSheet: View {
                 Button(String(localized: "Decrypt")) { decryptFile() }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(passphrase.isEmpty)
+                    .disabled(passphrase.isEmpty || isDecrypting)
             }
             .padding(12)
         }
@@ -311,8 +313,9 @@ struct ConnectionImportSheet: View {
     }
 
     private func decryptFile() {
-        guard let data = encryptedData else { return }
+        guard let data = encryptedData, !isDecrypting else { return }
         let currentPassphrase = passphrase
+        isDecrypting = true
 
         Task.detached(priority: .userInitiated) {
             do {
@@ -321,13 +324,16 @@ struct ConnectionImportSheet: View {
                 await MainActor.run {
                     passphraseError = nil
                     encryptedData = nil
+                    wasEncryptedImport = true
                     preview = result
                     selectReadyItems(result)
+                    isDecrypting = false
                 }
             } catch {
                 await MainActor.run {
                     passphraseError = error.localizedDescription
                     passphrase = ""
+                    isDecrypting = false
                 }
             }
         }
@@ -361,8 +367,8 @@ struct ConnectionImportSheet: View {
 
         let result = ConnectionExportService.performImport(preview, resolutions: resolutions)
 
-        // Restore credentials if this was an encrypted import
-        if let envelope = preview.envelope.credentials, !envelope.isEmpty {
+        // Only restore credentials from verified encrypted imports (not plaintext files)
+        if wasEncryptedImport, preview.envelope.credentials != nil {
             ConnectionExportService.restoreCredentials(
                 from: preview.envelope,
                 connectionIdMap: result.connectionIdMap
