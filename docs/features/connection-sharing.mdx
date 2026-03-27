@@ -5,46 +5,126 @@ description: Export and import database connections as .tablepro files
 
 # Connection Sharing
 
-Share connections with your team using `.tablepro` files. Passwords are not included.
+Export connections to a `.tablepro` file and share with your team. Passwords stay in your Keychain.
 
 ## Export
 
-{/* Screenshot: right-click context menu showing Export Connection... */}
+Right-click a connection > **Export Connection...**. Select multiple first to export together. Or use **File** > **Export Connections...** for all.
 
-- Right-click a connection > **Export Connection...**
-- Select multiple, then right-click > **Export N Connections...**
-- **File** menu > **Export Connections...** (exports all)
+Exported: host, port, username, type, SSH/SSL config, color, tag, group, safe mode. Not exported: passwords, key passphrases, TOTP secrets.
 
-The file includes host, port, username, type, SSH/SSL config, color, tag, group, and safe mode. Passwords are excluded.
+<Frame caption="Export connections">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-export-menu.png"
+    alt="Export connections"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-export-menu-dark.png"
+    alt="Export connections"
+  />
+</Frame>
 
 ## Import
 
+- **File** > **Import Connections...**
 - Right-click empty area > **Import Connections...**
-- **File** menu > **Import Connections...**
 - Double-click a `.tablepro` file
-- Drag a `.tablepro` file onto TablePro
-
-{/* Screenshot: import preview sheet with status badges */}
+- Drag onto TablePro
 
 A preview shows each connection before importing:
 
-- **Green checkmark** -- ready
-- **Yellow triangle** -- SSH key or cert path not found (imports anyway, fix later)
-- **"duplicate"** -- already exists
+| Badge | Meaning |
+|-------|---------|
+| Green checkmark | Ready |
+| Yellow triangle | SSH key or cert not found |
+| "duplicate" tag | Already exists |
 
-Duplicates are unchecked. Check to import, then choose **As Copy**, **Replace**, or **Skip**.
+Duplicates are unchecked. Check to import, then pick **As Copy**, **Replace**, or **Skip**.
+
+<Frame caption="Import preview">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-import-preview.png"
+    alt="Import preview"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-import-preview-dark.png"
+    alt="Import preview"
+  />
+</Frame>
 
 ## Share via Link
 
-Right-click a connection > **Copy as Import Link**. Paste the URL in Slack, a wiki, or a README.
+Right-click > **Copy as Import Link**. Paste in Slack, a wiki, or a README.
 
 ```
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
 ```
 
+## Encrypted Export <sup>Pro</sup>
+
+Include passwords in the export, protected by a passphrase (AES-256-GCM).
+
+1. Right-click > **Export...**
+2. Check **Include Credentials**
+3. Enter passphrase (8+ characters), confirm
+4. **Export...**
+
+When importing, TablePro prompts for the passphrase.
+
+<Frame caption="Encrypted export">
+  <img
+    className="block dark:hidden"
+    src="/images/connection-export-encrypted.png"
+    alt="Encrypted export"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/connection-export-encrypted-dark.png"
+    alt="Encrypted export"
+  />
+</Frame>
+
+## Linked Folders <sup>Pro</sup>
+
+Watch a shared directory for `.tablepro` files. Connections appear read-only in the sidebar. Each person enters their own password.
+
+**Settings** (`Cmd+,`) > **Sync** > **Linked Folders** > **Add Folder...**
+
+Works with Git repos, Dropbox, network drives.
+
+<Frame caption="Linked Folders settings">
+  <img
+    className="block dark:hidden"
+    src="/images/linked-folders-settings.png"
+    alt="Linked Folders"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/linked-folders-settings-dark.png"
+    alt="Linked Folders"
+  />
+</Frame>
+
+## Environment Variables <sup>Pro</sup>
+
+Use `$VAR` and `${VAR}` in `.tablepro` files. Resolved at connection time.
+
+```json
+{
+  "host": "${DB_HOST}",
+  "username": "$DB_USER"
+}
+```
+
+Works with `.env` files, 1Password CLI (`op run`), direnv.
+
 ## File Format
 
-JSON. Only `name`, `host`, and `type` are required.
+JSON. Required fields: `name`, `host`, `type`.
 
 ```json
 {
@@ -66,55 +146,11 @@ JSON. Only `name`, `host`, and `type` are required.
 
 Groups and tags match by name. Missing ones are created. Paths use `~/` for portability.
 
-## Passwords
-
-By default, passwords are not exported. Enter yours after importing. File paths use `~/` instead of full paths.
-
-### Encrypted Export (Pro)
-
-{/* Screenshot: export options sheet with Include Credentials checkbox */}
-
-Pro users can include credentials in the export file:
-
-1. Right-click > **Export...** (or use the File menu)
-2. Check **Include Credentials**
-3. Enter a passphrase (8+ characters) and confirm it
-4. Click **Export...**
-
-The file is encrypted with AES-256-GCM. When importing an encrypted file, you'll be prompted for the passphrase.
-
-Included credentials: database password, SSH password, key passphrase, TOTP secret, and plugin-specific secure fields.
-
-## Linked Folders <sup>Pro</sup>
-
-Point TablePro at a shared directory. It watches for `.tablepro` files and shows those connections in the sidebar.
-
-{/* Screenshot: Linked Folders section in Settings > Sync */}
-
-**Settings** (`Cmd+,`) > **Sync** > **Linked Folders** > **Add Folder...**
-
-- Linked connections are **read-only**
-- Each person enters their own password
-- Works with Git repos, Dropbox, network drives
-
-## Environment Variables <sup>Pro</sup>
-
-Use `$VAR` and `${VAR}` in `.tablepro` files:
-
-```json
-{
-  "host": "${DB_HOST}",
-  "username": "$DB_USER"
-}
-```
-
-Resolved at connection time. Works with `.env` files, 1Password CLI (`op run`), and direnv.
-
 ## Sharing vs iCloud Sync
 
 | | Sharing | iCloud Sync |
 |---|---|---|
 | **For** | Team | Your Macs |
 | **How** | Files, links | CloudKit |
-| **Passwords** | Optional (encrypted, Pro) | Optional sync |
-| **Requires** | Nothing (Pro for credentials) | Pro + iCloud |
+| **Passwords** | Per-user (encrypted with Pro) | Optional sync |
+| **Requires** | Nothing (Pro for extras) | Pro + iCloud |
