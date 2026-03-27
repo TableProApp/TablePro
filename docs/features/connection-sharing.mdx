@@ -1,0 +1,73 @@
+---
+title: Connection Sharing
+description: Export and import database connections as .tablepro files
+---
+
+# Connection Sharing
+
+Share connections with your team using `.tablepro` files. Passwords are not included.
+
+## Export
+
+Right-click a connection > **Export Connection...**. Select multiple first to export them together.
+
+The file includes host, port, username, type, SSH/SSL config, color, tag, group, and safe mode. Passwords are excluded.
+
+## Import
+
+- Right-click empty area > **Import Connections...**
+- Double-click a `.tablepro` file
+- Drag onto TablePro
+
+A preview shows each connection before importing:
+
+- **Green checkmark** -- ready
+- **Yellow triangle** -- SSH key or cert path not found (imports anyway, fix later)
+- **"duplicate"** -- already exists
+
+Duplicates are unchecked. Check to import, then choose **As Copy**, **Replace**, or **Skip**.
+
+## Share via Link
+
+Right-click a connection > **Copy as Import Link**. Paste the URL in Slack, a wiki, or a README.
+
+```
+tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
+```
+
+## File Format
+
+JSON. Only `name`, `host`, and `type` are required.
+
+```json
+{
+  "formatVersion": 1,
+  "connections": [
+    {
+      "name": "Production",
+      "host": "db.example.com",
+      "port": 3306,
+      "type": "MySQL",
+      "username": "deploy",
+      "tagName": "production"
+    }
+  ],
+  "groups": [{ "name": "Backend", "color": "Blue" }],
+  "tags": [{ "name": "production", "color": "Red" }]
+}
+```
+
+Groups and tags match by name. Missing ones are created. Paths use `~/` for portability.
+
+## Passwords
+
+Not exported. Enter yours after importing. File paths use `~/` instead of full paths.
+
+## Sharing vs iCloud Sync
+
+| | Sharing | iCloud Sync |
+|---|---|---|
+| **For** | Team | Your Macs |
+| **How** | Files, links | CloudKit |
+| **Passwords** | Enter your own | Optional sync |
+| **Requires** | Nothing | Pro + iCloud |

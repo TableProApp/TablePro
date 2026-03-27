@@ -44,8 +44,7 @@ struct WelcomeWindowView: View {
     @State private var pendingMoveToNewGroup: [DatabaseConnection] = []
     @State private var showActivationSheet = false
     @State private var pluginInstallConnection: DatabaseConnection?
-    @State private var showImportSheet = false
-    @State private var importFileURL: URL?
+    @State private var importFileURL: IdentifiableURL?
 
     @Environment(\.openWindow) private var openWindow
 
@@ -162,15 +161,17 @@ struct WelcomeWindowView: View {
         .pluginInstallPrompt(connection: $pluginInstallConnection) { connection in
             connectAfterInstall(connection)
         }
-        .sheet(isPresented: $showImportSheet) {
-            if let url = importFileURL {
-                ConnectionImportSheet(fileURL: url)
+        .sheet(item: $importFileURL) { item in
+            ConnectionImportSheet(fileURL: item.url) { count in
+                // Delay to let the sheet fully dismiss before showing alert
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showImportResultAlert(count: count)
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .connectionShareFileOpened)) { notification in
             guard let url = notification.object as? URL else { return }
-            importFileURL = url
-            showImportSheet = true
+            importFileURL = IdentifiableURL(url: url)
         }
     }
 
@@ -635,8 +636,6 @@ struct WelcomeWindowView: View {
 
             Divider()
 
-            moveToGroupMenu(for: selectedConnections)
-
             Button {
                 exportConnections(Array(selectedConnections))
             } label: {
@@ -645,6 +644,10 @@ struct WelcomeWindowView: View {
                     systemImage: "square.and.arrow.up"
                 )
             }
+
+            Divider()
+
+            moveToGroupMenu(for: selectedConnections)
 
             let validGroupIds = Set(groups.map(\.id))
             if selectedConnections.contains(where: { $0.groupId.map { validGroupIds.contains($0) } ?? false }) {
@@ -682,6 +685,8 @@ struct WelcomeWindowView: View {
                 Label(String(localized: "Duplicate"), systemImage: "doc.on.doc")
             }
 
+            Divider()
+
             Button {
                 let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
                 let sshPw: String?
@@ -705,16 +710,16 @@ struct WelcomeWindowView: View {
             }
 
             Button {
-                exportConnections([connection])
-            } label: {
-                Label(String(localized: "Export Connection..."), systemImage: "square.and.arrow.up")
-            }
-
-            Button {
                 let link = ConnectionExportService.buildImportDeeplink(for: connection)
                 ClipboardService.shared.writeText(link)
             } label: {
                 Label(String(localized: "Copy as Import Link"), systemImage: "link.badge.plus")
+            }
+
+            Button {
+                exportConnections([connection])
+            } label: {
+                Label(String(localized: "Export..."), systemImage: "square.and.arrow.up")
             }
 
             Divider()
@@ -820,8 +825,30 @@ struct WelcomeWindowView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        importFileURL = url
-        showImportSheet = true
+        importFileURL = IdentifiableURL(url: url)
+    }
+
+    private func showImportResultAlert(count: Int) {
+        let alert = NSAlert()
+        if count > 0 {
+            alert.alertStyle = .informational
+            alert.messageText = String(localized: "Import Complete")
+            alert.informativeText = count == 1
+                ? String(localized: "1 connection was imported.")
+                : String(localized: "\(count) connections were imported.")
+            alert.icon = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
+                .withSymbolConfiguration(.init(paletteColors: [.white, .systemGreen]))
+        } else {
+            alert.alertStyle = .informational
+            alert.messageText = String(localized: "No Connections Imported")
+            alert.informativeText = String(localized: "All selected connections were skipped.")
+        }
+        alert.addButton(withTitle: String(localized: "OK"))
+        if let window = NSApp.keyWindow {
+            alert.beginSheetModal(for: window)
+        } else {
+            alert.runModal()
+        }
     }
 
     // MARK: - Actions

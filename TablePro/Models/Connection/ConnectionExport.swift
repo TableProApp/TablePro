@@ -6,6 +6,13 @@
 import Foundation
 import UniformTypeIdentifiers
 
+// MARK: - Identifiable URL (for sheet binding)
+
+struct IdentifiableURL: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 // MARK: - UTType
 
 extension UTType {

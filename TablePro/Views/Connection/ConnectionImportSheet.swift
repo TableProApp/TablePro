@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
 
 struct ConnectionImportSheet: View {
     let fileURL: URL
+    var onImported: ((Int) -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var preview: ConnectionImportPreview?
     @State private var error: String?
@@ -19,53 +20,82 @@ struct ConnectionImportSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-
             if isLoading {
-                Spacer()
-                ProgressView()
-                    .controlSize(.large)
-                Spacer()
+                loadingView
             } else if let error {
-                Spacer()
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text(error)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                Spacer()
+                errorView(error)
             } else if let preview {
+                header(preview)
+                Divider()
                 previewList(preview)
                 Divider()
                 footer(preview)
             }
         }
-        .frame(width: 480, height: 420)
+        .frame(width: 500, height: 400)
         .onAppear { loadFile() }
+    }
+
+    // MARK: - Loading
+
+    private var loadingView: some View {
+        VStack {
+            Spacer()
+            ProgressView()
+                .controlSize(.large)
+            Spacer()
+        }
+        .frame(height: 200)
+    }
+
+    // MARK: - Error
+
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text(message)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+            HStack {
+                Spacer()
+                Button(String(localized: "OK")) { dismiss() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+        .padding(.horizontal)
     }
 
     // MARK: - Header
 
-    private var header: some View {
+    private func header(_ preview: ConnectionImportPreview) -> some View {
         HStack {
-            Image(systemName: "square.and.arrow.down")
-                .font(.title2)
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Import Connections")
-                    .font(.headline)
-                Text(fileURL.lastPathComponent)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Text("Import Connections")
+                .font(.system(size: 13, weight: .semibold))
+            Text("(\(fileURL.lastPathComponent))")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
             Spacer()
+            Toggle(String(localized: "Select All"), isOn: Binding(
+                get: { selectedIds.count == preview.items.count && !preview.items.isEmpty },
+                set: { newValue in
+                    if newValue {
+                        selectedIds = Set(preview.items.map(\.id))
+                    } else {
+                        selectedIds.removeAll()
+                    }
+                }
+            ))
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
         }
-        .padding()
+        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Preview List
@@ -82,7 +112,7 @@ struct ConnectionImportSheet: View {
     @ViewBuilder
     private func importItemRow(_ item: ImportItem) -> some View {
         let isSelected = selectedIds.contains(item.id)
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { isSelected },
                 set: { newValue in
@@ -97,67 +127,88 @@ struct ConnectionImportSheet: View {
             .labelsHidden()
 
             DatabaseType(rawValue: item.connection.type).iconImage
-                .frame(width: 20, height: 20)
+                .frame(width: 18, height: 18)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.connection.name)
-                    .fontWeight(.semibold)
-                Text("\(item.connection.host):\(String(item.connection.port))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(item.connection.name)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                    if case .duplicate = item.status {
+                        Text(String(localized: "duplicate"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color(nsColor: .quaternaryLabelColor))
+                            )
+                    }
+                }
+                HStack(spacing: 0) {
+                    Text("\(item.connection.host):\(String(item.connection.port))")
+                    warningText(for: item.status)
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             }
 
             Spacer()
 
-            statusBadge(for: item.status)
+            if case .duplicate = item.status, isSelected {
+                Picker("", selection: Binding(
+                    get: { duplicateResolutions[item.id] ?? .importAsCopy },
+                    set: { duplicateResolutions[item.id] = $0 }
+                )) {
+                    Text("As Copy").tag(ImportResolution.importAsCopy)
+                    if case .duplicate(let existing) = item.status {
+                        Text("Replace").tag(ImportResolution.replace(existingId: existing.id))
+                    }
+                    Text("Skip").tag(ImportResolution.skip)
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 110)
+                .labelsHidden()
+            } else {
+                statusIcon(for: item.status)
+            }
         }
         .padding(.vertical, 2)
+    }
 
-        if case .duplicate = item.status, isSelected {
-            duplicateResolutionPicker(for: item)
-                .padding(.leading, 36)
+    @ViewBuilder
+    private func statusIcon(for status: ImportItemStatus) -> some View {
+        switch status {
+        case .ready:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.green)
+        case .warnings:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(.yellow)
+        case .duplicate:
+            EmptyView()
         }
     }
 
     @ViewBuilder
-    private func statusBadge(for status: ImportItemStatus) -> some View {
-        switch status {
-        case .ready:
-            Image(systemName: "circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.green)
-        case .warnings:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.caption2)
-                .foregroundStyle(.yellow)
-        case .duplicate:
-            Image(systemName: "circle.fill")
-                .font(.caption2)
+    private func warningText(for status: ImportItemStatus) -> some View {
+        if case .warnings(let messages) = status, let first = messages.first {
+            Text(" — \(first)")
                 .foregroundStyle(.orange)
         }
-    }
-
-    private func duplicateResolutionPicker(for item: ImportItem) -> some View {
-        Picker(String(localized: "Action"), selection: Binding(
-            get: { duplicateResolutions[item.id] ?? .skip },
-            set: { duplicateResolutions[item.id] = $0 }
-        )) {
-            Text("Skip").tag(ImportResolution.skip)
-            if case .duplicate(let existing) = item.status {
-                Text("Replace Existing").tag(ImportResolution.replace(existingId: existing.id))
-            }
-            Text("Import as Copy").tag(ImportResolution.importAsCopy)
-        }
-        .pickerStyle(.segmented)
-        .controlSize(.small)
     }
 
     // MARK: - Footer
 
     private func footer(_ preview: ConnectionImportPreview) -> some View {
         HStack {
-            Text("\(selectedIds.count) of \(preview.items.count) connections selected")
-                .font(.caption)
+            Text("\(selectedIds.count) of \(preview.items.count) selected")
+                .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
             Spacer()
@@ -170,10 +221,11 @@ struct ConnectionImportSheet: View {
             Button(String(localized: "Import")) {
                 performImport(preview)
             }
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(selectedIds.isEmpty)
         }
-        .padding()
+        .padding(12)
     }
 
     // MARK: - Actions
@@ -184,12 +236,13 @@ struct ConnectionImportSheet: View {
             let result = ConnectionExportService.analyzeImport(envelope)
             preview = result
 
-            // Pre-select non-duplicate items
+            // Pre-select non-duplicate items only
             for item in result.items {
                 switch item.status {
                 case .ready, .warnings:
                     selectedIds.insert(item.id)
                 case .duplicate:
+                    // Duplicates unchecked by default — user opts in
                     break
                 }
             }
@@ -207,16 +260,15 @@ struct ConnectionImportSheet: View {
                 case .ready, .warnings:
                     resolutions[item.id] = .importNew
                 case .duplicate:
-                    resolutions[item.id] = duplicateResolutions[item.id] ?? .skip
+                    resolutions[item.id] = duplicateResolutions[item.id] ?? .importAsCopy
                 }
             } else {
                 resolutions[item.id] = .skip
             }
         }
 
-        ConnectionExportService.performImport(preview, resolutions: resolutions)
+        let count = ConnectionExportService.performImport(preview, resolutions: resolutions)
         dismiss()
+        onImported?(count)
     }
 }
-
-

@@ -210,7 +210,10 @@ extension AppDelegate {
 
     private func handleConnectionShareFile(_ url: URL) {
         openWelcomeWindow()
-        NotificationCenter.default.post(name: .connectionShareFileOpened, object: url)
+        // Delay to ensure WelcomeWindowView's .onReceive is registered after window appears
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .connectionShareFileOpened, object: url)
+        }
     }
 
     // MARK: - Plugin Install
