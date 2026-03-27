@@ -16,6 +16,8 @@ enum ConnectionExportError: LocalizedError {
     case invalidFormat
     case unsupportedVersion(Int)
     case decodingFailed(String)
+    case requiresPassphrase
+    case decryptionFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -31,6 +33,10 @@ enum ConnectionExportError: LocalizedError {
             return String(localized: "This file requires a newer version of TablePro (format version \(version))")
         case .decodingFailed(let detail):
             return String(localized: "Failed to parse connection file: \(detail)")
+        case .requiresPassphrase:
+            return String(localized: "This file is encrypted and requires a passphrase")
+        case .decryptionFailed(let detail):
+            return String(localized: "Decryption failed: \(detail)")
         }
     }
 }
@@ -217,7 +223,8 @@ enum ConnectionExportService {
             appVersion: appVersion,
             connections: exportableConnections,
             groups: exportableGroups,
-            tags: exportableTags
+            tags: exportableTags,
+            credentials: nil
         )
     }
 
@@ -246,6 +253,82 @@ enum ConnectionExportService {
         }
     }
 
+    // MARK: - Encrypted Export
+
+    static func buildEnvelopeWithCredentials(for connections: [DatabaseConnection]) -> ConnectionExportEnvelope {
+        let baseEnvelope = buildEnvelope(for: connections)
+
+        var credentialsMap: [String: ExportableCredentials] = [:]
+        for (index, connection) in connections.enumerated() {
+            let password = ConnectionStorage.shared.loadPassword(for: connection.id)
+            let sshPassword = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
+            let keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: connection.id)
+            let totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: connection.id)
+
+            // Collect plugin-specific secure fields
+            var pluginSecureFields: [String: String]?
+            if let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: connection.type.pluginTypeId) {
+                let secureFieldIds = snapshot.connection.additionalConnectionFields
+                    .filter(\.isSecure)
+                    .map(\.id)
+                if !secureFieldIds.isEmpty {
+                    var fields: [String: String] = [:]
+                    for fieldId in secureFieldIds {
+                        if let value = ConnectionStorage.shared.loadPluginSecureField(
+                            fieldId: fieldId,
+                            for: connection.id
+                        ) {
+                            fields[fieldId] = value
+                        }
+                    }
+                    if !fields.isEmpty {
+                        pluginSecureFields = fields
+                    }
+                }
+            }
+
+            let hasAnyCredential = password != nil || sshPassword != nil
+                || keyPassphrase != nil || totpSecret != nil || pluginSecureFields != nil
+
+            if hasAnyCredential {
+                credentialsMap[String(index)] = ExportableCredentials(
+                    password: password,
+                    sshPassword: sshPassword,
+                    keyPassphrase: keyPassphrase,
+                    totpSecret: totpSecret,
+                    pluginSecureFields: pluginSecureFields
+                )
+            }
+        }
+
+        return ConnectionExportEnvelope(
+            formatVersion: baseEnvelope.formatVersion,
+            exportedAt: baseEnvelope.exportedAt,
+            appVersion: baseEnvelope.appVersion,
+            connections: baseEnvelope.connections,
+            groups: baseEnvelope.groups,
+            tags: baseEnvelope.tags,
+            credentials: credentialsMap.isEmpty ? nil : credentialsMap
+        )
+    }
+
+    static func exportConnectionsEncrypted(
+        _ connections: [DatabaseConnection],
+        to url: URL,
+        passphrase: String
+    ) throws {
+        let envelope = buildEnvelopeWithCredentials(for: connections)
+        let jsonData = try encode(envelope)
+        let encryptedData = try ConnectionExportCrypto.encrypt(data: jsonData, passphrase: passphrase)
+
+        do {
+            try encryptedData.write(to: url, options: .atomic)
+            logger.info("Exported \(connections.count) encrypted connections to \(url.path)")
+        } catch {
+            throw ConnectionExportError.fileWriteFailed(url.path)
+        }
+    }
+
     // MARK: - Import
 
     static func decodeFile(at url: URL) throws -> ConnectionExportEnvelope {
@@ -255,7 +338,51 @@ enum ConnectionExportService {
         } catch {
             throw ConnectionExportError.fileReadFailed(url.path)
         }
+
+        if ConnectionExportCrypto.isEncrypted(data) {
+            throw ConnectionExportError.requiresPassphrase
+        }
+
         return try decodeData(data)
+    }
+
+    nonisolated static func decodeEncryptedData(_ data: Data, passphrase: String) throws -> ConnectionExportEnvelope {
+        let decryptedData: Data
+        do {
+            decryptedData = try ConnectionExportCrypto.decrypt(data: data, passphrase: passphrase)
+        } catch let error as ConnectionExportCryptoError {
+            throw ConnectionExportError.decryptionFailed(error.localizedDescription ?? "Unknown error")
+        }
+        return try decodeData(decryptedData)
+    }
+
+    static func restoreCredentials(from envelope: ConnectionExportEnvelope, connectionIdMap: [Int: UUID]) {
+        guard let credentials = envelope.credentials else { return }
+
+        for (indexString, creds) in credentials {
+            guard let index = Int(indexString),
+                  let connectionId = connectionIdMap[index] else { continue }
+
+            if let password = creds.password {
+                ConnectionStorage.shared.savePassword(password, for: connectionId)
+            }
+            if let sshPassword = creds.sshPassword {
+                ConnectionStorage.shared.saveSSHPassword(sshPassword, for: connectionId)
+            }
+            if let keyPassphrase = creds.keyPassphrase {
+                ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: connectionId)
+            }
+            if let totpSecret = creds.totpSecret {
+                ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: connectionId)
+            }
+            if let secureFields = creds.pluginSecureFields {
+                for (fieldId, value) in secureFields {
+                    ConnectionStorage.shared.savePluginSecureField(value, fieldId: fieldId, for: connectionId)
+                }
+            }
+        }
+
+        logger.info("Restored credentials for \(credentials.count) connections")
     }
 
     /// Decode an envelope from raw JSON data. Can be called from any thread.
@@ -343,11 +470,16 @@ enum ConnectionExportService {
         return ConnectionImportPreview(envelope: envelope, items: items)
     }
 
+    struct ImportResult {
+        let importedCount: Int
+        let connectionIdMap: [Int: UUID] // envelope index -> new connection UUID
+    }
+
     @discardableResult
     static func performImport(
         _ preview: ConnectionImportPreview,
         resolutions: [UUID: ImportResolution]
-    ) -> Int {
+    ) -> ImportResult {
         // Create missing groups
         let existingGroups = GroupStorage.shared.loadGroups()
         if let envelopeGroups = preview.envelope.groups {
@@ -387,9 +519,17 @@ enum ConnectionExportService {
         }
 
         var importedCount = 0
+        var connectionIdMap: [Int: UUID] = [:]
+
+        // Build a lookup from item.id to envelope index
+        let itemIndexMap: [UUID: Int] = Dictionary(
+            uniqueKeysWithValues: preview.items.enumerated().map { ($1.id, $0) }
+        )
 
         for item in preview.items {
             let resolution = resolutions[item.id] ?? .skip
+            let envelopeIndex = itemIndexMap[item.id] ?? 0
+
             switch resolution {
             case .skip:
                 continue
@@ -406,6 +546,7 @@ enum ConnectionExportService {
                     name: name
                 )
                 ConnectionStorage.shared.addConnection(connection, password: nil)
+                connectionIdMap[envelopeIndex] = connectionId
                 importedCount += 1
 
             case .replace(let existingId):
@@ -415,6 +556,7 @@ enum ConnectionExportService {
                     name: item.connection.name
                 )
                 ConnectionStorage.shared.updateConnection(connection, password: nil)
+                connectionIdMap[envelopeIndex] = existingId
                 importedCount += 1
             }
         }
@@ -424,7 +566,7 @@ enum ConnectionExportService {
             logger.info("Imported \(importedCount) connections")
         }
 
-        return importedCount
+        return ImportResult(importedCount: importedCount, connectionIdMap: connectionIdMap)
     }
 
     // MARK: - Deeplink Builder

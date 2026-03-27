@@ -17,6 +17,9 @@ struct ConnectionImportSheet: View {
     @State private var isLoading = true
     @State private var selectedIds: Set<UUID> = []
     @State private var duplicateResolutions: [UUID: ImportResolution] = [:]
+    @State private var encryptedData: Data?
+    @State private var passphrase = ""
+    @State private var passphraseError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +27,8 @@ struct ConnectionImportSheet: View {
                 loadingView
             } else if let error {
                 errorView(error)
+            } else if encryptedData != nil {
+                passphraseView
             } else if let preview {
                 header(preview)
                 Divider()
@@ -203,6 +208,51 @@ struct ConnectionImportSheet: View {
         }
     }
 
+    // MARK: - Passphrase
+
+    private var passphraseView: some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            Image(systemName: "lock.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+
+            Text("This file is encrypted")
+                .font(.system(size: 13, weight: .semibold))
+
+            Text("Enter the passphrase to decrypt and import connections.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            SecureField(String(localized: "Passphrase"), text: $passphrase)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 260)
+                .onSubmit { decryptFile() }
+
+            if let passphraseError {
+                Text(passphraseError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.red)
+            }
+
+            Spacer()
+
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(String(localized: "Decrypt")) { decryptFile() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(passphrase.isEmpty)
+            }
+            .padding(12)
+        }
+        .padding(.horizontal)
+    }
+
     // MARK: - Footer
 
     private func footer(_ preview: ConnectionImportPreview) -> some View {
@@ -235,18 +285,20 @@ struct ConnectionImportSheet: View {
         Task.detached(priority: .userInitiated) {
             do {
                 let data = try Data(contentsOf: url)
+
+                if ConnectionExportCrypto.isEncrypted(data) {
+                    await MainActor.run {
+                        encryptedData = data
+                        isLoading = false
+                    }
+                    return
+                }
+
                 let envelope = try ConnectionExportService.decodeData(data)
-                let result = ConnectionExportService.analyzeImport(envelope)
+                let result = await ConnectionExportService.analyzeImport(envelope)
                 await MainActor.run {
                     preview = result
-                    for item in result.items {
-                        switch item.status {
-                        case .ready, .warnings:
-                            selectedIds.insert(item.id)
-                        case .duplicate:
-                            break
-                        }
-                    }
+                    selectReadyItems(result)
                     isLoading = false
                 }
             } catch {
@@ -254,6 +306,40 @@ struct ConnectionImportSheet: View {
                     self.error = error.localizedDescription
                     isLoading = false
                 }
+            }
+        }
+    }
+
+    private func decryptFile() {
+        guard let data = encryptedData else { return }
+        let currentPassphrase = passphrase
+
+        Task.detached(priority: .userInitiated) {
+            do {
+                let envelope = try ConnectionExportService.decodeEncryptedData(data, passphrase: currentPassphrase)
+                let result = await ConnectionExportService.analyzeImport(envelope)
+                await MainActor.run {
+                    passphraseError = nil
+                    encryptedData = nil
+                    preview = result
+                    selectReadyItems(result)
+                }
+            } catch {
+                await MainActor.run {
+                    passphraseError = error.localizedDescription
+                    passphrase = ""
+                }
+            }
+        }
+    }
+
+    private func selectReadyItems(_ result: ConnectionImportPreview) {
+        for item in result.items {
+            switch item.status {
+            case .ready, .warnings:
+                selectedIds.insert(item.id)
+            case .duplicate:
+                break
             }
         }
     }
@@ -273,8 +359,17 @@ struct ConnectionImportSheet: View {
             }
         }
 
-        let count = ConnectionExportService.performImport(preview, resolutions: resolutions)
+        let result = ConnectionExportService.performImport(preview, resolutions: resolutions)
+
+        // Restore credentials if this was an encrypted import
+        if let envelope = preview.envelope.credentials, !envelope.isEmpty {
+            ConnectionExportService.restoreCredentials(
+                from: preview.envelope,
+                connectionIdMap: result.connectionIdMap
+            )
+        }
+
         dismiss()
-        onImported?(count)
+        onImported?(result.importedCount)
     }
 }

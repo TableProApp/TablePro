@@ -12,6 +12,7 @@ internal enum ProFeature: String, CaseIterable {
     case iCloudSync
     case safeMode
     case xlsxExport
+    case encryptedExport
 
     var displayName: String {
         switch self {
@@ -21,6 +22,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Safe Mode")
         case .xlsxExport:
             return String(localized: "XLSX Export")
+        case .encryptedExport:
+            return String(localized: "Encrypted Export")
         }
     }
 
@@ -32,6 +35,8 @@ internal enum ProFeature: String, CaseIterable {
             return "lock.shield"
         case .xlsxExport:
             return "tablecells"
+        case .encryptedExport:
+            return "lock.doc"
         }
     }
 
@@ -43,6 +48,8 @@ internal enum ProFeature: String, CaseIterable {
             return String(localized: "Require confirmation or Touch ID before executing queries.")
         case .xlsxExport:
             return String(localized: "Export query results and tables to Excel format.")
+        case .encryptedExport:
+            return String(localized: "Export connections with encrypted credentials.")
         }
     }
 }

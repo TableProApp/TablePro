@@ -45,6 +45,8 @@ struct WelcomeWindowView: View {
     @State private var showActivationSheet = false
     @State private var pluginInstallConnection: DatabaseConnection?
     @State private var importFileURL: IdentifiableURL?
+    @State private var showExportOptions = false
+    @State private var pendingExportConnections: [DatabaseConnection] = []
 
     @Environment(\.openWindow) private var openWindow
 
@@ -168,6 +170,9 @@ struct WelcomeWindowView: View {
                     showImportResultAlert(count: count)
                 }
             }
+        }
+        .sheet(isPresented: $showExportOptions) {
+            ConnectionExportOptionsSheet(connections: pendingExportConnections)
         }
         .onReceive(NotificationCenter.default.publisher(for: .connectionShareFileOpened)) { notification in
             guard let url = notification.object as? URL else { return }
@@ -829,24 +834,8 @@ struct WelcomeWindowView: View {
     // MARK: - Connection Sharing
 
     private func exportConnections(_ connectionsToExport: [DatabaseConnection]) {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.tableproConnectionShare]
-        let defaultName = connectionsToExport.count == 1
-            ? "\(connectionsToExport[0].name).tablepro"
-            : "Connections.tablepro"
-        panel.nameFieldStringValue = defaultName
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try ConnectionExportService.exportConnections(connectionsToExport, to: url)
-        } catch {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Export Failed"),
-                message: error.localizedDescription,
-                window: NSApp.keyWindow
-            )
-        }
+        pendingExportConnections = connectionsToExport
+        showExportOptions = true
     }
 
     private func importConnectionsFromFile() {

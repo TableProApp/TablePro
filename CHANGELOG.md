@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Encrypted connection export with credentials: Pro users can include passwords in exports, protected by AES-256-GCM encryption with a passphrase
 - Connection sharing: export/import connections as `.tablepro` files (#466)
 - Import preview with duplicate detection, warning badges, and per-item resolution
 - "Copy as Import Link" context menu action for sharing via `tablepro://` URLs

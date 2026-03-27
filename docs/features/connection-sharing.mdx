@@ -65,7 +65,20 @@ Groups and tags match by name. Missing ones are created. Paths use `~/` for port
 
 ## Passwords
 
-Not exported. Enter yours after importing. File paths use `~/` instead of full paths.
+By default, passwords are not exported. Enter yours after importing. File paths use `~/` instead of full paths.
+
+### Encrypted Export (Pro)
+
+Pro users can include credentials in the export file:
+
+1. Right-click > **Export...** (or use the File menu)
+2. Check **Include Credentials**
+3. Enter a passphrase (8+ characters) and confirm it
+4. Click **Export...**
+
+The file is encrypted with AES-256-GCM. When importing an encrypted file, you'll be prompted for the passphrase.
+
+Included credentials: database password, SSH password, key passphrase, TOTP secret, and plugin-specific secure fields.
 
 ## Sharing vs iCloud Sync
 
@@ -73,5 +86,5 @@ Not exported. Enter yours after importing. File paths use `~/` instead of full p
 |---|---|---|
 | **For** | Team | Your Macs |
 | **How** | Files, links | CloudKit |
-| **Passwords** | Enter your own | Optional sync |
-| **Requires** | Nothing | Pro + iCloud |
+| **Passwords** | Optional (encrypted, Pro) | Optional sync |
+| **Requires** | Nothing (Pro for credentials) | Pro + iCloud |

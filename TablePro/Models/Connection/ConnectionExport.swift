@@ -29,6 +29,7 @@ struct ConnectionExportEnvelope: Codable {
     let connections: [ExportableConnection]
     let groups: [ExportableGroup]?
     let tags: [ExportableTag]?
+    let credentials: [String: ExportableCredentials]? // keyed by connection index "0", "1", ...
 }
 
 // MARK: - Exportable Connection
@@ -97,6 +98,16 @@ struct ExportableGroup: Codable {
 struct ExportableTag: Codable {
     let name: String
     let color: String?
+}
+
+// MARK: - Credentials (encrypted export only)
+
+struct ExportableCredentials: Codable {
+    let password: String?
+    let sshPassword: String?
+    let keyPassphrase: String?
+    let totpSecret: String?
+    let pluginSecureFields: [String: String]?
 }
 
 // MARK: - Path Portability
