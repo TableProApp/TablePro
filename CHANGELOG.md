@@ -9,9 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Confirmation dialog before opening queries from external deep links
-- Confirmation dialog before running pre-connect shell scripts
-- Confirmation dialog before importing connections from deep links
+- Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 
 ## [0.25.0] - 2026-03-27
 
