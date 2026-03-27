@@ -173,6 +173,13 @@ struct WelcomeWindowView: View {
             guard let url = notification.object as? URL else { return }
             importFileURL = IdentifiableURL(url: url)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .exportConnections)) { _ in
+            guard !connections.isEmpty else { return }
+            exportConnections(connections)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .importConnections)) { _ in
+            importConnectionsFromFile()
+        }
     }
 
     private var welcomeContent: some View {
@@ -501,6 +508,26 @@ struct WelcomeWindowView: View {
             .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
             .listRowSeparator(.hidden)
             .contextMenu { contextMenuContent(for: connection) }
+            .onDrag {
+                let provider = NSItemProvider()
+                provider.registerFileRepresentation(
+                    forTypeIdentifier: UTType.tableproConnectionShare.identifier,
+                    visibility: .all
+                ) { completion in
+                    do {
+                        let envelope = ConnectionExportService.buildEnvelope(for: [connection])
+                        let data = try ConnectionExportService.encode(envelope)
+                        let tempURL = FileManager.default.temporaryDirectory
+                            .appendingPathComponent("\(connection.name).tablepro")
+                        try data.write(to: tempURL, options: .atomic)
+                        completion(tempURL, true, nil)
+                    } catch {
+                        completion(nil, false, error)
+                    }
+                    return nil
+                }
+                return provider
+            }
     }
 
     private func groupHeader(for group: ConnectionGroup) -> some View {

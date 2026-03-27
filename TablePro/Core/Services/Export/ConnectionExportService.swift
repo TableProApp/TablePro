@@ -217,9 +217,7 @@ enum ConnectionExportService {
         )
     }
 
-    static func exportConnections(_ connections: [DatabaseConnection], to url: URL) throws {
-        let envelope = buildEnvelope(for: connections)
-
+    static func encode(_ envelope: ConnectionExportEnvelope) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -227,6 +225,12 @@ enum ConnectionExportService {
         guard let data = try? encoder.encode(envelope) else {
             throw ConnectionExportError.encodingFailed
         }
+        return data
+    }
+
+    static func exportConnections(_ connections: [DatabaseConnection], to url: URL) throws {
+        let envelope = buildEnvelope(for: connections)
+        let data = try encode(envelope)
 
         do {
             try data.write(to: url, options: .atomic)
