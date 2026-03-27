@@ -79,6 +79,30 @@ The file is encrypted with AES-256-GCM. When importing an encrypted file, you'll
 
 Included credentials: database password, SSH password, key passphrase, TOTP secret, and plugin-specific secure fields.
 
+## Linked Folders <sup>Pro</sup>
+
+Point TablePro at a shared directory. It watches for `.tablepro` files and shows those connections in the sidebar.
+
+**Settings** (`Cmd+,`) > **Sync** > **Linked Folders** > **Add Folder...**
+
+- Linked connections are **read-only**
+- Each person enters their own password
+- Subfolders are scanned recursively
+- Works with Git repos, Dropbox, network drives
+
+## Environment Variables <sup>Pro</sup>
+
+Use `$VAR` and `${VAR}` in `.tablepro` files:
+
+```json
+{
+  "host": "${DB_HOST}",
+  "username": "$DB_USER"
+}
+```
+
+Resolved at connection time. Works with `.env` files, 1Password CLI (`op run`), and direnv.
+
 ## Sharing vs iCloud Sync
 
 | | Sharing | iCloud Sync |

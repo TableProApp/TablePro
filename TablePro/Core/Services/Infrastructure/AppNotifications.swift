@@ -22,6 +22,7 @@ extension Notification.Name {
     static let connectionShareFileOpened = Notification.Name("connectionShareFileOpened")
     static let exportConnections = Notification.Name("exportConnections")
     static let importConnections = Notification.Name("importConnections")
+    static let linkedFoldersDidUpdate = Notification.Name("linkedFoldersDidUpdate")
 
     // MARK: - License
 

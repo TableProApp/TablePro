@@ -89,6 +89,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         AnalyticsService.shared.startPeriodicHeartbeat()
 
         SyncCoordinator.shared.start()
+        LinkedFolderWatcher.shared.start()
 
         Task.detached(priority: .background) {
             _ = QueryHistoryStorage.shared
@@ -131,6 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LinkedFolderWatcher.shared.stop()
         UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }

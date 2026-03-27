@@ -46,6 +46,7 @@ struct WelcomeWindowView: View {
     @State private var pluginInstallConnection: DatabaseConnection?
     @State private var importFileURL: IdentifiableURL?
     @State private var pendingExportConnections: IdentifiableConnections?
+    @State private var linkedConnections: [LinkedConnection] = []
 
     @Environment(\.openWindow) private var openWindow
 
@@ -183,6 +184,12 @@ struct WelcomeWindowView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .importConnections)) { _ in
             importConnectionsFromFile()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .linkedFoldersDidUpdate)) { _ in
+            linkedConnections = LinkedFolderWatcher.shared.linkedConnections
+        }
+        .task {
+            linkedConnections = LinkedFolderWatcher.shared.linkedConnections
         }
     }
 
@@ -452,6 +459,22 @@ struct WelcomeWindowView: View {
                     guard searchText.isEmpty else { return }
                     moveGroups(from: from, to: to)
                 }
+
+                if !linkedConnections.isEmpty {
+                    Section {
+                        ForEach(linkedConnections) { linked in
+                            linkedConnectionRow(for: linked)
+                        }
+                    } header: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder.fill")
+                                .font(.caption2)
+                            Text(String(localized: "Linked"))
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
             }
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
@@ -512,6 +535,50 @@ struct WelcomeWindowView: View {
             .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
             .listRowSeparator(.hidden)
             .contextMenu { contextMenuContent(for: connection) }
+    }
+
+    private func linkedConnectionRow(for linked: LinkedConnection) -> some View {
+        HStack(spacing: 12) {
+            ZStack(alignment: .bottomTrailing) {
+                DatabaseType(rawValue: linked.connection.type).iconImage
+                    .frame(width: 28, height: 28)
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+                    .offset(x: 2, y: 2)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(linked.connection.name)
+                    .lineLimit(1)
+                Text("\(linked.connection.host):\(String(linked.connection.port))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
+        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .listRowSeparator(.hidden)
+        .contextMenu {
+            Button {
+                connectToLinkedConnection(linked)
+            } label: {
+                Label(String(localized: "Connect"), systemImage: "play.fill")
+            }
+        }
+    }
+
+    private func connectToLinkedConnection(_ linked: LinkedConnection) {
+        let connection = DatabaseConnection(
+            id: linked.id,
+            name: linked.connection.name,
+            host: linked.connection.host,
+            port: linked.connection.port,
+            database: linked.connection.database,
+            username: linked.connection.username,
+            type: DatabaseType(rawValue: linked.connection.type)
+        )
+        connectToDatabase(connection)
     }
 
     private func groupHeader(for group: ConnectionGroup) -> some View {

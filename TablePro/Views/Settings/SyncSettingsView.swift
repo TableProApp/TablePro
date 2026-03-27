@@ -37,6 +37,8 @@ struct SyncSettingsView: View {
 
                 syncCategoriesSection
             }
+
+            LinkedFoldersSection()
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
