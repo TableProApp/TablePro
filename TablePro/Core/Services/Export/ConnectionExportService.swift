@@ -255,7 +255,11 @@ enum ConnectionExportService {
         } catch {
             throw ConnectionExportError.fileReadFailed(url.path)
         }
+        return try decodeData(data)
+    }
 
+    /// Decode an envelope from raw JSON data. Can be called from any thread.
+    nonisolated static func decodeData(_ data: Data) throws -> ConnectionExportEnvelope {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 

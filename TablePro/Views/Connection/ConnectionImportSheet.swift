@@ -75,7 +75,7 @@ struct ConnectionImportSheet: View {
 
     private func header(_ preview: ConnectionImportPreview) -> some View {
         HStack {
-            Text("Import Connections")
+            Text(String(localized: "Import Connections"))
                 .font(.system(size: 13, weight: .semibold))
             Text("(\(fileURL.lastPathComponent))")
                 .font(.system(size: 13))
@@ -162,11 +162,11 @@ struct ConnectionImportSheet: View {
                     get: { duplicateResolutions[item.id] ?? .importAsCopy },
                     set: { duplicateResolutions[item.id] = $0 }
                 )) {
-                    Text("As Copy").tag(ImportResolution.importAsCopy)
+                    Text(String(localized: "As Copy")).tag(ImportResolution.importAsCopy)
                     if case .duplicate(let existing) = item.status {
-                        Text("Replace").tag(ImportResolution.replace(existingId: existing.id))
+                        Text(String(localized: "Replace")).tag(ImportResolution.replace(existingId: existing.id))
                     }
-                    Text("Skip").tag(ImportResolution.skip)
+                    Text(String(localized: "Skip")).tag(ImportResolution.skip)
                 }
                 .pickerStyle(.menu)
                 .controlSize(.small)
@@ -231,25 +231,31 @@ struct ConnectionImportSheet: View {
     // MARK: - Actions
 
     private func loadFile() {
-        do {
-            let envelope = try ConnectionExportService.decodeFile(at: fileURL)
-            let result = ConnectionExportService.analyzeImport(envelope)
-            preview = result
-
-            // Pre-select non-duplicate items only
-            for item in result.items {
-                switch item.status {
-                case .ready, .warnings:
-                    selectedIds.insert(item.id)
-                case .duplicate:
-                    // Duplicates unchecked by default — user opts in
-                    break
+        let url = fileURL
+        Task.detached(priority: .userInitiated) {
+            do {
+                let data = try Data(contentsOf: url)
+                let envelope = try ConnectionExportService.decodeData(data)
+                let result = ConnectionExportService.analyzeImport(envelope)
+                await MainActor.run {
+                    preview = result
+                    for item in result.items {
+                        switch item.status {
+                        case .ready, .warnings:
+                            selectedIds.insert(item.id)
+                        case .duplicate:
+                            break
+                        }
+                    }
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    isLoading = false
                 }
             }
-        } catch {
-            self.error = error.localizedDescription
         }
-        isLoading = false
     }
 
     private func performImport(_ preview: ConnectionImportPreview) {
