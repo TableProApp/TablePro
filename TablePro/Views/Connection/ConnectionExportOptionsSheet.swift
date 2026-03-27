@@ -28,8 +28,8 @@ struct ConnectionExportOptionsSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Text("Export \(connections.count) Connection\(connections.count == 1 ? "" : "s")")
+        VStack(alignment: .leading, spacing: 16) {
+            Text(String(localized: "Export Options"))
                 .font(.system(size: 13, weight: .semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
