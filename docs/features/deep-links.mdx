@@ -111,7 +111,7 @@ open "tablepro://connect/Production/database/analytics/table/events"
 tablepro://connect/{name}/query?sql={encoded_sql}
 ```
 
-Connects and opens a new query tab with the SQL pre-filled. The SQL must be percent-encoded.
+Connects and opens a new query tab with the SQL pre-filled. The SQL must be percent-encoded. A confirmation dialog shows the SQL before opening, so you can verify the query is safe.
 
 ```bash
 open "tablepro://connect/Production/query?sql=SELECT%20*%20FROM%20users%20LIMIT%2010"
@@ -123,7 +123,7 @@ open "tablepro://connect/Production/query?sql=SELECT%20*%20FROM%20users%20LIMIT%
 tablepro://import?name={n}&host={h}&port={p}&type={t}&username={u}&database={db}
 ```
 
-Creates a new saved connection and opens the connection form for review. You can add a password before connecting.
+Creates a new saved connection and opens the connection form for review. A confirmation dialog shows the connection details before adding, so you can reject unexpected imports. You can add a password before connecting.
 
 ```bash
 open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgresql&username=admin&database=mydb"
