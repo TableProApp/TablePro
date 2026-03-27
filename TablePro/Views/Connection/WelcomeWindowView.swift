@@ -460,7 +460,7 @@ struct WelcomeWindowView: View {
                     moveGroups(from: from, to: to)
                 }
 
-                if !linkedConnections.isEmpty {
+                if !linkedConnections.isEmpty, LicenseManager.shared.isFeatureAvailable(.linkedFolders) {
                     Section {
                         ForEach(linkedConnections) { linked in
                             linkedConnectionRow(for: linked)
@@ -558,6 +558,10 @@ struct WelcomeWindowView: View {
         }
         .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
         .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture(count: 2).onEnded {
+            connectToLinkedConnection(linked)
+        })
         .listRowSeparator(.hidden)
         .contextMenu {
             Button {

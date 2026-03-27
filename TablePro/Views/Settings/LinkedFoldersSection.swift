@@ -13,7 +13,7 @@ struct LinkedFoldersSection: View {
     @State private var folders: [LinkedFolder] = LinkedFolderStorage.shared.loadFolders()
 
     private var isLicensed: Bool {
-        LicenseManager.shared.status.isValid
+        LicenseManager.shared.isFeatureAvailable(.linkedFolders)
     }
 
     var body: some View {
@@ -101,17 +101,17 @@ struct LinkedFoldersSection: View {
         panel.allowsMultipleSelection = false
         panel.message = String(localized: "Choose a folder to watch for .tablepro connection files")
 
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let path = PathPortability.contractHome(url.path)
 
-        let path = PathPortability.contractHome(url.path)
+            guard !folders.contains(where: { $0.path == path }) else { return }
 
-        // Avoid duplicate paths
-        guard !folders.contains(where: { $0.path == path }) else { return }
-
-        let folder = LinkedFolder(path: path)
-        LinkedFolderStorage.shared.addFolder(folder)
-        folders = LinkedFolderStorage.shared.loadFolders()
-        LinkedFolderWatcher.shared.reload()
+            let folder = LinkedFolder(path: path)
+            LinkedFolderStorage.shared.addFolder(folder)
+            folders = LinkedFolderStorage.shared.loadFolders()
+            LinkedFolderWatcher.shared.reload()
+        }
     }
 
     private func removeFolder(_ folder: LinkedFolder) {

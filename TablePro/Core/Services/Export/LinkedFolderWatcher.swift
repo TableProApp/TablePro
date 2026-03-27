@@ -6,6 +6,7 @@
 //  Rescans on filesystem changes with 1s debounce.
 //
 
+import CryptoKit
 import Foundation
 import os
 
@@ -24,14 +25,14 @@ final class LinkedFolderWatcher {
 
     private(set) var linkedConnections: [LinkedConnection] = []
     private var watchSources: [UUID: DispatchSourceFileSystemObject] = [:]
-    private var fileDescriptors: [UUID: Int32] = [:]
     private var debounceTask: Task<Void, Never>?
 
     private init() {}
 
     func start() {
+        guard LicenseManager.shared.isFeatureAvailable(.linkedFolders) else { return }
         let folders = LinkedFolderStorage.shared.loadFolders()
-        scanAllFolders(folders)
+        scheduleScan(folders)
         setupWatchers(for: folders)
     }
 
@@ -46,21 +47,50 @@ final class LinkedFolderWatcher {
         start()
     }
 
-    // MARK: - Scanning
+    // MARK: - Scanning (off main thread)
 
-    private func scanAllFolders(_ folders: [LinkedFolder]) {
+    private func scheduleScan(_ folders: [LinkedFolder]) {
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor [weak self] in
+            let results = await Self.scanFoldersAsync(folders)
+            self?.linkedConnections = results
+            NotificationCenter.default.post(name: .linkedFoldersDidUpdate, object: nil)
+        }
+    }
+
+    private func scheduleDebouncedRescan() {
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            let folders = LinkedFolderStorage.shared.loadFolders()
+            let results = await Self.scanFoldersAsync(folders)
+            self?.linkedConnections = results
+            NotificationCenter.default.post(name: .linkedFoldersDidUpdate, object: nil)
+        }
+    }
+
+    /// Scans folders on a background thread to avoid blocking the main actor.
+    private nonisolated static func scanFoldersAsync(_ folders: [LinkedFolder]) async -> [LinkedConnection] {
+        await Task.detached(priority: .utility) {
+            scanFolders(folders)
+        }.value
+    }
+
+    /// Pure scanning logic. Runs on any thread.
+    private nonisolated static func scanFolders(_ folders: [LinkedFolder]) -> [LinkedConnection] {
         var results: [LinkedConnection] = []
         let fm = FileManager.default
 
         for folder in folders where folder.isEnabled {
             let expandedPath = folder.expandedPath
             guard fm.fileExists(atPath: expandedPath) else {
-                Self.logger.warning("Linked folder not found: \(expandedPath, privacy: .public)")
+                logger.warning("Linked folder not found: \(expandedPath, privacy: .public)")
                 continue
             }
 
             guard let contents = try? fm.contentsOfDirectory(atPath: expandedPath) else {
-                Self.logger.warning("Cannot read linked folder: \(expandedPath, privacy: .public)")
+                logger.warning("Cannot read linked folder: \(expandedPath, privacy: .public)")
                 continue
             }
 
@@ -68,13 +98,12 @@ final class LinkedFolderWatcher {
                 let fileURL = URL(fileURLWithPath: expandedPath).appendingPathComponent(filename)
                 guard let data = try? Data(contentsOf: fileURL) else { continue }
 
-                // Skip encrypted files
                 if ConnectionExportCrypto.isEncrypted(data) { continue }
 
                 guard let envelope = try? ConnectionExportService.decodeData(data) else { continue }
 
                 for exportable in envelope.connections {
-                    let stableId = Self.stableId(folderId: folder.id, connection: exportable)
+                    let stableId = stableId(folderId: folder.id, connection: exportable)
                     results.append(LinkedConnection(
                         id: stableId,
                         connection: exportable,
@@ -85,8 +114,7 @@ final class LinkedFolderWatcher {
             }
         }
 
-        linkedConnections = results
-        NotificationCenter.default.post(name: .linkedFoldersDidUpdate, object: nil)
+        return results
     }
 
     // MARK: - Watchers
@@ -101,8 +129,6 @@ final class LinkedFolderWatcher {
                 Self.logger.warning("Cannot open linked folder for watching: \(expandedPath, privacy: .public)")
                 continue
             }
-
-            fileDescriptors[folder.id] = fd
 
             let source = DispatchSource.makeFileSystemObjectSource(
                 fileDescriptor: fd,
@@ -126,46 +152,21 @@ final class LinkedFolderWatcher {
     }
 
     private func cancelAllWatchers() {
-        for (folderId, source) in watchSources {
+        for (_, source) in watchSources {
             source.cancel()
-            fileDescriptors.removeValue(forKey: folderId)
         }
         watchSources.removeAll()
     }
 
-    private func scheduleDebouncedRescan() {
-        debounceTask?.cancel()
-        debounceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            let folders = LinkedFolderStorage.shared.loadFolders()
-            self?.scanAllFolders(folders)
-        }
-    }
+    // MARK: - Stable IDs (SHA-256 based, deterministic across launches)
 
-    // MARK: - Stable IDs
-
-    /// Generates a deterministic UUID from folder ID + connection identity fields.
-    /// This keeps SwiftUI list identity stable across rescans.
     private nonisolated static func stableId(folderId: UUID, connection: ExportableConnection) -> UUID {
-        var hasher = Hasher()
-        hasher.combine(folderId)
-        hasher.combine(connection.name)
-        hasher.combine(connection.host)
-        hasher.combine(connection.port)
-        hasher.combine(connection.type)
-        let hash = hasher.finalize()
-
-        // Convert hash to a deterministic UUID by using the hash bits
-        var bytes = withUnsafeBytes(of: hash) { Array($0) }
-        // Pad to 16 bytes
-        while bytes.count < 16 { bytes.append(0) }
-        // Incorporate folderId bytes for additional uniqueness
-        let folderBytes = withUnsafeBytes(of: folderId.uuid) { Array($0) }
-        for i in 0..<min(bytes.count, folderBytes.count) {
-            bytes[i] ^= folderBytes[i]
-        }
-
+        let key = "\(folderId.uuidString)|\(connection.name)|\(connection.host)|\(connection.port)|\(connection.type)"
+        let digest = SHA256.hash(data: Data(key.utf8))
+        var bytes = Array(digest.prefix(16))
+        // Set UUID version 5 and variant bits
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
         return UUID(uuid: (
             bytes[0], bytes[1], bytes[2], bytes[3],
             bytes[4], bytes[5], bytes[6], bytes[7],
