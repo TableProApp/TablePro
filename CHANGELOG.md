@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Import preview with duplicate detection, warning badges, and per-item resolution
 - "Copy as Import Link" context menu action for sharing via `tablepro://` URLs
 - `.tablepro` file type registration (double-click to import, drag-and-drop)
+- Environment variable references (`$VAR` / `${VAR}`) in connection fields (host, database, username, SSH, SSL paths, startup commands, additional fields) — Pro feature
 
 ## [0.24.2] - 2026-03-26
 

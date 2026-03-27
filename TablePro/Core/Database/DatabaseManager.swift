@@ -92,6 +92,14 @@ final class DatabaseManager {
             return
         }
 
+        // Resolve environment variable references in connection fields (Pro feature)
+        let resolvedConnection: DatabaseConnection
+        if LicenseManager.shared.isFeatureAvailable(.envVarReferences) {
+            resolvedConnection = EnvVarResolver.resolveConnection(connection)
+        } else {
+            resolvedConnection = connection
+        }
+
         // Create new session (or reuse a prepared one)
         if activeSessions[connection.id] == nil {
             var session = ConnectionSession(connection: connection)
@@ -103,7 +111,7 @@ final class DatabaseManager {
         // Create SSH tunnel if needed and build effective connection
         let effectiveConnection: DatabaseConnection
         do {
-            effectiveConnection = try await buildEffectiveConnection(for: connection)
+            effectiveConnection = try await buildEffectiveConnection(for: resolvedConnection)
         } catch {
             // Remove failed session
             removeSessionEntry(for: connection.id)
@@ -112,7 +120,7 @@ final class DatabaseManager {
         }
 
         // Run pre-connect hook if configured (only on explicit connect, not auto-reconnect)
-        if let script = connection.preConnectScript,
+        if let script = resolvedConnection.preConnectScript,
            !script.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
             do {
@@ -155,7 +163,7 @@ final class DatabaseManager {
 
             // Run startup commands before schema init
             await executeStartupCommands(
-                connection.startupCommands, on: driver, connectionName: connection.name
+                resolvedConnection.startupCommands, on: driver, connectionName: connection.name
             )
 
             // Initialize schema for drivers that support schema switching
@@ -172,7 +180,7 @@ final class DatabaseManager {
                 switch action {
                 case .selectDatabaseFromLastSession:
                     // Restore saved database (e.g. MSSQL) only when no explicit database is configured
-                    if connection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                        let adapter = driver as? PluginDriverAdapter,
                        let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
                         try? await adapter.switchDatabase(to: savedDb)
@@ -183,11 +191,11 @@ final class DatabaseManager {
                     // Check additionalFields first, then legacy dedicated properties, then
                     // fall back to parsing the main database field.
                     let initialDb: Int
-                    if let fieldValue = connection.additionalFields[fieldId], let parsed = Int(fieldValue) {
+                    if let fieldValue = resolvedConnection.additionalFields[fieldId], let parsed = Int(fieldValue) {
                         initialDb = parsed
-                    } else if fieldId == "redisDatabase", let legacy = connection.redisDatabase {
+                    } else if fieldId == "redisDatabase", let legacy = resolvedConnection.redisDatabase {
                         initialDb = legacy
-                    } else if let fallback = Int(connection.database) {
+                    } else if let fallback = Int(resolvedConnection.database) {
                         initialDb = fallback
                     } else {
                         initialDb = 0
