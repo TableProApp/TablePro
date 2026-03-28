@@ -101,6 +101,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String?
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String?
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]?
+    func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
 
     // Table operations (optional — return nil to use app-level fallback)
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]?
@@ -230,6 +231,7 @@ public extension PluginDatabaseDriver {
     func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? { nil }
     func generateDropForeignKeySQL(table: String, constraintName: String) -> String? { nil }
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
+    func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? { nil }
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }

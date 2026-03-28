@@ -199,6 +199,16 @@ Before applying, TablePro shows the generated ALTER TABLE SQL for review.
   />
 </Frame>
 
+### Reordering Columns
+
+Drag a column row up or down in the Columns tab to change its position. The reorder executes immediately as an `ALTER TABLE ... MODIFY COLUMN ... AFTER` statement.
+
+<Note>
+Column reordering is only available for MySQL and MariaDB. Other databases do not support changing column order without recreating the table.
+</Note>
+
+Drag is disabled when you have unsaved structure changes. Apply or discard pending changes first.
+
 ### Adding Columns via SQL
 
 ```sql

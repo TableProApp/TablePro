@@ -65,6 +65,7 @@ struct DataGridView: NSViewRepresentable {
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
     var onHideColumn: ((String) -> Void)?
+    var onMoveRow: ((Int, Int) -> Void)?
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
@@ -164,8 +165,15 @@ struct DataGridView: NSViewRepresentable {
             headerView.menu = headerMenu
         }
 
+        // Register for row drag-and-drop if onMoveRow is provided
+        if onMoveRow != nil {
+            tableView.registerForDraggedTypes([NSPasteboard.PasteboardType("com.TablePro.rowDrag")])
+            tableView.draggingDestinationFeedbackStyle = .gap
+        }
+
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        context.coordinator.onMoveRow = onMoveRow
         if let connectionId {
             context.coordinator.observeTeardown(connectionId: connectionId)
         }
@@ -190,6 +198,16 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
+        // Sync row drag registration when onMoveRow availability changes
+        let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
+        let hasDragRegistered = tableView.registeredDraggedTypes.contains(rowDragType)
+        if onMoveRow != nil && !hasDragRegistered {
+            tableView.registerForDraggedTypes([rowDragType])
+            tableView.draggingDestinationFeedbackStyle = .gap
+        } else if onMoveRow == nil && hasDragRegistered {
+            tableView.unregisterDraggedTypes()
+        }
+
         // Identity-based early-return BEFORE reading settings — avoids
         // AppSettingsManager access on every SwiftUI re-evaluation.
         let currentIdentity = DataGridIdentity(
@@ -209,6 +227,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.onUndoInsert = onUndoInsert
             coordinator.onFilterColumn = onFilterColumn
             coordinator.onHideColumn = onHideColumn
+            coordinator.onMoveRow = onMoveRow
             coordinator.onRefresh = onRefresh
             coordinator.onDeleteRows = onDeleteRows
             coordinator.getVisualState = getVisualState
@@ -267,6 +286,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.onUndoInsert = onUndoInsert
         coordinator.onFilterColumn = onFilterColumn
         coordinator.onHideColumn = onHideColumn
+        coordinator.onMoveRow = onMoveRow
         coordinator.getVisualState = getVisualState
         coordinator.onNavigateFK = onNavigateFK
         coordinator.dropdownColumns = dropdownColumns
@@ -677,6 +697,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
     var onHideColumn: ((String) -> Void)?
+    var onMoveRow: ((Int, Int) -> Void)?
     var onNavigateFK: ((String, ForeignKeyInfo) -> Void)?
     var getVisualState: ((Int) -> RowVisualState)?
     var dropdownColumns: Set<Int>?

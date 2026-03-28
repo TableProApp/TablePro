@@ -32,6 +32,7 @@ struct PluginMetadataSnapshot: Sendable {
     let editorLanguage: EditorLanguage
     let connectionMode: ConnectionMode
     let supportsDatabaseSwitching: Bool
+    let supportsColumnReorder: Bool
 
     let capabilities: CapabilityFlags
     let schema: SchemaInfo
@@ -130,6 +131,7 @@ struct PluginMetadataSnapshot: Sendable {
             brandColorHex: brandColorHex, queryLanguageName: queryLanguageName,
             editorLanguage: editorLanguage, connectionMode: connectionMode,
             supportsDatabaseSwitching: supportsDatabaseSwitching,
+            supportsColumnReorder: supportsColumnReorder,
             capabilities: capabilities, schema: schema, editor: editor, connection: connection
         )
     }
@@ -340,6 +342,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 brandColorHex: "#FF9500",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: true,
                 capabilities: .defaults,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -369,6 +372,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 brandColorHex: "#00B4D8",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: true,
                 capabilities: .defaults,
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -398,6 +402,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 brandColorHex: "#336791",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -440,6 +445,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 brandColorHex: "#205B8E",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
+                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: true,
@@ -482,6 +488,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 brandColorHex: "#003B57",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .fileBased, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: false,
                     supportsImport: true,
@@ -635,6 +642,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             editorLanguage: driverType.editorLanguage,
             connectionMode: driverType.connectionMode,
             supportsDatabaseSwitching: driverType.supportsDatabaseSwitching,
+            supportsColumnReorder: driverType.supportsColumnReorder,
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
                 supportsImport: driverType.supportsImport,

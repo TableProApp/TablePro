@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Drag to reorder columns in the Structure tab (MySQL/MariaDB)
 - Nested hierarchical groups for connection list (up to 3 levels deep)
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 - JSON fields in Row Details sidebar now display in a scrollable monospaced text area

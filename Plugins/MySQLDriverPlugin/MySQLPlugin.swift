@@ -27,6 +27,7 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
     // MARK: - UI/Capability Metadata
 
+    static let supportsColumnReorder = true
     static let urlSchemes: [String] = ["mysql"]
     static let brandColorHex = "#FF9500"
     static let systemDatabaseNames: [String] = ["information_schema", "mysql", "performance_schema", "sys"]

@@ -161,6 +161,38 @@ struct TableStructureView: View {
         let provider = StructureRowProvider(changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type)
         let canEdit = connection.type.supportsSchemaEditing
 
+        let moveRowHandler: ((Int, Int) -> Void)? = {
+            guard selectedTab == .columns,
+                  canEdit,
+                  !structureChangeManager.hasChanges,
+                  PluginManager.shared.supportsColumnReorder(for: connection.type) else {
+                return nil
+            }
+            return { fromIndex, toIndex in
+                Task { @MainActor in
+                    do {
+                        try await StructureColumnReorderHandler.moveColumn(
+                            fromIndex: fromIndex,
+                            toIndex: toIndex,
+                            workingColumns: structureChangeManager.workingColumns,
+                            tableName: tableName,
+                            connectionId: connection.id
+                        )
+                        isReloadingAfterSave = true
+                        await loadColumns()
+                        loadSchemaForEditing()
+                        isReloadingAfterSave = false
+                    } catch {
+                        AlertHelper.showErrorSheet(
+                            title: String(localized: "Column Reorder Failed"),
+                            message: error.localizedDescription,
+                            window: NSApp.keyWindow
+                        )
+                    }
+                }
+            }
+        }()
+
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
@@ -183,6 +215,7 @@ struct TableStructureView: View {
             typePickerColumns: provider.typePickerColumns,
             connectionId: connection.id,
             databaseType: getDatabaseType(),
+            onMoveRow: moveRowHandler,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,
