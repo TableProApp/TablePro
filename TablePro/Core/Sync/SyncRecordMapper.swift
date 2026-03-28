@@ -176,6 +176,10 @@ struct SyncRecordMapper {
         record["groupId"] = group.id.uuidString as CKRecordValue
         record["name"] = group.name as CKRecordValue
         record["color"] = group.color.rawValue as CKRecordValue
+        if let parentId = group.parentId {
+            record["parentId"] = parentId.uuidString as CKRecordValue
+        }
+        record["sortOrder"] = Int64(group.sortOrder) as CKRecordValue
         record["modifiedAtLocal"] = Date() as CKRecordValue
         record["schemaVersion"] = schemaVersion as CKRecordValue
 
@@ -192,11 +196,15 @@ struct SyncRecordMapper {
         }
 
         let colorRaw = record["color"] as? String ?? ConnectionColor.none.rawValue
+        let parentId = (record["parentId"] as? String).flatMap { UUID(uuidString: $0) }
+        let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
 
         return ConnectionGroup(
             id: groupId,
             name: name,
-            color: ConnectionColor(rawValue: colorRaw) ?? .none
+            color: ConnectionColor(rawValue: colorRaw) ?? .none,
+            parentId: parentId,
+            sortOrder: sortOrder
         )
     }
 

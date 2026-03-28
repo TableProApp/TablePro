@@ -53,35 +53,68 @@ final class GroupStorage {
         }
     }
 
-    /// Add a new group
+    /// Add a new group (duplicate check scoped to siblings, enforces depth cap and cycle prevention)
     func addGroup(_ group: ConnectionGroup) {
         var groups = loadGroups()
-        guard !groups.contains(where: { $0.name.lowercased() == group.name.lowercased() }) else {
+        guard !wouldCreateCircle(movingGroupId: group.id, toParentId: group.parentId, groups: groups) else { return }
+        guard validateDepth(parentId: group.parentId) else { return }
+        let siblings = groups.filter { $0.parentId == group.parentId }
+        guard !siblings.contains(where: { $0.name.lowercased() == group.name.lowercased() }) else {
             return
         }
         groups.append(group)
         saveGroups(groups)
     }
 
-    /// Update an existing group
+    /// Update an existing group (enforces cycle prevention and depth cap on parentId changes)
     func updateGroup(_ group: ConnectionGroup) {
         var groups = loadGroups()
-        if let index = groups.firstIndex(where: { $0.id == group.id }) {
-            groups[index] = group
-            saveGroups(groups)
+        guard let index = groups.firstIndex(where: { $0.id == group.id }) else { return }
+        if group.parentId != groups[index].parentId {
+            guard !wouldCreateCircle(movingGroupId: group.id, toParentId: group.parentId, groups: groups) else { return }
+            guard validateDepth(parentId: group.parentId) else { return }
         }
+        groups[index] = group
+        saveGroups(groups)
     }
 
-    /// Delete a group
+    /// Delete a group and all descendant groups, nil-out groupId on affected connections
     func deleteGroup(_ group: ConnectionGroup) {
-        SyncChangeTracker.shared.markDeleted(.group, id: group.id.uuidString)
         var groups = loadGroups()
-        groups.removeAll { $0.id == group.id }
+        let descendantIds = collectAllDescendantGroupIds(groupId: group.id, groups: groups)
+        let allIdsToDelete = descendantIds.union([group.id])
+
+        for deletedId in allIdsToDelete {
+            SyncChangeTracker.shared.markDeleted(.group, id: deletedId.uuidString)
+        }
+
+        groups.removeAll { allIdsToDelete.contains($0.id) }
         saveGroups(groups)
+
+        let storage = ConnectionStorage.shared
+        var connections = storage.loadConnections()
+        var changed = false
+        for i in connections.indices {
+            if let gid = connections[i].groupId, allIdsToDelete.contains(gid) {
+                connections[i].groupId = nil
+                changed = true
+            }
+        }
+        if changed {
+            storage.saveConnections(connections)
+        }
     }
 
     /// Get group by ID
     func group(for id: UUID) -> ConnectionGroup? {
         loadGroups().first { $0.id == id }
+    }
+
+    /// Validate that adding a child under parentId would not exceed max depth
+    func validateDepth(parentId: UUID?, maxDepth: Int = 3) -> Bool {
+        guard let pid = parentId else { return true }
+        let groups = loadGroups()
+        let parentDepth = depthOf(groupId: pid, groups: groups)
+        return parentDepth < maxDepth
     }
 }
