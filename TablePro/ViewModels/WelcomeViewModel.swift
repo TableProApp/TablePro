@@ -307,6 +307,7 @@ final class WelcomeViewModel {
         updated.name = newName
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
+        rebuildTree()
         renameGroupTarget = nil
     }
 
@@ -315,6 +316,7 @@ final class WelcomeViewModel {
         updated.color = color
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
+        rebuildTree()
     }
 
     func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
@@ -350,6 +352,7 @@ final class WelcomeViewModel {
         updated.parentId = newParentId
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
+        rebuildTree()
     }
 
     // MARK: - Import / Export

@@ -301,7 +301,8 @@ struct WelcomeWindowView: View {
     // MARK: - Tree Rendering
 
     private func treeRows(_ items: [ConnectionGroupTreeNode], parentGroupId: UUID? = nil) -> AnyView {
-        AnyView(
+        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
+        return AnyView(
             ForEach(items) { item in
                 switch item {
                 case .connection(let conn):
@@ -314,14 +315,14 @@ struct WelcomeWindowView: View {
                     }
                 }
             }
-            .onMove { from, to in
+            .onMove(perform: allConnections ? { from, to in
                 guard vm.searchText.isEmpty else { return }
                 if let parentGroupId, let group = vm.groups.first(where: { $0.id == parentGroupId }) {
                     vm.moveGroupedConnections(in: group, from: from, to: to)
                 } else {
                     vm.moveUngroupedConnections(from: from, to: to)
                 }
-            }
+            } : nil)
         )
     }
 

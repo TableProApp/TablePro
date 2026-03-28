@@ -474,4 +474,28 @@ struct ConnectionGroupTreeTests {
         let count = connectionCount(in: parentId, connections: [c1, c2, c3], groups: [parent, child])
         #expect(count == 2)
     }
+
+    // MARK: - Cycle Guard
+
+    @Test("Cyclic parentId data does not cause infinite recursion in collectAllDescendantGroupIds")
+    func collectAllDescendantGroupIds_cyclicData() {
+        let idA = UUID()
+        let idB = UUID()
+        let a = ConnectionGroup(id: idA, name: "A", parentId: idB)
+        let b = ConnectionGroup(id: idB, name: "B", parentId: idA)
+
+        let result = collectAllDescendantGroupIds(groupId: idA, groups: [a, b])
+        #expect(result.count <= 2)
+    }
+
+    @Test("Cyclic parentId data does not cause infinite recursion in depthOf")
+    func depthOf_cyclicData() {
+        let idA = UUID()
+        let idB = UUID()
+        let a = ConnectionGroup(id: idA, name: "A", parentId: idB)
+        let b = ConnectionGroup(id: idB, name: "B", parentId: idA)
+
+        let depth = depthOf(groupId: idA, groups: [a, b])
+        #expect(depth <= 2)
+    }
 }
