@@ -36,6 +36,7 @@
 		5A86F000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A86F000100000000 /* SQLImport.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A87A000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5AB9E6202F77DAC9001F3337 /* MongoDBDriver.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A866000100000000 /* MongoDBDriver.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000002 /* CodeEditSourceEditor */; };
 		5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000003 /* CodeEditLanguages */; };
 		5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000007 /* CodeEditTextView */; };
@@ -190,6 +191,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				5AB9E6202F77DAC9001F3337 /* MongoDBDriver.tableplugin in Copy Plug-Ins */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins */,
@@ -2477,8 +2479,10 @@
 					"$(PROJECT_DIR)/Libs/libmongoc.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libbson.a",
-					"-lssl",
-					"-lcrypto",
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-lresolv",
 					"-lz",
 				);
@@ -2517,8 +2521,10 @@
 					"$(PROJECT_DIR)/Libs/libmongoc.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libbson.a",
-					"-lssl",
-					"-lcrypto",
+					"-framework",
+					Security,
+					"-framework",
+					CoreFoundation,
 					"-lresolv",
 					"-lz",
 				);

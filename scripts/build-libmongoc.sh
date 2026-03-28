@@ -19,8 +19,8 @@ run_quiet() {
 #   libbson_arm64.a, libbson_x86_64.a, libbson_universal.a
 #   libmongoc_arm64.a, libmongoc_x86_64.a, libmongoc_universal.a
 #
-# OpenSSL is built from source to match the app's deployment target,
-# preventing "Symbol not found" crashes from Homebrew-built libraries.
+# Uses macOS SecureTransport (ENABLE_SSL=DARWIN) for TLS so that
+# certificate verification uses the system Keychain automatically.
 #
 # All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
 # the app's minimum deployment target.
@@ -35,8 +35,6 @@ run_quiet() {
 
 DEPLOY_TARGET="14.0"
 MONGOC_VERSION="1.28.1"
-OPENSSL_VERSION="3.4.1"
-OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
 MONGOC_SHA256="a93259840f461b28e198311e32144f5f8dc9fbd74348029f2793774d781bb7da"
 
 ARCH="${1:-both}"
@@ -46,7 +44,7 @@ LIBS_DIR="$PROJECT_DIR/Libs"
 BUILD_DIR="$(mktemp -d)"
 NCPU=$(sysctl -n hw.ncpu)
 
-echo "🔧 Building static libmongoc $MONGOC_VERSION + OpenSSL $OPENSSL_VERSION"
+echo "🔧 Building static libmongoc $MONGOC_VERSION (SecureTransport)"
 echo "   Deployment target: macOS $DEPLOY_TARGET"
 echo "   Architecture: $ARCH"
 echo "   Build dir: $BUILD_DIR"
@@ -61,12 +59,6 @@ trap cleanup EXIT
 download_sources() {
     echo "📥 Downloading source tarballs..."
 
-    if [ ! -f "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" ]; then
-        curl -fSL "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" \
-            -o "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz"
-    fi
-    echo "$OPENSSL_SHA256  $BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" | shasum -a 256 -c -
-
     if [ ! -f "$BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz" ]; then
         curl -fSL "https://github.com/mongodb/mongo-c-driver/releases/download/$MONGOC_VERSION/mongo-c-driver-$MONGOC_VERSION.tar.gz" \
             -o "$BUILD_DIR/mongo-c-driver-$MONGOC_VERSION.tar.gz"
@@ -76,46 +68,8 @@ download_sources() {
     echo "✅ Sources downloaded"
 }
 
-build_openssl() {
-    local arch=$1
-    local prefix="$BUILD_DIR/install-openssl-$arch"
-
-    echo ""
-    echo "🔨 Building OpenSSL $OPENSSL_VERSION for $arch..."
-
-    # Extract fresh copy for this arch
-    rm -rf "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    mkdir -p "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-    tar xzf "$BUILD_DIR/openssl-$OPENSSL_VERSION.tar.gz" -C "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch" --strip-components=1
-
-    cd "$BUILD_DIR/openssl-$OPENSSL_VERSION-$arch"
-
-    local target
-    if [ "$arch" = "arm64" ]; then
-        target="darwin64-arm64-cc"
-    else
-        target="darwin64-x86_64-cc"
-    fi
-
-    MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
-    ./Configure \
-        "$target" \
-        no-shared \
-        no-tests \
-        no-apps \
-        no-docs \
-        --prefix="$prefix" \
-        -mmacosx-version-min=$DEPLOY_TARGET > /dev/null 2>&1
-
-    run_quiet make -j"$NCPU"
-    run_quiet make install_sw
-
-    echo "✅ OpenSSL $arch: $(ls -lh "$prefix/lib/libssl.a" | awk '{print $5}') (libssl) $(ls -lh "$prefix/lib/libcrypto.a" | awk '{print $5}') (libcrypto)"
-}
-
 build_mongoc() {
     local arch=$1
-    local openssl_prefix="$BUILD_DIR/install-openssl-$arch"
     local prefix="$BUILD_DIR/install-mongoc-$arch"
 
     echo ""
@@ -139,12 +93,6 @@ build_mongoc() {
     mkdir -p "$build_dir"
     cd "$build_dir"
 
-    # Resolve OpenSSL library path (may be lib/ or lib64/)
-    local openssl_lib_dir="$openssl_prefix/lib"
-    if [ -f "$openssl_prefix/lib64/libssl.a" ]; then
-        openssl_lib_dir="$openssl_prefix/lib64"
-    fi
-
     run_quiet env MACOSX_DEPLOYMENT_TARGET=$DEPLOY_TARGET \
     cmake .. \
         -DCMAKE_INSTALL_PREFIX="$prefix" \
@@ -159,13 +107,9 @@ build_mongoc() {
         -DENABLE_SRV=ON \
         -DENABLE_ZLIB=SYSTEM \
         -DENABLE_ZSTD=OFF \
-        -DENABLE_SSL=OPENSSL \
+        -DENABLE_SSL=DARWIN \
         -DENABLE_TESTS=OFF \
-        -DENABLE_EXAMPLES=OFF \
-        -DOPENSSL_ROOT_DIR="$openssl_prefix" \
-        -DOPENSSL_INCLUDE_DIR="$openssl_prefix/include" \
-        -DOPENSSL_SSL_LIBRARY="$openssl_lib_dir/libssl.a" \
-        -DOPENSSL_CRYPTO_LIBRARY="$openssl_lib_dir/libcrypto.a"
+        -DENABLE_EXAMPLES=OFF
 
     run_quiet cmake --build . --parallel "$NCPU"
     run_quiet cmake --install .
@@ -226,7 +170,6 @@ create_universal() {
 
 build_for_arch() {
     local arch=$1
-    build_openssl "$arch"
     build_mongoc "$arch"
     install_libs "$arch"
     # Install headers once (they're arch-independent)
