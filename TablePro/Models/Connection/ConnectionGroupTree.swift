@@ -5,7 +5,7 @@
 
 import Foundation
 
-enum ConnectionGroupTreeNode: Identifiable, Hashable {
+enum ConnectionGroupTreeNode: Identifiable {
     case group(ConnectionGroup, children: [ConnectionGroupTreeNode])
     case connection(DatabaseConnection)
 
@@ -15,9 +15,6 @@ enum ConnectionGroupTreeNode: Identifiable, Hashable {
         case .connection(let c): "conn-\(c.id)"
         }
     }
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 // MARK: - Tree Building

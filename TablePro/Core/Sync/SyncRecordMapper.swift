@@ -83,6 +83,9 @@ struct SyncRecordMapper {
         if let startupCommands = connection.startupCommands {
             record["startupCommands"] = startupCommands as CKRecordValue
         }
+        if let sshProfileId = connection.sshProfileId {
+            record["sshProfileId"] = sshProfileId.uuidString as CKRecordValue
+        }
 
         // Encode complex structs as JSON Data
         do {
@@ -130,6 +133,7 @@ struct SyncRecordMapper {
         let aiPolicyRaw = record["aiPolicy"] as? String
         let redisDatabase = (record["redisDatabase"] as? Int64).map { Int($0) }
         let startupCommands = record["startupCommands"] as? String
+        let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
         var sshConfig = SSHConfiguration()
         if let sshData = record["sshConfigJson"] as? Data {
@@ -159,6 +163,7 @@ struct SyncRecordMapper {
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
             tagId: tagId,
             groupId: groupId,
+            sshProfileId: sshProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevelRaw) ?? .silent,
             aiPolicy: aiPolicyRaw.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: redisDatabase,
