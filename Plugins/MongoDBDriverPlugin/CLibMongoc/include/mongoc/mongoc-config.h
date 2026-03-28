@@ -78,7 +78,7 @@
  * MONGOC_ENABLE_SSL_SECURE_TRANSPORT is set from configure to determine if we are
  * compiled with Native SSL support on Darwin
  */
-#define MONGOC_ENABLE_SSL_SECURE_TRANSPORT 0
+#define MONGOC_ENABLE_SSL_SECURE_TRANSPORT 1
 
 #if MONGOC_ENABLE_SSL_SECURE_TRANSPORT != 1
 #  undef MONGOC_ENABLE_SSL_SECURE_TRANSPORT
@@ -89,7 +89,7 @@
  * MONGOC_ENABLE_CRYPTO_COMMON_CRYPTO is set from configure to determine if we are
  * compiled with Native Crypto support on Darwin
  */
-#define MONGOC_ENABLE_CRYPTO_COMMON_CRYPTO 0
+#define MONGOC_ENABLE_CRYPTO_COMMON_CRYPTO 1
 
 #if MONGOC_ENABLE_CRYPTO_COMMON_CRYPTO != 1
 #  undef MONGOC_ENABLE_CRYPTO_COMMON_CRYPTO
@@ -111,7 +111,7 @@
  * MONGOC_ENABLE_SSL_OPENSSL is set from configure to determine if we are
  * compiled with OpenSSL support.
  */
-#define MONGOC_ENABLE_SSL_OPENSSL 1
+#define MONGOC_ENABLE_SSL_OPENSSL 0
 
 #if MONGOC_ENABLE_SSL_OPENSSL != 1
 #  undef MONGOC_ENABLE_SSL_OPENSSL
@@ -122,7 +122,7 @@
  * MONGOC_ENABLE_CRYPTO_LIBCRYPTO is set from configure to determine if we are
  * compiled with OpenSSL support.
  */
-#define MONGOC_ENABLE_CRYPTO_LIBCRYPTO 1
+#define MONGOC_ENABLE_CRYPTO_LIBCRYPTO 0
 
 #if MONGOC_ENABLE_CRYPTO_LIBCRYPTO != 1
 #  undef MONGOC_ENABLE_CRYPTO_LIBCRYPTO
@@ -164,7 +164,7 @@
 /*
  * Use ASN1_STRING_get0_data () rather than the deprecated ASN1_STRING_data
  */
-#define MONGOC_HAVE_ASN1_STRING_GET0_DATA 1
+#define MONGOC_HAVE_ASN1_STRING_GET0_DATA 0
 
 #if MONGOC_HAVE_ASN1_STRING_GET0_DATA != 1
 #  undef MONGOC_HAVE_ASN1_STRING_GET0_DATA
@@ -338,7 +338,7 @@
  * Set if we have zstd compression support
  *
  */
-#define MONGOC_ENABLE_COMPRESSION_ZSTD 1
+#define MONGOC_ENABLE_COMPRESSION_ZSTD 0
 
 #if MONGOC_ENABLE_COMPRESSION_ZSTD != 1
 #  undef MONGOC_ENABLE_COMPRESSION_ZSTD
