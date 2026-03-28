@@ -170,6 +170,7 @@ final class SidebarViewModel {
     // MARK: - Table Loading
 
     func loadTables(force: Bool = false) {
+        loadTask?.cancel()
         guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
@@ -229,6 +230,8 @@ final class SidebarViewModel {
                     isRestoringSelection = false
                 }
             }
+            isLoading = false
+        } catch is CancellationError {
             isLoading = false
         } catch {
             errorMessage = error.localizedDescription

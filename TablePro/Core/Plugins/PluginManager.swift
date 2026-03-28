@@ -866,6 +866,11 @@ final class PluginManager {
             .capabilities.supportsSSL ?? true
     }
 
+    func supportsColumnReorder(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .supportsColumnReorder ?? false
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId) else {
             return .limit

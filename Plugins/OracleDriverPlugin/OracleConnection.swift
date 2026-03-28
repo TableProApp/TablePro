@@ -195,6 +195,8 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             throw OracleError(message: detail)
         } catch let error as OracleError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             throw OracleError(message: "Query execution failed: \(String(describing: error))")
         }

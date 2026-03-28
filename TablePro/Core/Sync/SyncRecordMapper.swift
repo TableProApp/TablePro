@@ -83,6 +83,9 @@ struct SyncRecordMapper {
         if let startupCommands = connection.startupCommands {
             record["startupCommands"] = startupCommands as CKRecordValue
         }
+        if let sshProfileId = connection.sshProfileId {
+            record["sshProfileId"] = sshProfileId.uuidString as CKRecordValue
+        }
 
         // Encode complex structs as JSON Data
         do {
@@ -130,6 +133,7 @@ struct SyncRecordMapper {
         let aiPolicyRaw = record["aiPolicy"] as? String
         let redisDatabase = (record["redisDatabase"] as? Int64).map { Int($0) }
         let startupCommands = record["startupCommands"] as? String
+        let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
         var sshConfig = SSHConfiguration()
         if let sshData = record["sshConfigJson"] as? Data {
@@ -159,6 +163,7 @@ struct SyncRecordMapper {
             color: ConnectionColor(rawValue: colorRaw) ?? .none,
             tagId: tagId,
             groupId: groupId,
+            sshProfileId: sshProfileId,
             safeModeLevel: SafeModeLevel(rawValue: safeModeLevelRaw) ?? .silent,
             aiPolicy: aiPolicyRaw.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: redisDatabase,
@@ -176,6 +181,10 @@ struct SyncRecordMapper {
         record["groupId"] = group.id.uuidString as CKRecordValue
         record["name"] = group.name as CKRecordValue
         record["color"] = group.color.rawValue as CKRecordValue
+        if let parentId = group.parentId {
+            record["parentId"] = parentId.uuidString as CKRecordValue
+        }
+        record["sortOrder"] = Int64(group.sortOrder) as CKRecordValue
         record["modifiedAtLocal"] = Date() as CKRecordValue
         record["schemaVersion"] = schemaVersion as CKRecordValue
 
@@ -192,11 +201,15 @@ struct SyncRecordMapper {
         }
 
         let colorRaw = record["color"] as? String ?? ConnectionColor.none.rawValue
+        let parentId = (record["parentId"] as? String).flatMap { UUID(uuidString: $0) }
+        let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
 
         return ConnectionGroup(
             id: groupId,
             name: name,
-            color: ConnectionColor(rawValue: colorRaw) ?? .none
+            color: ConnectionColor(rawValue: colorRaw) ?? .none,
+            parentId: parentId,
+            sortOrder: sortOrder
         )
     }
 

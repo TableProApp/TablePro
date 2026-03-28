@@ -8,14 +8,14 @@ import os
 import SwiftUI
 
 enum WelcomeActiveSheet: Identifiable {
-    case newGroup
+    case newGroup(parentId: UUID?)
     case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
 
     var id: String {
         switch self {
-        case .newGroup: "newGroup"
+        case .newGroup(let parentId): "newGroup-\(parentId?.uuidString ?? "root")"
         case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
@@ -34,7 +34,7 @@ final class WelcomeViewModel {
     // MARK: - State
 
     var connections: [DatabaseConnection] = []
-    var searchText = ""
+    var searchText = "" { didSet { rebuildTree() } }
     var selectedConnectionIds: Set<UUID> = []
     var groups: [ConnectionGroup] = []
     var linkedConnections: [LinkedConnection] = []
@@ -49,14 +49,17 @@ final class WelcomeViewModel {
     var renameGroupName = ""
     var showRenameGroupAlert = false
 
-    var collapsedGroupIds: Set<UUID> = {
-        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.collapsedGroupIds") ?? []
+    var expandedGroupIds: Set<UUID> = {
+        let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
+        if strings.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "com.TablePro.collapsedGroupIds")
+        }
         return Set(strings.compactMap { UUID(uuidString: $0) })
     }() {
         didSet {
             UserDefaults.standard.set(
-                Array(collapsedGroupIds.map(\.uuidString)),
-                forKey: "com.TablePro.collapsedGroupIds"
+                Array(expandedGroupIds.map(\.uuidString)),
+                forKey: "com.TablePro.expandedGroupIds"
             )
         }
     }
@@ -73,6 +76,17 @@ final class WelcomeViewModel {
 
     // MARK: - Computed Properties
 
+    private(set) var treeItems: [ConnectionGroupTreeNode] = []
+
+    func rebuildTree() {
+        let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
+        if searchText.isEmpty {
+            treeItems = tree
+        } else {
+            treeItems = filterGroupTree(tree, searchText: searchText)
+        }
+    }
+
     var filteredConnections: [DatabaseConnection] {
         if searchText.isEmpty {
             return connections
@@ -85,25 +99,8 @@ final class WelcomeViewModel {
         }
     }
 
-    var ungroupedConnections: [DatabaseConnection] {
-        let validGroupIds = Set(groups.map(\.id))
-        return filteredConnections.filter { conn in
-            guard let groupId = conn.groupId else { return true }
-            return !validGroupIds.contains(groupId)
-        }
-    }
-
-    var activeGroups: [ConnectionGroup] {
-        let groupIds = Set(filteredConnections.compactMap(\.groupId))
-        return groups.filter { groupIds.contains($0.id) }
-    }
-
     var flatVisibleConnections: [DatabaseConnection] {
-        var result = ungroupedConnections
-        for group in activeGroups where !collapsedGroupIds.contains(group.id) {
-            result.append(contentsOf: connections(in: group))
-        }
-        return result
+        flattenVisibleConnections(tree: treeItems, expandedGroupIds: expandedGroupIds)
     }
 
     var selectedConnections: [DatabaseConnection] {
@@ -119,15 +116,18 @@ final class WelcomeViewModel {
         return groups.first { $0.id == groupId }?.name
     }
 
-    func connections(in group: ConnectionGroup) -> [DatabaseConnection] {
-        filteredConnections.filter { $0.groupId == group.id }
-    }
-
     // MARK: - Setup & Teardown
 
     func setUp(openWindow: OpenWindowAction) {
         self.openWindow = openWindow
         guard connectionUpdatedObserver == nil else { return }
+
+        if expandedGroupIds.isEmpty {
+            let allGroupIds = Set(groupStorage.loadGroups().map(\.id))
+            if !allGroupIds.isEmpty {
+                expandedGroupIds = allGroupIds
+            }
+        }
 
         newConnectionObserver = NotificationCenter.default.addObserver(
             forName: .newConnection, object: nil, queue: .main
@@ -201,6 +201,7 @@ final class WelcomeViewModel {
 
     func loadGroups() {
         groups = groupStorage.loadGroups()
+        rebuildTree()
     }
 
     // MARK: - Connection Actions
@@ -283,12 +284,8 @@ final class WelcomeViewModel {
     // MARK: - Groups
 
     func deleteGroup(_ group: ConnectionGroup) {
-        for i in connections.indices where connections[i].groupId == group.id {
-            connections[i].groupId = nil
-        }
-        storage.saveConnections(connections)
         groupStorage.deleteGroup(group)
-        groups = groupStorage.loadGroups()
+        loadConnections()
     }
 
     func beginRenameGroup(_ group: ConnectionGroup) {
@@ -301,7 +298,8 @@ final class WelcomeViewModel {
         guard let target = renameGroupTarget else { return }
         let newName = renameGroupName.trimmingCharacters(in: .whitespaces)
         guard !newName.isEmpty else { return }
-        let isDuplicate = groups.contains {
+        let siblings = groups.filter { $0.parentId == target.parentId }
+        let isDuplicate = siblings.contains {
             $0.id != target.id && $0.name.lowercased() == newName.lowercased()
         }
         guard !isDuplicate else { return }
@@ -309,6 +307,7 @@ final class WelcomeViewModel {
         updated.name = newName
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
+        rebuildTree()
         renameGroupTarget = nil
     }
 
@@ -317,6 +316,7 @@ final class WelcomeViewModel {
         updated.color = color
         groupStorage.updateGroup(updated)
         groups = groupStorage.loadGroups()
+        rebuildTree()
     }
 
     func moveConnections(_ targets: [DatabaseConnection], toGroup groupId: UUID) {
@@ -325,6 +325,7 @@ final class WelcomeViewModel {
             connections[i].groupId = groupId
         }
         storage.saveConnections(connections)
+        rebuildTree()
     }
 
     func removeFromGroup(_ targets: [DatabaseConnection]) {
@@ -333,6 +334,25 @@ final class WelcomeViewModel {
             connections[i].groupId = nil
         }
         storage.saveConnections(connections)
+        rebuildTree()
+    }
+
+    func createSubgroup(under parentId: UUID) {
+        activeSheet = .newGroup(parentId: parentId)
+    }
+
+    func moveGroup(_ group: ConnectionGroup, toParent newParentId: UUID?) {
+        guard !wouldCreateCircle(movingGroupId: group.id, toParentId: newParentId, groups: groups) else { return }
+
+        let newParentDepth = depthOf(groupId: newParentId, groups: groups)
+        let subtreeDepth = maxDescendantDepth(groupId: group.id, groups: groups)
+        guard newParentDepth + 1 + subtreeDepth <= 3 else { return }
+
+        var updated = group
+        updated.parentId = newParentId
+        groupStorage.updateGroup(updated)
+        groups = groupStorage.loadGroups()
+        rebuildTree()
     }
 
     // MARK: - Import / Export
@@ -405,9 +425,9 @@ final class WelcomeViewModel {
         guard let id = selectedConnectionIds.first,
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
-              !collapsedGroupIds.contains(groupId) else { return }
+              expandedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            collapsedGroupIds.insert(groupId)
+            expandedGroupIds.remove(groupId)
         }
     }
 
@@ -415,9 +435,9 @@ final class WelcomeViewModel {
         guard let id = selectedConnectionIds.first,
               let connection = connections.first(where: { $0.id == id }),
               let groupId = connection.groupId,
-              collapsedGroupIds.contains(groupId) else { return }
+              !expandedGroupIds.contains(groupId) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
-            collapsedGroupIds.remove(groupId)
+            expandedGroupIds.insert(groupId)
         }
     }
 
@@ -445,6 +465,7 @@ final class WelcomeViewModel {
 
         connections.move(fromOffsets: globalSource, toOffset: globalDestination)
         storage.saveConnections(connections)
+        rebuildTree()
     }
 
     func moveGroupedConnections(in group: ConnectionGroup, from source: IndexSet, to destination: Int) {
@@ -465,29 +486,7 @@ final class WelcomeViewModel {
 
         connections.move(fromOffsets: globalSource, toOffset: globalDestination)
         storage.saveConnections(connections)
-    }
-
-    func moveGroups(from source: IndexSet, to destination: Int) {
-        let active = activeGroups
-        let activeGroupIndices = active.compactMap { activeGroup in
-            groups.firstIndex(where: { $0.id == activeGroup.id })
-        }
-
-        guard source.allSatisfy({ $0 < activeGroupIndices.count }),
-              destination <= activeGroupIndices.count else { return }
-
-        let globalSource = IndexSet(source.map { activeGroupIndices[$0] })
-        let globalDestination: Int
-        if destination < activeGroupIndices.count {
-            globalDestination = activeGroupIndices[destination]
-        } else if let last = activeGroupIndices.last {
-            globalDestination = last + 1
-        } else {
-            globalDestination = 0
-        }
-
-        groups.move(fromOffsets: globalSource, toOffset: globalDestination)
-        groupStorage.saveGroups(groups)
+        rebuildTree()
     }
 
     func focusConnectionFormWindow() {

@@ -22,7 +22,6 @@ struct ConnectionGroupPicker: View {
 
     var body: some View {
         Menu {
-            // None option
             Button {
                 selectedGroupId = nil
             } label: {
@@ -37,27 +36,10 @@ struct ConnectionGroupPicker: View {
 
             Divider()
 
-            // Available groups
-            ForEach(allGroups) { group in
-                Button {
-                    selectedGroupId = group.id
-                } label: {
-                    HStack {
-                        if !group.color.isDefault {
-                            Image(nsImage: colorDot(group.color.color))
-                        }
-                        Text(group.name)
-                        if selectedGroupId == group.id {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+            hierarchicalGroupItems()
 
             Divider()
 
-            // Create new group
             Button {
                 showingCreateSheet = true
             } label: {
@@ -83,8 +65,8 @@ struct ConnectionGroupPicker: View {
         .fixedSize()
         .task { allGroups = groupStorage.loadGroups() }
         .sheet(isPresented: $showingCreateSheet) {
-            CreateGroupSheet { groupName, groupColor in
-                let group = ConnectionGroup(name: groupName, color: groupColor)
+            CreateGroupSheet { groupName, groupColor, parentId in
+                let group = ConnectionGroup(name: groupName, color: groupColor, parentId: parentId)
                 groupStorage.addGroup(group)
                 selectedGroupId = group.id
                 allGroups = groupStorage.loadGroups()
@@ -92,7 +74,27 @@ struct ConnectionGroupPicker: View {
         }
     }
 
-    /// Create a colored circle NSImage for use in menu items
+    @ViewBuilder
+    private func hierarchicalGroupItems() -> some View {
+        let flatGroups = flattenGroupsForMenu(groups: allGroups)
+        ForEach(flatGroups, id: \.group.id) { entry in
+            Button {
+                selectedGroupId = entry.group.id
+            } label: {
+                HStack {
+                    if !entry.group.color.isDefault {
+                        Image(nsImage: colorDot(entry.group.color.color))
+                    }
+                    Text(String(repeating: "  ", count: entry.depth) + entry.group.name)
+                    if selectedGroupId == entry.group.id {
+                        Spacer()
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        }
+    }
+
     private func colorDot(_ color: Color) -> NSImage {
         let size = NSSize(width: 10, height: 10)
         let image = NSImage(size: size, flipped: false) { rect in
@@ -111,7 +113,16 @@ struct CreateGroupSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var groupName: String = ""
     @State private var groupColor: ConnectionColor = .none
-    let onSave: (String, ConnectionColor) -> Void
+    @State private var selectedParentId: UUID?
+    @State private var allGroups: [ConnectionGroup] = []
+
+    private let initialParentId: UUID?
+    let onSave: (String, ConnectionColor, UUID?) -> Void
+
+    init(parentId: UUID? = nil, onSave: @escaping (String, ConnectionColor, UUID?) -> Void) {
+        self.initialParentId = parentId
+        self.onSave = onSave
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -129,13 +140,22 @@ struct CreateGroupSheet: View {
                 GroupColorPicker(selectedColor: $groupColor)
             }
 
+            if !allGroups.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Parent Group")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ParentGroupPicker(selectedParentId: $selectedParentId, allGroups: allGroups)
+                }
+            }
+
             HStack {
                 Button("Cancel") {
                     dismiss()
                 }
 
                 Button("Create") {
-                    onSave(groupName, groupColor)
+                    onSave(groupName, groupColor, selectedParentId)
                     dismiss()
                 }
                 .keyboardShortcut(.return)
@@ -145,9 +165,67 @@ struct CreateGroupSheet: View {
         }
         .padding(20)
         .frame(width: 300)
+        .onAppear {
+            allGroups = GroupStorage.shared.loadGroups()
+            selectedParentId = initialParentId
+        }
         .onExitCommand {
             dismiss()
         }
+    }
+}
+
+// MARK: - Parent Group Picker
+
+private struct ParentGroupPicker: View {
+    @Binding var selectedParentId: UUID?
+    let allGroups: [ConnectionGroup]
+
+    var body: some View {
+        Menu {
+            Button {
+                selectedParentId = nil
+            } label: {
+                HStack {
+                    Text("None (Top Level)")
+                    if selectedParentId == nil {
+                        Spacer()
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+
+            Divider()
+
+            ForEach(allGroups.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending })) { group in
+                let depth = depthOf(groupId: group.id, groups: allGroups)
+                Button {
+                    selectedParentId = group.id
+                } label: {
+                    HStack {
+                        Text(String(repeating: "  ", count: max(0, depth - 1)) + group.name)
+                        if selectedParentId == group.id {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .disabled(depth >= 3)
+            }
+        } label: {
+            Text(parentLabel)
+                .foregroundStyle(selectedParentId == nil ? .secondary : .primary)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private var parentLabel: String {
+        guard let pid = selectedParentId,
+              let group = allGroups.first(where: { $0.id == pid }) else {
+            return String(localized: "None (Top Level)")
+        }
+        return group.name
     }
 }
 

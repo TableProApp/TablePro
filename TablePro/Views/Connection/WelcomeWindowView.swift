@@ -60,11 +60,15 @@ struct WelcomeWindowView: View {
         }
         .sheet(item: $vm.activeSheet) { sheet in
             switch sheet {
-            case .newGroup:
-                CreateGroupSheet { name, color in
-                    let group = ConnectionGroup(name: name, color: color)
+            case .newGroup(let parentId):
+                CreateGroupSheet(parentId: parentId) { name, color, pid in
+                    let group = ConnectionGroup(name: name, color: color, parentId: pid)
                     GroupStorage.shared.addGroup(group)
                     vm.groups = GroupStorage.shared.loadGroups()
+                    vm.expandedGroupIds.insert(group.id)
+                    if let pid {
+                        vm.expandedGroupIds.insert(pid)
+                    }
                     if !vm.pendingMoveToNewGroup.isEmpty {
                         vm.moveConnections(vm.pendingMoveToNewGroup, toGroup: group.id)
                         vm.pendingMoveToNewGroup = []
@@ -129,7 +133,7 @@ struct WelcomeWindowView: View {
                 .buttonStyle(.plain)
                 .help("New Connection (⌘N)")
 
-                Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup }) {
+                Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -208,7 +212,7 @@ struct WelcomeWindowView: View {
 
             Divider()
 
-            if vm.filteredConnections.isEmpty {
+            if vm.treeItems.isEmpty && vm.filteredConnections.isEmpty {
                 emptyState
             } else {
                 connectionList
@@ -224,33 +228,7 @@ struct WelcomeWindowView: View {
     private var connectionList: some View {
         ScrollViewReader { proxy in
             List(selection: $vm.selectedConnectionIds) {
-                ForEach(vm.ungroupedConnections) { connection in
-                    connectionRow(for: connection)
-                }
-                .onMove { from, to in
-                    guard vm.searchText.isEmpty else { return }
-                    vm.moveUngroupedConnections(from: from, to: to)
-                }
-
-                ForEach(vm.activeGroups) { group in
-                    Section {
-                        if !vm.collapsedGroupIds.contains(group.id) {
-                            ForEach(vm.connections(in: group)) { connection in
-                                connectionRow(for: connection)
-                            }
-                            .onMove { from, to in
-                                guard vm.searchText.isEmpty else { return }
-                                vm.moveGroupedConnections(in: group, from: from, to: to)
-                            }
-                        }
-                    } header: {
-                        groupHeader(for: group)
-                    }
-                }
-                .onMove { from, to in
-                    guard vm.searchText.isEmpty else { return }
-                    vm.moveGroups(from: from, to: to)
-                }
+                treeRows(vm.treeItems)
 
                 if !vm.linkedConnections.isEmpty, LicenseManager.shared.isFeatureAvailable(.linkedFolders) {
                     Section {
@@ -320,6 +298,47 @@ struct WelcomeWindowView: View {
         }
     }
 
+    // MARK: - Tree Rendering
+
+    private func treeRows(_ items: [ConnectionGroupTreeNode], parentGroupId: UUID? = nil) -> AnyView {
+        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
+        return AnyView(
+            ForEach(items) { item in
+                switch item {
+                case .connection(let conn):
+                    connectionRow(for: conn)
+                case .group(let group, let children):
+                    DisclosureGroup(isExpanded: expandedBinding(for: group.id)) {
+                        treeRows(children, parentGroupId: group.id)
+                    } label: {
+                        groupLabel(for: group)
+                    }
+                }
+            }
+            .onMove(perform: allConnections ? { from, to in
+                guard vm.searchText.isEmpty else { return }
+                if let parentGroupId, let group = vm.groups.first(where: { $0.id == parentGroupId }) {
+                    vm.moveGroupedConnections(in: group, from: from, to: to)
+                } else {
+                    vm.moveUngroupedConnections(from: from, to: to)
+                }
+            } : nil)
+        )
+    }
+
+    private func expandedBinding(for groupId: UUID) -> Binding<Bool> {
+        Binding(
+            get: { vm.expandedGroupIds.contains(groupId) },
+            set: { expanded in
+                if expanded {
+                    vm.expandedGroupIds.insert(groupId)
+                } else {
+                    vm.expandedGroupIds.remove(groupId)
+                }
+            }
+        )
+    }
+
     // MARK: - Rows
 
     private func connectionRow(for connection: DatabaseConnection) -> some View {
@@ -370,78 +389,123 @@ struct WelcomeWindowView: View {
         }
     }
 
-    // MARK: - Group Header
+    // MARK: - Group Label
 
-    private func groupHeader(for group: ConnectionGroup) -> some View {
-        Button(action: {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                if vm.collapsedGroupIds.contains(group.id) {
-                    vm.collapsedGroupIds.remove(group.id)
-                } else {
-                    vm.collapsedGroupIds.insert(group.id)
-                }
+    private func groupLabel(for group: ConnectionGroup) -> some View {
+        HStack(spacing: 6) {
+            if !group.color.isDefault {
+                Circle()
+                    .fill(group.color.color)
+                    .frame(width: 8, height: 8)
             }
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: vm.collapsedGroupIds.contains(group.id) ? "chevron.right" : "chevron.down")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 12)
 
-                if !group.color.isDefault {
-                    Circle()
-                        .fill(group.color.color)
-                        .frame(width: 8, height: 8)
-                }
+            Text(group.name)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .semibold))
+                .foregroundStyle(.secondary)
 
-                Text(group.name)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .semibold))
-                    .foregroundStyle(.secondary)
+            Text("\(connectionCount(in: group.id, connections: vm.connections, groups: vm.groups))")
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                .foregroundStyle(.tertiary)
 
-                Text("\(vm.connections(in: group).count)")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
-                    .foregroundStyle(.tertiary)
-
-                Spacer()
-            }
-            .contentShape(Rectangle())
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "\(group.name), \(vm.collapsedGroupIds.contains(group.id) ? "expand" : "collapse")"))
+        .contentShape(Rectangle())
         .contextMenu {
-            Button {
-                vm.beginRenameGroup(group)
-            } label: {
-                Label(String(localized: "Rename"), systemImage: "pencil")
-            }
+            groupContextMenu(for: group)
+        }
+    }
 
-            Menu(String(localized: "Change Color")) {
-                ForEach(ConnectionColor.allCases) { color in
+    // MARK: - Group Context Menu
+
+    @ViewBuilder
+    private func groupContextMenu(for group: ConnectionGroup) -> some View {
+        Button {
+            vm.beginRenameGroup(group)
+        } label: {
+            Label(String(localized: "Rename"), systemImage: "pencil")
+        }
+
+        let currentGroupDepth = depthOf(groupId: group.id, groups: vm.groups)
+        Button {
+            vm.createSubgroup(under: group.id)
+        } label: {
+            Label(String(localized: "New Subgroup"), systemImage: "folder.badge.plus")
+        }
+        .disabled(currentGroupDepth >= 3)
+
+        Menu(String(localized: "Change Color")) {
+            ForEach(ConnectionColor.allCases) { color in
+                Button {
+                    vm.updateGroupColor(group, color: color)
+                } label: {
+                    HStack {
+                        if color != .none {
+                            Image(systemName: "circle.fill")
+                                .foregroundStyle(color.color)
+                        }
+                        Text(color.displayName)
+                        if group.color == color {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        }
+
+        if vm.groups.count > 1 {
+            Menu(String(localized: "Move Group to...")) {
+                Button {
+                    vm.moveGroup(group, toParent: nil)
+                } label: {
+                    HStack {
+                        Text("Top Level")
+                        if group.parentId == nil {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .disabled(group.parentId == nil)
+
+                Divider()
+
+                ForEach(vm.groups.filter({ $0.id != group.id })) { targetGroup in
+                    let wouldCircle = wouldCreateCircle(
+                        movingGroupId: group.id,
+                        toParentId: targetGroup.id,
+                        groups: vm.groups
+                    )
+                    let targetDepth = depthOf(groupId: targetGroup.id, groups: vm.groups)
+                    let subtreeDepth = maxDescendantDepth(groupId: group.id, groups: vm.groups)
+                    let wouldExceedDepth = targetDepth + 1 + subtreeDepth > 3
+
                     Button {
-                        vm.updateGroupColor(group, color: color)
+                        vm.moveGroup(group, toParent: targetGroup.id)
                     } label: {
                         HStack {
-                            if color != .none {
+                            if !targetGroup.color.isDefault {
                                 Image(systemName: "circle.fill")
-                                    .foregroundStyle(color.color)
+                                    .foregroundStyle(targetGroup.color.color)
                             }
-                            Text(color.displayName)
-                            if group.color == color {
+                            Text(targetGroup.name)
+                            if group.parentId == targetGroup.id {
                                 Spacer()
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
+                    .disabled(wouldCircle || wouldExceedDepth || group.parentId == targetGroup.id)
                 }
             }
+        }
 
-            Divider()
+        Divider()
 
-            Button(role: .destructive) {
-                vm.deleteGroup(group)
-            } label: {
-                Label(String(localized: "Delete Group"), systemImage: "trash")
-            }
+        Button(role: .destructive) {
+            vm.deleteGroup(group)
+        } label: {
+            Label(String(localized: "Delete Group"), systemImage: "trash")
         }
     }
 

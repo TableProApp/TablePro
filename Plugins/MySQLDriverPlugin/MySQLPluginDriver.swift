@@ -605,6 +605,55 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
+    // MARK: - Column Reorder DDL
+
+    func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {
+        let tableName = quoteIdentifier(table)
+        let colName = quoteIdentifier(column.name)
+
+        var def = "\(column.dataType)"
+        if column.unsigned {
+            def += " UNSIGNED"
+        }
+        if column.isNullable {
+            def += " NULL"
+        } else {
+            def += " NOT NULL"
+        }
+        if let defaultValue = column.defaultValue {
+            let upper = defaultValue.uppercased()
+            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
+                || defaultValue.hasPrefix("'") {
+                def += " DEFAULT \(defaultValue)"
+            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
+                def += " DEFAULT \(defaultValue)"
+            } else {
+                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
+            }
+        }
+        if column.autoIncrement {
+            def += " AUTO_INCREMENT"
+        }
+        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
+            let upper = onUpdate.uppercased()
+            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()" || upper.hasPrefix("CURRENT_TIMESTAMP(") {
+                def += " ON UPDATE \(onUpdate)"
+            }
+        }
+        if let comment = column.comment, !comment.isEmpty {
+            def += " COMMENT '\(escapeStringLiteral(comment))'"
+        }
+
+        let position: String
+        if let afterCol = afterColumn {
+            position = "AFTER \(quoteIdentifier(afterCol))"
+        } else {
+            position = "FIRST"
+        }
+
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(colName) \(def) \(position)"
+    }
+
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {

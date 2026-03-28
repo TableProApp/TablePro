@@ -9,20 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Drag to reorder columns in the Structure tab (MySQL/MariaDB)
+- Nested hierarchical groups for connection list (up to 3 levels deep)
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 - JSON fields in Row Details sidebar now display in a scrollable monospaced text area
 
 ### Fixed
 
-- MariaDB JSON columns misdetected as BLOB, showing hex dumps instead of JSON text
-
-### Fixed
-
-- MongoDB Atlas connections failing with "TLS certificate verify failed" due to missing CA bundle
-
-### Fixed
-
-- ENUM/SET dropdown chevron buttons not showing on first table open, requiring a refresh to appear
+- SSH profile lost after app restart when iCloud Sync enabled
+- MariaDB JSON columns showing as hex dumps instead of JSON text
+- MongoDB Atlas TLS certificate verification failure
+- ENUM/SET dropdown chevron buttons not showing on first table open
 
 ## [0.25.0] - 2026-03-27
 

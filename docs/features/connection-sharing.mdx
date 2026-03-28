@@ -139,12 +139,15 @@ JSON. Required fields: `name`, `host`, `type`.
       "tagName": "production"
     }
   ],
-  "groups": [{ "name": "Backend", "color": "Blue" }],
+  "groups": [
+    { "name": "Backend", "color": "Blue" },
+    { "name": "Staging", "color": "Green", "parentGroupName": "Backend" }
+  ],
   "tags": [{ "name": "production", "color": "Red" }]
 }
 ```
 
-Groups and tags match by name. Missing ones are created. Paths use `~/` for portability.
+Groups and tags match by name. Missing ones are created. Nested groups use `parentGroupName` to preserve hierarchy. Paths use `~/` for portability.
 
 ## Sharing vs iCloud Sync
 

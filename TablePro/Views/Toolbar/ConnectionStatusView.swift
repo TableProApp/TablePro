@@ -42,6 +42,9 @@ struct ConnectionStatusView: View {
         Text(formattedDatabaseInfo)
             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
             .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(maxWidth: 280)
             .accessibilityLabel(
                 String(localized: "Database type: \(formattedDatabaseInfo)")
             )

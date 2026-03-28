@@ -246,7 +246,11 @@ SSL/TLS is not available for SQLite connections (file-based, no network involved
 
 Colors tint the toolbar when you connect (red for production, green for development). Tags group connections in the sidebar.
 
-Create connection groups by right-clicking in the connection list or using the folder icon. Groups collapse/expand and persist between sessions.
+Create connection groups by right-clicking in the connection list or using the folder icon. Groups collapse/expand with native macOS disclosure triangles and persist between sessions.
+
+### Nested Groups
+
+Groups support up to 3 levels of nesting. Right-click a group to create a subgroup, move it under another group, or delete it. Deleting a parent removes all subgroups — connections inside are ungrouped, not deleted. The connection form shows the full hierarchy when picking a group.
 
 {/* Screenshot: Connection form showing color picker */}
 <Frame caption="Connection color picker and organization">

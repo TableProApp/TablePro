@@ -613,8 +613,9 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
 
     private func reloadProfiles() {
         sshProfiles = SSHProfileStorage.shared.loadProfiles()
-        // If the edited/deleted profile no longer exists, clear the selection
-        if let id = sshProfileId, !sshProfiles.contains(where: { $0.id == id }) {
+        if let id = sshProfileId,
+           !SSHProfileStorage.shared.lastLoadFailed,
+           !sshProfiles.contains(where: { $0.id == id }) {
             sshProfileId = nil
         }
     }
@@ -1176,21 +1177,27 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
     }
 
     private func saveConnection() {
-        let sshConfig = SSHConfiguration(
-            enabled: sshEnabled,
-            host: sshHost,
-            port: Int(sshPort) ?? 22,
-            username: sshUsername,
-            authMethod: sshAuthMethod,
-            privateKeyPath: sshPrivateKeyPath,
-            useSSHConfig: !selectedSSHConfigHost.isEmpty,
-            agentSocketPath: resolvedSSHAgentSocketPath,
-            jumpHosts: jumpHosts,
-            totpMode: totpMode,
-            totpAlgorithm: totpAlgorithm,
-            totpDigits: totpDigits,
-            totpPeriod: totpPeriod
-        )
+        let sshConfig: SSHConfiguration
+        if let profileId = sshProfileId,
+           let profile = sshProfiles.first(where: { $0.id == profileId }) {
+            sshConfig = profile.toSSHConfiguration()
+        } else {
+            sshConfig = SSHConfiguration(
+                enabled: sshEnabled,
+                host: sshHost,
+                port: Int(sshPort) ?? 22,
+                username: sshUsername,
+                authMethod: sshAuthMethod,
+                privateKeyPath: sshPrivateKeyPath,
+                useSSHConfig: !selectedSSHConfigHost.isEmpty,
+                agentSocketPath: resolvedSSHAgentSocketPath,
+                jumpHosts: jumpHosts,
+                totpMode: totpMode,
+                totpAlgorithm: totpAlgorithm,
+                totpDigits: totpDigits,
+                totpPeriod: totpPeriod
+            )
+        }
 
         let sslConfig = SSLConfiguration(
             mode: sslMode,

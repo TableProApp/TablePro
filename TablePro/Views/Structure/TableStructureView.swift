@@ -161,6 +161,49 @@ struct TableStructureView: View {
         let provider = StructureRowProvider(changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type)
         let canEdit = connection.type.supportsSchemaEditing
 
+        let moveRowHandler: ((Int, Int) -> Void)? = {
+            guard selectedTab == .columns,
+                  canEdit,
+                  !structureChangeManager.hasChanges,
+                  PluginManager.shared.supportsColumnReorder(for: connection.type) else {
+                return nil
+            }
+            return { fromIndex, toIndex in
+                let columnsSnapshot = structureChangeManager.workingColumns
+                Task { @MainActor in
+                    do {
+                        let executedSQL = try await StructureColumnReorderHandler.moveColumn(
+                            fromIndex: fromIndex,
+                            toIndex: toIndex,
+                            workingColumns: columnsSnapshot,
+                            tableName: tableName,
+                            connectionId: connection.id
+                        )
+                        QueryHistoryManager.shared.recordQuery(
+                            query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
+                            connectionId: connection.id,
+                            databaseName: connection.database,
+                            executionTime: 0,
+                            rowCount: 0,
+                            wasSuccessful: true
+                        )
+                        isReloadingAfterSave = true
+                        await loadColumns()
+                        loadSchemaForEditing()
+                        isReloadingAfterSave = false
+                        ColumnLayoutStorage.shared.clear(for: tableName, connectionId: connection.id)
+                        NotificationCenter.default.post(name: .refreshData, object: nil)
+                    } catch {
+                        AlertHelper.showErrorSheet(
+                            title: String(localized: "Column Reorder Failed"),
+                            message: error.localizedDescription,
+                            window: NSApp.keyWindow
+                        )
+                    }
+                }
+            }
+        }()
+
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
@@ -183,6 +226,7 @@ struct TableStructureView: View {
             typePickerColumns: provider.typePickerColumns,
             connectionId: connection.id,
             databaseType: getDatabaseType(),
+            onMoveRow: moveRowHandler,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,

@@ -14,7 +14,7 @@ final class SSHProfileStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
-    private var lastLoadFailed = false
+    private(set) var lastLoadFailed = false
 
     private init() {}
 

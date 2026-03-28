@@ -2974,7 +2974,26 @@
       }
     },
     "Add Connection" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı Ekle"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thêm kết nối"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加连接"
+          }
+        }
+      }
     },
     "Add filter" : {
       "localizations" : {
@@ -3778,6 +3797,24 @@
             "state" : "new",
             "value" : "An external link wants to add a database connection:\n\nName: %1$@\n%2$@"
           }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harici bir bağlantı veritabanı bağlantısı eklemek istiyor:\n\nAd: %@\n%@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một liên kết bên ngoài muốn thêm kết nối cơ sở dữ liệu:\n\nTên: %@\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部链接请求添加数据库连接：\n\n名称：%@\n%@"
+          }
         }
       }
     },
@@ -3787,6 +3824,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "An external link wants to open a query on connection \"%1$@\":\n\n%2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Harici bir bağlantı “%@” bağlantısında sorgu açmak istiyor:\n\n%@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Một liên kết bên ngoài muốn mở truy vấn trên kết nối “%@”:\n\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外部链接请求在连接“%@”上打开查询：\n\n%@"
           }
         }
       }
@@ -6554,6 +6609,72 @@
         }
       }
     },
+    "Column Reorder Failed" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sütun Yeniden Sıralama Başarısız"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sắp xếp lại cột thất bại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列重排失败"
+          }
+        }
+      }
+    },
+    "Column reorder failed: %@" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sütun yeniden sıralama başarısız: %@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sắp xếp lại cột thất bại: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "列重排失败：%@"
+          }
+        }
+      }
+    },
+    "Column reorder is not supported for this database type" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu veritabanı türü için sütun yeniden sıralama desteklenmiyor"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loại cơ sở dữ liệu này không hỗ trợ sắp xếp lại cột"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此数据库类型不支持列重排"
+          }
+        }
+      }
+    },
     "Column: %@" : {
       "localizations" : {
         "tr" : {
@@ -7005,6 +7126,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Connection \"%1$@\" has a script that will run before connecting:\n\n%2$@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı “%@” bağlanmadan önce çalışacak bir komut dosyasına sahip:\n\n%@"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kết nối “%@” có một script sẽ chạy trước khi kết nối:\n\n%@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接“%@”有一个将在连接前运行的脚本：\n\n%@"
           }
         }
       }
@@ -12866,6 +13005,28 @@
         }
       }
     },
+    "Failed to generate SQL for column reorder" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sütun yeniden sıralama için SQL oluşturulamadı"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không thể tạo SQL để sắp xếp lại cột"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法生成列重排的 SQL"
+          }
+        }
+      }
+    },
     "Failed to import DDL: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15089,7 +15250,26 @@
       }
     },
     "Import Connection from Link" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantıyı Linkten İçe Aktar"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhập kết nối từ liên kết"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从链接导入连接"
+          }
+        }
+      }
     },
     "Import Connections" : {
       "localizations" : {
@@ -16168,6 +16348,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无效的参数: %@"
+          }
+        }
+      }
+    },
+    "Invalid column indices for reorder operation" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden sıralama işlemi için geçersiz sütun dizinleri"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chỉ mục cột không hợp lệ cho thao tác sắp xếp lại"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重排操作的列索引无效"
           }
         }
       }
@@ -18473,6 +18675,28 @@
         }
       }
     },
+    "Move Group to..." : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grubu Taşı..."
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di chuyển nhóm đến..."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动分组到..."
+          }
+        }
+      }
+    },
     "Move to" : {
       "localizations" : {
         "tr" : {
@@ -19191,6 +19415,28 @@
         }
       }
     },
+    "New Subgroup" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni Alt Grup"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm con mới"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建子分组"
+          }
+        }
+      }
+    },
     "New Tab" : {
       "localizations" : {
         "tr" : {
@@ -19391,6 +19637,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无活动连接"
+          }
+        }
+      }
+    },
+    "No active database connection" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktif veritabanı bağlantısı yok"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không có kết nối cơ sở dữ liệu đang hoạt động"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有活动的数据库连接"
           }
         }
       }
@@ -20613,6 +20881,28 @@
         }
       }
     },
+    "None (Top Level)" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yok (Üst Düzey)"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Không (Cấp cao nhất)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无（顶级）"
+          }
+        }
+      }
+    },
     "Normal" : {
       "localizations" : {
         "tr" : {
@@ -21411,10 +21701,48 @@
       }
     },
     "Open Query" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sorguyu Aç"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở truy vấn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开查询"
+          }
+        }
+      }
     },
     "Open Query from Link" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linkten Sorgu Aç"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mở truy vấn từ liên kết"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从链接打开查询"
+          }
+        }
+      }
     },
     "Open Redis CLI" : {
       "extractionState" : "stale",
@@ -21841,6 +22169,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "面板状态"
+          }
+        }
+      }
+    },
+    "Parent Group" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Üst Grup"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nhóm cha"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "父分组"
           }
         }
       }
@@ -22738,7 +23088,26 @@
       }
     },
     "Pre-connect script was cancelled" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı öncesi komut dosyası iptal edildi"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Script trước khi kết nối đã bị hủy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接前脚本已取消"
+          }
+        }
+      }
     },
     "Precision" : {
       "extractionState" : "stale",
@@ -25599,7 +25968,26 @@
       }
     },
     "Run Script" : {
-
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Komut Dosyasını Çalıştır"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chạy script"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行脚本"
+          }
+        }
+      }
     },
     "Safe Mode" : {
       "localizations" : {
@@ -31753,6 +32141,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "工具栏"
+          }
+        }
+      }
+    },
+    "Top Level" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Üst Düzey"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cấp cao nhất"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "顶级"
           }
         }
       }
