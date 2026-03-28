@@ -11,10 +11,11 @@ import Foundation
 import OSLog
 import TableProPluginKit
 
-// MySQL/MariaDB field flag constants
-private let mysqlBinaryFlag: UInt = 0x0080   // 128
-private let mysqlEnumFlag: UInt = 0x0100     // 256
-private let mysqlSetFlag: UInt = 0x0800      // 2048
+// MySQL/MariaDB field flag and charset constants
+private let mysqlBinaryFlag: UInt = 0x0080
+private let mysqlEnumFlag: UInt = 0x0100
+private let mysqlSetFlag: UInt = 0x0800
+private let mysqlBinaryCharset: UInt32 = 63
 
 private let logger = Logger(subsystem: "com.TablePro", category: "MariaDBPluginConnection")
 
@@ -72,13 +73,27 @@ struct MySQLSSLConfig {
 
 // MARK: - Type Mapping
 
-func mysqlTypeToString(_ type: UInt32, length: UInt, flags: UInt) -> String {
+func mysqlTypeToString(_ fieldPtr: UnsafePointer<MYSQL_FIELD>) -> String {
+    let field = fieldPtr.pointee
+    let flags = UInt(field.flags)
+    let length = field.length
+
+    // MariaDB extended metadata: detect JSON stored as LONGTEXT (best-effort)
+    var attr = MARIADB_CONST_STRING()
+    if mariadb_field_attr(&attr, fieldPtr, MARIADB_FIELD_ATTR_FORMAT_NAME) == 0,
+       let str = attr.str, attr.length > 0,
+       String(cString: str) == "json" {
+        return "JSON"
+    }
+
     if (flags & mysqlEnumFlag) != 0 { return "ENUM" }
     if (flags & mysqlSetFlag) != 0 { return "SET" }
 
-    let isBinary = (flags & mysqlBinaryFlag) != 0
+    // Binary flag alone is insufficient — MariaDB sets it on text columns with
+    // binary collation (e.g. utf8mb4_bin for JSON). Only charset 63 is truly binary.
+    let isBinary = (flags & mysqlBinaryFlag) != 0 && field.charsetnr == mysqlBinaryCharset
 
-    switch type {
+    switch field.type.rawValue {
     case 0: return "DECIMAL"
     case 1: return "TINYINT"
     case 2: return "SMALLINT"
@@ -444,7 +459,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fieldType, length: field.length, flags: fieldFlags))
+                columnTypeNames.append(mysqlTypeToString(fields + i))
             }
         }
 
@@ -749,7 +764,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
                 if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
                 columnTypes.append(fieldType)
-                columnTypeNames.append(mysqlTypeToString(fieldType, length: field.length, flags: fieldFlags))
+                columnTypeNames.append(mysqlTypeToString(fields + i))
             }
         }
 

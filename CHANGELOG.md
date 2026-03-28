@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
+- JSON fields in Row Details sidebar now display as pretty-printed scrollable text
+
+### Fixed
+
+- MariaDB JSON columns misdetected as BLOB, showing hex dumps instead of JSON text
 
 ## [0.25.0] - 2026-03-27
 
