@@ -11,6 +11,7 @@ import SwiftUI
 struct QuerySuccessView: View {
     let rowsAffected: Int
     let executionTime: TimeInterval?
+    let statusMessage: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -43,6 +44,12 @@ struct QuerySuccessView: View {
             }
             .font(.subheadline)
 
+            if let statusMessage {
+                Text(statusMessage)
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -64,6 +71,6 @@ struct QuerySuccessView: View {
 }
 
 #Preview {
-    QuerySuccessView(rowsAffected: 3, executionTime: 0.025)
+    QuerySuccessView(rowsAffected: 3, executionTime: 0.025, statusMessage: "Processed: 1.5 GB | Billed: 1.5 GB | ~$0.01")
         .frame(width: 400, height: 300)
 }

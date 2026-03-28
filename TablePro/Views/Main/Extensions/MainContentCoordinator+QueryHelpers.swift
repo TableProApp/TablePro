@@ -100,6 +100,7 @@ extension MainContentCoordinator {
         rows: [[String?]],
         executionTime: TimeInterval,
         rowsAffected: Int,
+        statusMessage: String?,
         tableName: String?,
         isEditable: Bool,
         metadata: ParsedSchemaMetadata?,
@@ -116,6 +117,7 @@ extension MainContentCoordinator {
         updatedTab.resultVersion += 1
         updatedTab.executionTime = executionTime
         updatedTab.rowsAffected = rowsAffected
+        updatedTab.statusMessage = statusMessage
         updatedTab.isExecuting = false
         updatedTab.lastExecutedAt = Date()
         updatedTab.tableName = tableName

@@ -49,11 +49,21 @@ struct MainStatusBarView: View {
 
             Spacer()
 
-            // Center: Row info (selection or pagination summary)
+            // Center: Row info (selection or pagination summary) and status message
             if let tab = tab, !tab.resultRows.isEmpty {
-                Text(rowInfoText(for: tab))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(rowInfoText(for: tab))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if let statusMessage = tab.statusMessage {
+                        Text("·")
+                            .foregroundStyle(.tertiary)
+                        Text(statusMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Spacer()
