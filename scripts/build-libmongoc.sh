@@ -139,7 +139,7 @@ install_libs() {
 install_headers() {
     local arch=$1
     local prefix="$BUILD_DIR/install-mongoc-$arch"
-    local dest="$PROJECT_DIR/TablePro/Core/Database/CLibMongoc/include"
+    local dest="$PROJECT_DIR/Plugins/MongoDBDriverPlugin/CLibMongoc/include"
 
     echo "📦 Installing libmongoc headers..."
 
@@ -176,7 +176,7 @@ build_for_arch() {
     build_mongoc "$arch"
     install_libs "$arch"
     # Install headers once (they're arch-independent)
-    if [ ! -f "$PROJECT_DIR/TablePro/Core/Database/CLibMongoc/include/mongoc/mongoc.h" ]; then
+    if [ ! -f "$PROJECT_DIR/Plugins/MongoDBDriverPlugin/CLibMongoc/include/mongoc/mongoc.h" ]; then
         install_headers "$arch"
     fi
 }
