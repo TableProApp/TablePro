@@ -642,7 +642,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             editorLanguage: driverType.editorLanguage,
             connectionMode: driverType.connectionMode,
             supportsDatabaseSwitching: driverType.supportsDatabaseSwitching,
-            supportsColumnReorder: driverType.supportsColumnReorder,
+            supportsColumnReorder: false,
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
                 supportsImport: driverType.supportsImport,

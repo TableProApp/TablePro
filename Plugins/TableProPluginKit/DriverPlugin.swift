@@ -54,7 +54,6 @@ public protocol DriverPlugin: TableProPlugin {
     static var isDownloadable: Bool { get }
     static var postConnectActions: [PostConnectAction] { get }
     static var parameterStyle: ParameterStyle { get }
-    static var supportsColumnReorder: Bool { get }
 }
 
 public extension DriverPlugin {
@@ -115,5 +114,4 @@ public extension DriverPlugin {
     static var parameterStyle: ParameterStyle { .questionMark }
     static var isDownloadable: Bool { false }
     static var postConnectActions: [PostConnectAction] { [] }
-    static var supportsColumnReorder: Bool { false }
 }
