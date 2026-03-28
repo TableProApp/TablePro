@@ -15,6 +15,7 @@ final class GroupStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var cachedGroups: [ConnectionGroup]?
 
     private init() {}
 
@@ -22,14 +23,20 @@ final class GroupStorage {
 
     /// Load all groups
     func loadGroups() -> [ConnectionGroup] {
+        if let cached = cachedGroups { return cached }
+
         guard let data = defaults.data(forKey: groupsKey) else {
+            cachedGroups = []
             return []
         }
 
         do {
-            return try decoder.decode([ConnectionGroup].self, from: data)
+            let groups = try decoder.decode([ConnectionGroup].self, from: data)
+            cachedGroups = groups
+            return groups
         } catch {
             Self.logger.error("Failed to load groups: \(error)")
+            cachedGroups = []
             return []
         }
     }
@@ -39,6 +46,7 @@ final class GroupStorage {
         do {
             let data = try encoder.encode(groups)
             defaults.set(data, forKey: groupsKey)
+            cachedGroups = nil
             SyncChangeTracker.shared.markDirty(.group, ids: groups.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save groups: \(error)")

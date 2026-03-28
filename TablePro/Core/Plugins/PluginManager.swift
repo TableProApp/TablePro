@@ -1004,6 +1004,7 @@ final class PluginManager {
         replaceExistingPlugin(bundleId: newBundleId)
 
         let fm = FileManager.default
+        try fm.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
         let destURL = userPluginsDir.appendingPathComponent(url.lastPathComponent)
 
         if url.standardizedFileURL != destURL.standardizedFileURL {
@@ -1075,6 +1076,7 @@ final class PluginManager {
 
             replaceExistingPlugin(bundleId: newBundleId)
 
+            try fm.createDirectory(at: userPluginsDir, withIntermediateDirectories: true)
             let destURL = userPluginsDir.appendingPathComponent(extracted.lastPathComponent)
 
             if fm.fileExists(atPath: destURL.path) {

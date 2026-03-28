@@ -375,6 +375,14 @@ struct ReadOnlyFieldView: View {
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                     .frame(maxHeight: 120)
+                } else if columnTypeEnum.isJsonType {
+                    ScrollView {
+                        Text(value)
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                    .frame(maxHeight: 200)
                 } else if isLongText {
                     Text(value)
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))

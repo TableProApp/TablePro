@@ -17,6 +17,7 @@ final class TagStorage {
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    private var cachedTags: [ConnectionTag]?
 
     private init() {
         // Initialize with presets on first launch
@@ -29,16 +30,23 @@ final class TagStorage {
 
     /// Load all tags (presets + custom)
     func loadTags() -> [ConnectionTag] {
+        if let cached = cachedTags { return cached }
+
         guard let data = defaults.data(forKey: tagsKey) else {
-            return ConnectionTag.presets
+            let tags = ConnectionTag.presets
+            cachedTags = tags
+            return tags
         }
 
         do {
             let tags = try decoder.decode([ConnectionTag].self, from: data)
+            cachedTags = tags
             return tags
         } catch {
             Self.logger.error("Failed to load tags: \(error)")
-            return ConnectionTag.presets
+            let tags = ConnectionTag.presets
+            cachedTags = tags
+            return tags
         }
     }
 
@@ -47,6 +55,7 @@ final class TagStorage {
         do {
             let data = try encoder.encode(tags)
             defaults.set(data, forKey: tagsKey)
+            cachedTags = nil
             SyncChangeTracker.shared.markDirty(.tag, ids: tags.map { $0.id.uuidString })
         } catch {
             Self.logger.error("Failed to save tags: \(error)")
