@@ -18473,6 +18473,9 @@
         }
       }
     },
+    "Move Group to..." : {
+
+    },
     "Move to" : {
       "localizations" : {
         "tr" : {
@@ -19190,6 +19193,9 @@
           }
         }
       }
+    },
+    "New Subgroup" : {
+
     },
     "New Tab" : {
       "localizations" : {
@@ -20613,6 +20619,9 @@
         }
       }
     },
+    "None (Top Level)" : {
+
+    },
     "Normal" : {
       "localizations" : {
         "tr" : {
@@ -21844,6 +21853,9 @@
           }
         }
       }
+    },
+    "Parent Group" : {
+
     },
     "Partition" : {
       "localizations" : {
@@ -31756,6 +31768,9 @@
           }
         }
       }
+    },
+    "Top Level" : {
+
     },
     "Total Size" : {
       "localizations" : {
