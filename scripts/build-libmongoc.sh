@@ -21,6 +21,9 @@ run_quiet() {
 #
 # Uses macOS SecureTransport (ENABLE_SSL=DARWIN) for TLS so that
 # certificate verification uses the system Keychain automatically.
+# Note: SecureTransport is deprecated by Apple but still functional on
+# macOS 14+. It supports TLS 1.2 (no 1.3). MongoDB Atlas accepts TLS 1.2.
+# libmongoc does not support Network.framework as a TLS backend.
 #
 # All libraries are built with MACOSX_DEPLOYMENT_TARGET=14.0 to match
 # the app's minimum deployment target.

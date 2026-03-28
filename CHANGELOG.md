@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 
+### Fixed
+
+- MongoDB Atlas connections failing with "TLS certificate verify failed" due to missing CA bundle
+
 ## [0.25.0] - 2026-03-27
 
 ### Added
