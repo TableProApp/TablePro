@@ -50,6 +50,16 @@
 		5ADDB00100000000000000A6 /* DynamoDBQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */; };
 		5ADDB00100000000000000A7 /* DynamoDBStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */; };
 		5ADDB00100000000000000A8 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
+		5ABQR00000000000000000D0 /* BigQueryDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5ABQR00100000000000000A1 /* BigQueryAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A1 /* BigQueryAuth.swift */; };
+		5ABQR00100000000000000A2 /* BigQueryConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A2 /* BigQueryConnection.swift */; };
+		5ABQR00100000000000000A3 /* BigQueryPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A3 /* BigQueryPlugin.swift */; };
+		5ABQR00100000000000000A4 /* BigQueryPluginDriver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A4 /* BigQueryPluginDriver.swift */; };
+		5ABQR00100000000000000A5 /* BigQueryQueryBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A5 /* BigQueryQueryBuilder.swift */; };
+		5ABQR00100000000000000A6 /* BigQueryStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A6 /* BigQueryStatementGenerator.swift */; };
+		5ABQR00100000000000000A7 /* BigQueryTypeMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */; };
+		5ABQR00100000000000000A8 /* BigQueryOAuthServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */; };
+		5ABQR00100000000000000A9 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AE4F4902F6BC0640097AC5B /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5AEA8B422F6808CA0040461A /* EtcdStatementGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B402F6808CA0040461A /* EtcdStatementGenerator.swift */; };
 		5AEA8B432F6808CA0040461A /* EtcdPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AEA8B3D2F6808CA0040461A /* EtcdPlugin.swift */; };
@@ -181,6 +191,13 @@
 			remoteGlobalIDString = 5ADDB00600000000000000B0;
 			remoteInfo = DynamoDBDriverPlugin;
 		};
+		5ABQR00000000000000000C0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A1091BF2EF17EDC0055EA7C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5ABQR00600000000000000B0;
+			remoteInfo = BigQueryDriverPlugin;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -203,6 +220,7 @@
 				5A86E000D00000000 /* MQLExport.tableplugin in Copy Plug-Ins */,
 				5A86F000D00000000 /* SQLImport.tableplugin in Copy Plug-Ins */,
 				5ADDB00000000000000000D0 /* DynamoDBDriverPlugin.tableplugin in Copy Plug-Ins */,
+				5ABQR00000000000000000D0 /* BigQueryDriverPlugin.tableplugin in Copy Plug-Ins */,
 			);
 			name = "Copy Plug-Ins";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -248,6 +266,15 @@
 		5ADDB00200000000000000A6 /* DynamoDBQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBQueryBuilder.swift; sourceTree = "<group>"; };
 		5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamoDBStatementGenerator.swift; sourceTree = "<group>"; };
 		5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DynamoDBDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
+		5ABQR00200000000000000A1 /* BigQueryAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryAuth.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A2 /* BigQueryConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryConnection.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A3 /* BigQueryPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryPlugin.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A4 /* BigQueryPluginDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryPluginDriver.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A5 /* BigQueryQueryBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryQueryBuilder.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A6 /* BigQueryStatementGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryStatementGenerator.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryTypeMapper.swift; sourceTree = "<group>"; };
+		5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BigQueryOAuthServer.swift; sourceTree = "<group>"; };
+		5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BigQueryDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CloudflareD1DriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = EtcdDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5AEA8B3B2F6808CA0040461A /* EtcdCommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EtcdCommandParser.swift; sourceTree = "<group>"; };
@@ -719,6 +746,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABQR00400000000000000B2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ABQR00100000000000000A9 /* TableProPluginKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5AE4F4712F6BC0640097AC5B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -750,6 +785,7 @@
 			isa = PBXGroup;
 			children = (
 				5ADDB00500000000000000B0 /* Plugins/DynamoDBDriverPlugin */,
+				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
 				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
 				5A1091C92EF17EDC0055EA7C /* TablePro */,
@@ -801,6 +837,7 @@
 				5ABCC5A72F43856700EAF3FC /* TableProTests.xctest */,
 				5AEA8B2A2F6808270040461A /* EtcdDriverPlugin.tableplugin */,
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
+				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
 			);
 			name = Products;
@@ -818,6 +855,21 @@
 				5ADDB00200000000000000A7 /* DynamoDBStatementGenerator.swift */,
 			);
 			path = Plugins/DynamoDBDriverPlugin;
+			sourceTree = "<group>";
+		};
+		5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */ = {
+			isa = PBXGroup;
+			children = (
+				5ABQR00200000000000000A1 /* BigQueryAuth.swift */,
+				5ABQR00200000000000000A2 /* BigQueryConnection.swift */,
+				5ABQR00200000000000000A3 /* BigQueryPlugin.swift */,
+				5ABQR00200000000000000A4 /* BigQueryPluginDriver.swift */,
+				5ABQR00200000000000000A5 /* BigQueryQueryBuilder.swift */,
+				5ABQR00200000000000000A6 /* BigQueryStatementGenerator.swift */,
+				5ABQR00200000000000000A7 /* BigQueryTypeMapper.swift */,
+				5ABQR00200000000000000A8 /* BigQueryOAuthServer.swift */,
+			);
+			path = Plugins/BigQueryDriverPlugin;
 			sourceTree = "<group>";
 		};
 		5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */ = {
@@ -882,6 +934,7 @@
 				5A86E000C00000000 /* PBXTargetDependency */,
 				5A86F000C00000000 /* PBXTargetDependency */,
 				5ADDB00000000000000000C1 /* PBXTargetDependency */,
+				5ABQR00000000000000000C1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5A1091C92EF17EDC0055EA7C /* TablePro */,
@@ -1282,6 +1335,25 @@
 			productReference = 5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */;
 			productType = "com.apple.product-type.bundle";
 		};
+		5ABQR00600000000000000B0 /* BigQueryDriverPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5ABQR00800000000000000B0 /* Build configuration list for PBXNativeTarget "BigQueryDriverPlugin" */;
+			buildPhases = (
+				5ABQR00400000000000000B1 /* Sources */,
+				5ABQR00400000000000000B2 /* Frameworks */,
+				5ABQR00400000000000000B3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BigQueryDriverPlugin;
+			packageProductDependencies = (
+			);
+			productName = BigQueryDriverPlugin;
+			productReference = 5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
+		};
 		5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 5AE4F4752F6BC0640097AC5B /* Build configuration list for PBXNativeTarget "CloudflareD1DriverPlugin" */;
@@ -1441,6 +1513,7 @@
 				5AEA8B292F6808270040461A /* EtcdDriverPlugin */,
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
+				5ABQR00600000000000000B0 /* BigQueryDriverPlugin */,
 			);
 		};
 /* End PBXProject section */
@@ -1580,6 +1653,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5ADDB00400000000000000B3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5ABQR00400000000000000B3 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1750,6 +1830,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5ABQR00400000000000000B1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5ABQR00100000000000000A1 /* BigQueryAuth.swift in Sources */,
+				5ABQR00100000000000000A2 /* BigQueryConnection.swift in Sources */,
+				5ABQR00100000000000000A3 /* BigQueryPlugin.swift in Sources */,
+				5ABQR00100000000000000A4 /* BigQueryPluginDriver.swift in Sources */,
+				5ABQR00100000000000000A5 /* BigQueryQueryBuilder.swift in Sources */,
+				5ABQR00100000000000000A6 /* BigQueryStatementGenerator.swift in Sources */,
+				5ABQR00100000000000000A7 /* BigQueryTypeMapper.swift in Sources */,
+				5ABQR00100000000000000A8 /* BigQueryOAuthServer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5AE4F4702F6BC0640097AC5B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1857,6 +1952,11 @@
 			isa = PBXTargetDependency;
 			target = 5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */;
 			targetProxy = 5ADDB00000000000000000C0 /* PBXContainerItemProxy */;
+		};
+		5ABQR00000000000000000C1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5ABQR00600000000000000B0 /* BigQueryDriverPlugin */;
+			targetProxy = 5ABQR00000000000000000C0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -3182,6 +3282,55 @@
 			};
 			name = Release;
 		};
+		5ABQR00700000000000000B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BigQueryDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BigQueryPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BigQueryDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5ABQR00700000000000000B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/BigQueryDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).BigQueryPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.BigQueryDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Release;
+		};
 		5AE4F4762F6BC0640097AC5B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -3465,6 +3614,15 @@
 			buildConfigurations = (
 				5ADDB00700000000000000B1 /* Debug */,
 				5ADDB00700000000000000B2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5ABQR00800000000000000B0 /* Build configuration list for PBXNativeTarget "BigQueryDriverPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5ABQR00700000000000000B1 /* Debug */,
+				5ABQR00700000000000000B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

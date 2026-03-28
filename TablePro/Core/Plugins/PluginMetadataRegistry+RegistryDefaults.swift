@@ -1179,6 +1179,7 @@ extension PluginMetadataRegistry {
                 brandColorHex: "#4285F4",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,
+                supportsColumnReorder: false,
                 capabilities: PluginMetadataSnapshot.CapabilityFlags(
                     supportsSchemaSwitching: true,
                     supportsImport: false,
