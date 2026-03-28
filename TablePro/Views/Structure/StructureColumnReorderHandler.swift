@@ -53,7 +53,8 @@ enum StructureColumnReorderHandler {
         tableName: String,
         connectionId: UUID
     ) async throws {
-        guard fromIndex >= 0, fromIndex < workingColumns.count else {
+        guard fromIndex >= 0, fromIndex < workingColumns.count,
+              toIndex >= 0, toIndex <= workingColumns.count else {
             throw ReorderError.invalidIndices
         }
 
@@ -78,27 +79,16 @@ enum StructureColumnReorderHandler {
             afterColumn = nil
         } else {
             var columnNames = workingColumns.map(\.name)
-            let movedName = columnNames.remove(at: fromIndex)
+            columnNames.remove(at: fromIndex)
 
             // Adjust insertion point: if source was above the drop target, the
             // indices shift down by one after removal.
-            let adjustedIndex: Int
-            if fromIndex < toIndex {
-                adjustedIndex = toIndex - 1
-            } else {
-                adjustedIndex = toIndex
-            }
+            let adjustedIndex = fromIndex < toIndex ? toIndex - 1 : toIndex
 
             // The column just before the insertion point is the "after" target
             let afterIndex = adjustedIndex - 1
             if afterIndex >= 0, afterIndex < columnNames.count {
-                let candidate = columnNames[afterIndex]
-                // Guard against placing after itself (shouldn't happen but defensive)
-                if candidate == movedName {
-                    afterColumn = nil
-                } else {
-                    afterColumn = candidate
-                }
+                afterColumn = columnNames[afterIndex]
             } else {
                 afterColumn = nil
             }

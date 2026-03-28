@@ -179,6 +179,8 @@ extension TableViewCoordinator {
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
         guard onMoveRow != nil else { return [] }
+        guard info.draggingSource as? NSTableView === tableView else { return [] }
+        guard info.draggingPasteboard.availableType(from: [Self.rowDragType]) != nil else { return [] }
         guard dropOperation == .above else {
             tableView.setDropRow(row, dropOperation: .above)
             return .move

@@ -169,12 +169,13 @@ struct TableStructureView: View {
                 return nil
             }
             return { fromIndex, toIndex in
+                let columnsSnapshot = structureChangeManager.workingColumns
                 Task { @MainActor in
                     do {
                         try await StructureColumnReorderHandler.moveColumn(
                             fromIndex: fromIndex,
                             toIndex: toIndex,
-                            workingColumns: structureChangeManager.workingColumns,
+                            workingColumns: columnsSnapshot,
                             tableName: tableName,
                             connectionId: connection.id
                         )

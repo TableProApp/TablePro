@@ -205,7 +205,11 @@ struct DataGridView: NSViewRepresentable {
             tableView.registerForDraggedTypes([rowDragType])
             tableView.draggingDestinationFeedbackStyle = .gap
         } else if onMoveRow == nil && hasDragRegistered {
+            let remaining = tableView.registeredDraggedTypes.filter { $0 != rowDragType }
             tableView.unregisterDraggedTypes()
+            if !remaining.isEmpty {
+                tableView.registerForDraggedTypes(remaining)
+            }
         }
 
         // Identity-based early-return BEFORE reading settings — avoids

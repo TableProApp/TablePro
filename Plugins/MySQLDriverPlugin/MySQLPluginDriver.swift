@@ -635,7 +635,10 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " AUTO_INCREMENT"
         }
         if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
-            def += " ON UPDATE \(onUpdate)"
+            let upper = onUpdate.uppercased()
+            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()" || upper.hasPrefix("CURRENT_TIMESTAMP(") {
+                def += " ON UPDATE \(onUpdate)"
+            }
         }
         if let comment = column.comment, !comment.isEmpty {
             def += " COMMENT '\(escapeStringLiteral(comment))'"
