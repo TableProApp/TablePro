@@ -9,7 +9,7 @@ import Foundation
 import os
 import TableProPluginKit
 
-final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
+public final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let pluginName = "BigQuery Driver"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Google BigQuery support via REST API with GoogleSQL"
@@ -90,6 +90,12 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "bqOAuthClientSecret",
             label: String(localized: "OAuth Client Secret"),
+            fieldType: .secure,
+            section: .authentication
+        ),
+        ConnectionField(
+            id: "bqOAuthRefreshToken",
+            label: "",
             fieldType: .secure,
             section: .authentication
         ),

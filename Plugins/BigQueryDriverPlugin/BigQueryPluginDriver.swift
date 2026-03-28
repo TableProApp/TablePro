@@ -32,6 +32,12 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "BigQueryPluginDriver")
+    private static let metadataDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f
+    }()
 
     var serverVersion: String? {
         lock.withLock { _serverVersion }
@@ -306,10 +312,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         // For ad-hoc SQL, wrap with LIMIT/OFFSET
         let dataset = lock.withLock { _currentDataset }
         let cleaned = trimmed.replacingOccurrences(
-            of: ";\\s*$", with: "", options: .regularExpression
+            of: ";\\s*\\z", with: "", options: .regularExpression
         )
         let strippedSQL = cleaned.replacingOccurrences(
-            of: "\\s+LIMIT\\s+\\d+(\\s+OFFSET\\s+\\d+)?\\s*$",
+            of: "\\s+LIMIT\\s+\\d+(\\s+OFFSET\\s+\\d+)?\\s*\\z",
             with: "",
             options: [.regularExpression, .caseInsensitive]
         )
@@ -534,16 +540,11 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         }
         if let exp = tableResource.expirationTime, let ms = Double(exp) {
             let date = Date(timeIntervalSince1970: ms / 1000)
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .short
-            parts.append("Expires: \(formatter.string(from: date))")
+            parts.append("Expires: \(Self.metadataDateFormatter.string(from: date))")
         }
         if let created = tableResource.creationTime, let ms = Double(created) {
             let date = Date(timeIntervalSince1970: ms / 1000)
-            let formatter = DateFormatter()
-            formatter.dateStyle = .medium
-            parts.append("Created: \(formatter.string(from: date))")
+            parts.append("Created: \(Self.metadataDateFormatter.string(from: date))")
         }
 
         return PluginTableMetadata(

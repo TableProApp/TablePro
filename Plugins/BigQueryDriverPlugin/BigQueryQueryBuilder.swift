@@ -175,7 +175,8 @@ internal struct BigQueryQueryBuilder {
 
         // Filters
         if let filters = params.filters, !filters.isEmpty {
-            let logicMode = params.logicMode ?? "AND"
+            let rawMode = params.logicMode ?? "AND"
+            let logicMode = (rawMode.uppercased() == "OR") ? "OR" : "AND"
             let filterClauses = filters.compactMap { buildFilterClause($0, columns: columns) }
             if !filterClauses.isEmpty {
                 whereClauses.append(filterClauses.joined(separator: " \(logicMode) "))
@@ -226,7 +227,8 @@ internal struct BigQueryQueryBuilder {
         var whereClauses: [String] = []
 
         if let filters = params.filters, !filters.isEmpty {
-            let logicMode = params.logicMode ?? "AND"
+            let rawMode = params.logicMode ?? "AND"
+            let logicMode = (rawMode.uppercased() == "OR") ? "OR" : "AND"
             let filterClauses = filters.compactMap { buildFilterClause($0, columns: columns) }
             if !filterClauses.isEmpty {
                 whereClauses.append(filterClauses.joined(separator: " \(logicMode) "))
