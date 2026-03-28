@@ -417,5 +417,4 @@ struct ReadOnlyFieldView: View {
             }
         }
     }
-
 }

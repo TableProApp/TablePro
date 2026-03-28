@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
-- JSON fields in Row Details sidebar now display as pretty-printed scrollable text
+- JSON fields in Row Details sidebar now display in a scrollable monospaced text area
 
 ### Fixed
 

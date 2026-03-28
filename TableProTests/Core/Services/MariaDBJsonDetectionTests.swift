@@ -10,9 +10,8 @@
 //
 
 import Foundation
-import Testing
-
 @testable import TablePro
+import Testing
 
 @Suite("MariaDB JSON Detection")
 struct MariaDBJsonDetectionTests {
