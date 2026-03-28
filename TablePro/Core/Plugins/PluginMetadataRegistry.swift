@@ -621,6 +621,11 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         let schemes = driverType.urlSchemes
         let primaryScheme = schemes.first ?? driverType.databaseTypeId.lowercased()
 
+        // Preserve supportsColumnReorder from existing built-in snapshot.
+        // Cannot read from driverType directly — stale plugins without the
+        // property crash with EXC_BAD_INSTRUCTION (missing witness table entry).
+        let existingSnapshot = snapshot(forTypeId: driverType.databaseTypeId)
+
         return PluginMetadataSnapshot(
             displayName: driverType.databaseDisplayName,
             iconName: driverType.iconName,
@@ -642,7 +647,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
             editorLanguage: driverType.editorLanguage,
             connectionMode: driverType.connectionMode,
             supportsDatabaseSwitching: driverType.supportsDatabaseSwitching,
-            supportsColumnReorder: false,
+            supportsColumnReorder: existingSnapshot?.supportsColumnReorder ?? false,
             capabilities: PluginMetadataSnapshot.CapabilityFlags(
                 supportsSchemaSwitching: driverType.supportsSchemaSwitching,
                 supportsImport: driverType.supportsImport,
