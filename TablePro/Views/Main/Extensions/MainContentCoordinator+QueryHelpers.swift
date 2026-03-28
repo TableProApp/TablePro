@@ -21,6 +21,7 @@ extension MainContentCoordinator {
         let columnNullable: [String: Bool]
         let primaryKeyColumn: String?
         let approximateRowCount: Int?
+        let columnEnumValues: [String: [String]]
     }
 
     /// Schema result from parallel or sequential metadata fetch
@@ -38,12 +39,22 @@ extension MainContentCoordinator {
         for fk in schema.fkInfo {
             fks[fk.column] = fk
         }
+        // Parse enum/set values from column type definitions (MySQL, MariaDB, ClickHouse)
+        var enumValues: [String: [String]] = [:]
+        for col in schema.columnInfo {
+            if let values = ColumnType.parseEnumValues(from: col.dataType) {
+                enumValues[col.name] = values
+            } else if let values = ColumnType.parseClickHouseEnumValues(from: col.dataType) {
+                enumValues[col.name] = values
+            }
+        }
         return ParsedSchemaMetadata(
             columnDefaults: defaults,
             columnForeignKeys: fks,
             columnNullable: nullable,
             primaryKeyColumn: schema.columnInfo.first(where: { $0.isPrimaryKey })?.name,
-            approximateRowCount: schema.approximateRowCount
+            approximateRowCount: schema.approximateRowCount,
+            columnEnumValues: enumValues
         )
     }
 
@@ -132,6 +143,9 @@ extension MainContentCoordinator {
             updatedTab.columnDefaults = metadata.columnDefaults
             updatedTab.columnForeignKeys = metadata.columnForeignKeys
             updatedTab.columnNullable = metadata.columnNullable
+            for (col, vals) in metadata.columnEnumValues {
+                updatedTab.columnEnumValues[col] = vals
+            }
             if let approxCount = metadata.approximateRowCount, approxCount > 0 {
                 updatedTab.pagination.totalRowCount = approxCount
                 updatedTab.pagination.isApproximateRowCount = true
@@ -278,8 +292,16 @@ extension MainContentCoordinator {
                 guard capturedGeneration == queryGeneration else { return }
                 guard !Task.isCancelled else { return }
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].columnEnumValues = columnEnumValues
-                    tabManager.tabs[idx].metadataVersion += 1
+                    let existing = tabManager.tabs[idx].columnEnumValues
+                    let hasNewValues = columnEnumValues.contains { key, value in
+                        existing[key] != value
+                    }
+                    if hasNewValues {
+                        for (col, vals) in columnEnumValues {
+                            tabManager.tabs[idx].columnEnumValues[col] = vals
+                        }
+                        tabManager.tabs[idx].metadataVersion += 1
+                    }
                 }
             }
         }
