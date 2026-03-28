@@ -172,12 +172,20 @@ struct TableStructureView: View {
                 let columnsSnapshot = structureChangeManager.workingColumns
                 Task { @MainActor in
                     do {
-                        try await StructureColumnReorderHandler.moveColumn(
+                        let executedSQL = try await StructureColumnReorderHandler.moveColumn(
                             fromIndex: fromIndex,
                             toIndex: toIndex,
                             workingColumns: columnsSnapshot,
                             tableName: tableName,
                             connectionId: connection.id
+                        )
+                        QueryHistoryManager.shared.recordQuery(
+                            query: executedSQL.hasSuffix(";") ? executedSQL : executedSQL + ";",
+                            connectionId: connection.id,
+                            databaseName: connection.database,
+                            executionTime: 0,
+                            rowCount: 0,
+                            wasSuccessful: true
                         )
                         isReloadingAfterSave = true
                         await loadColumns()

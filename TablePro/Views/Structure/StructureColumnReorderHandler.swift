@@ -52,7 +52,7 @@ enum StructureColumnReorderHandler {
         workingColumns: [EditableColumnDefinition],
         tableName: String,
         connectionId: UUID
-    ) async throws {
+    ) async throws -> String {
         guard fromIndex >= 0, fromIndex < workingColumns.count,
               toIndex >= 0, toIndex <= workingColumns.count else {
             throw ReorderError.invalidIndices
@@ -110,6 +110,8 @@ enum StructureColumnReorderHandler {
             logger.error("Column reorder failed: \(error.localizedDescription, privacy: .public)")
             throw ReorderError.executionFailed(error.localizedDescription)
         }
+
+        return sql
     }
 
     private static func buildPluginColumn(from col: EditableColumnDefinition) -> PluginColumnDefinition {
