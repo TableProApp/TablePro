@@ -182,6 +182,8 @@ struct TableStructureView: View {
                         await loadColumns()
                         loadSchemaForEditing()
                         isReloadingAfterSave = false
+                        ColumnLayoutStorage.shared.clear(for: tableName, connectionId: connection.id)
+                        NotificationCenter.default.post(name: .refreshData, object: nil)
                     } catch {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),
