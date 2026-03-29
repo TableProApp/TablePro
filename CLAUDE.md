@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 TablePro is a native macOS database client (SwiftUI + AppKit) — a fast, lightweight alternative to TablePlus. macOS 14.0+, Swift 5.9, Universal Binary (arm64 + x86_64).
 
 - **Source**: `TablePro/` — `Core/` (business logic, services), `Views/` (UI), `Models/` (data structures), `ViewModels/`, `Extensions/`, `Theme/`
-- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework. Built-in (bundled in app): MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, Redis, CSV, JSON, SQL export, XLSX, MQL, SQLImport, DynamoDB. Separately distributed via plugin registry: MongoDB, Oracle, DuckDB, Cassandra, Etcd, CloudflareD1
+- **Plugins**: `Plugins/` — `.tableplugin` bundles + `TableProPluginKit` shared framework. Built-in (bundled in app): MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, Redis, DynamoDB, CSV, JSON, SQL export, XLSX, MQL, SQLImport. Separately distributed via plugin registry: MongoDB, Oracle, DuckDB, Cassandra, Etcd, CloudflareD1, BigQuery
 - **C bridges**: Each plugin contains its own C bridge module (e.g., `Plugins/MySQLDriverPlugin/CMariaDB/`, `Plugins/PostgreSQLDriverPlugin/CLibPQ/`)
 - **Static libs**: `Libs/` — pre-built `libmariadb*.a`, `libpq*.a`, etc. Downloaded from GitHub Releases via `scripts/download-libs.sh` (not in git)
 - **SPM deps**: CodeEditSourceEditor (`main` branch, tree-sitter editor), Sparkle (2.8.1, auto-update), OracleNIO. Managed via Xcode, no `Package.swift`.
@@ -85,6 +85,11 @@ Plugin bundles under `Plugins/`:
 | MongoDBDriverPlugin    | MongoDB              | CLibMongoc           | Registry     |
 | DuckDBDriverPlugin     | DuckDB               | CDuckDB              | Registry     |
 | OracleDriverPlugin     | Oracle               | OracleNIO (SPM)      | Registry     |
+| CassandraDriverPlugin  | Cassandra, ScyllaDB  | CCassandra           | Registry     |
+| EtcdDriverPlugin       | Etcd                 | (gRPC/HTTP)          | Registry     |
+| CloudflareD1Plugin     | Cloudflare D1        | (URLSession HTTP)    | Registry     |
+| DynamoDBDriverPlugin   | DynamoDB             | (AWS SDK)            | Built-in     |
+| BigQueryDriverPlugin   | BigQuery             | (URLSession REST)    | Registry     |
 
 When adding a new driver: create a new plugin bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver`, add target to pbxproj. See `docs/development/plugin-system/` for details.
 

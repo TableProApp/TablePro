@@ -88,7 +88,8 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             id: "awsAccessKeyId",
             label: String(localized: "Access Key ID"),
             placeholder: "AKIA...",
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
         ),
         ConnectionField(
             id: "awsSecretAccessKey",
@@ -96,20 +97,23 @@ final class DynamoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "wJalr...",
             fieldType: .secure,
             section: .authentication,
-            hidesPassword: true
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
         ),
         ConnectionField(
             id: "awsSessionToken",
             label: String(localized: "Session Token"),
             placeholder: "Optional (for temporary credentials)",
             fieldType: .secure,
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
         ),
         ConnectionField(
             id: "awsProfileName",
             label: String(localized: "Profile Name"),
             placeholder: "default",
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
         ),
         ConnectionField(
             id: "awsRegion",

@@ -468,6 +468,7 @@ struct TableProApp: App {
                 .background(OpenWindowHandler())
         }
         .windowStyle(.automatic)
+        .windowToolbarStyle(.unified)
         .defaultSize(width: 1_200, height: 800)
 
         // Settings Window - opens with Cmd+,

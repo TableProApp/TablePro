@@ -1,0 +1,125 @@
+---
+title: Google BigQuery
+description: Connect to Google BigQuery with Service Account, ADC, or OAuth auth
+---
+
+# Google BigQuery Connections
+
+TablePro connects to BigQuery via its REST API. Browse datasets and tables, run GoogleSQL queries, edit rows in the data grid. Plugin auto-installs or grab it from **Settings** > **Plugins** > **Browse**.
+
+## Quick Setup
+
+Click **New Connection**, select **BigQuery**, pick an auth method, enter your Project ID, connect.
+
+## Authentication
+
+**Service Account Key**: Point to a `.json` key file from Google Cloud Console (IAM > Service Accounts > Keys), or paste the raw JSON content directly into the field.
+
+**Application Default Credentials**: Uses cached credentials from gcloud CLI. Supports `authorized_user`, `service_account`, and `impersonated_service_account` credential types. Run this first:
+
+```bash
+gcloud auth application-default login --project=my-project
+```
+
+**Google Account (OAuth 2.0)**: Sign in with your Google account via browser. Requires an OAuth Client ID from your GCP project:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) > APIs & Services > Credentials
+2. Click "Create Credentials" > "OAuth client ID"
+3. Select "Desktop app" as application type
+4. Copy the Client ID and Client Secret into TablePro
+5. On first connect, your browser opens for Google authorization
+6. After approving, TablePro receives the token automatically
+
+<Warning>
+OAuth tokens are session-only — you'll need to re-authorize after disconnecting. For persistent auth, use Application Default Credentials instead.
+</Warning>
+
+## Connection Settings
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| **Auth Method** | Yes | Service Account Key, ADC, or Google Account (OAuth) |
+| **Project ID** | Yes | e.g. `my-project-123456` |
+| **Service Account Key** | SA only | Path to `.json` key file, or raw JSON content |
+| **OAuth Client ID** | OAuth only | From GCP Console > APIs & Services > Credentials |
+| **OAuth Client Secret** | OAuth only | From GCP Console > APIs & Services > Credentials |
+| **Location** | No | Processing location: `US`, `EU`, `us-central1`, etc. |
+| **Max Bytes Billed** | No | Cost cap per query in bytes (Advanced tab). Queries exceeding this limit will fail instead of billing. |
+
+## Features
+
+**Dataset Browsing**: The first dataset is auto-selected on connect. Switch datasets with ⌘K or the database switcher. Datasets show as schemas in the sidebar.
+
+**Table Structure**: Columns with full BigQuery types: `STRUCT<name STRING, age INT64>`, `ARRAY<STRING>`, nullable status, field descriptions. Clustering and partitioning info in the Indexes tab.
+
+**GoogleSQL Queries** ([docs](https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax)):
+
+```sql
+SELECT * FROM `my_dataset.my_table` LIMIT 100
+
+SELECT country, COUNT(*) as cnt
+FROM `my_dataset.users`
+GROUP BY country
+
+-- UNNEST arrays
+SELECT id, tag
+FROM `my_dataset.items`, UNNEST(tags) AS tag
+
+-- STRUCT access
+SELECT address.city FROM `my_dataset.customers`
+```
+
+<Tip>
+Backtick-quote table names: `` `dataset.table` ``. Single-quote strings: `'value'`.
+</Tip>
+
+**Query Cost**: After running a query in the SQL editor, the status bar shows bytes processed, bytes billed, and estimated cost (e.g., `Processed: 1.5 MB | Billed: 10 MB | ~$0.0001`). Use the **Dry Run** option (Explain dropdown > "Dry Run (Cost)") to check cost before executing.
+
+**Data Types**: INT64, FLOAT64, NUMERIC, BIGNUMERIC, BOOL, STRING, BYTES, DATE, TIME, DATETIME, TIMESTAMP, GEOGRAPHY, JSON, STRUCT, ARRAY, RANGE. Complex types (STRUCT/ARRAY) display as JSON.
+
+**Data Editing**: Edit cells, insert/delete rows. DML example:
+
+```sql
+INSERT INTO `project.dataset.table` (col1, col2) VALUES ('val1', 42)
+UPDATE `project.dataset.table` SET col1 = 'new' WHERE col2 = 42
+DELETE FROM `project.dataset.table` WHERE col2 = 42
+```
+
+<Warning>
+Partitioned tables require a partition filter for UPDATE/DELETE. Every query costs money (billed per bytes scanned). Set **Max Bytes Billed** in Advanced settings to cap costs.
+</Warning>
+
+**DDL**: Create datasets (`CREATE SCHEMA`), add/drop columns (`ALTER TABLE`), create views (`CREATE OR REPLACE VIEW`). Table DDL viewable via INFORMATION_SCHEMA.
+
+**Export**: CSV, JSON, SQL, XLSX formats.
+
+## IAM Permissions
+
+Minimum roles:
+
+- `roles/bigquery.user` -- run queries
+- `roles/bigquery.dataViewer` -- browse and read data
+- `roles/bigquery.dataEditor` -- INSERT, UPDATE, DELETE
+
+## Troubleshooting
+
+**Auth failed**: Check key file path or run `gcloud auth application-default login`.
+
+**Permission denied**: Ensure `bigquery.user` role is granted on the project.
+
+**Project not found**: Use the Project ID (not name or number).
+
+**Query timeout**: BigQuery runs jobs async. The plugin polls up to 5 minutes (configurable).
+
+**Cost**: Use `LIMIT`, select specific columns, prefer partitioned tables. Set **Max Bytes Billed** to prevent expensive queries. Table browsing caps rows automatically.
+
+**No tables after connect**: Switch datasets with ⌘K. The first dataset is auto-selected, but if it's empty, switch to one with tables.
+
+## Limitations
+
+- No SSH tunneling (HTTPS only to BigQuery API)
+- No transactions
+- STRUCT/ARRAY columns excluded from UPDATE/DELETE WHERE clauses
+- Deep pagination (large OFFSET) scans from start — use filters to narrow results
+- No streaming inserts
+- OAuth tokens are session-only (re-authorize after disconnect)

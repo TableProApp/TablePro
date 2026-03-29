@@ -18120,6 +18120,9 @@
         }
       }
     },
+    "Location" : {
+
+    },
     "Maintenance" : {
       "localizations" : {
         "tr" : {
@@ -18318,6 +18321,9 @@
           }
         }
       }
+    },
+    "Max Bytes Billed" : {
+
     },
     "Max schema tables: %lld" : {
       "localizations" : {
@@ -21434,6 +21440,12 @@
         }
       }
     },
+    "OAuth Client ID" : {
+
+    },
+    "OAuth Client Secret" : {
+
+    },
     "Offset" : {
       "localizations" : {
         "tr" : {
@@ -23909,6 +23921,9 @@
           }
         }
       }
+    },
+    "Project ID" : {
+
     },
     "Prompt at Connect" : {
       "localizations" : {
@@ -27431,6 +27446,9 @@
           }
         }
       }
+    },
+    "Service Account Key" : {
+
     },
     "Service Name" : {
       "extractionState" : "stale",

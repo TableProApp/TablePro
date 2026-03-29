@@ -19,6 +19,9 @@ struct QueryResult {
     /// Whether the result was truncated due to driver-level row limits
     var isTruncated: Bool = false
 
+    /// Optional status message from the plugin (e.g. server notices, warnings)
+    var statusMessage: String?
+
     var isEmpty: Bool {
         rows.isEmpty
     }

@@ -277,7 +277,8 @@ extension AppDelegate {
                 $0 !== window && isMainWindow($0) && $0.isVisible
                     && $0.tabbingIdentifier == resolvedIdentifier
             }) {
-                existingWindow.addTabbedWindow(window, ordered: .above)
+                let targetWindow = existingWindow.tabbedWindows?.last ?? existingWindow
+                targetWindow.addTabbedWindow(window, ordered: .above)
                 window.makeKeyAndOrderFront(nil)
             }
         }

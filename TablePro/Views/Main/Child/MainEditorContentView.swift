@@ -277,7 +277,8 @@ struct MainEditorContentView: View {
             } else if tab.resultColumns.isEmpty && tab.errorMessage == nil && tab.lastExecutedAt != nil && !tab.isExecuting {
                 QuerySuccessView(
                     rowsAffected: tab.rowsAffected,
-                    executionTime: tab.executionTime
+                    executionTime: tab.executionTime,
+                    statusMessage: tab.statusMessage
                 )
             } else {
                 // Filter panel (collapsible, above data grid)

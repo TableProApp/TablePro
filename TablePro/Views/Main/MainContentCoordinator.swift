@@ -884,6 +884,7 @@ final class MainContentCoordinator {
                 let safeRows: [[String?]]
                 let safeExecutionTime: TimeInterval
                 let safeRowsAffected: Int
+                let safeStatusMessage: String?
                 do {
                     let result = try await queryDriver.execute(query: effectiveSQL)
                     safeColumns = result.columns
@@ -891,6 +892,7 @@ final class MainContentCoordinator {
                     safeRows = result.rows
                     safeExecutionTime = result.executionTime
                     safeRowsAffected = result.rowsAffected
+                    safeStatusMessage = result.statusMessage
                 }
 
                 guard !Task.isCancelled else {
@@ -938,6 +940,7 @@ final class MainContentCoordinator {
                         rows: safeRows,
                         executionTime: safeExecutionTime,
                         rowsAffected: safeRowsAffected,
+                        statusMessage: safeStatusMessage,
                         tableName: tableName,
                         isEditable: isEditable,
                         metadata: metadata,

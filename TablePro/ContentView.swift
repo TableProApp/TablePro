@@ -48,6 +48,24 @@ struct ContentView: View {
             defaultTitle = "SQL Query"
         }
         _windowTitle = State(initialValue: defaultTitle)
+
+        // For Cmd+T (new tab), the session already exists. Resolve synchronously
+        // to avoid the "Connecting..." flash while waiting for async onChange.
+        var resolvedSession: ConnectionSession?
+        if let connectionId = payload?.connectionId {
+            resolvedSession = DatabaseManager.shared.activeSessions[connectionId]
+        }
+        _currentSession = State(initialValue: resolvedSession)
+
+        if let session = resolvedSession {
+            _rightPanelState = State(initialValue: RightPanelState())
+            _sessionState = State(initialValue: SessionStateFactory.create(
+                connection: session.connection, payload: payload
+            ))
+        } else {
+            _rightPanelState = State(initialValue: nil)
+            _sessionState = State(initialValue: nil)
+        }
     }
 
     var body: some View {

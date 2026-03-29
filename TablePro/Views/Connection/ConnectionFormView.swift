@@ -39,13 +39,24 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             .filter { $0.section == .authentication }
     }
 
+    private func isFieldVisible(_ field: ConnectionField) -> Bool {
+        guard let rule = field.visibleWhen else { return true }
+        let currentValue = additionalFieldValues[rule.fieldId] ?? defaultFieldValue(rule.fieldId)
+        return rule.values.contains(currentValue)
+    }
+
+    private func defaultFieldValue(_ fieldId: String) -> String {
+        additionalConnectionFields.first { $0.id == fieldId }?.defaultValue ?? ""
+    }
+
     private var hidePasswordField: Bool {
         authSectionFields.contains { field in
             guard field.hidesPassword else { return false }
             if case .toggle = field.fieldType {
                 return additionalFieldValues[field.id] == "true"
             }
-            // Non-toggle fields (e.g., .secure) with hidesPassword always hide the default password field
+            // Non-toggle fields with hidesPassword always hide the default password field,
+            // regardless of their own visibility (e.g., BigQuery SA key hides password for all auth methods)
             return true
         }
     }
@@ -360,16 +371,18 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         )
                     }
                     ForEach(authSectionFields, id: \.id) { field in
-                        ConnectionFieldRow(
-                            field: field,
-                            value: Binding(
-                                get: {
-                                    additionalFieldValues[field.id]
-                                        ?? field.defaultValue ?? ""
-                                },
-                                set: { additionalFieldValues[field.id] = $0 }
+                        if isFieldVisible(field) {
+                            ConnectionFieldRow(
+                                field: field,
+                                value: Binding(
+                                    get: {
+                                        additionalFieldValues[field.id]
+                                            ?? field.defaultValue ?? ""
+                                    },
+                                    set: { additionalFieldValues[field.id] = $0 }
+                                )
                             )
-                        )
+                        }
                     }
                     if !hidePasswordField {
                         let isApiOnly = PluginManager.shared.connectionMode(for: type) == .apiOnly
@@ -884,16 +897,18 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if !advancedFields.isEmpty {
                 Section(type.displayName) {
                     ForEach(advancedFields, id: \.id) { field in
-                        ConnectionFieldRow(
-                            field: field,
-                            value: Binding(
-                                get: {
-                                    additionalFieldValues[field.id]
-                                        ?? field.defaultValue ?? ""
-                                },
-                                set: { additionalFieldValues[field.id] = $0 }
+                        if isFieldVisible(field) {
+                            ConnectionFieldRow(
+                                field: field,
+                                value: Binding(
+                                    get: {
+                                        additionalFieldValues[field.id]
+                                            ?? field.defaultValue ?? ""
+                                    },
+                                    set: { additionalFieldValues[field.id] = $0 }
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -1049,6 +1064,14 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
             if !hidePasswordField {
                 basicValid = basicValid && !password.isEmpty
             }
+            // Generic: validate required visible fields
+            for field in authSectionFields where field.isRequired && isFieldVisible(field) {
+                if (additionalFieldValues[field.id] ?? "").isEmpty {
+                    basicValid = false
+                }
+            }
+
+            // Legacy DynamoDB-specific validation
             if hidePasswordField && additionalFieldValues["awsAuthMethod"] == "credentials" {
                 let hasAccessKey = !(additionalFieldValues["awsAccessKeyId"] ?? "").isEmpty
                 let hasSecret = !(additionalFieldValues["awsSecretAccessKey"] ?? "").isEmpty

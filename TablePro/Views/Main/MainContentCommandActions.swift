@@ -295,7 +295,8 @@ final class MainContentCommandActions {
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .query,
-            initialQuery: initialQuery
+            initialQuery: initialQuery,
+            isNewTab: true
         )
         WindowOpener.shared.openNativeTab(payload)
     }

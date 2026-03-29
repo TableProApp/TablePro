@@ -423,6 +423,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
             error: nil
         )
         result.isTruncated = pluginResult.isTruncated
+        result.statusMessage = pluginResult.statusMessage
         return result
     }
 
