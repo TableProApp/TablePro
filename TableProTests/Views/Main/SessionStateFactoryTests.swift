@@ -122,16 +122,27 @@ struct SessionStateFactoryTests {
         #expect(state.tabManager.tabs.isEmpty)
     }
 
-    @Test("Connection-only payload creates empty tab manager")
+    @Test("Connection-only payload without isNewTab creates empty tab manager")
     @MainActor
     func connectionOnlyPayload_createsEmptyTabManager() {
         let conn = TestFixtures.makeConnection()
-        // isConnectionOnly is true when tabType == .query, tableName == nil, initialQuery == nil
         let payload = makePayload(connectionId: conn.id, tabType: .query)
 
         let state = SessionStateFactory.create(connection: conn, payload: payload)
 
         #expect(state.tabManager.tabs.isEmpty)
+    }
+
+    @Test("Connection-only payload with isNewTab creates a default query tab")
+    @MainActor
+    func connectionOnlyPayload_isNewTab_createsDefaultTab() {
+        let conn = TestFixtures.makeConnection()
+        let payload = EditorTabPayload(connectionId: conn.id, tabType: .query, isNewTab: true)
+
+        let state = SessionStateFactory.create(connection: conn, payload: payload)
+
+        #expect(state.tabManager.tabs.count == 1)
+        #expect(state.tabManager.tabs.first?.tabType == .query)
     }
 
     @Test("Factory is idempotent: two calls produce fresh but equivalent instances")

@@ -48,7 +48,9 @@ enum SessionStateFactory {
             toolbarSt.databaseName = String(dbIndex)
         }
 
-        // Initialize single tab based on payload
+        // Initialize single tab based on payload.
+        // For isConnectionOnly (Cmd+T new tab), create a default query tab eagerly
+        // so MainContentView doesn't flash "No tabs open" before initializeAndRestoreTabs runs.
         if let payload, !payload.isConnectionOnly {
             switch payload.tabType {
             case .table:
@@ -87,6 +89,8 @@ enum SessionStateFactory {
                     sourceFileURL: payload.sourceFileURL
                 )
             }
+        } else if payload?.isNewTab == true {
+            tabMgr.addTab(databaseName: payload?.databaseName ?? connection.database)
         }
 
         let coord = MainContentCoordinator(

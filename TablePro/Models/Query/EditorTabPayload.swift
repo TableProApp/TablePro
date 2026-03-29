@@ -35,6 +35,8 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let initialFilterState: TabFilterState?
     /// Source file URL for .sql files opened from disk (used for deduplication)
     internal let sourceFileURL: URL?
+    /// Whether this is a Cmd+T new tab (creates default tab eagerly, skips disk restoration)
+    internal let isNewTab: Bool
 
     internal init(
         id: UUID = UUID(),
@@ -48,7 +50,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         skipAutoExecute: Bool = false,
         isPreview: Bool = false,
         initialFilterState: TabFilterState? = nil,
-        sourceFileURL: URL? = nil
+        sourceFileURL: URL? = nil,
+        isNewTab: Bool = false
     ) {
         self.id = id
         self.connectionId = connectionId
@@ -62,6 +65,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.isPreview = isPreview
         self.initialFilterState = initialFilterState
         self.sourceFileURL = sourceFileURL
+        self.isNewTab = isNewTab
     }
 
     internal init(from decoder: Decoder) throws {
@@ -78,6 +82,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         isPreview = try container.decodeIfPresent(Bool.self, forKey: .isPreview) ?? false
         initialFilterState = try container.decodeIfPresent(TabFilterState.self, forKey: .initialFilterState)
         sourceFileURL = try container.decodeIfPresent(URL.self, forKey: .sourceFileURL)
+        isNewTab = try container.decodeIfPresent(Bool.self, forKey: .isNewTab) ?? false
     }
 
     /// Whether this payload is a "connection-only" payload — just a connectionId
@@ -101,5 +106,6 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.isPreview = false
         self.initialFilterState = nil
         self.sourceFileURL = tab.sourceFileURL
+        self.isNewTab = false
     }
 }

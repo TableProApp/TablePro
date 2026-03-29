@@ -497,7 +497,9 @@ struct MainContentView: View {
         // If other windows already exist for this connection, this is a "new tab"
         // from the native macOS "+" button -- just add a single empty query tab.
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
-            tabManager.addTab(databaseName: connection.database)
+            if tabManager.tabs.isEmpty {
+                tabManager.addTab(databaseName: connection.database)
+            }
             return
         }
 
