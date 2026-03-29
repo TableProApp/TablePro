@@ -107,10 +107,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         // Auto-select the first available dataset (like PostgreSQL selects "public")
         do {
             let datasets = try await fetchSchemas()
-            Self.logger.info("Available datasets: \(datasets, privacy: .public)")
             let nonSystem = datasets.filter { !$0.uppercased().contains("INFORMATION_SCHEMA") }
             if let firstDataset = nonSystem.first {
-                Self.logger.info("Auto-selected dataset: \(firstDataset, privacy: .public) self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
                 lock.withLock { _currentDataset = firstDataset }
             }
         } catch {
@@ -146,7 +144,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func switchSchema(to schema: String) async throws {
-        Self.logger.info("switchSchema called with: '\(schema, privacy: .public)'")
         lock.withLock { _currentDataset = schema }
     }
 
@@ -609,7 +606,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             _columnCache["\(ds).\(table)"] = columns
             return ds
         }
-        Self.logger.info("buildBrowseQuery: table=\(table, privacy: .public) dataset='\(dataset, privacy: .public)' self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
         return BigQueryQueryBuilder.encodeBrowseQuery(
             table: table, dataset: dataset,
             sortColumns: sortColumns, limit: limit, offset: offset
@@ -694,7 +690,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard let conn = connection else { return nil }
 
         let dataset = lock.withLock { _currentDataset } ?? ""
-        Self.logger.info("generateStatements: dataset='\(dataset, privacy: .public)' table='\(table, privacy: .public)' self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
 
         // Block DML on external tables
         let tableType: String? = lock.withLock {
@@ -717,8 +712,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
             return columns.map { _ in "STRING" }
         }
-
-        Self.logger.info("generateStatements: typeNames=\(typeNames, privacy: .public)")
 
         let generator = BigQueryStatementGenerator(
             projectId: conn.projectId,
