@@ -407,6 +407,9 @@ struct MainContentView: View {
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
             },
+            onQuickSearch: { searchText in
+                coordinator.applyQuickSearch(searchText)
+            },
             onRefresh: {
                 coordinator.runQuery()
             },

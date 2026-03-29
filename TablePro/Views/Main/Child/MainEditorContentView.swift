@@ -53,6 +53,7 @@ struct MainEditorContentView: View {
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
+    let onQuickSearch: ((String) -> Void)?
     let onRefresh: () -> Void
 
     // Pagination callbacks
@@ -298,7 +299,8 @@ struct MainEditorContentView: View {
                         primaryKeyColumn: changeManager.primaryKeyColumn,
                         databaseType: connection.type,
                         onApply: onApplyFilters,
-                        onUnset: onClearFilters
+                        onUnset: onClearFilters,
+                        onQuickSearch: onQuickSearch
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                     Divider()

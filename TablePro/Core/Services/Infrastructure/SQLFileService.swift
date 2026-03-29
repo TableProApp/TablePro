@@ -23,7 +23,10 @@ enum SQLFileService {
     /// Writes content to a SQL file atomically.
     static func writeFile(content: String, to url: URL) async throws {
         try await Task.detached {
-            try content.data(using: .utf8)?.write(to: url, options: .atomic)
+            guard let data = content.data(using: .utf8) else {
+                throw CocoaError(.fileWriteInapplicableStringEncoding)
+            }
+            try data.write(to: url, options: .atomic)
         }.value
     }
 
