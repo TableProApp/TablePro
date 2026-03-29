@@ -94,12 +94,6 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
             section: .authentication
         ),
         ConnectionField(
-            id: "bqOAuthRefreshToken",
-            label: "",
-            fieldType: .secure,
-            section: .authentication
-        ),
-        ConnectionField(
             id: "bqMaxBytesBilled",
             label: String(localized: "Max Bytes Billed"),
             placeholder: "e.g. 1000000000 (1 GB, optional)",
