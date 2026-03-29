@@ -255,7 +255,27 @@ Customize font, line numbers, word wrap, Vim mode, and indentation in **Settings
 
 Use **Explain with AI** (`Cmd+L`) to understand queries, **Optimize with AI** (`Cmd+Option+L`) for performance suggestions, or click "Ask AI to Fix" in error dialogs. See [AI Chat](/features/ai-chat) for configuration.
 
-## Opening SQL Files
+## SQL Files
 
-Double-click `.sql` files in Finder or use **Open With** > **TablePro**. Files open in a new tab; if not connected to a database, they're queued and open automatically on connect. Changes in the editor don't affect the file on disk.
+### Opening Files
+
+Open `.sql` files in three ways:
+
+- Double-click a `.sql` file in Finder (or **Open With** > **TablePro**)
+- **File** > **Open File...** (`Cmd+O`) to pick files via a dialog
+- Drag `.sql` files onto the TablePro dock icon
+
+Files open in a new tab. If not connected to a database, they're queued and open automatically on connect. Opening the same file twice focuses the existing tab instead of creating a duplicate.
+
+### Saving Files
+
+- **`Cmd+S`** saves the current query back to the source file
+- **`Cmd+Shift+S`** opens a **Save As** dialog to save as a new `.sql` file
+- For untitled query tabs (no file), `Cmd+S` triggers Save As automatically
+
+The title bar shows the filename for file-backed tabs. A dot appears on the close button when there are unsaved changes (standard macOS behavior). `Cmd+click` the filename in the title bar to reveal the file in Finder.
+
+<Note>
+When a tab has both unsaved file changes and pending data grid edits, `Cmd+S` saves the data grid changes first. Save the file after the grid save completes.
+</Note>
 
