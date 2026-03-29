@@ -1127,7 +1127,8 @@ extension PluginMetadataRegistry {
                             id: "awsAccessKeyId",
                             label: String(localized: "Access Key ID"),
                             placeholder: "AKIA...",
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
                         ),
                         ConnectionField(
                             id: "awsSecretAccessKey",
@@ -1135,20 +1136,23 @@ extension PluginMetadataRegistry {
                             placeholder: "wJalr...",
                             fieldType: .secure,
                             section: .authentication,
-                            hidesPassword: true
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
                         ),
                         ConnectionField(
                             id: "awsSessionToken",
                             label: String(localized: "Session Token"),
                             placeholder: "Optional (for temporary credentials)",
                             fieldType: .secure,
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["credentials"])
                         ),
                         ConnectionField(
                             id: "awsProfileName",
                             label: String(localized: "Profile Name"),
                             placeholder: "default",
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "awsAuthMethod", values: ["profile", "sso"])
                         ),
                         ConnectionField(
                             id: "awsRegion",
@@ -1310,7 +1314,8 @@ extension PluginMetadataRegistry {
                             placeholder: "/path/to/service-account.json",
                             fieldType: .secure,
                             section: .authentication,
-                            hidesPassword: true
+                            hidesPassword: true,
+                            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["serviceAccount"])
                         ),
                         ConnectionField(
                             id: "bqProjectId",
@@ -1329,13 +1334,15 @@ extension PluginMetadataRegistry {
                             id: "bqOAuthClientId",
                             label: String(localized: "OAuth Client ID"),
                             placeholder: "xxxxx.apps.googleusercontent.com",
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
                         ),
                         ConnectionField(
                             id: "bqOAuthClientSecret",
                             label: String(localized: "OAuth Client Secret"),
                             fieldType: .secure,
-                            section: .authentication
+                            section: .authentication,
+                            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
                         ),
                         ConnectionField(
                             id: "bqMaxBytesBilled",

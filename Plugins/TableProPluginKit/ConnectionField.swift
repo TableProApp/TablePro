@@ -5,6 +5,16 @@ public enum FieldSection: String, Codable, Sendable {
     case advanced
 }
 
+public struct FieldVisibilityRule: Codable, Sendable, Equatable {
+    public let fieldId: String
+    public let values: [String]
+
+    public init(fieldId: String, values: [String]) {
+        self.fieldId = fieldId
+        self.values = values
+    }
+}
+
 public struct ConnectionField: Codable, Sendable {
     public struct IntRange: Codable, Sendable, Equatable {
         public let lowerBound: Int
@@ -77,6 +87,7 @@ public struct ConnectionField: Codable, Sendable {
     public let fieldType: FieldType
     public let section: FieldSection
     public let hidesPassword: Bool
+    public let visibleWhen: FieldVisibilityRule?
 
     /// Backward-compatible convenience: true when fieldType is .secure
     public var isSecure: Bool {
@@ -93,7 +104,8 @@ public struct ConnectionField: Codable, Sendable {
         defaultValue: String? = nil,
         fieldType: FieldType? = nil,
         section: FieldSection = .advanced,
-        hidesPassword: Bool = false
+        hidesPassword: Bool = false,
+        visibleWhen: FieldVisibilityRule? = nil
     ) {
         self.id = id
         self.label = label
@@ -103,6 +115,7 @@ public struct ConnectionField: Codable, Sendable {
         self.fieldType = fieldType ?? (secure ? .secure : .text)
         self.section = section
         self.hidesPassword = hidesPassword
+        self.visibleWhen = visibleWhen
     }
 
     public init(from decoder: Decoder) throws {
@@ -115,9 +128,10 @@ public struct ConnectionField: Codable, Sendable {
         fieldType = try container.decode(FieldType.self, forKey: .fieldType)
         section = try container.decodeIfPresent(FieldSection.self, forKey: .section) ?? .advanced
         hidesPassword = try container.decodeIfPresent(Bool.self, forKey: .hidesPassword) ?? false
+        visibleWhen = try container.decodeIfPresent(FieldVisibilityRule.self, forKey: .visibleWhen)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, label, placeholder, isRequired, defaultValue, fieldType, section, hidesPassword
+        case id, label, placeholder, isRequired, defaultValue, fieldType, section, hidesPassword, visibleWhen
     }
 }

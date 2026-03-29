@@ -66,7 +66,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
             placeholder: "/path/to/service-account.json",
             fieldType: .secure,
             section: .authentication,
-            hidesPassword: true
+            hidesPassword: true,
+            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["serviceAccount"])
         ),
         ConnectionField(
             id: "bqProjectId",
@@ -85,13 +86,15 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
             id: "bqOAuthClientId",
             label: String(localized: "OAuth Client ID"),
             placeholder: "xxxxx.apps.googleusercontent.com",
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
         ),
         ConnectionField(
             id: "bqOAuthClientSecret",
             label: String(localized: "OAuth Client Secret"),
             fieldType: .secure,
-            section: .authentication
+            section: .authentication,
+            visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
         ),
         ConnectionField(
             id: "bqMaxBytesBilled",
