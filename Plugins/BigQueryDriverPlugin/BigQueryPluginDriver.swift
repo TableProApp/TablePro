@@ -107,8 +107,10 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         // Auto-select the first available dataset (like PostgreSQL selects "public")
         do {
             let datasets = try await fetchSchemas()
+            Self.logger.info("Available datasets: \(datasets, privacy: .public)")
             let nonSystem = datasets.filter { !$0.uppercased().contains("INFORMATION_SCHEMA") }
             if let firstDataset = nonSystem.first {
+                Self.logger.info("Auto-selected dataset: \(firstDataset, privacy: .public) self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
                 lock.withLock { _currentDataset = firstDataset }
             }
         } catch {
@@ -144,6 +146,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     func switchSchema(to schema: String) async throws {
+        Self.logger.info("switchSchema called with: '\(schema, privacy: .public)'")
         lock.withLock { _currentDataset = schema }
     }
 
@@ -248,11 +251,16 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
         if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
             if let params = BigQueryQueryBuilder.decode(trimmed) {
-                let columns = lock.withLock { _columnCache["\(params.dataset).\(params.table)"] } ?? []
-                let countSQL = BigQueryQueryBuilder.buildCountSQL(
-                    from: params, projectId: conn.projectId, columns: columns
+                let dataset = resolveDataset(from: params)
+                let columns = lock.withLock { _columnCache["\(dataset).\(params.table)"] } ?? []
+                let resolvedParams = BigQueryQueryParams(
+                    table: params.table, dataset: dataset, sortColumns: params.sortColumns,
+                    limit: params.limit, offset: params.offset, filters: params.filters,
+                    logicMode: params.logicMode, searchText: params.searchText, searchColumns: params.searchColumns
                 )
-                let dataset = lock.withLock { _currentDataset }
+                let countSQL = BigQueryQueryBuilder.buildCountSQL(
+                    from: resolvedParams, projectId: conn.projectId, columns: columns
+                )
                 let result = try await conn.executeQuery(countSQL, defaultDataset: dataset)
                 if let row = result.queryResponse.rows?.first, let cell = row.f?.first,
                    case .string(let val) = cell.v, let count = Int(val)
@@ -284,23 +292,23 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
-            if var params = BigQueryQueryBuilder.decode(trimmed) {
-                params = BigQueryQueryParams(
-                    table: params.table,
-                    dataset: params.dataset,
-                    sortColumns: params.sortColumns,
+            if let decoded = BigQueryQueryBuilder.decode(trimmed) {
+                let dataset = resolveDataset(from: decoded)
+                let params = BigQueryQueryParams(
+                    table: decoded.table,
+                    dataset: dataset,
+                    sortColumns: decoded.sortColumns,
                     limit: limit,
                     offset: offset,
-                    filters: params.filters,
-                    logicMode: params.logicMode,
-                    searchText: params.searchText,
-                    searchColumns: params.searchColumns
+                    filters: decoded.filters,
+                    logicMode: decoded.logicMode,
+                    searchText: decoded.searchText,
+                    searchColumns: decoded.searchColumns
                 )
-                let columns = lock.withLock { _columnCache["\(params.dataset).\(params.table)"] } ?? []
+                let columns = lock.withLock { _columnCache["\(dataset).\(params.table)"] } ?? []
                 let sql = BigQueryQueryBuilder.buildSQL(
                     from: params, projectId: conn.projectId, columns: columns
                 )
-                let dataset = lock.withLock { _currentDataset }
                 let result = try await conn.executeQuery(sql, defaultDataset: dataset)
 
                 if let schema = result.queryResponse.schema, let fields = schema.fields {
@@ -601,6 +609,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             _columnCache["\(ds).\(table)"] = columns
             return ds
         }
+        Self.logger.info("buildBrowseQuery: table=\(table, privacy: .public) dataset='\(dataset, privacy: .public)' self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
         return BigQueryQueryBuilder.encodeBrowseQuery(
             table: table, dataset: dataset,
             sortColumns: sortColumns, limit: limit, offset: offset
@@ -821,6 +830,14 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
 
     // MARK: - Private Helpers
 
+    /// Resolve the dataset from tagged query params, falling back to _currentDataset.
+    /// Needed because tagged queries may be built by a probe driver (no connection state).
+    private func resolveDataset(from params: BigQueryQueryParams) -> String {
+        let encoded = params.dataset
+        if !encoded.isEmpty { return encoded }
+        return lock.withLock { _currentDataset } ?? ""
+    }
+
     private func executeTaggedQuery(
         _ query: String,
         conn: BigQueryConnection,
@@ -830,12 +847,17 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             throw BigQueryError.invalidResponse("Failed to decode tagged query")
         }
 
-        let columns = lock.withLock { _columnCache["\(params.dataset).\(params.table)"] } ?? []
+        let dataset = resolveDataset(from: params)
+        let columns = lock.withLock { _columnCache["\(dataset).\(params.table)"] } ?? []
+        let resolvedParams = BigQueryQueryParams(
+            table: params.table, dataset: dataset, sortColumns: params.sortColumns,
+            limit: params.limit, offset: params.offset, filters: params.filters,
+            logicMode: params.logicMode, searchText: params.searchText, searchColumns: params.searchColumns
+        )
         let sql = BigQueryQueryBuilder.buildSQL(
-            from: params, projectId: conn.projectId, columns: columns
+            from: resolvedParams, projectId: conn.projectId, columns: columns
         )
 
-        let dataset = lock.withLock { _currentDataset }
         let result: BQExecuteResult
         do {
             result = try await conn.executeQuery(sql, defaultDataset: dataset)
