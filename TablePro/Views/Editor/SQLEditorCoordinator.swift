@@ -26,6 +26,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     @ObservationIgnored private var contextMenu: AIEditorContextMenu?
     @ObservationIgnored private var inlineSuggestionManager: InlineSuggestionManager?
     @ObservationIgnored private var editorSettingsObserver: NSObjectProtocol?
+    @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeWorkItem: DispatchWorkItem?
@@ -61,6 +62,9 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         if let observer = editorSettingsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = windowKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         frameChangeWorkItem?.cancel()
     }
 
@@ -68,6 +72,10 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         if let observer = editorSettingsObserver {
             NotificationCenter.default.removeObserver(observer)
             editorSettingsObserver = nil
+        }
+        if let observer = windowKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowKeyObserver = nil
         }
         frameChangeWorkItem?.cancel()
         frameChangeWorkItem = nil
@@ -89,6 +97,22 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             self.installVimModeIfEnabled(controller: controller)
             if let textView = controller.textView {
                 EditorEventRouter.shared.register(self, textView: textView)
+
+                // Auto-focus: make the editor first responder, then ensure a
+                // cursor exists. Order matters — setCursorPositions calls
+                // updateSelectionViews which guards on isFirstResponder.
+                if let window = textView.window {
+                    window.makeFirstResponder(textView)
+                }
+                if controller.cursorPositions.isEmpty {
+                    controller.setCursorPositions([CursorPosition(range: NSRange(location: 0, length: 0))])
+                }
+
+                // Recreate cursor views when the window regains key status.
+                // resignKeyWindow() on the text view calls removeCursors() which
+                // destroys cursor subviews, but becomeKeyWindow() only resets the
+                // blink timer without recreating them.
+                self.installWindowKeyObserver(for: textView.window)
             }
         }
     }
@@ -277,6 +301,24 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             vimKeyInterceptor?.editorDidBlur()
             inlineSuggestionManager?.editorDidBlur()
             vimCursorManager?.pauseBlink()
+        }
+    }
+
+    // MARK: - Window Key Observer
+
+    /// Observe when the editor's window regains key status (e.g. tab switch) and
+    /// recreate cursor views that were destroyed by resignKeyWindow → removeCursors.
+    private func installWindowKeyObserver(for window: NSWindow?) {
+        guard let window else { return }
+        windowKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak controller] _ in
+            guard let controller, !controller.cursorPositions.isEmpty else { return }
+            // At this point becomeKeyWindow → becomeFirstResponder has already run,
+            // so isFirstResponder is true and setCursorPositions will create cursor views.
+            controller.setCursorPositions(controller.cursorPositions)
         }
     }
 

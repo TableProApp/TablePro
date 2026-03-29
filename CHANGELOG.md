@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL editor not auto-focused on new tab and cursor missing after tab switch
 - SSH profile lost after app restart when iCloud Sync enabled
 - MariaDB JSON columns showing as hex dumps instead of JSON text
 - MongoDB Atlas TLS certificate verification failure
