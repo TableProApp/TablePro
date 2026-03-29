@@ -51,11 +51,12 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
 
     private var hidePasswordField: Bool {
         authSectionFields.contains { field in
-            guard field.hidesPassword, isFieldVisible(field) else { return false }
+            guard field.hidesPassword else { return false }
             if case .toggle = field.fieldType {
                 return additionalFieldValues[field.id] == "true"
             }
-            // Non-toggle fields (e.g., .secure) with hidesPassword always hide the default password field
+            // Non-toggle fields with hidesPassword always hide the default password field,
+            // regardless of their own visibility (e.g., BigQuery SA key hides password for all auth methods)
             return true
         }
     }
