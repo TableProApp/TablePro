@@ -904,11 +904,11 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     private func estimateCost(_ bytesBilledStr: String) -> String {
-        guard let bytes = Int64(bytesBilledStr), bytes > 0 else { return "$0.00" }
+        guard let bytes = Int64(bytesBilledStr), bytes > 0 else { return "~$0.00" }
         // BigQuery on-demand pricing: $6.25 per TB
         let tb = Double(bytes) / (1024 * 1024 * 1024 * 1024)
         let cost = tb * 6.25
-        if cost < 0.01 { return "< $0.01" }
-        return String(format: "$%.4f", cost)
+        if cost < 0.01 { return "~$0.01" }
+        return String(format: "~$%.4f", cost)
     }
 }

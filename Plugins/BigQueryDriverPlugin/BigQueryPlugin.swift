@@ -54,7 +54,7 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
             label: String(localized: "Auth Method"),
             defaultValue: "serviceAccount",
             fieldType: .dropdown(options: [
-                .init(value: "serviceAccount", label: "Service Account JSON"),
+                .init(value: "serviceAccount", label: "Service Account Key"),
                 .init(value: "adc", label: "Application Default Credentials"),
                 .init(value: "oauth", label: "Google Account (OAuth)")
             ]),
@@ -63,7 +63,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "bqServiceAccountJson",
             label: String(localized: "Service Account Key"),
-            placeholder: "/path/to/service-account.json",
+            placeholder: "File path or paste JSON",
+            required: true,
             fieldType: .secure,
             section: .authentication,
             hidesPassword: true,
@@ -79,19 +80,20 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "bqLocation",
             label: String(localized: "Location"),
-            placeholder: "US (optional)",
+            placeholder: "US, EU, us-central1, etc.",
             section: .authentication
         ),
         ConnectionField(
             id: "bqOAuthClientId",
             label: String(localized: "OAuth Client ID"),
-            placeholder: "xxxxx.apps.googleusercontent.com",
+            placeholder: "From GCP Console > Credentials",
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
         ),
         ConnectionField(
             id: "bqOAuthClientSecret",
             label: String(localized: "OAuth Client Secret"),
+            placeholder: "Client secret from GCP Console",
             fieldType: .secure,
             section: .authentication,
             visibleWhen: FieldVisibilityRule(fieldId: "bqAuthMethod", values: ["oauth"])
@@ -99,7 +101,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ConnectionField(
             id: "bqMaxBytesBilled",
             label: String(localized: "Max Bytes Billed"),
-            placeholder: "e.g. 1000000000 (1 GB, optional)",
+            placeholder: "1000000000",
+            fieldType: .number,
             section: .advanced
         )
     ]
