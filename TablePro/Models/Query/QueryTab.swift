@@ -383,9 +383,13 @@ struct QueryTab: Identifiable, Equatable {
 
     /// Whether the editor content differs from the last saved/loaded file content.
     /// Returns false for tabs not backed by a file.
+    /// Uses O(1) length pre-check to avoid O(n) string comparison on every keystroke.
     var isFileDirty: Bool {
         guard sourceFileURL != nil, let saved = savedFileContent else { return false }
-        return query != saved
+        let queryNS = query as NSString
+        let savedNS = saved as NSString
+        if queryNS.length != savedNS.length { return true }
+        return queryNS != savedNS
     }
 
     init(
