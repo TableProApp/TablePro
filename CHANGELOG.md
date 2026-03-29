@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Nested hierarchical groups for connection list (up to 3 levels deep)
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 - JSON fields in Row Details sidebar now display in a scrollable monospaced text area
+- Open, save, and save-as for SQL files with native macOS title bar integration (#475)
+- Duplicate line (Cmd+Shift+D), delete line (Cmd+Shift+K), move line up/down (Option+Up/Down) in SQL editor
 
 ### Fixed
 

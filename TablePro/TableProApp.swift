@@ -182,6 +182,12 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .openDatabase))
             .disabled(!appState.isConnected || !appState.supportsDatabaseSwitching)
 
+            Button(String(localized: "Open File...")) {
+                actions?.openSQLFile()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .openFile))
+            .disabled(!appState.isConnected)
+
             Button("Switch Connection...") {
                 NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
             }
@@ -201,6 +207,12 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .saveChanges))
             .disabled(!appState.isConnected || appState.isReadOnly)
+
+            Button(String(localized: "Save As...")) {
+                actions?.saveFileAs()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .saveAs))
+            .disabled(!appState.isConnected)
 
             Button {
                 actions?.previewSQL()

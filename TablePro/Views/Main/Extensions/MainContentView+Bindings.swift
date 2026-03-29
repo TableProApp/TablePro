@@ -124,4 +124,5 @@ struct PendingChangeTrigger: Equatable {
     let pendingTruncates: Set<String>
     let pendingDeletes: Set<String>
     let hasStructureChanges: Bool
+    let isFileDirty: Bool
 }

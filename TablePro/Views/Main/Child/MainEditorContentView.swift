@@ -53,7 +53,6 @@ struct MainEditorContentView: View {
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
-    let onQuickSearch: (String) -> Void
     let onRefresh: () -> Void
 
     // Pagination callbacks
@@ -246,6 +245,16 @@ struct MainEditorContentView: View {
                 tabManager.tabs[index].query = newValue
                 AppState.shared.hasQueryText = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+                // Update window dirty indicator and toolbar for file-backed tabs
+                if tabManager.tabs[index].sourceFileURL != nil {
+                    let isDirty = tabManager.tabs[index].isFileDirty
+                    DispatchQueue.main.async {
+                        if let window = NSApp.keyWindow {
+                            window.isDocumentEdited = isDirty
+                        }
+                    }
+                }
+
                 // Skip persistence for very large queries (e.g., imported SQL dumps).
                 // JSON-encoding 40MB freezes the main thread.
                 let queryLength = (newValue as NSString).length
@@ -289,8 +298,7 @@ struct MainEditorContentView: View {
                         primaryKeyColumn: changeManager.primaryKeyColumn,
                         databaseType: connection.type,
                         onApply: onApplyFilters,
-                        onUnset: onClearFilters,
-                        onQuickSearch: onQuickSearch
+                        onUnset: onClearFilters
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                     Divider()

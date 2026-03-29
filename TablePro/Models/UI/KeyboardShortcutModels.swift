@@ -39,8 +39,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case newConnection
     case newTab
     case openDatabase
+    case openFile
     case switchConnection
     case saveChanges
+    case saveAs
     case previewSQL
     case closeTab
     case refresh
@@ -84,8 +86,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var category: ShortcutCategory {
         switch self {
-        case .newConnection, .newTab, .openDatabase, .switchConnection,
-             .saveChanges, .previewSQL, .closeTab, .refresh,
+        case .newConnection, .newTab, .openDatabase, .openFile, .switchConnection,
+             .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
              .explainQuery, .export, .importData, .quickSwitcher:
             return .file
         case .undo, .redo, .cut, .copy, .copyWithHeaders, .copyAsJson, .paste,
@@ -107,8 +109,10 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .newConnection: return String(localized: "New Connection")
         case .newTab: return String(localized: "New Tab")
         case .openDatabase: return String(localized: "Open Database")
+        case .openFile: return String(localized: "Open File")
         case .switchConnection: return String(localized: "Switch Connection")
         case .saveChanges: return String(localized: "Save Changes")
+        case .saveAs: return String(localized: "Save As")
         case .previewSQL: return String(localized: "Preview SQL")
         case .closeTab: return String(localized: "Close Tab")
         case .refresh: return String(localized: "Refresh")
@@ -404,8 +408,10 @@ struct KeyboardSettings: Codable, Equatable {
         .newConnection: KeyCombo(key: "n", command: true),
         .newTab: KeyCombo(key: "t", command: true),
         .openDatabase: KeyCombo(key: "k", command: true),
+        .openFile: KeyCombo(key: "o", command: true),
         .switchConnection: KeyCombo(key: "c", command: true, option: true),
         .saveChanges: KeyCombo(key: "s", command: true),
+        .saveAs: KeyCombo(key: "s", command: true, shift: true),
         .previewSQL: KeyCombo(key: "p", command: true, shift: true),
         .closeTab: KeyCombo(key: "w", command: true),
         .refresh: KeyCombo(key: "r", command: true),

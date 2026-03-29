@@ -186,7 +186,8 @@ struct MainContentView: View {
             hasDataChanges: changeManager.hasChanges,
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
-            hasStructureChanges: appState.hasStructureChanges
+            hasStructureChanges: appState.hasStructureChanges,
+            isFileDirty: tabManager.selectedTab?.isFileDirty ?? false
         )
     }
 
@@ -406,9 +407,6 @@ struct MainContentView: View {
             onClearFilters: {
                 coordinator.clearFiltersAndReload()
             },
-            onQuickSearch: { searchText in
-                coordinator.applyQuickSearch(searchText)
-            },
             onRefresh: {
                 coordinator.runQuery()
             },
@@ -577,10 +575,12 @@ struct MainContentView: View {
     // MARK: - Command Actions Setup
 
     private func updateToolbarPendingState() {
+        let hasFileChanges = tabManager.selectedTab?.isFileDirty ?? false
         toolbarState.hasPendingChanges = changeManager.hasChanges
             || !pendingTruncates.isEmpty
             || !pendingDeletes.isEmpty
             || AppState.shared.hasStructureChanges
+            || hasFileChanges
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
@@ -603,6 +603,10 @@ struct MainContentView: View {
         )
         viewWindow = window
         isKeyWindow = window.isKeyWindow
+
+        // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
+        window.representedURL = tabManager.selectedTab?.sourceFileURL
+        window.isDocumentEdited = tabManager.selectedTab?.isFileDirty ?? false
 
         // Update command actions window reference now that it's available
         commandActions?.window = window
@@ -647,10 +651,20 @@ struct MainContentView: View {
         )
 
         // Update window title to reflect selected tab
-        let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-        let queryLabel = "\(langName) Query"
-        windowTitle = tabManager.selectedTab?.tableName
-            ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
+        let selectedTab = tabManager.selectedTab
+        if let fileURL = selectedTab?.sourceFileURL {
+            // File-backed tab: use filename as window title
+            windowTitle = fileURL.deletingPathExtension().lastPathComponent
+        } else {
+            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
+            let queryLabel = "\(langName) Query"
+            windowTitle = selectedTab?.tableName
+                ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
+        }
+
+        // Update native proxy icon and dirty dot for file-backed tabs
+        viewWindow?.representedURL = selectedTab?.sourceFileURL
+        viewWindow?.isDocumentEdited = selectedTab?.isFileDirty ?? false
 
         // Sync sidebar selection to match the newly selected tab.
         // Critical for new native windows: localSelectedTables starts empty,
@@ -667,10 +681,14 @@ struct MainContentView: View {
 
     private func handleTabsChange(_ newTabs: [QueryTab]) {
         // Always update window title to reflect current tab, even during restoration
-        let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-        let queryLabel = "\(langName) Query"
-        windowTitle = tabManager.selectedTab?.tableName
-            ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
+        if let fileURL = tabManager.selectedTab?.sourceFileURL {
+            windowTitle = fileURL.deletingPathExtension().lastPathComponent
+        } else {
+            let langName = PluginManager.shared.queryLanguageName(for: connection.type)
+            let queryLabel = "\(langName) Query"
+            windowTitle = tabManager.selectedTab?.tableName
+                ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
+        }
 
         // Don't persist during teardown — SwiftUI may fire onChange with empty tabs
         // as the view is being deallocated
