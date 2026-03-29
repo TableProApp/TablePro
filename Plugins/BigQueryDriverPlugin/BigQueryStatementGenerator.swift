@@ -162,7 +162,8 @@ internal struct BigQueryStatementGenerator {
 
         let upperType = typeName.uppercased()
 
-        if upperType == "INT64" || upperType == "FLOAT64" ||
+        if upperType == "INT64" || upperType == "INTEGER" ||
+            upperType == "FLOAT64" || upperType == "FLOAT" ||
             upperType == "NUMERIC" || upperType == "BIGNUMERIC"
         {
             let isNumeric = value.range(
@@ -173,7 +174,7 @@ internal struct BigQueryStatementGenerator {
             return "'\(escapeString(value))'"
         }
 
-        if upperType == "BOOL" {
+        if upperType == "BOOL" || upperType == "BOOLEAN" {
             let lower = value.lowercased()
             if lower == "true" || lower == "1" { return "TRUE" }
             if lower == "false" || lower == "0" { return "FALSE" }
@@ -202,6 +203,20 @@ internal struct BigQueryStatementGenerator {
         // BYTES: displayed as base64, wrap with FROM_BASE64() for editing
         if upperType == "BYTES" {
             return "FROM_BASE64('\(escapeString(value))')"
+        }
+
+        // Temporal types need explicit casting for WHERE clause comparisons
+        if upperType == "TIMESTAMP" {
+            return "TIMESTAMP '\(escapeString(value))'"
+        }
+        if upperType == "DATE" {
+            return "DATE '\(escapeString(value))'"
+        }
+        if upperType == "DATETIME" {
+            return "DATETIME '\(escapeString(value))'"
+        }
+        if upperType == "TIME" {
+            return "TIME '\(escapeString(value))'"
         }
 
         return "'\(escapeString(value))'"

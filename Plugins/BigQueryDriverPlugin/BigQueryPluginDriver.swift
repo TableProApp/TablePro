@@ -694,6 +694,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         guard let conn = connection else { return nil }
 
         let dataset = lock.withLock { _currentDataset } ?? ""
+        Self.logger.info("generateStatements: dataset='\(dataset, privacy: .public)' table='\(table, privacy: .public)' self=\(ObjectIdentifier(self).debugDescription, privacy: .public)")
 
         // Block DML on external tables
         let tableType: String? = lock.withLock {
@@ -716,6 +717,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             }
             return columns.map { _ in "STRING" }
         }
+
+        Self.logger.info("generateStatements: typeNames=\(typeNames, privacy: .public)")
 
         let generator = BigQueryStatementGenerator(
             projectId: conn.projectId,
