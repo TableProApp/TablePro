@@ -174,8 +174,11 @@ final class ConnectionToolbarState {
     /// Whether the current tab is a table tab (enables filter/sort actions)
     var isTableTab: Bool = false
 
-    /// Whether there are pending changes to preview
+    /// Whether there are pending changes (data grid or file)
     var hasPendingChanges: Bool = false
+
+    /// Whether there are pending data grid changes (for SQL preview button)
+    var hasDataPendingChanges: Bool = false
 
     /// Whether the SQL review popover is showing
     var showSQLReviewPopover: Bool = false

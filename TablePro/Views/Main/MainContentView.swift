@@ -578,12 +578,13 @@ struct MainContentView: View {
     // MARK: - Command Actions Setup
 
     private func updateToolbarPendingState() {
-        let hasFileChanges = tabManager.selectedTab?.isFileDirty ?? false
-        toolbarState.hasPendingChanges = changeManager.hasChanges
+        let hasDataChanges = changeManager.hasChanges
             || !pendingTruncates.isEmpty
             || !pendingDeletes.isEmpty
             || AppState.shared.hasStructureChanges
-            || hasFileChanges
+        let hasFileChanges = tabManager.selectedTab?.isFileDirty ?? false
+        toolbarState.hasDataPendingChanges = hasDataChanges
+        toolbarState.hasPendingChanges = hasDataChanges || hasFileChanges
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.

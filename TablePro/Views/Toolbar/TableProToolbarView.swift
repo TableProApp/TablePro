@@ -154,7 +154,7 @@ struct TableProToolbar: ViewModifier {
                         Label("Preview \(langName)", systemImage: "eye")
                     }
                     .help("Preview \(PluginManager.shared.queryLanguageName(for: state.databaseType)) (⌘⇧P)")
-                    .disabled(!state.hasPendingChanges || state.connectionState != .connected)
+                    .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
                     .popover(isPresented: $state.showSQLReviewPopover) {
                         SQLReviewPopover(statements: state.previewStatements, databaseType: state.databaseType)
                     }
