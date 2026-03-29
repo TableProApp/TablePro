@@ -130,14 +130,6 @@ struct ConflictResolutionView: View {
             if let color = record["color"] as? String {
                 fieldRow(label: "Color", value: color)
             }
-        case .queryHistory:
-            if let query = record["query"] as? String {
-                let nsQuery = query as NSString
-                let preview = nsQuery.length > 80
-                    ? nsQuery.substring(to: 80) + "..."
-                    : query
-                fieldRow(label: "Query", value: preview)
-            }
         case .favorite, .favoriteFolder:
             if let name = record["name"] as? String {
                 fieldRow(label: String(localized: "Name"), value: name)

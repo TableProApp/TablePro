@@ -1,11 +1,11 @@
 ---
 title: iCloud Sync
-description: Sync connections, settings, and query history across Macs via iCloud (Pro feature)
+description: Sync connections, settings, and SSH profiles across Macs via iCloud (Pro feature)
 ---
 
 # iCloud Sync
 
-TablePro syncs your connections, groups, settings, and query history across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
+TablePro syncs your connections, groups, settings, and SSH profiles across all your Macs via CloudKit. iCloud Sync is a Pro feature that requires an active license.
 
 ## What syncs (and what doesn't)
 
@@ -15,7 +15,6 @@ TablePro syncs your connections, groups, settings, and query history across all 
 | **Passwords** | Optional | Opt-in via iCloud Keychain (end-to-end encrypted) |
 | **Groups & Tags** | Yes | Full connection organization, including nested group hierarchy (parent-child relationships and sort order) |
 | **App Settings** | Yes | All 8 categories (General, Appearance, Editor, Data Grid, History, Tabs, Keyboard, AI) |
-| **Query History** | Yes | Configurable limit: 100, 500, 1,000, or unlimited |
 
 <Note>
 Passwords are not synced by default. Enable **Password sync** under the Connections toggle to sync passwords via Apple's iCloud Keychain (end-to-end encrypted). With password sync off, you need to enter the password once on each new Mac.
@@ -39,7 +38,7 @@ Open **Settings** (`Cmd+,`) > **Sync**, toggle iCloud Sync on, choose which cate
   />
 </Frame>
 
-Each data type has its own toggle: Connections, Groups & Tags, App Settings, and Query History (with a configurable limit: 100, 500, 1,000, or unlimited). Enable **Passwords** to sync credentials via iCloud Keychain (end-to-end encrypted). Off by default.
+Each data type has its own toggle: Connections, Groups & Tags, SSH Profiles, and App Settings. Enable **Passwords** to sync credentials via iCloud Keychain (end-to-end encrypted). Off by default.
 
 TablePro auto-syncs on app launch, when you switch back to it, and 2 seconds after you modify synced data. Use the **Sync Now** button to trigger a manual sync.
 

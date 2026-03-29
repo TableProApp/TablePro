@@ -267,28 +267,6 @@ final class SyncCoordinator {
             collectDirtySSHProfiles(into: &recordsToSave, deletions: &recordIDsToDelete, zoneID: zoneID)
         }
 
-        // Collect unsynced query history
-        if settings.syncQueryHistory {
-            let limit = settings.historySyncLimit.limit ?? Int.max
-            let unsyncedEntries = await QueryHistoryStorage.shared.unsyncedHistoryEntries(limit: limit)
-            for entry in unsyncedEntries {
-                recordsToSave.append(
-                    SyncRecordMapper.toCKRecord(
-                        entryId: entry.id.uuidString,
-                        query: entry.query,
-                        connectionId: entry.connectionId.uuidString,
-                        databaseName: entry.databaseName,
-                        executedAt: entry.executedAt,
-                        executionTime: entry.executionTime,
-                        rowCount: Int64(entry.rowCount),
-                        wasSuccessful: entry.wasSuccessful,
-                        errorMessage: entry.errorMessage,
-                        in: zoneID
-                    )
-                )
-            }
-        }
-
         // Collect dirty settings
         if settings.syncSettings {
             let dirtySettingsIds = changeTracker.dirtyRecords(for: .settings)
@@ -320,9 +298,6 @@ final class SyncCoordinator {
             if settings.syncSettings {
                 changeTracker.clearAllDirty(.settings)
             }
-            if settings.syncQueryHistory {
-                changeTracker.clearAllDirty(.queryHistory)
-            }
 
             // Clear tombstones only for types that were actually pushed
             if settings.syncConnections {
@@ -346,19 +321,6 @@ final class SyncCoordinator {
             if settings.syncSettings {
                 for tombstone in metadataStorage.tombstones(for: .settings) {
                     metadataStorage.removeTombstone(type: .settings, id: tombstone.id)
-                }
-            }
-            if settings.syncQueryHistory {
-                for tombstone in metadataStorage.tombstones(for: .queryHistory) {
-                    metadataStorage.removeTombstone(type: .queryHistory, id: tombstone.id)
-                }
-
-                // Mark pushed history entries as synced in local storage
-                let syncedIds = recordsToSave
-                    .filter { $0.recordType == SyncRecordType.queryHistory.rawValue }
-                    .compactMap { $0["entryId"] as? String }
-                if !syncedIds.isEmpty {
-                    await QueryHistoryStorage.shared.markHistoryEntriesSynced(ids: syncedIds)
                 }
             }
 
@@ -441,8 +403,6 @@ final class SyncCoordinator {
                 applyRemoteSSHProfile(record)
             case SyncRecordType.settings.rawValue where settings.syncSettings:
                 applyRemoteSettings(record)
-            case SyncRecordType.queryHistory.rawValue where settings.syncQueryHistory:
-                applyRemoteQueryHistory(record)
             default:
                 break
             }
@@ -534,38 +494,6 @@ final class SyncCoordinator {
               let data = SyncRecordMapper.settingsData(from: record)
         else { return }
         applySettingsData(data, for: category)
-    }
-
-    private func applyRemoteQueryHistory(_ record: CKRecord) {
-        guard let entryIdString = record["entryId"] as? String,
-              let entryId = UUID(uuidString: entryIdString),
-              let query = record["query"] as? String,
-              let executedAt = record["executedAt"] as? Date
-        else { return }
-
-        let connectionId = (record["connectionId"] as? String).flatMap { UUID(uuidString: $0) } ?? UUID()
-        let databaseName = record["databaseName"] as? String ?? ""
-        let executionTime = record["executionTime"] as? Double ?? 0
-        let rowCount = (record["rowCount"] as? Int64).map { Int($0) } ?? 0
-        let wasSuccessful = (record["wasSuccessful"] as? Int64 ?? 1) != 0
-        let errorMessage = record["errorMessage"] as? String
-
-        let entry = QueryHistoryEntry(
-            id: entryId,
-            query: query,
-            connectionId: connectionId,
-            databaseName: databaseName,
-            executedAt: executedAt,
-            executionTime: executionTime,
-            rowCount: rowCount,
-            wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
-        )
-
-        Task {
-            _ = await QueryHistoryStorage.shared.addHistory(entry)
-            await QueryHistoryStorage.shared.markHistoryEntriesSynced(ids: [entryIdString])
-        }
     }
 
     private func applyRemoteDeletion(_ recordID: CKRecord.ID) {
@@ -714,7 +642,6 @@ final class SyncCoordinator {
             case SyncRecordType.group.rawValue: syncRecordType = .group
             case SyncRecordType.tag.rawValue: syncRecordType = .tag
             case SyncRecordType.settings.rawValue: syncRecordType = .settings
-            case SyncRecordType.queryHistory.rawValue: syncRecordType = .queryHistory
             case SyncRecordType.sshProfile.rawValue: syncRecordType = .sshProfile
             default: continue
             }

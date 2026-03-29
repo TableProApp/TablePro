@@ -15,7 +15,6 @@ enum SyncRecordType: String, CaseIterable {
     case group = "ConnectionGroup"
     case tag = "ConnectionTag"
     case settings = "AppSettings"
-    case queryHistory = "QueryHistory"
     case favorite = "SQLFavorite"
     case favoriteFolder = "SQLFavoriteFolder"
     case sshProfile = "SSHProfile"
@@ -30,9 +29,6 @@ struct SyncRecordMapper {
     /// Current schema version stamped on every record
     static let schemaVersion: Int64 = 1
 
-    /// Maximum query text length for CloudKit (10KB in UTF-8)
-    static let maxQueryLength = 10_240
-
     // MARK: - Record Name Helpers
 
     static func recordID(type: SyncRecordType, id: String, in zone: CKRecordZone.ID) -> CKRecord.ID {
@@ -42,7 +38,6 @@ struct SyncRecordMapper {
         case .group: recordName = "Group_\(id)"
         case .tag: recordName = "Tag_\(id)"
         case .settings: recordName = "Settings_\(id)"
-        case .queryHistory: recordName = "History_\(id)"
         case .favorite: recordName = "Favorite_\(id)"
         case .favoriteFolder: recordName = "FavoriteFolder_\(id)"
         case .sshProfile: recordName = "SSHProfile_\(id)"
@@ -273,58 +268,6 @@ struct SyncRecordMapper {
 
     static func settingsData(from record: CKRecord) -> Data? {
         record["settingsJson"] as? Data
-    }
-
-    // MARK: - Query History
-
-    static func toCKRecord(
-        entryId: String,
-        query: String,
-        connectionId: String?,
-        databaseName: String?,
-        executedAt: Date,
-        executionTime: Double,
-        rowCount: Int64,
-        wasSuccessful: Bool,
-        errorMessage: String?,
-        in zone: CKRecordZone.ID
-    ) -> CKRecord {
-        let recordID = recordID(type: .queryHistory, id: entryId, in: zone)
-        let record = CKRecord(
-            recordType: SyncRecordType.queryHistory.rawValue,
-            recordID: recordID
-        )
-
-        record["entryId"] = entryId as CKRecordValue
-        // Cap query text at maxQueryLength bytes
-        let cappedQuery: String
-        let queryData = Data(query.utf8)
-        if queryData.count > maxQueryLength {
-            cappedQuery = String(
-                data: queryData.prefix(maxQueryLength),
-                encoding: .utf8
-            ) ?? String(query.prefix(maxQueryLength / 4))
-        } else {
-            cappedQuery = query
-        }
-        record["query"] = cappedQuery as CKRecordValue
-        record["executedAt"] = executedAt as CKRecordValue
-        record["executionTime"] = executionTime as CKRecordValue
-        record["rowCount"] = rowCount as CKRecordValue
-        record["wasSuccessful"] = Int64(wasSuccessful ? 1 : 0) as CKRecordValue
-        record["schemaVersion"] = schemaVersion as CKRecordValue
-
-        if let connectionId {
-            record["connectionId"] = connectionId as CKRecordValue
-        }
-        if let databaseName {
-            record["databaseName"] = databaseName as CKRecordValue
-        }
-        if let errorMessage {
-            record["errorMessage"] = errorMessage as CKRecordValue
-        }
-
-        return record
     }
 
     // MARK: - SSH Profile

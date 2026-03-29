@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Confirmation dialogs for deep link queries, connection imports, and pre-connect scripts
 - JSON fields in Row Details sidebar now display in a scrollable monospaced text area
 
+### Changed
+
+- Removed query history sync from iCloud Sync (connections, groups, settings, and SSH profiles still sync)
+
 ### Fixed
 
 - SQL editor not auto-focused on new tab and cursor missing after tab switch

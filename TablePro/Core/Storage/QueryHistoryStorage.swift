@@ -164,8 +164,7 @@ final class QueryHistoryStorage {
                 execution_time REAL NOT NULL,
                 row_count INTEGER NOT NULL,
                 was_successful INTEGER NOT NULL,
-                error_message TEXT,
-                is_synced INTEGER DEFAULT 0
+                error_message TEXT
             );
             """
 
@@ -206,7 +205,6 @@ final class QueryHistoryStorage {
 
         // Execute all table creation statements
         execute(historyTable)
-        migrateAddIsSyncedColumn()
         execute(ftsTable)
         execute(ftsInsertTrigger)
         execute(ftsDeleteTrigger)
@@ -547,80 +545,6 @@ final class QueryHistoryStorage {
     func cleanup() {
         queue.async { [weak self] in
             self?.performCleanup()
-        }
-    }
-
-    // MARK: - Sync Support
-
-    /// Migration: add is_synced column if the table was created before sync support
-    private func migrateAddIsSyncedColumn() {
-        // Check if column already exists by querying table info
-        let sql = "PRAGMA table_info(history);"
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { return }
-        defer { sqlite3_finalize(statement) }
-
-        var hasIsSynced = false
-        while sqlite3_step(statement) == SQLITE_ROW {
-            if let name = sqlite3_column_text(statement, 1).map({ String(cString: $0) }),
-               name == "is_synced" {
-                hasIsSynced = true
-                break
-            }
-        }
-
-        if !hasIsSynced {
-            execute("ALTER TABLE history ADD COLUMN is_synced INTEGER DEFAULT 0;")
-            Self.logger.info("Migrated history table: added is_synced column")
-        }
-    }
-
-    /// Mark history entries as synced
-    func markHistoryEntriesSynced(ids: [String]) async {
-        guard !ids.isEmpty else { return }
-        await performDatabaseWork { [weak self] in
-            guard let self else { return }
-
-            let placeholders = ids.map { _ in "?" }.joined(separator: ", ")
-            let sql = "UPDATE history SET is_synced = 1 WHERE id IN (\(placeholders));"
-
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else { return }
-            defer { sqlite3_finalize(statement) }
-
-            let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-            for (index, id) in ids.enumerated() {
-                sqlite3_bind_text(statement, Int32(index + 1), id, -1, SQLITE_TRANSIENT)
-            }
-            sqlite3_step(statement)
-        }
-    }
-
-    /// Fetch unsynced history entries
-    func unsyncedHistoryEntries(limit: Int) async -> [QueryHistoryEntry] {
-        await performDatabaseWork { [weak self] in
-            guard let self else { return [] }
-
-            let sql = """
-                SELECT id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message
-                FROM history WHERE is_synced = 0 ORDER BY executed_at DESC LIMIT ?;
-                """
-
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
-                return []
-            }
-            defer { sqlite3_finalize(statement) }
-
-            sqlite3_bind_int(statement, 1, Int32(limit))
-
-            var entries: [QueryHistoryEntry] = []
-            while sqlite3_step(statement) == SQLITE_ROW {
-                if let entry = self.parseHistoryEntry(from: statement) {
-                    entries.append(entry)
-                }
-            }
-            return entries
         }
     }
 

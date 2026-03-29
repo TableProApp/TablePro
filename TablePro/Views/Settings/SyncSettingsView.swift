@@ -27,7 +27,7 @@ struct SyncSettingsView: View {
                         }
                     }
 
-                Text("Syncs connections, settings, and history across your Macs via iCloud.")
+                Text("Syncs connections, settings, and SSH profiles across your Macs via iCloud.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -138,18 +138,6 @@ struct SyncSettingsView: View {
 
             Toggle("Settings:", isOn: $syncSettings.syncSettings)
                 .onChange(of: syncSettings.syncSettings) { _, _ in persistSettings() }
-
-            Toggle("Query History:", isOn: $syncSettings.syncQueryHistory)
-                .onChange(of: syncSettings.syncQueryHistory) { _, _ in persistSettings() }
-
-            if syncSettings.syncQueryHistory {
-                Picker("History Limit:", selection: $syncSettings.historySyncLimit) {
-                    ForEach(HistorySyncLimit.allCases, id: \.self) { limit in
-                        Text(limit.displayName).tag(limit)
-                    }
-                }
-                .onChange(of: syncSettings.historySyncLimit) { _, _ in persistSettings() }
-            }
         }
     }
 
