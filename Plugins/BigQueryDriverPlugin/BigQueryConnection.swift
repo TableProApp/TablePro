@@ -442,6 +442,9 @@ internal final class BigQueryConnection: @unchecked Sendable {
             dmlAffectedRows = 0
         }
         let totalBytesProcessed = finalJobResponse.statistics?.totalBytesProcessed
+            ?? finalJobResponse.statistics?.query?.totalBytesProcessed
+        let totalBytesBilled = finalJobResponse.statistics?.query?.totalBytesBilled
+        let cacheHit = finalJobResponse.statistics?.query?.cacheHit
 
         // Fetch first page of results
         let firstPage = try await getQueryResults(
@@ -483,7 +486,9 @@ internal final class BigQueryConnection: @unchecked Sendable {
         return BQExecuteResult(
             queryResponse: finalResponse,
             dmlAffectedRows: dmlAffectedRows,
-            totalBytesProcessed: totalBytesProcessed
+            totalBytesProcessed: totalBytesProcessed,
+            totalBytesBilled: totalBytesBilled,
+            cacheHit: cacheHit
         )
     }
 
