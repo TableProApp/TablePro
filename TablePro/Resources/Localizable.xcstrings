@@ -11306,6 +11306,28 @@
         }
       }
     },
+    "Enable AI Features" : {
+      "localizations" : {
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI Özelliklerini Etkinleştir"
+          }
+        },
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bật tính năng AI"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用 AI 功能"
+          }
+        }
+      }
+    },
     "Enable inline suggestions" : {
       "localizations" : {
         "tr" : {

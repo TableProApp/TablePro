@@ -60,7 +60,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
         menu.addItem(saveAsFavItem)
 
         // AI items — only when text is selected
-        guard hasSelection?() == true else { return }
+        guard AppSettingsManager.shared.ai.enabled, hasSelection?() == true else { return }
 
         menu.addItem(.separator())
 

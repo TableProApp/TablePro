@@ -377,18 +377,26 @@ extension MainContentCoordinator {
             errorMessage: error.localizedDescription
         )
 
-        // Show error alert with AI fix option
+        // Show error alert (with AI fix option when AI is enabled)
         let errorMessage = error.localizedDescription
         let queryCopy = sql
         Task { @MainActor in
-            let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
-                title: String(localized: "Query Execution Failed"),
-                message: errorMessage,
-                window: NSApp.keyWindow
-            )
-            if wantsAIFix {
-                showAIChatPanel()
-                aiViewModel?.handleFixError(query: queryCopy, error: errorMessage)
+            if AppSettingsManager.shared.ai.enabled {
+                let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
+                    title: String(localized: "Query Execution Failed"),
+                    message: errorMessage,
+                    window: NSApp.keyWindow
+                )
+                if wantsAIFix {
+                    showAIChatPanel()
+                    aiViewModel?.handleFixError(query: queryCopy, error: errorMessage)
+                }
+            } else {
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Query Execution Failed"),
+                    message: errorMessage,
+                    window: NSApp.keyWindow
+                )
             }
         }
     }

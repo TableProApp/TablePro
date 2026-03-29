@@ -130,6 +130,7 @@ final class InlineSuggestionManager {
 
     private func isEnabled() -> Bool {
         let settings = AppSettingsManager.shared.ai
+        guard settings.enabled else { return false }
         guard settings.inlineSuggestEnabled else { return false }
         guard let controller else { return false }
         guard let textView = controller.textView else { return false }

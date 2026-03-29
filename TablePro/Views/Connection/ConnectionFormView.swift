@@ -930,13 +930,15 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                 .foregroundStyle(.secondary)
             }
 
-            Section(String(localized: "AI")) {
-                Picker(String(localized: "AI Policy"), selection: $aiPolicy) {
-                    Text(String(localized: "Use Default"))
-                        .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
-                    ForEach(AIConnectionPolicy.allCases) { policy in
-                        Text(policy.displayName)
-                            .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
+            if AppSettingsManager.shared.ai.enabled {
+                Section(String(localized: "AI")) {
+                    Picker(String(localized: "AI Policy"), selection: $aiPolicy) {
+                        Text(String(localized: "Use Default"))
+                            .tag(AIConnectionPolicy?.none as AIConnectionPolicy?)
+                        ForEach(AIConnectionPolicy.allCases) { policy in
+                            Text(policy.displayName)
+                                .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
+                        }
                     }
                 }
             }

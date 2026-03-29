@@ -132,6 +132,7 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable {
 
 /// Global AI feature settings
 struct AISettings: Codable, Equatable {
+    var enabled: Bool
     var providers: [AIProviderConfig]
     var featureRouting: [String: AIFeatureRoute]
     var includeSchema: Bool
@@ -142,6 +143,7 @@ struct AISettings: Codable, Equatable {
     var inlineSuggestEnabled: Bool
 
     static let `default` = AISettings(
+        enabled: true,
         providers: [],
         featureRouting: [:],
         includeSchema: true,
@@ -153,6 +155,7 @@ struct AISettings: Codable, Equatable {
     )
 
     init(
+        enabled: Bool = true,
         providers: [AIProviderConfig] = [],
         featureRouting: [String: AIFeatureRoute] = [:],
         includeSchema: Bool = true,
@@ -162,6 +165,7 @@ struct AISettings: Codable, Equatable {
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
         inlineSuggestEnabled: Bool = false
     ) {
+        self.enabled = enabled
         self.providers = providers
         self.featureRouting = featureRouting
         self.includeSchema = includeSchema
@@ -174,6 +178,7 @@ struct AISettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         providers = try container.decodeIfPresent([AIProviderConfig].self, forKey: .providers) ?? []
         featureRouting = try container.decodeIfPresent([String: AIFeatureRoute].self, forKey: .featureRouting) ?? [:]
         includeSchema = try container.decodeIfPresent(Bool.self, forKey: .includeSchema) ?? true

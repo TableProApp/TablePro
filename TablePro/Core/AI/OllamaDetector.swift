@@ -16,6 +16,7 @@ enum OllamaDetector {
     @MainActor
     static func detectAndRegister() async {
         let settings = AppSettingsManager.shared.ai
+        guard settings.enabled else { return }
 
         // Skip if an Ollama provider already exists
         if settings.providers.contains(where: { $0.type == .ollama }) {

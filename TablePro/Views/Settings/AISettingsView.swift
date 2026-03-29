@@ -18,11 +18,16 @@ struct AISettingsView: View {
 
     var body: some View {
         Form {
-            providersSection
-            featureRoutingSection
-            contextSection
-            inlineSuggestionsSection
-            privacySection
+            Section {
+                Toggle(String(localized: "Enable AI Features"), isOn: $settings.enabled)
+            }
+            if settings.enabled {
+                providersSection
+                featureRoutingSection
+                contextSection
+                inlineSuggestionsSection
+                privacySection
+            }
         }
         .formStyle(.grouped)
         .sheet(item: $editingProvider) { provider in

@@ -16,20 +16,40 @@ struct UnifiedRightPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Tab switcher
-            Picker("", selection: $state.activeTab) {
-                ForEach(RightPanelTab.allCases, id: \.self) { tab in
-                    Label(tab.localizedTitle, systemImage: tab.systemImage)
-                        .tag(tab)
+            if AppSettingsManager.shared.ai.enabled {
+                // Tab switcher
+                Picker("", selection: $state.activeTab) {
+                    ForEach(RightPanelTab.allCases, id: \.self) { tab in
+                        Label(tab.localizedTitle, systemImage: tab.systemImage)
+                            .tag(tab)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
 
-            switch state.activeTab {
-            case .details:
+                switch state.activeTab {
+                case .details:
+                    RightSidebarView(
+                        tableName: inspectorContext.tableName,
+                        tableMetadata: inspectorContext.tableMetadata,
+                        selectedRowData: inspectorContext.selectedRowData,
+                        isEditable: inspectorContext.isEditable,
+                        isRowDeleted: inspectorContext.isRowDeleted,
+                        onSave: { state.onSave?() },
+                        editState: state.editState
+                    )
+                case .aiChat:
+                    AIChatPanelView(
+                        connection: connection,
+                        tables: tables,
+                        currentQuery: inspectorContext.currentQuery,
+                        queryResults: inspectorContext.queryResults,
+                        viewModel: state.aiViewModel
+                    )
+                }
+            } else {
                 RightSidebarView(
                     tableName: inspectorContext.tableName,
                     tableMetadata: inspectorContext.tableMetadata,
@@ -38,14 +58,6 @@ struct UnifiedRightPanelView: View {
                     isRowDeleted: inspectorContext.isRowDeleted,
                     onSave: { state.onSave?() },
                     editState: state.editState
-                )
-            case .aiChat:
-                AIChatPanelView(
-                    connection: connection,
-                    tables: tables,
-                    currentQuery: inspectorContext.currentQuery,
-                    queryResults: inspectorContext.queryResults,
-                    viewModel: state.aiViewModel
                 )
             }
         }
