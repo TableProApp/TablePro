@@ -1,11 +1,11 @@
 ---
 title: Filtering
-description: Build WHERE clauses visually with 18 operators, quick search, and saved presets
+description: Build WHERE clauses visually with 18 operators, raw SQL mode, and saved presets
 ---
 
 # Filtering
 
-The filter panel builds WHERE clauses without writing SQL. Pick columns, operators, and values visually, or switch to raw SQL mode for anything the builder can't express. Filters are per-tab, so each workspace keeps its own state.
+The filter panel builds WHERE clauses without writing SQL. Pick columns, operators, and values visually, or use raw SQL mode for anything the builder can't express. Raw SQL is the default mode. Filters are per-tab, so each workspace keeps its own state.
 
 {/* Screenshot: Filter panel with multiple active filters */}
 <Frame caption="Filter panel with active filters">
@@ -24,7 +24,17 @@ The filter panel builds WHERE clauses without writing SQL. Pick columns, operato
 
 ## Filter Panel
 
-Click the **Filter** button or press `Cmd+F` to open the filter panel. Each filter row specifies a column, operator, and value. Click **+** to add filters, use the AND/OR toggle to control logic, and click **Apply All** to activate selected filters. Click **Unset** to clear all filters.
+Press `Cmd+F` or click the **Filters** button in the status bar to open the filter panel. The panel opens with one empty filter row ready for input.
+
+Each filter row has:
+- A **column picker** (defaults to Raw SQL)
+- An **operator picker** (when using column mode)
+- A **value field**
+- **+** and **−** buttons to add or remove rows
+
+Click **Apply** in the header bar (or press `Enter` in any value field) to activate filters. Click **Unset** to clear all filters and close the panel.
+
+When two or more filter rows exist, an **AND/OR** toggle appears to control how conditions are combined.
 
 ## Operators
 
@@ -60,14 +70,16 @@ value1, value2, value3
 
 ## Raw SQL Mode
 
-For conditions the visual builder can't express, switch to Raw SQL mode.
+Raw SQL is the default filter mode. Type any WHERE clause condition directly into the value field.
 
 ### Using Raw SQL
 
-1. Click the column dropdown on a filter row
-2. Select **Raw SQL** at the top of the list
-3. The operator dropdown disappears and the value field becomes a free-text SQL input
-4. Type your WHERE clause condition directly
+1. Open the filter panel (`Cmd+F`)
+2. The default row is already in Raw SQL mode
+3. Type your WHERE clause condition
+4. Press `Enter` or click **Apply**
+
+To switch an existing row to Raw SQL, click the column picker and select **Raw SQL** at the top of the list.
 
 {/* Screenshot: Raw SQL filter with arbitrary WHERE clause */}
 <Frame caption="Raw SQL filter mode">
@@ -101,36 +113,6 @@ price * quantity > 1000
 Raw SQL is injected directly into the WHERE clause. Make sure your syntax is correct for the connected database type.
 </Warning>
 
-## Quick Search
-
-Quick Search filters across all visible columns at once, without building individual filter rows.
-
-### Using Quick Search
-
-1. Open the filter panel
-2. Type in the **Quick search across all columns...** field
-3. Press `Enter` to apply
-
-{/* Screenshot: Quick search field with search text */}
-<Frame caption="Quick search across all columns">
-  <img
-    className="block dark:hidden"
-    src="/images/quick-search.png"
-    alt="Quick search"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/quick-search-dark.png"
-    alt="Quick search"
-  />
-</Frame>
-
-Quick search is always visible when the filter panel is open. Click the **x** button to clear it.
-
-<Tip>
-Quick Search works well for one-off lookups. For recurring filter patterns, save them as a preset instead.
-</Tip>
-
 ## Filter Presets
 
 Save your current filter configuration as a named preset for quick reuse.
@@ -138,67 +120,38 @@ Save your current filter configuration as a named preset for quick reuse.
 ### Saving a Preset
 
 1. Build your filters in the filter panel
-2. Click the **folder** icon in the filter header
+2. Click the **⋯** options menu in the header
 3. Select **Save as Preset...**
 4. Enter a name and click **Save**
 
-{/* Screenshot: Save filter preset dialog */}
-<Frame caption="Save filter preset dialog">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-preset-save.png"
-    alt="Save filter preset dialog"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-preset-save-dark.png"
-    alt="Save filter preset dialog"
-  />
-</Frame>
-
 ### Loading a Preset
 
-1. Click the **folder** icon in the filter header
-2. Select a preset from the dropdown menu
+1. Click the **⋯** options menu in the header
+2. Select a preset from the menu
 3. The saved filters replace the current filter list
-
-{/* Screenshot: Load saved filter presets */}
-<Frame caption="Load saved filter presets">
-  <img
-    className="block dark:hidden"
-    src="/images/filter-preset-load.png"
-    alt="Load saved filter presets"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/filter-preset-load-dark.png"
-    alt="Load saved filter presets"
-  />
-</Frame>
 
 ### Managing Presets
 
 | Action | How |
 |--------|-----|
-| Load | Click the preset name in the folder menu |
+| Load | Click the preset name in the ⋯ menu |
 | Delete | Select **Delete Preset** > click the preset name |
 | Overwrite | Save a new preset with the same name |
 
 Presets are stored via UserDefaults and persist across sessions.
 
 <Note>
-Presets save the filter definitions (column, operator, value) but not whether they were applied. After loading a preset, click **Apply All** to activate the filters.
+After loading a preset, click **Apply** to activate the filters.
 </Note>
 
 ## SQL Preview
 
 See the exact WHERE clause that will be sent to the database before applying.
 
-### Viewing the Preview
-
 1. Build your filters
-2. Click the **SQL** button in the filter footer
-3. A sheet displays the generated WHERE clause
+2. Click the **⋯** options menu in the header
+3. Select **Preview Query**
+4. A sheet displays the generated WHERE clause
 
 {/* Screenshot: SQL preview sheet showing generated WHERE clause */}
 <Frame caption="SQL preview of generated filters">
@@ -214,29 +167,25 @@ See the exact WHERE clause that will be sent to the database before applying.
   />
 </Frame>
 
-### What the Preview Shows
-
+The preview shows:
 - The complete WHERE clause with proper quoting for your database type
-- MySQL uses backticks (`` `column` ``)
-- PostgreSQL uses double quotes (`"column"`)
 - AND/OR logic based on the current mode
 - A "Copy" button to copy the SQL to clipboard
 
-If some (but not all) filters are selected, the preview shows only the selected filters. Otherwise, it shows all valid filters.
-
-### Handling Invalid Filters
-
-If filters exist but none are valid, the preview shows a message indicating what needs to be completed:
-
-- Select a column
-- Enter a value (if required by the operator)
-- Fill in the second value for BETWEEN
-
 ## Per-Tab Filter State
 
-Each tab maintains its own independent filter state, including the filter list, applied filters, and panel visibility. Switching between tabs preserves each tab's filters.
+Each tab maintains its own independent filter state. Switching between tabs preserves each tab's filters, applied state, and panel visibility.
+
+Tables with active filters (or sorting/edits) open in a new tab when you click another table in the sidebar, preserving your filtered view.
 
 ## Filter Settings
 
-Click the **gear** icon to configure default column (Raw SQL, Primary Key, or any column), default operator (= or Contains), and panel behavior on open (Always Hide, Always Show, or Restore Last Filter).
+Click the **⋯** options menu > **Filter Settings** to configure:
 
+| Setting | Options |
+|---------|---------|
+| Default Column | Raw SQL (default), Primary Key, Any Column |
+| Default Operator | Equal (=), Contains |
+| Panel State | Always Hide (default), Always Show, Restore Last Filter |
+
+When "Restore Last Filter" is enabled, reopening a table restores and applies the last-used filters for that table.
