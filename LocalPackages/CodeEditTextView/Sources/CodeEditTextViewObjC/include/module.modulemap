@@ -1,0 +1,3 @@
+module CodeEditTextViewObjC {
+    header "CGContextHidden.h"
+}

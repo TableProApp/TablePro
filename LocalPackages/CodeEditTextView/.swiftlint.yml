@@ -1,0 +1,19 @@
+excluded:
+  - .build
+
+disabled_rules:
+  - todo
+  - trailing_comma
+  - nesting
+
+type_name:
+  excluded:
+    - ID
+
+identifier_name:
+  min_length: 2
+  allowed_symbols: ['_']
+  excluded:
+    - c
+    - id
+    - vc

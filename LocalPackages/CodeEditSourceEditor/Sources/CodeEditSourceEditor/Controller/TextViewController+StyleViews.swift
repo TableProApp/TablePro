@@ -20,7 +20,13 @@ extension TextViewController {
     /// Style the text view.
     package func styleTextView() {
         textView.postsFrameChangedNotifications = true
-        textView.translatesAutoresizingMaskIntoConstraints = false
+        if wrapLines {
+            textView.translatesAutoresizingMaskIntoConstraints = false
+        } else {
+            textView.translatesAutoresizingMaskIntoConstraints = true
+            textView.autoresizingMask = [.height]
+            textView.updateFrameIfNeeded()
+        }
     }
 
     /// Style the scroll view.
@@ -28,6 +34,7 @@ extension TextViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.contentView.postsFrameChangedNotifications = true
         scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = !wrapLines
         scrollView.scrollerStyle = .overlay
     }
 
