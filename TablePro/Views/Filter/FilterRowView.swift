@@ -11,6 +11,7 @@ struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
     let onAdd: () -> Void
+    let onDuplicate: () -> Void
     let onRemove: () -> Void
     let onSubmit: () -> Void
     var shouldFocus: Bool = false
@@ -155,8 +156,7 @@ struct FilterRowView: View {
         }
 
         Button {
-            // Duplicate is add + copy values
-            onAdd()
+            onDuplicate()
         } label: {
             Label(String(localized: "Duplicate Filter"), systemImage: "doc.on.doc")
         }

@@ -116,10 +116,7 @@ struct FilterPanelView: View {
                 generatedSQL = filterState.generatePreviewSQL(databaseType: databaseType)
                 showSQLSheet = true
             } label: {
-                Label(
-                    String(localized: "Preview \(PluginManager.shared.queryLanguageName(for: databaseType))"),
-                    systemImage: "text.magnifyingglass"
-                )
+                Label(String(localized: "Preview Query"), systemImage: "text.magnifyingglass")
             }
             .disabled(filterState.filters.isEmpty)
 
@@ -190,6 +187,7 @@ struct FilterPanelView: View {
                     filter: filterState.binding(for: filter),
                     columns: columns,
                     onAdd: { filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn) },
+                    onDuplicate: { filterState.duplicateFilter(filter) },
                     onRemove: {
                         let hadAppliedFilters = filterState.hasAppliedFilters
                         filterState.removeFilter(filter)

@@ -82,6 +82,7 @@ struct FilterSettings: Codable, Equatable {
 }
 
 /// Persistent storage for filter settings and per-table last-used filters
+@MainActor
 final class FilterSettingsStorage {
     static let shared = FilterSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")

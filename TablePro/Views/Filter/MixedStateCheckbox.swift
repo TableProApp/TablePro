@@ -8,14 +8,13 @@
 import AppKit
 import SwiftUI
 
-/// NSViewRepresentable checkbox supporting on/off/mixed states
 struct MixedStateCheckbox: NSViewRepresentable {
     let title: String
     let state: NSControl.StateValue
     let action: () -> Void
 
     func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(checkboxWithTitle: title, target: context.coordinator, action: #selector(Coordinator.didToggle))
+        let button = NSButton(checkboxWithTitle: title, target: context.coordinator, action: #selector(Coordinator.didToggle(_:)))
         button.allowsMixedState = true
         button.font = NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.small)
         button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
@@ -40,7 +39,7 @@ struct MixedStateCheckbox: NSViewRepresentable {
             self.action = action
         }
 
-        @objc func didToggle() {
+        @objc func didToggle(_ sender: NSButton) {
             action()
         }
     }

@@ -74,7 +74,6 @@ extension MainContentCoordinator {
             )
 
             self.tabManager.tabs[capturedTabIndex].query = newQuery
-            self.filterStateManager.saveLastFilters(for: capturedTableName)
             self.tabManager.tabs[capturedTabIndex].filterState = self.filterStateManager.saveToTabState()
             self.runQuery()
         }
