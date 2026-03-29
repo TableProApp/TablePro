@@ -5,8 +5,9 @@
 //  Created by Khan Winter on 10/14/23.
 //
 
-import CodeEditTextView
 import AppKit
+import Carbon.HIToolbox
+import CodeEditTextView
 
 extension TextViewController {
     override public func viewWillAppear() {
@@ -262,6 +263,12 @@ extension TextViewController {
             _ = self.textView.resignFirstResponder()
             self.findViewController?.showFindPanel()
             return nil
+        case ([commandKey, .shift], "D"):
+            duplicateLine()
+            return nil
+        case ([commandKey, .shift], "K"):
+            deleteLine()
+            return nil
         case (.init(rawValue: 0), "\u{1b}"): // Escape key
             if findViewController?.viewModel.isShowingFindPanel == true {
                 self.findViewController?.hideFindPanel()
@@ -278,6 +285,23 @@ extension TextViewController {
             jumpToDefinitionModel.performJump(at: cursor.range)
             return nil
         case (_, _):
+            // Handle key-code-based shortcuts (arrow keys don't have stable characters)
+            return handleKeyCodeCommand(event: event, modifierFlags: modifierFlags)
+        }
+    }
+
+    private func handleKeyCodeCommand(event: NSEvent, modifierFlags: NSEvent.ModifierFlags) -> NSEvent? {
+        // Strip .numericPad — arrow keys include it on macOS
+        let flags = modifierFlags.subtracting(.numericPad)
+
+        switch (flags, Int(event.keyCode)) {
+        case (.option, kVK_UpArrow):
+            moveLinesUp()
+            return nil
+        case (.option, kVK_DownArrow):
+            moveLinesDown()
+            return nil
+        default:
             return event
         }
     }

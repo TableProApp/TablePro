@@ -328,11 +328,8 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             queue: .main
         ) { [weak self, weak controller] _ in
             guard let self, let controller else { return }
-            DispatchQueue.main.async { [weak self, weak controller] in
-                guard let self, let controller else { return }
-                self.handleVimSettingsChange(controller: controller)
-                self.vimCursorManager?.updatePosition()
-            }
+            self.handleVimSettingsChange(controller: controller)
+            self.vimCursorManager?.updatePosition()
         }
     }
 

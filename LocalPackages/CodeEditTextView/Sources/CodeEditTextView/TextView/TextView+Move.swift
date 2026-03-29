@@ -159,6 +159,32 @@ extension TextView {
         updateAfterMove()
     }
 
+    override public func moveToBeginningOfLine(_ sender: Any?) {
+        moveToLeftEndOfLine(sender)
+    }
+
+    override public func moveToEndOfLine(_ sender: Any?) {
+        moveToRightEndOfLine(sender)
+    }
+
+    override public func moveToBeginningOfLineAndModifySelection(_ sender: Any?) {
+        moveToLeftEndOfLineAndModifySelection(sender)
+    }
+
+    override public func moveToEndOfLineAndModifySelection(_ sender: Any?) {
+        moveToRightEndOfLineAndModifySelection(sender)
+    }
+
+    override public func centerSelectionInVisibleArea(_ sender: Any?) {
+        guard let scrollView,
+              let selection = selectionManager.textSelections.first,
+              let rect = layoutManager.rectForOffset(selection.range.location) else { return }
+        let visibleHeight = scrollView.contentView.bounds.height
+        let targetY = max(rect.midY - visibleHeight / 2, 0)
+        scrollView.contentView.scroll(to: NSPoint(x: scrollView.contentView.bounds.origin.x, y: targetY))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
     override public func pageUp(_ sender: Any?) {
         enclosingScrollView?.pageUp(sender)
     }
