@@ -812,7 +812,7 @@ internal final class BigQueryConnection: @unchecked Sendable {
                 throw BigQueryError.authFailed(message)
             }
             if code == 403 {
-                throw BigQueryError.apiError(code: 403, message: "Permission denied: \(message)")
+                throw BigQueryError.apiError(code: 403, message: message)
             }
             throw BigQueryError.apiError(code: code, message: message)
         }

@@ -35,19 +35,19 @@ internal enum BigQueryError: Error, LocalizedError {
         case .notConnected:
             return String(localized: "Not connected to BigQuery")
         case .authFailed(let detail):
-            return String(localized: "Authentication failed: \(detail)")
-        case .apiError(let code, let message):
-            return String(localized: "BigQuery error (\(code)): \(message)")
+            return detail
+        case .apiError(_, let message):
+            return message
         case .jobFailed(let detail):
-            return String(localized: "BigQuery job failed: \(detail)")
+            return detail
         case .invalidResponse(let detail):
-            return String(localized: "Invalid response: \(detail)")
+            return detail
         case .timeout(let detail):
-            return String(localized: "Request timed out: \(detail)")
+            return detail
         case .requestCancelled:
             return String(localized: "Request was cancelled")
         case .jobCancelled:
-            return String(localized: "BigQuery job was cancelled")
+            return String(localized: "Query was cancelled")
         }
     }
 }
