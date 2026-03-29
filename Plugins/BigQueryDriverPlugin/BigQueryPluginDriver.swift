@@ -103,6 +103,17 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             _connection = conn
             _serverVersion = "Google BigQuery"
         }
+
+        // Auto-select the first available dataset (like PostgreSQL selects "public")
+        do {
+            let datasets = try await fetchSchemas()
+            let nonSystem = datasets.filter { !$0.uppercased().contains("INFORMATION_SCHEMA") }
+            if let firstDataset = nonSystem.first {
+                lock.withLock { _currentDataset = firstDataset }
+            }
+        } catch {
+            Self.logger.info("Could not auto-select dataset: \(error.localizedDescription)")
+        }
     }
 
     func disconnect() {
