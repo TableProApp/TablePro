@@ -14,10 +14,21 @@ struct UnifiedRightPanelView: View {
     let connection: DatabaseConnection
     let tables: [TableInfo]
 
+    private var detailsView: some View {
+        RightSidebarView(
+            tableName: inspectorContext.tableName,
+            tableMetadata: inspectorContext.tableMetadata,
+            selectedRowData: inspectorContext.selectedRowData,
+            isEditable: inspectorContext.isEditable,
+            isRowDeleted: inspectorContext.isRowDeleted,
+            onSave: { state.onSave?() },
+            editState: state.editState
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if AppSettingsManager.shared.ai.enabled {
-                // Tab switcher
                 Picker("", selection: $state.activeTab) {
                     ForEach(RightPanelTab.allCases, id: \.self) { tab in
                         Label(tab.localizedTitle, systemImage: tab.systemImage)
@@ -31,15 +42,7 @@ struct UnifiedRightPanelView: View {
 
                 switch state.activeTab {
                 case .details:
-                    RightSidebarView(
-                        tableName: inspectorContext.tableName,
-                        tableMetadata: inspectorContext.tableMetadata,
-                        selectedRowData: inspectorContext.selectedRowData,
-                        isEditable: inspectorContext.isEditable,
-                        isRowDeleted: inspectorContext.isRowDeleted,
-                        onSave: { state.onSave?() },
-                        editState: state.editState
-                    )
+                    detailsView
                 case .aiChat:
                     AIChatPanelView(
                         connection: connection,
@@ -50,15 +53,12 @@ struct UnifiedRightPanelView: View {
                     )
                 }
             } else {
-                RightSidebarView(
-                    tableName: inspectorContext.tableName,
-                    tableMetadata: inspectorContext.tableMetadata,
-                    selectedRowData: inspectorContext.selectedRowData,
-                    isEditable: inspectorContext.isEditable,
-                    isRowDeleted: inspectorContext.isRowDeleted,
-                    onSave: { state.onSave?() },
-                    editState: state.editState
-                )
+                detailsView
+            }
+        }
+        .onChange(of: AppSettingsManager.shared.ai.enabled) {
+            if !AppSettingsManager.shared.ai.enabled {
+                state.activeTab = .details
             }
         }
     }
