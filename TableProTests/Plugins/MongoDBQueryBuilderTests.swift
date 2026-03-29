@@ -104,65 +104,6 @@ struct MongoDBQueryBuilderTests {
         #expect(query.hasPrefix("db.my_collection"))
     }
 
-    // MARK: - Quick Search Query
-
-    @Test("Quick search across columns")
-    func quickSearchBasic() {
-        let query = builder.buildQuickSearchQuery(
-            collection: "users",
-            searchText: "john",
-            columns: ["name", "email"]
-        )
-        #expect(query.contains("$or"))
-        #expect(query.contains("\"name\": {\"$regex\": \"john\", \"$options\": \"i\"}"))
-        #expect(query.contains("\"email\": {\"$regex\": \"john\", \"$options\": \"i\"}"))
-    }
-
-    @Test("Quick search escapes regex special characters")
-    func quickSearchEscapesRegex() {
-        let query = builder.buildQuickSearchQuery(
-            collection: "users",
-            searchText: "test.value",
-            columns: ["name"]
-        )
-        #expect(query.contains("test\\.value"))
-    }
-
-    @Test("Quick search escapes dollar sign")
-    func quickSearchEscapesDollar() {
-        let query = builder.buildQuickSearchQuery(
-            collection: "users",
-            searchText: "$special",
-            columns: ["name"]
-        )
-        #expect(query.contains("\\$special"))
-    }
-
-    @Test("Quick search with empty columns produces empty filter")
-    func quickSearchEmptyColumns() {
-        let query = builder.buildQuickSearchQuery(
-            collection: "users",
-            searchText: "test",
-            columns: []
-        )
-        #expect(query.contains(".find({})"))
-    }
-
-    @Test("Quick search with sort and offset")
-    func quickSearchWithSortAndOffset() {
-        let query = builder.buildQuickSearchQuery(
-            collection: "users",
-            searchText: "john",
-            columns: ["name"],
-            sortColumns: [(columnIndex: 0, ascending: false)],
-            limit: 50,
-            offset: 10
-        )
-        #expect(query.contains(".sort({\"name\": -1})"))
-        #expect(query.contains(".skip(10)"))
-        #expect(query.contains(".limit(50)"))
-    }
-
     // MARK: - Filtered Query
 
     @Test("Filtered query with equals operator")

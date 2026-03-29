@@ -802,67 +802,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return query
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let escapedSearch = oracleEscapeForLike(searchText)
-        let conditions = columns.map { column -> String in
-            let quotedColumn = oracleQuoteIdentifier(column)
-            return "CAST(\(quotedColumn) AS VARCHAR2(4000)) LIKE '%\(escapedSearch)%' ESCAPE '\\'"
-        }
-        if !conditions.isEmpty {
-            query += " WHERE (" + conditions.joined(separator: " OR ") + ")"
-        }
-        let orderBy = oracleBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let filterConditions = oracleBuildWhereClause(filters: filters, logicMode: logicMode)
-        let escapedSearch = oracleEscapeForLike(searchText)
-        let searchConditions = searchColumns.map { column -> String in
-            let quotedColumn = oracleQuoteIdentifier(column)
-            return "CAST(\(quotedColumn) AS VARCHAR2(4000)) LIKE '%\(escapedSearch)%' ESCAPE '\\'"
-        }
-        let searchClause = searchConditions.isEmpty
-            ? "" : "(" + searchConditions.joined(separator: " OR ") + ")"
-        var whereParts: [String] = []
-        if !filterConditions.isEmpty {
-            whereParts.append("(\(filterConditions))")
-        }
-        if !searchClause.isEmpty {
-            whereParts.append(searchClause)
-        }
-        if !whereParts.isEmpty {
-            query += " WHERE " + whereParts.joined(separator: " AND ")
-        }
-        let orderBy = oracleBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY 1"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
-    }
-
     // MARK: - Query Building Helpers
 
     private func oracleQuoteIdentifier(_ identifier: String) -> String {

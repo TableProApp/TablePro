@@ -25,10 +25,7 @@ final class FilterStateManager {
     var filters: [TableFilter] = []
     var isVisible: Bool = false
     var appliedFilters: [TableFilter] = []
-    var focusedFilterId: UUID?
-    var quickSearchText: String = ""
-    var shouldFocusQuickSearch: Bool = false
-    var filterLogicMode: FilterLogicMode = .and  // AND or OR logic
+    var filterLogicMode: FilterLogicMode = .and
 
     /// Settings storage reference
     private let settingsStorage = FilterSettingsStorage.shared
@@ -64,7 +61,6 @@ final class FilterStateManager {
         newFilter.isSelected = true
 
         filters.append(newFilter)
-        focusedFilterId = newFilter.id
     }
 
     /// Add a new filter with a specific column pre-selected (for context menu "Filter with column")
@@ -82,7 +78,6 @@ final class FilterStateManager {
         newFilter.isSelected = true
 
         filters.append(newFilter)
-        focusedFilterId = newFilter.id
 
         // Show panel if hidden
         if !isVisible {
@@ -96,7 +91,6 @@ final class FilterStateManager {
         filters = [filter]
         appliedFilters = [filter]
         isVisible = true
-        quickSearchText = ""
         filterLogicMode = .and
     }
 
@@ -109,7 +103,7 @@ final class FilterStateManager {
             filterOperator: filter.filterOperator,
             value: filter.value,
             secondValue: filter.secondValue,
-            isSelected: false,
+            isSelected: true,
             isEnabled: filter.isEnabled,
             rawSQL: filter.rawSQL
         )
@@ -119,7 +113,6 @@ final class FilterStateManager {
         } else {
             filters.append(copy)
         }
-        focusedFilterId = copy.id
     }
 
     /// Remove a filter
@@ -129,10 +122,6 @@ final class FilterStateManager {
         // Also remove from applied filters if it was applied
         appliedFilters.removeAll { $0.id == filter.id }
 
-        // If we removed the focused filter, focus the previous or next one
-        if focusedFilterId == filter.id {
-            focusedFilterId = filters.last?.id
-        }
     }
 
     /// Update a filter
@@ -159,7 +148,9 @@ final class FilterStateManager {
     /// Apply a single filter
     func applySingleFilter(_ filter: TableFilter) {
         guard filter.isValid else { return }
+        filters = [filter]
         appliedFilters = [filter]
+        isVisible = true
     }
 
     /// Apply all selected filters
@@ -181,17 +172,12 @@ final class FilterStateManager {
 
     /// Toggle filter panel visibility
     func toggle() {
-        let willOpen = !isVisible
         isVisible.toggle()
-        if willOpen {
-            shouldFocusQuickSearch = true
-        }
     }
 
     /// Show panel
     func show() {
         isVisible = true
-        shouldFocusQuickSearch = true
     }
 
     /// Close panel
@@ -232,11 +218,6 @@ final class FilterStateManager {
         !appliedFilters.isEmpty
     }
 
-    /// Check if quick search is active
-    var hasActiveQuickSearch: Bool {
-        quickSearchText.contains(where: { !$0.isWhitespace })
-    }
-
     /// Count of valid filters
     var validFilterCount: Int {
         filters.count(where: \.isValid)
@@ -250,7 +231,6 @@ final class FilterStateManager {
             filters: filters,
             appliedFilters: appliedFilters,
             isVisible: isVisible,
-            quickSearchText: quickSearchText,
             filterLogicMode: filterLogicMode
         )
     }
@@ -260,63 +240,34 @@ final class FilterStateManager {
         filters = state.filters
         appliedFilters = state.appliedFilters
         isVisible = state.isVisible
-        quickSearchText = state.quickSearchText
         filterLogicMode = state.filterLogicMode
     }
 
     /// Save filters for a table (for "Restore Last Filter" setting)
     func saveLastFilters(for tableName: String) {
-        settingsStorage.saveLastFilters(filters, for: tableName)
+        settingsStorage.saveLastFilters(appliedFilters, for: tableName)
     }
 
     /// Restore last filters for a table
     func restoreLastFilters(for tableName: String) {
         let settings = settingsStorage.loadSettings()
         if settings.panelState == .restoreLast {
-            filters = settingsStorage.loadLastFilters(for: tableName)
-            isVisible = !filters.isEmpty
-        } else if settings.panelState == .alwaysShow {
+            let restored = settingsStorage.loadLastFilters(for: tableName)
+            if !restored.isEmpty {
+                filters = restored
+                appliedFilters = restored
+            }
+        }
+        if settings.panelState == .alwaysShow {
             isVisible = true
         }
     }
 
     /// Clear all filters
     func clearAll() {
+        isVisible = false
         filters = []
         appliedFilters = []
-        focusedFilterId = nil
-    }
-
-    // MARK: - Focus Management
-
-    /// Focus the next filter in the list
-    func focusNextFilter() {
-        guard let currentId = focusedFilterId,
-              let currentIndex = filters.firstIndex(where: { $0.id == currentId }) else {
-            focusedFilterId = filters.first?.id
-            return
-        }
-
-        let nextIndex = (currentIndex + 1) % filters.count
-        focusedFilterId = filters[nextIndex].id
-    }
-
-    /// Focus the previous filter in the list
-    func focusPreviousFilter() {
-        guard let currentId = focusedFilterId,
-              let currentIndex = filters.firstIndex(where: { $0.id == currentId }) else {
-            focusedFilterId = filters.last?.id
-            return
-        }
-
-        let previousIndex = currentIndex > 0 ? currentIndex - 1 : filters.count - 1
-        focusedFilterId = filters[previousIndex].id
-    }
-
-    /// Get the currently focused filter
-    var focusedFilter: TableFilter? {
-        guard let id = focusedFilterId else { return nil }
-        return filters.first { $0.id == id }
     }
 
     // MARK: - Filter Presets
@@ -330,8 +281,6 @@ final class FilterStateManager {
     /// Load filters from a preset
     func loadPreset(_ preset: FilterPreset) {
         filters = preset.filters
-        // Auto-focus first filter if available
-        focusedFilterId = filters.first?.id
     }
 
     /// Get all saved presets
@@ -342,13 +291,6 @@ final class FilterStateManager {
     /// Delete a preset
     func deletePreset(_ preset: FilterPreset) {
         presetStorage.deletePreset(preset)
-    }
-
-    // MARK: - Quick Search
-
-    /// Clear quick search text
-    func clearQuickSearch() {
-        quickSearchText = ""
     }
 
     // MARK: - SQL Generation
@@ -394,11 +336,10 @@ final class FilterStateManager {
 // MARK: - TabFilterState Extension
 
 extension TabFilterState {
-    init(filters: [TableFilter], appliedFilters: [TableFilter], isVisible: Bool, quickSearchText: String, filterLogicMode: FilterLogicMode) {
+    init(filters: [TableFilter], appliedFilters: [TableFilter], isVisible: Bool, filterLogicMode: FilterLogicMode) {
         self.filters = filters
         self.appliedFilters = appliedFilters
         self.isVisible = isVisible
-        self.quickSearchText = quickSearchText
         self.filterLogicMode = filterLogicMode
     }
 }

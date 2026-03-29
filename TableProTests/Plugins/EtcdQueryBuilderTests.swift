@@ -194,40 +194,6 @@ struct EtcdQueryBuilderFilteredTests {
     }
 }
 
-@Suite("EtcdQueryBuilder - Quick Search Query")
-struct EtcdQueryBuilderQuickSearchTests {
-    private let builder = EtcdQueryBuilder()
-
-    @Test("Quick search produces contains filter")
-    func quickSearch() {
-        let query = builder.buildQuickSearchQuery(
-            prefix: "/app/",
-            searchText: "config",
-            sortColumns: [],
-            limit: 100,
-            offset: 0
-        )
-        let parsed = EtcdQueryBuilder.parseRangeQuery(query)
-        #expect(parsed?.prefix == "/app/")
-        #expect(parsed?.filterType == .contains)
-        #expect(parsed?.filterValue == "config")
-    }
-
-    @Test("Quick search with empty text produces empty contains")
-    func quickSearchEmptyText() {
-        let query = builder.buildQuickSearchQuery(
-            prefix: "",
-            searchText: "",
-            sortColumns: [],
-            limit: 100,
-            offset: 0
-        )
-        let parsed = EtcdQueryBuilder.parseRangeQuery(query)
-        #expect(parsed?.filterType == .contains)
-        #expect(parsed?.filterValue == "")
-    }
-}
-
 @Suite("EtcdQueryBuilder - Combined Query")
 struct EtcdQueryBuilderCombinedTests {
     private let builder = EtcdQueryBuilder()

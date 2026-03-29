@@ -98,6 +98,7 @@ extension MainContentCoordinator {
             // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
             // database is SELECTed and session state is updated before querying.
             restoreColumnLayoutForTable(tableName)
+            restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
                 selectRedisDatabaseAndQuery(dbIndex)
             } else {
@@ -109,6 +110,9 @@ extension MainContentCoordinator {
         // In-place navigation: replace current tab content rather than
         // opening new native window tabs (e.g. Redis database switching).
         if navigationModel == .inPlace {
+            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableName {
+                filterStateManager.saveLastFilters(for: oldTableName)
+            }
             if tabManager.replaceTabContent(
                 tableName: tableName,
                 databaseType: connection.type,
@@ -121,6 +125,7 @@ extension MainContentCoordinator {
                 AppState.shared.isTableTab = true
                 }
                 restoreColumnLayoutForTable(tableName)
+                restoreFiltersForTable(tableName)
                 if let dbIndex = Int(currentDatabase) {
                     selectRedisDatabaseAndQuery(dbIndex)
                 }
@@ -128,14 +133,11 @@ extension MainContentCoordinator {
             return
         }
 
-        // Preview tab mode: reuse or create a preview tab instead of a new native window
-        if AppSettingsManager.shared.tabs.enablePreviewTabs {
-            openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, showStructure: showStructure)
-            return
-        }
-
-        // If current tab has unsaved changes, open in a new native tab instead of replacing
-        if changeManager.hasChanges {
+        // If current tab has unsaved changes, active filters, or sorting, open in a new native tab
+        let hasActiveWork = changeManager.hasChanges
+            || filterStateManager.hasAppliedFilters
+            || (tabManager.selectedTab?.sortState.isSorting ?? false)
+        if hasActiveWork {
             let payload = EditorTabPayload(
                 connectionId: connection.id,
                 tabType: .table,
@@ -145,6 +147,12 @@ extension MainContentCoordinator {
                 showStructure: showStructure
             )
             WindowOpener.shared.openNativeTab(payload)
+            return
+        }
+
+        // Preview tab mode: reuse or create a preview tab instead of a new native window
+        if AppSettingsManager.shared.tabs.enablePreviewTabs {
+            openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, showStructure: showStructure)
             return
         }
 
@@ -176,6 +184,10 @@ extension MainContentCoordinator {
                     preview.window.makeKeyAndOrderFront(nil)
                     return
                 }
+                if let oldTab = previewCoordinator.tabManager.selectedTab,
+                   let oldTableName = oldTab.tableName {
+                    previewCoordinator.filterStateManager.saveLastFilters(for: oldTableName)
+                }
                 previewCoordinator.tabManager.replaceTabContent(
                     tableName: tableName,
                     databaseType: connection.type,
@@ -193,6 +205,7 @@ extension MainContentCoordinator {
                 }
                 preview.window.makeKeyAndOrderFront(nil)
                 previewCoordinator.restoreColumnLayoutForTable(tableName)
+                previewCoordinator.restoreFiltersForTable(tableName)
                 previewCoordinator.runQuery()
                 return
             }
@@ -203,6 +216,26 @@ extension MainContentCoordinator {
             // Skip if already showing this table
             if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
                 return
+            }
+            // If preview tab has active work, promote it and open new tab instead
+            let previewHasWork = changeManager.hasChanges
+                || filterStateManager.hasAppliedFilters
+                || selectedTab.sortState.isSorting
+            if previewHasWork {
+                promotePreviewTab()
+                let payload = EditorTabPayload(
+                    connectionId: connection.id,
+                    tabType: .table,
+                    tableName: tableName,
+                    databaseName: databaseName,
+                    isView: isView,
+                    showStructure: showStructure
+                )
+                WindowOpener.shared.openNativeTab(payload)
+                return
+            }
+            if let oldTableName = selectedTab.tableName {
+                filterStateManager.saveLastFilters(for: oldTableName)
             }
             tabManager.replaceTabContent(
                 tableName: tableName,
@@ -220,6 +253,7 @@ extension MainContentCoordinator {
                 AppState.shared.isTableTab = true
             }
             restoreColumnLayoutForTable(tableName)
+            restoreFiltersForTable(tableName)
             runQuery()
             return
         }

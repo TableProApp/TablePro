@@ -155,14 +155,12 @@ struct TabFilterState: Equatable, Hashable, Codable {
     var filters: [TableFilter]
     var appliedFilters: [TableFilter]
     var isVisible: Bool
-    var quickSearchText: String
     var filterLogicMode: FilterLogicMode
 
     init() {
         self.filters = []
         self.appliedFilters = []
         self.isVisible = false
-        self.quickSearchText = ""
         self.filterLogicMode = .and
     }
 

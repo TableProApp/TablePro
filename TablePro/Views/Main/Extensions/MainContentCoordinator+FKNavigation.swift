@@ -56,7 +56,6 @@ extension MainContentCoordinator {
                 filters: [filter],
                 appliedFilters: [filter],
                 isVisible: true,
-                quickSearchText: "",
                 filterLogicMode: .and
             )
             let payload = EditorTabPayload(

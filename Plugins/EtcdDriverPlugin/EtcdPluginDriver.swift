@@ -356,39 +356,6 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let prefix = resolvedPrefix(for: table)
-        return EtcdQueryBuilder().buildQuickSearchQuery(
-            prefix: prefix, searchText: searchText,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let prefix = resolvedPrefix(for: table)
-        return EtcdQueryBuilder().buildCombinedQuery(
-            prefix: prefix, filters: filters, logicMode: logicMode,
-            searchText: searchText, sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
     // MARK: - Statement Generation
 
     func generateStatements(

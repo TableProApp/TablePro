@@ -567,40 +567,6 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         )
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let builder = MongoDBQueryBuilder()
-        return builder.buildQuickSearchQuery(
-            collection: table, searchText: searchText, columns: columns,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let builder = MongoDBQueryBuilder()
-        return builder.buildCombinedQuery(
-            collection: table, filters: filters, logicMode: logicMode,
-            searchText: searchText, searchColumns: searchColumns,
-            sortColumns: sortColumns, columns: columns, limit: limit, offset: offset
-        )
-    }
-
     func generateStatements(
         table: String,
         columns: [String],

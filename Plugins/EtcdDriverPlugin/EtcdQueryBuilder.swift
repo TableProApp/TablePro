@@ -65,44 +65,6 @@ struct EtcdQueryBuilder {
         )
     }
 
-    func buildQuickSearchQuery(
-        prefix: String,
-        searchText: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String {
-        let sortAsc = sortColumns.first?.ascending ?? true
-        return Self.encodeRangeQuery(
-            prefix: prefix, limit: limit, offset: offset,
-            sortAscending: sortAsc, filterType: .contains, filterValue: searchText
-        )
-    }
-
-    func buildCombinedQuery(
-        prefix: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        if hasUnsupportedFilters(filters) { return nil }
-        let sortAsc = sortColumns.first?.ascending ?? true
-        if !searchText.isEmpty {
-            return Self.encodeRangeQuery(
-                prefix: prefix, limit: limit, offset: offset,
-                sortAscending: sortAsc, filterType: .contains, filterValue: searchText
-            )
-        }
-        let (filterType, filterValue) = extractKeyFilter(from: filters)
-        return Self.encodeRangeQuery(
-            prefix: prefix, limit: limit, offset: offset,
-            sortAscending: sortAsc, filterType: filterType, filterValue: filterValue
-        )
-    }
-
     func buildCountQuery(prefix: String) -> String {
         Self.encodeCountQuery(prefix: prefix, filterType: .none, filterValue: "")
     }

@@ -3,12 +3,10 @@
 //  TablePro
 //
 //  Filter panel for table data filtering.
-//  Child views extracted to separate files for maintainability.
 //
 
 import SwiftUI
 
-/// Filter panel for table data filtering
 struct FilterPanelView: View {
     @Bindable var filterState: FilterStateManager
     let columns: [String]
@@ -16,7 +14,6 @@ struct FilterPanelView: View {
     let databaseType: DatabaseType
     let onApply: ([TableFilter]) -> Void
     let onUnset: () -> Void
-    let onQuickSearch: ((String) -> Void)?
 
     @State private var showSQLSheet = false
     @State private var showSettingsPopover = false
@@ -25,6 +22,8 @@ struct FilterPanelView: View {
     @State private var newPresetName = ""
     @State private var savedPresets: [FilterPreset] = []
 
+    private let filterRowHeight: CGFloat = 32
+
     var body: some View {
         VStack(spacing: 0) {
             filterHeader
@@ -32,27 +31,21 @@ struct FilterPanelView: View {
             Divider()
                 .foregroundStyle(Color(nsColor: .separatorColor))
 
-            // Quick Search field (always visible)
-            QuickSearchField(
-                searchText: $filterState.quickSearchText,
-                shouldFocus: $filterState.shouldFocusQuickSearch,
-                onSubmit: { onQuickSearch?(filterState.quickSearchText) },
-                onClear: { filterState.clearQuickSearch() }
-            )
-            Divider()
-                .foregroundStyle(Color(nsColor: .separatorColor))
-
-            // Filter rows (only when filters exist)
             if !filterState.filters.isEmpty {
                 filterList
             }
-
-            Divider()
-                .foregroundStyle(Color(nsColor: .separatorColor))
-
-            filterFooter
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            if filterState.filters.isEmpty && !columns.isEmpty {
+                filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
+            }
+        }
+        .onChange(of: columns) { _, newColumns in
+            if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
+                filterState.addFilter(columns: newColumns, primaryKeyColumn: primaryKeyColumn)
+            }
+        }
         .sheet(isPresented: $showSQLSheet) {
             SQLPreviewSheet(sql: generatedSQL, tableName: "", databaseType: databaseType)
         }
@@ -65,56 +58,42 @@ struct FilterPanelView: View {
             Text("Filters")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
 
-            if filterState.hasAppliedFilters {
-                Text("(\(filterState.appliedFilters.count) active)")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.secondary)
+            if filterState.filters.count > 1 {
+                Picker("", selection: $filterState.filterLogicMode) {
+                    Text("AND").tag(FilterLogicMode.and)
+                    Text("OR").tag(FilterLogicMode.or)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 80)
+                .accessibilityLabel(String(localized: "Filter logic mode"))
+                .help("Match ALL filters (AND) or ANY filter (OR)")
             }
 
             Spacer()
 
-            // AND/OR Logic Toggle
-            Picker("", selection: $filterState.filterLogicMode) {
-                Text("AND").tag(FilterLogicMode.and)
-                Text("OR").tag(FilterLogicMode.or)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 80)
-            .accessibilityLabel(String(localized: "Filter logic mode"))
-            .help("Match ALL filters (AND) or ANY filter (OR)")
+            filterOptionsMenu
 
-            presetsMenu
+            Button("Unset") {
+                filterState.clearAll()
+                onUnset()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(!filterState.hasAppliedFilters)
+            .help(String(localized: "Remove all filters and reload"))
 
-            // Settings button
-            Button(action: { showSettingsPopover.toggle() }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
+            Button("Apply") {
+                applyAllValidFilters()
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel(String(localized: "Filter settings"))
-            .help("Filter Settings")
-            .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
-                FilterSettingsPopover()
-            }
-
-            // Add filter button
-            Button(action: {
-                filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
-            }) {
-                Image(systemName: "plus")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.tint)
-            .accessibilityLabel(String(localized: "Add filter"))
-            .help("Add Filter (Cmd+Shift+F)")
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(filterState.validFilterCount == 0)
+            .help(String(localized: "Apply filters"))
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 12)
         .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xs)
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
-        .onTapGesture { filterState.focusedFilterId = nil }
         .alert("Save Filter Preset", isPresented: $showSavePresetAlert) {
             TextField("Preset Name", text: $newPresetName)
             Button("Cancel", role: .cancel) {}
@@ -129,10 +108,23 @@ struct FilterPanelView: View {
         }
     }
 
-    // MARK: - Presets Menu
+    // MARK: - Options Menu
 
-    private var presetsMenu: some View {
+    private var filterOptionsMenu: some View {
         Menu {
+            Button {
+                generatedSQL = filterState.generatePreviewSQL(databaseType: databaseType)
+                showSQLSheet = true
+            } label: {
+                Label(
+                    String(localized: "Preview \(PluginManager.shared.queryLanguageName(for: databaseType))"),
+                    systemImage: "text.magnifyingglass"
+                )
+            }
+            .disabled(filterState.filters.isEmpty)
+
+            Divider()
+
             if !savedPresets.isEmpty {
                 ForEach(savedPresets) { preset in
                     Button(action: { filterState.loadPreset(preset) }) {
@@ -141,7 +133,7 @@ struct FilterPanelView: View {
                             if !presetColumnsMatch(preset) {
                                 Spacer()
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.yellow)
+                                    .foregroundStyle(Color(nsColor: .systemYellow))
                             }
                         }
                     }
@@ -165,14 +157,25 @@ struct FilterPanelView: View {
                     }
                 }
             }
+
+            Divider()
+
+            Button {
+                showSettingsPopover.toggle()
+            } label: {
+                Label(String(localized: "Filter Settings..."), systemImage: "gearshape")
+            }
         } label: {
-            Image(systemName: "folder")
+            Image(systemName: "ellipsis.circle")
                 .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
         }
-        .buttonStyle(.borderless)
+        .menuStyle(.borderlessButton)
         .foregroundStyle(.secondary)
-        .accessibilityLabel(String(localized: "Filter presets"))
-        .help("Save and load filter presets")
+        .accessibilityLabel(String(localized: "Filter options"))
+        .help(String(localized: "Filter options"))
+        .popover(isPresented: $showSettingsPopover, arrowEdge: .bottom) {
+            FilterSettingsPopover()
+        }
         .onAppear {
             loadPresets()
         }
@@ -180,101 +183,57 @@ struct FilterPanelView: View {
 
     // MARK: - Filter List
 
-    private var filterList: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach($filterState.filters) { $filter in
-                        FilterRowView(
-                            filter: $filter,
-                            columns: columns,
-                            isFocused: filterState.focusedFilterId == filter.id,
-                            onDuplicate: { filterState.duplicateFilter(filter) },
-                            onRemove: { filterState.removeFilter(filter) },
-                            onApply: { applySingleFilter(filter) },
-                            onFocus: { filterState.focusedFilterId = filter.id }
-                        )
-                        .id(filter.id)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-            }
-            .frame(maxHeight: min(CGFloat(filterState.filters.count) * 42 + 8, 200))
-            .onChange(of: filterState.focusedFilterId) { _, newFocusedId in
-                if let focusedId = newFocusedId {
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo(focusedId, anchor: .bottom)
-                    }
-                }
+    private var filterRows: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(filterState.filters) { filter in
+                FilterRowView(
+                    filter: filterState.binding(for: filter),
+                    columns: columns,
+                    onAdd: { filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn) },
+                    onRemove: {
+                        let hadAppliedFilters = filterState.hasAppliedFilters
+                        filterState.removeFilter(filter)
+                        if filterState.filters.isEmpty {
+                            if hadAppliedFilters {
+                                filterState.clearAll()
+                                onUnset()
+                            } else {
+                                filterState.close()
+                            }
+                        }
+                    },
+                    onSubmit: { applyAllValidFilters() },
+                    shouldFocus: filter.id == filterState.filters.last?.id
+                )
             }
         }
+        .padding(.vertical, 4)
     }
 
-    // MARK: - Footer
+    private let maxFilterListHeight: CGFloat = 200
 
-    private var filterFooter: some View {
-        HStack(spacing: 8) {
-            Toggle("Select All", isOn: selectAllBinding)
-                .toggleStyle(.checkbox)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                .foregroundStyle(.secondary)
-                .disabled(filterState.filters.isEmpty)
-
-            Spacer()
-
-            Button("Unset") {
-                filterState.clearAppliedFilters()
-                onUnset()
+    @ViewBuilder
+    private var filterList: some View {
+        let contentHeight = CGFloat(filterState.filters.count) * filterRowHeight + 8
+        if contentHeight > maxFilterListHeight {
+            ScrollView {
+                filterRows
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(!filterState.hasAppliedFilters)
-
-            Button(PluginManager.shared.queryLanguageName(for: databaseType)) {
-                generatedSQL = filterState.generatePreviewSQL(databaseType: databaseType)
-                showSQLSheet = true
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(filterState.filters.isEmpty)
-
-            Button("Apply All") {
-                applySelectedFilters()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(!filterState.hasSelectedFilters)
+            .frame(height: maxFilterListHeight)
+        } else {
+            filterRows
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .onTapGesture { filterState.focusedFilterId = nil }
     }
 
     // MARK: - Helpers
 
-    private var selectAllBinding: Binding<Bool> {
-        Binding(
-            get: { filterState.allFiltersSelected },
-            set: { filterState.selectAll($0) }
-        )
-    }
-
-    /// Check if all columns referenced in a preset exist in the current table's columns
     private func presetColumnsMatch(_ preset: FilterPreset) -> Bool {
         let presetColumns = preset.filters.map(\.columnName).filter { $0 != TableFilter.rawSQLColumn }
         return presetColumns.allSatisfy { columns.contains($0) }
     }
 
-    private func applySingleFilter(_ filter: TableFilter) {
-        guard filter.isValid else { return }
-        filterState.applySingleFilter(filter)
-        onApply([filter])
-    }
-
-    private func applySelectedFilters() {
-        filterState.applySelectedFilters()
+    private func applyAllValidFilters() {
+        filterState.applyAllFilters()
         onApply(filterState.appliedFilters)
     }
 
@@ -301,8 +260,7 @@ struct FilterPanelView: View {
         primaryKeyColumn: "id",
         databaseType: .mysql,
         onApply: { _ in },
-        onUnset: { },
-        onQuickSearch: { _ in }
+        onUnset: { }
     )
     .frame(width: 600)
 }

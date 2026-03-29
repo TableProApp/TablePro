@@ -28,6 +28,8 @@ struct SQLPreviewSheet: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(String(localized: "Close"))
+                .help(String(localized: "Close preview"))
             }
 
             ScrollView {
@@ -39,9 +41,9 @@ struct SQLPreviewSheet: View {
             }
             .frame(maxHeight: 180)
             .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(6)
+            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
 
@@ -68,7 +70,7 @@ struct SQLPreviewSheet: View {
             }
         }
         .padding(16)
-        .frame(width: 480, height: 300)
+        .frame(minWidth: 400, idealWidth: 480, maxWidth: 600, minHeight: 250, idealHeight: 300, maxHeight: 450)
         .onExitCommand {
             dismiss()
         }
@@ -77,6 +79,7 @@ struct SQLPreviewSheet: View {
     private func copyToClipboard() {
         ClipboardService.shared.writeText(sql)
         copied = true
+        AccessibilityNotification.Announcement(String(localized: "Copied to clipboard")).post()
 
         // Reset after delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {

@@ -1237,67 +1237,6 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return query
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let escapedSearch = mssqlEscapeForLike(searchText)
-        let conditions = columns.map { column -> String in
-            let quotedColumn = mssqlQuoteIdentifier(column)
-            return "CAST(\(quotedColumn) AS NVARCHAR(MAX)) LIKE '%\(escapedSearch)%' ESCAPE '\\'"
-        }
-        if !conditions.isEmpty {
-            query += " WHERE (" + conditions.joined(separator: " OR ") + ")"
-        }
-        let orderBy = mssqlBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let quotedTable = mssqlQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
-        let filterConditions = mssqlBuildWhereClause(filters: filters, logicMode: logicMode)
-        let escapedSearch = mssqlEscapeForLike(searchText)
-        let searchConditions = searchColumns.map { column -> String in
-            let quotedColumn = mssqlQuoteIdentifier(column)
-            return "CAST(\(quotedColumn) AS NVARCHAR(MAX)) LIKE '%\(escapedSearch)%' ESCAPE '\\'"
-        }
-        let searchClause = searchConditions.isEmpty
-            ? "" : "(" + searchConditions.joined(separator: " OR ") + ")"
-        var whereParts: [String] = []
-        if !filterConditions.isEmpty {
-            whereParts.append("(\(filterConditions))")
-        }
-        if !searchClause.isEmpty {
-            whereParts.append(searchClause)
-        }
-        if !whereParts.isEmpty {
-            query += " WHERE " + whereParts.joined(separator: " AND ")
-        }
-        let orderBy = mssqlBuildOrderByClause(sortColumns: sortColumns, columns: columns)
-            ?? "ORDER BY (SELECT NULL)"
-        query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
-        return query
-    }
-
     // MARK: - Query Building Helpers
 
     private func mssqlQuoteIdentifier(_ identifier: String) -> String {

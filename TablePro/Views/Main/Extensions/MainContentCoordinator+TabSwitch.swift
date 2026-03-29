@@ -26,6 +26,9 @@ extension MainContentCoordinator {
                 tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
             }
             tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
+            if let tableName = tabManager.tabs[oldIndex].tableName {
+                filterStateManager.saveLastFilters(for: tableName)
+            }
             saveColumnVisibilityToTab()
             saveColumnLayoutForTable()
         }

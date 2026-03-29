@@ -53,7 +53,6 @@ struct MainEditorContentView: View {
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
-    let onQuickSearch: ((String) -> Void)?
     let onRefresh: () -> Void
 
     // Pagination callbacks
@@ -137,7 +136,8 @@ struct MainEditorContentView: View {
             guard let newId, let tab = tabManager.selectedTab else { return }
             let cached = tabProviderCache[newId]
             if cached?.resultVersion != tab.resultVersion
-                || cached?.metadataVersion != tab.metadataVersion {
+                || cached?.metadataVersion != tab.metadataVersion
+            {
                 cacheRowProvider(for: tab)
             }
         }
@@ -225,7 +225,8 @@ struct MainEditorContentView: View {
 
     private func updateHasQueryText() {
         if let tab = tabManager.selectedTab, tab.tabType == .query {
-            appState.hasQueryText = !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            appState.hasQueryText = !tab.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
         } else {
             appState.hasQueryText = false
         }
@@ -241,10 +242,13 @@ struct MainEditorContentView: View {
                 // selectedTabIndex already points to the NEW tab — writing to
                 // selectedTabIndex would overwrite the new tab's query.
                 guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                      index < tabManager.tabs.count else { return }
+                    index < tabManager.tabs.count
+                else { return }
 
                 tabManager.tabs[index].query = newValue
-                AppState.shared.hasQueryText = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                AppState.shared.hasQueryText = !newValue.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty
 
                 // Update window dirty indicator and toolbar for file-backed tabs
                 if tabManager.tabs[index].sourceFileURL != nil {
@@ -279,12 +283,17 @@ struct MainEditorContentView: View {
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
             if tab.showStructure, let tableName = tab.tableName {
-                TableStructureView(tableName: tableName, connection: connection, toolbarState: coordinator.toolbarState, coordinator: coordinator)
-                    .id(tableName)
-                    .frame(maxHeight: .infinity)
+                TableStructureView(
+                    tableName: tableName, connection: connection,
+                    toolbarState: coordinator.toolbarState, coordinator: coordinator
+                )
+                .id(tableName)
+                .frame(maxHeight: .infinity)
             } else if let explainText = tab.explainText {
                 ExplainResultView(text: explainText, executionTime: tab.explainExecutionTime)
-            } else if tab.resultColumns.isEmpty && tab.errorMessage == nil && tab.lastExecutedAt != nil && !tab.isExecuting {
+            } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
+                && tab.lastExecutedAt != nil && !tab.isExecuting
+            {
                 QuerySuccessView(
                     rowsAffected: tab.rowsAffected,
                     executionTime: tab.executionTime,
@@ -299,8 +308,7 @@ struct MainEditorContentView: View {
                         primaryKeyColumn: changeManager.primaryKeyColumn,
                         databaseType: connection.type,
                         onApply: onApplyFilters,
-                        onUnset: onClearFilters,
-                        onQuickSearch: onQuickSearch
+                        onUnset: onClearFilters
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                     Divider()
@@ -365,9 +373,10 @@ struct MainEditorContentView: View {
             return makeRowProvider(for: tab)
         }
         if let entry = tabProviderCache[tab.id],
-           entry.resultVersion == tab.resultVersion,
-           entry.metadataVersion == tab.metadataVersion,
-           entry.sortState == tab.sortState {
+            entry.resultVersion == tab.resultVersion,
+            entry.metadataVersion == tab.metadataVersion,
+            entry.sortState == tab.sortState
+        {
             return entry.provider
         }
         let provider = makeRowProvider(for: tab)
@@ -422,9 +431,10 @@ struct MainEditorContentView: View {
 
         // Check coordinator's async sort cache (for large datasets sorted on background thread)
         if let cached = coordinator.querySortCache[tab.id],
-           cached.columnIndex == (tab.sortState.columnIndex ?? -1),
-           cached.direction == tab.sortState.direction,
-           cached.resultVersion == tab.resultVersion {
+            cached.columnIndex == (tab.sortState.columnIndex ?? -1),
+            cached.direction == tab.sortState.direction,
+            cached.resultVersion == tab.resultVersion
+        {
             return cached.sortedIndices
         }
 
@@ -435,9 +445,10 @@ struct MainEditorContentView: View {
 
         // Small dataset: sort synchronously with view-level cache
         if let cached = sortCache[tab.id],
-           cached.columnIndex == (tab.sortState.columnIndex ?? -1),
-           cached.direction == tab.sortState.direction,
-           cached.resultVersion == tab.resultVersion {
+            cached.columnIndex == (tab.sortState.columnIndex ?? -1),
+            cached.direction == tab.sortState.direction,
+            cached.resultVersion == tab.resultVersion
+        {
             return cached.sortedIndices
         }
 
@@ -447,11 +458,14 @@ struct MainEditorContentView: View {
             let row1 = tab.resultRows[idx1]
             let row2 = tab.resultRows[idx2]
             for sortCol in sortColumns {
-                let val1 = sortCol.columnIndex < row1.count
+                let val1 =
+                    sortCol.columnIndex < row1.count
                     ? (row1[sortCol.columnIndex] ?? "") : ""
-                let val2 = sortCol.columnIndex < row2.count
+                let val2 =
+                    sortCol.columnIndex < row2.count
                     ? (row2[sortCol.columnIndex] ?? "") : ""
-                let colType = sortCol.columnIndex < tab.columnTypes.count
+                let colType =
+                    sortCol.columnIndex < tab.columnTypes.count
                     ? tab.columnTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)
                 if result == .orderedSame { continue }
@@ -560,9 +574,11 @@ struct MainEditorContentView: View {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(Color(nsColor: .quaternaryLabelColor))
                         )
-                    Text("Open \(PluginManager.shared.queryLanguageName(for: connection.type)) Editor")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
+                    Text(
+                        "Open \(PluginManager.shared.queryLanguageName(for: connection.type)) Editor"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
                 }
 
                 HStack(spacing: 6) {

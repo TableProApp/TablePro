@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Service responsible for building SQL queries for table operations.
-//  Handles sorting, filtering, and quick search query construction.
+//  Handles sorting and filtering query construction.
 //
 
 import Foundation
@@ -116,104 +116,6 @@ struct TableQueryBuilder {
             let whereClause = filterGen.generateWhereClause(from: activeFilters, logicMode: logicMode)
             if !whereClause.isEmpty {
                 query += " \(whereClause)"
-            }
-        }
-
-        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
-            query += " \(orderBy)"
-        }
-
-        query += " \(buildPaginationClause(limit: limit, offset: offset))"
-        return query
-    }
-
-    func buildQuickSearchQuery(
-        tableName: String,
-        searchText: String,
-        columns: [String],
-        sortState: SortState? = nil,
-        limit: Int = 200,
-        offset: Int = 0,
-        columnExclusions: [ColumnExclusion] = []
-    ) -> String {
-        if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
-            if let result = pluginDriver.buildQuickSearchQuery(
-                table: tableName, searchText: searchText, columns: columns,
-                sortColumns: sortCols, limit: limit, offset: offset
-            ) {
-                return result
-            }
-        }
-
-        let quotedTable = quote(tableName)
-        let selectClause = buildSelectClause(columns: columns, exclusions: columnExclusions)
-        var query = "SELECT \(selectClause) FROM \(quotedTable)"
-
-        if let dialect {
-            let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
-            let searchWhere = filterGen.generateQuickSearchWhereClause(searchText: searchText, columns: columns)
-            if !searchWhere.isEmpty {
-                query += " \(searchWhere)"
-            }
-        }
-
-        if let orderBy = buildOrderByClause(sortState: sortState, columns: columns) {
-            query += " \(orderBy)"
-        }
-
-        query += " \(buildPaginationClause(limit: limit, offset: offset))"
-        return query
-    }
-
-    func buildCombinedQuery(
-        tableName: String,
-        filters: [TableFilter],
-        logicMode: FilterLogicMode = .and,
-        searchText: String,
-        searchColumns: [String],
-        sortState: SortState? = nil,
-        columns: [String] = [],
-        limit: Int = 200,
-        offset: Int = 0,
-        columnExclusions: [ColumnExclusion] = []
-    ) -> String {
-        if let pluginDriver {
-            let sortCols = sortColumnsAsTuples(sortState)
-            let filterTuples = filters
-                .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map { ($0.columnName, $0.filterOperator.rawValue, $0.value) }
-            if let result = pluginDriver.buildCombinedQuery(
-                table: tableName, filters: filterTuples,
-                logicMode: logicMode == .and ? "and" : "or",
-                searchText: searchText, searchColumns: searchColumns,
-                sortColumns: sortCols, columns: columns, limit: limit, offset: offset
-            ) {
-                return result
-            }
-        }
-
-        let quotedTable = quote(tableName)
-        let selectClause = buildSelectClause(columns: columns, exclusions: columnExclusions)
-        var query = "SELECT \(selectClause) FROM \(quotedTable)"
-
-        if let dialect {
-            let activeFilters = filters.filter { $0.isEnabled }
-            let filterGen = FilterSQLGenerator(dialect: dialect, quoteIdentifier: dialectQuote)
-            var whereParts: [String] = []
-
-            let filterConditions = filterGen.generateConditions(from: activeFilters, logicMode: logicMode)
-            if !filterConditions.isEmpty {
-                whereParts.append("(\(filterConditions))")
-            }
-
-            let searchConditions = filterGen.generateQuickSearchConditions(searchText: searchText, columns: searchColumns)
-            if !searchConditions.isEmpty {
-                whereParts.append("(\(searchConditions))")
-            }
-
-            if !whereParts.isEmpty {
-                query += " WHERE \(whereParts.joined(separator: " AND "))"
             }
         }
 

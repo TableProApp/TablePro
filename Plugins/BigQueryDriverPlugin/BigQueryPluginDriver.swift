@@ -633,50 +633,6 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let dataset: String = lock.withLock {
-            let ds = _currentDataset ?? ""
-            _columnCache["\(ds).\(table)"] = columns
-            return ds
-        }
-        return BigQueryQueryBuilder.encodeSearchQuery(
-            table: table, dataset: dataset,
-            searchText: searchText, searchColumns: columns,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let dataset: String = lock.withLock {
-            let ds = _currentDataset ?? ""
-            _columnCache["\(ds).\(table)"] = columns
-            return ds
-        }
-        return BigQueryQueryBuilder.encodeCombinedQuery(
-            table: table, dataset: dataset,
-            filters: filters, logicMode: logicMode,
-            searchText: searchText, searchColumns: searchColumns,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
     // MARK: - Statement Generation
 
     func generateStatements(

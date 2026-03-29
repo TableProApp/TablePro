@@ -542,43 +542,6 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
-    func buildQuickSearchQuery(
-        table: String,
-        searchText: String,
-        columns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        DynamoDBQueryBuilder().buildQuickSearchQuery(
-            table: table, searchText: searchText,
-            sortColumns: sortColumns, limit: limit, offset: offset
-        )
-    }
-
-    func buildCombinedQuery(
-        table: String,
-        filters: [(column: String, op: String, value: String)],
-        logicMode: String,
-        searchText: String,
-        searchColumns: [String],
-        sortColumns: [(columnIndex: Int, ascending: Bool)],
-        columns: [String],
-        limit: Int,
-        offset: Int
-    ) -> String? {
-        let (keySchema, attrTypes) = lock.withLock {
-            let desc = _tableDescriptionCache[table]
-            return (extractKeySchema(from: desc), extractAttributeTypes(from: desc))
-        }
-        return DynamoDBQueryBuilder().buildCombinedQuery(
-            table: table, filters: filters, logicMode: logicMode,
-            searchText: searchText, sortColumns: sortColumns,
-            limit: limit, offset: offset, keySchema: keySchema,
-            attributeTypes: attrTypes
-        )
-    }
-
     // MARK: - Statement Generation
 
     func generateStatements(

@@ -83,9 +83,6 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Query building (optional, for NoSQL plugins)
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
-    func buildQuickSearchQuery(table: String, searchText: String, columns: [String], sortColumns: [(columnIndex: Int, ascending: Bool)], limit: Int, offset: Int) -> String?
-    func buildCombinedQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, searchText: String, searchColumns: [String], sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String?
-
     // Statement generation (optional, for NoSQL plugins)
     func generateStatements(table: String, columns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]?
 
@@ -219,8 +216,6 @@ public extension PluginDatabaseDriver {
 
     func buildBrowseQuery(table: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func buildFilteredQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
-    func buildQuickSearchQuery(table: String, searchText: String, columns: [String], sortColumns: [(columnIndex: Int, ascending: Bool)], limit: Int, offset: Int) -> String? { nil }
-    func buildCombinedQuery(table: String, filters: [(column: String, op: String, value: String)], logicMode: String, searchText: String, searchColumns: [String], sortColumns: [(columnIndex: Int, ascending: Bool)], columns: [String], limit: Int, offset: Int) -> String? { nil }
     func generateStatements(table: String, columns: [String], changes: [PluginRowChange], insertedRowData: [Int: [String?]], deletedRowIndices: Set<Int>, insertedRowIndices: Set<Int>) -> [(statement: String, parameters: [String?])]? { nil }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? { nil }

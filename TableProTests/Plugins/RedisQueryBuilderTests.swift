@@ -177,32 +177,6 @@ struct RedisQueryBuilderTests {
         #expect(query == "SCAN 0 MATCH \"*path\\\\to*\" COUNT 200")
     }
 
-    // MARK: - Quick Search Query
-
-    @Test("Quick search with empty namespace")
-    func quickSearchEmptyNamespace() {
-        let query = builder.buildQuickSearchQuery(namespace: "", searchText: "session")
-        #expect(query == "SCAN 0 MATCH \"*session*\" COUNT 200")
-    }
-
-    @Test("Quick search with namespace")
-    func quickSearchWithNamespace() {
-        let query = builder.buildQuickSearchQuery(namespace: "app:", searchText: "user")
-        #expect(query == "SCAN 0 MATCH \"app:*user*\" COUNT 200")
-    }
-
-    @Test("Quick search with custom limit")
-    func quickSearchCustomLimit() {
-        let query = builder.buildQuickSearchQuery(namespace: "", searchText: "test", limit: 500)
-        #expect(query == "SCAN 0 MATCH \"*test*\" COUNT 500")
-    }
-
-    @Test("Quick search escapes glob characters")
-    func quickSearchEscapesGlobChars() {
-        let query = builder.buildQuickSearchQuery(namespace: "", searchText: "key*value")
-        #expect(query == "SCAN 0 MATCH \"*key\\*value*\" COUNT 200")
-    }
-
     // MARK: - Count Query
 
     @Test("Count with empty namespace uses DBSIZE")

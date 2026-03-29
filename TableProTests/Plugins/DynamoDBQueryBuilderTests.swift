@@ -116,40 +116,6 @@ struct DynamoDBQueryBuilderFilteredTests {
     }
 }
 
-@Suite("DynamoDBQueryBuilder - Quick Search Query")
-struct DynamoDBQueryBuilderQuickSearchTests {
-    private let builder = DynamoDBQueryBuilder()
-
-    @Test("Quick search returns scan-tagged query")
-    func quickSearchReturnsScan() {
-        let query = builder.buildQuickSearchQuery(
-            table: "Users",
-            searchText: "hello",
-            sortColumns: [],
-            limit: 100,
-            offset: 0
-        )
-        #expect(query.hasPrefix(DynamoDBQueryBuilder.scanTag))
-    }
-
-    @Test("Quick search produces wildcard CONTAINS filter")
-    func quickSearchContainsFilter() {
-        let query = builder.buildQuickSearchQuery(
-            table: "Users",
-            searchText: "hello",
-            sortColumns: [],
-            limit: 100,
-            offset: 0
-        )
-        let parsed = DynamoDBQueryBuilder.parseScanQuery(query)
-        #expect(parsed != nil)
-        #expect(parsed?.filters.count == 1)
-        #expect(parsed?.filters.first?.column == "*")
-        #expect(parsed?.filters.first?.op == "CONTAINS")
-        #expect(parsed?.filters.first?.value == "hello")
-    }
-}
-
 @Suite("DynamoDBQueryBuilder - Combined Query")
 struct DynamoDBQueryBuilderCombinedTests {
     private let builder = DynamoDBQueryBuilder()

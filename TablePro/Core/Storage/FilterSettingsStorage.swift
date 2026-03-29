@@ -71,7 +71,7 @@ struct FilterSettings: Codable, Equatable {
     var panelState: FilterPanelDefaultState
 
     init(
-        defaultColumn: FilterDefaultColumn = .anyColumn,
+        defaultColumn: FilterDefaultColumn = .rawSQL,
         defaultOperator: FilterDefaultOperator = .equal,
         panelState: FilterPanelDefaultState = .alwaysHide
     ) {

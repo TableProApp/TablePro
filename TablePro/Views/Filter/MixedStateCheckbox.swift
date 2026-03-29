@@ -1,0 +1,47 @@
+//
+//  MixedStateCheckbox.swift
+//  TablePro
+//
+//  NSViewRepresentable checkbox that supports mixed (indeterminate) state.
+//
+
+import AppKit
+import SwiftUI
+
+/// NSViewRepresentable checkbox supporting on/off/mixed states
+struct MixedStateCheckbox: NSViewRepresentable {
+    let title: String
+    let state: NSControl.StateValue
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton(checkboxWithTitle: title, target: context.coordinator, action: #selector(Coordinator.didToggle))
+        button.allowsMixedState = true
+        button.font = NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.small)
+        button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        button.title = title
+        button.state = state
+        button.font = NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.small)
+        context.coordinator.action = action
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+
+        init(action: @escaping () -> Void) {
+            self.action = action
+        }
+
+        @objc func didToggle() {
+            action()
+        }
+    }
+}

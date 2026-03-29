@@ -2,189 +2,75 @@
 //  FilterRowView.swift
 //  TablePro
 //
-//  Single filter row view with native macOS styling.
-//  Extracted from FilterPanelView for better maintainability.
+//  Single filter row with native macOS controls.
 //
 
-import AppKit
 import SwiftUI
 
-/// Single filter row view with native macOS styling
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
-    let isFocused: Bool
-    let onDuplicate: () -> Void
+    let onAdd: () -> Void
     let onRemove: () -> Void
-    let onApply: () -> Void
-    let onFocus: () -> Void
+    let onSubmit: () -> Void
+    var shouldFocus: Bool = false
 
-    @State private var isHovered: Bool = false
-
-    /// Display name for the column (handles raw SQL and empty)
-    private var displayColumnName: String {
-        if filter.columnName == TableFilter.rawSQLColumn {
-            return String(localized: "Raw SQL")
-        } else if filter.columnName.isEmpty {
-            return String(localized: "Column")
-        } else {
-            return filter.columnName
-        }
-    }
-
-    /// Dynamic background color based on state
-    private var backgroundFillColor: Color {
-        if isFocused {
-            return Color(nsColor: .controlAccentColor).opacity(0.08)
-        } else if isHovered {
-            return Color(nsColor: .controlBackgroundColor)
-        } else {
-            return Color.clear
-        }
-    }
-
-    /// Dynamic border color based on state
-    private var borderColor: Color {
-        if isFocused {
-            return Color(nsColor: .controlAccentColor).opacity(0.3)
-        } else if isHovered {
-            return Color(nsColor: .separatorColor).opacity(0.5)
-        } else {
-            return Color.clear
-        }
-    }
+    @FocusState private var isValueFocused: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Checkbox for multi-select
-            Toggle("", isOn: $filter.isSelected)
-                .toggleStyle(.checkbox)
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "Select filter for \(displayColumnName)"))
+        HStack(spacing: 4) {
+            columnPicker
 
-            // Column dropdown - native Menu style
-            columnMenu
-                .frame(width: 120)
-
-            // Operator dropdown (hidden for raw SQL)
             if !filter.isRawSQL {
-                operatorMenu
-                    .frame(width: 110)
+                operatorPicker
             }
 
-            // Value field(s)
             valueFields
 
-            Spacer(minLength: 0)
-
-            // Action buttons
-            actionButtons
+            rowButtons
         }
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xs)
+        .padding(.vertical, 4)
         .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(backgroundFillColor)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .strokeBorder(borderColor, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { onFocus() }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovered = hovering
+        .contextMenu { rowContextMenu }
+        .onAppear {
+            if shouldFocus {
+                isValueFocused = true
             }
         }
     }
 
-    // MARK: - Column Menu
+    // MARK: - Column Picker
 
-    private var columnMenu: some View {
-        Menu {
-            Button(action: { filter.columnName = TableFilter.rawSQLColumn }) {
-                if filter.columnName == TableFilter.rawSQLColumn {
-                    Label("Raw SQL", systemImage: "checkmark")
-                } else {
-                    Text("Raw SQL")
-                }
+    private var columnPicker: some View {
+        Picker("", selection: $filter.columnName) {
+            Text("Raw SQL").tag(TableFilter.rawSQLColumn)
+            Divider()
+            ForEach(columns, id: \.self) { column in
+                Text(column).tag(column)
             }
-
-            if !columns.isEmpty {
-                Divider()
-                ForEach(columns, id: \.self) { column in
-                    Button(action: { filter.columnName = column }) {
-                        if filter.columnName == column {
-                            Label(column, systemImage: "checkmark")
-                        } else {
-                            Text(column)
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(displayColumnName)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
         }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel(String(localized: "Filter column: \(displayColumnName)"))
-        .simultaneousGesture(TapGesture().onEnded { onFocus() })
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .fixedSize()
+        .labelsHidden()
+        .accessibilityLabel(String(localized: "Filter column"))
+        .help(String(localized: "Select filter column"))
     }
 
-    // MARK: - Operator Menu
+    // MARK: - Operator Picker
 
-    private var operatorMenu: some View {
-        Menu {
+    private var operatorPicker: some View {
+        Picker("", selection: $filter.filterOperator) {
             ForEach(FilterOperator.allCases) { op in
-                Button(action: { filter.filterOperator = op }) {
-                    if filter.filterOperator == op {
-                        Label(op.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(op.displayName)
-                    }
-                }
+                Text(op.displayName).tag(op)
             }
-        } label: {
-            HStack(spacing: 4) {
-                Text(filter.filterOperator.displayName)
-                    .font(.system(size: 12))
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .controlBackgroundColor))
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
         }
-        .menuStyle(.borderlessButton)
-        .accessibilityLabel(
-            String(localized: "Filter operator: \(filter.filterOperator.displayName)")
-        )
-        .simultaneousGesture(TapGesture().onEnded { onFocus() })
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .fixedSize()
+        .labelsHidden()
+        .accessibilityLabel(String(localized: "Filter operator"))
+        .help(String(localized: "Select filter operator"))
     }
 
     // MARK: - Value Fields
@@ -192,107 +78,95 @@ struct FilterRowView: View {
     @ViewBuilder
     private var valueFields: some View {
         if filter.isRawSQL {
-            // Raw SQL input
             TextField("WHERE clause...", text: Binding(
                 get: { filter.rawSQL ?? "" },
                 set: { filter.rawSQL = $0 }
             ))
-            .textFieldStyle(.plain)
-            .font(.system(size: 12))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(4)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-            )
-            .onSubmit { onApply() }
-            .simultaneousGesture(TapGesture().onEnded { onFocus() })
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+            .accessibilityLabel(String(localized: "WHERE clause"))
+            .focused($isValueFocused)
+            .onSubmit { onSubmit() }
         } else if filter.filterOperator.requiresValue {
-            // Standard value input
             TextField("Value", text: $filter.value)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(4)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                )
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .frame(minWidth: 80)
-                .onSubmit { onApply() }
-                .simultaneousGesture(TapGesture().onEnded { onFocus() })
+                .accessibilityLabel(String(localized: "Filter value"))
+                .focused($isValueFocused)
+                .onSubmit { onSubmit() }
 
-            // Second value for BETWEEN
             if filter.filterOperator.requiresSecondValue {
                 Text("and")
-                    .font(.system(size: 11))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
 
                 TextField("Value", text: Binding(
                     get: { filter.secondValue ?? "" },
                     set: { filter.secondValue = $0 }
                 ))
-                .textFieldStyle(.plain)
-                .font(.system(size: 12))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 5)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(4)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                )
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .frame(minWidth: 80)
-                .onSubmit { onApply() }
-                .simultaneousGesture(TapGesture().onEnded { onFocus() })
+                .accessibilityLabel(String(localized: "Second filter value"))
+                .onSubmit { onSubmit() }
             }
         } else {
-            // No value needed (IS NULL, etc.) - show indicator
             Text("—")
-                .font(.system(size: 12))
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .foregroundStyle(.tertiary)
                 .frame(minWidth: 80, alignment: .leading)
         }
     }
 
-    // MARK: - Action Buttons
+    // MARK: - Row Buttons (+/-)
 
-    private var actionButtons: some View {
-        HStack(spacing: 8) {
-            // Apply single filter
-            Button(action: onApply) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 11))
+    private var rowButtons: some View {
+        HStack(spacing: 4) {
+            Button(action: onAdd) {
+                Image(systemName: "plus")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(filter.isValid ? Color(nsColor: .systemGreen) : Color.secondary)
-            .disabled(!filter.isValid)
-            .accessibilityLabel(String(localized: "Apply this filter"))
-            .help("Apply This Filter")
+            .controlSize(.small)
+            .accessibilityLabel(String(localized: "Add filter"))
+            .help(String(localized: "Add filter row"))
 
-            // Duplicate
-            Button(action: onDuplicate) {
-                Image(systemName: "doc.on.doc")
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .accessibilityLabel(String(localized: "Duplicate filter"))
-            .help("Duplicate Filter")
-
-            // Remove
             Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11))
+                Image(systemName: "minus")
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
+            .controlSize(.small)
             .accessibilityLabel(String(localized: "Remove filter"))
-            .help("Remove Filter")
+            .help(String(localized: "Remove filter row"))
+        }
+    }
+
+    // MARK: - Context Menu
+
+    @ViewBuilder
+    private var rowContextMenu: some View {
+        Button {
+            onAdd()
+        } label: {
+            Label(String(localized: "Add Filter"), systemImage: "plus")
+        }
+
+        Button {
+            // Duplicate is add + copy values
+            onAdd()
+        } label: {
+            Label(String(localized: "Duplicate Filter"), systemImage: "doc.on.doc")
+        }
+
+        Divider()
+
+        Button(role: .destructive) {
+            onRemove()
+        } label: {
+            Label(String(localized: "Remove Filter"), systemImage: "trash")
         }
     }
 }

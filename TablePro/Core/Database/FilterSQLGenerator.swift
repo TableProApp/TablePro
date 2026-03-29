@@ -38,30 +38,6 @@ struct FilterSQLGenerator {
         return conditions.joined(separator: separator)
     }
 
-    /// Generate WHERE clause for quick search across multiple columns
-    func generateQuickSearchWhereClause(searchText: String, columns: [String]) -> String {
-        let conditions = generateQuickSearchConditions(searchText: searchText, columns: columns)
-        guard !conditions.isEmpty else { return "" }
-        return "WHERE (\(conditions))"
-    }
-
-    /// Generate OR-joined LIKE conditions for quick search (without WHERE keyword)
-    func generateQuickSearchConditions(searchText: String, columns: [String]) -> String {
-        guard !searchText.isEmpty, !columns.isEmpty else { return "" }
-        let escapedValue = escapeLikeWildcards(searchText)
-        let pattern = "%\(escapedValue)%"
-        let quotedPattern = escapeSQLQuote(pattern)
-        let escape = likeEscapeClause
-        // CAST to TEXT for databases like PostgreSQL where LIKE on non-text columns fails
-        let needsCast = dialect.regexSyntax == .tilde
-        let conditions = columns.map { column in
-            let quoted = quoteIdentifierFn(column)
-            let target = needsCast ? "CAST(\(quoted) AS TEXT)" : quoted
-            return "\(target) LIKE '\(quotedPattern)'\(escape)"
-        }
-        return conditions.joined(separator: " OR ")
-    }
-
     /// Generate a single filter condition
     func generateCondition(from filter: TableFilter) -> String? {
         guard filter.isValid else { return nil }
