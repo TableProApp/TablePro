@@ -113,5 +113,5 @@ Minimum roles:
 - No SSH tunneling (HTTPS only to BigQuery API)
 - No transactions
 - STRUCT/ARRAY columns excluded from UPDATE/DELETE WHERE clauses
-- No OFFSET pagination (uses ROW_NUMBER() windowing internally)
+- Deep pagination (large OFFSET) scans from start — use filters to narrow results
 - No streaming inserts

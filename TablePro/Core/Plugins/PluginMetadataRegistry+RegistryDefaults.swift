@@ -1203,7 +1203,7 @@ extension PluginMetadataRegistry {
                     defaultPrimaryKeyColumn: nil,
                     immutableColumns: [],
                     systemDatabaseNames: [],
-                    systemSchemaNames: [],
+                    systemSchemaNames: ["INFORMATION_SCHEMA"],
                     fileExtensions: [],
                     databaseGroupingStrategy: .bySchema,
                     structureColumnFields: [.name, .type, .nullable, .comment]
