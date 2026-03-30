@@ -139,7 +139,7 @@ extension TableViewCoordinator {
             guard column.identifier.rawValue != "__rowNumber__",
                   let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { continue }
 
-            let width = cellFactory.calculateOptimalColumnWidth(
+            let width = cellFactory.calculateFitToContentWidth(
                 for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
                 columnIndex: dataColumnIndex,
                 rowProvider: rowProvider
