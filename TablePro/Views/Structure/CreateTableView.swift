@@ -249,19 +249,7 @@ struct CreateTableView: View {
     // MARK: - SQL Preview
 
     private var sqlPreviewView: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer()
-                Button(action: copyPreviewSQL) {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.bordered)
-                .disabled(previewSQL.isEmpty)
-            }
-            .padding()
-
-            Divider()
-
+        Group {
             if previewSQL.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "doc.plaintext")
@@ -277,11 +265,6 @@ struct CreateTableView: View {
         }
         .onAppear { generatePreviewSQL() }
         .onChange(of: structureChangeManager.reloadVersion) { generatePreviewSQL() }
-    }
-
-    private func copyPreviewSQL() {
-        guard !previewSQL.isEmpty else { return }
-        ClipboardService.shared.writeText(previewSQL)
     }
 
     // MARK: - Cell Editing
