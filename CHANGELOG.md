@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real-time SQL preview with syntax highlighting for CREATE TABLE DDL
 - Multi-database CREATE TABLE support: MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB
 
+### Fixed
+
+- Globe+F (fn+F) fullscreen shortcut not working in SwiftUI lifecycle app
+
 ## [0.26.0] - 2026-03-29
 
 ### Added

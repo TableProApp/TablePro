@@ -125,6 +125,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handleDatabaseDidConnect),
             name: .databaseDidConnect, object: nil
         )
+
+        installFullscreenKeyMonitor()
+    }
+
+    // MARK: - Fullscreen Shortcut
+
+    /// macOS maps Globe+F (fn+F) to ⌃⌘F, but SwiftUI lifecycle apps don't
+    /// create a real NSMenuItem for "Enter Full Screen" — the shortcut shown
+    /// in the View menu is a visual hint only, with no key equivalent binding.
+    private var fullscreenKeyMonitor: Any?
+
+    private func installFullscreenKeyMonitor() {
+        fullscreenKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard mods == [.control, .command],
+                  event.keyCode == KeyCode.f.rawValue else { return event }
+            NSApp.keyWindow?.toggleFullScreen(nil)
+            return nil
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
