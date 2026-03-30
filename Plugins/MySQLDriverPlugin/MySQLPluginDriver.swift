@@ -617,9 +617,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             parts.append(buildColumnDefinitionSQL(column))
         }
 
-        if !definition.primaryKeyColumns.isEmpty {
-            let pkCols = definition.primaryKeyColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            parts.append("PRIMARY KEY (\(pkCols))")
+        var pkCols = definition.primaryKeyColumns
+        if pkCols.isEmpty {
+            pkCols = definition.columns.filter { $0.autoIncrement }.map(\.name)
+        }
+        if !pkCols.isEmpty {
+            let quoted = pkCols.map { quoteIdentifier($0) }.joined(separator: ", ")
+            parts.append("PRIMARY KEY (\(quoted))")
         }
 
         for index in definition.indexes {

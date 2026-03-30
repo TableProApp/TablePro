@@ -488,8 +488,11 @@ struct CreateTableView: View {
             parts.append(def)
         }
 
-        // Primary key from columns marked as PK
-        let pkColumns = columns.filter { $0.isPrimaryKey }
+        // Primary key: columns marked as PK, or AUTO_INCREMENT columns (MySQL requires a key)
+        var pkColumns = columns.filter { $0.isPrimaryKey }
+        if pkColumns.isEmpty {
+            pkColumns = columns.filter { $0.autoIncrement }
+        }
         if !pkColumns.isEmpty {
             let pkNames = pkColumns.map { quote($0.name) }.joined(separator: ", ")
             parts.append("    PRIMARY KEY (\(pkNames))")
