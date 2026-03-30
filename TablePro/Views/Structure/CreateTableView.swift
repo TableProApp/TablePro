@@ -588,11 +588,17 @@ struct CreateTableView: View {
 
                 NotificationCenter.default.post(name: .refreshData, object: nil)
 
-                // Close this window and open the new table
-                if let coordinator {
+                // Convert the create-table tab to a regular table tab showing the new table
+                if let coordinator,
+                   let tabIndex = coordinator.tabManager.selectedTabIndex {
+                    coordinator.tabManager.tabs[tabIndex].tabType = .table
+                    coordinator.tabManager.tabs[tabIndex].tableName = tableName
+                    coordinator.tabManager.tabs[tabIndex].showStructure = false
+                    coordinator.tabManager.tabs[tabIndex].hasUserInteraction = false
+                    coordinator.tabManager.tabs[tabIndex].isEditable = true
+                    coordinator.tabManager.tabs[tabIndex].query = ""
                     coordinator.openTableTab(tableName)
                 }
-                NSApp.keyWindow?.close()
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
