@@ -415,6 +415,10 @@ final class MainContentCommandActions {
         coordinator?.createView()
     }
 
+    func createNewTable() {
+        coordinator?.createNewTable()
+    }
+
     // MARK: - Tab Navigation (Group A — Called Directly)
 
     func selectTab(number: Int) {

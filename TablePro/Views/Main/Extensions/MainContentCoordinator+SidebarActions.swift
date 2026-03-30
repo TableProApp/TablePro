@@ -12,9 +12,15 @@ import UniformTypeIdentifiers
 extension MainContentCoordinator {
     // MARK: - Table Operations
 
-    func createTable() {
+    func createNewTable() {
         guard !safeModeLevel.blocksAllWrites else { return }
-        tabManager.addCreateTableTab(databaseName: connection.database)
+
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .createTable,
+            databaseName: connection.database
+        )
+        WindowOpener.shared.openNativeTab(payload)
     }
 
     // MARK: - View Operations
