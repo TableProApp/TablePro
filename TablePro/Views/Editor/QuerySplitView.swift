@@ -71,8 +71,10 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
 
 // MARK: - Hosting Pane Controller
 
-/// Uses NSHostingView as the VC's view so NSSplitView's frame-based layout
-/// directly drives the SwiftUI content size proposal.
+/// Embeds NSHostingView in a plain NSView container. The container uses
+/// frame-based layout (for NSSplitView), while the hosting view is pinned
+/// to all edges via Auto Layout with low compression resistance so the
+/// split view divider can freely resize panes.
 final class HostingPaneController<Content: View>: NSViewController {
     private var hostingView: NSHostingView<Content>
 
@@ -85,7 +87,24 @@ final class HostingPaneController<Content: View>: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        view = hostingView
+        let container = NSView()
+        container.autoresizingMask = [.width, .height]
+
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        hostingView.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+        hostingView.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
+        hostingView.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
+        hostingView.setContentCompressionResistancePriority(.defaultLow - 1, for: .vertical)
+        container.addSubview(hostingView)
+
+        NSLayoutConstraint.activate([
+            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
+            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        view = container
     }
 
     func update(rootView: Content) {
