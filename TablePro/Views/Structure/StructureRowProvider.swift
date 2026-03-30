@@ -13,18 +13,20 @@ import TableProPluginKit
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .autoIncrement, .comment
+        .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment
     ]
 
     private let changeManager: StructureChangeManager
     private let tab: StructureTab
     private let databaseType: DatabaseType
+    private let additionalFields: Set<StructureColumnField>
 
     // Computed properties that match InMemoryRowProvider interface
     var rows: [[String?]] {
         switch tab {
         case .columns:
-            let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+            let fields = pluginFields.union(additionalFields)
             let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             return changeManager.workingColumns.map { column in
                 ordered.map { field -> String? in
@@ -33,6 +35,7 @@ final class StructureRowProvider {
                     case .type: column.dataType
                     case .nullable: column.isNullable ? "YES" : "NO"
                     case .defaultValue: column.defaultValue ?? ""
+                    case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
                     case .autoIncrement: column.autoIncrement ? "YES" : "NO"
                     case .comment: column.comment ?? ""
                     }
@@ -66,7 +69,8 @@ final class StructureRowProvider {
     var columns: [String] {
         switch tab {
         case .columns:
-            let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+            let fields = pluginFields.union(additionalFields)
             let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             return ordered.map { $0.displayName }
         case .indexes:
@@ -99,10 +103,12 @@ final class StructureRowProvider {
     var dropdownColumns: Set<Int> {
         switch tab {
         case .columns:
-            let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+            let fields = pluginFields.union(additionalFields)
             let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             var result: Set<Int> = []
             if let i = ordered.firstIndex(of: .nullable) { result.insert(i) }
+            if let i = ordered.firstIndex(of: .primaryKey) { result.insert(i) }
             if let i = ordered.firstIndex(of: .autoIncrement) { result.insert(i) }
             return result
         case .indexes:
@@ -118,7 +124,8 @@ final class StructureRowProvider {
     var typePickerColumns: Set<Int> {
         switch tab {
         case .columns:
-            let fields = PluginManager.shared.structureColumnFields(for: databaseType)
+            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+            let fields = pluginFields.union(additionalFields)
             let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             if let i = ordered.firstIndex(of: .type) { return [i] }
             return []
@@ -131,10 +138,16 @@ final class StructureRowProvider {
         rows.count
     }
 
-    init(changeManager: StructureChangeManager, tab: StructureTab, databaseType: DatabaseType = .mysql) {
+    init(
+        changeManager: StructureChangeManager,
+        tab: StructureTab,
+        databaseType: DatabaseType = .mysql,
+        additionalFields: Set<StructureColumnField> = []
+    ) {
         self.changeManager = changeManager
         self.tab = tab
         self.databaseType = databaseType
+        self.additionalFields = additionalFields
     }
 
     // MARK: - InMemoryRowProvider-compatible methods

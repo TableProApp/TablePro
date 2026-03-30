@@ -182,7 +182,8 @@ struct CreateTableView: View {
         let provider = StructureRowProvider(
             changeManager: structureChangeManager,
             tab: structureTab,
-            databaseType: connection.type
+            databaseType: connection.type,
+            additionalFields: [.primaryKey]
         )
 
         return DataGridView(
@@ -327,7 +328,8 @@ struct CreateTableView: View {
             case 1: column.dataType = value
             case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
             case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.comment = value.isEmpty ? nil : value
+            case 4: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
+            case 5: column.comment = value.isEmpty ? nil : value
             default: break
             }
         } else {
@@ -336,8 +338,9 @@ struct CreateTableView: View {
             case 1: column.dataType = value
             case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
             case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.autoIncrement = value.uppercased() == "YES" || value == "1"
-            case 5: column.comment = value.isEmpty ? nil : value
+            case 4: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
+            case 5: column.autoIncrement = value.uppercased() == "YES" || value == "1"
+            case 6: column.comment = value.isEmpty ? nil : value
             default: break
             }
         }
