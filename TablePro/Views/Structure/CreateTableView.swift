@@ -31,6 +31,7 @@ struct CreateTableView: View {
     @State private var selectedTab: CreateTableTab = .columns
     @State private var isCreating = false
     @State private var errorMessage: String?
+    @State private var showError = false
     @State private var previewSQL = ""
 
     // DataGridView state
@@ -50,24 +51,27 @@ struct CreateTableView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            tableNameBar
+            configBar
             Divider()
-            tabPicker
+            toolbar
             Divider()
             tabContent
-            Divider()
-            actionBar
         }
         .onAppear {
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
             }
         }
+        .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
-    // MARK: - Table Name Bar
+    // MARK: - Config Bar
 
-    private var tableNameBar: some View {
+    private var configBar: some View {
         HStack(spacing: 12) {
             Text("Table Name:")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
@@ -116,9 +120,7 @@ struct CreateTableView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .padding()
         .onChange(of: tableOptions.charset) { _, newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 tableOptions.collation = first
@@ -130,7 +132,7 @@ struct CreateTableView: View {
         connection.type == .mysql || connection.type == .mariadb
     }
 
-    // MARK: - Tab Picker
+    // MARK: - Toolbar
 
     private var availableTabs: [CreateTableTab] {
         var tabs = CreateTableTab.allCases
@@ -140,9 +142,26 @@ struct CreateTableView: View {
         return tabs
     }
 
-    private var tabPicker: some View {
-        HStack {
+    private var isGridTab: Bool {
+        selectedTab != .sqlPreview
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            Button(action: addNewRow) {
+                Image(systemName: "plus")
+            }
+            .help(String(localized: "Add Row"))
+            .disabled(!isGridTab)
+
+            Button(action: { handleDeleteRows(selectedRows) }) {
+                Image(systemName: "minus")
+            }
+            .help(String(localized: "Delete Selected"))
+            .disabled(!isGridTab || selectedRows.isEmpty)
+
             Spacer()
+
             Picker("", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
@@ -150,7 +169,15 @@ struct CreateTableView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+
             Spacer()
+
+            Button(isCreating ? String(localized: "Creating...") : String(localized: "Create Table")) {
+                createTable()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(tableName.isEmpty || structureChangeManager.workingColumns.isEmpty || isCreating)
+            .keyboardShortcut(.return, modifiers: .command)
         }
         .padding()
     }
@@ -229,7 +256,6 @@ struct CreateTableView: View {
                 .disabled(previewSQL.isEmpty)
             }
             .padding()
-            .background(Color(nsColor: .controlBackgroundColor))
 
             Divider()
 
@@ -253,36 +279,6 @@ struct CreateTableView: View {
     private func copyPreviewSQL() {
         guard !previewSQL.isEmpty else { return }
         ClipboardService.shared.writeText(previewSQL)
-    }
-
-    // MARK: - Action Bar
-
-    private var actionBar: some View {
-        HStack {
-            if let error = errorMessage {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                Text(error)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Button("Cancel") {
-                NSApp.keyWindow?.close()
-            }
-
-            Button(isCreating ? String(localized: "Creating...") : String(localized: "Create Table")) {
-                createTable()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(tableName.isEmpty || structureChangeManager.workingColumns.isEmpty || isCreating)
-            .keyboardShortcut(.return, modifiers: .command)
-        }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     // MARK: - Cell Editing
@@ -510,24 +506,13 @@ struct CreateTableView: View {
         )
     }
 
-    private func isDefaultExpression(_ value: String) -> Bool {
-        let upper = value.uppercased()
-        return upper == "NULL"
-            || upper == "CURRENT_TIMESTAMP"
-            || upper == "NOW()"
-            || upper == "TRUE"
-            || upper == "FALSE"
-            || upper.hasPrefix("CURRENT_")
-            || Int64(value) != nil
-            || Double(value) != nil
-    }
-
     // MARK: - Create Table
 
     private func createTable() {
         guard !tableName.isEmpty else { return }
         guard let sql = buildCreateTableSQL() else {
             errorMessage = String(localized: "Add at least one column with a name and type")
+            showError = true
             return
         }
 
@@ -557,13 +542,13 @@ struct CreateTableView: View {
 
                 NotificationCenter.default.post(name: .refreshData, object: nil)
 
-                // Replace create-table tab with the new table
                 if let coordinator {
                     coordinator.openTableTab(tableName)
                 }
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
+                showError = true
             }
         }
     }
