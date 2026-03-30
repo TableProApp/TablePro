@@ -66,18 +66,3 @@ struct ResultTabBar: View {
     }
 }
 
-#Preview {
-    @Previewable @State var activeId: UUID?
-    let sets = [
-        ResultSet(label: "Result 1", rowsAffected: 10),
-        ResultSet(label: "Result 2", rowsAffected: 5),
-        ResultSet(label: "Result 3", isPinned: true)
-    ]
-    ResultTabBar(
-        resultSets: sets,
-        activeResultSetId: $activeId,
-        onClose: { _ in },
-        onPin: { _ in }
-    )
-    .frame(width: 500)
-}
