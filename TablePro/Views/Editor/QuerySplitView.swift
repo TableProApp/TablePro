@@ -26,18 +26,14 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         splitVC.splitView.dividerStyle = .thin
         splitVC.splitView.autosaveName = autosaveName
 
-        let topHosting = NSHostingController(rootView: topContent)
-        topHosting.sizingOptions = []
-        topHosting.view.translatesAutoresizingMaskIntoConstraints = true
-        let bottomHosting = NSHostingController(rootView: bottomContent)
-        bottomHosting.sizingOptions = []
-        bottomHosting.view.translatesAutoresizingMaskIntoConstraints = true
+        let topContainer = HostingContainerController(rootView: topContent)
+        let bottomContainer = HostingContainerController(rootView: bottomContent)
 
-        let topItem = NSSplitViewItem(viewController: topHosting)
+        let topItem = NSSplitViewItem(viewController: topContainer)
         topItem.minimumThickness = 100
         topItem.holdingPriority = .init(240)
 
-        let bottomItem = NSSplitViewItem(viewController: bottomHosting)
+        let bottomItem = NSSplitViewItem(viewController: bottomContainer)
         bottomItem.minimumThickness = 150
         bottomItem.holdingPriority = .init(260)
         bottomItem.canCollapse = true
@@ -46,8 +42,8 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         splitVC.addSplitViewItem(topItem)
         splitVC.addSplitViewItem(bottomItem)
 
-        context.coordinator.topHostingController = topHosting
-        context.coordinator.bottomHostingController = bottomHosting
+        context.coordinator.topContainer = topContainer
+        context.coordinator.bottomContainer = bottomContainer
 
         return splitVC
     }
@@ -59,16 +55,51 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
             bottomItem.animator().isCollapsed = isBottomCollapsed
         }
 
-        context.coordinator.topHostingController?.rootView = topContent
-        context.coordinator.bottomHostingController?.rootView = bottomContent
+        context.coordinator.topContainer?.hostingController.rootView = topContent
+        context.coordinator.bottomContainer?.hostingController.rootView = bottomContent
     }
 
     final class Coordinator: NSObject, NSSplitViewDelegate {
-        var topHostingController: NSHostingController<TopContent>?
-        var bottomHostingController: NSHostingController<BottomContent>?
+        var topContainer: HostingContainerController<TopContent>?
+        var bottomContainer: HostingContainerController<BottomContent>?
 
         func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
             subview == splitView.subviews.last
         }
+    }
+}
+
+// MARK: - Hosting Container
+
+/// Wraps NSHostingController in a plain NSViewController with Auto Layout
+/// constraints pinning the hosted SwiftUI view to all edges. This ensures
+/// the SwiftUI content fills the NSSplitView pane instead of rendering
+/// at its intrinsic size.
+final class HostingContainerController<Content: View>: NSViewController {
+    let hostingController: NSHostingController<Content>
+
+    init(rootView: Content) {
+        self.hostingController = NSHostingController(rootView: rootView)
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func loadView() {
+        view = NSView()
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        addChild(hostingController)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(hostingController.view)
+        NSLayoutConstraint.activate([
+            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
     }
 }
