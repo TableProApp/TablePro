@@ -28,8 +28,10 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
 
         let topHosting = NSHostingController(rootView: topContent)
         topHosting.sizingOptions = []
+        topHosting.view.translatesAutoresizingMaskIntoConstraints = true
         let bottomHosting = NSHostingController(rootView: bottomContent)
         bottomHosting.sizingOptions = []
+        bottomHosting.view.translatesAutoresizingMaskIntoConstraints = true
 
         let topItem = NSSplitViewItem(viewController: topHosting)
         topItem.minimumThickness = 100
