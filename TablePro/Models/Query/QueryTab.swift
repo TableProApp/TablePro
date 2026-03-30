@@ -369,6 +369,16 @@ struct QueryTab: Identifiable, Equatable {
     // Whether this tab is a preview (temporary) tab that gets replaced on next navigation
     var isPreview: Bool
 
+    // Multi-result-set support (Phase 0: added alongside existing single-result properties)
+    var resultSets: [ResultSet] = []
+    var activeResultSetId: UUID?
+    var isResultsCollapsed: Bool = false
+
+    var activeResultSet: ResultSet? {
+        guard let id = activeResultSetId else { return resultSets.last }
+        return resultSets.first { $0.id == id }
+    }
+
     // Source file URL for .sql files opened from disk (used for deduplication)
     var sourceFileURL: URL?
 
@@ -542,6 +552,9 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.rowsAffected == rhs.rowsAffected
             && lhs.isPreview == rhs.isPreview
             && lhs.hasUserInteraction == rhs.hasUserInteraction
+            && lhs.isResultsCollapsed == rhs.isResultsCollapsed
+            && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
+            && lhs.activeResultSetId == rhs.activeResultSetId
     }
 }
 
