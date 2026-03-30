@@ -140,7 +140,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         fullscreenKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             guard mods == [.control, .command],
-                  event.keyCode == 3 else { return event }
+                  event.keyCode == KeyCode.f.rawValue else { return event }
             NSApp.keyWindow?.toggleFullScreen(nil)
             return nil
         }
