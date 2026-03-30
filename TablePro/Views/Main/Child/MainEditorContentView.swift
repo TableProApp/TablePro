@@ -222,9 +222,11 @@ struct MainEditorContentView: View {
                         }
                     )
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             },
             bottomContent: {
                 resultsSection(tab: tab)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         )
     }
