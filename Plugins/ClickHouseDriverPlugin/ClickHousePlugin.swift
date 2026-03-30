@@ -1135,10 +1135,6 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             sql += "\nORDER BY tuple()"
         }
 
-        if let comment = definition.comment, !comment.isEmpty {
-            sql += "\nCOMMENT '\(escapeStringLiteral(comment))'"
-        }
-
         return sql + ";"
     }
 

@@ -774,7 +774,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
         guard !definition.columns.isEmpty else { return nil }
 
-        let schema = definition.schema ?? _currentSchema
+        let schema = _currentSchema
         let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
         let pkColumns = definition.columns.filter { $0.isPrimaryKey }
         let inlinePK = pkColumns.count == 1
