@@ -157,6 +157,11 @@ extension MainContentCoordinator {
             updatedTab.metadataVersion += 1
         }
 
+        // Auto-expand results pane when new results arrive
+        if updatedTab.isResultsCollapsed {
+            updatedTab.isResultsCollapsed = false
+        }
+
         tabManager.tabs[idx] = updatedTab
 
         // Cache column types for selective queries on subsequent page/filter/sort reloads.

@@ -132,6 +132,10 @@ extension MainContentCoordinator {
                     updatedTab.isExecuting = false
                     updatedTab.lastExecutedAt = Date()
                     updatedTab.errorMessage = nil
+                    // Auto-expand results pane when new results arrive
+                    if updatedTab.isResultsCollapsed {
+                        updatedTab.isResultsCollapsed = false
+                    }
                     tabManager.tabs[idx] = updatedTab
 
                     if tabManager.selectedTabId == tabId {

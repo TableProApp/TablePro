@@ -222,10 +222,13 @@ struct MainEditorContentView: View {
             }
             .frame(minHeight: 100, idealHeight: 200)
 
-            // Results (bottom)
-            resultsSection(tab: tab)
-                .frame(minHeight: 150)
+            // Results (bottom, collapsible)
+            if !tab.isResultsCollapsed {
+                resultsSection(tab: tab)
+                    .frame(minHeight: 150)
+            }
         }
+        .animation(.easeInOut(duration: 0.2), value: tab.isResultsCollapsed)
     }
 
     private func updateHasQueryText() {
