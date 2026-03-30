@@ -8,9 +8,9 @@
 import Foundation
 
 struct CreateTableOptions: Hashable {
-    var engine: String?
-    var charset: String?
-    var collation: String?
+    var engine: String = "InnoDB"
+    var charset: String = "utf8mb4"
+    var collation: String = "utf8mb4_unicode_ci"
     var ifNotExists: Bool = false
 
     static let engines = [
@@ -24,7 +24,7 @@ struct CreateTableOptions: Hashable {
         "euckr", "gb2312", "gbk", "sjis"
     ]
 
-    static let collations: [String?: [String]] = [
+    static let collations: [String: [String]] = [
         "utf8mb4": [
             "utf8mb4_unicode_ci", "utf8mb4_general_ci", "utf8mb4_bin",
             "utf8mb4_0900_ai_ci", "utf8mb4_unicode_520_ci"

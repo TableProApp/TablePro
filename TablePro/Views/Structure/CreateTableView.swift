@@ -451,88 +451,63 @@ struct CreateTableView: View {
         let columns = structureChangeManager.workingColumns.filter { !$0.name.isEmpty && !$0.dataType.isEmpty }
         guard !columns.isEmpty else { return nil }
 
-        let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
-        let quote: (String) -> String = pluginDriver?.quoteIdentifier ?? { name in
-            let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        }
-        let escape: (String) -> String = pluginDriver?.escapeStringLiteral ?? { value in
-            value.replacingOccurrences(of: "'", with: "''")
-        }
-
-        var parts: [String] = []
-
-        // Column definitions
-        for col in columns {
-            var def = "    \(quote(col.name)) \(col.dataType)"
-            if col.unsigned { def += " UNSIGNED" }
-            if !col.isNullable { def += " NOT NULL" }
-            if col.autoIncrement { def += " AUTO_INCREMENT" }
-            if let defaultVal = col.defaultValue, !defaultVal.isEmpty {
-                if isDefaultExpression(defaultVal) {
-                    def += " DEFAULT \(defaultVal)"
-                } else {
-                    def += " DEFAULT '\(escape(defaultVal))'"
-                }
-            }
-            if let onUpdate = col.onUpdate, !onUpdate.isEmpty {
-                def += " ON UPDATE \(onUpdate)"
-            }
-            if let comment = col.comment, !comment.isEmpty {
-                def += " COMMENT '\(escape(comment))'"
-            }
-            parts.append(def)
-        }
-
-        // Primary key: columns marked as PK, or AUTO_INCREMENT columns (MySQL requires a key)
-        var pkColumns = columns.filter { $0.isPrimaryKey }
+        var pkColumns = columns.filter { $0.isPrimaryKey }.map(\.name)
         if pkColumns.isEmpty {
-            pkColumns = columns.filter { $0.autoIncrement }
-        }
-        if !pkColumns.isEmpty {
-            let pkNames = pkColumns.map { quote($0.name) }.joined(separator: ", ")
-            parts.append("    PRIMARY KEY (\(pkNames))")
+            pkColumns = columns.filter { $0.autoIncrement }.map(\.name)
         }
 
-        // Indexes
-        let indexes = structureChangeManager.workingIndexes.filter { !$0.name.isEmpty && !$0.columns.isEmpty }
-        for idx in indexes {
-            let idxCols = idx.columns.map { quote($0) }.joined(separator: ", ")
-            let unique = idx.isUnique ? "UNIQUE " : ""
-            parts.append("    \(unique)INDEX \(quote(idx.name)) (\(idxCols))")
-        }
+        let definition = PluginCreateTableDefinition(
+            tableName: tableName.isEmpty ? "untitled" : tableName,
+            columns: columns.map { toPluginColumnDefinition($0) },
+            indexes: structureChangeManager.workingIndexes
+                .filter { !$0.name.isEmpty && !$0.columns.isEmpty }
+                .map { toPluginIndexDefinition($0) },
+            foreignKeys: structureChangeManager.workingForeignKeys
+                .filter { !$0.name.isEmpty && !$0.columns.isEmpty && !$0.referencedTable.isEmpty }
+                .map { toPluginForeignKeyDefinition($0) },
+            primaryKeyColumns: pkColumns,
+            engine: showMySQLOptions ? tableOptions.engine : nil,
+            charset: showMySQLOptions ? tableOptions.charset : nil,
+            collation: showMySQLOptions ? tableOptions.collation : nil,
+            ifNotExists: tableOptions.ifNotExists
+        )
 
-        // Foreign keys
-        let foreignKeys = structureChangeManager.workingForeignKeys.filter {
-            !$0.name.isEmpty && !$0.columns.isEmpty && !$0.referencedTable.isEmpty && !$0.referencedColumns.isEmpty
-        }
-        for fk in foreignKeys {
-            let fkCols = fk.columns.map { quote($0) }.joined(separator: ", ")
-            let refCols = fk.referencedColumns.map { quote($0) }.joined(separator: ", ")
-            var constraint = "    CONSTRAINT \(quote(fk.name)) FOREIGN KEY (\(fkCols))"
-            constraint += " REFERENCES \(quote(fk.referencedTable)) (\(refCols))"
-            if fk.onDelete != .noAction {
-                constraint += " ON DELETE \(fk.onDelete.rawValue)"
-            }
-            if fk.onUpdate != .noAction {
-                constraint += " ON UPDATE \(fk.onUpdate.rawValue)"
-            }
-            parts.append(constraint)
-        }
+        let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
+        return pluginDriver?.generateCreateTableSQL(definition: definition)
+    }
 
-        var sql = "CREATE TABLE \(quote(tableName.isEmpty ? "untitled" : tableName)) (\n"
-        sql += parts.joined(separator: ",\n")
-        sql += "\n)"
+    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
+        PluginColumnDefinition(
+            name: col.name,
+            dataType: col.dataType,
+            isNullable: col.isNullable,
+            defaultValue: col.defaultValue,
+            isPrimaryKey: col.isPrimaryKey,
+            autoIncrement: col.autoIncrement,
+            comment: col.comment,
+            unsigned: col.unsigned,
+            onUpdate: col.onUpdate
+        )
+    }
 
-        // MySQL/MariaDB table options
-        if showMySQLOptions {
-            if let engine = tableOptions.engine { sql += " ENGINE=\(engine)" }
-            if let charset = tableOptions.charset { sql += " DEFAULT CHARSET=\(charset)" }
-            if let collation = tableOptions.collation { sql += " COLLATE=\(collation)" }
-        }
+    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
+        PluginIndexDefinition(
+            name: index.name,
+            columns: index.columns,
+            isUnique: index.isUnique,
+            indexType: index.type.rawValue
+        )
+    }
 
-        sql += ";"
-        return sql
+    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
+        PluginForeignKeyDefinition(
+            name: fk.name,
+            columns: fk.columns,
+            referencedTable: fk.referencedTable,
+            referencedColumns: fk.referencedColumns,
+            onDelete: fk.onDelete.rawValue,
+            onUpdate: fk.onUpdate.rawValue
+        )
     }
 
     private func isDefaultExpression(_ value: String) -> Bool {
@@ -560,6 +535,7 @@ struct CreateTableView: View {
         errorMessage = nil
 
         Task {
+            defer { isCreating = false }
             do {
                 guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
                     throw NSError(
@@ -581,21 +557,13 @@ struct CreateTableView: View {
 
                 NotificationCenter.default.post(name: .refreshData, object: nil)
 
-                // Convert the create-table tab to a regular table tab showing the new table
-                if let coordinator,
-                   let tabIndex = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[tabIndex].tabType = .table
-                    coordinator.tabManager.tabs[tabIndex].tableName = tableName
-                    coordinator.tabManager.tabs[tabIndex].showStructure = false
-                    coordinator.tabManager.tabs[tabIndex].hasUserInteraction = false
-                    coordinator.tabManager.tabs[tabIndex].isEditable = true
-                    coordinator.tabManager.tabs[tabIndex].query = ""
+                // Replace create-table tab with the new table
+                if let coordinator {
                     coordinator.openTableTab(tableName)
                 }
             } catch {
                 Self.logger.error("Create table failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = error.localizedDescription
-                isCreating = false
             }
         }
     }

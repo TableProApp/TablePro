@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Visual Create Table UI with column, index, and foreign key editors (sidebar → "Create New Table...")
+- Real-time SQL preview with syntax highlighting for CREATE TABLE DDL
+- Multi-database CREATE TABLE support: MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB
+
 ## [0.26.0] - 2026-03-29
 
 ### Added
