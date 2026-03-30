@@ -117,7 +117,7 @@ struct TableProToolbar: ViewModifier {
 
                 // MARK: - Primary Action (Right)
 
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItemGroup(placement: .primaryAction) {
                     Button {
                         actions?.openQuickSwitcher()
                     } label: {
@@ -125,9 +125,7 @@ struct TableProToolbar: ViewModifier {
                     }
                     .help("Quick Switcher (⌘P)")
                     .disabled(state.connectionState != .connected)
-                }
 
-                ToolbarItem(placement: .primaryAction) {
                     Button {
                         actions?.newTab()
                     } label: {
@@ -160,13 +158,17 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button { actions?.toggleResults() } label: {
-                        Label("Results", systemImage: "rectangle.bottomhalf.inset.filled")
+                if !state.isTableTab {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { actions?.toggleResults() } label: {
+                            Label("Results", systemImage: "rectangle.bottomhalf.inset.filled")
+                        }
+                        .help("Toggle Results (⌘⌥R)")
+                        .disabled(state.connectionState != .connected)
                     }
-                    .help("Toggle Results (⌘⌥R)")
-                    .disabled(state.connectionState != .connected || state.isTableTab)
+                }
 
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         actions?.toggleRightSidebar()
                     } label: {
