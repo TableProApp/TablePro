@@ -243,14 +243,7 @@ struct CreateTableView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    Text(previewSQL)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .background(Color(nsColor: .textBackgroundColor))
+                DDLTextView(ddl: previewSQL, fontSize: .constant(13))
             }
         }
         .onAppear { generatePreviewSQL() }
