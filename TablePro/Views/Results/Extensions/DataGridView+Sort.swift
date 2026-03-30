@@ -35,7 +35,7 @@ extension TableViewCoordinator {
             return column.width
         }
 
-        let width = cellFactory.calculateOptimalColumnWidth(
+        let width = cellFactory.calculateFitToContentWidth(
             for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
             rowProvider: rowProvider
@@ -123,7 +123,7 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { return }
 
-        let width = cellFactory.calculateOptimalColumnWidth(
+        let width = cellFactory.calculateFitToContentWidth(
             for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
             rowProvider: rowProvider
