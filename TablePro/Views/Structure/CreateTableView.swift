@@ -527,9 +527,9 @@ struct CreateTableView: View {
 
         // MySQL/MariaDB table options
         if showMySQLOptions {
-            sql += " ENGINE=\(tableOptions.engine)"
-            sql += " DEFAULT CHARSET=\(tableOptions.charset)"
-            sql += " COLLATE=\(tableOptions.collation)"
+            if let engine = tableOptions.engine { sql += " ENGINE=\(engine)" }
+            if let charset = tableOptions.charset { sql += " DEFAULT CHARSET=\(charset)" }
+            if let collation = tableOptions.collation { sql += " COLLATE=\(collation)" }
         }
 
         sql += ";"
