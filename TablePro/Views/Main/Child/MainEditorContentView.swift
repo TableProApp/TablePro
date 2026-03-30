@@ -223,9 +223,11 @@ struct MainEditorContentView: View {
             .frame(minHeight: 100, idealHeight: 200)
 
             // Results (bottom, collapsible)
+            // idealHeight ensures VSplitView allocates ~50% to results
+            // when re-inserting after collapse (otherwise it defaults to minHeight).
             if !tab.isResultsCollapsed {
                 resultsSection(tab: tab)
-                    .frame(minHeight: 150)
+                    .frame(minHeight: 150, idealHeight: 350)
             }
         }
         // No animation on collapse/expand — VSplitView + NSTableView layout
