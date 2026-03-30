@@ -24,6 +24,26 @@ extension TableViewCoordinator {
         onSort?(columnIndex, sortDescriptor.ascending, isMultiSort)
     }
 
+    // MARK: - Double-Click Column Divider Auto-Fit
+
+    func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn columnIndex: Int) -> CGFloat {
+        let column = tableView.tableColumns[columnIndex]
+        guard column.identifier.rawValue != "__rowNumber__" else {
+            return column.width
+        }
+        guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else {
+            return column.width
+        }
+
+        let width = cellFactory.calculateOptimalColumnWidth(
+            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            columnIndex: dataColumnIndex,
+            rowProvider: rowProvider
+        )
+        hasUserResizedColumns = true
+        return width
+    }
+
     // MARK: - NSMenuDelegate (Header Context Menu)
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -63,6 +83,17 @@ extension TableViewCoordinator {
 
         menu.addItem(NSMenuItem.separator())
 
+        let sizeToFitItem = NSMenuItem(title: String(localized: "Size to Fit"), action: #selector(sizeColumnToFit(_:)), keyEquivalent: "")
+        sizeToFitItem.representedObject = columnIndex
+        sizeToFitItem.target = self
+        menu.addItem(sizeToFitItem)
+
+        let sizeAllItem = NSMenuItem(title: String(localized: "Size All Columns to Fit"), action: #selector(sizeAllColumnsToFit(_:)), keyEquivalent: "")
+        sizeAllItem.target = self
+        menu.addItem(sizeAllItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let hideItem = NSMenuItem(title: String(localized: "Hide Column"), action: #selector(hideColumn(_:)), keyEquivalent: "")
         hideItem.representedObject = baseName
         hideItem.target = self
@@ -82,5 +113,39 @@ extension TableViewCoordinator {
     @objc func hideColumn(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
         onHideColumn?(columnName)
+    }
+
+    @objc func sizeColumnToFit(_ sender: NSMenuItem) {
+        guard let tableView,
+              let columnIndex = sender.representedObject as? Int,
+              columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
+
+        let column = tableView.tableColumns[columnIndex]
+        guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { return }
+
+        let width = cellFactory.calculateOptimalColumnWidth(
+            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            columnIndex: dataColumnIndex,
+            rowProvider: rowProvider
+        )
+        column.width = width
+        hasUserResizedColumns = true
+    }
+
+    @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
+        guard let tableView else { return }
+
+        for column in tableView.tableColumns {
+            guard column.identifier.rawValue != "__rowNumber__",
+                  let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { continue }
+
+            let width = cellFactory.calculateOptimalColumnWidth(
+                for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+                columnIndex: dataColumnIndex,
+                rowProvider: rowProvider
+            )
+            column.width = width
+        }
+        hasUserResizedColumns = true
     }
 }
