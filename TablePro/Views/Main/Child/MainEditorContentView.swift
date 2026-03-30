@@ -185,53 +185,48 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func queryTabContent(tab: QueryTab) -> some View {
         @Bindable var bindableCoordinator = coordinator
-        VSplitView {
-            // Query Editor (top)
-            VStack(spacing: 0) {
-                QueryEditorView(
-                    queryText: queryTextBinding(for: tab),
-                    cursorPositions: $bindableCoordinator.cursorPositions,
-                    onExecute: { coordinator.runQuery() },
-                    schemaProvider: coordinator.schemaProvider,
-                    databaseType: coordinator.connection.type,
-                    connectionId: coordinator.connection.id,
-                    onCloseTab: {
-                        NSApp.keyWindow?.close()
-                    },
-                    onExecuteQuery: { coordinator.runQuery() },
-                    onExplain: { variant in
-                        if let variant {
-                            coordinator.runClickHouseExplain(variant: variant)
-                        } else {
-                            coordinator.runExplainQuery()
+        QuerySplitView(
+            isBottomCollapsed: tab.isResultsCollapsed,
+            autosaveName: "QuerySplit-\(connectionId)-\(tab.id)",
+            topContent: {
+                VStack(spacing: 0) {
+                    QueryEditorView(
+                        queryText: queryTextBinding(for: tab),
+                        cursorPositions: $bindableCoordinator.cursorPositions,
+                        onExecute: { coordinator.runQuery() },
+                        schemaProvider: coordinator.schemaProvider,
+                        databaseType: coordinator.connection.type,
+                        connectionId: coordinator.connection.id,
+                        onCloseTab: {
+                            NSApp.keyWindow?.close()
+                        },
+                        onExecuteQuery: { coordinator.runQuery() },
+                        onExplain: { variant in
+                            if let variant {
+                                coordinator.runClickHouseExplain(variant: variant)
+                            } else {
+                                coordinator.runExplainQuery()
+                            }
+                        },
+                        onAIExplain: { text in
+                            coordinator.showAIChatPanel()
+                            coordinator.aiViewModel?.handleExplainSelection(text)
+                        },
+                        onAIOptimize: { text in
+                            coordinator.showAIChatPanel()
+                            coordinator.aiViewModel?.handleOptimizeSelection(text)
+                        },
+                        onSaveAsFavorite: { text in
+                            guard !text.isEmpty else { return }
+                            favoriteDialogQuery = FavoriteDialogQuery(query: text)
                         }
-                    },
-                    onAIExplain: { text in
-                        coordinator.showAIChatPanel()
-                        coordinator.aiViewModel?.handleExplainSelection(text)
-                    },
-                    onAIOptimize: { text in
-                        coordinator.showAIChatPanel()
-                        coordinator.aiViewModel?.handleOptimizeSelection(text)
-                    },
-                    onSaveAsFavorite: { text in
-                        guard !text.isEmpty else { return }
-                        favoriteDialogQuery = FavoriteDialogQuery(query: text)
-                    }
-                )
-            }
-            .frame(minHeight: 100, idealHeight: 200)
-
-            // Results (bottom, collapsible)
-            // idealHeight ensures VSplitView allocates ~50% to results
-            // when re-inserting after collapse (otherwise it defaults to minHeight).
-            if !tab.isResultsCollapsed {
+                    )
+                }
+            },
+            bottomContent: {
                 resultsSection(tab: tab)
-                    .frame(minHeight: 150, idealHeight: 350)
             }
-        }
-        // No animation on collapse/expand — VSplitView + NSTableView layout
-        // conflicts cause header/border gaps during animated child insertion.
+        )
     }
 
     private func updateHasQueryText() {
@@ -302,56 +297,30 @@ struct MainEditorContentView: View {
                 .frame(maxHeight: .infinity)
             } else if let explainText = tab.explainText {
                 ExplainResultView(text: explainText, executionTime: tab.explainExecutionTime)
+            } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
+                && tab.lastExecutedAt != nil && !tab.isExecuting
+            {
+                QuerySuccessView(
+                    rowsAffected: tab.rowsAffected,
+                    executionTime: tab.executionTime,
+                    statusMessage: tab.statusMessage
+                )
             } else {
-                // Result tab bar (when multiple result sets)
-                if tab.resultSets.count > 1 {
-                    resultTabBar(tab: tab)
+                // Filter panel (collapsible, above data grid)
+                if filterStateManager.isVisible && tab.tabType == .table {
+                    FilterPanelView(
+                        filterState: filterStateManager,
+                        columns: tab.resultColumns,
+                        primaryKeyColumn: changeManager.primaryKeyColumn,
+                        databaseType: connection.type,
+                        onApply: onApplyFilters,
+                        onUnset: onClearFilters
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
                     Divider()
                 }
 
-                // Inline error banner (when active result set has error)
-                if let error = tab.activeResultSet?.errorMessage {
-                    InlineErrorBanner(
-                        message: error,
-                        onDismiss: { tab.activeResultSet?.errorMessage = nil }
-                    )
-                    Divider()
-                }
-
-                // Content: success view OR filter+grid
-                if let rs = tab.activeResultSet, rs.resultColumns.isEmpty,
-                   rs.errorMessage == nil, tab.lastExecutedAt != nil, !tab.isExecuting
-                {
-                    ResultSuccessView(
-                        rowsAffected: rs.rowsAffected,
-                        executionTime: rs.executionTime,
-                        statusMessage: rs.statusMessage
-                    )
-                } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
-                    && tab.lastExecutedAt != nil && !tab.isExecuting
-                {
-                    ResultSuccessView(
-                        rowsAffected: tab.rowsAffected,
-                        executionTime: tab.executionTime,
-                        statusMessage: tab.statusMessage
-                    )
-                } else {
-                    // Filter panel (collapsible, above data grid)
-                    if filterStateManager.isVisible && tab.tabType == .table {
-                        FilterPanelView(
-                            filterState: filterStateManager,
-                            columns: tab.resultColumns,
-                            primaryKeyColumn: changeManager.primaryKeyColumn,
-                            databaseType: connection.type,
-                            onApply: onApplyFilters,
-                            onUnset: onClearFilters
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        Divider()
-                    }
-
-                    dataGridView(tab: tab)
-                }
+                dataGridView(tab: tab)
             }
 
             statusBar(tab: tab)
@@ -359,42 +328,6 @@ struct MainEditorContentView: View {
         .frame(minHeight: 150)
         .animation(.easeInOut(duration: 0.2), value: filterStateManager.isVisible)
         .animation(.easeInOut(duration: 0.2), value: tab.errorMessage)
-    }
-
-    private func resultTabBar(tab: QueryTab) -> some View {
-        ResultTabBar(
-            resultSets: tab.resultSets,
-            activeResultSetId: Binding(
-                get: { tab.activeResultSetId },
-                set: { newId in
-                    if let tabIdx = coordinator.tabManager.selectedTabIndex {
-                        coordinator.tabManager.tabs[tabIdx].activeResultSetId = newId
-                    }
-                }
-            ),
-            onClose: { id in
-                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
-                let rs = coordinator.tabManager.tabs[tabIdx].resultSets.first { $0.id == id }
-                guard rs?.isPinned != true else { return }
-                coordinator.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == id }
-                if tab.activeResultSetId == id {
-                    coordinator.tabManager.tabs[tabIdx].activeResultSetId =
-                        coordinator.tabManager.tabs[tabIdx].resultSets.last?.id
-                }
-                if coordinator.tabManager.tabs[tabIdx].resultSets.isEmpty {
-                    coordinator.tabManager.tabs[tabIdx].resultColumns = []
-                    coordinator.tabManager.tabs[tabIdx].columnTypes = []
-                    coordinator.tabManager.tabs[tabIdx].resultRows = []
-                    coordinator.tabManager.tabs[tabIdx].errorMessage = nil
-                    coordinator.tabManager.tabs[tabIdx].rowsAffected = 0
-                    coordinator.tabManager.tabs[tabIdx].executionTime = nil
-                    coordinator.tabManager.tabs[tabIdx].statusMessage = nil
-                }
-            },
-            onPin: { id in
-                tab.resultSets.first { $0.id == id }?.isPinned.toggle()
-            }
-        )
     }
 
     @ViewBuilder
