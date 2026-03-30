@@ -228,7 +228,8 @@ struct MainEditorContentView: View {
                     .frame(minHeight: 150)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: tab.isResultsCollapsed)
+        // No animation on collapse/expand — VSplitView + NSTableView layout
+        // conflicts cause header/border gaps during animated child insertion.
     }
 
     private func updateHasQueryText() {
