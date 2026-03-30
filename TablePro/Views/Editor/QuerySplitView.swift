@@ -27,7 +27,9 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         splitVC.splitView.autosaveName = autosaveName
 
         let topHosting = NSHostingController(rootView: topContent)
+        topHosting.sizingOptions = []
         let bottomHosting = NSHostingController(rootView: bottomContent)
+        bottomHosting.sizingOptions = []
 
         let topItem = NSSplitViewItem(viewController: topHosting)
         topItem.minimumThickness = 100
