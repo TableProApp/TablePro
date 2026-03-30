@@ -26,14 +26,14 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         splitVC.splitView.dividerStyle = .thin
         splitVC.splitView.autosaveName = autosaveName
 
-        let topContainer = HostingContainerController(rootView: topContent)
-        let bottomContainer = HostingContainerController(rootView: bottomContent)
+        let topVC = HostingPaneController(rootView: topContent)
+        let bottomVC = HostingPaneController(rootView: bottomContent)
 
-        let topItem = NSSplitViewItem(viewController: topContainer)
+        let topItem = NSSplitViewItem(viewController: topVC)
         topItem.minimumThickness = 100
         topItem.holdingPriority = .init(240)
 
-        let bottomItem = NSSplitViewItem(viewController: bottomContainer)
+        let bottomItem = NSSplitViewItem(viewController: bottomVC)
         bottomItem.minimumThickness = 150
         bottomItem.holdingPriority = .init(260)
         bottomItem.canCollapse = true
@@ -42,8 +42,8 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         splitVC.addSplitViewItem(topItem)
         splitVC.addSplitViewItem(bottomItem)
 
-        context.coordinator.topContainer = topContainer
-        context.coordinator.bottomContainer = bottomContainer
+        context.coordinator.topVC = topVC
+        context.coordinator.bottomVC = bottomVC
 
         return splitVC
     }
@@ -55,13 +55,13 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
             bottomItem.animator().isCollapsed = isBottomCollapsed
         }
 
-        context.coordinator.topContainer?.hostingController.rootView = topContent
-        context.coordinator.bottomContainer?.hostingController.rootView = bottomContent
+        context.coordinator.topVC?.update(rootView: topContent)
+        context.coordinator.bottomVC?.update(rootView: bottomContent)
     }
 
     final class Coordinator: NSObject, NSSplitViewDelegate {
-        var topContainer: HostingContainerController<TopContent>?
-        var bottomContainer: HostingContainerController<BottomContent>?
+        var topVC: HostingPaneController<TopContent>?
+        var bottomVC: HostingPaneController<BottomContent>?
 
         func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
             subview == splitView.subviews.last
@@ -69,17 +69,15 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
     }
 }
 
-// MARK: - Hosting Container
+// MARK: - Hosting Pane Controller
 
-/// Wraps NSHostingController in a plain NSViewController with Auto Layout
-/// constraints pinning the hosted SwiftUI view to all edges. This ensures
-/// the SwiftUI content fills the NSSplitView pane instead of rendering
-/// at its intrinsic size.
-final class HostingContainerController<Content: View>: NSViewController {
-    let hostingController: NSHostingController<Content>
+/// Uses NSHostingView as the VC's view so NSSplitView's frame-based layout
+/// directly drives the SwiftUI content size proposal.
+final class HostingPaneController<Content: View>: NSViewController {
+    private var hostingView: NSHostingView<Content>
 
     init(rootView: Content) {
-        self.hostingController = NSHostingController(rootView: rootView)
+        self.hostingView = NSHostingView(rootView: rootView)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -87,19 +85,10 @@ final class HostingContainerController<Content: View>: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        view = NSView()
+        view = hostingView
     }
 
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        addChild(hostingController)
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(hostingController.view)
-        NSLayoutConstraint.activate([
-            hostingController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            hostingController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        ])
+    func update(rootView: Content) {
+        hostingView.rootView = rootView
     }
 }
