@@ -600,7 +600,9 @@ struct MainContentView: View {
     /// Update window title, proxy icon, and dirty dot based on the selected tab.
     private func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
-        if let fileURL = selectedTab?.sourceFileURL {
+        if selectedTab?.tabType == .createTable {
+            windowTitle = String(localized: "Create Table")
+        } else if let fileURL = selectedTab?.sourceFileURL {
             windowTitle = fileURL.deletingPathExtension().lastPathComponent
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)

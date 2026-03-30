@@ -57,6 +57,7 @@ struct CreateTableView: View {
             Divider()
             tabContent
         }
+        .navigationTitle(String(localized: "Create Table"))
         .onAppear {
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
@@ -121,6 +122,7 @@ struct CreateTableView: View {
             Spacer()
         }
         .padding()
+        .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: tableOptions.charset) { _, newCharset in
             if let first = CreateTableOptions.collations[newCharset]?.first {
                 tableOptions.collation = first
@@ -176,6 +178,7 @@ struct CreateTableView: View {
                 createTable()
             }
             .buttonStyle(.borderedProminent)
+            .tint(.accentColor)
             .disabled(tableName.isEmpty || structureChangeManager.workingColumns.isEmpty || isCreating)
             .keyboardShortcut(.return, modifiers: .command)
         }
@@ -228,9 +231,7 @@ struct CreateTableView: View {
             onAddRow: { addNewRow() },
             onUndoInsert: nil,
             onFilterColumn: nil,
-            getVisualState: { row in
-                structureChangeManager.getVisualState(for: row, tab: structureTab)
-            },
+            getVisualState: nil,
             dropdownColumns: provider.dropdownColumns,
             typePickerColumns: provider.typePickerColumns,
             connectionId: connection.id,
