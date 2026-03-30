@@ -299,30 +299,56 @@ struct MainEditorContentView: View {
                 .frame(maxHeight: .infinity)
             } else if let explainText = tab.explainText {
                 ExplainResultView(text: explainText, executionTime: tab.explainExecutionTime)
-            } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
-                && tab.lastExecutedAt != nil && !tab.isExecuting
-            {
-                QuerySuccessView(
-                    rowsAffected: tab.rowsAffected,
-                    executionTime: tab.executionTime,
-                    statusMessage: tab.statusMessage
-                )
             } else {
-                // Filter panel (collapsible, above data grid)
-                if filterStateManager.isVisible && tab.tabType == .table {
-                    FilterPanelView(
-                        filterState: filterStateManager,
-                        columns: tab.resultColumns,
-                        primaryKeyColumn: changeManager.primaryKeyColumn,
-                        databaseType: connection.type,
-                        onApply: onApplyFilters,
-                        onUnset: onClearFilters
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                // Result tab bar (when multiple result sets)
+                if tab.resultSets.count > 1 {
+                    resultTabBar(tab: tab)
                     Divider()
                 }
 
-                dataGridView(tab: tab)
+                // Inline error banner (when active result set has error)
+                if let error = tab.activeResultSet?.errorMessage {
+                    InlineErrorBanner(
+                        message: error,
+                        onDismiss: { tab.activeResultSet?.errorMessage = nil }
+                    )
+                    Divider()
+                }
+
+                // Content: success view OR filter+grid
+                if let rs = tab.activeResultSet, rs.resultColumns.isEmpty,
+                   rs.errorMessage == nil, tab.lastExecutedAt != nil, !tab.isExecuting
+                {
+                    ResultSuccessView(
+                        rowsAffected: rs.rowsAffected,
+                        executionTime: rs.executionTime,
+                        statusMessage: rs.statusMessage
+                    )
+                } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
+                    && tab.lastExecutedAt != nil && !tab.isExecuting
+                {
+                    ResultSuccessView(
+                        rowsAffected: tab.rowsAffected,
+                        executionTime: tab.executionTime,
+                        statusMessage: tab.statusMessage
+                    )
+                } else {
+                    // Filter panel (collapsible, above data grid)
+                    if filterStateManager.isVisible && tab.tabType == .table {
+                        FilterPanelView(
+                            filterState: filterStateManager,
+                            columns: tab.resultColumns,
+                            primaryKeyColumn: changeManager.primaryKeyColumn,
+                            databaseType: connection.type,
+                            onApply: onApplyFilters,
+                            onUnset: onClearFilters
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        Divider()
+                    }
+
+                    dataGridView(tab: tab)
+                }
             }
 
             statusBar(tab: tab)
@@ -330,6 +356,31 @@ struct MainEditorContentView: View {
         .frame(minHeight: 150)
         .animation(.easeInOut(duration: 0.2), value: filterStateManager.isVisible)
         .animation(.easeInOut(duration: 0.2), value: tab.errorMessage)
+    }
+
+    private func resultTabBar(tab: QueryTab) -> some View {
+        ResultTabBar(
+            resultSets: tab.resultSets,
+            activeResultSetId: Binding(
+                get: { tab.activeResultSetId },
+                set: { newId in
+                    if let tabIdx = coordinator.tabManager.selectedTabIndex {
+                        coordinator.tabManager.tabs[tabIdx].activeResultSetId = newId
+                    }
+                }
+            ),
+            onClose: { id in
+                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
+                coordinator.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == id }
+                if tab.activeResultSetId == id {
+                    coordinator.tabManager.tabs[tabIdx].activeResultSetId =
+                        coordinator.tabManager.tabs[tabIdx].resultSets.last?.id
+                }
+            },
+            onPin: { id in
+                tab.resultSets.first { $0.id == id }?.isPinned.toggle()
+            }
+        )
     }
 
     @ViewBuilder
