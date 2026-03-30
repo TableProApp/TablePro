@@ -71,15 +71,15 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
 
 // MARK: - Hosting Pane Controller
 
-/// Embeds NSHostingView in a plain NSView container. The container uses
-/// frame-based layout (for NSSplitView), while the hosting view is pinned
-/// to all edges via Auto Layout with low compression resistance so the
-/// split view divider can freely resize panes.
+/// NSViewController whose view is an NSHostingView with sizingOptions = [.minSize].
+/// Dropping the intrinsicContentSize constraint lets NSSplitView freely resize
+/// panes via the divider while SwiftUI content fills the available space.
 final class HostingPaneController<Content: View>: NSViewController {
     private var hostingView: NSHostingView<Content>
 
     init(rootView: Content) {
         self.hostingView = NSHostingView(rootView: rootView)
+        self.hostingView.sizingOptions = [.minSize]
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -87,24 +87,7 @@ final class HostingPaneController<Content: View>: NSViewController {
     required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let container = NSView()
-        container.autoresizingMask = [.width, .height]
-
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        hostingView.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
-        hostingView.setContentHuggingPriority(.defaultLow - 1, for: .vertical)
-        hostingView.setContentCompressionResistancePriority(.defaultLow - 1, for: .horizontal)
-        hostingView.setContentCompressionResistancePriority(.defaultLow - 1, for: .vertical)
-        container.addSubview(hostingView)
-
-        NSLayoutConstraint.activate([
-            hostingView.topAnchor.constraint(equalTo: container.topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            hostingView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
-
-        view = container
+        view = hostingView
     }
 
     func update(rootView: Content) {
