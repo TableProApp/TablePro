@@ -780,6 +780,71 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Create Table DDL
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard !definition.columns.isEmpty else { return nil }
+
+        let tableName = quoteIdentifier(definition.tableName)
+        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
+        let inlinePK = pkColumns.count == 1
+        var parts: [String] = definition.columns.map { sqliteColumnDefinition($0, inlinePK: inlinePK) }
+
+        if pkColumns.count > 1 {
+            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
+            parts.append("PRIMARY KEY (\(pkCols))")
+        }
+
+        for fk in definition.foreignKeys {
+            parts.append(sqliteForeignKeyDefinition(fk))
+        }
+
+        let sql = "CREATE TABLE \(tableName) (\n  " +
+            parts.joined(separator: ",\n  ") +
+            "\n);"
+
+        return sql
+    }
+
+    private func sqliteColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
+        var def = "\(quoteIdentifier(col.name)) \(col.dataType)"
+        if inlinePK && col.isPrimaryKey {
+            def += " PRIMARY KEY"
+            if col.autoIncrement {
+                def += " AUTOINCREMENT"
+            }
+        }
+        if !col.isNullable {
+            def += " NOT NULL"
+        }
+        if let defaultValue = col.defaultValue {
+            def += " DEFAULT \(sqliteDefaultValue(defaultValue))"
+        }
+        return def
+    }
+
+    private func sqliteDefaultValue(_ value: String) -> String {
+        let upper = value.uppercased()
+        if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_DATE" || upper == "CURRENT_TIME"
+            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
+            return value
+        }
+        return "'\(escapeStringLiteral(value))'"
+    }
+
+    private func sqliteForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
+        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        var def = "FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        if fk.onDelete != "NO ACTION" {
+            def += " ON DELETE \(fk.onDelete)"
+        }
+        if fk.onUpdate != "NO ACTION" {
+            def += " ON UPDATE \(fk.onUpdate)"
+        }
+        return def
+    }
+
     private func formatDDL(_ ddl: String) -> String {
         guard ddl.uppercased().hasPrefix("CREATE TABLE") else {
             return ddl

@@ -769,6 +769,105 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         """
     }
 
+    // MARK: - Create Table DDL
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard !definition.columns.isEmpty else { return nil }
+
+        let schema = definition.schema ?? _currentSchema
+        let qualifiedTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(definition.tableName))"
+        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
+        let inlinePK = pkColumns.count == 1
+        var parts: [String] = definition.columns.map { pgColumnDefinition($0, inlinePK: inlinePK) }
+
+        if pkColumns.count > 1 {
+            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
+            parts.append("PRIMARY KEY (\(pkCols))")
+        }
+
+        for fk in definition.foreignKeys {
+            parts.append(pgForeignKeyDefinition(fk))
+        }
+
+        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
+            parts.joined(separator: ",\n  ") +
+            "\n);"
+
+        var indexStatements: [String] = []
+        for index in definition.indexes {
+            indexStatements.append(pgIndexDefinition(index, qualifiedTable: qualifiedTable))
+        }
+        if !indexStatements.isEmpty {
+            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
+        }
+
+        return sql
+    }
+
+    private func pgColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
+        var dataType = col.dataType
+        if col.autoIncrement {
+            let upper = dataType.uppercased()
+            if upper == "BIGINT" || upper == "INT8" {
+                dataType = "BIGSERIAL"
+            } else {
+                dataType = "SERIAL"
+            }
+        }
+
+        var def = "\(quoteIdentifier(col.name)) \(dataType)"
+        if !col.autoIncrement {
+            if col.isNullable {
+                def += " NULL"
+            } else {
+                def += " NOT NULL"
+            }
+        }
+        if let defaultValue = col.defaultValue {
+            def += " DEFAULT \(pgDefaultValue(defaultValue))"
+        }
+        if inlinePK && col.isPrimaryKey {
+            def += " PRIMARY KEY"
+        }
+        return def
+    }
+
+    private func pgDefaultValue(_ value: String) -> String {
+        let upper = value.uppercased()
+        if upper == "NULL" || upper == "TRUE" || upper == "FALSE"
+            || upper == "CURRENT_TIMESTAMP" || upper == "NOW()"
+            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil
+            || upper.hasSuffix("::REGCLASS") {
+            return value
+        }
+        return "'\(escapeLiteral(value))'"
+    }
+
+    private func pgIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
+        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let unique = index.isUnique ? "UNIQUE " : ""
+        var def = "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable)"
+        if let type = index.indexType?.uppercased(),
+           ["BTREE", "HASH", "GIN", "GIST", "BRIN"].contains(type) {
+            def += " USING \(type.lowercased())"
+        }
+        def += " (\(cols))"
+        return def
+    }
+
+    private func pgForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
+        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        if fk.onDelete != "NO ACTION" {
+            def += " ON DELETE \(fk.onDelete)"
+        }
+        if fk.onUpdate != "NO ACTION" {
+            def += " ON UPDATE \(fk.onUpdate)"
+        }
+        return def
+    }
+
     // MARK: - Helpers
 
     private func stripLimitOffset(from query: String) -> String {

@@ -1112,6 +1112,64 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return (converted, paramMap)
     }
 
+    // MARK: - Create Table DDL
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard !definition.columns.isEmpty else { return nil }
+
+        let tableName = quoteIdentifier(definition.tableName)
+        let parts: [String] = definition.columns.map { clickhouseColumnDefinition($0) }
+
+        var sql = "CREATE TABLE \(tableName) (\n  " +
+            parts.joined(separator: ",\n  ") +
+            "\n)"
+
+        let engine = definition.engine ?? "MergeTree()"
+        sql += "\nENGINE = \(engine)"
+
+        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
+        if !pkColumns.isEmpty {
+            let orderCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
+            sql += "\nORDER BY (\(orderCols))"
+        } else {
+            sql += "\nORDER BY tuple()"
+        }
+
+        if let comment = definition.comment, !comment.isEmpty {
+            sql += "\nCOMMENT '\(escapeStringLiteral(comment))'"
+        }
+
+        return sql + ";"
+    }
+
+    private func clickhouseColumnDefinition(_ col: PluginColumnDefinition) -> String {
+        var dataType = col.dataType
+        if col.isNullable {
+            let upper = dataType.uppercased()
+            if !upper.hasPrefix("NULLABLE(") {
+                dataType = "Nullable(\(dataType))"
+            }
+        }
+
+        var def = "\(quoteIdentifier(col.name)) \(dataType)"
+        if let defaultValue = col.defaultValue {
+            def += " DEFAULT \(clickhouseDefaultValue(defaultValue))"
+        }
+        if let comment = col.comment, !comment.isEmpty {
+            def += " COMMENT '\(escapeStringLiteral(comment))'"
+        }
+        return def
+    }
+
+    private func clickhouseDefaultValue(_ value: String) -> String {
+        let upper = value.uppercased()
+        if upper == "NULL" || upper == "NOW()" || upper == "TODAY()"
+            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
+            return value
+        }
+        return "'\(escapeStringLiteral(value))'"
+    }
+
     // MARK: - TLS Delegate
 
     private class InsecureTLSDelegate: NSObject, URLSessionDelegate {
