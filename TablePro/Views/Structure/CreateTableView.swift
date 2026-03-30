@@ -85,38 +85,26 @@ struct CreateTableView: View {
                 Divider()
                     .frame(height: 20)
 
-                Text("Engine:")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.secondary)
-                Picker("", selection: $tableOptions.engine) {
+                Picker("Engine:", selection: $tableOptions.engine) {
                     ForEach(CreateTableOptions.engines, id: \.self) { engine in
                         Text(engine).tag(engine)
                     }
                 }
-                .labelsHidden()
-                .frame(width: 100)
+                .fixedSize()
 
-                Text("Charset:")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.secondary)
-                Picker("", selection: $tableOptions.charset) {
+                Picker("Charset:", selection: $tableOptions.charset) {
                     ForEach(CreateTableOptions.charsets, id: \.self) { cs in
                         Text(cs).tag(cs)
                     }
                 }
-                .labelsHidden()
-                .frame(width: 100)
+                .fixedSize()
 
-                Text("Collation:")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.secondary)
-                Picker("", selection: $tableOptions.collation) {
+                Picker("Collation:", selection: $tableOptions.collation) {
                     ForEach(CreateTableOptions.collations[tableOptions.charset] ?? [], id: \.self) { col in
                         Text(col).tag(col)
                     }
                 }
-                .labelsHidden()
-                .frame(width: 180)
+                .fixedSize()
             }
 
             Spacer()
