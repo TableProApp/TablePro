@@ -541,6 +541,7 @@ final class MainContentCommandActions {
     func toggleResults() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
         coordinator.tabManager.tabs[tabIndex].isResultsCollapsed.toggle()
+        coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].isResultsCollapsed
     }
 
     func previousResultTab() {

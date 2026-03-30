@@ -182,6 +182,7 @@ extension MainContentCoordinator {
         if updatedTab.isResultsCollapsed {
             updatedTab.isResultsCollapsed = false
         }
+        toolbarState.isResultsCollapsed = false
 
         tabManager.tabs[idx] = updatedTab
 

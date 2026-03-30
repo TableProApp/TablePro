@@ -161,6 +161,14 @@ struct TableProToolbar: ViewModifier {
                 }
 
                 ToolbarItem(placement: .primaryAction) {
+                    Button { actions?.toggleResults() } label: {
+                        Label("Results", systemImage: "rectangle.bottomhalf.inset.filled")
+                    }
+                    .help("Toggle Results (⌘⌥R)")
+                    .disabled(state.connectionState != .connected || state.isTableTab)
+                }
+
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         actions?.toggleRightSidebar()
                     } label: {

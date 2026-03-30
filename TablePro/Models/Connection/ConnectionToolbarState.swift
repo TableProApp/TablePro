@@ -174,6 +174,9 @@ final class ConnectionToolbarState {
     /// Whether the current tab is a table tab (enables filter/sort actions)
     var isTableTab: Bool = false
 
+    /// Whether the results panel is collapsed
+    var isResultsCollapsed: Bool = false
+
     /// Whether there are pending changes (data grid or file)
     var hasPendingChanges: Bool = false
 
