@@ -85,9 +85,21 @@ struct ResultsPanelView: View {
     private func closeResultSet(_ id: UUID) {
         guard let coord = coordinator,
               let tabIdx = coord.tabManager.selectedTabIndex else { return }
+        let rs = coord.tabManager.tabs[tabIdx].resultSets.first { $0.id == id }
+        guard rs?.isPinned != true else { return }
         coord.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == id }
         if tab.activeResultSetId == id {
-            coord.tabManager.tabs[tabIdx].activeResultSetId = tab.resultSets.last?.id
+            coord.tabManager.tabs[tabIdx].activeResultSetId =
+                coord.tabManager.tabs[tabIdx].resultSets.last?.id
+        }
+        if coord.tabManager.tabs[tabIdx].resultSets.isEmpty {
+            coord.tabManager.tabs[tabIdx].resultColumns = []
+            coord.tabManager.tabs[tabIdx].columnTypes = []
+            coord.tabManager.tabs[tabIdx].resultRows = []
+            coord.tabManager.tabs[tabIdx].errorMessage = nil
+            coord.tabManager.tabs[tabIdx].rowsAffected = 0
+            coord.tabManager.tabs[tabIdx].executionTime = nil
+            coord.tabManager.tabs[tabIdx].statusMessage = nil
         }
     }
 

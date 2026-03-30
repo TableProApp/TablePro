@@ -387,6 +387,12 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .nextResultTab))
             .disabled(!appState.isConnected)
+
+            Button("Close Result Tab") {
+                actions?.closeResultTab()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .closeResultTab))
+            .disabled(!appState.isConnected)
         }
 
         // Tab navigation shortcuts — native macOS window tabs

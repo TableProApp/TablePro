@@ -251,6 +251,7 @@
       }
     },
     "(%lld active)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1278,6 +1279,9 @@
           }
         }
       }
+    },
+    "%lld row(s) affected" : {
+
     },
     "%lld row%@ affected" : {
       "localizations" : {
@@ -2906,6 +2910,9 @@
         }
       }
     },
+    "Add at least one column with a name and type" : {
+
+    },
     "Add Check Constraint" : {
       "localizations" : {
         "tr" : {
@@ -2973,6 +2980,9 @@
         }
       }
     },
+    "Add columns to see the CREATE TABLE statement" : {
+
+    },
     "Add Connection" : {
       "localizations" : {
         "tr" : {
@@ -3017,7 +3027,11 @@
         }
       }
     },
+    "Add Filter" : {
+
+    },
     "Add Filter (Cmd+Shift+F)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -3038,6 +3052,9 @@
           }
         }
       }
+    },
+    "Add filter row" : {
+
     },
     "Add Folder..." : {
       "localizations" : {
@@ -4051,7 +4068,11 @@
         }
       }
     },
+    "Apply" : {
+
+    },
     "Apply All" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4095,7 +4116,11 @@
         }
       }
     },
+    "Apply filters" : {
+
+    },
     "Apply this filter" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4118,6 +4143,7 @@
       }
     },
     "Apply This Filter" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5639,6 +5665,9 @@
         }
       }
     },
+    "Charset:" : {
+
+    },
     "Chat" : {
       "localizations" : {
         "tr" : {
@@ -5978,6 +6007,7 @@
       }
     },
     "Clear search" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6000,6 +6030,7 @@
       }
     },
     "Clear Search" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6334,6 +6365,15 @@
         }
       }
     },
+    "Close Others" : {
+
+    },
+    "Close preview" : {
+
+    },
+    "Close Result Tab" : {
+
+    },
     "Close Tab" : {
       "localizations" : {
         "tr" : {
@@ -6424,6 +6464,9 @@
         }
       }
     },
+    "Collation:" : {
+
+    },
     "Color" : {
       "localizations" : {
         "tr" : {
@@ -6491,6 +6534,7 @@
       }
     },
     "Column" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7661,6 +7705,9 @@
         }
       }
     },
+    "Copied to clipboard" : {
+
+    },
     "Copied!" : {
       "localizations" : {
         "tr" : {
@@ -8328,6 +8375,9 @@
         }
       }
     },
+    "Create New Table..." : {
+
+    },
     "Create New Tag" : {
       "localizations" : {
         "tr" : {
@@ -8393,6 +8443,12 @@
           }
         }
       }
+    },
+    "Create Table" : {
+
+    },
+    "Create Table Failed" : {
+
     },
     "Created" : {
       "localizations" : {
@@ -9338,6 +9394,9 @@
         }
       }
     },
+    "DataGridView placeholder for: %@" : {
+
+    },
     "Date format:" : {
       "localizations" : {
         "tr" : {
@@ -10120,6 +10179,9 @@
         }
       }
     },
+    "Delete Selected" : {
+
+    },
     "Delete SSH Profile?" : {
       "localizations" : {
         "en" : {
@@ -10791,6 +10853,7 @@
       }
     },
     "Duplicate filter" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11549,6 +11612,9 @@
         }
       }
     },
+    "Engine:" : {
+
+    },
     "Enter a name for this filter preset" : {
       "localizations" : {
         "tr" : {
@@ -11614,6 +11680,9 @@
           }
         }
       }
+    },
+    "Enter table name" : {
+
     },
     "Enter the passphrase to decrypt and import connections." : {
       "localizations" : {
@@ -13836,7 +13905,11 @@
         }
       }
     },
+    "Filter column" : {
+
+    },
     "Filter column: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13902,7 +13975,11 @@
         }
       }
     },
+    "Filter operator" : {
+
+    },
     "Filter operator: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13924,7 +14001,11 @@
         }
       }
     },
+    "Filter options" : {
+
+    },
     "Filter presets" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13947,6 +14028,7 @@
       }
     },
     "Filter settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13969,6 +14051,7 @@
       }
     },
     "Filter Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13989,6 +14072,12 @@
           }
         }
       }
+    },
+    "Filter Settings..." : {
+
+    },
+    "Filter value" : {
+
     },
     "Filter with column" : {
       "localizations" : {
@@ -14077,6 +14166,9 @@
           }
         }
       }
+    },
+    "Fix with AI" : {
+
     },
     "Focus Border" : {
       "localizations" : {
@@ -14189,6 +14281,9 @@
           }
         }
       }
+    },
+    "Foreign Keys" : {
+
     },
     "Forever" : {
       "localizations" : {
@@ -14897,6 +14992,7 @@
       }
     },
     "History Limit:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15903,7 +15999,6 @@
       }
     },
     "Indexes" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19553,6 +19648,9 @@
         }
       }
     },
+    "Next Result" : {
+
+    },
     "Next Tab" : {
       "localizations" : {
         "tr" : {
@@ -21711,6 +21809,12 @@
         }
       }
     },
+    "Open File" : {
+
+    },
+    "Open File..." : {
+
+    },
     "Open MQL Editor" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -22543,6 +22647,9 @@
           }
         }
       }
+    },
+    "Pin Result" : {
+
     },
     "Pink" : {
       "localizations" : {
@@ -23483,6 +23590,9 @@
         }
       }
     },
+    "Preview Query" : {
+
+    },
     "Preview Schema Changes" : {
       "localizations" : {
         "tr" : {
@@ -23571,6 +23681,9 @@
           }
         }
       }
+    },
+    "Previous Result" : {
+
     },
     "Previous Tab" : {
       "localizations" : {
@@ -24221,6 +24334,7 @@
       }
     },
     "Query History:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24287,6 +24401,7 @@
       }
     },
     "Quick search across all columns..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -25073,6 +25188,9 @@
         }
       }
     },
+    "Remove all filters and reload" : {
+
+    },
     "Remove filter" : {
       "localizations" : {
         "tr" : {
@@ -25116,6 +25234,9 @@
           }
         }
       }
+    },
+    "Remove filter row" : {
+
     },
     "Remove Folder" : {
       "localizations" : {
@@ -25982,6 +26103,9 @@
         }
       }
     },
+    "Run a query to see results" : {
+
+    },
     "Run in New Tab" : {
       "localizations" : {
         "tr" : {
@@ -26182,6 +26306,7 @@
       }
     },
     "Save and load filter presets" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -26224,6 +26349,9 @@
           }
         }
       }
+    },
+    "Save As" : {
+
     },
     "Save as Favorite" : {
       "localizations" : {
@@ -26313,6 +26441,9 @@
           }
         }
       }
+    },
+    "Save As..." : {
+
     },
     "Save Changes" : {
       "localizations" : {
@@ -26473,6 +26604,9 @@
           }
         }
       }
+    },
+    "Save SQL file" : {
+
     },
     "Save Table Template" : {
       "extractionState" : "stale",
@@ -26896,6 +27030,9 @@
         }
       }
     },
+    "Second filter value" : {
+
+    },
     "Second value is required for BETWEEN" : {
       "localizations" : {
         "tr" : {
@@ -27214,7 +27351,11 @@
         }
       }
     },
+    "Select filter column" : {
+
+    },
     "Select filter for %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27235,6 +27376,9 @@
           }
         }
       }
+    },
+    "Select filter operator" : {
+
     },
     "Select Plugin" : {
       "localizations" : {
@@ -27280,6 +27424,9 @@
           }
         }
       }
+    },
+    "Select SQL files to open" : {
+
     },
     "Select Tab %lld" : {
       "localizations" : {
@@ -28298,6 +28445,12 @@
         }
       }
     },
+    "Size All Columns to Fit" : {
+
+    },
+    "Size to Fit" : {
+
+    },
     "Size:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28699,7 +28852,6 @@
       }
     },
     "SQL Preview" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30058,6 +30210,7 @@
       }
     },
     "Syncs connections, settings, and history across your Macs via iCloud." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30078,6 +30231,9 @@
           }
         }
       }
+    },
+    "Syncs connections, settings, and SSH profiles across your Macs via iCloud." : {
+
     },
     "Syncs passwords via iCloud Keychain (end-to-end encrypted)." : {
       "localizations" : {
@@ -30353,6 +30509,9 @@
           }
         }
       }
+    },
+    "Table Name:" : {
+
     },
     "Table: %@" : {
       "localizations" : {
@@ -32141,6 +32300,9 @@
         }
       }
     },
+    "Toggle Results" : {
+
+    },
     "Toggle Table Browser" : {
       "localizations" : {
         "tr" : {
@@ -32934,6 +33096,9 @@
           }
         }
       }
+    },
+    "Unpin" : {
+
     },
     "Unset" : {
       "localizations" : {
@@ -34125,6 +34290,9 @@
           }
         }
       }
+    },
+    "WHERE clause" : {
+
     },
     "WHERE clause..." : {
       "localizations" : {

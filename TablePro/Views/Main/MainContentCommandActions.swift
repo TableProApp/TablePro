@@ -563,6 +563,29 @@ final class MainContentCommandActions {
         coordinator.tabManager.tabs[tabIndex].activeResultSetId = tab.resultSets[currentIndex + 1].id
     }
 
+    func closeResultTab() {
+        guard let tabIdx = coordinator?.tabManager.selectedTabIndex else { return }
+        guard let tabs = coordinator?.tabManager.tabs, !tabs[tabIdx].resultSets.isEmpty else { return }
+        guard let activeId = tabs[tabIdx].activeResultSetId ?? tabs[tabIdx].resultSets.last?.id else { return }
+        let rs = tabs[tabIdx].resultSets.first { $0.id == activeId }
+        guard rs?.isPinned != true else { return }
+        coordinator?.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == activeId }
+        if tabs[tabIdx].activeResultSetId == activeId {
+            coordinator?.tabManager.tabs[tabIdx].activeResultSetId =
+                coordinator?.tabManager.tabs[tabIdx].resultSets.last?.id
+        }
+        // Clear legacy properties when no result sets remain
+        if coordinator?.tabManager.tabs[tabIdx].resultSets.isEmpty == true {
+            coordinator?.tabManager.tabs[tabIdx].resultColumns = []
+            coordinator?.tabManager.tabs[tabIdx].columnTypes = []
+            coordinator?.tabManager.tabs[tabIdx].resultRows = []
+            coordinator?.tabManager.tabs[tabIdx].errorMessage = nil
+            coordinator?.tabManager.tabs[tabIdx].rowsAffected = 0
+            coordinator?.tabManager.tabs[tabIdx].executionTime = nil
+            coordinator?.tabManager.tabs[tabIdx].statusMessage = nil
+        }
+    }
+
     // MARK: - Database Operations (Group A — Called Directly)
 
     func openDatabaseSwitcher() {

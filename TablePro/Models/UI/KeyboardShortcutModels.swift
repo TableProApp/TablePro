@@ -74,6 +74,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case toggleResults
     case previousResultTab
     case nextResultTab
+    case closeResultTab
 
     // Tabs
     case showPreviousTabBrackets
@@ -98,7 +99,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
              .duplicateRow, .truncateTable:
             return .edit
         case .toggleTableBrowser, .toggleInspector, .toggleFilters, .toggleHistory,
-             .toggleResults, .previousResultTab, .nextResultTab:
+             .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab:
             return .view
         case .showPreviousTabBrackets, .showNextTabBrackets,
              .previousTabArrows, .nextTabArrows:
@@ -144,6 +145,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleResults: return String(localized: "Toggle Results")
         case .previousResultTab: return String(localized: "Previous Result")
         case .nextResultTab: return String(localized: "Next Result")
+        case .closeResultTab: return String(localized: "Close Result Tab")
         case .showPreviousTabBrackets: return String(localized: "Show Previous Tab")
         case .showNextTabBrackets: return String(localized: "Show Next Tab")
         case .previousTabArrows: return String(localized: "Previous Tab (Alt)")
@@ -450,6 +452,7 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleResults: KeyCombo(key: "r", command: true, option: true),
         .previousResultTab: KeyCombo(key: "[", command: true),
         .nextResultTab: KeyCombo(key: "]", command: true),
+        .closeResultTab: KeyCombo(key: "w", command: true, shift: true),
 
         // Tabs
         .showPreviousTabBrackets: KeyCombo(key: "[", command: true, shift: true),

@@ -371,10 +371,21 @@ struct MainEditorContentView: View {
             ),
             onClose: { id in
                 guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
+                let rs = coordinator.tabManager.tabs[tabIdx].resultSets.first { $0.id == id }
+                guard rs?.isPinned != true else { return }
                 coordinator.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == id }
                 if tab.activeResultSetId == id {
                     coordinator.tabManager.tabs[tabIdx].activeResultSetId =
                         coordinator.tabManager.tabs[tabIdx].resultSets.last?.id
+                }
+                if coordinator.tabManager.tabs[tabIdx].resultSets.isEmpty {
+                    coordinator.tabManager.tabs[tabIdx].resultColumns = []
+                    coordinator.tabManager.tabs[tabIdx].columnTypes = []
+                    coordinator.tabManager.tabs[tabIdx].resultRows = []
+                    coordinator.tabManager.tabs[tabIdx].errorMessage = nil
+                    coordinator.tabManager.tabs[tabIdx].rowsAffected = 0
+                    coordinator.tabManager.tabs[tabIdx].executionTime = nil
+                    coordinator.tabManager.tabs[tabIdx].statusMessage = nil
                 }
             },
             onPin: { id in

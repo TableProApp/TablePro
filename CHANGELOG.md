@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Real-time SQL preview with syntax highlighting for CREATE TABLE DDL
 - Multi-database CREATE TABLE support: MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB
 - Auto-fit column width: double-click column divider, right-click header → "Size to Fit" / "Size All Columns to Fit"
+- Close Result Tab shortcut (`Cmd+Shift+W`) to close the active result tab when multiple are open
 
 ### Fixed
 
