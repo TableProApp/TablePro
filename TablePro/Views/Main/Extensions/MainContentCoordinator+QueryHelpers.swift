@@ -157,7 +157,28 @@ extension MainContentCoordinator {
             updatedTab.metadataVersion += 1
         }
 
-        // Auto-expand results pane when new results arrive
+        // Create a ResultSet for this single-statement execution
+        let rs = ResultSet(label: tableName ?? "Result")
+        rs.rowBuffer = updatedTab.rowBuffer
+        rs.executionTime = updatedTab.executionTime
+        rs.rowsAffected = updatedTab.rowsAffected
+        rs.statusMessage = updatedTab.statusMessage
+        rs.tableName = updatedTab.tableName
+        rs.isEditable = updatedTab.isEditable
+        rs.resultVersion = updatedTab.resultVersion
+        rs.metadataVersion = updatedTab.metadataVersion
+        rs.columnTypes = updatedTab.columnTypes
+        rs.columnDefaults = updatedTab.columnDefaults
+        rs.columnForeignKeys = updatedTab.columnForeignKeys
+        rs.columnEnumValues = updatedTab.columnEnumValues
+        rs.columnNullable = updatedTab.columnNullable
+
+        // Keep pinned results, replace unpinned
+        let pinned = updatedTab.resultSets.filter(\.isPinned)
+        updatedTab.resultSets = pinned + [rs]
+        updatedTab.activeResultSetId = rs.id
+
+        // Auto-expand results panel when new data arrives
         if updatedTab.isResultsCollapsed {
             updatedTab.isResultsCollapsed = false
         }

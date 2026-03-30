@@ -41,6 +41,7 @@ extension MainContentCoordinator {
             var totalRowsAffected = 0
             var executedCount = 0
             var failedSQL: String?
+            var newResultSets: [ResultSet] = []
 
             do {
                 guard let driver = DatabaseManager.shared.driver(for: conn.id) else {
@@ -69,6 +70,22 @@ extension MainContentCoordinator {
                         lastSelectResult = result
                         lastSelectSQL = sql
                     }
+
+                    // Build a ResultSet for this statement
+                    let stmtTableName = await MainActor.run { extractTableName(from: sql) }
+                    let rs = ResultSet(label: stmtTableName ?? "Result \(stmtIndex + 1)")
+                    // Deep copy to prevent C buffer retention issues
+                    rs.rowBuffer = RowBuffer(
+                        rows: result.rows.map { row in row.map { $0.map { String($0) } } },
+                        columns: result.columns.map { String($0) },
+                        columnTypes: result.columnTypes
+                    )
+                    rs.executionTime = result.executionTime
+                    rs.rowsAffected = result.rowsAffected
+                    rs.statusMessage = result.statusMessage
+                    rs.tableName = stmtTableName
+                    rs.resultVersion = 1
+                    newResultSets.append(rs)
 
                     // Record with semicolon preserved for history/favorites
                     let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
@@ -132,10 +149,15 @@ extension MainContentCoordinator {
                     updatedTab.isExecuting = false
                     updatedTab.lastExecutedAt = Date()
                     updatedTab.errorMessage = nil
-                    // Auto-expand results pane when new results arrive
+
+                    // Build ResultSet objects for each executed statement
+                    let pinnedResults = updatedTab.resultSets.filter(\.isPinned)
+                    updatedTab.resultSets = pinnedResults + newResultSets
+                    updatedTab.activeResultSetId = newResultSets.last?.id
                     if updatedTab.isResultsCollapsed {
                         updatedTab.isResultsCollapsed = false
                     }
+
                     tabManager.tabs[idx] = updatedTab
 
                     if tabManager.selectedTabId == tabId {
@@ -155,6 +177,11 @@ extension MainContentCoordinator {
                 let contextMsg = "Statement \(failedStmtIndex)/\(totalCount) failed: "
                     + error.localizedDescription
 
+                // Add an error ResultSet for the failed statement
+                let errorRS = ResultSet(label: "Error \(failedStmtIndex)")
+                errorRS.errorMessage = error.localizedDescription
+                newResultSets.append(errorRS)
+
                 await MainActor.run {
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
@@ -164,6 +191,12 @@ extension MainContentCoordinator {
                         errTab.errorMessage = contextMsg
                         errTab.isExecuting = false
                         errTab.executionTime = cumulativeTime
+
+                        // Attach accumulated ResultSets (successful + error)
+                        let pinnedResults = errTab.resultSets.filter(\.isPinned)
+                        errTab.resultSets = pinnedResults + newResultSets
+                        errTab.activeResultSetId = newResultSets.last?.id
+
                         tabManager.tabs[idx] = errTab
                     }
 
