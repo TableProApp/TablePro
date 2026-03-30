@@ -10,6 +10,13 @@ import Foundation
 import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
+    // MARK: - Table Operations
+
+    func createTable() {
+        guard !safeModeLevel.blocksAllWrites else { return }
+        tabManager.addCreateTableTab(databaseName: connection.database)
+    }
+
     // MARK: - View Operations
 
     func createView() {

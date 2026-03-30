@@ -338,6 +338,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         pluginDriver.generateMoveColumnSQL(table: table, column: column, afterColumn: afterColumn)
     }
 
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        pluginDriver.generateCreateTableSQL(definition: definition)
+    }
+
     // MARK: - Table Operations
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String] {

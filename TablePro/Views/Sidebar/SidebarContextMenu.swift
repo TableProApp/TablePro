@@ -49,6 +49,11 @@ struct SidebarContextMenu: View {
     }
 
     var body: some View {
+        Button("Create New Table...") {
+            coordinator?.createTable()
+        }
+        .disabled(isReadOnly)
+
         Button("Create New View...") {
             coordinator?.createView()
         }

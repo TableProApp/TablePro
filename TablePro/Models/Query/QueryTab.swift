@@ -14,6 +14,7 @@ import TableProPluginKit
 enum TabType: Equatable, Codable, Hashable {
     case query       // SQL editor tab
     case table       // Direct table view tab
+    case createTable // Create new table tab
 }
 
 /// Minimal representation of a tab for persistence
@@ -412,7 +413,7 @@ struct QueryTab: Identifiable, Equatable {
         self.isExecuting = false
         self.tableName = tableName
         self.primaryKeyColumn = nil
-        self.isEditable = tabType == .table  // Table tabs are editable by default
+        self.isEditable = tabType == .table
         self.isView = false
         self.databaseName = ""
         self.showStructure = false
@@ -624,6 +625,16 @@ final class QueryTabManager {
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
         newTab.databaseName = databaseName
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
+    func addCreateTableTab(databaseName: String = "") {
+        let tabTitle = String(localized: "Create Table")
+        var newTab = QueryTab(title: tabTitle, tabType: .createTable)
+        newTab.databaseName = databaseName
+        newTab.isEditable = false
+        newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
     }

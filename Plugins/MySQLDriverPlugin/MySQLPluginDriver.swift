@@ -605,6 +605,137 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "EXPLAIN \(sql)"
     }
 
+    // MARK: - Create Table DDL
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        let tableName = quoteIdentifier(definition.tableName)
+        let ifNotExists = definition.ifNotExists ? " IF NOT EXISTS" : ""
+
+        var parts: [String] = []
+
+        for column in definition.columns {
+            parts.append(buildColumnDefinitionSQL(column))
+        }
+
+        if !definition.primaryKeyColumns.isEmpty {
+            let pkCols = definition.primaryKeyColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            parts.append("PRIMARY KEY (\(pkCols))")
+        }
+
+        for index in definition.indexes {
+            parts.append(buildIndexDefinitionSQL(index))
+        }
+
+        for fk in definition.foreignKeys {
+            parts.append(buildForeignKeyDefinitionSQL(fk))
+        }
+
+        var sql = "CREATE TABLE\(ifNotExists) \(tableName) (\n"
+        sql += parts.map { "    \($0)" }.joined(separator: ",\n")
+        sql += "\n)"
+
+        var tableOptions: [String] = []
+        if let engine = definition.engine, !engine.isEmpty {
+            tableOptions.append("ENGINE=\(engine)")
+        }
+        if let charset = definition.charset, !charset.isEmpty {
+            tableOptions.append("DEFAULT CHARSET=\(charset)")
+        }
+        if let collation = definition.collation, !collation.isEmpty {
+            tableOptions.append("COLLATE=\(collation)")
+        }
+
+        if !tableOptions.isEmpty {
+            sql += " " + tableOptions.joined(separator: " ")
+        }
+
+        sql += ";"
+        return sql
+    }
+
+    private func buildColumnDefinitionSQL(_ column: PluginColumnDefinition) -> String {
+        var def = "\(quoteIdentifier(column.name)) \(column.dataType)"
+
+        if column.unsigned {
+            def += " UNSIGNED"
+        }
+        if column.isNullable {
+            def += " NULL"
+        } else {
+            def += " NOT NULL"
+        }
+        if let defaultValue = column.defaultValue {
+            let upper = defaultValue.uppercased()
+            if upper == "NULL" || upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
+                || defaultValue.hasPrefix("'") {
+                def += " DEFAULT \(defaultValue)"
+            } else if Int64(defaultValue) != nil || Double(defaultValue) != nil {
+                def += " DEFAULT \(defaultValue)"
+            } else {
+                def += " DEFAULT '\(escapeStringLiteral(defaultValue))'"
+            }
+        }
+        if column.autoIncrement {
+            def += " AUTO_INCREMENT"
+        }
+        if let onUpdate = column.onUpdate, !onUpdate.isEmpty {
+            let upper = onUpdate.uppercased()
+            if upper == "CURRENT_TIMESTAMP" || upper == "CURRENT_TIMESTAMP()"
+                || upper.hasPrefix("CURRENT_TIMESTAMP(") {
+                def += " ON UPDATE \(onUpdate)"
+            }
+        }
+        if let comment = column.comment, !comment.isEmpty {
+            def += " COMMENT '\(escapeStringLiteral(comment))'"
+        }
+
+        return def
+    }
+
+    private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
+        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        var def = ""
+
+        let upperType = index.indexType?.uppercased() ?? ""
+        if upperType == "FULLTEXT" {
+            def += "FULLTEXT INDEX"
+        } else if upperType == "SPATIAL" {
+            def += "SPATIAL INDEX"
+        } else if index.isUnique {
+            def += "UNIQUE INDEX"
+        } else {
+            def += "INDEX"
+        }
+
+        def += " \(quoteIdentifier(index.name)) (\(cols))"
+
+        if upperType == "BTREE" || upperType == "HASH" {
+            def += " USING \(upperType)"
+        }
+
+        return def
+    }
+
+    private func buildForeignKeyDefinitionSQL(_ fk: PluginForeignKeyDefinition) -> String {
+        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refTable = quoteIdentifier(fk.referencedTable)
+
+        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
+
+        let onDelete = fk.onDelete.uppercased()
+        if onDelete != "NO ACTION" {
+            def += " ON DELETE \(onDelete)"
+        }
+
+        let onUpdate = fk.onUpdate.uppercased()
+        if onUpdate != "NO ACTION" {
+            def += " ON UPDATE \(onUpdate)"
+        }
+
+        return def
+    }
+
     // MARK: - Column Reorder DDL
 
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {

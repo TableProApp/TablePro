@@ -172,6 +172,8 @@ struct MainEditorContentView: View {
             queryTabContent(tab: tab)
         case .table:
             tableTabContent(tab: tab)
+        case .createTable:
+            createTablePlaceholder
         }
     }
 
@@ -545,6 +547,15 @@ struct MainEditorContentView: View {
                 }
             }
         )
+    }
+
+    // MARK: - Create Table Placeholder
+
+    private var createTablePlaceholder: some View {
+        Text("Create Table - Coming Soon")
+            .font(.title2)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Empty State

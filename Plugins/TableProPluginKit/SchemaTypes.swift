@@ -87,3 +87,38 @@ public struct PluginForeignKeyDefinition: Sendable {
         self.onUpdate = onUpdate
     }
 }
+
+/// Full table definition for CREATE TABLE DDL generation
+public struct PluginCreateTableDefinition: Sendable {
+    public let tableName: String
+    public let columns: [PluginColumnDefinition]
+    public let indexes: [PluginIndexDefinition]
+    public let foreignKeys: [PluginForeignKeyDefinition]
+    public let primaryKeyColumns: [String]
+    public let engine: String?
+    public let charset: String?
+    public let collation: String?
+    public let ifNotExists: Bool
+
+    public init(
+        tableName: String,
+        columns: [PluginColumnDefinition],
+        indexes: [PluginIndexDefinition] = [],
+        foreignKeys: [PluginForeignKeyDefinition] = [],
+        primaryKeyColumns: [String] = [],
+        engine: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil,
+        ifNotExists: Bool = false
+    ) {
+        self.tableName = tableName
+        self.columns = columns
+        self.indexes = indexes
+        self.foreignKeys = foreignKeys
+        self.primaryKeyColumns = primaryKeyColumns
+        self.engine = engine
+        self.charset = charset
+        self.collation = collation
+        self.ifNotExists = ifNotExists
+    }
+}

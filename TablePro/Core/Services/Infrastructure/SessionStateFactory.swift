@@ -88,6 +88,10 @@ enum SessionStateFactory {
                     databaseName: payload.databaseName ?? connection.database,
                     sourceFileURL: payload.sourceFileURL
                 )
+            case .createTable:
+                tabMgr.addCreateTableTab(
+                    databaseName: payload.databaseName ?? connection.database
+                )
             }
         } else if payload?.isNewTab == true {
             tabMgr.addTab(databaseName: payload?.databaseName ?? connection.database)
