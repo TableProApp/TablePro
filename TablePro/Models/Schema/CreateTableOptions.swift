@@ -36,5 +36,11 @@ struct CreateTableOptions: Hashable {
         "binary": ["binary"],
         "utf16": ["utf16_unicode_ci", "utf16_general_ci", "utf16_bin"],
         "utf32": ["utf32_unicode_ci", "utf32_general_ci", "utf32_bin"],
+        "cp1251": ["cp1251_general_ci", "cp1251_ukrainian_ci", "cp1251_bin"],
+        "big5": ["big5_chinese_ci", "big5_bin"],
+        "euckr": ["euckr_korean_ci", "euckr_bin"],
+        "gb2312": ["gb2312_chinese_ci", "gb2312_bin"],
+        "gbk": ["gbk_chinese_ci", "gbk_bin"],
+        "sjis": ["sjis_japanese_ci", "sjis_bin"],
     ]
 }

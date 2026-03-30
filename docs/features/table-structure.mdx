@@ -114,6 +114,22 @@ Click a table in the sidebar, then click the **Structure** tab. Or right-click a
 
 Select all with `Cmd+A` and copy with `Cmd+C`. Useful for recreating tables, documenting schemas, or version control.
 
+## Creating a New Table
+
+Right-click in the sidebar and select **Create New Table...**. A visual editor opens with:
+
+- **Table Name** field and database-specific options (Engine, Charset, Collation for MySQL/MariaDB)
+- **Columns tab** - define columns with name, type, nullable, default, primary key, auto increment, and comment
+- **Indexes tab** - add indexes with type (BTREE, HASH, FULLTEXT, SPATIAL) and uniqueness
+- **Foreign Keys tab** - define relationships with referenced tables, ON DELETE/ON UPDATE actions
+- **SQL Preview tab** - live-generated CREATE TABLE DDL with syntax highlighting
+
+Click **Create Table** (or `Cmd+Return`) to execute. The new table appears in the sidebar immediately.
+
+<Note>
+Supported databases: MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, ClickHouse, and DuckDB. Each generates database-specific DDL syntax.
+</Note>
+
 ## Modifying Structure
 
 <Warning>

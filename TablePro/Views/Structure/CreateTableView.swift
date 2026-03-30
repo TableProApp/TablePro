@@ -11,11 +11,20 @@ import os
 import SwiftUI
 import TableProPluginKit
 
-private enum CreateTableTab: String, CaseIterable {
-    case columns = "Columns"
-    case indexes = "Indexes"
-    case foreignKeys = "Foreign Keys"
-    case sqlPreview = "SQL Preview"
+private enum CreateTableTab: CaseIterable {
+    case columns
+    case indexes
+    case foreignKeys
+    case sqlPreview
+
+    var displayName: String {
+        switch self {
+        case .columns: String(localized: "Columns")
+        case .indexes: String(localized: "Indexes")
+        case .foreignKeys: String(localized: "Foreign Keys")
+        case .sqlPreview: String(localized: "SQL Preview")
+        }
+    }
 }
 
 struct CreateTableView: View {
@@ -156,7 +165,7 @@ struct CreateTableView: View {
 
             Picker("", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tab.displayName).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -253,6 +262,8 @@ struct CreateTableView: View {
         }
         .onAppear { generatePreviewSQL() }
         .onChange(of: structureChangeManager.reloadVersion) { generatePreviewSQL() }
+        .onChange(of: tableName) { generatePreviewSQL() }
+        .onChange(of: tableOptions) { generatePreviewSQL() }
     }
 
     // MARK: - Cell Editing
