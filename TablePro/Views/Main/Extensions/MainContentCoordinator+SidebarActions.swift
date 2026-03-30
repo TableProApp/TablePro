@@ -15,12 +15,16 @@ extension MainContentCoordinator {
     func createNewTable() {
         guard !safeModeLevel.blocksAllWrites else { return }
 
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .createTable,
-            databaseName: connection.database
-        )
-        WindowOpener.shared.openNativeTab(payload)
+        if tabManager.tabs.isEmpty {
+            tabManager.addCreateTableTab(databaseName: connection.database)
+        } else {
+            let payload = EditorTabPayload(
+                connectionId: connection.id,
+                tabType: .createTable,
+                databaseName: connection.database
+            )
+            WindowOpener.shared.openNativeTab(payload)
+        }
     }
 
     // MARK: - View Operations
