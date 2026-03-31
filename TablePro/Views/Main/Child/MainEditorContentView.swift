@@ -337,6 +337,9 @@ struct MainEditorContentView: View {
                         executionTime: tab.executionTime,
                         statusMessage: tab.statusMessage
                     )
+                } else if tab.resultColumns.isEmpty && tab.resultSets.isEmpty {
+                    // All result tabs closed — empty grid
+                    Spacer()
                 } else {
                     // Filter panel (collapsible, above data grid)
                     if filterStateManager.isVisible && tab.tabType == .table {
