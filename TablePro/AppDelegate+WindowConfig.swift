@@ -339,6 +339,12 @@ extension AppDelegate {
                     for window in NSApp.windows where self.isWelcomeWindow(window) {
                         window.close()
                     }
+                } catch is CancellationError {
+                    // User cancelled password prompt at startup — return to welcome
+                    for window in NSApp.windows where self.isMainWindow(window) {
+                        window.close()
+                    }
+                    self.openWelcomeWindow()
                 } catch {
                     windowLogger.error("Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)")
 

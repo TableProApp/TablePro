@@ -430,6 +430,20 @@ extension AppDelegate {
     // MARK: - Connection Failure
 
     func handleConnectionFailure(_ error: Error) async {
+        // User cancelled password prompt — clean up windows silently, no error dialog
+        if error is CancellationError {
+            for window in NSApp.windows where isMainWindow(window) {
+                let hasActiveSession = DatabaseManager.shared.activeSessions.values.contains {
+                    window.subtitle == $0.connection.name
+                        || window.subtitle == "\($0.connection.name) — Preview"
+                }
+                if !hasActiveSession { window.close() }
+            }
+            if !NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) {
+                openWelcomeWindow()
+            }
+            return
+        }
         for window in NSApp.windows where isMainWindow(window) {
             let hasActiveSession = DatabaseManager.shared.activeSessions.values.contains {
                 window.subtitle == $0.connection.name

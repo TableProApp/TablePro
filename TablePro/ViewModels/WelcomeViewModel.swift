@@ -215,6 +215,10 @@ final class WelcomeViewModel {
         Task {
             do {
                 try await dbManager.connectToSession(connection)
+            } catch is CancellationError {
+                // User cancelled password prompt — return to welcome
+                NSApplication.shared.closeWindows(withId: "main")
+                self.openWindow?(id: "welcome")
             } catch {
                 if case PluginError.pluginNotInstalled = error {
                     Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
@@ -237,6 +241,9 @@ final class WelcomeViewModel {
         Task {
             do {
                 try await dbManager.connectToSession(connection)
+            } catch is CancellationError {
+                NSApplication.shared.closeWindows(withId: "main")
+                self.openWindow?(id: "welcome")
             } catch {
                 Self.logger.error(
                     "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")

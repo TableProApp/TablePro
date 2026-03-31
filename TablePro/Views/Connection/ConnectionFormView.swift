@@ -956,21 +956,28 @@ struct ConnectionFormView: View {
             do {
                 try await dbManager.connectToSession(connection)
             } catch {
-                if case PluginError.pluginNotInstalled = error {
-                    Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
-                    handleMissingPlugin(connection: connection)
-                } else {
-                    Self.logger.error(
-                        "Failed to connect: \(error.localizedDescription, privacy: .public)")
-                    NSApplication.shared.closeWindows(withId: "main")
-                    openWindow(id: "welcome")
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "Connection Failed"),
-                        message: error.localizedDescription,
-                        window: nil
-                    )
-                }
+                handleConnectError(error, connection: connection)
             }
+        }
+    }
+
+    private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
+        if error is CancellationError {
+            NSApplication.shared.closeWindows(withId: "main")
+            openWindow(id: "welcome")
+        } else if case PluginError.pluginNotInstalled = error {
+            Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
+            handleMissingPlugin(connection: connection)
+        } else {
+            Self.logger.error(
+                "Failed to connect: \(error.localizedDescription, privacy: .public)")
+            NSApplication.shared.closeWindows(withId: "main")
+            openWindow(id: "welcome")
+            AlertHelper.showErrorSheet(
+                title: String(localized: "Connection Failed"),
+                message: error.localizedDescription,
+                window: nil
+            )
         }
     }
 
@@ -989,15 +996,7 @@ struct ConnectionFormView: View {
             do {
                 try await dbManager.connectToSession(connection)
             } catch {
-                Self.logger.error(
-                    "Failed to connect after plugin install: \(error.localizedDescription, privacy: .public)")
-                NSApplication.shared.closeWindows(withId: "main")
-                openWindow(id: "welcome")
-                AlertHelper.showErrorSheet(
-                    title: String(localized: "Connection Failed"),
-                    message: error.localizedDescription,
-                    window: nil
-                )
+                handleConnectError(error, connection: connection)
             }
         }
     }
