@@ -22,7 +22,7 @@ struct ResultTabBar: View {
                 }
             }
         }
-        .frame(height: 28)
+        .frame(height: 32)
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
@@ -31,7 +31,7 @@ struct ResultTabBar: View {
         return HStack(spacing: 4) {
             if rs.isPinned {
                 Image(systemName: "pin.fill")
-                    .font(.system(size: 8))
+                    .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
             Text(rs.label)
@@ -47,17 +47,21 @@ struct ResultTabBar: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(isActive ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.3) : Color.clear)
-        .cornerRadius(4)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(isActive ? Color(nsColor: .selectedControlColor) : Color.clear)
+        )
         .contentShape(Rectangle())
         .onTapGesture { activeResultSetId = rs.id }
         .contextMenu {
-            Button(rs.isPinned ? "Unpin" : "Pin Result") { onPin?(rs.id) }
+            Button(rs.isPinned ? String(localized: "Unpin") : String(localized: "Pin Result")) {
+                onPin?(rs.id)
+            }
             Divider()
-            Button("Close") { onClose?(rs.id) }
+            Button(String(localized: "Close")) { onClose?(rs.id) }
                 .disabled(rs.isPinned)
-            Button("Close Others") {
+            Button(String(localized: "Close Others")) {
                 for other in resultSets where other.id != rs.id && !other.isPinned {
                     onClose?(other.id)
                 }
@@ -65,4 +69,3 @@ struct ResultTabBar: View {
         }
     }
 }
-

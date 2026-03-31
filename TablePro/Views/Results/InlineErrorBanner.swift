@@ -10,7 +10,6 @@ import SwiftUI
 struct InlineErrorBanner: View {
     let message: String
     var onDismiss: (() -> Void)?
-    var onAIFix: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -21,11 +20,6 @@ struct InlineErrorBanner: View {
                 .lineLimit(3)
                 .textSelection(.enabled)
             Spacer()
-            if let onAIFix {
-                Button("Fix with AI") { onAIFix() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-            }
             if let onDismiss {
                 Button { onDismiss() } label: {
                     Image(systemName: "xmark")
@@ -41,16 +35,9 @@ struct InlineErrorBanner: View {
 }
 
 #Preview {
-    VStack {
-        InlineErrorBanner(
-            message: "ERROR 1064 (42000): You have an error in your SQL syntax",
-            onDismiss: {},
-            onAIFix: {}
-        )
-        InlineErrorBanner(
-            message: "Connection refused",
-            onDismiss: {}
-        )
-    }
+    InlineErrorBanner(
+        message: "ERROR 1064 (42000): You have an error in your SQL syntax",
+        onDismiss: {}
+    )
     .frame(width: 600)
 }

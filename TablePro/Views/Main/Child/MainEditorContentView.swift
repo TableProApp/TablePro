@@ -330,16 +330,16 @@ struct MainEditorContentView: View {
                     )
                 } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
                     && tab.lastExecutedAt != nil && !tab.isExecuting
-                    && !tab.resultSets.isEmpty
                 {
-                    ResultSuccessView(
-                        rowsAffected: tab.rowsAffected,
-                        executionTime: tab.executionTime,
-                        statusMessage: tab.statusMessage
-                    )
-                } else if tab.resultColumns.isEmpty && tab.resultSets.isEmpty {
-                    // All result tabs closed — empty grid
-                    Spacer()
+                    if tab.resultSets.isEmpty {
+                        Spacer()
+                    } else {
+                        ResultSuccessView(
+                            rowsAffected: tab.rowsAffected,
+                            executionTime: tab.executionTime,
+                            statusMessage: tab.statusMessage
+                        )
+                    }
                 } else {
                     // Filter panel (collapsible, above data grid)
                     if filterStateManager.isVisible && tab.tabType == .table {
@@ -381,7 +381,9 @@ struct MainEditorContentView: View {
                 coordinator.closeResultSet(id: id)
             },
             onPin: { id in
-                tab.resultSets.first { $0.id == id }?.isPinned.toggle()
+                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
+                coordinator.tabManager.tabs[tabIdx].resultSets.first { $0.id == id }?.isPinned.toggle()
+                coordinator.tabManager.tabs[tabIdx].resultVersion += 1
             }
         )
     }
