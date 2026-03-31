@@ -973,11 +973,14 @@ struct ConnectionFormView: View { // swiftlint:disable:this type_body_length
                         if isTesting {
                             ProgressView()
                                 .controlSize(.small)
+                        } else if testSucceeded {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
                         } else {
-                            Image(systemName: testSucceeded ? "checkmark.circle.fill" : "bolt.horizontal")
-                                .foregroundStyle(testSucceeded ? .green : .secondary)
+                            Image(systemName: "bolt.horizontal")
+                                .foregroundStyle(.secondary)
                         }
-                        Text("Test Connection")
+                        Text(testSucceeded ? String(localized: "Connected") : String(localized: "Test Connection"))
                     }
                 }
                 .disabled(isTesting || isInstallingPlugin || !isValid)

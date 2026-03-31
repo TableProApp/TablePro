@@ -13,6 +13,7 @@ struct GeneralSettingsView: View {
     var updaterBridge: UpdaterBridge
     @Bindable private var settingsManager = AppSettingsManager.shared
     @State private var initialLanguage: AppLanguage?
+    @State private var showResetConfirmation = false
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
@@ -82,9 +83,23 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Button(String(localized: "Reset All Settings to Defaults"), role: .destructive) {
+                    showResetConfirmation = true
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+        .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
+            Button(String(localized: "Reset"), role: .destructive) {
+                settingsManager.resetToDefaults()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text("This will reset all settings across every section to their default values.")
+        }
         .onAppear {
             if initialLanguage == nil {
                 initialLanguage = settings.language
