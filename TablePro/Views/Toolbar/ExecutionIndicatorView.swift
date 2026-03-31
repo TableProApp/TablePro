@@ -21,9 +21,12 @@ struct ExecutionIndicatorView: View {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(String(localized: "Query executing"))
-                    .help("Query executing...")
                 if let progress = clickHouseProgress {
                     Text(progress.formattedLive)
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+                        .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
+                } else {
+                    Text("Executing...")
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 }
