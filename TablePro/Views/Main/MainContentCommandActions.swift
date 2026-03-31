@@ -586,6 +586,8 @@ final class MainContentCommandActions {
             coordinator?.tabManager.tabs[tabIdx].executionTime = nil
             coordinator?.tabManager.tabs[tabIdx].statusMessage = nil
             coordinator?.tabManager.tabs[tabIdx].resultVersion += 1
+            coordinator?.tabManager.tabs[tabIdx].isResultsCollapsed = true
+            coordinator?.toolbarState.isResultsCollapsed = true
         }
     }
 

@@ -102,6 +102,8 @@ struct ResultsPanelView: View {
             coord.tabManager.tabs[tabIdx].executionTime = nil
             coord.tabManager.tabs[tabIdx].statusMessage = nil
             coord.tabManager.tabs[tabIdx].resultVersion += 1
+            coord.tabManager.tabs[tabIdx].isResultsCollapsed = true
+            coord.toolbarState.isResultsCollapsed = true
         }
     }
 
