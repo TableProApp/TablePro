@@ -230,7 +230,12 @@ final class DataGridCellFactory {
             isNewCell = true
         }
 
-        if !isNewCell && cell.lineBreakMode != .byTruncatingTail {
+        if !isNewCell && (
+            cell.lineBreakMode != .byTruncatingTail ||
+            cell.maximumNumberOfLines != 1 ||
+            cell.cell?.truncatesLastVisibleLine != true ||
+            cell.cell?.usesSingleLineMode != true
+        ) {
             cell.lineBreakMode = .byTruncatingTail
             cell.maximumNumberOfLines = 1
             cell.cell?.truncatesLastVisibleLine = true

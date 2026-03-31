@@ -284,8 +284,11 @@ struct DataGridView: NSViewRepresentable {
         coordinator.rebuildColumnMetadataCache()
 
         if previousIdentity == nil || previousIdentity?.rowCount == 0 {
-            let visibleRows = Int(tableView.visibleRect.height / tableView.rowHeight) + 5
-            coordinator.rowProvider.preWarmDisplayCache(upTo: visibleRows)
+            let rowH = tableView.rowHeight
+            if rowH > 0 {
+                let visibleRows = Int(tableView.visibleRect.height / rowH) + 5
+                coordinator.rowProvider.preWarmDisplayCache(upTo: visibleRows)
+            }
         }
 
         coordinator.changeManager = changeManager
