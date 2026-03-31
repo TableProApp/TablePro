@@ -199,6 +199,18 @@ internal final class ThemeEngine {
         availableThemes = ThemeStorage.loadAllThemes()
     }
 
+    // MARK: - Editor Font Size Zoom
+
+    func adjustEditorFontSize(by delta: Int) {
+        var theme = activeTheme
+        let newSize = max(9, min(24, theme.fonts.editorFontSize + delta))
+        guard newSize != theme.fonts.editorFontSize else { return }
+        theme.fonts.editorFontSize = newSize
+        activeTheme = theme
+        editorFonts = EditorFontCache(from: theme.fonts)
+        notifyThemeDidChange()
+    }
+
     // MARK: - Font Cache Reload (accessibility)
 
     func reloadFontCaches() {

@@ -393,6 +393,18 @@ struct AppMenuCommands: Commands {
             }
             .optionalKeyboardShortcut(shortcut(for: .closeResultTab))
             .disabled(!appState.isConnected)
+
+            Divider()
+
+            Button("Zoom In") {
+                ThemeEngine.shared.adjustEditorFontSize(by: 1)
+            }
+            .keyboardShortcut("=", modifiers: .command)
+
+            Button("Zoom Out") {
+                ThemeEngine.shared.adjustEditorFontSize(by: -1)
+            }
+            .keyboardShortcut("-", modifiers: .command)
         }
 
         // Tab navigation shortcuts — native macOS window tabs
