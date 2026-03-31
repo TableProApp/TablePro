@@ -161,6 +161,10 @@ struct MainEditorContentView: View {
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }
+        .onChange(of: tabManager.selectedTab?.activeResultSetId) { _, _ in
+            guard let tab = tabManager.selectedTab else { return }
+            cacheRowProvider(for: tab)
+        }
     }
 
     // MARK: - Tab Content
@@ -472,7 +476,20 @@ struct MainEditorContentView: View {
     }
 
     private func makeRowProvider(for tab: QueryTab) -> InMemoryRowProvider {
-        InMemoryRowProvider(
+        // Use active ResultSet data when available (multi-statement results)
+        if let rs = tab.activeResultSet, !rs.resultColumns.isEmpty {
+            return InMemoryRowProvider(
+                rowBuffer: rs.rowBuffer,
+                sortIndices: sortIndicesForTab(tab),
+                columns: rs.resultColumns,
+                columnDefaults: rs.columnDefaults,
+                columnTypes: rs.columnTypes,
+                columnForeignKeys: rs.columnForeignKeys,
+                columnEnumValues: rs.columnEnumValues,
+                columnNullable: rs.columnNullable
+            )
+        }
+        return InMemoryRowProvider(
             rowBuffer: tab.rowBuffer,
             sortIndices: sortIndicesForTab(tab),
             columns: tab.resultColumns,
