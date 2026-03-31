@@ -72,6 +72,11 @@ struct PaginationControlsView: View {
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 60)
 
+            if pagination.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
             // Next page button
             Button(action: onNext) {
                 Image(systemName: "chevron.right")
