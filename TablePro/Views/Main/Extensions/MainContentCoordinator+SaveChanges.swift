@@ -298,7 +298,7 @@ extension MainContentCoordinator {
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Save Failed"),
                     message: error.localizedDescription,
-                    window: NSApplication.shared.keyWindow
+                    window: contentWindow
                 )
 
                 // Restore operations on failure so user can retry

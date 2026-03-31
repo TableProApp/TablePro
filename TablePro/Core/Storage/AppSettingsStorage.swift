@@ -160,6 +160,20 @@ final class AppSettingsStorage {
         defaults.string(forKey: "com.TablePro.lastSelectedDatabase.\(connectionId)")
     }
 
+    // MARK: - Last Selected Schema (per connection)
+
+    func saveLastSchema(_ schema: String?, for connectionId: UUID) {
+        if let schema {
+            defaults.set(schema, forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
+        } else {
+            defaults.removeObject(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
+        }
+    }
+
+    func loadLastSchema(for connectionId: UUID) -> String? {
+        defaults.string(forKey: "com.TablePro.lastSelectedSchema.\(connectionId)")
+    }
+
     // MARK: - Onboarding
 
     /// Check if user has completed onboarding

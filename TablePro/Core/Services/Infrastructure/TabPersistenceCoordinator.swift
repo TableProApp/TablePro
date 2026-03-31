@@ -148,6 +148,7 @@ internal final class TabPersistenceCoordinator {
             tableName: tab.tableName,
             isView: tab.isView,
             databaseName: tab.databaseName,
+            schemaName: tab.schemaName,
             sourceFileURL: tab.sourceFileURL
         )
     }

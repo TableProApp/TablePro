@@ -523,7 +523,8 @@ struct MainContentView: View {
                 if let tableName = restoredTabs[i].tableName {
                     restoredTabs[i].query = QueryTab.buildBaseTableQuery(
                         tableName: tableName,
-                        databaseType: connection.type
+                        databaseType: connection.type,
+                        schemaName: restoredTabs[i].schemaName
                     )
                 }
             }
@@ -633,6 +634,7 @@ struct MainContentView: View {
             isPreview: isPreview
         )
         viewWindow = window
+        coordinator.contentWindow = window
         isKeyWindow = window.isKeyWindow
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
@@ -841,6 +843,15 @@ struct MainContentView: View {
                 selectedTab.databaseName != session.activeDatabase
             {
                 Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
+            } else if let selectedTab = tabManager.selectedTab,
+                let tabSchema = selectedTab.schemaName,
+                !tabSchema.isEmpty,
+                tabSchema != session.currentSchema
+            {
+                // Restore schema on the driver without clearing tabs (unlike switchSchema which resets UI)
+                Task {
+                    await coordinator.restoreSchemaAndRunQuery(tabSchema)
+                }
             } else {
                 coordinator.runQuery()
             }

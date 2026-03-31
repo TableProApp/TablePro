@@ -26,6 +26,7 @@ struct PersistedTab: Codable {
     let tableName: String?
     var isView: Bool = false
     var databaseName: String = ""
+    var schemaName: String?
     var sourceFileURL: URL?
 }
 
@@ -340,6 +341,7 @@ struct QueryTab: Identifiable, Equatable {
     var isEditable: Bool
     var isView: Bool  // True for database views (read-only)
     var databaseName: String  // Database this tab was opened in (for multi-database restore)
+    var schemaName: String?  // Schema this tab was opened in (for multi-schema restore, e.g. PostgreSQL)
     var showStructure: Bool  // Toggle to show structure view instead of data
     var explainText: String?
     var explainExecutionTime: TimeInterval?
@@ -426,6 +428,7 @@ struct QueryTab: Identifiable, Equatable {
         self.isEditable = tabType == .table
         self.isView = false
         self.databaseName = ""
+        self.schemaName = nil
         self.showStructure = false
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
@@ -460,6 +463,7 @@ struct QueryTab: Identifiable, Equatable {
         self.isEditable = persisted.tabType == .table && !persisted.isView
         self.isView = persisted.isView
         self.databaseName = persisted.databaseName
+        self.schemaName = persisted.schemaName
         self.showStructure = false
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
@@ -479,6 +483,7 @@ struct QueryTab: Identifiable, Equatable {
     @MainActor static func buildBaseTableQuery(
         tableName: String,
         databaseType: DatabaseType,
+        schemaName: String? = nil,
         quoteIdentifier: ((String) -> String)? = nil
     ) -> String {
         let quote = quoteIdentifier ?? quoteIdentifierFromDialect(PluginManager.shared.sqlDialect(for: databaseType))
@@ -499,13 +504,18 @@ struct QueryTab: Identifiable, Equatable {
         case .bash:
             return "SCAN 0 MATCH * COUNT \(pageSize)"
         default:
-            let quotedName = quote(tableName)
+            let qualifiedName: String
+            if let schema = schemaName, !schema.isEmpty {
+                qualifiedName = "\(quote(schema)).\(quote(tableName))"
+            } else {
+                qualifiedName = quote(tableName)
+            }
             switch PluginManager.shared.paginationStyle(for: databaseType) {
             case .offsetFetch:
                 let orderBy = PluginManager.shared.offsetFetchOrderBy(for: databaseType)
-                return "SELECT * FROM \(quotedName) \(orderBy) OFFSET 0 ROWS FETCH NEXT \(pageSize) ROWS ONLY;"
+                return "SELECT * FROM \(qualifiedName) \(orderBy) OFFSET 0 ROWS FETCH NEXT \(pageSize) ROWS ONLY;"
             case .limit:
-                return "SELECT * FROM \(quotedName) LIMIT \(pageSize);"
+                return "SELECT * FROM \(qualifiedName) LIMIT \(pageSize);"
             }
         }
     }
@@ -532,6 +542,7 @@ struct QueryTab: Identifiable, Equatable {
             tableName: tableName,
             isView: isView,
             databaseName: databaseName,
+            schemaName: schemaName,
             sourceFileURL: sourceFileURL
         )
     }
@@ -695,7 +706,7 @@ final class QueryTabManager {
     func replaceTabContent(
         tableName: String, databaseType: DatabaseType = .mysql,
         isView: Bool = false, databaseName: String = "",
-        isPreview: Bool = false,
+        schemaName: String? = nil, isPreview: Bool = false,
         quoteIdentifier: ((String) -> String)? = nil
     ) -> Bool {
         guard let selectedId = selectedTabId,
@@ -707,6 +718,7 @@ final class QueryTabManager {
         let query = QueryTab.buildBaseTableQuery(
             tableName: tableName,
             databaseType: databaseType,
+            schemaName: schemaName,
             quoteIdentifier: quoteIdentifier
         )
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -733,6 +745,7 @@ final class QueryTabManager {
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
         tab.databaseName = databaseName
+        tab.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         return true

@@ -71,6 +71,7 @@ enum SessionStateFactory {
                     if let index = tabMgr.selectedTabIndex {
                         tabMgr.tabs[index].isView = payload.isView
                         tabMgr.tabs[index].isEditable = !payload.isView
+                        tabMgr.tabs[index].schemaName = payload.schemaName
                         if payload.showStructure {
                             tabMgr.tabs[index].showStructure = true
                         }

@@ -34,6 +34,8 @@ extension MainContentCoordinator {
             currentDatabase = connection.database
         }
 
+        let currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
+
         // Fast path: if this table is already the active tab in the same database, skip all work
         if let current = tabManager.selectedTab,
            current.tabType == .table,
@@ -90,6 +92,7 @@ extension MainContentCoordinator {
             if let tabIndex = tabManager.selectedTabIndex {
                 tabManager.tabs[tabIndex].isView = isView
                 tabManager.tabs[tabIndex].isEditable = !isView
+                tabManager.tabs[tabIndex].schemaName = currentSchema
                 tabManager.tabs[tabIndex].pagination.reset()
                 AppState.shared.isCurrentTabEditable = !isView && tableName.isEmpty == false
                 toolbarState.isTableTab = true
@@ -116,7 +119,8 @@ extension MainContentCoordinator {
             if tabManager.replaceTabContent(
                 tableName: tableName,
                 databaseType: connection.type,
-                databaseName: currentDatabase
+                databaseName: currentDatabase,
+                schemaName: currentSchema
             ) {
                 filterStateManager.clearAll()
                 if let tabIndex = tabManager.selectedTabIndex {
@@ -143,6 +147,7 @@ extension MainContentCoordinator {
                 tabType: .table,
                 tableName: tableName,
                 databaseName: currentDatabase,
+                schemaName: currentSchema,
                 isView: isView,
                 showStructure: showStructure
             )
@@ -152,7 +157,7 @@ extension MainContentCoordinator {
 
         // Preview tab mode: reuse or create a preview tab instead of a new native window
         if AppSettingsManager.shared.tabs.enablePreviewTabs {
-            openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, showStructure: showStructure)
+            openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
             return
         }
 
@@ -162,6 +167,7 @@ extension MainContentCoordinator {
             tabType: .table,
             tableName: tableName,
             databaseName: currentDatabase,
+            schemaName: currentSchema,
             isView: isView,
             showStructure: showStructure
         )
@@ -172,7 +178,8 @@ extension MainContentCoordinator {
 
     func openPreviewTab(
         _ tableName: String, isView: Bool = false,
-        databaseName: String = "", showStructure: Bool = false
+        databaseName: String = "", schemaName: String? = nil,
+        showStructure: Bool = false
     ) {
         // Check if a preview window already exists for this connection
         if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId) {
@@ -193,6 +200,7 @@ extension MainContentCoordinator {
                     databaseType: connection.type,
                     isView: isView,
                     databaseName: databaseName,
+                    schemaName: schemaName,
                     isPreview: true
                 )
                 previewCoordinator.filterStateManager.clearAll()
@@ -228,6 +236,7 @@ extension MainContentCoordinator {
                     tabType: .table,
                     tableName: tableName,
                     databaseName: databaseName,
+                    schemaName: schemaName,
                     isView: isView,
                     showStructure: showStructure
                 )
@@ -242,6 +251,7 @@ extension MainContentCoordinator {
                 databaseType: connection.type,
                 isView: isView,
                 databaseName: databaseName,
+                schemaName: schemaName,
                 isPreview: true
             )
             filterStateManager.clearAll()
@@ -264,6 +274,7 @@ extension MainContentCoordinator {
             tabType: .table,
             tableName: tableName,
             databaseName: databaseName,
+            schemaName: schemaName,
             isView: isView,
             showStructure: showStructure,
             isPreview: true
@@ -377,6 +388,7 @@ extension MainContentCoordinator {
                     session.currentDatabase = database
                     session.currentSchema = nil
                 }
+                AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
                 await DatabaseManager.shared.reconnectSession(connectionId)
             } else if pm.supportsSchemaSwitching(for: connection.type) {
                 // Redshift, Oracle: schema switching
@@ -413,7 +425,7 @@ extension MainContentCoordinator {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Database Switch Failed"),
                 message: error.localizedDescription,
-                window: NSApplication.shared.keyWindow
+                window: contentWindow
             )
         }
     }
@@ -446,6 +458,7 @@ extension MainContentCoordinator {
             DatabaseManager.shared.updateSession(connectionId) { session in
                 session.currentSchema = schema
             }
+            AppSettingsStorage.shared.saveLastSchema(schema, for: connectionId)
 
             await loadSchema()
 
@@ -459,7 +472,7 @@ extension MainContentCoordinator {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Schema Switch Failed"),
                 message: error.localizedDescription,
-                window: NSApplication.shared.keyWindow
+                window: contentWindow
             )
         }
     }

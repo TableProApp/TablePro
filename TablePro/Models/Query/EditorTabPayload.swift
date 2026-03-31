@@ -21,6 +21,8 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let tableName: String?
     /// Database context (for multi-database connections)
     internal let databaseName: String?
+    /// Schema context (for multi-schema connections, e.g. PostgreSQL)
+    internal let schemaName: String?
     /// Initial SQL query (for .query tabs opened from files)
     internal let initialQuery: String?
     /// Whether this tab displays a database view (read-only)
@@ -44,6 +46,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         tabType: TabType = .query,
         tableName: String? = nil,
         databaseName: String? = nil,
+        schemaName: String? = nil,
         initialQuery: String? = nil,
         isView: Bool = false,
         showStructure: Bool = false,
@@ -58,6 +61,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.tabType = tabType
         self.tableName = tableName
         self.databaseName = databaseName
+        self.schemaName = schemaName
         self.initialQuery = initialQuery
         self.isView = isView
         self.showStructure = showStructure
@@ -75,6 +79,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         tabType = try container.decode(TabType.self, forKey: .tabType)
         tableName = try container.decodeIfPresent(String.self, forKey: .tableName)
         databaseName = try container.decodeIfPresent(String.self, forKey: .databaseName)
+        schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         initialQuery = try container.decodeIfPresent(String.self, forKey: .initialQuery)
         isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
         showStructure = try container.decodeIfPresent(Bool.self, forKey: .showStructure) ?? false
@@ -99,6 +104,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.tabType = tab.tabType
         self.tableName = tab.tableName
         self.databaseName = tab.databaseName
+        self.schemaName = tab.schemaName
         self.initialQuery = tab.query
         self.isView = tab.isView
         self.showStructure = tab.showStructure

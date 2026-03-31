@@ -86,6 +86,10 @@ final class MainContentCoordinator {
     /// Direct reference to right panel state — enables showing AI panel programmatically
     @ObservationIgnored weak var rightPanelState: RightPanelState?
 
+    /// Direct reference to this coordinator's content window, used for presenting alerts.
+    /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
+    @ObservationIgnored weak var contentWindow: NSWindow?
+
     // MARK: - Published State
 
     var schemaProvider: SQLSchemaProvider

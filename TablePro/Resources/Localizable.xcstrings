@@ -251,7 +251,6 @@
       }
     },
     "(%lld active)" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -1279,9 +1278,6 @@
           }
         }
       }
-    },
-    "%lld row(s) affected" : {
-
     },
     "%lld row%@ affected" : {
       "localizations" : {
@@ -2910,9 +2906,6 @@
         }
       }
     },
-    "Add at least one column with a name and type" : {
-
-    },
     "Add Check Constraint" : {
       "localizations" : {
         "tr" : {
@@ -2980,30 +2973,8 @@
         }
       }
     },
-    "Add columns to see the CREATE TABLE statement" : {
-
-    },
     "Add Connection" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bağlantı Ekle"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Thêm kết nối"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加连接"
-          }
-        }
-      }
+
     },
     "Add filter" : {
       "localizations" : {
@@ -3027,11 +2998,7 @@
         }
       }
     },
-    "Add Filter" : {
-
-    },
     "Add Filter (Cmd+Shift+F)" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -3052,9 +3019,6 @@
           }
         }
       }
-    },
-    "Add filter row" : {
-
     },
     "Add Folder..." : {
       "localizations" : {
@@ -3386,9 +3350,6 @@
           }
         }
       }
-    },
-    "AI-Powered Assistant" : {
-
     },
     "AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss." : {
       "localizations" : {
@@ -3817,24 +3778,6 @@
             "state" : "new",
             "value" : "An external link wants to add a database connection:\n\nName: %1$@\n%2$@"
           }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Harici bir bağlantı veritabanı bağlantısı eklemek istiyor:\n\nAd: %@\n%@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Một liên kết bên ngoài muốn thêm kết nối cơ sở dữ liệu:\n\nTên: %@\n%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外部链接请求添加数据库连接：\n\n名称：%@\n%@"
-          }
         }
       }
     },
@@ -3844,24 +3787,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "An external link wants to open a query on connection \"%1$@\":\n\n%2$@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Harici bir bağlantı “%@” bağlantısında sorgu açmak istiyor:\n\n%@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Một liên kết bên ngoài muốn mở truy vấn trên kết nối “%@”:\n\n%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "外部链接请求在连接“%@”上打开查询：\n\n%@"
           }
         }
       }
@@ -3998,9 +3923,6 @@
         }
       }
     },
-    "API token" : {
-
-    },
     "API Token" : {
       "localizations" : {
         "en" : {
@@ -4028,9 +3950,6 @@
           }
         }
       }
-    },
-    "API Token Required" : {
-
     },
     "Appearance" : {
       "localizations" : {
@@ -4077,11 +3996,7 @@
         }
       }
     },
-    "Apply" : {
-
-    },
     "Apply All" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4125,11 +4040,7 @@
         }
       }
     },
-    "Apply filters" : {
-
-    },
     "Apply this filter" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4152,7 +4063,6 @@
       }
     },
     "Apply This Filter" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4416,12 +4326,6 @@
           }
         }
       }
-    },
-    "Ask for API token on every connection" : {
-
-    },
-    "Ask for password on every connection" : {
-
     },
     "Auth" : {
       "localizations" : {
@@ -5169,9 +5073,6 @@
         }
       }
     },
-    "Browse, edit, and manage your data with ease" : {
-
-    },
     "Browse..." : {
       "localizations" : {
         "tr" : {
@@ -5683,9 +5584,6 @@
         }
       }
     },
-    "Charset:" : {
-
-    },
     "Chat" : {
       "localizations" : {
         "tr" : {
@@ -6025,7 +5923,6 @@
       }
     },
     "Clear search" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6048,7 +5945,6 @@
       }
     },
     "Clear Search" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6383,15 +6279,6 @@
         }
       }
     },
-    "Close Others" : {
-
-    },
-    "Close preview" : {
-
-    },
-    "Close Result Tab" : {
-
-    },
     "Close Tab" : {
       "localizations" : {
         "tr" : {
@@ -6482,9 +6369,6 @@
         }
       }
     },
-    "Collation:" : {
-
-    },
     "Color" : {
       "localizations" : {
         "tr" : {
@@ -6552,7 +6436,6 @@
       }
     },
     "Column" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6672,70 +6555,13 @@
       }
     },
     "Column Reorder Failed" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sütun Yeniden Sıralama Başarısız"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sắp xếp lại cột thất bại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "列重排失败"
-          }
-        }
-      }
+
     },
     "Column reorder failed: %@" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sütun yeniden sıralama başarısız: %@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sắp xếp lại cột thất bại: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "列重排失败：%@"
-          }
-        }
-      }
+
     },
     "Column reorder is not supported for this database type" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu veritabanı türü için sütun yeniden sıralama desteklenmiyor"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loại cơ sở dữ liệu này không hỗ trợ sắp xếp lại cột"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此数据库类型不支持列重排"
-          }
-        }
-      }
+
     },
     "Column: %@" : {
       "localizations" : {
@@ -6825,9 +6651,6 @@
           }
         }
       }
-    },
-    "Comma-separated values. Compatible with Excel and most tools." : {
-
     },
     "Command Preview" : {
       "extractionState" : "stale",
@@ -7069,9 +6892,6 @@
         }
       }
     },
-    "Connect to popular databases with full feature support" : {
-
-    },
     "Connect to the internet to verify your license." : {
       "localizations" : {
         "en" : {
@@ -7194,24 +7014,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Connection \"%1$@\" has a script that will run before connecting:\n\n%2$@"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bağlantı “%@” bağlanmadan önce çalışacak bir komut dosyasına sahip:\n\n%@"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kết nối “%@” có một script sẽ chạy trước khi kết nối:\n\n%@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接“%@”有一个将在连接前运行的脚本：\n\n%@"
           }
         }
       }
@@ -7729,9 +7531,6 @@
         }
       }
     },
-    "Copied to clipboard" : {
-
-    },
     "Copied!" : {
       "localizations" : {
         "tr" : {
@@ -7929,9 +7728,6 @@
           }
         }
       }
-    },
-    "Copy error message" : {
-
     },
     "Copy Name" : {
       "localizations" : {
@@ -8402,9 +8198,6 @@
         }
       }
     },
-    "Create New Table..." : {
-
-    },
     "Create New Tag" : {
       "localizations" : {
         "tr" : {
@@ -8470,12 +8263,6 @@
           }
         }
       }
-    },
-    "Create Table" : {
-
-    },
-    "Create Table Failed" : {
-
     },
     "Created" : {
       "localizations" : {
@@ -8545,7 +8332,6 @@
       }
     },
     "CURDATE()" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8702,7 +8488,6 @@
       }
     },
     "CURRENT_TIMESTAMP()" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8775,7 +8560,6 @@
       }
     },
     "CURTIME()" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -10206,9 +9990,6 @@
         }
       }
     },
-    "Delete Selected" : {
-
-    },
     "Delete SSH Profile?" : {
       "localizations" : {
         "en" : {
@@ -10880,7 +10661,6 @@
       }
     },
     "Duplicate filter" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11396,28 +11176,6 @@
         }
       }
     },
-    "Enable AI Features" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "AI Özelliklerini Etkinleştir"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bật tính năng AI"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "启用 AI 功能"
-          }
-        }
-      }
-    },
     "Enable inline suggestions" : {
       "localizations" : {
         "tr" : {
@@ -11639,9 +11397,6 @@
         }
       }
     },
-    "Engine:" : {
-
-    },
     "Enter a name for this filter preset" : {
       "localizations" : {
         "tr" : {
@@ -11704,19 +11459,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "输入数据库名称"
-          }
-        }
-      }
-    },
-    "Enter table name" : {
-
-    },
-    "Enter the %@ for \"%@\"" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enter the %1$@ for \"%2$@\""
           }
         }
       }
@@ -12006,9 +11748,6 @@
           }
         }
       }
-    },
-    "Excel spreadsheet with formatting support." : {
-
     },
     "Execute" : {
       "localizations" : {
@@ -13003,7 +12742,6 @@
       }
     },
     "Failed to decompress file: %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13138,26 +12876,7 @@
       }
     },
     "Failed to generate SQL for column reorder" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sütun yeniden sıralama için SQL oluşturulamadı"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không thể tạo SQL để sắp xếp lại cột"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法生成列重排的 SQL"
-          }
-        }
-      }
+
     },
     "Failed to import DDL: %@" : {
       "extractionState" : "stale",
@@ -13317,7 +13036,6 @@
       }
     },
     "Failed to load preview using encoding: %@. Try selecting a different text encoding." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13340,7 +13058,6 @@
       }
     },
     "Failed to load preview: %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13948,11 +13665,7 @@
         }
       }
     },
-    "Filter column" : {
-
-    },
     "Filter column: %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14018,11 +13731,7 @@
         }
       }
     },
-    "Filter operator" : {
-
-    },
     "Filter operator: %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14044,11 +13753,7 @@
         }
       }
     },
-    "Filter options" : {
-
-    },
     "Filter presets" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14071,7 +13776,6 @@
       }
     },
     "Filter settings" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14094,7 +13798,6 @@
       }
     },
     "Filter Settings" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14115,12 +13818,6 @@
           }
         }
       }
-    },
-    "Filter Settings..." : {
-
-    },
-    "Filter value" : {
-
     },
     "Filter with column" : {
       "localizations" : {
@@ -14322,9 +14019,6 @@
         }
       }
     },
-    "Foreign Keys" : {
-
-    },
     "Forever" : {
       "localizations" : {
         "tr" : {
@@ -14368,9 +14062,6 @@
           }
         }
       }
-    },
-    "Format SQL" : {
-
     },
     "Format:" : {
       "localizations" : {
@@ -14547,9 +14238,6 @@
           }
         }
       }
-    },
-    "Get intelligent SQL suggestions and query assistance" : {
-
     },
     "Get Started" : {
       "localizations" : {
@@ -15038,7 +14726,6 @@
       }
     },
     "History Limit:" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15414,26 +15101,7 @@
       }
     },
     "Import Connection from Link" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bağlantıyı Linkten İçe Aktar"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhập kết nối từ liên kết"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从链接导入连接"
-          }
-        }
-      }
+
     },
     "Import Connections" : {
       "localizations" : {
@@ -16045,6 +15713,7 @@
       }
     },
     "Indexes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -16470,9 +16139,6 @@
         }
       }
     },
-    "Interactive Data Grid" : {
-
-    },
     "Interface" : {
       "localizations" : {
         "tr" : {
@@ -16519,26 +16185,7 @@
       }
     },
     "Invalid column indices for reorder operation" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeniden sıralama işlemi için geçersiz sütun dizinleri"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chỉ mục cột không hợp lệ cho thao tác sắp xếp lại"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重排操作的列索引无效"
-          }
-        }
-      }
+
     },
     "Invalid connection URL format" : {
       "localizations" : {
@@ -18264,9 +17911,6 @@
         }
       }
     },
-    "Location" : {
-
-    },
     "Maintenance" : {
       "localizations" : {
         "tr" : {
@@ -18465,9 +18109,6 @@
           }
         }
       }
-    },
-    "Max Bytes Billed" : {
-
     },
     "Max schema tables: %lld" : {
       "localizations" : {
@@ -18801,9 +18442,6 @@
         }
       }
     },
-    "MongoDB query language. Use to import into MongoDB." : {
-
-    },
     "Move Down" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18851,26 +18489,7 @@
       }
     },
     "Move Group to..." : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grubu Taşı..."
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di chuyển nhóm đến..."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "移动分组到..."
-          }
-        }
-      }
+
     },
     "Move to" : {
       "localizations" : {
@@ -19057,9 +18676,6 @@
           }
         }
       }
-    },
-    "MySQL, PostgreSQL & SQLite" : {
-
     },
     "Name" : {
       "localizations" : {
@@ -19594,26 +19210,7 @@
       }
     },
     "New Subgroup" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni Alt Grup"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhóm con mới"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建子分组"
-          }
-        }
-      }
+
     },
     "New Tab" : {
       "localizations" : {
@@ -19702,9 +19299,6 @@
           }
         }
       }
-    },
-    "Next Result" : {
-
     },
     "Next Tab" : {
       "localizations" : {
@@ -19823,26 +19417,7 @@
       }
     },
     "No active database connection" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktif veritabanı bağlantısı yok"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không có kết nối cơ sở dữ liệu đang hoạt động"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有活动的数据库连接"
-          }
-        }
-      }
+
     },
     "No AI provider configured. Go to Settings > AI to add one." : {
       "localizations" : {
@@ -20774,9 +20349,6 @@
         }
       }
     },
-    "No rows returned" : {
-
-    },
     "No saved connection named \"%@\"." : {
       "localizations" : {
         "tr" : {
@@ -21066,26 +20638,7 @@
       }
     },
     "None (Top Level)" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yok (Üst Düzey)"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Không (Cấp cao nhất)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无（顶级）"
-          }
-        }
-      }
+
     },
     "Normal" : {
       "localizations" : {
@@ -21375,7 +20928,6 @@
       }
     },
     "NOW()" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21596,12 +21148,6 @@
           }
         }
       }
-    },
-    "OAuth Client ID" : {
-
-    },
-    "OAuth Client Secret" : {
-
     },
     "Offset" : {
       "localizations" : {
@@ -21868,12 +21414,6 @@
         }
       }
     },
-    "Open File" : {
-
-    },
-    "Open File..." : {
-
-    },
     "Open MQL Editor" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -21898,48 +21438,10 @@
       }
     },
     "Open Query" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sorguyu Aç"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mở truy vấn"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开查询"
-          }
-        }
-      }
+
     },
     "Open Query from Link" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Linkten Sorgu Aç"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mở truy vấn từ liên kết"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从链接打开查询"
-          }
-        }
-      }
+
     },
     "Open Redis CLI" : {
       "extractionState" : "stale",
@@ -22371,26 +21873,7 @@
       }
     },
     "Parent Group" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Üst Grup"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nhóm cha"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "父分组"
-          }
-        }
-      }
+
     },
     "Partition" : {
       "localizations" : {
@@ -22480,9 +21963,6 @@
         }
       }
     },
-    "password" : {
-
-    },
     "Password" : {
       "localizations" : {
         "tr" : {
@@ -22526,9 +22006,6 @@
           }
         }
       }
-    },
-    "Password Required" : {
-
     },
     "Passwords will be encrypted with the passphrase you provide." : {
       "localizations" : {
@@ -22712,9 +22189,6 @@
           }
         }
       }
-    },
-    "Pin Result" : {
-
     },
     "Pink" : {
       "localizations" : {
@@ -23043,16 +22517,6 @@
         }
       }
     },
-    "Plugin was built with PluginKit version %lld, but version %lld is required. Please update the plugin." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Plugin was built with PluginKit version %1$lld, but version %2$lld is required. Please update the plugin."
-          }
-        }
-      }
-    },
     "Plugins" : {
       "localizations" : {
         "tr" : {
@@ -23304,26 +22768,7 @@
       }
     },
     "Pre-connect script was cancelled" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bağlantı öncesi komut dosyası iptal edildi"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Script trước khi kết nối đã bị hủy"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "连接前脚本已取消"
-          }
-        }
-      }
+
     },
     "Precision" : {
       "extractionState" : "stale",
@@ -23665,9 +23110,6 @@
         }
       }
     },
-    "Preview Query" : {
-
-    },
     "Preview Schema Changes" : {
       "localizations" : {
         "tr" : {
@@ -23756,9 +23198,6 @@
           }
         }
       }
-    },
-    "Previous Result" : {
-
     },
     "Previous Tab" : {
       "localizations" : {
@@ -24110,9 +23549,6 @@
         }
       }
     },
-    "Project ID" : {
-
-    },
     "Prompt at Connect" : {
       "localizations" : {
         "tr" : {
@@ -24343,7 +23779,6 @@
       }
     },
     "Query executing..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24410,7 +23845,6 @@
       }
     },
     "Query History:" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24477,7 +23911,6 @@
       }
     },
     "Quick search across all columns..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -25264,9 +24697,6 @@
         }
       }
     },
-    "Remove all filters and reload" : {
-
-    },
     "Remove filter" : {
       "localizations" : {
         "tr" : {
@@ -25310,9 +24740,6 @@
           }
         }
       }
-    },
-    "Remove filter row" : {
-
     },
     "Remove Folder" : {
       "localizations" : {
@@ -25656,15 +25083,6 @@
         }
       }
     },
-    "Reset" : {
-
-    },
-    "Reset All Settings" : {
-
-    },
-    "Reset All Settings to Defaults" : {
-
-    },
     "Reset to Defaults" : {
       "localizations" : {
         "tr" : {
@@ -25730,9 +25148,6 @@
           }
         }
       }
-    },
-    "Results" : {
-
     },
     "Retention" : {
       "localizations" : {
@@ -26214,26 +25629,7 @@
       }
     },
     "Run Script" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Komut Dosyasını Çalıştır"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chạy script"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "运行脚本"
-          }
-        }
-      }
+
     },
     "Safe Mode" : {
       "localizations" : {
@@ -26391,7 +25787,6 @@
       }
     },
     "Save and load filter presets" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -26434,9 +25829,6 @@
           }
         }
       }
-    },
-    "Save As" : {
-
     },
     "Save as Favorite" : {
       "localizations" : {
@@ -26526,9 +25918,6 @@
           }
         }
       }
-    },
-    "Save As..." : {
-
     },
     "Save Changes" : {
       "localizations" : {
@@ -26689,9 +26078,6 @@
           }
         }
       }
-    },
-    "Save SQL file" : {
-
     },
     "Save Table Template" : {
       "extractionState" : "stale",
@@ -27115,9 +26501,6 @@
         }
       }
     },
-    "Second filter value" : {
-
-    },
     "Second value is required for BETWEEN" : {
       "localizations" : {
         "tr" : {
@@ -27257,9 +26640,6 @@
           }
         }
       }
-    },
-    "Secure Connections" : {
-
     },
     "SELECT * FROM users WHERE id = 1;" : {
       "extractionState" : "stale",
@@ -27439,11 +26819,7 @@
         }
       }
     },
-    "Select filter column" : {
-
-    },
     "Select filter for %@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27464,9 +26840,6 @@
           }
         }
       }
-    },
-    "Select filter operator" : {
-
     },
     "Select Plugin" : {
       "localizations" : {
@@ -27512,9 +26885,6 @@
           }
         }
       }
-    },
-    "Select SQL files to open" : {
-
     },
     "Select Tab %lld" : {
       "localizations" : {
@@ -27681,9 +27051,6 @@
           }
         }
       }
-    },
-    "Service Account Key" : {
-
     },
     "Service Name" : {
       "extractionState" : "stale",
@@ -28533,12 +27900,6 @@
         }
       }
     },
-    "Size All Columns to Fit" : {
-
-    },
-    "Size to Fit" : {
-
-    },
     "Size:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28628,9 +27989,6 @@
         }
       }
     },
-    "Smart SQL Editor" : {
-
-    },
     "Smooth" : {
       "localizations" : {
         "tr" : {
@@ -28674,9 +28032,6 @@
           }
         }
       }
-    },
-    "Some columns in this preset don't exist in the current table" : {
-
     },
     "Something went wrong (error %lld). Try again in a moment." : {
       "localizations" : {
@@ -28945,10 +28300,8 @@
         }
       }
     },
-    "SQL INSERT statements. Use to recreate data in another database." : {
-
-    },
     "SQL Preview" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29336,9 +28689,6 @@
           }
         }
       }
-    },
-    "SSH tunneling and SSL/TLS encryption support" : {
-
     },
     "SSH User" : {
       "localizations" : {
@@ -29839,9 +29189,6 @@
         }
       }
     },
-    "Structured data format. Ideal for APIs and web applications." : {
-
-    },
     "Success" : {
       "localizations" : {
         "tr" : {
@@ -30049,7 +29396,6 @@
       }
     },
     "Sync" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30070,9 +29416,6 @@
           }
         }
       }
-    },
-    "Sync (Pro)" : {
-
     },
     "Sync Categories" : {
       "localizations" : {
@@ -30317,7 +29660,6 @@
       }
     },
     "Syncs connections, settings, and history across your Macs via iCloud." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30338,9 +29680,6 @@
           }
         }
       }
-    },
-    "Syncs connections, settings, and SSH profiles across your Macs via iCloud." : {
-
     },
     "Syncs passwords via iCloud Keychain (end-to-end encrypted)." : {
       "localizations" : {
@@ -30391,9 +29730,6 @@
           }
         }
       }
-    },
-    "Syntax highlighting, autocomplete, and multi-tab editing" : {
-
     },
     "System" : {
       "localizations" : {
@@ -30619,9 +29955,6 @@
           }
         }
       }
-    },
-    "Table Name:" : {
-
     },
     "Table: %@" : {
       "localizations" : {
@@ -31913,9 +31246,6 @@
         }
       }
     },
-    "This will reset all settings across every section to their default values." : {
-
-    },
     "Tier:" : {
       "localizations" : {
         "en" : {
@@ -32413,12 +31743,6 @@
         }
       }
     },
-    "Toggle Results" : {
-
-    },
-    "Toggle Results (⌘⌥R)" : {
-
-    },
     "Toggle Table Browser" : {
       "localizations" : {
         "tr" : {
@@ -32464,26 +31788,7 @@
       }
     },
     "Top Level" : {
-      "localizations" : {
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Üst Düzey"
-          }
-        },
-        "vi" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cấp cao nhất"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "顶级"
-          }
-        }
-      }
+
     },
     "Total Size" : {
       "localizations" : {
@@ -33213,9 +32518,6 @@
         }
       }
     },
-    "Unpin" : {
-
-    },
     "Unset" : {
       "localizations" : {
         "tr" : {
@@ -33637,7 +32939,6 @@
       }
     },
     "UTC_TIMESTAMP()" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34408,11 +33709,7 @@
         }
       }
     },
-    "WHERE clause" : {
-
-    },
     "WHERE clause..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34854,12 +34151,6 @@
           }
         }
       }
-    },
-    "Zoom In" : {
-
-    },
-    "Zoom Out" : {
-
     }
   },
   "version" : "1.0"

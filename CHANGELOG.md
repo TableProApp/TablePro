@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- PostgreSQL: Schema name lost after app restart, causing "relation does not exist" errors for non-public schemas
+- Error dialog OK button not dismissing when a SwiftUI sheet is active, making the app unusable
 - SQL Server: Unicode characters (Thai, CJK, etc.) in nvarchar/nchar/ntext columns displaying as question marks
 - Globe+F (fn+F) fullscreen shortcut not working in SwiftUI lifecycle app
 

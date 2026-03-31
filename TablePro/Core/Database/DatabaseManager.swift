@@ -192,6 +192,19 @@ final class DatabaseManager {
             // Initialize schema for drivers that support schema switching
             if let schemaDriver = driver as? SchemaSwitchable {
                 activeSessions[connection.id]?.currentSchema = schemaDriver.currentSchema
+
+                // Restore user's last schema if different from default
+                if let savedSchema = AppSettingsStorage.shared.loadLastSchema(for: connection.id),
+                   savedSchema != schemaDriver.currentSchema {
+                    do {
+                        try await schemaDriver.switchSchema(to: savedSchema)
+                        activeSessions[connection.id]?.currentSchema = savedSchema
+                    } catch {
+                        Self.logger.warning(
+                            "Failed to restore saved schema '\(savedSchema, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                }
             }
 
             // Run post-connect actions declared by the plugin

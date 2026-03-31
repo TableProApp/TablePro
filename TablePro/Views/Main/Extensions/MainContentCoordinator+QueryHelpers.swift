@@ -414,7 +414,7 @@ extension MainContentCoordinator {
                 let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
                     title: String(localized: "Query Execution Failed"),
                     message: errorMessage,
-                    window: NSApp.keyWindow
+                    window: contentWindow
                 )
                 if wantsAIFix {
                     showAIChatPanel()
@@ -424,10 +424,34 @@ extension MainContentCoordinator {
                 AlertHelper.showErrorSheet(
                     title: String(localized: "Query Execution Failed"),
                     message: errorMessage,
-                    window: NSApp.keyWindow
+                    window: contentWindow
                 )
             }
         }
+    }
+
+    /// Restore schema on the driver and run the query for the current tab.
+    /// Unlike `switchSchema`, this does NOT clear tabs or sidebar — it only
+    /// switches the driver's search_path so the restored tab's query succeeds.
+    func restoreSchemaAndRunQuery(_ schema: String) async {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId),
+              let schemaDriver = driver as? SchemaSwitchable else {
+            runQuery()
+            return
+        }
+        do {
+            try await schemaDriver.switchSchema(to: schema)
+            DatabaseManager.shared.updateSession(connectionId) { session in
+                session.currentSchema = schema
+            }
+            toolbarState.databaseName = schema
+            await loadSchema()
+            reloadSidebar()
+        } catch {
+            Self.logger.warning("Failed to restore schema '\(schema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        runQuery()
     }
 
     /// Build column exclusions for a table using cached column type info.
