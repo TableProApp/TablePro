@@ -554,8 +554,8 @@ struct MainEditorContentView: View {
             return cached.sortedIndices
         }
 
-        // For large datasets sorted async, return nil (unsorted) until cache is ready
-        if rows.count > 10_000 {
+        // For datasets sorted async, return nil (unsorted) until cache is ready
+        if rows.count > 1_000 {
             return nil
         }
 

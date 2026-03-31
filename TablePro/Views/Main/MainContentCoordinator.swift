@@ -1170,8 +1170,8 @@ final class MainContentCoordinator {
             let sortColumns = currentSort.columns
             let colTypes = tab.columnTypes
 
-            if rows.count > 10_000 {
-                // Large dataset: sort on background thread to avoid UI freeze
+            if rows.count > 1_000 {
+                // Sort on background thread to avoid UI freeze
                 activeSortTasks[tabId]?.cancel()
                 activeSortTasks.removeValue(forKey: tabId)
                 tabManager.tabs[tabIndex].isExecuting = true
