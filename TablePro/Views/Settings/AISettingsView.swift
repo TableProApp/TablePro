@@ -449,9 +449,18 @@ private struct AIProviderEditorSheet: View {
             }
 
             if let error = modelFetchError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                HStack {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button {
+                        fetchModels()
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
         }
     }

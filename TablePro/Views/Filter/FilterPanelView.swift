@@ -98,10 +98,18 @@ struct FilterPanelView: View {
             TextField("Preset Name", text: $newPresetName)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
-                if !newPresetName.isEmpty {
-                    filterState.saveAsPreset(name: newPresetName)
-                    loadPresets()
+                guard !newPresetName.isEmpty else { return }
+                var finalName = newPresetName
+                let existingNames = Set(savedPresets.map(\.name))
+                if existingNames.contains(finalName) {
+                    var counter = 2
+                    while existingNames.contains("\(newPresetName) (\(counter))") {
+                        counter += 1
+                    }
+                    finalName = "\(newPresetName) (\(counter))"
                 }
+                filterState.saveAsPreset(name: finalName)
+                loadPresets()
             }
         } message: {
             Text("Enter a name for this filter preset")
