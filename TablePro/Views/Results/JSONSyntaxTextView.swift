@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Reusable NSTextView-backed JSON viewer with syntax highlighting.
-//  Supports editable and read-only modes.
+//  Supports editable and read-only modes with brace matching.
 //
 
 import AppKit
@@ -12,6 +12,7 @@ import SwiftUI
 struct JSONSyntaxTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable: Bool = true
+    var wordWrap: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -26,8 +27,8 @@ struct JSONSyntaxTextView: NSViewRepresentable {
         textView.isEditable = isEditable
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular)
-        textView.textContainerInset = NSSize(width: 8, height: 8)
-        textView.backgroundColor = isEditable ? NSColor.textBackgroundColor : NSColor.controlBackgroundColor
+        textView.textContainerInset = NSSize(width: 4, height: 4)
+        textView.backgroundColor = .textBackgroundColor
         textView.textColor = NSColor.labelColor
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -36,12 +37,22 @@ struct JSONSyntaxTextView: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = false
         textView.allowsUndo = isEditable
 
-        textView.textContainer?.widthTracksTextView = true
-        textView.isHorizontallyResizable = false
+        if wordWrap {
+            textView.textContainer?.widthTracksTextView = true
+            textView.isHorizontallyResizable = false
+        } else {
+            textView.textContainer?.widthTracksTextView = false
+            textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.isHorizontallyResizable = true
+            scrollView.hasHorizontalScroller = true
+        }
 
         textView.delegate = context.coordinator
         textView.string = text
         Self.applyHighlighting(to: textView)
+
+        context.coordinator.braceHelper = JSONBraceMatchingHelper(textView: textView)
 
         return scrollView
     }
@@ -74,7 +85,6 @@ struct JSONSyntaxTextView: NSViewRepresentable {
 
         textStorage.beginEditing()
 
-        // Reset to base style
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
 
@@ -110,6 +120,7 @@ struct JSONSyntaxTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONSyntaxTextView
         var isUpdating = false
+        var braceHelper: JSONBraceMatchingHelper?
         private var highlightWorkItem: DispatchWorkItem?
 
         init(_ parent: JSONSyntaxTextView) {
@@ -126,7 +137,6 @@ struct JSONSyntaxTextView: NSViewRepresentable {
             parent.text = textView.string
             isUpdating = false
 
-            // Debounce syntax highlighting to avoid 4 regex passes per keystroke
             highlightWorkItem?.cancel()
             let workItem = DispatchWorkItem { [weak textView] in
                 guard let textView else { return }
@@ -134,6 +144,10 @@ struct JSONSyntaxTextView: NSViewRepresentable {
             }
             highlightWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            braceHelper?.updateBraceHighlight()
         }
     }
 }

@@ -10,7 +10,8 @@ import Foundation
 import Observation
 
 /// Represents the edit state for a single field across multiple rows
-struct FieldEditState {
+struct FieldEditState: Identifiable {
+    var id = UUID()
     let columnIndex: Int
     let columnName: String
     let columnTypeEnum: ColumnType
@@ -101,8 +102,8 @@ final class MultiRowEditState {
             }
 
             // Check if all values are the same
-            let uniqueValues = Set(values.map { $0 ?? "__NULL__" })
-            let hasMultipleValues = uniqueValues.count > 1
+            let allSame = values.dropFirst().allSatisfy { $0 == values.first }
+            let hasMultipleValues = !allSame
 
             let originalValue: String?
             if hasMultipleValues {
@@ -113,6 +114,7 @@ final class MultiRowEditState {
             }
 
             // Preserve pending edits if data hasn't changed
+            var preservedId: UUID?
             var pendingValue: String?
             var isPendingNull = false
             var isPendingDefault = false
@@ -126,6 +128,7 @@ final class MultiRowEditState {
                 let oldField = fields[colIndex]
                 // Preserve pending edits when original data matches
                 if oldField.originalValue == originalValue && oldField.hasMultipleValues == hasMultipleValues {
+                    preservedId = oldField.id
                     pendingValue = oldField.pendingValue
                     isPendingNull = oldField.isPendingNull
                     isPendingDefault = oldField.isPendingDefault
@@ -143,7 +146,7 @@ final class MultiRowEditState {
                 pendingValue = originalValue ?? ""
             }
 
-            newFields.append(FieldEditState(
+            var newField = FieldEditState(
                 columnIndex: colIndex,
                 columnName: columnName,
                 columnTypeEnum: columnTypeEnum,
@@ -155,7 +158,11 @@ final class MultiRowEditState {
                 isPendingDefault: isPendingDefault,
                 isTruncated: preservedIsTruncated,
                 isLoadingFullValue: preservedIsLoadingFullValue
-            ))
+            )
+            if let preservedId {
+                newField.id = preservedId
+            }
+            newFields.append(newField)
         }
 
         self.fields = newFields

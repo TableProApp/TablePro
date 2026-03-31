@@ -23,12 +23,12 @@ struct JSONEditorContentView: View {
         self.initialValue = initialValue
         self.onCommit = onCommit
         self.onDismiss = onDismiss
-        self._text = State(initialValue: initialValue?.prettyPrintedAsJson() ?? initialValue ?? "")
+        self._text = State(initialValue: initialValue ?? "")
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            JSONSyntaxTextView(text: $text)
+            JSONSyntaxTextView(text: $text, wordWrap: true)
 
             Divider()
 

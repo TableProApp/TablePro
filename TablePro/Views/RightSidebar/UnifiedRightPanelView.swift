@@ -22,7 +22,8 @@ struct UnifiedRightPanelView: View {
             isEditable: inspectorContext.isEditable,
             isRowDeleted: inspectorContext.isRowDeleted,
             onSave: { state.onSave?() },
-            editState: state.editState
+            editState: state.editState,
+            databaseType: connection.type
         )
     }
 
