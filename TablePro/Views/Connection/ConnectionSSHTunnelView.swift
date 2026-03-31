@@ -137,10 +137,6 @@ struct ConnectionSSHTunnelView: View {
         }
     }
 
-    private var resolvedSSHAgentSocketPath: String {
-        sshAgentSocketOption.resolvedPath(customPath: customSSHAgentSocketPath)
-    }
-
     private func buildProfileFromInlineConfig() -> SSHProfile {
         SSHProfile(
             name: "",
@@ -150,7 +146,7 @@ struct ConnectionSSHTunnelView: View {
             authMethod: sshAuthMethod,
             privateKeyPath: sshPrivateKeyPath,
             useSSHConfig: !selectedSSHConfigHost.isEmpty,
-            agentSocketPath: resolvedSSHAgentSocketPath,
+            agentSocketPath: sshAgentSocketOption.resolvedPath(customPath: customSSHAgentSocketPath),
             jumpHosts: jumpHosts,
             totpMode: totpMode,
             totpAlgorithm: totpAlgorithm,

@@ -999,22 +999,27 @@ struct ConnectionFormView: View {
         testSucceeded = false
         let window = NSApp.keyWindow
 
-        // Build SSH config
-        let sshConfig = SSHConfiguration(
-            enabled: sshEnabled,
-            host: sshHost,
-            port: Int(sshPort) ?? 22,
-            username: sshUsername,
-            authMethod: sshAuthMethod,
-            privateKeyPath: sshPrivateKeyPath,
-            useSSHConfig: !selectedSSHConfigHost.isEmpty,
-            agentSocketPath: resolvedSSHAgentSocketPath,
-            jumpHosts: jumpHosts,
-            totpMode: totpMode,
-            totpAlgorithm: totpAlgorithm,
-            totpDigits: totpDigits,
-            totpPeriod: totpPeriod
-        )
+        let sshConfig: SSHConfiguration
+        if let profileId = sshProfileId,
+           let profile = sshProfiles.first(where: { $0.id == profileId }) {
+            sshConfig = profile.toSSHConfiguration()
+        } else {
+            sshConfig = SSHConfiguration(
+                enabled: sshEnabled,
+                host: sshHost,
+                port: Int(sshPort) ?? 22,
+                username: sshUsername,
+                authMethod: sshAuthMethod,
+                privateKeyPath: sshPrivateKeyPath,
+                useSSHConfig: !selectedSSHConfigHost.isEmpty,
+                agentSocketPath: resolvedSSHAgentSocketPath,
+                jumpHosts: jumpHosts,
+                totpMode: totpMode,
+                totpAlgorithm: totpAlgorithm,
+                totpDigits: totpDigits,
+                totpPeriod: totpPeriod
+            )
+        }
 
         let sslConfig = SSLConfiguration(
             mode: sslMode,
