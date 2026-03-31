@@ -274,6 +274,13 @@ struct ExportDialog: View {
 
                         Spacer()
                     }
+
+                    let description = formatDescription(for: config.formatId)
+                    if !description.isEmpty {
+                        Text(description)
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 // Selection count or Pro gate message
@@ -429,6 +436,17 @@ struct ExportDialog: View {
 
     private static let formatDisplayOrder = ["csv", "json", "sql", "xlsx", "mql"]
     private static let proFormatIds: Set<String> = ["xlsx"]
+
+    private func formatDescription(for formatId: String) -> String {
+        switch formatId {
+        case "csv": return String(localized: "Comma-separated values. Compatible with Excel and most tools.")
+        case "json": return String(localized: "Structured data format. Ideal for APIs and web applications.")
+        case "sql": return String(localized: "SQL INSERT statements. Use to recreate data in another database.")
+        case "xlsx": return String(localized: "Excel spreadsheet with formatting support.")
+        case "mql": return String(localized: "MongoDB query language. Use to import into MongoDB.")
+        default: return ""
+        }
+    }
 
     private func isProGatedFormat(_ formatId: String) -> Bool {
         Self.proFormatIds.contains(formatId) && !LicenseManager.shared.isFeatureAvailable(.xlsxExport)
