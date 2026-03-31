@@ -561,19 +561,32 @@ struct QueryTab: Identifiable, Equatable {
 /// Manager for query tabs
 @MainActor @Observable
 final class QueryTabManager {
-    var tabs: [QueryTab] = []
+    var tabs: [QueryTab] = [] {
+        didSet { _tabIndexMapDirty = true }
+    }
+
     var selectedTabId: UUID?
+
+    @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
+    @ObservationIgnored private var _tabIndexMapDirty = true
+
+    private func rebuildTabIndexMapIfNeeded() {
+        guard _tabIndexMapDirty else { return }
+        _tabIndexMap = Dictionary(uniqueKeysWithValues: tabs.enumerated().map { ($1.id, $0) })
+        _tabIndexMapDirty = false
+    }
 
     var tabIds: [UUID] { tabs.map(\.id) }
 
     var selectedTab: QueryTab? {
-        guard let id = selectedTabId else { return tabs.first }
-        return tabs.first { $0.id == id }
+        if let index = selectedTabIndex { return tabs[index] }
+        return selectedTabId == nil ? tabs.first : nil
     }
 
     var selectedTabIndex: Int? {
         guard let id = selectedTabId else { return nil }
-        return tabs.firstIndex { $0.id == id }
+        rebuildTabIndexMapIfNeeded()
+        return _tabIndexMap[id]
     }
 
     init() {

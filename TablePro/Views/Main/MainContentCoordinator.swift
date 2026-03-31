@@ -97,7 +97,7 @@ final class MainContentCoordinator {
     var needsLazyLoad = false
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
-    private(set) var querySortCache: [UUID: QuerySortCacheEntry] = [:]
+    @ObservationIgnored private(set) var querySortCache: [UUID: QuerySortCacheEntry] = [:]
 
     // MARK: - Internal State
 
@@ -134,7 +134,7 @@ final class MainContentCoordinator {
 
     /// True while a database switch is in progress. Guards against
     /// side-effect window creation during the switch cascade.
-    var isSwitchingDatabase = false
+    @ObservationIgnored var isSwitchingDatabase = false
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
