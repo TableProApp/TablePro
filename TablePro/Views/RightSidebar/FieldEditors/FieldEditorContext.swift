@@ -4,7 +4,7 @@
 
 import SwiftUI
 
-struct FieldEditorContext {
+internal struct FieldEditorContext {
     let columnName: String
     let columnType: ColumnType
     let isLongText: Bool

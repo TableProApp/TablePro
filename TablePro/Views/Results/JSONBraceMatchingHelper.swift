@@ -111,15 +111,25 @@ final class JSONBraceMatchingHelper {
                 i += 1
                 scanned += 1
             }
+        // Backward scan: first determine string-state at each position via forward pass,
+        // then walk backward using the precomputed state.
         } else {
+            // Build in-string map from start to target position via forward scan
+            var stringState = [Bool](repeating: false, count: min(position + 1, length))
+            var fwdInString = false
+            for j in 0..<stringState.count {
+                let ch = text.character(at: j)
+                if ch == quote, !isEscaped(at: j, in: text) {
+                    fwdInString.toggle()
+                }
+                stringState[j] = fwdInString
+            }
+
             var i = position - 1
             var scanned = 0
             while i >= 0, scanned < maxScan {
-                let ch = text.character(at: i)
-
-                if ch == quote, !isEscaped(at: i, in: text) {
-                    inString.toggle()
-                } else if !inString {
+                if !stringState[i] {
+                    let ch = text.character(at: i)
                     if ch == closeBrace {
                         depth += 1
                     } else if ch == openBrace {
@@ -127,7 +137,6 @@ final class JSONBraceMatchingHelper {
                         if depth == 0 { return i }
                     }
                 }
-
                 i -= 1
                 scanned += 1
             }

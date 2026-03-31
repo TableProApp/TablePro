@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct SingleLineEditorView: View {
+internal struct SingleLineEditorView: View {
     let context: FieldEditorContext
 
     @FocusState private var isFocused: Bool

@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct SetPickerView: View {
+internal struct SetPickerView: View {
     let context: FieldEditorContext
     let values: [String]
 

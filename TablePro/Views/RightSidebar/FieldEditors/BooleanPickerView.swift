@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct BooleanPickerView: View {
+internal struct BooleanPickerView: View {
     let context: FieldEditorContext
 
     var body: some View {

@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct JsonEditorView: View {
+internal struct JsonEditorView: View {
     let context: FieldEditorContext
 
     var body: some View {

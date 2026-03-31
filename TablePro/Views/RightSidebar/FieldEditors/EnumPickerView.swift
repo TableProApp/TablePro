@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct EnumPickerView: View {
+internal struct EnumPickerView: View {
     let context: FieldEditorContext
     let values: [String]
 

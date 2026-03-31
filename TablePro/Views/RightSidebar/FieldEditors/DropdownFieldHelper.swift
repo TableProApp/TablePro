@@ -7,7 +7,7 @@ import SwiftUI
 
 /// Reusable dropdown field wrapper with consistent styling for picker editors.
 @MainActor
-func dropdownField<Content: View>(
+internal func dropdownField<Content: View>(
     label: String,
     isDisabled: Bool = false,
     @ViewBuilder content: @escaping () -> Content

@@ -9,7 +9,7 @@
 import AppKit
 import SwiftUI
 
-struct JSONSyntaxTextView: NSViewRepresentable {
+internal struct JSONSyntaxTextView: NSViewRepresentable {
     @Binding var text: String
     var isEditable: Bool = true
     var wordWrap: Bool = false
@@ -88,6 +88,8 @@ struct JSONSyntaxTextView: NSViewRepresentable {
         textStorage.addAttribute(.font, value: font, range: fullRange)
         textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
 
+        // Apply in order: strings (red) first, then keys (blue) override string ranges,
+        // then numbers and booleans. Key highlighting depends on overriding string ranges.
         applyPattern(JSONHighlightPatterns.string, color: .systemRed, in: textStorage, content: content, range: highlightRange)
 
         for match in JSONHighlightPatterns.key.matches(in: content, range: highlightRange) {
@@ -117,7 +119,7 @@ struct JSONSyntaxTextView: NSViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, NSTextViewDelegate {
+    internal final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: JSONSyntaxTextView
         var isUpdating = false
         var braceHelper: JSONBraceMatchingHelper?

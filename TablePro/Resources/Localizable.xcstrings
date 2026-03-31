@@ -7933,9 +7933,6 @@
     "Copy error message" : {
 
     },
-    "Copy Formatted" : {
-
-    },
     "Copy Name" : {
       "localizations" : {
         "tr" : {
@@ -8548,6 +8545,7 @@
       }
     },
     "CURDATE()" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8704,6 +8702,7 @@
       }
     },
     "CURRENT_TIMESTAMP()" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8776,6 +8775,7 @@
       }
     },
     "CURTIME()" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21375,6 +21375,7 @@
       }
     },
     "NOW()" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23416,7 +23417,6 @@
       }
     },
     "Pretty Print" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33637,6 +33637,7 @@
       }
     },
     "UTC_TIMESTAMP()" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

@@ -2,7 +2,7 @@
 //  FieldEditorResolver.swift
 //  TablePro
 
-enum FieldEditorKind: Equatable {
+internal enum FieldEditorKind: Equatable {
     case json
     case blobHex
     case boolean
@@ -13,7 +13,7 @@ enum FieldEditorKind: Equatable {
 }
 
 @MainActor
-enum FieldEditorResolver {
+internal enum FieldEditorResolver {
     static func resolve(for type: ColumnType, isLongText: Bool, originalValue: String?) -> FieldEditorKind {
         if type.isJsonType || (originalValue ?? "").looksLikeJson {
             return .json

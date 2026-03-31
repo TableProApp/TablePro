@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct PendingStateOverlay<Editor: View>: View {
+internal struct PendingStateOverlay<Editor: View>: View {
     let isPendingNull: Bool
     let isPendingDefault: Bool
     let isLoadingFullValue: Bool
@@ -24,11 +24,10 @@ struct PendingStateOverlay<Editor: View>: View {
                         .controlSize(.small)
                 }
         } else if isTruncated {
-            Text("Failed to load full value")
+            TextField(String(localized: "Value excluded from query"), text: .constant(""))
+                .textFieldStyle(.roundedBorder)
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+                .disabled(true)
         } else if isPendingNull || isPendingDefault {
             Text(isPendingNull ? "NULL" : "DEFAULT")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))

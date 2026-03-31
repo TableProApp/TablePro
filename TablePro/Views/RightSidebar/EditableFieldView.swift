@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-struct FieldDetailView: View {
+internal struct FieldDetailView: View {
     let context: FieldEditorContext
     let isPendingNull: Bool
     let isPendingDefault: Bool
@@ -24,6 +24,12 @@ struct FieldDetailView: View {
     @State private var isHovered = false
 
     var body: some View {
+        let kind = FieldEditorResolver.resolve(
+            for: context.columnType,
+            isLongText: context.isLongText,
+            originalValue: context.originalValue
+        )
+
         VStack(alignment: .leading, spacing: 4) {
             fieldHeader
 
@@ -32,9 +38,9 @@ struct FieldDetailView: View {
                 isPendingDefault: isPendingDefault,
                 isLoadingFullValue: isLoadingFullValue,
                 isTruncated: isTruncated,
-                minHeight: editorMinHeight
+                minHeight: editorMinHeight(for: kind)
             ) {
-                resolvedEditor
+                resolvedEditor(for: kind)
             }
             .overlay(alignment: .topTrailing) {
                 if !context.isReadOnly {
@@ -94,12 +100,7 @@ struct FieldDetailView: View {
         }
     }
 
-    private var editorMinHeight: CGFloat? {
-        let kind = FieldEditorResolver.resolve(
-            for: context.columnType,
-            isLongText: context.isLongText,
-            originalValue: context.originalValue
-        )
+    private func editorMinHeight(for kind: FieldEditorKind) -> CGFloat? {
         switch kind {
         case .json:
             return context.isReadOnly ? 60 : 80
@@ -113,12 +114,8 @@ struct FieldDetailView: View {
     // MARK: - Editor Dispatch
 
     @ViewBuilder
-    private var resolvedEditor: some View {
-        switch FieldEditorResolver.resolve(
-            for: context.columnType,
-            isLongText: context.isLongText,
-            originalValue: context.originalValue
-        ) {
+    private func resolvedEditor(for kind: FieldEditorKind) -> some View {
+        switch kind {
         case .json:
             JsonEditorView(context: context)
         case .blobHex:

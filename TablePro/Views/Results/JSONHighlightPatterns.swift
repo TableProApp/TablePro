@@ -5,7 +5,7 @@
 import Foundation
 
 // swiftlint:disable force_try
-enum JSONHighlightPatterns {
+internal enum JSONHighlightPatterns {
     static let string = try! NSRegularExpression(pattern: "\"(?:[^\"\\\\]|\\\\.)*\"")
     static let key = try! NSRegularExpression(pattern: "(\"(?:[^\"\\\\]|\\\\.)*\")\\s*:")
     static let number = try! NSRegularExpression(pattern: "(?<=[\\s,:\\[{])-?\\d+\\.?\\d*(?:[eE][+-]?\\d+)?(?=[\\s,\\]}])")

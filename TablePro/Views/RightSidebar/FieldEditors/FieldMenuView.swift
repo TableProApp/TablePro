@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct FieldMenuView: View {
+internal struct FieldMenuView: View {
     let value: String
     let columnType: ColumnType
     let sqlFunctions: [SQLFunctionProvider.SQLFunction]
@@ -69,4 +69,3 @@ struct FieldMenuView: View {
         .fixedSize()
     }
 }
-

@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-struct BlobHexEditorView: View {
+internal struct BlobHexEditorView: View {
     let context: FieldEditorContext
 
     @FocusState private var isFocused: Bool
