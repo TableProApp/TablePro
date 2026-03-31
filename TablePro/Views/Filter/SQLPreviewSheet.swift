@@ -82,7 +82,8 @@ struct SQLPreviewSheet: View {
         AccessibilityNotification.Announcement(String(localized: "Copied to clipboard")).post()
 
         // Reset after delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
             copied = false
         }
     }

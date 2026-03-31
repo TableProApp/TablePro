@@ -29,7 +29,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
-    @ObservationIgnored private var frameChangeWorkItem: DispatchWorkItem?
+    @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
     @ObservationIgnored private var wasEditorFocused = false
     @ObservationIgnored private var didDestroy = false
 
@@ -66,7 +66,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
         }
-        frameChangeWorkItem?.cancel()
+        frameChangeTask?.cancel()
     }
 
     private func cleanupMonitors() {
@@ -78,8 +78,8 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             NotificationCenter.default.removeObserver(observer)
             windowKeyObserver = nil
         }
-        frameChangeWorkItem?.cancel()
-        frameChangeWorkItem = nil
+        frameChangeTask?.cancel()
+        frameChangeTask = nil
     }
 
     // MARK: - TextViewCoordinator
@@ -89,7 +89,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
 
         // Deferred to next run loop because prepareCoordinator runs during
         // TextViewController.init, before the view hierarchy is fully loaded.
-        DispatchQueue.main.async { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             self.fixFindPanelHitTesting(controller: controller)
             self.installAIContextMenu(controller: controller)
@@ -123,7 +123,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         vimEngine?.invalidateLineCache()
 
         // Notify inline suggestion manager immediately (lightweight)
-        DispatchQueue.main.async { [weak self] in
+        Task { [weak self] in
             self?.inlineSuggestionManager?.handleTextChange()
             self?.vimCursorManager?.updatePosition()
         }
@@ -131,16 +131,12 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         // Throttle frame-change notification — during rapid typing, only the
         // last notification matters. The highlighter recalculates the visible
         // range on each notification, so coalescing saves redundant layout work.
-        frameChangeWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak controller] in
-            guard let controller, let textView = controller.textView else { return }
-            NotificationCenter.default.post(
-                name: NSView.frameDidChangeNotification,
-                object: textView
-            )
+        frameChangeTask?.cancel()
+        frameChangeTask = Task { [weak controller] in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled, let controller, let textView = controller.textView else { return }
+            NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: textView)
         }
-        frameChangeWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -155,7 +151,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         guard let range = newPositions.first?.range, range.location != NSNotFound else { return }
 
         // Defer to next run loop to let EmphasisManager finish its work first.
-        DispatchQueue.main.async { [weak controller] in
+        Task { [weak controller] in
             controller?.textView.scrollToRange(range)
         }
     }

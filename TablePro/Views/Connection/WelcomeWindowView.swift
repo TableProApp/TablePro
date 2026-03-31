@@ -78,7 +78,8 @@ struct WelcomeWindowView: View {
                 LicenseActivationSheet()
             case .importFile(let url):
                 ConnectionImportSheet(fileURL: url) { count in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
                         vm.showImportResultAlert(count: count)
                     }
                 }

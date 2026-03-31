@@ -95,7 +95,8 @@ struct ConnectionExportOptionsSheet: View {
         confirmPassphrase = ""
         dismiss()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.tableproConnectionShare]
             let defaultName = capturedConnections.count == 1

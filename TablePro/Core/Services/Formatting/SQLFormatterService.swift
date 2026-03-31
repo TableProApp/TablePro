@@ -133,12 +133,7 @@ struct SQLFormatterService: SQLFormatterProtocol {
     }
 
     private static func resolveDialectProvider(for dialect: DatabaseType) -> SQLDialectProvider {
-        if Thread.isMainThread {
-            return MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
-        }
-        return DispatchQueue.main.sync {
-            MainActor.assumeIsolated { SQLDialectFactory.createDialect(for: dialect) }
-        }
+        SQLDialectFactory.createDialect(for: dialect)
     }
 
     // MARK: - Public API

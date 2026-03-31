@@ -265,7 +265,7 @@ struct MainEditorContentView: View {
                 // Update window dirty indicator and toolbar for file-backed tabs
                 if tabManager.tabs[index].sourceFileURL != nil {
                     let isDirty = tabManager.tabs[index].isFileDirty
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         if let window = NSApp.keyWindow {
                             window.isDocumentEdited = isDirty
                         }
@@ -456,7 +456,7 @@ struct MainEditorContentView: View {
 
     private func rowProvider(for tab: QueryTab) -> InMemoryRowProvider {
         if tab.rowBuffer.isEvicted {
-            DispatchQueue.main.async { tabProviderCache.removeValue(forKey: tab.id) }
+            Task { @MainActor in tabProviderCache.removeValue(forKey: tab.id) }
             return makeRowProvider(for: tab)
         }
         if let entry = tabProviderCache[tab.id],
@@ -467,7 +467,7 @@ struct MainEditorContentView: View {
             return entry.provider
         }
         let provider = makeRowProvider(for: tab)
-        DispatchQueue.main.async {
+        Task { @MainActor in
             tabProviderCache[tab.id] = RowProviderCacheEntry(
                 provider: provider,
                 resultVersion: tab.resultVersion,
@@ -620,7 +620,7 @@ struct MainEditorContentView: View {
                 if let index = tabManager.selectedTabIndex {
                     tabManager.tabs[index].columnLayout = newValue
                 }
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     coordinator.isUpdatingColumnLayout = false
                     coordinator.saveColumnLayoutForTable()
                 }

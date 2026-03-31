@@ -156,7 +156,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         ) { [weak self] _ in
             guard let self else { return }
 
-            DispatchQueue.main.async { [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self, let tableView = self.tableView else { return }
                 let settings = AppSettingsManager.shared.dataGrid
                 let prev = self.lastDataGridSettings

@@ -353,7 +353,8 @@ private extension HistoryPanelView {
         deleteEntry(entry)
 
         // After deletion triggers reload, select adjacent entry
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
             if let idx = currentIndex, !entries.isEmpty {
                 let newIndex = min(idx, entries.count - 1)
                 if newIndex >= 0, newIndex < entries.count {

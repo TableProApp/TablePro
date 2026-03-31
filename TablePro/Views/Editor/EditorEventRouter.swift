@@ -39,7 +39,7 @@ internal final class EditorEventRouter {
         if textView.window != nil {
             installWindowObserver(for: key)
         } else {
-            DispatchQueue.main.async { [weak self] in
+            Task { [weak self] in
                 guard let self, self.editors[key]?.windowObserver == nil else { return }
                 self.installWindowObserver(for: key)
             }

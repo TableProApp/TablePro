@@ -310,7 +310,7 @@ struct MainContentView: View {
             isKeyWindow = true
             evictionTask?.cancel()
             evictionTask = nil
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 syncSidebarToCurrentTab()
             }
             // Lazy-load: execute query for restored tabs that skipped auto-execute,

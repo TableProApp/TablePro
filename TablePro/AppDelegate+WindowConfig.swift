@@ -326,34 +326,31 @@ extension AppDelegate {
 
         isAutoReconnecting = true
 
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             WindowOpener.shared.pendingConnectionId = connection.id
             NotificationCenter.default.post(name: .openMainWindow, object: connection.id)
 
-            Task { @MainActor in
-                defer { self.isAutoReconnecting = false }
-                do {
-                    try await DatabaseManager.shared.connectToSession(connection)
+            defer { self.isAutoReconnecting = false }
+            do {
+                try await DatabaseManager.shared.connectToSession(connection)
 
-                    for window in NSApp.windows where self.isWelcomeWindow(window) {
-                        window.close()
-                    }
-                } catch is CancellationError {
-                    // User cancelled password prompt at startup — return to welcome
-                    for window in NSApp.windows where self.isMainWindow(window) {
-                        window.close()
-                    }
-                    self.openWelcomeWindow()
-                } catch {
-                    windowLogger.error("Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)")
-
-                    for window in NSApp.windows where self.isMainWindow(window) {
-                        window.close()
-                    }
-
-                    self.openWelcomeWindow()
+                for window in NSApp.windows where self.isWelcomeWindow(window) {
+                    window.close()
                 }
+            } catch is CancellationError {
+                for window in NSApp.windows where self.isMainWindow(window) {
+                    window.close()
+                }
+                self.openWelcomeWindow()
+            } catch {
+                windowLogger.error("Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)")
+
+                for window in NSApp.windows where self.isMainWindow(window) {
+                    window.close()
+                }
+
+                self.openWelcomeWindow()
             }
         }
     }

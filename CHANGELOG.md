@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Collapsible results panel (`Cmd+Opt+R`), multiple result tabs for multi-statement queries, result pinning
 - Inline error banner for query errors
 
+### Changed
+
+- Replace GCD dispatch patterns with Swift structured concurrency
+
 ### Fixed
 
 - SQL Server: Unicode characters (Thai, CJK, etc.) in nvarchar/nchar/ntext columns displaying as question marks
