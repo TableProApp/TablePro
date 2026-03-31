@@ -95,6 +95,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var lastReapplyVersion: Int = -1
     private(set) var cachedRowCount: Int = 0
     private(set) var cachedColumnCount: Int = 0
+    private(set) var enumOrSetColumns: Set<Int> = []
+    private(set) var fkColumns: Set<Int> = []
     var isSyncingSortDescriptors: Bool = false
     /// Suppresses selection delegate callbacks during programmatic selection sync
     var isSyncingSelection = false
@@ -261,6 +263,30 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func updateCache() {
         cachedRowCount = rowProvider.totalRowCount
         cachedColumnCount = rowProvider.columns.count
+    }
+
+    func rebuildColumnMetadataCache() {
+        var enumSet = Set<Int>()
+        var fkSet = Set<Int>()
+        let columns = rowProvider.columns
+        let types = rowProvider.columnTypes
+        let enumValues = rowProvider.columnEnumValues
+        let fkKeys = rowProvider.columnForeignKeys
+
+        for i in 0..<columns.count {
+            let name = columns[i]
+            if i < types.count {
+                let ct = types[i]
+                if (ct.isEnumType || ct.isSetType) && enumValues[name]?.isEmpty == false {
+                    enumSet.insert(i)
+                }
+            }
+            if fkKeys[name] != nil {
+                fkSet.insert(i)
+            }
+        }
+        enumOrSetColumns = enumSet
+        fkColumns = fkSet
     }
 
     // MARK: - Font Updates

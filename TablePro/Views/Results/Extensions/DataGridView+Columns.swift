@@ -43,20 +43,8 @@ extension TableViewCoordinator {
         let isDropdown = dropdownColumns?.contains(columnIndex) == true
         let isTypePicker = typePickerColumns?.contains(columnIndex) == true
 
-        let isEnumOrSet: Bool = {
-            guard columnIndex < rowProvider.columnTypes.count,
-                  columnIndex < rowProvider.columns.count else { return false }
-            let ct = rowProvider.columnTypes[columnIndex]
-            let columnName = rowProvider.columns[columnIndex]
-            guard ct.isEnumType || ct.isSetType else { return false }
-            return rowProvider.columnEnumValues[columnName]?.isEmpty == false
-        }()
-
-        let isFKColumn: Bool = {
-            guard columnIndex < rowProvider.columns.count else { return false }
-            let columnName = rowProvider.columns[columnIndex]
-            return rowProvider.columnForeignKeys[columnName] != nil
-        }()
+        let isEnumOrSet = enumOrSetColumns.contains(columnIndex)
+        let isFKColumn = fkColumns.contains(columnIndex)
 
         return cellFactory.makeDataCell(
             tableView: tableView,
