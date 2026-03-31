@@ -355,7 +355,14 @@ struct MainEditorContentView: View {
                         Divider()
                     }
 
-                    dataGridView(tab: tab)
+                    if tab.tabType == .query && !tab.resultColumns.isEmpty
+                        && tab.resultRows.isEmpty && tab.lastExecutedAt != nil
+                        && !tab.isExecuting && !filterStateManager.hasAppliedFilters
+                    {
+                        emptyResultView(executionTime: tab.activeResultSet?.executionTime ?? tab.executionTime)
+                    } else {
+                        dataGridView(tab: tab)
+                    }
                 }
             }
 
@@ -386,6 +393,24 @@ struct MainEditorContentView: View {
                 coordinator.tabManager.tabs[tabIdx].resultVersion += 1
             }
         )
+    }
+
+    private func emptyResultView(executionTime: TimeInterval?) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "tray")
+                .font(.system(size: 36))
+                .foregroundStyle(.secondary)
+            Text("No rows returned")
+                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+            if let time = executionTime {
+                Text(String(format: "%.3fs", time))
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
