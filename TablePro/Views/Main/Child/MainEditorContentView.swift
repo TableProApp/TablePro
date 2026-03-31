@@ -330,6 +330,7 @@ struct MainEditorContentView: View {
                     )
                 } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
                     && tab.lastExecutedAt != nil && !tab.isExecuting
+                    && !tab.resultSets.isEmpty
                 {
                     ResultSuccessView(
                         rowsAffected: tab.rowsAffected,
