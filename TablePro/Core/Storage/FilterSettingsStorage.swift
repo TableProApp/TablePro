@@ -96,6 +96,9 @@ final class FilterSettingsStorage {
     /// Cached settings to avoid repeated UserDefaults read + JSON decode
     private var cachedSettings: FilterSettings?
 
+    /// Per-table filter cache to avoid JSON decode on every table switch
+    private var lastFiltersCache: [String: [TableFilter]] = [:]
+
     /// In-memory cache for tracked filter keys. Lazy-loaded on first access
     /// so that `trackKey`/`removeTrackedKey` avoid redundant UserDefaults reads.
     private var _trackedKeys: Set<String>?
@@ -160,12 +163,18 @@ final class FilterSettingsStorage {
     func loadLastFilters(for tableName: String) -> [TableFilter] {
         let key = lastFiltersKeyPrefix + sanitizeTableName(tableName)
 
+        if let cached = lastFiltersCache[key] {
+            return cached
+        }
+
         guard let data = defaults.data(forKey: key) else {
             return []
         }
 
         do {
-            return try decoder.decode([TableFilter].self, from: data)
+            let filters = try decoder.decode([TableFilter].self, from: data)
+            lastFiltersCache[key] = filters
+            return filters
         } catch {
             Self.logger.error("Failed to decode last filters for \(tableName): \(error)")
             return []
@@ -180,6 +189,7 @@ final class FilterSettingsStorage {
         guard !filters.isEmpty else {
             defaults.removeObject(forKey: key)
             removeTrackedKey(key)
+            lastFiltersCache.removeValue(forKey: key)
             return
         }
 
@@ -187,6 +197,7 @@ final class FilterSettingsStorage {
             let data = try encoder.encode(filters)
             defaults.set(data, forKey: key)
             trackKey(key)
+            lastFiltersCache[key] = filters
         } catch {
             Self.logger.error("Failed to encode last filters for \(tableName): \(error)")
         }
@@ -197,6 +208,7 @@ final class FilterSettingsStorage {
         let key = lastFiltersKeyPrefix + sanitizeTableName(tableName)
         defaults.removeObject(forKey: key)
         removeTrackedKey(key)
+        lastFiltersCache.removeValue(forKey: key)
     }
 
     /// Clear all stored last filters using the tracked key set instead of

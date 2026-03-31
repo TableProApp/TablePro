@@ -171,17 +171,23 @@ final class FilterStateManager {
 
     /// Toggle filter panel visibility
     func toggle() {
-        isVisible.toggle()
+        withAnimation(.easeInOut(duration: 0.15)) {
+            isVisible.toggle()
+        }
     }
 
     /// Show panel
     func show() {
-        isVisible = true
+        withAnimation(.easeInOut(duration: 0.15)) {
+            isVisible = true
+        }
     }
 
     /// Close panel
     func close() {
-        isVisible = false
+        withAnimation(.easeInOut(duration: 0.15)) {
+            isVisible = false
+        }
     }
 
     // MARK: - Selection

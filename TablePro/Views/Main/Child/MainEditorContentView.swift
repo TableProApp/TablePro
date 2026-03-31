@@ -369,8 +369,6 @@ struct MainEditorContentView: View {
             statusBar(tab: tab)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.easeInOut(duration: 0.2), value: filterStateManager.isVisible)
-        .animation(.easeInOut(duration: 0.2), value: tab.errorMessage)
     }
 
     private func resultTabBar(tab: QueryTab) -> some View {
