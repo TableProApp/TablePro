@@ -83,6 +83,9 @@ struct DataGridView: NSViewRepresentable {
 
         let tableView = KeyHandlingTableView()
         tableView.coordinator = context.coordinator
+        let sortableHeader = SortableTableHeaderView()
+        sortableHeader.coordinator = context.coordinator
+        tableView.headerView = sortableHeader
         tableView.style = .plain
         tableView.setAccessibilityLabel(String(localized: "Data grid"))
         tableView.setAccessibilityRole(.table)

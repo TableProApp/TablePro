@@ -24,6 +24,14 @@ extension TableViewCoordinator {
         onSort?(columnIndex, sortDescriptor.ascending, isMultiSort)
     }
 
+    /// Handle Shift+Click on column header for multi-column sort.
+    /// NSTableView swallows Shift+Click on headers (sortDescriptorsDidChange never fires),
+    /// so the custom SortableTableHeaderView calls this directly.
+    func handleShiftClickSort(columnIndex: Int) {
+        guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
+        onSort?(columnIndex, true, true)
+    }
+
     // MARK: - Double-Click Column Divider Auto-Fit
 
     func tableView(_ tableView: NSTableView, sizeToFitWidthOfColumn columnIndex: Int) -> CGFloat {

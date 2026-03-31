@@ -422,3 +422,37 @@ final class KeyHandlingTableView: NSTableView {
         return super.menu(for: event)
     }
 }
+
+// MARK: - Sortable Table Header View
+
+/// Custom NSTableHeaderView that intercepts Shift+Click for multi-column sort.
+/// NSTableView swallows Shift+Click on column headers (sortDescriptorsDidChange never fires),
+/// so we detect the modifier here and route to the coordinator's multi-sort handler.
+final class SortableTableHeaderView: NSTableHeaderView {
+    weak var coordinator: TableViewCoordinator?
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.modifierFlags.contains(.shift) else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        // Shift is held — handle multi-sort manually
+        let pointInHeader = convert(event.locationInWindow, from: nil)
+        let clickedColumn = column(at: pointInHeader)
+        guard clickedColumn >= 0,
+              let tableView,
+              clickedColumn < tableView.tableColumns.count else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        let column = tableView.tableColumns[clickedColumn]
+        guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else {
+            super.mouseDown(with: event)
+            return
+        }
+
+        coordinator?.handleShiftClickSort(columnIndex: dataColumnIndex)
+    }
+}
