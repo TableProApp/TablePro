@@ -10,13 +10,26 @@ import SwiftUI
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
+    let databaseType: DatabaseType
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
     let onSubmit: () -> Void
     var shouldFocus: Bool = false
 
-    @FocusState private var isValueFocused: Bool
+    private static let sqlKeywords = [
+        "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN",
+        "IS NULL", "IS NOT NULL", "EXISTS",
+        "CASE", "WHEN", "THEN", "ELSE", "END",
+    ]
+
+    private var rawSQLCompletions: [String] {
+        let langName = PluginManager.shared.queryLanguageName(for: databaseType)
+        if langName == "SQL" || langName == "CQL" || langName == "PartiQL" {
+            return columns + Self.sqlKeywords
+        }
+        return columns
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -33,11 +46,6 @@ struct FilterRowView: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .contextMenu { rowContextMenu }
-        .onAppear {
-            if shouldFocus {
-                isValueFocused = true
-            }
-        }
     }
 
     // MARK: - Column Picker
@@ -79,25 +87,28 @@ struct FilterRowView: View {
     @ViewBuilder
     private var valueFields: some View {
         if filter.isRawSQL {
-            TextField("e.g. id = 1", text: Binding(
-                get: { filter.rawSQL ?? "" },
-                set: { filter.rawSQL = $0 }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .controlSize(.small)
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+            CompletionTextField(
+                text: Binding(
+                    get: { filter.rawSQL ?? "" },
+                    set: { filter.rawSQL = $0 }
+                ),
+                placeholder: "e.g. id = 1",
+                completions: rawSQLCompletions,
+                shouldFocus: shouldFocus,
+                allowsMultiLine: true,
+                onSubmit: onSubmit
+            )
             .accessibilityLabel(String(localized: "WHERE clause"))
-            .focused($isValueFocused)
-            .onSubmit { onSubmit() }
         } else if filter.filterOperator.requiresValue {
-            TextField("Value", text: $filter.value)
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
-                .frame(minWidth: 80)
-                .accessibilityLabel(String(localized: "Filter value"))
-                .focused($isValueFocused)
-                .onSubmit { onSubmit() }
+            CompletionTextField(
+                text: $filter.value,
+                placeholder: String(localized: "Value"),
+                completions: columns,
+                shouldFocus: shouldFocus,
+                onSubmit: onSubmit
+            )
+            .frame(minWidth: 80)
+            .accessibilityLabel(String(localized: "Filter value"))
 
             if filter.filterOperator.requiresSecondValue {
                 Text("and")

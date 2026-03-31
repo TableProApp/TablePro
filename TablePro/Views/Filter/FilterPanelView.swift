@@ -22,7 +22,7 @@ struct FilterPanelView: View {
     @State private var newPresetName = ""
     @State private var savedPresets: [FilterPreset] = []
 
-    private let filterRowHeight: CGFloat = 32
+    private let estimatedFilterRowHeight: CGFloat = 32
 
     var body: some View {
         VStack(spacing: 0) {
@@ -181,11 +181,12 @@ struct FilterPanelView: View {
     // MARK: - Filter List
 
     private var filterRows: some View {
-        LazyVStack(spacing: 0) {
+        VStack(spacing: 0) {
             ForEach(filterState.filters) { filter in
                 FilterRowView(
                     filter: filterState.binding(for: filter),
                     columns: columns,
+                    databaseType: databaseType,
                     onAdd: { filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn) },
                     onDuplicate: { filterState.duplicateFilter(filter) },
                     onRemove: {
@@ -212,12 +213,12 @@ struct FilterPanelView: View {
 
     @ViewBuilder
     private var filterList: some View {
-        let contentHeight = CGFloat(filterState.filters.count) * filterRowHeight + 8
-        if contentHeight > maxFilterListHeight {
+        let estimatedHeight = CGFloat(filterState.filters.count) * estimatedFilterRowHeight + 8
+        if estimatedHeight > maxFilterListHeight {
             ScrollView {
                 filterRows
             }
-            .frame(height: maxFilterListHeight)
+            .frame(maxHeight: maxFilterListHeight)
         } else {
             filterRows
         }

@@ -22972,6 +22972,16 @@
         }
       }
     },
+    "Plugin was built with PluginKit version %lld, but version %lld is required. Please update the plugin." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Plugin was built with PluginKit version %1$lld, but version %2$lld is required. Please update the plugin."
+          }
+        }
+      }
+    },
     "Plugins" : {
       "localizations" : {
         "tr" : {
@@ -34292,6 +34302,7 @@
 
     },
     "WHERE clause..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
