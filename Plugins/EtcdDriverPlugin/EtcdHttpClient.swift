@@ -574,28 +574,31 @@ internal final class EtcdHttpClient: @unchecked Sendable {
 
             group.addTask {
                 let data: Data = try await withCheckedThrowingContinuation { continuation in
-                    self.lock.lock()
-                    guard self.sessionGeneration == generation, let currentSession = self.session else {
-                        self.lock.unlock()
+                    let result: (session: URLSession, task: URLSessionDataTask)? = self.lock.withLock {
+                        guard self.sessionGeneration == generation, let currentSession = self.session else {
+                            return nil
+                        }
+                        let dataTask = currentSession.dataTask(with: request) { data, _, error in
+                            if let error {
+                                // URLError.cancelled is expected when we cancel after timeout
+                                if (error as? URLError)?.code == .cancelled {
+                                    continuation.resume(returning: data ?? Data())
+                                } else {
+                                    continuation.resume(throwing: error)
+                                }
+                                return
+                            }
+                            continuation.resume(returning: data ?? Data())
+                        }
+                        self.currentTask = dataTask
+                        return (currentSession, dataTask)
+                    }
+                    guard let result else {
                         continuation.resume(throwing: EtcdError.notConnected)
                         return
                     }
-                    let task = currentSession.dataTask(with: request) { data, _, error in
-                        if let error {
-                            // URLError.cancelled is expected when we cancel after timeout
-                            if (error as? URLError)?.code == .cancelled {
-                                continuation.resume(returning: data ?? Data())
-                            } else {
-                                continuation.resume(throwing: error)
-                            }
-                            return
-                        }
-                        continuation.resume(returning: data ?? Data())
-                    }
-                    self.currentTask = task
-                    self.lock.unlock()
-                    collectedData.setTask(task)
-                    task.resume()
+                    collectedData.setTask(result.task)
+                    result.task.resume()
                 }
                 return Self.parseWatchEvents(from: data)
             }
@@ -1062,10 +1065,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 return
             }
 
-            guard let identity = identityRef as? SecIdentity else {
-                completionHandler(.cancelAuthenticationChallenge, nil)
-                return
-            }
+            let identity = unsafeBitCast(identityRef, to: SecIdentity.self)
             let credential = URLCredential(
                 identity: identity,
                 certificates: nil,
@@ -1122,7 +1122,7 @@ internal final class EtcdHttpClient: @unchecked Sendable {
             }
 
             // Export to PKCS#12
-            var exportItems: CFArray?
+            let exportItems: CFArray? = nil
             guard let identity = createIdentity(certificate: cert, privateKey: privateKey) else {
                 return nil
             }
