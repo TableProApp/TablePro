@@ -2,15 +2,15 @@
 //  QuerySplitView.swift
 //  TablePro
 //
-//  NSSplitViewController wrapper for the query editor / results split.
-//  Uses NSSplitViewItem.isCollapsed for proper collapse/expand with divider
-//  position preservation, and autosaveName for cross-session persistence.
+//  NSSplitView wrapper (NSViewRepresentable) for the query editor / results split.
+//  Uses autosaveName for divider position persistence and manual collapse via
+//  subview hiding + adjustSubviews().
 //
 
 import AppKit
 import SwiftUI
 
-struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRepresentable {
+struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentable {
     var isBottomCollapsed: Bool
     var autosaveName: String
     @ViewBuilder var topContent: TopContent
@@ -20,77 +20,87 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewControllerRe
         Coordinator()
     }
 
-    func makeNSViewController(context: Context) -> NSSplitViewController {
-        let splitVC = NSSplitViewController()
-        splitVC.splitView.isVertical = false
-        splitVC.splitView.dividerStyle = .thin
-        splitVC.splitView.autosaveName = autosaveName
+    func makeNSView(context: Context) -> NSSplitView {
+        let splitView = NSSplitView()
+        splitView.isVertical = false
+        splitView.dividerStyle = .thin
+        splitView.autosaveName = autosaveName
+        splitView.delegate = context.coordinator
 
-        let topVC = HostingPaneController(rootView: topContent)
-        let bottomVC = HostingPaneController(rootView: bottomContent)
+        let topHosting = NSHostingView(rootView: topContent)
+        topHosting.sizingOptions = [.minSize]
 
-        let topItem = NSSplitViewItem(viewController: topVC)
-        topItem.minimumThickness = 100
-        topItem.holdingPriority = .init(240)
+        let bottomHosting = NSHostingView(rootView: bottomContent)
+        bottomHosting.sizingOptions = [.minSize]
 
-        let bottomItem = NSSplitViewItem(viewController: bottomVC)
-        bottomItem.minimumThickness = 150
-        bottomItem.holdingPriority = .init(260)
-        bottomItem.canCollapse = true
-        bottomItem.isCollapsed = isBottomCollapsed
+        splitView.addArrangedSubview(topHosting)
+        splitView.addArrangedSubview(bottomHosting)
 
-        splitVC.addSplitViewItem(topItem)
-        splitVC.addSplitViewItem(bottomItem)
+        context.coordinator.topHosting = topHosting
+        context.coordinator.bottomHosting = bottomHosting
+        context.coordinator.lastCollapsedState = isBottomCollapsed
 
-        context.coordinator.topVC = topVC
-        context.coordinator.bottomVC = bottomVC
-
-        return splitVC
-    }
-
-    func updateNSViewController(_ splitVC: NSSplitViewController, context: Context) {
-        guard splitVC.splitViewItems.count == 2 else { return }
-        let bottomItem = splitVC.splitViewItems[1]
-        if bottomItem.isCollapsed != isBottomCollapsed {
-            bottomItem.animator().isCollapsed = isBottomCollapsed
+        if isBottomCollapsed {
+            bottomHosting.isHidden = true
         }
 
-        context.coordinator.topVC?.update(rootView: topContent)
-        context.coordinator.bottomVC?.update(rootView: bottomContent)
+        return splitView
+    }
+
+    func updateNSView(_ splitView: NSSplitView, context: Context) {
+        context.coordinator.topHosting?.rootView = topContent
+        context.coordinator.bottomHosting?.rootView = bottomContent
+
+        guard let bottomView = context.coordinator.bottomHosting else { return }
+        let wasCollapsed = context.coordinator.lastCollapsedState
+
+        if isBottomCollapsed != wasCollapsed {
+            context.coordinator.lastCollapsedState = isBottomCollapsed
+            if isBottomCollapsed {
+                // Save divider position before collapsing
+                if splitView.subviews.count == 2 {
+                    context.coordinator.savedDividerPosition = splitView.subviews[0].frame.height
+                }
+                bottomView.isHidden = true
+                splitView.adjustSubviews()
+            } else {
+                bottomView.isHidden = false
+                splitView.adjustSubviews()
+                // Restore divider position
+                if let saved = context.coordinator.savedDividerPosition {
+                    splitView.setPosition(saved, ofDividerAt: 0)
+                }
+            }
+        }
     }
 
     final class Coordinator: NSObject, NSSplitViewDelegate {
-        var topVC: HostingPaneController<TopContent>?
-        var bottomVC: HostingPaneController<BottomContent>?
+        var topHosting: NSHostingView<TopContent>?
+        var bottomHosting: NSHostingView<BottomContent>?
+        var lastCollapsedState = false
+        var savedDividerPosition: CGFloat?
 
-        func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
-            subview == splitView.subviews.last
+        func splitView(
+            _ splitView: NSSplitView,
+            constrainMinCoordinate proposedMinimumPosition: CGFloat,
+            ofSubviewAt dividerIndex: Int
+        ) -> CGFloat {
+            100
         }
-    }
-}
 
-// MARK: - Hosting Pane Controller
+        func splitView(
+            _ splitView: NSSplitView,
+            constrainMaxCoordinate proposedMaximumPosition: CGFloat,
+            ofSubviewAt dividerIndex: Int
+        ) -> CGFloat {
+            splitView.bounds.height - 150
+        }
 
-/// NSViewController whose view is an NSHostingView with sizingOptions = [.minSize].
-/// Dropping the intrinsicContentSize constraint lets NSSplitView freely resize
-/// panes via the divider while SwiftUI content fills the available space.
-final class HostingPaneController<Content: View>: NSViewController {
-    private var hostingView: NSHostingView<Content>
-
-    init(rootView: Content) {
-        self.hostingView = NSHostingView(rootView: rootView)
-        self.hostingView.sizingOptions = [.minSize]
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func loadView() {
-        view = hostingView
-    }
-
-    func update(rootView: Content) {
-        hostingView.rootView = rootView
+        func splitView(
+            _ splitView: NSSplitView,
+            canCollapseSubview subview: NSView
+        ) -> Bool {
+            subview == bottomHosting
+        }
     }
 }
