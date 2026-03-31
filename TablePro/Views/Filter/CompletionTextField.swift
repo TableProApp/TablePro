@@ -83,6 +83,10 @@ struct CompletionTextField: NSViewRepresentable {
             }
         }
 
+        func controlTextDidEndEditing(_ notification: Notification) {
+            previousTextLength = 0
+        }
+
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
             if commandSelector == #selector(NSResponder.insertNewline(_:)) {
                 onSubmit()
@@ -92,6 +96,7 @@ struct CompletionTextField: NSViewRepresentable {
             if commandSelector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)) {
                 textView.insertNewlineIgnoringFieldEditor(nil)
                 text.wrappedValue = textView.string
+                previousTextLength = textView.string.count
                 return true
             }
             return false
