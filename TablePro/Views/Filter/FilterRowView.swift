@@ -79,7 +79,7 @@ struct FilterRowView: View {
     @ViewBuilder
     private var valueFields: some View {
         if filter.isRawSQL {
-            TextField("WHERE clause...", text: Binding(
+            TextField("e.g. id = 1", text: Binding(
                 get: { filter.rawSQL ?? "" },
                 set: { filter.rawSQL = $0 }
             ))
