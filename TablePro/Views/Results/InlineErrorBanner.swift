@@ -5,6 +5,7 @@
 //  Dismissable red error banner for query errors, displayed inline above results.
 //
 
+import AppKit
 import SwiftUI
 
 struct InlineErrorBanner: View {
@@ -20,6 +21,15 @@ struct InlineErrorBanner: View {
                 .lineLimit(3)
                 .textSelection(.enabled)
             Spacer()
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(message, forType: .string)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Copy error message"))
             if let onDismiss {
                 Button { onDismiss() } label: {
                     Image(systemName: "xmark")

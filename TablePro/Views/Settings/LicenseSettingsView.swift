@@ -20,6 +20,7 @@ struct LicenseSettingsView: View {
     @State private var maxActivations = 0
     @State private var isLoadingActivations = false
     @State private var hasLoadedActivations = false
+    @State private var activationLoadError: String?
 
     var body: some View {
         Form {
@@ -92,7 +93,13 @@ struct LicenseSettingsView: View {
             } else if activations.isEmpty {
                 Text("No activations found")
                     .foregroundStyle(.secondary)
-            } else {
+            }
+            if let error = activationLoadError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            if !activations.isEmpty {
                 ForEach(activations) { activation in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -214,6 +221,7 @@ struct LicenseSettingsView: View {
             maxActivations = response.maxActivations
         } catch {
             Self.logger.debug("Failed to load activations: \(error.localizedDescription)")
+            activationLoadError = error.localizedDescription
         }
     }
 

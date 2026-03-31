@@ -121,10 +121,13 @@ struct DataGridView: NSViewRepresentable {
         for (index, columnName) in rowProvider.columns.enumerated() {
             let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col_\(index)"))
             column.title = columnName
+            if index < rowProvider.columnTypes.count {
+                let typeName = rowProvider.columnTypes[index].rawType ?? rowProvider.columnTypes[index].displayName
+                column.headerToolTip = "\(columnName) (\(typeName))"
+            }
             column.headerCell.setAccessibilityLabel(
                 String(localized: "Column: \(columnName)")
             )
-            // Use optimal width calculation based on both header and cell content
             column.width = context.coordinator.cellFactory.calculateOptimalColumnWidth(
                 for: columnName,
                 columnIndex: index,
@@ -373,6 +376,11 @@ struct DataGridView: NSViewRepresentable {
                 for (index, columnName) in rowProvider.columns.enumerated() {
                     let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col_\(index)"))
                     column.title = columnName
+                    if index < rowProvider.columnTypes.count {
+                        let typeName = rowProvider.columnTypes[index].rawType
+                            ?? rowProvider.columnTypes[index].displayName
+                        column.headerToolTip = "\(columnName) (\(typeName))"
+                    }
                     column.headerCell.setAccessibilityLabel(
                         String(localized: "Column: \(columnName)")
                     )
@@ -394,6 +402,11 @@ struct DataGridView: NSViewRepresentable {
                           colIndex < rowProvider.columns.count else { continue }
                     let columnName = rowProvider.columns[colIndex]
                     column.title = columnName
+                    if colIndex < rowProvider.columnTypes.count {
+                        let typeName = rowProvider.columnTypes[colIndex].rawType
+                            ?? rowProvider.columnTypes[colIndex].displayName
+                        column.headerToolTip = "\(columnName) (\(typeName))"
+                    }
                     column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
                         for: columnName,
                         columnIndex: colIndex,

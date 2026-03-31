@@ -47,6 +47,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     @ObservationIgnored var onAIExplain: ((String) -> Void)?
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
+    @ObservationIgnored var onFormatSQL: (() -> Void)?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -207,6 +208,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
+        menu.onFormatSQL = { [weak self] in self?.onFormatSQL?() }
         contextMenu = menu
     }
 
