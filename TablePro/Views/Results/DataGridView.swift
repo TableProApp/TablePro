@@ -373,6 +373,7 @@ struct DataGridView: NSViewRepresentable {
                     tableView.removeTableColumn(column)
                 }
 
+                let willRestoreWidths = !columnLayout.columnWidths.isEmpty
                 for (index, columnName) in rowProvider.columns.enumerated() {
                     let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col_\(index)"))
                     column.title = columnName
@@ -384,11 +385,15 @@ struct DataGridView: NSViewRepresentable {
                     column.headerCell.setAccessibilityLabel(
                         String(localized: "Column: \(columnName)")
                     )
-                    column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                        for: columnName,
-                        columnIndex: index,
-                        rowProvider: rowProvider
-                    )
+                    if willRestoreWidths {
+                        column.width = columnLayout.columnWidths[columnName] ?? 100
+                    } else {
+                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                            for: columnName,
+                            columnIndex: index,
+                            rowProvider: rowProvider
+                        )
+                    }
                     column.minWidth = 30
                     column.resizingMask = .userResizingMask
                     column.isEditable = isEditable
@@ -397,6 +402,7 @@ struct DataGridView: NSViewRepresentable {
                 }
             } else {
                 // Same column count — lightweight in-place update (avoids remove/add overhead)
+                let hasSavedWidths = !columnLayout.columnWidths.isEmpty
                 for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
                     guard let colIndex = Self.columnIndex(from: column.identifier),
                           colIndex < rowProvider.columns.count else { continue }
@@ -407,11 +413,13 @@ struct DataGridView: NSViewRepresentable {
                             ?? rowProvider.columnTypes[colIndex].displayName
                         column.headerToolTip = "\(columnName) (\(typeName))"
                     }
-                    column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
-                        for: columnName,
-                        columnIndex: colIndex,
-                        rowProvider: rowProvider
-                    )
+                    if !hasSavedWidths {
+                        column.width = coordinator.cellFactory.calculateOptimalColumnWidth(
+                            for: columnName,
+                            columnIndex: colIndex,
+                            rowProvider: rowProvider
+                        )
+                    }
                     column.isEditable = isEditable
                 }
             }
