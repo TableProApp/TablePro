@@ -17,7 +17,7 @@ struct WelcomeLeftPanel: View {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
                     .frame(width: 80, height: 80)
-                    .shadow(color: Color(red: 1.0, green: 0.576, blue: 0.0).opacity(0.4), radius: 20, x: 0, y: 0)
+                    .shadow(color: Color.accentColor.opacity(0.4), radius: 20, x: 0, y: 0)
 
                 VStack(spacing: 6) {
                     Text("TablePro")

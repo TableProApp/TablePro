@@ -70,7 +70,7 @@ struct SettingsView: View {
 
             SyncSettingsView()
                 .tabItem {
-                    Label("Sync", systemImage: "icloud")
+                    Label("Sync (Pro)", systemImage: "icloud")
                 }
                 .tag(SettingsTab.sync.rawValue)
                 .requiresPro(.iCloudSync)
