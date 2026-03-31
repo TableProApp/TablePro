@@ -377,7 +377,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
             return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
                 ?? String(data: Data(bytes: ptr, count: Int(srcLen)), encoding: .utf16LittleEndian)
         default:
-            let bufSize: DBINT = 64
+            let bufSize: DBINT = 256
             var buf = [BYTE](repeating: 0, count: Int(bufSize))
             let converted = buf.withUnsafeMutableBufferPointer { bufPtr in
                 dbconvert(proc, srcType, ptr, srcLen, Int32(SYBCHAR), bufPtr.baseAddress, bufSize)
