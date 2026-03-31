@@ -182,7 +182,7 @@ final class PluginManager {
 
             if entry.source == .userInstalled {
                 if pluginKitVersion < currentPluginKitVersion {
-                    logger.error("User plugin \(entry.url.lastPathComponent) has outdated PluginKit v\(pluginKitVersion)")
+                    logger.error("User plugin \(entry.url.lastPathComponent) was built with PluginKit v\(pluginKitVersion), but v\(currentPluginKitVersion) is required")
                     continue
                 }
             }
@@ -383,9 +383,9 @@ final class PluginManager {
             // have stale witness tables — accessing protocol properties crashes with
             // EXC_BAD_ACCESS. Reject them before loading the bundle.
             if pluginKitVersion < Self.currentPluginKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: Self.currentPluginKitVersion,
-                    current: pluginKitVersion
+                throw PluginError.pluginOutdated(
+                    pluginVersion: pluginKitVersion,
+                    requiredVersion: Self.currentPluginKitVersion
                 )
             }
             try verifyCodeSignature(bundle: bundle)
@@ -419,9 +419,9 @@ final class PluginManager {
 
         if source == .userInstalled {
             if pluginKitVersion < Self.currentPluginKitVersion {
-                throw PluginError.incompatibleVersion(
-                    required: Self.currentPluginKitVersion,
-                    current: pluginKitVersion
+                throw PluginError.pluginOutdated(
+                    pluginVersion: pluginKitVersion,
+                    requiredVersion: Self.currentPluginKitVersion
                 )
             }
             try verifyCodeSignature(bundle: bundle)

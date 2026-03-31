@@ -10,6 +10,7 @@ enum PluginError: LocalizedError {
     case signatureInvalid(detail: String)
     case checksumMismatch
     case incompatibleVersion(required: Int, current: Int)
+    case pluginOutdated(pluginVersion: Int, requiredVersion: Int)
     case cannotUninstallBuiltIn
     case notFound
     case noCompatibleBinary
@@ -31,6 +32,8 @@ enum PluginError: LocalizedError {
             return String(localized: "Plugin checksum does not match expected value")
         case .incompatibleVersion(let required, let current):
             return String(localized: "Plugin requires PluginKit version \(required), but app provides version \(current)")
+        case .pluginOutdated(let pluginVersion, let requiredVersion):
+            return String(localized: "Plugin was built with PluginKit version \(pluginVersion), but version \(requiredVersion) is required. Please update the plugin.")
         case .cannotUninstallBuiltIn:
             return String(localized: "Built-in plugins cannot be uninstalled")
         case .notFound:

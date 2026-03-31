@@ -9394,9 +9394,6 @@
         }
       }
     },
-    "DataGridView placeholder for: %@" : {
-
-    },
     "Date format:" : {
       "localizations" : {
         "tr" : {
@@ -14166,9 +14163,6 @@
           }
         }
       }
-    },
-    "Fix with AI" : {
-
     },
     "Focus Border" : {
       "localizations" : {
@@ -25646,6 +25640,9 @@
         }
       }
     },
+    "Results" : {
+
+    },
     "Retention" : {
       "localizations" : {
         "tr" : {
@@ -26102,9 +26099,6 @@
           }
         }
       }
-    },
-    "Run a query to see results" : {
-
     },
     "Run in New Tab" : {
       "localizations" : {
@@ -32301,6 +32295,9 @@
       }
     },
     "Toggle Results" : {
+
+    },
+    "Toggle Results (⌘⌥R)" : {
 
     },
     "Toggle Table Browser" : {
