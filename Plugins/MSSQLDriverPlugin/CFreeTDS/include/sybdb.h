@@ -49,6 +49,7 @@ typedef struct loginrec LOGINREC;
 #define DBSETUSER   2
 #define DBSETPWD    3
 #define DBSETAPP    5   // 4 is unused; real FreeTDS DBSETAPP = 5
+#define DBSETCHARSET 7  // Client charset for dbsetlname() — controls string encoding
 
 // Convenience macros (match FreeTDS sybdb.h)
 #define DBSETLHOST(x, y)    dbsetlname((x), (y), DBSETHOST)

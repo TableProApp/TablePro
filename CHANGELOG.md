@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server: Unicode characters (Thai, CJK, etc.) in nvarchar/nchar/ntext columns displaying as question marks
 - Globe+F (fn+F) fullscreen shortcut not working in SwiftUI lifecycle app
 
 ## [0.26.0] - 2026-03-29

@@ -196,6 +196,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlname(login, user, Int32(DBSETUSER))
         _ = dbsetlname(login, password, Int32(DBSETPWD))
         _ = dbsetlname(login, "TablePro", Int32(DBSETAPP))
+        _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
 
         freetdsLastError = ""
@@ -371,8 +372,10 @@ private final class FreeTDSConnection: @unchecked Sendable {
             return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
                 ?? String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .isoLatin1)
         case Int32(SYBNCHAR), Int32(SYBNVARCHAR), Int32(SYBNTEXT):
-            let data = Data(bytes: ptr, count: Int(srcLen))
-            return String(data: data, encoding: .utf16LittleEndian)
+            // With client charset UTF-8, FreeTDS converts UTF-16 wire data to UTF-8
+            // but may still report the original nvarchar type token
+            return String(bytes: UnsafeBufferPointer(start: ptr, count: Int(srcLen)), encoding: .utf8)
+                ?? String(data: Data(bytes: ptr, count: Int(srcLen)), encoding: .utf16LittleEndian)
         default:
             let bufSize: DBINT = 64
             var buf = [BYTE](repeating: 0, count: Int(bufSize))
