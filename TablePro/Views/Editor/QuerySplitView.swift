@@ -102,5 +102,25 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentabl
         ) -> Bool {
             subview == bottomHosting
         }
+
+        func splitView(
+            _ splitView: NSSplitView,
+            effectiveRect proposedEffectiveRect: NSRect,
+            forDrawnRect drawnRect: NSRect,
+            ofDividerAt dividerIndex: Int
+        ) -> NSRect {
+            // Hide divider when bottom pane is collapsed
+            if bottomHosting?.isHidden == true {
+                return .zero
+            }
+            return proposedEffectiveRect
+        }
+
+        func splitView(
+            _ splitView: NSSplitView,
+            shouldHideDividerAt dividerIndex: Int
+        ) -> Bool {
+            bottomHosting?.isHidden == true
+        }
     }
 }
