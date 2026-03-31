@@ -184,8 +184,12 @@ final class DatabaseManager {
                     if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                        let adapter = driver as? PluginDriverAdapter,
                        let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
-                        try? await adapter.switchDatabase(to: savedDb)
-                        activeSessions[connection.id]?.currentDatabase = savedDb
+                        do {
+                            try await adapter.switchDatabase(to: savedDb)
+                            activeSessions[connection.id]?.currentDatabase = savedDb
+                        } catch {
+                            Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
+                        }
                     }
                 case .selectDatabaseFromConnectionField(let fieldId):
                     // Select database from a connection field (e.g. Redis database index).

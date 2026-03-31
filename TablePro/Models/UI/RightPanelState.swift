@@ -24,10 +24,8 @@ import os
     var isPresented: Bool {
         didSet {
             guard !isSyncing else { return }
-            DispatchQueue.main.async { [self] in
-                UserDefaults.standard.set(self.isPresented, forKey: Self.isPresentedKey)
-                NotificationCenter.default.post(name: Self.isPresentedChangedNotification, object: self)
-            }
+            UserDefaults.standard.set(isPresented, forKey: Self.isPresentedKey)
+            NotificationCenter.default.post(name: Self.isPresentedChangedNotification, object: self)
         }
     }
 
