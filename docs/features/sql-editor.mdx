@@ -130,6 +130,26 @@ Keywords are context-sensitive:
 
 Results appear in the data grid below the editor with row count and execution time. Large result sets are paginated.
 
+#### Collapsible Results Panel
+
+Toggle the results panel with `Cmd+Opt+R` or the toolbar button to give the editor full height. The panel auto-expands when a new query executes.
+
+#### Multiple Result Tabs
+
+When running multiple statements separated by `;`, each statement produces its own result tab. Switch between tabs by clicking or with `Cmd+Opt+[` / `Cmd+Opt+]`. Close a result tab with `Cmd+Shift+W`.
+
+#### Pinning Results
+
+Right-click a result tab and select **Pin Result** to preserve it from being overwritten on the next query execution. Pinned tabs stay until explicitly unpinned or closed.
+
+#### Inline Errors
+
+Query errors display as a red banner directly above the results area, showing the database error message. Dismiss with the close button.
+
+#### Non-SELECT Queries
+
+INSERT, UPDATE, DELETE, and DDL statements show a compact success view with affected row count and execution time instead of an empty grid.
+
 ### Explain Query
 
 Press `Option+Cmd+E` to view the execution plan. Shows index usage, join strategies, and estimated row counts. TablePro uses the correct syntax per database (`EXPLAIN` for MySQL/PostgreSQL, `EXPLAIN QUERY PLAN` for SQLite).
