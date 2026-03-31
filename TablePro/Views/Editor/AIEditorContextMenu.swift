@@ -16,6 +16,7 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     var onExplainWithAI: ((String) -> Void)?
     var onOptimizeWithAI: ((String) -> Void)?
     var onSaveAsFavorite: ((String) -> Void)?
+    var onFormatSQL: (() -> Void)?
 
     override init(title: String) {
         super.init(title: title)
@@ -46,6 +47,18 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
 
         let selectAllItem = NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
         menu.addItem(selectAllItem)
+
+        menu.addItem(.separator())
+
+        let formatItem = NSMenuItem(
+            title: String(localized: "Format SQL"),
+            action: #selector(handleFormatSQL),
+            keyEquivalent: ""
+        )
+        formatItem.target = self
+        formatItem.image = NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: nil)
+        formatItem.isEnabled = (fullText?()?.isEmpty == false) && (onFormatSQL != nil)
+        menu.addItem(formatItem)
 
         menu.addItem(.separator())
 
@@ -93,6 +106,10 @@ final class AIEditorContextMenu: NSMenu, NSMenuDelegate {
     @objc private func handleOptimizeWithAI() {
         guard let text = selectedText?() else { return }
         onOptimizeWithAI?(text)
+    }
+
+    @objc private func handleFormatSQL() {
+        onFormatSQL?()
     }
 
     @objc private func handleSaveAsFavorite() {

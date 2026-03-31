@@ -54,7 +54,8 @@ struct QueryEditorView: View {
                 onExecuteQuery: onExecuteQuery,
                 onAIExplain: onAIExplain,
                 onAIOptimize: onAIOptimize,
-                onSaveAsFavorite: onSaveAsFavorite
+                onSaveAsFavorite: onSaveAsFavorite,
+                onFormatSQL: formatQuery
             )
             .frame(minHeight: 100)
             .clipped()
