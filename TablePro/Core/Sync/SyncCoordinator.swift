@@ -379,6 +379,9 @@ final class SyncCoordinator {
     private func applyRemoteChanges(_ result: PullResult) {
         let settings = AppSettingsStorage.shared.loadSync()
 
+        // Invalidate caches before applying remote data to ensure fresh reads
+        ConnectionStorage.shared.invalidateCache()
+
         // Suppress change tracking during remote apply to avoid sync loops
         changeTracker.isSuppressed = true
         defer {

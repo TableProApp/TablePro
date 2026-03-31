@@ -50,16 +50,20 @@ final class ConnectionStorage {
 
     /// Save all connections
     func saveConnections(_ connections: [DatabaseConnection]) {
-        cachedConnections = connections
-
         let storedConnections = connections.map { StoredConnection(from: $0) }
 
         do {
             let data = try encoder.encode(storedConnections)
             defaults.set(data, forKey: connectionsKey)
+            cachedConnections = nil
         } catch {
             Self.logger.error("Failed to save connections: \(error)")
         }
+    }
+
+    /// Invalidate the in-memory cache so the next load reads fresh from UserDefaults.
+    func invalidateCache() {
+        cachedConnections = nil
     }
 
     /// Add a new connection
