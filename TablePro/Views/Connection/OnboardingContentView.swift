@@ -110,28 +110,28 @@ struct OnboardingContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 featureRow(
                     icon: "cylinder.split.1x2",
-                    title: "MySQL, PostgreSQL & SQLite",
-                    description: "Connect to popular databases with full feature support"
+                    title: String(localized: "MySQL, PostgreSQL & SQLite"),
+                    description: String(localized: "Connect to popular databases with full feature support")
                 )
                 featureRow(
                     icon: "chevron.left.forwardslash.chevron.right",
-                    title: "Smart SQL Editor",
-                    description: "Syntax highlighting, autocomplete, and multi-tab editing"
+                    title: String(localized: "Smart SQL Editor"),
+                    description: String(localized: "Syntax highlighting, autocomplete, and multi-tab editing")
                 )
                 featureRow(
                     icon: "tablecells",
-                    title: "Interactive Data Grid",
-                    description: "Browse, edit, and manage your data with ease"
+                    title: String(localized: "Interactive Data Grid"),
+                    description: String(localized: "Browse, edit, and manage your data with ease")
                 )
                 featureRow(
                     icon: "lock.shield",
-                    title: "Secure Connections",
-                    description: "SSH tunneling and SSL/TLS encryption support"
+                    title: String(localized: "Secure Connections"),
+                    description: String(localized: "SSH tunneling and SSL/TLS encryption support")
                 )
                 featureRow(
                     icon: "brain",
-                    title: "AI-Powered Assistant",
-                    description: "Get intelligent SQL suggestions and query assistance"
+                    title: String(localized: "AI-Powered Assistant"),
+                    description: String(localized: "Get intelligent SQL suggestions and query assistance")
                 )
             }
             .padding(.horizontal, 20)
