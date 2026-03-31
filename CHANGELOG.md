@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-fit column width: double-click column divider or right-click → "Size to Fit"
 - Collapsible results panel (`Cmd+Opt+R`), multiple result tabs for multi-statement queries, result pinning
 - Inline error banner for query errors
+- Beautified JSON display in Details sidebar: auto-pretty-print with syntax highlighting (colored keys, strings, numbers, booleans)
 
 ### Changed
 

@@ -97,9 +97,15 @@ extension TableViewCoordinator {
             return
         }
 
-        // JSON columns use JSON editor popover
+        // JSON columns (or text columns containing JSON) use JSON editor popover
         if columnIndex < rowProvider.columnTypes.count,
            rowProvider.columnTypes[columnIndex].isJsonType {
+            showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+
+        if let cellValue = rowProvider.value(atRow: row, column: columnIndex),
+           cellValue.looksLikeJson {
             showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
             return
         }

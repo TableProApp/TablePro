@@ -31,6 +31,7 @@ struct EditableFieldView: View {
     @State private var isHovered = false
     @State private var isSetPopoverPresented = false
     @State private var hexEditText = ""
+    @State private var jsonEditText = ""
 
     private var placeholderText: String {
         if hasMultipleValues {
@@ -122,7 +123,9 @@ struct EditableFieldView: View {
             booleanPicker
         } else if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {
             blobHexEditor
-        } else if isLongText || columnTypeEnum.isJsonType {
+        } else if columnTypeEnum.isJsonType || value.looksLikeJson {
+            jsonEditor
+        } else if isLongText {
             multiLineEditor
         } else {
             singleLineEditor
@@ -172,6 +175,45 @@ struct EditableFieldView: View {
         } else {
             hexEditText = BlobFormattingService.shared.format(value, for: .edit) ?? ""
         }
+    }
+
+    private var jsonEditor: some View {
+        JSONSyntaxTextView(text: $jsonEditText)
+            .frame(minHeight: 80, maxHeight: 200)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .onAppear {
+                jsonEditText = value.prettyPrintedAsJson() ?? value
+            }
+            .onChange(of: value) {
+                // External value changed (e.g. undo) — re-format
+                let compacted = compactJson(jsonEditText)
+                if compacted != value {
+                    jsonEditText = value.prettyPrintedAsJson() ?? value
+                }
+            }
+            .onDisappear {
+                commitJsonEdit()
+            }
+    }
+
+    private func commitJsonEdit() {
+        let compacted = compactJson(jsonEditText) ?? jsonEditText
+        if compacted != value {
+            value = compacted
+        }
+    }
+
+    private func compactJson(_ jsonString: String) -> String? {
+        guard let data = jsonString.data(using: .utf8),
+              let jsonObject = try? JSONSerialization.jsonObject(with: data),
+              let compactData = try? JSONSerialization.data(
+                  withJSONObject: jsonObject,
+                  options: [.withoutEscapingSlashes]
+              ),
+              let compactString = String(data: compactData, encoding: .utf8) else {
+            return nil
+        }
+        return compactString
     }
 
     private var booleanPicker: some View {
@@ -280,11 +322,13 @@ struct EditableFieldView: View {
 
             Divider()
 
-            if columnTypeEnum.isJsonType {
-                Button("Pretty Print") {
-                    if let formatted = value.prettyPrintedAsJson() {
-                        value = formatted
-                    }
+            if columnTypeEnum.isJsonType || value.looksLikeJson {
+                Button("Compact") {
+                    commitJsonEdit()
+                }
+
+                Button("Copy Formatted") {
+                    ClipboardService.shared.writeText(jsonEditText)
                 }
             }
 
@@ -346,6 +390,8 @@ struct ReadOnlyFieldView: View {
     let isLongText: Bool
     let value: String?
 
+    @State private var formattedJson: String = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             // Line 1: field name + type badge
@@ -375,14 +421,16 @@ struct ReadOnlyFieldView: View {
                             .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                     .frame(maxHeight: 120)
-                } else if columnTypeEnum.isJsonType {
-                    ScrollView {
-                        Text(value)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                    }
-                    .frame(maxHeight: 200)
+                } else if columnTypeEnum.isJsonType || value.looksLikeJson {
+                    JSONSyntaxTextView(text: $formattedJson, isEditable: false)
+                        .frame(minHeight: 60, maxHeight: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        .onAppear {
+                            formattedJson = value.prettyPrintedAsJson() ?? value
+                        }
+                        .onChange(of: value) {
+                            formattedJson = value.prettyPrintedAsJson() ?? value
+                        }
                 } else if isLongText {
                     Text(value)
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
@@ -405,6 +453,12 @@ struct ReadOnlyFieldView: View {
             if let value {
                 Button("Copy Value") {
                     ClipboardService.shared.writeText(value)
+                }
+
+                if columnTypeEnum.isJsonType || value.looksLikeJson {
+                    Button("Copy Formatted") {
+                        ClipboardService.shared.writeText(formattedJson)
+                    }
                 }
 
                 if BlobFormattingService.shared.requiresFormatting(columnType: columnTypeEnum) {

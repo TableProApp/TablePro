@@ -43,6 +43,12 @@ extension TableViewCoordinator {
                 return false
             }
 
+            // Text columns containing JSON use JSON editor popover
+            if let value = rowProvider.value(atRow: row, column: columnIndex),
+               value.looksLikeJson {
+                return false
+            }
+
             // Multiline values use overlay editor — block inline field editor
             if let value = rowProvider.value(atRow: row, column: columnIndex),
                value.containsLineBreak {
