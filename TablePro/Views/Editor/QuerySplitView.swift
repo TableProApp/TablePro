@@ -58,11 +58,13 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentabl
             context.coordinator.lastCollapsedState = isBottomCollapsed
             if isBottomCollapsed {
                 // Save divider position before collapsing
-                if splitView.subviews.count == 2 {
+                if splitView.subviews.count >= 2 {
                     context.coordinator.savedDividerPosition = splitView.subviews[0].frame.height
                 }
+                // Move divider to bottom edge to collapse
+                splitView.setPosition(splitView.bounds.height, ofDividerAt: 0)
                 bottomView.isHidden = true
-                splitView.adjustSubviews()
+                splitView.display()
             } else {
                 bottomView.isHidden = false
                 splitView.adjustSubviews()
@@ -70,6 +72,7 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentabl
                 if let saved = context.coordinator.savedDividerPosition {
                     splitView.setPosition(saved, ofDividerAt: 0)
                 }
+                splitView.display()
             }
         }
     }
