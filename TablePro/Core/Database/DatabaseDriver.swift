@@ -349,7 +349,10 @@ enum DatabaseDriverFactory {
         return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
     }
 
-    private static func resolvePassword(for connection: DatabaseConnection, override: String? = nil) -> String {
+    private static func resolvePassword(
+        for connection: DatabaseConnection,
+        override: String? = nil
+    ) -> String {
         if let override { return override }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host

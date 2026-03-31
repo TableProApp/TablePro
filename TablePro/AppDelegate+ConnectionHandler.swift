@@ -430,38 +430,31 @@ extension AppDelegate {
     // MARK: - Connection Failure
 
     func handleConnectionFailure(_ error: Error) async {
-        // User cancelled password prompt — clean up windows silently, no error dialog
-        if error is CancellationError {
-            for window in NSApp.windows where isMainWindow(window) {
-                let hasActiveSession = DatabaseManager.shared.activeSessions.values.contains {
-                    window.subtitle == $0.connection.name
-                        || window.subtitle == "\($0.connection.name) — Preview"
-                }
-                if !hasActiveSession { window.close() }
-            }
-            if !NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) {
-                openWelcomeWindow()
-            }
-            return
-        }
-        for window in NSApp.windows where isMainWindow(window) {
-            let hasActiveSession = DatabaseManager.shared.activeSessions.values.contains {
-                window.subtitle == $0.connection.name
-                    || window.subtitle == "\($0.connection.name) — Preview"
-            }
-            if !hasActiveSession {
-                window.close()
-            }
-        }
-        if !NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) {
-            openWelcomeWindow()
-        }
+        closeOrphanedMainWindows()
+
+        // User cancelled password prompt — no error dialog needed
+        if error is CancellationError { return }
+
         try? await Task.sleep(for: .milliseconds(200))
         AlertHelper.showErrorSheet(
             title: String(localized: "Connection Failed"),
             message: error.localizedDescription,
             window: NSApp.keyWindow
         )
+    }
+
+    /// Closes main windows that have no active database session, then opens the welcome window if none remain.
+    private func closeOrphanedMainWindows() {
+        for window in NSApp.windows where isMainWindow(window) {
+            let hasActiveSession = DatabaseManager.shared.activeSessions.values.contains {
+                window.subtitle == $0.connection.name
+                    || window.subtitle == "\($0.connection.name) — Preview"
+            }
+            if !hasActiveSession { window.close() }
+        }
+        if !NSApp.windows.contains(where: { isMainWindow($0) && $0.isVisible }) {
+            openWelcomeWindow()
+        }
     }
 
     // MARK: - Transient Connection Builder

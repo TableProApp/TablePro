@@ -61,6 +61,7 @@ struct ConnectionSession: Identifiable {
     /// Clear cached data that can be re-fetched on reconnect.
     /// Called when the connection enters a disconnected or error state
     /// to release memory held by stale table metadata.
+    /// Note: `cachedPassword` is intentionally NOT cleared — auto-reconnect needs it after disconnect.
     mutating func clearCachedData() {
         tables = []
         selectedTables = []

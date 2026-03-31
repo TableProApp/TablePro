@@ -962,23 +962,18 @@ struct ConnectionFormView: View {
     }
 
     private func handleConnectError(_ error: Error, connection: DatabaseConnection) {
-        if error is CancellationError {
-            NSApplication.shared.closeWindows(withId: "main")
-            openWindow(id: "welcome")
-        } else if case PluginError.pluginNotInstalled = error {
-            Self.logger.info("Plugin not installed for \(connection.type.rawValue), prompting install")
+        if case PluginError.pluginNotInstalled = error {
             handleMissingPlugin(connection: connection)
-        } else {
-            Self.logger.error(
-                "Failed to connect: \(error.localizedDescription, privacy: .public)")
-            NSApplication.shared.closeWindows(withId: "main")
-            openWindow(id: "welcome")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Connection Failed"),
-                message: error.localizedDescription,
-                window: nil
-            )
+            return
         }
+        NSApplication.shared.closeWindows(withId: "main")
+        openWindow(id: "welcome")
+        guard !(error is CancellationError) else { return }
+        Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Connection Failed"),
+            message: error.localizedDescription, window: nil
+        )
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {
@@ -1100,11 +1095,21 @@ struct ConnectionFormView: View {
                 }
 
                 let sshPasswordForTest = sshProfileId == nil ? sshPassword : nil
-                let testPasswordOverride = promptForPassword && !password.isEmpty ? password : nil
+                let isApiOnly = PluginManager.shared.connectionMode(for: type) == .apiOnly
+                let testPwOverride: String? = promptForPassword
+                    ? (password.isEmpty
+                        ? PasswordPromptHelper.prompt(connectionName: name.isEmpty ? host : name, isAPIToken: isApiOnly)
+                        : password)
+                    : nil
+                guard !promptForPassword || testPwOverride != nil else {
+                    cleanupTestSecrets(for: testConn.id)
+                    isTesting = false
+                    return
+                }
                 let success = try await DatabaseManager.shared.testConnection(
                     testConn,
                     sshPassword: sshPasswordForTest,
-                    passwordOverride: testPasswordOverride
+                    passwordOverride: testPwOverride
                 )
                 cleanupTestSecrets(for: testConn.id)
                 await MainActor.run {
