@@ -254,6 +254,7 @@ extension FilterSQLGenerator {
     func generatePreviewSQL(
         tableName: String,
         filters: [TableFilter],
+        logicMode: FilterLogicMode = .and,
         limit: Int = 1_000,
         pluginDriver: (any PluginDatabaseDriver)? = nil
     ) -> String {
@@ -264,7 +265,8 @@ extension FilterSQLGenerator {
                 .map { ($0.columnName, $0.filterOperator.rawValue, $0.value) }
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, filters: filterTuples,
-                logicMode: "and", sortColumns: [], columns: [],
+                logicMode: logicMode == .and ? "and" : "or",
+                sortColumns: [], columns: [],
                 limit: limit, offset: 0
             ) {
                 return result
@@ -274,7 +276,7 @@ extension FilterSQLGenerator {
         let quotedTable = quoteIdentifierFn(tableName)
         var sql = "SELECT * FROM \(quotedTable)"
 
-        let whereClause = generateWhereClause(from: filters)
+        let whereClause = generateWhereClause(from: filters, logicMode: logicMode)
         if !whereClause.isEmpty {
             sql += "\n\(whereClause)"
         }

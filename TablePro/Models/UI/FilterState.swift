@@ -320,7 +320,7 @@ final class FilterStateManager {
     private func getFiltersForPreview() -> [TableFilter] {
         var valid: [TableFilter] = []
         var selectedValid: [TableFilter] = []
-        for filter in filters where filter.isValid {
+        for filter in filters where filter.isEnabled && filter.isValid {
             valid.append(filter)
             if filter.isSelected { selectedValid.append(filter) }
         }

@@ -16,7 +16,7 @@ struct FilterPreset: Identifiable, Codable, Equatable {
 }
 
 /// Storage manager for filter presets
-final class FilterPresetStorage {
+@MainActor final class FilterPresetStorage {
     static let shared = FilterPresetStorage()
 
     private let presetsKey = "com.TablePro.filter.presets"
@@ -31,8 +31,10 @@ final class FilterPresetStorage {
     func savePreset(_ preset: FilterPreset) {
         var presets = loadAllPresets()
 
-        // Replace if preset with same name exists
-        if let index = presets.firstIndex(where: { $0.name == preset.name }) {
+        // Replace by id first, then by name
+        if let index = presets.firstIndex(where: { $0.id == preset.id }) {
+            presets[index] = preset
+        } else if let index = presets.firstIndex(where: { $0.name == preset.name }) {
             presets[index] = preset
         } else {
             presets.append(preset)

@@ -62,6 +62,7 @@ struct CompletionTextField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var text: Binding<String>
         var onSubmit: () -> Void
+        private var previousTextLength = 0
 
         init(text: Binding<String>, onSubmit: @escaping () -> Void) {
             self.text = text
@@ -70,9 +71,12 @@ struct CompletionTextField: NSViewRepresentable {
 
         func controlTextDidChange(_ notification: Notification) {
             guard let textField = notification.object as? NSTextField else { return }
-            text.wrappedValue = textField.stringValue
+            let newValue = textField.stringValue
+            let grew = newValue.count > previousTextLength
+            previousTextLength = newValue.count
+            text.wrappedValue = newValue
 
-            if !textField.stringValue.isEmpty,
+            if grew, !newValue.isEmpty,
                let fieldEditor = textField.currentEditor() as? NSTextView
             {
                 fieldEditor.complete(nil)
