@@ -9,15 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Visual Create Table UI with column, index, and foreign key editors (sidebar → "Create New Table...")
-- Real-time SQL preview with syntax highlighting for CREATE TABLE DDL
-- Multi-database CREATE TABLE support: MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse, DuckDB
-- Auto-fit column width: double-click column divider, right-click header → "Size to Fit" / "Size All Columns to Fit"
-- Collapsible results panel — toggle with `Cmd+Opt+R` or toolbar button, auto-expands on query execution
-- Multiple result set tabs for multi-statement queries — each statement gets its own tab
-- Result tab pinning — right-click → "Pin Result" to preserve from overwrite
-- Inline error banner for query errors (replaces modal alert)
-- Keyboard shortcuts: Toggle Results (`Cmd+Opt+R`), Previous/Next Result (`Cmd+Opt+[`/`Cmd+Opt+]`), Close Result Tab (`Cmd+Shift+W`)
+- Visual Create Table UI with multi-database support (sidebar → "Create New Table...")
+- Auto-fit column width: double-click column divider or right-click → "Size to Fit"
+- Collapsible results panel (`Cmd+Opt+R`), multiple result tabs for multi-statement queries, result pinning
+- Inline error banner for query errors
 
 ### Fixed
 
