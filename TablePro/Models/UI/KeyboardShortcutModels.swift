@@ -450,8 +450,8 @@ struct KeyboardSettings: Codable, Equatable {
         .toggleFilters: KeyCombo(key: "f", command: true),
         .toggleHistory: KeyCombo(key: "y", command: true),
         .toggleResults: KeyCombo(key: "r", command: true, option: true),
-        .previousResultTab: KeyCombo(key: "[", command: true),
-        .nextResultTab: KeyCombo(key: "]", command: true),
+        .previousResultTab: KeyCombo(key: "[", command: true, option: true),
+        .nextResultTab: KeyCombo(key: "]", command: true, option: true),
         .closeResultTab: KeyCombo(key: "w", command: true, shift: true),
 
         // Tabs

@@ -378,27 +378,7 @@ struct MainEditorContentView: View {
                 }
             ),
             onClose: { id in
-                guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
-                let rs = coordinator.tabManager.tabs[tabIdx].resultSets.first { $0.id == id }
-                guard rs?.isPinned != true else { return }
-                coordinator.tabManager.tabs[tabIdx].resultSets.removeAll { $0.id == id }
-                if tab.activeResultSetId == id {
-                    coordinator.tabManager.tabs[tabIdx].activeResultSetId =
-                        coordinator.tabManager.tabs[tabIdx].resultSets.last?.id
-                }
-                if coordinator.tabManager.tabs[tabIdx].resultSets.isEmpty {
-                    coordinator.tabManager.tabs[tabIdx].rowBuffer = RowBuffer()
-                    coordinator.tabManager.tabs[tabIdx].resultColumns = []
-                    coordinator.tabManager.tabs[tabIdx].columnTypes = []
-                    coordinator.tabManager.tabs[tabIdx].resultRows = []
-                    coordinator.tabManager.tabs[tabIdx].errorMessage = nil
-                    coordinator.tabManager.tabs[tabIdx].rowsAffected = 0
-                    coordinator.tabManager.tabs[tabIdx].executionTime = nil
-                    coordinator.tabManager.tabs[tabIdx].resultVersion += 1
-                    coordinator.tabManager.tabs[tabIdx].statusMessage = nil
-                    coordinator.tabManager.tabs[tabIdx].isResultsCollapsed = true
-                    coordinator.toolbarState.isResultsCollapsed = true
-                }
+                coordinator.closeResultSet(id: id)
             },
             onPin: { id in
                 tab.resultSets.first { $0.id == id }?.isPinned.toggle()
@@ -512,7 +492,21 @@ struct MainEditorContentView: View {
     /// Returns sort index permutation for a tab, or nil if no sorting is needed.
     /// For table tabs, sorting is handled server-side via SQL ORDER BY.
     private func sortIndicesForTab(_ tab: QueryTab) -> [Int]? {
-        guard !tab.rowBuffer.isEvicted else { return nil }
+        // Resolve data source: active ResultSet or tab-level fallback
+        let rowBuffer: RowBuffer
+        let rows: [[String?]]
+        let colTypes: [ColumnType]
+        if let rs = tab.activeResultSet, !rs.resultColumns.isEmpty {
+            rowBuffer = rs.rowBuffer
+            rows = rs.resultRows
+            colTypes = rs.columnTypes
+        } else {
+            rowBuffer = tab.rowBuffer
+            rows = tab.resultRows
+            colTypes = tab.columnTypes
+        }
+
+        guard !rowBuffer.isEvicted else { return nil }
 
         // Table tabs: no client-side sorting
         if tab.tabType == .table {
@@ -534,7 +528,7 @@ struct MainEditorContentView: View {
         }
 
         // For large datasets sorted async, return nil (unsorted) until cache is ready
-        if tab.resultRows.count > 10_000 {
+        if rows.count > 10_000 {
             return nil
         }
 
@@ -548,10 +542,10 @@ struct MainEditorContentView: View {
         }
 
         let sortColumns = tab.sortState.columns
-        let indices = Array(tab.resultRows.indices)
+        let indices = Array(rows.indices)
         let sortedIndices = indices.sorted { idx1, idx2 in
-            let row1 = tab.resultRows[idx1]
-            let row2 = tab.resultRows[idx2]
+            let row1 = rows[idx1]
+            let row2 = rows[idx2]
             for sortCol in sortColumns {
                 let val1 =
                     sortCol.columnIndex < row1.count
@@ -560,8 +554,8 @@ struct MainEditorContentView: View {
                     sortCol.columnIndex < row2.count
                     ? (row2[sortCol.columnIndex] ?? "") : ""
                 let colType =
-                    sortCol.columnIndex < tab.columnTypes.count
-                    ? tab.columnTypes[sortCol.columnIndex] : nil
+                    sortCol.columnIndex < colTypes.count
+                    ? colTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)
                 if result == .orderedSame { continue }
                 return sortCol.direction == .ascending

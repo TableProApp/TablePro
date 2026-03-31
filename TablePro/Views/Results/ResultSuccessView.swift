@@ -19,7 +19,7 @@ struct ResultSuccessView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(.green)
-            Text("\(rowsAffected) row(s) affected")
+            Text(String(format: String(localized: "%lld row(s) affected"), Int64(rowsAffected)))
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
             if let time = executionTime {
                 Text(String(format: "%.3fs", time))
