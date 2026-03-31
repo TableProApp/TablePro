@@ -306,6 +306,7 @@ struct ImportDialog: View {
     @MainActor
     private func loadFile(_ url: URL) async {
         cleanupTempFiles()
+        hasPreviewError = false
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path(percentEncoded: false), isDirectory: &isDirectory),
@@ -333,7 +334,7 @@ struct ImportDialog: View {
                 tempPreviewURL = urlToRead
             }
         } catch {
-            filePreview = String(localized: "Failed to decompress file: \(error.localizedDescription)")
+            filePreview = "Failed to decompress file: \(error.localizedDescription)"
             hasPreviewError = true
             return
         }
@@ -355,11 +356,11 @@ struct ImportDialog: View {
                 filePreview = preview
                 hasPreviewError = false
             } else {
-                filePreview = String(localized: "Failed to load preview using encoding: \(selectedEncoding.rawValue). Try selecting a different text encoding.")
+                filePreview = "Failed to load preview using encoding: \(selectedEncoding.rawValue). Try selecting a different text encoding."
                 hasPreviewError = true
             }
         } catch {
-            filePreview = String(localized: "Failed to load preview: \(error.localizedDescription)")
+            filePreview = "Failed to load preview: \(error.localizedDescription)"
             hasPreviewError = true
         }
 

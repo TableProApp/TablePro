@@ -90,7 +90,7 @@ struct LicenseSettingsView: View {
                         .controlSize(.small)
                     Spacer()
                 }
-            } else if activations.isEmpty {
+            } else if activations.isEmpty && activationLoadError == nil {
                 Text("No activations found")
                     .foregroundStyle(.secondary)
             }
