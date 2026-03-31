@@ -384,12 +384,14 @@ struct MainEditorContentView: View {
                         coordinator.tabManager.tabs[tabIdx].resultSets.last?.id
                 }
                 if coordinator.tabManager.tabs[tabIdx].resultSets.isEmpty {
+                    coordinator.tabManager.tabs[tabIdx].rowBuffer = RowBuffer()
                     coordinator.tabManager.tabs[tabIdx].resultColumns = []
                     coordinator.tabManager.tabs[tabIdx].columnTypes = []
                     coordinator.tabManager.tabs[tabIdx].resultRows = []
                     coordinator.tabManager.tabs[tabIdx].errorMessage = nil
                     coordinator.tabManager.tabs[tabIdx].rowsAffected = 0
                     coordinator.tabManager.tabs[tabIdx].executionTime = nil
+                    coordinator.tabManager.tabs[tabIdx].resultVersion += 1
                     coordinator.tabManager.tabs[tabIdx].statusMessage = nil
                 }
             },

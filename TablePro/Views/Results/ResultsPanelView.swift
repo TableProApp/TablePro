@@ -93,6 +93,7 @@ struct ResultsPanelView: View {
                 coord.tabManager.tabs[tabIdx].resultSets.last?.id
         }
         if coord.tabManager.tabs[tabIdx].resultSets.isEmpty {
+            coord.tabManager.tabs[tabIdx].rowBuffer = RowBuffer()
             coord.tabManager.tabs[tabIdx].resultColumns = []
             coord.tabManager.tabs[tabIdx].columnTypes = []
             coord.tabManager.tabs[tabIdx].resultRows = []
@@ -100,6 +101,7 @@ struct ResultsPanelView: View {
             coord.tabManager.tabs[tabIdx].rowsAffected = 0
             coord.tabManager.tabs[tabIdx].executionTime = nil
             coord.tabManager.tabs[tabIdx].statusMessage = nil
+            coord.tabManager.tabs[tabIdx].resultVersion += 1
         }
     }
 

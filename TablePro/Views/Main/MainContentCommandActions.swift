@@ -577,6 +577,7 @@ final class MainContentCommandActions {
         }
         // Clear legacy properties when no result sets remain
         if coordinator?.tabManager.tabs[tabIdx].resultSets.isEmpty == true {
+            coordinator?.tabManager.tabs[tabIdx].rowBuffer = RowBuffer()
             coordinator?.tabManager.tabs[tabIdx].resultColumns = []
             coordinator?.tabManager.tabs[tabIdx].columnTypes = []
             coordinator?.tabManager.tabs[tabIdx].resultRows = []
@@ -584,6 +585,7 @@ final class MainContentCommandActions {
             coordinator?.tabManager.tabs[tabIdx].rowsAffected = 0
             coordinator?.tabManager.tabs[tabIdx].executionTime = nil
             coordinator?.tabManager.tabs[tabIdx].statusMessage = nil
+            coordinator?.tabManager.tabs[tabIdx].resultVersion += 1
         }
     }
 
