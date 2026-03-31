@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Option to prompt for database password on every connection instead of saving to Keychain
 - Autocompletion for filter fields: column names and SQL keywords suggested as you type (Raw SQL and Value fields)
 - Multi-line support for Raw SQL filter field (Option+Enter for newline)
 - Visual Create Table UI with multi-database support (sidebar → "Create New Table...")

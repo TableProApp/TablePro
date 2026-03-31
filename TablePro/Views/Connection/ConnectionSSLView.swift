@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ConnectionSSLView: View {
     @Binding var sslMode: SSLMode

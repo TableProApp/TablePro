@@ -163,8 +163,8 @@ final class ConnectionStorage {
         saveConnections(connections)
         SyncChangeTracker.shared.markDirty(.connection, id: duplicate.id.uuidString)
 
-        // Copy all passwords from source to duplicate
-        if let password = loadPassword(for: connection.id) {
+        // Copy all passwords from source to duplicate (skip DB password in prompt mode)
+        if !connection.promptForPassword, let password = loadPassword(for: connection.id) {
             savePassword(password, for: newId)
         }
         if let sshPassword = loadSSHPassword(for: connection.id) {

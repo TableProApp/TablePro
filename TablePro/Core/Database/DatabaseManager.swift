@@ -133,10 +133,32 @@ final class DatabaseManager {
             }
         }
 
+        // Resolve password override for prompt-for-password connections
+        var passwordOverride: String?
+        if connection.promptForPassword {
+            if let cached = activeSessions[connection.id]?.cachedPassword {
+                passwordOverride = cached
+            } else {
+                let isApiOnly = PluginManager.shared.connectionMode(for: connection.type) == .apiOnly
+                guard let prompted = PasswordPromptHelper.prompt(
+                    connectionName: connection.name,
+                    isAPIToken: isApiOnly
+                ) else {
+                    removeSessionEntry(for: connection.id)
+                    currentSessionId = nil
+                    throw CancellationError()
+                }
+                passwordOverride = prompted
+            }
+        }
+
         // Create appropriate driver with effective connection
         let driver: DatabaseDriver
         do {
-            driver = try DatabaseDriverFactory.createDriver(for: effectiveConnection)
+            driver = try DatabaseDriverFactory.createDriver(
+                for: effectiveConnection,
+                passwordOverride: passwordOverride
+            )
         } catch {
             // Close tunnel if SSH was established
             if connection.sshConfig.enabled {
@@ -217,7 +239,9 @@ final class DatabaseManager {
                 session.driver = driver
                 session.status = driver.status
                 session.effectiveConnection = effectiveConnection
-
+                if let passwordOverride {
+                    session.cachedPassword = passwordOverride
+                }
                 setSession(session, for: connection.id)
             }
 
@@ -418,9 +442,11 @@ final class DatabaseManager {
     }
 
     /// Test a connection without keeping it open
-    func testConnection(_ connection: DatabaseConnection, sshPassword: String? = nil) async throws
-        -> Bool
-    {
+    func testConnection(
+        _ connection: DatabaseConnection,
+        sshPassword: String? = nil,
+        passwordOverride: String? = nil
+    ) async throws -> Bool {
         // Build effective connection (creates SSH tunnel if needed)
         let testConnection = try await buildEffectiveConnection(
             for: connection,
@@ -429,7 +455,10 @@ final class DatabaseManager {
 
         let result: Bool
         do {
-            let driver = try DatabaseDriverFactory.createDriver(for: testConnection)
+            let driver = try DatabaseDriverFactory.createDriver(
+                for: testConnection,
+                passwordOverride: passwordOverride
+            )
             result = try await driver.testConnection()
         } catch {
             if connection.sshConfig.enabled {
@@ -643,7 +672,10 @@ final class DatabaseManager {
 
         // Use effective connection (tunneled) if available, otherwise original
         let connectionForDriver = session.effectiveConnection ?? session.connection
-        let driver = try DatabaseDriverFactory.createDriver(for: connectionForDriver)
+        let driver = try DatabaseDriverFactory.createDriver(
+            for: connectionForDriver,
+            passwordOverride: session.cachedPassword
+        )
         try await driver.connect()
 
         // Apply timeout
@@ -712,8 +744,25 @@ final class DatabaseManager {
             // Recreate SSH tunnel if needed and build effective connection
             let effectiveConnection = try await buildEffectiveConnection(for: session.connection)
 
+            // Resolve password for prompt-for-password connections
+            var passwordOverride = activeSessions[sessionId]?.cachedPassword
+            if session.connection.promptForPassword && passwordOverride == nil {
+                let isApiOnly = PluginManager.shared.connectionMode(for: session.connection.type) == .apiOnly
+                guard let prompted = PasswordPromptHelper.prompt(
+                    connectionName: session.connection.name,
+                    isAPIToken: isApiOnly
+                ) else {
+                    updateSession(sessionId) { $0.status = .disconnected }
+                    return
+                }
+                passwordOverride = prompted
+            }
+
             // Create new driver and connect
-            let driver = try DatabaseDriverFactory.createDriver(for: effectiveConnection)
+            let driver = try DatabaseDriverFactory.createDriver(
+                for: effectiveConnection,
+                passwordOverride: passwordOverride
+            )
             try await driver.connect()
 
             // Apply timeout
@@ -750,6 +799,9 @@ final class DatabaseManager {
                 session.driver = driver
                 session.status = .connected
                 session.effectiveConnection = effectiveConnection
+                if let passwordOverride {
+                    session.cachedPassword = passwordOverride
+                }
             }
 
             // Restart health monitoring if the plugin supports it

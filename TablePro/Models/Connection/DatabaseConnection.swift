@@ -429,6 +429,11 @@ struct DatabaseConnection: Identifiable, Hashable {
         set { additionalFields["usePgpass"] = newValue ? "true" : "" }
     }
 
+    var promptForPassword: Bool {
+        get { additionalFields["promptForPassword"] == "true" }
+        set { additionalFields["promptForPassword"] = newValue ? "true" : "" }
+    }
+
     var preConnectScript: String? {
         get { additionalFields["preConnectScript"]?.nilIfEmpty }
         set { additionalFields["preConnectScript"] = newValue ?? "" }

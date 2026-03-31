@@ -3387,6 +3387,9 @@
         }
       }
     },
+    "AI-Powered Assistant" : {
+
+    },
     "AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss." : {
       "localizations" : {
         "tr" : {
@@ -5154,6 +5157,9 @@
         }
       }
     },
+    "Browse, edit, and manage your data with ease" : {
+
+    },
     "Browse..." : {
       "localizations" : {
         "tr" : {
@@ -6808,6 +6814,9 @@
         }
       }
     },
+    "Comma-separated values. Compatible with Excel and most tools." : {
+
+    },
     "Command Preview" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7047,6 +7056,9 @@
           }
         }
       }
+    },
+    "Connect to popular databases with full feature support" : {
+
     },
     "Connect to the internet to verify your license." : {
       "localizations" : {
@@ -7905,6 +7917,9 @@
           }
         }
       }
+    },
+    "Copy error message" : {
+
     },
     "Copy Name" : {
       "localizations" : {
@@ -11967,6 +11982,9 @@
         }
       }
     },
+    "Excel spreadsheet with formatting support." : {
+
+    },
     "Execute" : {
       "localizations" : {
         "tr" : {
@@ -12960,6 +12978,7 @@
       }
     },
     "Failed to decompress file: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13273,6 +13292,7 @@
       }
     },
     "Failed to load preview using encoding: %@. Try selecting a different text encoding." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13295,6 +13315,7 @@
       }
     },
     "Failed to load preview: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14323,6 +14344,9 @@
         }
       }
     },
+    "Format SQL" : {
+
+    },
     "Format:" : {
       "localizations" : {
         "tr" : {
@@ -14498,6 +14522,9 @@
           }
         }
       }
+    },
+    "Get intelligent SQL suggestions and query assistance" : {
+
     },
     "Get Started" : {
       "localizations" : {
@@ -16417,6 +16444,9 @@
           }
         }
       }
+    },
+    "Interactive Data Grid" : {
+
     },
     "Interface" : {
       "localizations" : {
@@ -18746,6 +18776,9 @@
         }
       }
     },
+    "MongoDB query language. Use to import into MongoDB." : {
+
+    },
     "Move Down" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18999,6 +19032,9 @@
           }
         }
       }
+    },
+    "MySQL, PostgreSQL & SQLite" : {
+
     },
     "Name" : {
       "localizations" : {
@@ -20712,6 +20748,9 @@
           }
         }
       }
+    },
+    "No rows returned" : {
+
     },
     "No saved connection named \"%@\"." : {
       "localizations" : {
@@ -24272,6 +24311,7 @@
       }
     },
     "Query executing..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -25583,6 +25623,15 @@
           }
         }
       }
+    },
+    "Reset" : {
+
+    },
+    "Reset All Settings" : {
+
+    },
+    "Reset All Settings to Defaults" : {
+
     },
     "Reset to Defaults" : {
       "localizations" : {
@@ -27177,6 +27226,9 @@
         }
       }
     },
+    "Secure Connections" : {
+
+    },
     "SELECT * FROM users WHERE id = 1;" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28544,6 +28596,9 @@
         }
       }
     },
+    "Smart SQL Editor" : {
+
+    },
     "Smooth" : {
       "localizations" : {
         "tr" : {
@@ -28587,6 +28642,9 @@
           }
         }
       }
+    },
+    "Some columns in this preset don't exist in the current table" : {
+
     },
     "Something went wrong (error %lld). Try again in a moment." : {
       "localizations" : {
@@ -28854,6 +28912,9 @@
           }
         }
       }
+    },
+    "SQL INSERT statements. Use to recreate data in another database." : {
+
     },
     "SQL Preview" : {
       "localizations" : {
@@ -29243,6 +29304,9 @@
           }
         }
       }
+    },
+    "SSH tunneling and SSL/TLS encryption support" : {
+
     },
     "SSH User" : {
       "localizations" : {
@@ -29743,6 +29807,9 @@
         }
       }
     },
+    "Structured data format. Ideal for APIs and web applications." : {
+
+    },
     "Success" : {
       "localizations" : {
         "tr" : {
@@ -29950,6 +30017,7 @@
       }
     },
     "Sync" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29970,6 +30038,9 @@
           }
         }
       }
+    },
+    "Sync (Pro)" : {
+
     },
     "Sync Categories" : {
       "localizations" : {
@@ -30288,6 +30359,9 @@
           }
         }
       }
+    },
+    "Syntax highlighting, autocomplete, and multi-tab editing" : {
+
     },
     "System" : {
       "localizations" : {
@@ -31806,6 +31880,9 @@
           }
         }
       }
+    },
+    "This will reset all settings across every section to their default values." : {
+
     },
     "Tier:" : {
       "localizations" : {
@@ -34744,6 +34821,12 @@
           }
         }
       }
+    },
+    "Zoom In" : {
+
+    },
+    "Zoom Out" : {
+
     }
   },
   "version" : "1.0"

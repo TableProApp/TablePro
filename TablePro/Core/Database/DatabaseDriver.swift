@@ -317,7 +317,10 @@ extension DatabaseDriver {
 enum DatabaseDriverFactory {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
-    static func createDriver(for connection: DatabaseConnection) throws -> DatabaseDriver {
+    static func createDriver(
+        for connection: DatabaseConnection,
+        passwordOverride: String? = nil
+    ) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
         // If the plugin isn't registered yet and background loading hasn't finished,
         // fall back to synchronous loading for this critical code path.
@@ -338,7 +341,7 @@ enum DatabaseDriverFactory {
             host: connection.host,
             port: connection.port,
             username: connection.username,
-            password: resolvePassword(for: connection),
+            password: resolvePassword(for: connection, override: passwordOverride),
             database: connection.database,
             additionalFields: buildAdditionalFields(for: connection, plugin: plugin)
         )
@@ -346,7 +349,8 @@ enum DatabaseDriverFactory {
         return PluginDriverAdapter(connection: connection, pluginDriver: pluginDriver)
     }
 
-    private static func resolvePassword(for connection: DatabaseConnection) -> String {
+    private static func resolvePassword(for connection: DatabaseConnection, override: String? = nil) -> String {
+        if let override { return override }
         if connection.usePgpass {
             let pgpassHost = connection.additionalFields["pgpassOriginalHost"] ?? connection.host
             let pgpassPort = connection.additionalFields["pgpassOriginalPort"]

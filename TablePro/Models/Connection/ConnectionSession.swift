@@ -26,6 +26,9 @@ struct ConnectionSession: Identifiable {
     var currentSchema: String?
     var currentDatabase: String?
 
+    /// In-memory password for prompt-for-password connections. Never persisted to disk.
+    var cachedPassword: String?
+
     var activeDatabase: String {
         currentDatabase ?? connection.database
     }
