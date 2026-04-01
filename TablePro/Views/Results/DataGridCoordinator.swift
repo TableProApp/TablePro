@@ -32,6 +32,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var onHideColumn: ((String) -> Void)?
     var onMoveRow: ((Int, Int) -> Void)?
     var onNavigateFK: ((String, ForeignKeyInfo) -> Void)?
+    var sortState = SortState()
     var getVisualState: ((Int) -> RowVisualState)?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?

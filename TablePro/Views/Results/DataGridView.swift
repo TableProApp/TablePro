@@ -179,6 +179,7 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        context.coordinator.sortState = sortState
         context.coordinator.onMoveRow = onMoveRow
         context.coordinator.rebuildColumnMetadataCache()
         if let connectionId {
@@ -232,6 +233,7 @@ struct DataGridView: NSViewRepresentable {
         )
         if currentIdentity == coordinator.lastIdentity {
             // Only refresh closure callbacks — they capture new state on each body eval
+            coordinator.sortState = sortState
             coordinator.onCellEdit = onCellEdit
             coordinator.onSort = onSort
             coordinator.onAddRow = onAddRow
@@ -302,6 +304,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.onRefresh = onRefresh
         coordinator.onCellEdit = onCellEdit
         coordinator.onDeleteRows = onDeleteRows
+        coordinator.sortState = sortState
         coordinator.onSort = onSort
         coordinator.onAddRow = onAddRow
         coordinator.onUndoInsert = onUndoInsert
