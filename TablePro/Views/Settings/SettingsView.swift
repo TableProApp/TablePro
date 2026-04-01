@@ -17,14 +17,18 @@ struct SettingsView: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Environment(UpdaterBridge.self) var updaterBridge
     @AppStorage("selectedSettingsTab") private var selectedTab: String = SettingsTab.general.rawValue
-
     var body: some View {
         TabView(selection: $selectedTab) {
-            GeneralSettingsView(settings: $settingsManager.general, updaterBridge: updaterBridge)
-                .tabItem {
-                    Label("General", systemImage: "gearshape")
-                }
-                .tag(SettingsTab.general.rawValue)
+            GeneralSettingsView(
+                settings: $settingsManager.general,
+                tabSettings: $settingsManager.tabs,
+                updaterBridge: updaterBridge,
+                onResetAll: { settingsManager.resetToDefaults() }
+            )
+            .tabItem {
+                Label("General", systemImage: "gearshape")
+            }
+            .tag(SettingsTab.general.rawValue)
 
             AppearanceSettingsView(settings: $settingsManager.appearance)
                 .tabItem {

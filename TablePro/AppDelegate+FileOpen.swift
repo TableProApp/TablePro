@@ -258,7 +258,7 @@ extension AppDelegate {
             fileOpenLogger.info("Installed plugin '\(entry.name)' from Finder")
 
             UserDefaults.standard.set(SettingsTab.plugins.rawValue, forKey: "selectedSettingsTab")
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
         } catch {
             fileOpenLogger.error("Plugin install failed: \(error.localizedDescription)")
             AlertHelper.showErrorSheet(

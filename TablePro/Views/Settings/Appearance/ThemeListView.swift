@@ -117,9 +117,6 @@ internal struct ThemeListView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
         }
-        .onChange(of: selectedThemeId) {
-            engine.activateTheme(id: selectedThemeId)
-        }
         .alert(String(localized: "Delete Theme"), isPresented: $showDeleteConfirmation) {
             Button(String(localized: "Delete"), role: .destructive) {
                 deleteSelectedTheme()

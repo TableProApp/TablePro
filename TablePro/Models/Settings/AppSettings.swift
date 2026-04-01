@@ -417,6 +417,19 @@ struct HistorySettings: Codable, Equatable {
         autoCleanup: true
     )
 
+    init(maxEntries: Int = 10_000, maxDays: Int = 90, autoCleanup: Bool = true) {
+        self.maxEntries = maxEntries
+        self.maxDays = maxDays
+        self.autoCleanup = autoCleanup
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        maxEntries = try container.decodeIfPresent(Int.self, forKey: .maxEntries) ?? 10_000
+        maxDays = try container.decodeIfPresent(Int.self, forKey: .maxDays) ?? 90
+        autoCleanup = try container.decodeIfPresent(Bool.self, forKey: .autoCleanup) ?? true
+    }
+
     // MARK: - Validated Properties
 
     /// Validated maxEntries (>= 0)

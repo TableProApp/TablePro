@@ -10,8 +10,9 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
+    @Binding var tabSettings: TabSettings
     var updaterBridge: UpdaterBridge
-    @Bindable private var settingsManager = AppSettingsManager.shared
+    var onResetAll: () -> Void
     @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
 
@@ -77,13 +78,13 @@ struct GeneralSettingsView: View {
             }
 
             Section("Tabs") {
-                Toggle("Enable preview tabs", isOn: $settingsManager.tabs.enablePreviewTabs)
+                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
 
                 Text("Single-clicking a table opens a temporary tab that gets replaced on next click.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("Group all connections in one window", isOn: $settingsManager.tabs.groupAllConnectionTabs)
+                Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
 
                 Text("When enabled, tabs from different connections share the same window instead of opening separate windows.")
                     .font(.caption)
@@ -100,7 +101,7 @@ struct GeneralSettingsView: View {
         .scrollContentBackground(.hidden)
         .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
             Button(String(localized: "Reset"), role: .destructive) {
-                settingsManager.resetToDefaults()
+                onResetAll()
             }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
@@ -118,7 +119,9 @@ struct GeneralSettingsView: View {
 #Preview {
     GeneralSettingsView(
         settings: .constant(.default),
-        updaterBridge: UpdaterBridge()
+        tabSettings: .constant(.default),
+        updaterBridge: UpdaterBridge(),
+        onResetAll: {}
     )
     .frame(width: 450, height: 300)
 }
