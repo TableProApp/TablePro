@@ -911,6 +911,7 @@ final class MainContentCoordinator {
                         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                             tabManager.tabs[idx].isExecuting = false
                         }
+                        currentQueryTask = nil
                         toolbarState.setExecuting(false)
                         toolbarState.lastQueryDuration = safeExecutionTime
                     }
@@ -939,8 +940,13 @@ final class MainContentCoordinator {
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = safeExecutionTime
 
-                    guard capturedGeneration == queryGeneration else { return }
-                    guard !Task.isCancelled else { return }
+                    // Always reset isExecuting even if generation is stale
+                    if capturedGeneration != queryGeneration || Task.isCancelled {
+                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                            tabManager.tabs[idx].isExecuting = false
+                        }
+                        return
+                    }
 
                     applyPhase1Result(
                         tabId: tabId,
@@ -987,10 +993,17 @@ final class MainContentCoordinator {
                     }
                 }
             } catch {
-                guard capturedGeneration == queryGeneration else { return }
-
+                // Always reset isExecuting even if generation is stale —
+                // skipping this leaves the tab permanently stuck in "executing"
+                // state, requiring a reconnect to recover.
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                        tabManager.tabs[idx].isExecuting = false
+                    }
+                    currentQueryTask = nil
+                    toolbarState.setExecuting(false)
+                    guard capturedGeneration == queryGeneration else { return }
                     handleQueryExecutionError(error, sql: sql, tabId: tabId, connection: conn)
                 }
             }
