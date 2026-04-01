@@ -51,29 +51,23 @@ extension MainContentCoordinator {
                 // Wrap in a transaction for atomicity
                 try await driver.beginTransaction()
 
+                /// Rollback transaction and reset executing state for early exits.
+                @MainActor func rollbackAndResetState() async {
+                    try? await driver.rollbackTransaction()
+                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                        tabManager.tabs[idx].isExecuting = false
+                    }
+                    currentQueryTask = nil
+                    toolbarState.setExecuting(false)
+                }
+
                 for (stmtIndex, sql) in statements.enumerated() {
                     guard !Task.isCancelled else {
-                        try? await driver.rollbackTransaction()
-                        await MainActor.run { [weak self] in
-                            guard let self else { return }
-                            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                                tabManager.tabs[idx].isExecuting = false
-                            }
-                            currentQueryTask = nil
-                            toolbarState.setExecuting(false)
-                        }
+                        await rollbackAndResetState()
                         return
                     }
                     guard capturedGeneration == queryGeneration else {
-                        try? await driver.rollbackTransaction()
-                        await MainActor.run { [weak self] in
-                            guard let self else { return }
-                            if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                                tabManager.tabs[idx].isExecuting = false
-                            }
-                            currentQueryTask = nil
-                            toolbarState.setExecuting(false)
-                        }
+                        await rollbackAndResetState()
                         return
                     }
 
