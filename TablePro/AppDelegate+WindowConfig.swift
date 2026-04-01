@@ -365,18 +365,21 @@ extension AppDelegate {
                     window.close()
                 }
             } catch is CancellationError {
-                for window in NSApp.windows where self.isMainWindow(window) {
+                for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                     window.close()
                 }
-                self.openWelcomeWindow()
+                if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                    self.openWelcomeWindow()
+                }
             } catch {
                 windowLogger.error("Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)")
 
-                for window in NSApp.windows where self.isMainWindow(window) {
+                for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                     window.close()
                 }
-
-                self.openWelcomeWindow()
+                if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                    self.openWelcomeWindow()
+                }
             }
         }
     }
