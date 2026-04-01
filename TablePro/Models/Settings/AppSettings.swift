@@ -451,14 +451,17 @@ struct HistorySettings: Codable, Equatable {
 /// Tab behavior settings
 struct TabSettings: Codable, Equatable {
     var enablePreviewTabs: Bool = true
+    var groupAllConnectionTabs: Bool = false
     static let `default` = TabSettings()
 
-    init(enablePreviewTabs: Bool = true) {
+    init(enablePreviewTabs: Bool = true, groupAllConnectionTabs: Bool = false) {
         self.enablePreviewTabs = enablePreviewTabs
+        self.groupAllConnectionTabs = groupAllConnectionTabs
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enablePreviewTabs = try container.decodeIfPresent(Bool.self, forKey: .enablePreviewTabs) ?? true
+        groupAllConnectionTabs = try container.decodeIfPresent(Bool.self, forKey: .groupAllConnectionTabs) ?? false
     }
 }

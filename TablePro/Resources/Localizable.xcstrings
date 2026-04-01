@@ -14627,6 +14627,9 @@
         }
       }
     },
+    "Group all connections in one window" : {
+
+    },
     "Group name" : {
       "localizations" : {
         "tr" : {
@@ -33971,6 +33974,9 @@
           }
         }
       }
+    },
+    "When enabled, tabs from different connections share the same window instead of opening separate windows." : {
+
     },
     "When enabled, this favorite is visible in all connections" : {
       "localizations" : {

@@ -202,8 +202,13 @@ extension MainContentCoordinator {
             let safeRows = selectResult.rows.map { row in
                 row.map { $0.map { String($0) } }
             }
-            let tableName = lastSelectSQL.flatMap {
-                extractTableName(from: $0)
+            // For table tabs, preserve existing tableName instead of re-extracting
+            // from SQL — extractTableName can fail on schema-qualified/quoted names
+            let tableName: String?
+            if updatedTab.tabType == .table, let existing = updatedTab.tableName {
+                tableName = existing
+            } else {
+                tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
             updatedTab.resultColumns = safeColumns
@@ -215,7 +220,10 @@ extension MainContentCoordinator {
             updatedTab.resultColumns = []
             updatedTab.columnTypes = []
             updatedTab.resultRows = []
-            updatedTab.tableName = nil
+            // Preserve tableName for table tabs even when no SELECT result
+            if updatedTab.tabType != .table {
+                updatedTab.tableName = nil
+            }
             updatedTab.isEditable = false
         }
 

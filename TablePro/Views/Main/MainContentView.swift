@@ -623,7 +623,9 @@ struct MainContentView: View {
         } else {
             window.subtitle = connection.name
         }
-        window.tabbingIdentifier = "com.TablePro.main.\(connection.id.uuidString)"
+        window.tabbingIdentifier = AppSettingsManager.shared.tabs.groupAllConnectionTabs
+            ? "com.TablePro.main"
+            : "com.TablePro.main.\(connection.id.uuidString)"
         window.tabbingMode = .preferred
         coordinator.windowId = windowId
 

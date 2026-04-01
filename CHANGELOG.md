@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Option to group all connection tabs in one window instead of separate windows per connection
+
 ## [0.27.1] - 2026-04-01
 
 ### Fixed

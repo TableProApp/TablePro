@@ -845,6 +845,11 @@ final class MainContentCoordinator {
         if usesNoSQLBrowsing {
             tableName = tabManager.selectedTab?.tableName
             isEditable = tableName != nil
+        } else if tab.tabType == .table, let existingName = tab.tableName {
+            // Table tabs already know their table name — don't re-extract from SQL
+            // which can fail for schema-qualified or quoted identifiers
+            tableName = existingName
+            isEditable = true
         } else {
             tableName = extractTableName(from: effectiveSQL)
             isEditable = tableName != nil

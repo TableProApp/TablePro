@@ -82,6 +82,12 @@ struct GeneralSettingsView: View {
                 Text("Single-clicking a table opens a temporary tab that gets replaced on next click.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Toggle("Group all connections in one window", isOn: $settingsManager.tabs.groupAllConnectionTabs)
+
+                Text("When enabled, tabs from different connections share the same window instead of opening separate windows.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
