@@ -927,6 +927,7 @@ struct ConnectionFormView: View {
             SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             // Close and connect to database
             NSApplication.shared.closeWindows(withId: "connection-form")
+            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
             connectToDatabase(connectionToSave)
         } else {
             if let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) {
