@@ -510,7 +510,6 @@ struct DataGridView: NSViewRepresentable {
         }
     }
 
-    /// Synchronize sort descriptors and indicators with the table view
     private func syncSortDescriptors(tableView: NSTableView, coordinator: TableViewCoordinator) {
         coordinator.isSyncingSortDescriptors = true
         defer { coordinator.isSyncingSortDescriptors = false }
@@ -519,18 +518,16 @@ struct DataGridView: NSViewRepresentable {
             if !tableView.sortDescriptors.isEmpty {
                 tableView.sortDescriptors = []
             }
-        } else if let firstSort = sortState.columns.first,
-                  firstSort.columnIndex >= 0 && firstSort.columnIndex < rowProvider.columns.count {
-            // Sync with first sort column for NSTableView's built-in sort indicators
-            let key = "col_\(firstSort.columnIndex)"
-            let ascending = firstSort.direction == .ascending
-            let currentDescriptor = tableView.sortDescriptors.first
-            if currentDescriptor?.key != key || currentDescriptor?.ascending != ascending {
-                tableView.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]
+        } else {
+            let descriptors = sortState.columns.compactMap { sortCol -> NSSortDescriptor? in
+                guard sortCol.columnIndex >= 0 && sortCol.columnIndex < rowProvider.columns.count else { return nil }
+                return NSSortDescriptor(key: "col_\(sortCol.columnIndex)", ascending: sortCol.direction == .ascending)
+            }
+            if tableView.sortDescriptors != descriptors {
+                tableView.sortDescriptors = descriptors
             }
         }
 
-        // Update column header titles for multi-sort indicators
         Self.updateSortIndicators(tableView: tableView, sortState: sortState, columns: rowProvider.columns)
     }
 
@@ -668,19 +665,17 @@ struct DataGridView: NSViewRepresentable {
             guard let colIndex = Int(idString.dropFirst(4)),
                   colIndex < columns.count else { continue }
 
-            let baseName = columns[colIndex]
-
-            if let sortIndex = sortState.columns.firstIndex(where: { $0.columnIndex == colIndex }) {
-                let sortCol = sortState.columns[sortIndex]
-                if sortState.columns.count > 1 {
-                    let indicator = " \(sortIndex + 1)\(sortCol.direction.indicator)"
-                    column.title = "\(baseName)\(indicator)"
-                } else {
-                    // Single sort: NSTableView shows its own indicator, keep base name
-                    column.title = baseName
-                }
+            if let sortCol = sortState.columns.first(where: { $0.columnIndex == colIndex }) {
+                let imageName = sortCol.direction == .ascending
+                    ? "NSAscendingSortIndicator"
+                    : "NSDescendingSortIndicator"
+                tableView.setIndicatorImage(NSImage(named: imageName), in: column)
             } else {
-                // Not sorted: restore base name
+                tableView.setIndicatorImage(nil, in: column)
+            }
+
+            let baseName = columns[colIndex]
+            if column.title != baseName {
                 column.title = baseName
             }
         }
