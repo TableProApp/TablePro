@@ -124,6 +124,13 @@ final class AppSettingsManager {
         }
     }
 
+    var sync: SyncSettings {
+        didSet {
+            storage.saveSync(sync)
+            SyncChangeTracker.shared.markDirty(.settings, id: "sync")
+        }
+    }
+
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     /// Reentrancy guard for didSet validation that re-assigns the property.
     @ObservationIgnored private var isValidating = false
@@ -145,6 +152,7 @@ final class AppSettingsManager {
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
         self.ai = storage.loadAI()
+        self.sync = storage.loadSync()
 
         // Apply language immediately
         general.language.apply()
@@ -217,6 +225,7 @@ final class AppSettingsManager {
         tabs = .default
         keyboard = .default
         ai = .default
+        sync = .default
         storage.resetToDefaults()
     }
 }

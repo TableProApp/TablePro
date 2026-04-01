@@ -208,44 +208,9 @@ final class DatabaseManager {
             }
 
             // Run post-connect actions declared by the plugin
-            let postConnectActions = PluginMetadataRegistry.shared.snapshot(
-                forTypeId: connection.type.pluginTypeId
-            )?.postConnectActions ?? []
-
-            for action in postConnectActions {
-                switch action {
-                case .selectDatabaseFromLastSession:
-                    // Restore saved database (e.g. MSSQL) only when no explicit database is configured
-                    if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                       let adapter = driver as? PluginDriverAdapter,
-                       let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
-                        do {
-                            try await adapter.switchDatabase(to: savedDb)
-                            activeSessions[connection.id]?.currentDatabase = savedDb
-                        } catch {
-                            Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
-                case .selectDatabaseFromConnectionField(let fieldId):
-                    // Select database from a connection field (e.g. Redis database index).
-                    // Check additionalFields first, then legacy dedicated properties, then
-                    // fall back to parsing the main database field.
-                    let initialDb: Int
-                    if let fieldValue = resolvedConnection.additionalFields[fieldId], let parsed = Int(fieldValue) {
-                        initialDb = parsed
-                    } else if fieldId == "redisDatabase", let legacy = resolvedConnection.redisDatabase {
-                        initialDb = legacy
-                    } else if let fallback = Int(resolvedConnection.database) {
-                        initialDb = fallback
-                    } else {
-                        initialDb = 0
-                    }
-                    if initialDb != 0 {
-                        try? await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
-                    }
-                    activeSessions[connection.id]?.currentDatabase = String(initialDb)
-                }
-            }
+            await executePostConnectActions(
+                for: connection, resolvedConnection: resolvedConnection, driver: driver
+            )
 
             // Batch all session mutations into a single write to fire objectWillChange once
             if var session = activeSessions[connection.id] {
@@ -298,6 +263,47 @@ final class DatabaseManager {
             }
 
             throw error
+        }
+    }
+
+    private func executePostConnectActions(
+        for connection: DatabaseConnection,
+        resolvedConnection: DatabaseConnection,
+        driver: DatabaseDriver
+    ) async {
+        let postConnectActions = PluginMetadataRegistry.shared.snapshot(
+            forTypeId: connection.type.pluginTypeId
+        )?.postConnectActions ?? []
+
+        for action in postConnectActions {
+            switch action {
+            case .selectDatabaseFromLastSession:
+                if resolvedConnection.database.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   let adapter = driver as? PluginDriverAdapter,
+                   let savedDb = AppSettingsStorage.shared.loadLastDatabase(for: connection.id) {
+                    do {
+                        try await adapter.switchDatabase(to: savedDb)
+                        activeSessions[connection.id]?.currentDatabase = savedDb
+                    } catch {
+                        Self.logger.warning("Failed to restore saved database '\(savedDb, privacy: .public)' for \(connection.id): \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            case .selectDatabaseFromConnectionField(let fieldId):
+                let initialDb: Int
+                if let fieldValue = resolvedConnection.additionalFields[fieldId], let parsed = Int(fieldValue) {
+                    initialDb = parsed
+                } else if fieldId == "redisDatabase", let legacy = resolvedConnection.redisDatabase {
+                    initialDb = legacy
+                } else if let fallback = Int(resolvedConnection.database) {
+                    initialDb = fallback
+                } else {
+                    initialDb = 0
+                }
+                if initialDb != 0 {
+                    try? await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
+                }
+                activeSessions[connection.id]?.currentDatabase = String(initialDb)
+            }
         }
     }
 
@@ -1010,8 +1016,9 @@ final class DatabaseManager {
         // Query the actual constraint name from pg_constraint
         let escapedTable = tableName.replacingOccurrences(of: "'", with: "''")
         let schema: String
-        if let schemaDriver = driver as? SchemaSwitchable {
-            schema = schemaDriver.escapedSchema
+        if let schemaDriver = driver as? SchemaSwitchable,
+           let escaped = schemaDriver.escapedSchema {
+            schema = escaped
         } else {
             schema = "public"
         }

@@ -3,6 +3,96 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.27.1</title>
+            <pubDate>Wed, 01 Apr 2026 02:06:09 +0000</pubDate>
+            <sparkle:version>54</sparkle:version>
+            <sparkle:shortVersionString>0.27.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Fixed</h3>
+<ul>
+<li>Table queries incorrectly prefixed with connection username as schema name on non-schema databases (MySQL, MariaDB, ClickHouse, Redis, etc.), causing "Table 'username.table' doesn't exist" errors when opening a second table tab</li>
+</ul></body>]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.27.1/TablePro-0.27.1-arm64.zip" length="26377697" type="application/octet-stream" sparkle:edSignature="y2dHsqx7Osx7VKogYzQ/DA2dhUnmd+si1UzLLbmyo/V9u1O05AWboycXvJueUoAnDN6LQvZ3UNnVE1kFyR9tDw==" />
+        </item>
+        <item>
+            <title>0.27.1</title>
+            <pubDate>Wed, 01 Apr 2026 02:06:09 +0000</pubDate>
+            <sparkle:version>54</sparkle:version>
+            <sparkle:shortVersionString>0.27.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Fixed</h3>
+<ul>
+<li>Table queries incorrectly prefixed with connection username as schema name on non-schema databases (MySQL, MariaDB, ClickHouse, Redis, etc.), causing "Table 'username.table' doesn't exist" errors when opening a second table tab</li>
+</ul></body>]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.27.1/TablePro-0.27.1-x86_64.zip" length="23306298" type="application/octet-stream" sparkle:edSignature="sNCHw0MYMo2ytKD2sujeoK30S1fXvPCLXoqjGqx6HG78x0fo0cB/6eAnirx6yQ0YW/geo3RoJ3+B/gkVqv6FCQ==" />
+        </item>
+        <item>
+            <title>0.27.0</title>
+            <pubDate>Tue, 31 Mar 2026 16:33:58 +0000</pubDate>
+            <sparkle:version>53</sparkle:version>
+            <sparkle:shortVersionString>0.27.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
+<ul>
+<li>Option to prompt for database password on every connection instead of saving to Keychain</li>
+<li>Autocompletion for filter fields: column names and SQL keywords suggested as you type (Raw SQL and Value fields)</li>
+<li>Multi-line support for Raw SQL filter field (Option+Enter for newline)</li>
+<li>Visual Create Table UI with multi-database support (sidebar → "Create New Table...")</li>
+<li>Auto-fit column width: double-click column divider or right-click → "Size to Fit"</li>
+<li>Collapsible results panel (`Cmd+Opt+R`), multiple result tabs for multi-statement queries, result pinning</li>
+<li>Inline error banner for query errors</li>
+<li>JSON syntax highlighting and brace matching in Details sidebar and JSON editor popover</li>
+<li>Database-aware SQL functions in field menu (MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Replace GCD dispatch patterns with Swift structured concurrency</li>
+<li>Refactor Details sidebar into modular field editor architecture with extracted editor components</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>PostgreSQL: Schema name lost after app restart, causing "relation does not exist" errors for non-public schemas</li>
+<li>Error dialog OK button not dismissing when a SwiftUI sheet is active, making the app unusable</li>
+<li>SQL Server: Unicode characters (Thai, CJK, etc.) in nvarchar/nchar/ntext columns displaying as question marks</li>
+<li>Globe+F (fn+F) fullscreen shortcut not working in SwiftUI lifecycle app</li>
+</ul></body>]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.27.0/TablePro-0.27.0-arm64.zip" length="26378023" type="application/octet-stream" sparkle:edSignature="n53O8RIe3dSnxsDNkM8gfwPGKiu/vhp1G75fHA0DKZxA2m+zx4HU7Y7gSnZhMMksmtHf34SQoOOIEzoeIhKfDQ==" />
+        </item>
+        <item>
+            <title>0.27.0</title>
+            <pubDate>Tue, 31 Mar 2026 16:33:58 +0000</pubDate>
+            <sparkle:version>53</sparkle:version>
+            <sparkle:shortVersionString>0.27.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<body style="font-family: -apple-system, sans-serif; font-size: 13px; padding: 8px;"><h3>Added</h3>
+<ul>
+<li>Option to prompt for database password on every connection instead of saving to Keychain</li>
+<li>Autocompletion for filter fields: column names and SQL keywords suggested as you type (Raw SQL and Value fields)</li>
+<li>Multi-line support for Raw SQL filter field (Option+Enter for newline)</li>
+<li>Visual Create Table UI with multi-database support (sidebar → "Create New Table...")</li>
+<li>Auto-fit column width: double-click column divider or right-click → "Size to Fit"</li>
+<li>Collapsible results panel (`Cmd+Opt+R`), multiple result tabs for multi-statement queries, result pinning</li>
+<li>Inline error banner for query errors</li>
+<li>JSON syntax highlighting and brace matching in Details sidebar and JSON editor popover</li>
+<li>Database-aware SQL functions in field menu (MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Replace GCD dispatch patterns with Swift structured concurrency</li>
+<li>Refactor Details sidebar into modular field editor architecture with extracted editor components</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>PostgreSQL: Schema name lost after app restart, causing "relation does not exist" errors for non-public schemas</li>
+<li>Error dialog OK button not dismissing when a SwiftUI sheet is active, making the app unusable</li>
+<li>SQL Server: Unicode characters (Thai, CJK, etc.) in nvarchar/nchar/ntext columns displaying as question marks</li>
+<li>Globe+F (fn+F) fullscreen shortcut not working in SwiftUI lifecycle app</li>
+</ul></body>]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.27.0/TablePro-0.27.0-x86_64.zip" length="23306571" type="application/octet-stream" sparkle:edSignature="6VU+4T6agdBHgCCNiJIafAQtVlQaOxctK81qfsXOQU7Bhxh5eF3wpHLYKioDlKOgxSJb7R+EjoLenZZWmMNwCg==" />
+        </item>
+        <item>
             <title>0.26.0</title>
             <pubDate>Sun, 29 Mar 2026 15:52:19 +0000</pubDate>
             <sparkle:version>52</sparkle:version>
@@ -33,7 +123,7 @@
 <li>MongoDB Atlas TLS certificate verification failure</li>
 <li>ENUM/SET dropdown chevron buttons not showing on first table open</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.26.0/TablePro-0.26.0-arm64.zip" length="26177098" type="application/octet-stream" sparkle:edSignature="diNKGmXTDnmind3UW/mRVDYgBIoYUiADz5O3MAHjcb0Y0/Zzo3PQKd65QNoCbX3jC5MbT1ptts8K24JuoPGoBg=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.26.0/TablePro-0.26.0-arm64.zip" length="26177098" type="application/octet-stream" sparkle:edSignature="diNKGmXTDnmind3UW/mRVDYgBIoYUiADz5O3MAHjcb0Y0/Zzo3PQKd65QNoCbX3jC5MbT1ptts8K24JuoPGoBg==" />
         </item>
         <item>
             <title>0.26.0</title>
@@ -65,7 +155,8 @@
 <li>MongoDB Atlas TLS certificate verification failure</li>
 <li>ENUM/SET dropdown chevron buttons not showing on first table open</li>
 </ul></body>]]></description>
-            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.26.0/TablePro-0.26.0-x86_64.zip" length="23103948" type="application/octet-stream" sparkle:edSignature="0SKMK5+lQyDLfMr1zHfzeH+h3QjGtrz5rhRmEFAayER09mNaQhNN9shycatOIOoTVHcroYGW2exw4C27uZpMCg=="/>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.26.0/TablePro-0.26.0-x86_64.zip" length="23103948" type="application/octet-stream" sparkle:edSignature="0SKMK5+lQyDLfMr1zHfzeH+h3QjGtrz5rhRmEFAayER09mNaQhNN9shycatOIOoTVHcroYGW2exw4C27uZpMCg==" />
         </item>
     </channel>
 </rss>
+

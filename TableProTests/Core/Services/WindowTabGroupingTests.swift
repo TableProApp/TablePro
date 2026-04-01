@@ -141,4 +141,34 @@ struct WindowTabGroupingTests {
         #expect(result == "com.TablePro.main.\(connectionB.uuidString)")
         #expect(result != existingWindowIdentifier)
     }
+
+    // MARK: - groupAllConnections
+
+    @Test("groupAllConnections returns shared identifier regardless of connectionId")
+    func groupAllConnectionsReturnsSharedIdentifier() {
+        let connectionA = UUID()
+        let connectionB = UUID()
+
+        let idA = TabbingIdentifierResolver.resolve(
+            pendingConnectionId: connectionA, existingIdentifier: nil, groupAllConnections: true
+        )
+        let idB = TabbingIdentifierResolver.resolve(
+            pendingConnectionId: connectionB, existingIdentifier: nil, groupAllConnections: true
+        )
+
+        #expect(idA == "com.TablePro.main")
+        #expect(idB == "com.TablePro.main")
+        #expect(idA == idB)
+    }
+
+    @Test("groupAllConnections ignores existingIdentifier")
+    func groupAllConnectionsIgnoresExistingIdentifier() {
+        let existing = "com.TablePro.main.SOME-UUID"
+
+        let result = TabbingIdentifierResolver.resolve(
+            pendingConnectionId: nil, existingIdentifier: existing, groupAllConnections: true
+        )
+
+        #expect(result == "com.TablePro.main")
+    }
 }

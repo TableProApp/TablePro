@@ -62,8 +62,10 @@ extension MainContentCoordinator {
 
         // Check if another native window tab already has this table open — switch to it
         if let keyWindow = NSApp.keyWindow {
+            let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
             let tabbedWindows = keyWindow.tabbedWindows ?? [keyWindow]
-            for window in tabbedWindows where window.title == tableName {
+            for window in tabbedWindows
+                where window.title == tableName && ownWindows.contains(ObjectIdentifier(window)) {
                 window.makeKeyAndOrderFront(nil)
                 return
             }
@@ -219,8 +221,25 @@ extension MainContentCoordinator {
             }
         }
 
-        // No preview window exists but current tab is already a preview: replace in-place
-        if let selectedTab = tabManager.selectedTab, selectedTab.isPreview {
+        // No preview window exists but current tab can be reused: replace in-place.
+        // This covers: preview tabs, non-preview table tabs with no active work,
+        // and empty/default query tabs (no user-entered content).
+        let isReusableTab: Bool = {
+            guard let tab = tabManager.selectedTab else { return false }
+            if tab.isPreview { return true }
+            // Table tab with no active work
+            if tab.tabType == .table && !changeManager.hasChanges
+                && !filterStateManager.hasAppliedFilters && !tab.sortState.isSorting {
+                return true
+            }
+            // Empty/default query tab (no user content, no results, never executed)
+            if tab.tabType == .query && tab.lastExecutedAt == nil
+                && tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return true
+            }
+            return false
+        }()
+        if let selectedTab = tabManager.selectedTab, isReusableTab {
             // Skip if already showing this table
             if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
                 return
@@ -305,8 +324,9 @@ extension MainContentCoordinator {
     }
 
     private func currentSchemaName(fallback: String) -> String {
-        if let schemaDriver = DatabaseManager.shared.driver(for: connectionId) as? SchemaSwitchable {
-            return schemaDriver.escapedSchema
+        if let schemaDriver = DatabaseManager.shared.driver(for: connectionId) as? SchemaSwitchable,
+           let schema = schemaDriver.escapedSchema {
+            return schema
         }
         return fallback
     }
@@ -345,7 +365,11 @@ extension MainContentCoordinator {
     private func closeSiblingNativeWindows() {
         guard let keyWindow = NSApp.keyWindow else { return }
         let siblings = keyWindow.tabbedWindows ?? []
+        let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
         for sibling in siblings where sibling !== keyWindow {
+            // Only close windows belonging to this connection to avoid
+            // destroying tabs from other connections when groupAllConnectionTabs is ON
+            guard ownWindows.contains(ObjectIdentifier(sibling)) else { continue }
             sibling.close()
         }
     }

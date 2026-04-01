@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Option to group all connection tabs in one window instead of separate windows per connection
+
+## [0.27.1] - 2026-04-01
+
+### Fixed
+
+- Table queries incorrectly prefixed with connection username as schema name on non-schema databases (MySQL, MariaDB, ClickHouse, Redis, etc.), causing "Table 'username.table' doesn't exist" errors when opening a second table tab
+
+## [0.27.0] - 2026-03-31
+
+### Added
+
 - Option to prompt for database password on every connection instead of saving to Keychain
 - Autocompletion for filter fields: column names and SQL keywords suggested as you type (Raw SQL and Value fields)
 - Multi-line support for Raw SQL filter field (Option+Enter for newline)
@@ -1117,7 +1129,9 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/TableProApp/TablePro/compare/v0.27.0...v0.27.1
+[0.27.0]: https://github.com/TableProApp/TablePro/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/TableProApp/TablePro/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/TableProApp/TablePro/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/TableProApp/TablePro/compare/v0.24.1...v0.24.2

@@ -316,7 +316,7 @@ extension AppDelegate {
 
     private func openNewConnectionWindow(for connection: DatabaseConnection) {
         let hadExistingMain = NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
-        if hadExistingMain {
+        if hadExistingMain && !AppSettingsManager.shared.tabs.groupAllConnectionTabs {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
         let payload = EditorTabPayload(connectionId: connection.id)

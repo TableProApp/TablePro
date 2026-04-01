@@ -435,7 +435,8 @@ extension MainContentCoordinator {
     /// switches the driver's search_path so the restored tab's query succeeds.
     func restoreSchemaAndRunQuery(_ schema: String) async {
         guard let driver = DatabaseManager.shared.driver(for: connectionId),
-              let schemaDriver = driver as? SchemaSwitchable else {
+              let schemaDriver = driver as? SchemaSwitchable,
+              schemaDriver.currentSchema != nil else {
             runQuery()
             return
         }

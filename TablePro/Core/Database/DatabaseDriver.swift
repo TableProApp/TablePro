@@ -160,8 +160,8 @@ protocol DatabaseDriver: AnyObject {
 /// Protocol for drivers that support schema/search_path switching.
 /// Eliminates repeated as? casting chains in DatabaseManager.
 protocol SchemaSwitchable: DatabaseDriver {
-    var currentSchema: String { get }
-    var escapedSchema: String { get }
+    var currentSchema: String? { get }
+    var escapedSchema: String? { get }
     func switchSchema(to schema: String) async throws
 }
 

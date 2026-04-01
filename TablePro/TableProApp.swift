@@ -590,6 +590,8 @@ struct CheckForUpdatesView: View {
 private struct OpenWindowHandler: View {
     @Environment(\.openWindow)
     private var openWindow
+    @Environment(\.openSettings)
+    private var openSettings
 
     var body: some View {
         Color.clear
@@ -607,6 +609,9 @@ private struct OpenWindowHandler: View {
                 } else if let connectionId = notification.object as? UUID {
                     openWindow(id: "main", value: EditorTabPayload(connectionId: connectionId))
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in
+                openSettings()
             }
     }
 }

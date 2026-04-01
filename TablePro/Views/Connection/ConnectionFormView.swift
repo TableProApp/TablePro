@@ -927,6 +927,7 @@ struct ConnectionFormView: View {
             SyncChangeTracker.shared.markDirty(.connection, id: connectionToSave.id.uuidString)
             // Close and connect to database
             NSApplication.shared.closeWindows(withId: "connection-form")
+            NotificationCenter.default.post(name: .connectionUpdated, object: nil)
             connectToDatabase(connectionToSave)
         } else {
             if let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) {
@@ -966,7 +967,7 @@ struct ConnectionFormView: View {
             handleMissingPlugin(connection: connection)
             return
         }
-        NSApplication.shared.closeWindows(withId: "main")
+        closeConnectionWindows(for: connection.id)
         openWindow(id: "welcome")
         guard !(error is CancellationError) else { return }
         Self.logger.error("Failed to connect: \(error.localizedDescription, privacy: .public)")
@@ -977,9 +978,15 @@ struct ConnectionFormView: View {
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {
-        NSApplication.shared.closeWindows(withId: "main")
+        closeConnectionWindows(for: connection.id)
         openWindow(id: "welcome")
         pluginInstallConnection = connection
+    }
+
+    private func closeConnectionWindows(for connectionId: UUID) {
+        for window in WindowLifecycleMonitor.shared.windows(for: connectionId) {
+            window.close()
+        }
     }
 
     private func connectAfterInstall(_ connection: DatabaseConnection) {

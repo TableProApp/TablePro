@@ -80,10 +80,12 @@ extension AppDelegate {
             } catch {
                 windowLogger.error("Dock connection failed for '\(connection.name)': \(error.localizedDescription)")
 
-                for window in NSApp.windows where self.isMainWindow(window) {
+                for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                     window.close()
                 }
-                self.openWelcomeWindow()
+                if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                    self.openWelcomeWindow()
+                }
             }
         }
     }
@@ -251,8 +253,15 @@ extension AppDelegate {
             // If no code opened this window (pendingId is nil), this is a
             // SwiftUI WindowGroup state restoration — not a window we created.
             // Hide it (orderOut, not close) to break the close→restore loop.
+            // Exception: if the window is already part of a tab group, it was
+            // attached by our addTabbedWindow call — not a restoration orphan.
+            // Ordering it out would crash NSWindowStackController.
             if pendingId == nil && !isAutoReconnecting {
                 configuredWindows.insert(windowId)
+                if let tabbedWindows = window.tabbedWindows, tabbedWindows.count > 1 {
+                    // Already in a tab group — leave it alone
+                    return
+                }
                 window.orderOut(nil)
                 return
             }
@@ -260,9 +269,11 @@ extension AppDelegate {
             let existingIdentifier = NSApp.windows
                 .first { $0 !== window && isMainWindow($0) && $0.isVisible }?
                 .tabbingIdentifier
+            let groupAll = MainActor.assumeIsolated { AppSettingsManager.shared.tabs.groupAllConnectionTabs }
             let resolvedIdentifier = TabbingIdentifierResolver.resolve(
                 pendingConnectionId: pendingId,
-                existingIdentifier: existingIdentifier
+                existingIdentifier: existingIdentifier,
+                groupAllConnections: groupAll
             )
             window.tabbingIdentifier = resolvedIdentifier
             configuredWindows.insert(windowId)
@@ -273,10 +284,25 @@ extension AppDelegate {
 
             // Explicitly attach to existing tab group — automatic tabbing
             // doesn't work when tabbingIdentifier is set after window creation.
-            if let existingWindow = NSApp.windows.first(where: {
-                $0 !== window && isMainWindow($0) && $0.isVisible
-                    && $0.tabbingIdentifier == resolvedIdentifier
-            }) {
+            let matchingWindow: NSWindow?
+            if groupAll {
+                // When grouping all connections, attach to any visible main window
+                // and normalize all existing windows' tabbingIdentifiers so future
+                // windows also match (not just the first one found).
+                let existingMainWindows = NSApp.windows.filter {
+                    $0 !== window && isMainWindow($0) && $0.isVisible
+                }
+                for existing in existingMainWindows {
+                    existing.tabbingIdentifier = resolvedIdentifier
+                }
+                matchingWindow = existingMainWindows.first
+            } else {
+                matchingWindow = NSApp.windows.first {
+                    $0 !== window && isMainWindow($0) && $0.isVisible
+                        && $0.tabbingIdentifier == resolvedIdentifier
+                }
+            }
+            if let existingWindow = matchingWindow {
                 let targetWindow = existingWindow.tabbedWindows?.last ?? existingWindow
                 targetWindow.addTabbedWindow(window, ordered: .above)
                 window.makeKeyAndOrderFront(nil)
@@ -339,18 +365,21 @@ extension AppDelegate {
                     window.close()
                 }
             } catch is CancellationError {
-                for window in NSApp.windows where self.isMainWindow(window) {
+                for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                     window.close()
                 }
-                self.openWelcomeWindow()
+                if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                    self.openWelcomeWindow()
+                }
             } catch {
                 windowLogger.error("Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)")
 
-                for window in NSApp.windows where self.isMainWindow(window) {
+                for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                     window.close()
                 }
-
-                self.openWelcomeWindow()
+                if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                    self.openWelcomeWindow()
+                }
             }
         }
     }

@@ -48,8 +48,16 @@ internal enum TabbingIdentifierResolver {
     /// - Parameters:
     ///   - pendingConnectionId: The connectionId from WindowOpener (if a tab was just opened)
     ///   - existingIdentifier: The tabbingIdentifier from an existing visible main window (if any)
+    ///   - groupAllConnections: When true, all windows share one tab group regardless of connection
     /// - Returns: The tabbingIdentifier to assign to the new window
-    internal static func resolve(pendingConnectionId: UUID?, existingIdentifier: String?) -> String {
+    internal static func resolve(
+        pendingConnectionId: UUID?,
+        existingIdentifier: String?,
+        groupAllConnections: Bool = false
+    ) -> String {
+        if groupAllConnections {
+            return "com.TablePro.main"
+        }
         if let connectionId = pendingConnectionId {
             return "com.TablePro.main.\(connectionId.uuidString)"
         }
