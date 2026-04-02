@@ -54,9 +54,15 @@ At the bottom of the sidebar, an action bar provides:
 | **GitHub Dark** | Dark | GitHub UI |
 | **Nord** | Dark | Arctic north-bluish palette |
 
-### Theme Appearance Mode
+### Appearance Mode & Theme Pairing
 
-Each theme has a fixed `appearance` property: `light`, `dark`, or `auto`. Activating a theme sets `NSApp.appearance` to match. One active theme at a time; there is no separate light/dark assignment.
+Use the segmented picker at the top to choose **Light**, **Dark**, or **Auto** (follow system). Each mode has its own preferred theme:
+
+- **Light mode** uses your preferred light theme
+- **Dark mode** uses your preferred dark theme
+- **Auto mode** switches between the two when the system appearance changes
+
+Selecting a theme from the list sets it as the preferred theme for the current appearance. This ensures the window chrome and editor colors always match.
 
 {/* Screenshot: Side-by-side light and dark themes */}
 <Frame caption="Light vs Dark theme">

@@ -179,18 +179,6 @@ internal struct ThemeStorage {
         logger.info("Exported theme: \(theme.id) to \(destinationURL.lastPathComponent)")
     }
 
-    // MARK: - Active Theme Persistence
-
-    private static let activeThemeKey = "com.TablePro.settings.activeThemeId"
-
-    static func loadActiveThemeId() -> String {
-        UserDefaults.standard.string(forKey: activeThemeKey) ?? "tablepro.default-light"
-    }
-
-    static func saveActiveThemeId(_ id: String) {
-        UserDefaults.standard.set(id, forKey: activeThemeKey)
-    }
-
     // MARK: - Helpers
 
     private static func ensureUserDirectory() {

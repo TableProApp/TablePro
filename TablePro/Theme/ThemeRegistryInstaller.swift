@@ -61,9 +61,21 @@ internal final class ThemeRegistryInstaller {
 
         ThemeEngine.shared.reloadAvailableThemes()
 
-        // Fall back if the active theme was uninstalled
-        if removedThemeIds.contains(ThemeEngine.shared.activeTheme.id) {
-            ThemeEngine.shared.activateTheme(id: "tablepro.default-light")
+        // Reset preferred theme slots if the uninstalled theme was preferred
+        var appearance = AppSettingsManager.shared.appearance
+        var changed = false
+        for id in removedThemeIds {
+            if id == appearance.preferredLightThemeId {
+                appearance.preferredLightThemeId = "tablepro.default-light"
+                changed = true
+            }
+            if id == appearance.preferredDarkThemeId {
+                appearance.preferredDarkThemeId = "tablepro.default-dark"
+                changed = true
+            }
+        }
+        if changed {
+            AppSettingsManager.shared.appearance = appearance
         }
 
         Self.logger.info("Uninstalled registry themes for plugin: \(registryPluginId)")
@@ -102,9 +114,13 @@ internal final class ThemeRegistryInstaller {
         // Single reload after swap is complete — no intermediate flicker
         ThemeEngine.shared.reloadAvailableThemes()
 
-        if ThemeEngine.shared.availableThemes.contains(where: { $0.id == activeId }) {
-            ThemeEngine.shared.activateTheme(id: activeId)
-        }
+        // Re-activate the correct theme for the current appearance
+        let appearance = AppSettingsManager.shared.appearance
+        ThemeEngine.shared.updateAppearanceAndTheme(
+            mode: appearance.appearanceMode,
+            lightThemeId: appearance.preferredLightThemeId,
+            darkThemeId: appearance.preferredDarkThemeId
+        )
 
         Self.logger.info("Updated \(installedThemes.count) theme(s) for registry plugin: \(plugin.id)")
     }

@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Option to group all connection tabs in one window instead of separate windows per connection
 
+### Changed
+
+- Appearance mode and theme are now coupled — selecting Dark mode automatically activates your preferred dark theme, and vice versa
+- Each appearance mode (Light/Dark) has its own preferred theme that persists independently
+- Auto mode now auto-switches between preferred light and dark themes when the system appearance changes
+
 ## [0.27.1] - 2026-04-01
 
 ### Fixed

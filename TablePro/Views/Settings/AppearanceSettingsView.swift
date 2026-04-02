@@ -10,6 +10,25 @@ import SwiftUI
 struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
 
+    /// Computed binding that reads/writes the correct preferred theme slot
+    /// based on the current effective appearance.
+    private var effectiveThemeIdBinding: Binding<String> {
+        Binding(
+            get: {
+                ThemeEngine.shared.effectiveAppearance == .dark
+                    ? settings.preferredDarkThemeId
+                    : settings.preferredLightThemeId
+            },
+            set: { newId in
+                if ThemeEngine.shared.effectiveAppearance == .dark {
+                    settings.preferredDarkThemeId = newId
+                } else {
+                    settings.preferredLightThemeId = newId
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
@@ -33,10 +52,10 @@ struct AppearanceSettingsView: View {
             Divider()
 
             HSplitView {
-                ThemeListView(selectedThemeId: $settings.activeThemeId)
+                ThemeListView(selectedThemeId: effectiveThemeIdBinding)
                     .frame(minWidth: 180, idealWidth: 210, maxWidth: 250)
 
-                ThemeEditorView(selectedThemeId: $settings.activeThemeId)
+                ThemeEditorView(selectedThemeId: effectiveThemeIdBinding)
                     .frame(minWidth: 400)
             }
         }

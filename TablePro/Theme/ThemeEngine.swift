@@ -109,8 +109,9 @@ internal final class ThemeEngine {
 
     private init() {
         let allThemes = ThemeStorage.loadAllThemes()
-        let activeId = ThemeStorage.loadActiveThemeId()
-        let theme = allThemes.first { $0.id == activeId } ?? .default
+        // Start with the default theme; AppSettingsManager.init() will call
+        // updateAppearanceAndTheme() to activate the correct preferred theme.
+        let theme = ThemeDefinition.default
 
         self.activeTheme = theme
         self.colors = ResolvedThemeColors(from: theme)
@@ -140,7 +141,6 @@ internal final class ThemeEngine {
         editorFonts = EditorFontCache(from: theme.fonts)
         dataGridFonts = DataGridFontCacheResolved(from: theme.fonts)
 
-        ThemeStorage.saveActiveThemeId(theme.id)
         notifyThemeDidChange()
 
         Self.logger.info("Activated theme: \(theme.name) (\(theme.id))")
@@ -163,9 +163,19 @@ internal final class ThemeEngine {
         try ThemeStorage.deleteUserTheme(id: id)
         reloadAvailableThemes()
 
-        // If deleted the active theme, fall back to default
-        if id == activeTheme.id {
-            activateTheme(id: "tablepro.default-light")
+        // If deleted a preferred theme, reset that slot to default
+        var appearance = AppSettingsManager.shared.appearance
+        var changed = false
+        if id == appearance.preferredLightThemeId {
+            appearance.preferredLightThemeId = "tablepro.default-light"
+            changed = true
+        }
+        if id == appearance.preferredDarkThemeId {
+            appearance.preferredDarkThemeId = "tablepro.default-dark"
+            changed = true
+        }
+        if changed {
+            AppSettingsManager.shared.appearance = appearance
         }
     }
 
@@ -273,20 +283,86 @@ internal final class ThemeEngine {
     // MARK: - Appearance
 
     @ObservationIgnored private(set) var appearanceMode: AppAppearanceMode = .auto
+    @ObservationIgnored private(set) var effectiveAppearance: ThemeAppearance = .light
+    @ObservationIgnored private var currentLightThemeId: String = "tablepro.default-light"
+    @ObservationIgnored private var currentDarkThemeId: String = "tablepro.default-dark"
+    @ObservationIgnored private var systemAppearanceObserver: NSObjectProtocol?
 
-    func updateAppearanceMode(_ mode: AppAppearanceMode) {
+    /// Central entry point: resolves effective appearance, picks the correct theme, activates it,
+    /// and derives NSApp.appearance from the theme's own appearance metadata.
+    func updateAppearanceAndTheme(
+        mode: AppAppearanceMode,
+        lightThemeId: String,
+        darkThemeId: String
+    ) {
         appearanceMode = mode
-        applyAppearance(mode)
+        currentLightThemeId = lightThemeId
+        currentDarkThemeId = darkThemeId
+
+        let resolved = resolveEffectiveAppearance(mode)
+        effectiveAppearance = resolved
+
+        let themeId = resolved == .dark ? darkThemeId : lightThemeId
+        activateTheme(id: themeId)
+        applyNSAppAppearance(from: activeTheme)
+
+        updateSystemAppearanceObserver(mode: mode)
     }
 
-    private func applyAppearance(_ mode: AppAppearanceMode) {
+    /// Resolve which appearance is in effect right now.
+    private func resolveEffectiveAppearance(_ mode: AppAppearanceMode) -> ThemeAppearance {
         switch mode {
+        case .light: return .light
+        case .dark: return .dark
+        case .auto: return systemIsDark() ? .dark : .light
+        }
+    }
+
+    /// Check if the system is currently in dark mode.
+    private func systemIsDark() -> Bool {
+        let name = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+        return name == .darkAqua
+    }
+
+    /// Set NSApp.appearance based on the active theme's appearance metadata.
+    private func applyNSAppAppearance(from theme: ThemeDefinition) {
+        switch theme.appearance {
         case .light:
             NSApp?.appearance = NSAppearance(named: .aqua)
         case .dark:
             NSApp?.appearance = NSAppearance(named: .darkAqua)
         case .auto:
             NSApp?.appearance = nil
+        }
+    }
+
+    // MARK: - System Appearance Observer
+
+    private func updateSystemAppearanceObserver(mode: AppAppearanceMode) {
+        // Remove existing observer
+        if let observer = systemAppearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+            systemAppearanceObserver = nil
+        }
+
+        guard mode == .auto else { return }
+
+        // Install observer for system appearance changes
+        systemAppearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.appearanceMode == .auto else { return }
+                let newAppearance = self.systemIsDark() ? ThemeAppearance.dark : ThemeAppearance.light
+                guard newAppearance != self.effectiveAppearance else { return }
+                self.effectiveAppearance = newAppearance
+                let themeId = newAppearance == .dark ? self.currentDarkThemeId : self.currentLightThemeId
+                self.activateTheme(id: themeId)
+                self.applyNSAppAppearance(from: self.activeTheme)
+                Self.logger.info("System appearance changed → \(newAppearance.rawValue)")
+            }
         }
     }
 

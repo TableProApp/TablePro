@@ -36,8 +36,11 @@ final class AppSettingsManager {
     var appearance: AppearanceSettings {
         didSet {
             storage.saveAppearance(appearance)
-            ThemeEngine.shared.activateTheme(id: appearance.activeThemeId)
-            ThemeEngine.shared.updateAppearanceMode(appearance.appearanceMode)
+            ThemeEngine.shared.updateAppearanceAndTheme(
+                mode: appearance.appearanceMode,
+                lightThemeId: appearance.preferredLightThemeId,
+                darkThemeId: appearance.preferredDarkThemeId
+            )
             SyncChangeTracker.shared.markDirty(.settings, id: "appearance")
         }
     }
@@ -157,9 +160,12 @@ final class AppSettingsManager {
         // Apply language immediately
         general.language.apply()
 
-        // ThemeEngine initializes itself from persisted theme ID
-        // Apply app-level appearance mode
-        ThemeEngine.shared.updateAppearanceMode(appearance.appearanceMode)
+        // Activate the correct theme based on appearance mode + preferred themes
+        ThemeEngine.shared.updateAppearanceAndTheme(
+            mode: appearance.appearanceMode,
+            lightThemeId: appearance.preferredLightThemeId,
+            darkThemeId: appearance.preferredDarkThemeId
+        )
 
         // Sync editor behavioral settings to ThemeEngine
         ThemeEngine.shared.updateEditorSettings(
