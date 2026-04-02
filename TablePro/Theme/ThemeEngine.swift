@@ -308,6 +308,7 @@ internal final class ThemeEngine {
         lightThemeId: String,
         darkThemeId: String
     ) {
+        Self.logger.info("updateAppearanceAndTheme: mode=\(mode.rawValue) light=\(lightThemeId) dark=\(darkThemeId)")
         appearanceMode = mode
         currentLightThemeId = lightThemeId
         currentDarkThemeId = darkThemeId
@@ -316,8 +317,10 @@ internal final class ThemeEngine {
         effectiveAppearance = resolved
 
         let themeId = resolved == .dark ? darkThemeId : lightThemeId
+        Self.logger.info("Resolved: effective=\(resolved.rawValue) → activating theme=\(themeId)")
         activateTheme(id: themeId)
-        applyNSAppAppearance(from: activeTheme)
+        Self.logger.info("After activate: activeTheme=\(self.activeTheme.id) themeAppearance=\(self.activeTheme.appearance.rawValue)")
+        applyNSAppAppearance(mode: mode)
 
         updateSystemAppearanceObserver(mode: mode)
     }
@@ -332,14 +335,16 @@ internal final class ThemeEngine {
     }
 
     /// Check if the system is currently in dark mode.
+    /// Reads the global `AppleInterfaceStyle` default directly so we get the real
+    /// system setting, not the app's own forced appearance.
     private func systemIsDark() -> Bool {
-        let name = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
-        return name == .darkAqua
+        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
     }
 
-    /// Set NSApp.appearance based on the active theme's appearance metadata.
-    private func applyNSAppAppearance(from theme: ThemeDefinition) {
-        switch theme.appearance {
+    /// Set NSApp.appearance based on the appearance mode (not the theme).
+    /// Auto mode sets nil so the system controls the chrome.
+    private func applyNSAppAppearance(mode: AppAppearanceMode) {
+        switch mode {
         case .light:
             NSApp?.appearance = NSAppearance(named: .aqua)
         case .dark:
@@ -373,7 +378,7 @@ internal final class ThemeEngine {
                 self.effectiveAppearance = newAppearance
                 let themeId = newAppearance == .dark ? self.currentDarkThemeId : self.currentLightThemeId
                 self.activateTheme(id: themeId)
-                self.applyNSAppAppearance(from: self.activeTheme)
+                self.applyNSAppAppearance(mode: .auto)
                 Self.logger.info("System appearance changed → \(newAppearance.rawValue)")
             }
         }

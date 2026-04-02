@@ -5,13 +5,18 @@
 //  Settings for theme browsing, customization, and accent color.
 //
 
+import os
 import SwiftUI
 
 struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
 
-    /// Computed binding that reads/writes the correct preferred theme slot
-    /// based on the current effective appearance.
+    private static let logger = Logger(subsystem: "com.TablePro", category: "AppearanceSettingsView")
+
+    /// Computed binding that reads/writes the correct preferred theme slot.
+    /// On read: returns the theme for the current effective appearance.
+    /// On write: uses the selected theme's appearance metadata to determine the correct slot,
+    /// and switches the appearance mode so the user sees the change immediately.
     private var effectiveThemeIdBinding: Binding<String> {
         Binding(
             get: {
@@ -20,11 +25,28 @@ struct AppearanceSettingsView: View {
                     : settings.preferredLightThemeId
             },
             set: { newId in
-                if ThemeEngine.shared.effectiveAppearance == .dark {
-                    settings.preferredDarkThemeId = newId
-                } else {
-                    settings.preferredLightThemeId = newId
+                guard let theme = ThemeEngine.shared.availableThemes
+                    .first(where: { $0.id == newId }) else { return }
+
+                // Assign to the correct slot based on the theme's appearance and
+                // switch mode to match so the user sees the change immediately.
+                // Mutate a local copy so didSet fires only once.
+                var updated = settings
+                switch theme.appearance {
+                case .dark:
+                    updated.preferredDarkThemeId = newId
+                    updated.appearanceMode = .dark
+                case .light:
+                    updated.preferredLightThemeId = newId
+                    updated.appearanceMode = .light
+                case .auto:
+                    if ThemeEngine.shared.effectiveAppearance == .dark {
+                        updated.preferredDarkThemeId = newId
+                    } else {
+                        updated.preferredLightThemeId = newId
+                    }
                 }
+                settings = updated
             }
         )
     }
