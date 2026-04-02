@@ -177,12 +177,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {
         let result = try await execute(query: "SHOW FULL TABLES")
 
-        return result.rows.compactMap { row in
+        return result.rows.compactMap { row -> PluginTableInfo? in
             guard let name = row[safe: 0] ?? nil else { return nil }
             let typeStr = (row[safe: 1] ?? nil) ?? "BASE TABLE"
             let type = typeStr.contains("VIEW") ? "VIEW" : "TABLE"
             return PluginTableInfo(name: name, type: type)
-        }
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {

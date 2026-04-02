@@ -194,7 +194,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         }
 
         let collections = try await conn.listCollections(database: currentDb)
-        return collections.map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
+        return collections.sorted(by: { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
+            .map { PluginTableInfo(name: $0, type: "table", rowCount: nil) }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {

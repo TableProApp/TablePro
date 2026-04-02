@@ -280,9 +280,10 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
             } while lastEvaluated != nil
 
             Self.logger.debug("fetchTables found \(allTableNames.count) tables")
-            return allTableNames.map { name in
-                PluginTableInfo(name: name, type: "TABLE")
-            }
+            return allTableNames.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+                .map { name in
+                    PluginTableInfo(name: name, type: "TABLE")
+                }
         } catch {
             Self.logger.error("fetchTables error: \(error.localizedDescription)")
             throw error

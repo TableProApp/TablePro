@@ -394,7 +394,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
                 tableType = "TABLE"
             }
             return PluginTableInfo(name: entry.tableReference.tableId, type: tableType)
-        }
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func fetchColumns(table: String, schema: String?) async throws -> [PluginColumnInfo] {
