@@ -151,9 +151,12 @@ struct AppearanceSettings: Codable, Equatable {
             preferredDarkThemeId = try container.decodeIfPresent(String.self, forKey: .preferredDarkThemeId)
                 ?? "tablepro.default-dark"
         } else if let oldActiveId = try container.decodeIfPresent(String.self, forKey: .activeThemeId) {
-            // Migration from single activeThemeId — place in correct slot based on theme metadata
-            let themeAppearance = ThemeStorage.loadTheme(id: oldActiveId)?.appearance ?? .light
-            if themeAppearance == .dark {
+            // Migration from single activeThemeId — place in correct slot based on theme metadata.
+            // If the theme file can't be loaded (deleted/not yet indexed), infer from the id string.
+            let loadedAppearance = ThemeStorage.loadTheme(id: oldActiveId)?.appearance
+            let isDark = loadedAppearance == .dark
+                || (loadedAppearance == nil && (oldActiveId.contains("dark") || oldActiveId.contains("dracula")))
+            if isDark {
                 preferredDarkThemeId = oldActiveId
                 preferredLightThemeId = "tablepro.default-light"
             } else {

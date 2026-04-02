@@ -142,7 +142,6 @@ internal struct ThemeListView: View {
         let copy = engine.duplicateTheme(theme, newName: theme.name + " (Copy)")
         do {
             try engine.saveUserTheme(copy)
-            engine.activateTheme(copy)
             selectedThemeId = copy.id
         } catch {
             errorMessage = error.localizedDescription
@@ -190,7 +189,6 @@ internal struct ThemeListView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let imported = try engine.importTheme(from: url)
-            engine.activateTheme(imported)
             selectedThemeId = imported.id
         } catch {
             errorMessage = error.localizedDescription

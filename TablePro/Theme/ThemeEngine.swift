@@ -176,6 +176,14 @@ internal final class ThemeEngine {
         }
         if changed {
             AppSettingsManager.shared.appearance = appearance
+        } else if id == activeTheme.id {
+            // Deleted a non-preferred but currently active theme — re-anchor to preferred
+            let appearance = AppSettingsManager.shared.appearance
+            updateAppearanceAndTheme(
+                mode: appearance.appearanceMode,
+                lightThemeId: appearance.preferredLightThemeId,
+                darkThemeId: appearance.preferredDarkThemeId
+            )
         }
     }
 
@@ -219,6 +227,11 @@ internal final class ThemeEngine {
         activeTheme = theme
         editorFonts = EditorFontCache(from: theme.fonts)
         notifyThemeDidChange()
+
+        // Persist so the zoom survives re-activation (e.g. system appearance change)
+        if theme.isEditable {
+            try? ThemeStorage.saveUserTheme(theme)
+        }
     }
 
     // MARK: - Font Cache Reload (accessibility)
@@ -283,7 +296,7 @@ internal final class ThemeEngine {
     // MARK: - Appearance
 
     @ObservationIgnored private(set) var appearanceMode: AppAppearanceMode = .auto
-    @ObservationIgnored private(set) var effectiveAppearance: ThemeAppearance = .light
+    private(set) var effectiveAppearance: ThemeAppearance = .light
     @ObservationIgnored private var currentLightThemeId: String = "tablepro.default-light"
     @ObservationIgnored private var currentDarkThemeId: String = "tablepro.default-dark"
     @ObservationIgnored private var systemAppearanceObserver: NSObjectProtocol?
