@@ -13,9 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Appearance mode and theme are now coupled — selecting Dark mode automatically activates your preferred dark theme, and vice versa
-- Each appearance mode (Light/Dark) has its own preferred theme that persists independently
-- Auto mode now auto-switches between preferred light and dark themes when the system appearance changes
+- Separate preferred themes for Light and Dark appearance modes, with automatic switching in Auto mode
 
 ## [0.27.1] - 2026-04-01
 
