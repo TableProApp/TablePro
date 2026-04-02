@@ -142,53 +142,15 @@ struct AppearanceSettings: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-
         appearanceMode = try container.decodeIfPresent(AppAppearanceMode.self, forKey: .appearanceMode) ?? .auto
-
-        // New format: dual theme preferences
-        if let lightId = try container.decodeIfPresent(String.self, forKey: .preferredLightThemeId) {
-            preferredLightThemeId = lightId
-            preferredDarkThemeId = try container.decodeIfPresent(String.self, forKey: .preferredDarkThemeId)
-                ?? "tablepro.default-dark"
-        } else if let oldActiveId = try container.decodeIfPresent(String.self, forKey: .activeThemeId) {
-            // Migration from single activeThemeId — place in correct slot based on theme metadata.
-            // If the theme file can't be loaded (deleted/not yet indexed), infer from the id string.
-            let loadedAppearance = ThemeStorage.loadTheme(id: oldActiveId)?.appearance
-            let isDark = loadedAppearance == .dark
-                || (loadedAppearance == nil && (oldActiveId.contains("dark") || oldActiveId.contains("dracula")))
-            if isDark {
-                preferredDarkThemeId = oldActiveId
-                preferredLightThemeId = "tablepro.default-light"
-            } else {
-                preferredLightThemeId = oldActiveId
-                preferredDarkThemeId = "tablepro.default-dark"
-            }
-        } else if let oldTheme = try? container.decodeIfPresent(String.self, forKey: .theme) {
-            // Legacy migration from old AppTheme enum
-            switch oldTheme {
-            case "dark":
-                preferredDarkThemeId = "tablepro.default-dark"
-                preferredLightThemeId = "tablepro.default-light"
-            default:
-                preferredLightThemeId = "tablepro.default-light"
-                preferredDarkThemeId = "tablepro.default-dark"
-            }
-        } else {
-            preferredLightThemeId = "tablepro.default-light"
-            preferredDarkThemeId = "tablepro.default-dark"
-        }
+        preferredLightThemeId = try container.decodeIfPresent(String.self, forKey: .preferredLightThemeId)
+            ?? "tablepro.default-light"
+        preferredDarkThemeId = try container.decodeIfPresent(String.self, forKey: .preferredDarkThemeId)
+            ?? "tablepro.default-dark"
     }
 
     private enum CodingKeys: String, CodingKey {
         case appearanceMode, preferredLightThemeId, preferredDarkThemeId
-        case activeThemeId, theme // legacy keys for migration
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(appearanceMode, forKey: .appearanceMode)
-        try container.encode(preferredLightThemeId, forKey: .preferredLightThemeId)
-        try container.encode(preferredDarkThemeId, forKey: .preferredDarkThemeId)
     }
 }
 
