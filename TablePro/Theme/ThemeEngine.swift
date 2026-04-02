@@ -308,7 +308,6 @@ internal final class ThemeEngine {
         lightThemeId: String,
         darkThemeId: String
     ) {
-        Self.logger.info("updateAppearanceAndTheme: mode=\(mode.rawValue) light=\(lightThemeId) dark=\(darkThemeId)")
         appearanceMode = mode
         currentLightThemeId = lightThemeId
         currentDarkThemeId = darkThemeId
@@ -317,9 +316,7 @@ internal final class ThemeEngine {
         effectiveAppearance = resolved
 
         let themeId = resolved == .dark ? darkThemeId : lightThemeId
-        Self.logger.info("Resolved: effective=\(resolved.rawValue) → activating theme=\(themeId)")
         activateTheme(id: themeId)
-        Self.logger.info("After activate: activeTheme=\(self.activeTheme.id) themeAppearance=\(self.activeTheme.appearance.rawValue)")
         applyNSAppAppearance(mode: mode)
 
         updateSystemAppearanceObserver(mode: mode)
@@ -379,7 +376,6 @@ internal final class ThemeEngine {
                 let themeId = newAppearance == .dark ? self.currentDarkThemeId : self.currentLightThemeId
                 self.activateTheme(id: themeId)
                 self.applyNSAppAppearance(mode: .auto)
-                Self.logger.info("System appearance changed → \(newAppearance.rawValue)")
             }
         }
     }

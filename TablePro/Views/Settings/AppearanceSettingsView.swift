@@ -5,13 +5,10 @@
 //  Settings for theme browsing, customization, and accent color.
 //
 
-import os
 import SwiftUI
 
 struct AppearanceSettingsView: View {
     @Binding var settings: AppearanceSettings
-
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AppearanceSettingsView")
 
     /// Computed binding that reads/writes the correct preferred theme slot.
     /// On read: returns the theme for the current effective appearance.
@@ -40,6 +37,7 @@ struct AppearanceSettingsView: View {
                     updated.preferredLightThemeId = newId
                     updated.appearanceMode = .light
                 case .auto:
+                    updated.appearanceMode = .auto
                     if ThemeEngine.shared.effectiveAppearance == .dark {
                         updated.preferredDarkThemeId = newId
                     } else {
