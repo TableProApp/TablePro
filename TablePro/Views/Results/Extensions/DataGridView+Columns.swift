@@ -65,6 +65,9 @@ extension TableViewCoordinator {
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        if let provider = rowViewProvider {
+            return provider(tableView, row, self)
+        }
         let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
             ?? TableRowViewWithMenu()
         rowView.identifier = Self.rowViewIdentifier

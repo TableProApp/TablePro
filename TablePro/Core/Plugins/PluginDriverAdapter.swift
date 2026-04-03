@@ -349,6 +349,20 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         pluginDriver.generateCreateTableSQL(definition: definition)
     }
 
+    // MARK: - Definition SQL (clipboard copy)
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
+        pluginDriver.generateColumnDefinitionSQL(column: column)
+    }
+
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
+        pluginDriver.generateIndexDefinitionSQL(index: index)
+    }
+
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
+        pluginDriver.generateForeignKeyDefinitionSQL(fk: fk)
+    }
+
     // MARK: - Table Operations
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String] {

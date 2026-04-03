@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Structure tab context menu with Copy Name, Copy Definition (SQL), Duplicate, and Delete for columns, indexes, and foreign keys
 - Foreign key preview: press Cmd+Enter on a FK cell to see the referenced row in a popover
 
 ## [0.27.2] - 2026-04-02

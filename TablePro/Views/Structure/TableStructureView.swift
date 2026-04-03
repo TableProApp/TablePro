@@ -227,6 +227,7 @@ struct TableStructureView: View {
             connectionId: connection.id,
             databaseType: getDatabaseType(),
             onMoveRow: moveRowHandler,
+            rowViewProvider: makeStructureRowView,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,
@@ -559,6 +560,120 @@ struct TableStructureView: View {
         case .parts:
             break
         }
+    }
+
+    // MARK: - Structure Context Menu
+
+    private func makeStructureRowView(
+        _ tableView: NSTableView, _ row: Int, _ coordinator: TableViewCoordinator
+    ) -> NSTableRowView {
+        let rowView = StructureRowViewWithMenu()
+        rowView.coordinator = coordinator
+        rowView.rowIndex = row
+        rowView.structureTab = selectedTab
+        rowView.isStructureEditable = connection.type.supportsSchemaEditing
+        rowView.isRowDeleted = structureChangeManager.getVisualState(for: row, tab: selectedTab).isDeleted
+
+        if selectedTab == .foreignKeys, row < structureChangeManager.workingForeignKeys.count {
+            rowView.referencedTableName = structureChangeManager.workingForeignKeys[row].referencedTable
+        }
+
+        rowView.onCopyName = { [self] indices in handleCopyName(indices) }
+        rowView.onCopyDefinition = { [self] indices in handleCopyDefinition(indices) }
+        rowView.onNavigateFK = { [self] idx in handleNavigateToFK(idx) }
+        rowView.onDuplicate = { [self] indices in handleCopyRows(indices); handlePaste() }
+        rowView.onDelete = { [self] indices in handleDeleteRows(indices) }
+        rowView.onUndoDelete = { [self] _ in handleUndo() }
+        return rowView
+    }
+
+    private func handleCopyName(_ indices: Set<Int>) {
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type
+        )
+        let names = indices.sorted().compactMap { provider.row(at: $0)?.first ?? nil }
+        guard !names.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(names.joined(separator: "\n"), forType: .string)
+    }
+
+    private func handleCopyDefinition(_ indices: Set<Int>) {
+        guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+        var definitions: [String] = []
+
+        for row in indices.sorted() {
+            switch selectedTab {
+            case .columns:
+                guard row < structureChangeManager.workingColumns.count else { continue }
+                let col = structureChangeManager.workingColumns[row]
+                let pluginCol = toPluginColumnDefinition(col)
+                if let sql = driver.generateColumnDefinitionSQL(column: pluginCol) {
+                    definitions.append(sql)
+                }
+            case .indexes:
+                guard row < structureChangeManager.workingIndexes.count else { continue }
+                let idx = structureChangeManager.workingIndexes[row]
+                let pluginIdx = toPluginIndexDefinition(idx)
+                if let sql = driver.generateIndexDefinitionSQL(index: pluginIdx) {
+                    definitions.append(sql)
+                }
+            case .foreignKeys:
+                guard row < structureChangeManager.workingForeignKeys.count else { continue }
+                let fk = structureChangeManager.workingForeignKeys[row]
+                let pluginFK = toPluginForeignKeyDefinition(fk)
+                if let sql = driver.generateForeignKeyDefinitionSQL(fk: pluginFK) {
+                    definitions.append(sql)
+                }
+            case .ddl, .parts:
+                break
+            }
+        }
+
+        guard !definitions.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(definitions.joined(separator: "\n"), forType: .string)
+    }
+
+    private func handleNavigateToFK(_ row: Int) {
+        guard row < structureChangeManager.workingForeignKeys.count else { return }
+        let fk = structureChangeManager.workingForeignKeys[row]
+        coordinator?.openTableTab(fk.referencedTable, showStructure: false, isView: false)
+    }
+
+    // MARK: - Plugin Type Converters (for context menu)
+
+    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
+        PluginColumnDefinition(
+            name: col.name,
+            dataType: col.dataType,
+            isNullable: col.isNullable,
+            defaultValue: col.defaultValue,
+            isPrimaryKey: col.isPrimaryKey,
+            autoIncrement: col.autoIncrement,
+            comment: col.comment,
+            unsigned: col.unsigned,
+            onUpdate: col.onUpdate
+        )
+    }
+
+    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
+        PluginIndexDefinition(
+            name: index.name,
+            columns: index.columns,
+            isUnique: index.isUnique,
+            indexType: index.type.rawValue
+        )
+    }
+
+    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
+        PluginForeignKeyDefinition(
+            name: fk.name,
+            columns: fk.columns,
+            referencedTable: fk.referencedTable,
+            referencedColumns: fk.referencedColumns,
+            onDelete: fk.onDelete.rawValue,
+            onUpdate: fk.onUpdate.rawValue
+        )
     }
 
     // MARK: - Schema Operations

@@ -101,6 +101,11 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String?
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String?
 
+    // Definition SQL for clipboard copy (optional — return nil if not supported)
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String?
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String?
+
     // Table operations (optional — return nil to use app-level fallback)
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]?
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String?
@@ -229,6 +234,10 @@ public extension PluginDatabaseDriver {
     func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? { nil }
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? { nil }
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? { nil }
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? { nil }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? { nil }
     func dropObjectStatement(name: String, objectType: String, schema: String?, cascade: Bool) -> String? { nil }

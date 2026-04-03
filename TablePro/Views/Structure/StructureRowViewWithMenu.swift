@@ -1,0 +1,112 @@
+//
+//  StructureRowViewWithMenu.swift
+//  TablePro
+//
+//  Custom row view with structure-specific context menu.
+//  Provides Copy Name, Copy Definition, Duplicate, Delete for structure items.
+//
+
+import AppKit
+
+/// Row view providing a context menu tailored to the Structure tab
+final class StructureRowViewWithMenu: NSTableRowView {
+    weak var coordinator: TableViewCoordinator?
+    var rowIndex: Int = 0
+    var structureTab: StructureTab = .columns
+    var isStructureEditable: Bool = true
+    var isRowDeleted: Bool = false
+    var referencedTableName: String?
+
+    var onCopyName: ((Set<Int>) -> Void)?
+    var onCopyDefinition: ((Set<Int>) -> Void)?
+    var onNavigateFK: ((Int) -> Void)?
+    var onDuplicate: ((Set<Int>) -> Void)?
+    var onDelete: ((Set<Int>) -> Void)?
+    var onUndoDelete: ((Int) -> Void)?
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard structureTab != .ddl, structureTab != .parts else { return nil }
+
+        let menu = NSMenu()
+
+        if isRowDeleted {
+            let undoItem = NSMenuItem(
+                title: String(localized: "Undo Delete"),
+                action: #selector(handleUndoDelete),
+                keyEquivalent: ""
+            )
+            undoItem.target = self
+            menu.addItem(undoItem)
+            return menu
+        }
+
+        let copyNameItem = NSMenuItem(
+            title: String(localized: "Copy Name"),
+            action: #selector(handleCopyName),
+            keyEquivalent: "c"
+        )
+        copyNameItem.keyEquivalentModifierMask = .command
+        copyNameItem.target = self
+        menu.addItem(copyNameItem)
+
+        let copyDefItem = NSMenuItem(
+            title: String(localized: "Copy Definition"),
+            action: #selector(handleCopyDefinition),
+            keyEquivalent: ""
+        )
+        copyDefItem.target = self
+        menu.addItem(copyDefItem)
+
+        if structureTab == .foreignKeys,
+           let tableName = referencedTableName, !tableName.isEmpty {
+            menu.addItem(NSMenuItem.separator())
+            let navItem = NSMenuItem(
+                title: String(format: String(localized: "Open %@"), tableName),
+                action: #selector(handleNavigateFK),
+                keyEquivalent: ""
+            )
+            navItem.target = self
+            menu.addItem(navItem)
+        }
+
+        if isStructureEditable {
+            menu.addItem(NSMenuItem.separator())
+
+            let dupItem = NSMenuItem(
+                title: String(localized: "Duplicate"),
+                action: #selector(handleDuplicate),
+                keyEquivalent: "d"
+            )
+            dupItem.keyEquivalentModifierMask = .command
+            dupItem.target = self
+            menu.addItem(dupItem)
+
+            let delItem = NSMenuItem(
+                title: String(localized: "Delete"),
+                action: #selector(handleDelete),
+                keyEquivalent: String(
+                    UnicodeScalar(NSBackspaceCharacter).map { Character($0) } ?? "\u{8}"
+                )
+            )
+            delItem.keyEquivalentModifierMask = []
+            delItem.target = self
+            menu.addItem(delItem)
+        }
+
+        return menu
+    }
+
+    private func effectiveIndices() -> Set<Int> {
+        if let selected = coordinator?.selectedRowIndices, !selected.isEmpty {
+            return selected
+        }
+        return [rowIndex]
+    }
+
+    @objc private func handleCopyName() { onCopyName?(effectiveIndices()) }
+    @objc private func handleCopyDefinition() { onCopyDefinition?(effectiveIndices()) }
+    @objc private func handleNavigateFK() { onNavigateFK?(rowIndex) }
+    @objc private func handleDuplicate() { onDuplicate?(effectiveIndices()) }
+    @objc private func handleDelete() { onDelete?(effectiveIndices()) }
+    @objc private func handleUndoDelete() { onUndoDelete?(rowIndex) }
+}

@@ -868,6 +868,20 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
+    // MARK: - Definition SQL (clipboard copy)
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
+        pgColumnDefinition(column, inlinePK: false)
+    }
+
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
+        pgIndexDefinition(index, qualifiedTable: "\"table\"")
+    }
+
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
+        pgForeignKeyDefinition(fk)
+    }
+
     // MARK: - Helpers
 
     private func stripLimitOffset(from query: String) -> String {

@@ -740,6 +740,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
+    // MARK: - Definition SQL (clipboard copy)
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
+        buildColumnDefinitionSQL(column)
+    }
+
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
+        buildIndexDefinitionSQL(index)
+    }
+
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
+        buildForeignKeyDefinitionSQL(fk)
+    }
+
     // MARK: - Column Reorder DDL
 
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {

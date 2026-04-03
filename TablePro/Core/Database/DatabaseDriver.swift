@@ -153,6 +153,11 @@ protocol DatabaseDriver: AnyObject {
 
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
+
+    // Definition SQL for clipboard copy
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String?
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String?
 }
 
 // MARK: - Schema Switching
@@ -192,6 +197,10 @@ extension DatabaseDriver {
 
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? { nil }
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? { nil }
 
     func testConnection() async throws -> Bool {
         try await connect()
