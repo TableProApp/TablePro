@@ -228,6 +228,7 @@ struct TableStructureView: View {
             databaseType: getDatabaseType(),
             onMoveRow: moveRowHandler,
             rowViewProvider: makeStructureRowView,
+            emptySpaceMenu: makeEmptySpaceMenu,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,
@@ -563,6 +564,30 @@ struct TableStructureView: View {
     }
 
     // MARK: - Structure Context Menu
+
+    private func makeEmptySpaceMenu() -> NSMenu? {
+        guard selectedTab != .ddl, selectedTab != .parts else { return nil }
+        guard connection.type.supportsSchemaEditing else { return nil }
+
+        let menu = NSMenu()
+        let label: String
+        switch selectedTab {
+        case .columns: label = String(localized: "Add Column")
+        case .indexes: label = String(localized: "Add Index")
+        case .foreignKeys: label = String(localized: "Add Foreign Key")
+        case .ddl, .parts: return nil
+        }
+
+        let item = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        item.target = nil
+        menu.addItem(item)
+        menu.items.first?.action = #selector(StructureMenuTarget.addNewItem)
+
+        let target = StructureMenuTarget { [self] in addNewRow() }
+        item.target = target
+        item.representedObject = target
+        return menu
+    }
 
     private static let structureRowViewId = NSUserInterfaceItemIdentifier("StructureRowView")
 

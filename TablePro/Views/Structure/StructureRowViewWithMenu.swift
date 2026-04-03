@@ -110,3 +110,17 @@ final class StructureRowViewWithMenu: NSTableRowView {
     @objc private func handleDelete() { onDelete?(effectiveIndices()) }
     @objc private func handleUndoDelete() { onUndoDelete?(rowIndex) }
 }
+
+/// Menu action target for empty-space context menu.
+/// Stored as `representedObject` on the menu item to keep it alive while the menu is shown.
+final class StructureMenuTarget: NSObject {
+    private let action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    @objc func addNewItem() {
+        action()
+    }
+}

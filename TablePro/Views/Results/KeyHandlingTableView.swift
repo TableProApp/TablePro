@@ -427,6 +427,11 @@ final class KeyHandlingTableView: NSTableView {
             return rowView.menu(for: event)
         }
 
+        // Empty space: ask coordinator for a fallback menu (e.g., Structure tab "Add" actions)
+        if let menu = coordinator?.emptySpaceMenu?() {
+            return menu
+        }
+
         return super.menu(for: event)
     }
 }
