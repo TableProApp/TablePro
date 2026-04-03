@@ -446,6 +446,23 @@ struct MainEditorContentView: View {
             onHideColumn: { [coordinator] columnName in
                 coordinator.hideColumn(columnName)
             },
+            onShowAllColumns: { [columnVisibilityManager, coordinator] in
+                columnVisibilityManager.showAll()
+                coordinator.saveColumnVisibilityToTab()
+            },
+            emptySpaceMenu: (tab.isEditable && !tab.isView && tab.tableName != nil) ? { [onAddRow] in
+                let menu = NSMenu()
+                let target = StructureMenuTarget { onAddRow() }
+                let item = NSMenuItem(
+                    title: String(localized: "Add Row"),
+                    action: #selector(StructureMenuTarget.addNewItem),
+                    keyEquivalent: ""
+                )
+                item.target = target
+                item.representedObject = target
+                menu.addItem(item)
+                return menu
+            } : nil,
             selectedRowIndices: $selectedRowIndices,
             sortState: sortStateBinding(for: tab),
             editingCell: $editingCell,

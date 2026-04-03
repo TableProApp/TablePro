@@ -101,6 +101,34 @@ final class TableRowViewWithMenu: NSTableRowView {
                 menu.addItem(pasteItem)
             }
 
+            // FK actions (only for FK columns with non-empty values)
+            if dataColumnIndex >= 0, dataColumnIndex < coordinator.rowProvider.columns.count {
+                let columnName = coordinator.rowProvider.columns[dataColumnIndex]
+                if let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
+                   let cellValue = coordinator.rowProvider.value(atRow: rowIndex, column: dataColumnIndex),
+                   !cellValue.isEmpty {
+                    menu.addItem(NSMenuItem.separator())
+
+                    let previewItem = NSMenuItem(
+                        title: String(localized: "Preview Referenced Row"),
+                        action: #selector(previewForeignKey(_:)),
+                        keyEquivalent: ""
+                    )
+                    previewItem.representedObject = dataColumnIndex
+                    previewItem.target = self
+                    menu.addItem(previewItem)
+
+                    let navItem = NSMenuItem(
+                        title: String(format: String(localized: "Open %@"), fkInfo.referencedTable),
+                        action: #selector(navigateToForeignKey(_:)),
+                        keyEquivalent: ""
+                    )
+                    navItem.representedObject = dataColumnIndex
+                    navItem.target = self
+                    menu.addItem(navItem)
+                }
+            }
+
             if coordinator.isEditable {
                 menu.addItem(NSMenuItem.separator())
             }
@@ -269,5 +297,22 @@ final class TableRowViewWithMenu: NSTableRowView {
             ? coordinator.selectedRowIndices
             : [rowIndex]
         coordinator.copyRowsAsJson(at: indices)
+    }
+
+    @objc private func previewForeignKey(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int,
+              let coordinator, let tableView = coordinator.tableView else { return }
+        coordinator.showForeignKeyPreview(
+            tableView: tableView, row: rowIndex, column: columnIndex + 1, columnIndex: columnIndex
+        )
+    }
+
+    @objc private func navigateToForeignKey(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int,
+              let coordinator else { return }
+        let columnName = coordinator.rowProvider.columns[columnIndex]
+        guard let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
+              let value = coordinator.rowProvider.value(atRow: rowIndex, column: columnIndex) else { return }
+        coordinator.onNavigateFK?(value, fkInfo)
     }
 }

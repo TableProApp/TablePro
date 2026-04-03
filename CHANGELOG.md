@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Structure tab context menu with Copy Name, Copy Definition (SQL), Duplicate, and Delete for columns, indexes, and foreign keys
 - Foreign key preview: press Cmd+Enter on a FK cell to see the referenced row in a popover
+- Column header: sort ascending/descending and show all hidden columns in context menu
+- Data grid: preview and navigate FK references from right-click context menu
+- Data grid: add row from right-click on empty space
 
 ## [0.27.2] - 2026-04-02
 

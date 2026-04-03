@@ -30,6 +30,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var onUndoInsert: ((Int) -> Void)?
     var onFilterColumn: ((String) -> Void)?
     var onHideColumn: ((String) -> Void)?
+    var onShowAllColumns: (() -> Void)?
     var onMoveRow: ((Int, Int) -> Void)?
     var rowViewProvider: ((NSTableView, Int, TableViewCoordinator) -> NSTableRowView)?
     var emptySpaceMenu: (() -> NSMenu?)?
@@ -244,6 +245,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         onUndoInsert = nil
         onFilterColumn = nil
         onHideColumn = nil
+        onShowAllColumns = nil
         onNavigateFK = nil
         rowViewProvider = nil
         emptySpaceMenu = nil

@@ -65,6 +65,7 @@ struct DataGridView: NSViewRepresentable {
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
     var onHideColumn: ((String) -> Void)?
+    var onShowAllColumns: (() -> Void)?
     var onMoveRow: ((Int, Int) -> Void)?
     var rowViewProvider: ((NSTableView, Int, TableViewCoordinator) -> NSTableRowView)?
     var emptySpaceMenu: (() -> NSMenu?)?
@@ -181,6 +182,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.onMoveRow = onMoveRow
         context.coordinator.rowViewProvider = rowViewProvider
         context.coordinator.emptySpaceMenu = emptySpaceMenu
+        context.coordinator.onShowAllColumns = onShowAllColumns
         context.coordinator.rebuildColumnMetadataCache()
         if let connectionId {
             context.coordinator.observeTeardown(connectionId: connectionId)
@@ -239,6 +241,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.onUndoInsert = onUndoInsert
             coordinator.onFilterColumn = onFilterColumn
             coordinator.onHideColumn = onHideColumn
+            coordinator.onShowAllColumns = onShowAllColumns
             coordinator.onMoveRow = onMoveRow
             coordinator.onRefresh = onRefresh
             coordinator.onDeleteRows = onDeleteRows
@@ -310,6 +313,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.onUndoInsert = onUndoInsert
         coordinator.onFilterColumn = onFilterColumn
         coordinator.onHideColumn = onHideColumn
+        coordinator.onShowAllColumns = onShowAllColumns
         coordinator.onMoveRow = onMoveRow
         coordinator.getVisualState = getVisualState
         coordinator.onNavigateFK = onNavigateFK

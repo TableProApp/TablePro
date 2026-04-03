@@ -71,6 +71,28 @@ extension TableViewCoordinator {
             return column.title
         }()
 
+        if let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) {
+            let sortAscItem = NSMenuItem(
+                title: String(localized: "Sort Ascending"),
+                action: #selector(sortAscending(_:)),
+                keyEquivalent: ""
+            )
+            sortAscItem.representedObject = dataColumnIndex
+            sortAscItem.target = self
+            menu.addItem(sortAscItem)
+
+            let sortDescItem = NSMenuItem(
+                title: String(localized: "Sort Descending"),
+                action: #selector(sortDescending(_:)),
+                keyEquivalent: ""
+            )
+            sortDescItem.representedObject = dataColumnIndex
+            sortDescItem.target = self
+            menu.addItem(sortDescItem)
+
+            menu.addItem(NSMenuItem.separator())
+        }
+
         let copyItem = NSMenuItem(title: String(localized: "Copy Column Name"), action: #selector(copyColumnName(_:)), keyEquivalent: "")
         copyItem.representedObject = baseName
         copyItem.target = self
@@ -98,6 +120,31 @@ extension TableViewCoordinator {
         hideItem.representedObject = baseName
         hideItem.target = self
         menu.addItem(hideItem)
+
+        if onShowAllColumns != nil,
+           tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier.rawValue != "__rowNumber__" }) {
+            let showAllItem = NSMenuItem(
+                title: String(localized: "Show All Columns"),
+                action: #selector(showAllColumns),
+                keyEquivalent: ""
+            )
+            showAllItem.target = self
+            menu.addItem(showAllItem)
+        }
+    }
+
+    @objc func sortAscending(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int else { return }
+        onSort?(columnIndex, true, false)
+    }
+
+    @objc func sortDescending(_ sender: NSMenuItem) {
+        guard let columnIndex = sender.representedObject as? Int else { return }
+        onSort?(columnIndex, false, false)
+    }
+
+    @objc func showAllColumns() {
+        onShowAllColumns?()
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {

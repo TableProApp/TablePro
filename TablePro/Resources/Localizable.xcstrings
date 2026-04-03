@@ -23335,6 +23335,9 @@
     "Preview Query" : {
 
     },
+    "Preview Referenced Row" : {
+
+    },
     "Preview Schema Changes" : {
       "localizations" : {
         "tr" : {
@@ -27763,6 +27766,9 @@
         }
       }
     },
+    "Show All Columns" : {
+
+    },
     "Show All Databases" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -28350,6 +28356,12 @@
           }
         }
       }
+    },
+    "Sort Ascending" : {
+
+    },
+    "Sort Descending" : {
+
     },
     "Sorting will reload data and discard all unsaved changes." : {
       "localizations" : {
