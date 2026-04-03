@@ -420,7 +420,7 @@ final class KeyHandlingTableView: NSTableView {
         let clickedRow = row(at: point)
 
         if clickedRow >= 0,
-           let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) as? TableRowViewWithMenu {
+           let rowView = rowView(atRow: clickedRow, makeIfNecessary: false) {
             if !selectedRowIndexes.contains(clickedRow) {
                 selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
             }
