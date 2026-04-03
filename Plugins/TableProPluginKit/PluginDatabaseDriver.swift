@@ -103,7 +103,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Definition SQL for clipboard copy (optional — return nil if not supported)
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String?
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String?
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String?
 
     // Table operations (optional — return nil to use app-level fallback)
@@ -236,7 +236,7 @@ public extension PluginDatabaseDriver {
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? { nil }
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? { nil }
 
     func truncateTableStatements(table: String, schema: String?, cascade: Bool) -> [String]? { nil }

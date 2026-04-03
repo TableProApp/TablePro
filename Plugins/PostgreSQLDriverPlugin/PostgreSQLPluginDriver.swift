@@ -874,8 +874,9 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         pgColumnDefinition(column, inlinePK: false)
     }
 
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
-        pgIndexDefinition(index, qualifiedTable: "\"table\"")
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        let qualifiedTable = tableName.map { quoteIdentifier($0) } ?? "\"table\""
+        return pgIndexDefinition(index, qualifiedTable: qualifiedTable)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {

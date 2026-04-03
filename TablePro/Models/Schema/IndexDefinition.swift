@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Index definition for schema modification (editable structure tab)
 struct EditableIndexDefinition: Hashable, Codable, Identifiable {
@@ -57,6 +58,10 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             isPrimary: indexInfo.isPrimary,
             comment: nil
         )
+    }
+
+    func toPlugin() -> PluginIndexDefinition {
+        PluginIndexDefinition(name: name, columns: columns, isUnique: isUnique, indexType: type.rawValue)
     }
 
     /// Convert back to IndexInfo

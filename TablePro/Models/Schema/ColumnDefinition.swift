@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Column definition for schema modification (editable structure tab)
 struct EditableColumnDefinition: Hashable, Codable, Identifiable {
@@ -66,6 +67,14 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
             charset: columnInfo.charset,
             extra: columnInfo.extra,
             isPrimaryKey: columnInfo.isPrimaryKey
+        )
+    }
+
+    func toPlugin() -> PluginColumnDefinition {
+        PluginColumnDefinition(
+            name: name, dataType: dataType, isNullable: isNullable, defaultValue: defaultValue,
+            isPrimaryKey: isPrimaryKey, autoIncrement: autoIncrement, comment: comment,
+            unsigned: unsigned, onUpdate: onUpdate
         )
     }
 

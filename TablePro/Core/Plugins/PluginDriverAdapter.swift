@@ -355,8 +355,8 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         pluginDriver.generateColumnDefinitionSQL(column: column)
     }
 
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
-        pluginDriver.generateIndexDefinitionSQL(index: index)
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        pluginDriver.generateIndexDefinitionSQL(index: index, tableName: tableName)
     }
 
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {

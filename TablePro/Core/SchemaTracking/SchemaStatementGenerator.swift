@@ -133,7 +133,7 @@ struct SchemaStatementGenerator {
     // MARK: - Column Operations
 
     private func generateAddColumn(_ column: EditableColumnDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateAddColumnSQL(table: tableName, column: toPluginColumnDefinition(column)) else {
+        guard let sql = pluginDriver.generateAddColumnSQL(table: tableName, column: column.toPlugin()) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Add column '\(column.name)'", isDestructive: false)
@@ -142,8 +142,8 @@ struct SchemaStatementGenerator {
     private func generateModifyColumn(old: EditableColumnDefinition, new: EditableColumnDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateModifyColumnSQL(
             table: tableName,
-            oldColumn: toPluginColumnDefinition(old),
-            newColumn: toPluginColumnDefinition(new)
+            oldColumn: old.toPlugin(),
+            newColumn: new.toPlugin()
         ) else {
             return nil
         }
@@ -164,7 +164,7 @@ struct SchemaStatementGenerator {
     // MARK: - Index Operations
 
     private func generateAddIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
-        guard let sql = pluginDriver.generateAddIndexSQL(table: tableName, index: toPluginIndexDefinition(index)) else {
+        guard let sql = pluginDriver.generateAddIndexSQL(table: tableName, index: index.toPlugin()) else {
             return nil
         }
         return SchemaStatement(sql: sql, description: "Add index '\(index.name)'", isDestructive: false)
@@ -172,7 +172,7 @@ struct SchemaStatementGenerator {
 
     private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) -> SchemaStatement? {
         guard let dropSql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: old.name),
-              let addSql = pluginDriver.generateAddIndexSQL(table: tableName, index: toPluginIndexDefinition(new)) else {
+              let addSql = pluginDriver.generateAddIndexSQL(table: tableName, index: new.toPlugin()) else {
             return nil
         }
         let sql = "\(dropSql);\n\(addSql);"
@@ -195,7 +195,7 @@ struct SchemaStatementGenerator {
     private func generateAddForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
         guard let sql = pluginDriver.generateAddForeignKeySQL(
             table: tableName,
-            fk: toPluginForeignKeyDefinition(fk)
+            fk: fk.toPlugin()
         ) else {
             return nil
         }
@@ -204,7 +204,7 @@ struct SchemaStatementGenerator {
 
     private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) -> SchemaStatement? {
         guard let dropSql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: old.name),
-              let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, fk: toPluginForeignKeyDefinition(new)) else {
+              let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, fk: new.toPlugin()) else {
             return nil
         }
         let sql = "\(dropSql);\n\(addSql);"
@@ -238,39 +238,4 @@ struct SchemaStatementGenerator {
         )
     }
 
-    // MARK: - Plugin Type Converters
-
-    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
-        PluginColumnDefinition(
-            name: col.name,
-            dataType: col.dataType,
-            isNullable: col.isNullable,
-            defaultValue: col.defaultValue,
-            isPrimaryKey: col.isPrimaryKey,
-            autoIncrement: col.autoIncrement,
-            comment: col.comment,
-            unsigned: col.unsigned,
-            onUpdate: col.onUpdate
-        )
-    }
-
-    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
-        PluginIndexDefinition(
-            name: index.name,
-            columns: index.columns,
-            isUnique: index.isUnique,
-            indexType: index.type.rawValue
-        )
-    }
-
-    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
-        PluginForeignKeyDefinition(
-            name: fk.name,
-            columns: fk.columns,
-            referencedTable: fk.referencedTable,
-            referencedColumns: fk.referencedColumns,
-            onDelete: fk.onDelete.rawValue,
-            onUpdate: fk.onUpdate.rawValue
-        )
-    }
 }

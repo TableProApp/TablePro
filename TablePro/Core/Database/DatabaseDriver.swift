@@ -156,7 +156,7 @@ protocol DatabaseDriver: AnyObject {
 
     // Definition SQL for clipboard copy
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String?
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String?
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String?
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String?
 }
 
@@ -199,7 +199,7 @@ extension DatabaseDriver {
     func foreignKeyEnableStatements() -> [String]? { nil }
 
     func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? { nil }
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? { nil }
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? { nil }
     func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? { nil }
 
     func testConnection() async throws -> Bool {

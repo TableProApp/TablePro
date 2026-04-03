@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 /// Foreign key definition for schema modification (editable structure tab)
 struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
@@ -56,6 +57,13 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             referencedColumns: [fkInfo.referencedColumn],
             onDelete: ReferentialAction(rawValue: fkInfo.onDelete.uppercased()) ?? .noAction,
             onUpdate: ReferentialAction(rawValue: fkInfo.onUpdate.uppercased()) ?? .noAction
+        )
+    }
+
+    func toPlugin() -> PluginForeignKeyDefinition {
+        PluginForeignKeyDefinition(
+            name: name, columns: columns, referencedTable: referencedTable,
+            referencedColumns: referencedColumns, onDelete: onDelete.rawValue, onUpdate: onUpdate.rawValue
         )
     }
 

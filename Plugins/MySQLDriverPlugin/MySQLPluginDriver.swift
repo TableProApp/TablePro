@@ -746,7 +746,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         buildColumnDefinitionSQL(column)
     }
 
-    func generateIndexDefinitionSQL(index: PluginIndexDefinition) -> String? {
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
         buildIndexDefinitionSQL(index)
     }
 

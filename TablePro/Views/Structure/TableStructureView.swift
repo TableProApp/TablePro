@@ -564,10 +564,14 @@ struct TableStructureView: View {
 
     // MARK: - Structure Context Menu
 
+    private static let structureRowViewId = NSUserInterfaceItemIdentifier("StructureRowView")
+
     private func makeStructureRowView(
         _ tableView: NSTableView, _ row: Int, _ coordinator: TableViewCoordinator
     ) -> NSTableRowView {
-        let rowView = StructureRowViewWithMenu()
+        let rowView = (tableView.makeView(withIdentifier: Self.structureRowViewId, owner: nil)
+            as? StructureRowViewWithMenu) ?? StructureRowViewWithMenu()
+        rowView.identifier = Self.structureRowViewId
         rowView.coordinator = coordinator
         rowView.rowIndex = row
         rowView.structureTab = selectedTab
@@ -581,7 +585,7 @@ struct TableStructureView: View {
         rowView.onCopyName = { [self] indices in handleCopyName(indices) }
         rowView.onCopyDefinition = { [self] indices in handleCopyDefinition(indices) }
         rowView.onNavigateFK = { [self] idx in handleNavigateToFK(idx) }
-        rowView.onDuplicate = { [self] indices in handleCopyRows(indices); handlePaste() }
+        rowView.onDuplicate = { [self] indices in handleDuplicateItems(indices) }
         rowView.onDelete = { [self] indices in handleDeleteRows(indices) }
         rowView.onUndoDelete = { [self] _ in handleUndo() }
         return rowView
@@ -606,22 +610,19 @@ struct TableStructureView: View {
             case .columns:
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 let col = structureChangeManager.workingColumns[row]
-                let pluginCol = toPluginColumnDefinition(col)
-                if let sql = driver.generateColumnDefinitionSQL(column: pluginCol) {
+                if let sql = driver.generateColumnDefinitionSQL(column: col.toPlugin()) {
                     definitions.append(sql)
                 }
             case .indexes:
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 let idx = structureChangeManager.workingIndexes[row]
-                let pluginIdx = toPluginIndexDefinition(idx)
-                if let sql = driver.generateIndexDefinitionSQL(index: pluginIdx) {
+                if let sql = driver.generateIndexDefinitionSQL(index: idx.toPlugin(), tableName: tableName) {
                     definitions.append(sql)
                 }
             case .foreignKeys:
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let fk = structureChangeManager.workingForeignKeys[row]
-                let pluginFK = toPluginForeignKeyDefinition(fk)
-                if let sql = driver.generateForeignKeyDefinitionSQL(fk: pluginFK) {
+                if let sql = driver.generateForeignKeyDefinitionSQL(fk: fk.toPlugin()) {
                     definitions.append(sql)
                 }
             case .ddl, .parts:
@@ -634,46 +635,46 @@ struct TableStructureView: View {
         NSPasteboard.general.setString(definitions.joined(separator: "\n"), forType: .string)
     }
 
+    private func handleDuplicateItems(_ indices: Set<Int>) {
+        for row in indices.sorted() {
+            switch selectedTab {
+            case .columns:
+                guard row < structureChangeManager.workingColumns.count else { continue }
+                var copy = structureChangeManager.workingColumns[row]
+                copy = EditableColumnDefinition(
+                    id: UUID(), name: copy.name, dataType: copy.dataType, isNullable: copy.isNullable,
+                    defaultValue: copy.defaultValue, autoIncrement: copy.autoIncrement, unsigned: copy.unsigned,
+                    comment: copy.comment, collation: copy.collation, onUpdate: copy.onUpdate,
+                    charset: copy.charset, extra: copy.extra, isPrimaryKey: copy.isPrimaryKey
+                )
+                structureChangeManager.addColumn(copy)
+            case .indexes:
+                guard row < structureChangeManager.workingIndexes.count else { continue }
+                var copy = structureChangeManager.workingIndexes[row]
+                copy = EditableIndexDefinition(
+                    id: UUID(), name: copy.name, columns: copy.columns,
+                    type: copy.type, isUnique: copy.isUnique, isPrimary: false, comment: copy.comment
+                )
+                structureChangeManager.addIndex(copy)
+            case .foreignKeys:
+                guard row < structureChangeManager.workingForeignKeys.count else { continue }
+                var copy = structureChangeManager.workingForeignKeys[row]
+                copy = EditableForeignKeyDefinition(
+                    id: UUID(), name: copy.name, columns: copy.columns,
+                    referencedTable: copy.referencedTable, referencedColumns: copy.referencedColumns,
+                    onDelete: copy.onDelete, onUpdate: copy.onUpdate
+                )
+                structureChangeManager.addForeignKey(copy)
+            case .ddl, .parts:
+                break
+            }
+        }
+    }
+
     private func handleNavigateToFK(_ row: Int) {
         guard row < structureChangeManager.workingForeignKeys.count else { return }
         let fk = structureChangeManager.workingForeignKeys[row]
         coordinator?.openTableTab(fk.referencedTable, showStructure: false, isView: false)
-    }
-
-    // MARK: - Plugin Type Converters (for context menu)
-
-    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
-        PluginColumnDefinition(
-            name: col.name,
-            dataType: col.dataType,
-            isNullable: col.isNullable,
-            defaultValue: col.defaultValue,
-            isPrimaryKey: col.isPrimaryKey,
-            autoIncrement: col.autoIncrement,
-            comment: col.comment,
-            unsigned: col.unsigned,
-            onUpdate: col.onUpdate
-        )
-    }
-
-    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
-        PluginIndexDefinition(
-            name: index.name,
-            columns: index.columns,
-            isUnique: index.isUnique,
-            indexType: index.type.rawValue
-        )
-    }
-
-    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
-        PluginForeignKeyDefinition(
-            name: fk.name,
-            columns: fk.columns,
-            referencedTable: fk.referencedTable,
-            referencedColumns: fk.referencedColumns,
-            onDelete: fk.onDelete.rawValue,
-            onUpdate: fk.onUpdate.rawValue
-        )
     }
 
     // MARK: - Schema Operations
