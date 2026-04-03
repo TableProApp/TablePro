@@ -73,13 +73,11 @@ struct WelcomeLeftPanel: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     SyncStatusIndicator()
-                    KeyboardHint(keys: "↵", label: "Connect")
                     KeyboardHint(keys: "⌘N", label: "New")
                     KeyboardHint(keys: "⌘,", label: "Settings")
                 }
                 HStack(spacing: 8) {
                     SyncStatusIndicator()
-                    KeyboardHint(keys: "↵", label: "Connect")
                     KeyboardHint(keys: "⌘N", label: "New")
                     KeyboardHint(keys: "⌘,", label: nil)
                 }

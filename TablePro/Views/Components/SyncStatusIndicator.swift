@@ -19,10 +19,14 @@ struct SyncStatusIndicator: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: iconName)
+                        .contentTransition(.symbolEffect(.replace))
+                        .symbolEffect(.pulse, isActive: syncCoordinator.syncStatus.isSyncing)
                     Text(statusLabel)
+                        .contentTransition(.numericText())
                 }
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .foregroundStyle(foregroundStyle)
+                .animation(.default, value: syncCoordinator.syncStatus)
             }
             .buttonStyle(.plain)
             .help(helpText)
