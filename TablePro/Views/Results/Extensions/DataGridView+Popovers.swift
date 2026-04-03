@@ -74,6 +74,36 @@ extension TableViewCoordinator {
         }
     }
 
+    func showForeignKeyPreview(tableView: NSTableView, row: Int, column: Int) {
+        let columnIndex = column - 1
+        guard columnIndex >= 0, columnIndex < rowProvider.columns.count else { return }
+        let columnName = rowProvider.columns[columnIndex]
+        guard let fkInfo = rowProvider.columnForeignKeys[columnName] else { return }
+        let cellValue = rowProvider.value(atRow: row, column: columnIndex)
+        guard let databaseType, let connectionId else { return }
+        guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
+
+        let cellRect = tableView.rect(ofRow: row).intersection(tableView.rect(ofColumn: column))
+        PopoverPresenter.show(
+            relativeTo: cellRect,
+            of: tableView,
+            contentSize: NSSize(width: 380, height: 400)
+        ) { [weak self] dismiss in
+            ForeignKeyPreviewView(
+                cellValue: cellValue,
+                fkInfo: fkInfo,
+                connectionId: connectionId,
+                databaseType: databaseType,
+                onNavigate: {
+                    dismiss()
+                    guard let value = cellValue else { return }
+                    self?.onNavigateFK?(value, fkInfo)
+                },
+                onDismiss: dismiss
+            )
+        }
+    }
+
     func showJSONEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = rowProvider.value(atRow: row, column: columnIndex)
 

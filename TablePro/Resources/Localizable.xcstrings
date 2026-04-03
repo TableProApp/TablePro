@@ -540,6 +540,16 @@
         }
       }
     },
+    "%@ → %@.%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ → %2$@.%3$@"
+          }
+        }
+      }
+    },
     "%@ cannot be empty" : {
       "localizations" : {
         "tr" : {
@@ -13195,6 +13205,9 @@
         }
       }
     },
+    "Failed to load referenced row" : {
+
+    },
     "Failed to load schemas" : {
       "localizations" : {
         "tr" : {
@@ -19763,7 +19776,6 @@
       }
     },
     "No database connection" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21141,6 +21153,9 @@
         }
       }
     },
+    "NULL — no referenced row" : {
+
+    },
     "NULL display cannot be empty" : {
       "localizations" : {
         "tr" : {
@@ -21434,6 +21449,9 @@
           }
         }
       }
+    },
+    "Open %@" : {
+
     },
     "Open %@ Editor" : {
       "localizations" : {
@@ -24703,6 +24721,9 @@
           }
         }
       }
+    },
+    "Referenced row not found" : {
+
     },
     "Referenced table" : {
       "extractionState" : "stale",
