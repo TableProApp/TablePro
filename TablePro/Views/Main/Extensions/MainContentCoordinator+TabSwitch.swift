@@ -125,6 +125,7 @@ extension MainContentCoordinator {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
             AppState.shared.isTableTab = false
+            filterStateManager.clearAll()
         }
     }
 
