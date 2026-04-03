@@ -401,7 +401,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 c.DATA_PRECISION,
                 c.DATA_SCALE,
                 c.NULLABLE,
-                c.DATA_DEFAULT,
                 CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
             FROM ALL_TAB_COLUMNS c
             LEFT JOIN (
@@ -424,8 +423,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let precision = row[safe: 4] ?? nil
             let scale = row[safe: 5] ?? nil
             let isNullable = (row[safe: 6] ?? nil) == "Y"
-            let defaultValue = (row[safe: 7] ?? nil)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isPk = (row[safe: 8] ?? nil) == "Y"
+            let isPk = (row[safe: 7] ?? nil) == "Y"
 
             let fullType = buildOracleFullType(dataType: dataType, dataLength: dataLength, precision: precision, scale: scale)
 
@@ -434,7 +432,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: fullType,
                 isNullable: isNullable,
                 isPrimaryKey: isPk,
-                defaultValue: defaultValue
+                defaultValue: nil
             )
             columnsByTable[tableName, default: []].append(col)
         }
@@ -509,15 +507,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchTableDDL(table: String, schema: String?) async throws -> String {
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let escaped = effectiveSchemaEscaped(schema)
-        let sql = "SELECT DBMS_METADATA.GET_DDL('TABLE', '\(escapedTable)', '\(escaped)') FROM DUAL"
-        do {
-            let result = try await execute(query: sql)
-            if let row = result.rows.first, let ddl = row.first ?? nil {
-                return ddl
-            }
-        } catch {
-            Self.logger.debug("DBMS_METADATA failed, building DDL manually: \(error.localizedDescription)")
-        }
+
+        // Do NOT use DBMS_METADATA.GET_DDL — if the object type is wrong
+        // (view, materialized view, etc.), Oracle returns ORA-31603 which
+        // corrupts OracleNIO's connection state machine. Build DDL manually.
 
         let cols = try await fetchColumns(table: table, schema: schema)
         var ddl = "CREATE TABLE \"\(escaped)\".\"\(escapedTable)\" (\n"
@@ -535,9 +528,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let escapedView = view.replacingOccurrences(of: "'", with: "''")
         let escaped = effectiveSchemaEscaped(schema)
-        // Use DBMS_METADATA.GET_DDL instead of ALL_VIEWS.TEXT to avoid LONG column type
-        // that crashes OracleNIO's decoder
-        let sql = "SELECT DBMS_METADATA.GET_DDL('VIEW', '\(escapedView)', '\(escaped)') FROM DUAL"
+        // ALL_VIEWS.TEXT is LONG (crashes OracleNIO). TEXT_VC is VARCHAR2(4000), safe.
+        // Do NOT use DBMS_METADATA.GET_DDL — wrong object type triggers ORA-31603
+        // which corrupts OracleNIO's connection state machine.
+        let sql = "SELECT TEXT_VC FROM ALL_VIEWS WHERE VIEW_NAME = '\(escapedView)' AND OWNER = '\(escaped)'"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.flatMap { $0 } ?? ""
     }

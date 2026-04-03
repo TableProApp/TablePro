@@ -39,12 +39,39 @@ struct OracleQueryResult {
     let isTruncated: Bool
 }
 
+// MARK: - Query Serialization
+
+/// OracleNIO does not support concurrent queries on a single connection.
+/// Sending a second statement while the first stream is active corrupts the
+/// state machine. This actor serializes all executeQuery calls.
+private actor QueryGate {
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !busy {
+            busy = true
+            return
+        }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func release() {
+        if !waiters.isEmpty {
+            waiters.removeFirst().resume()
+        } else {
+            busy = false
+        }
+    }
+}
+
 // MARK: - Connection Class
 
 final class OracleConnectionWrapper: @unchecked Sendable {
     // MARK: - Properties
 
     private static let connectionCounter = OSAllocatedUnfairLock(initialState: 0)
+    private let queryGate = QueryGate()
 
     private let host: String
     private let port: Int
@@ -143,6 +170,10 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
         lock.unlock()
 
+        // OracleNIO does not support concurrent queries on a single connection.
+        // Serialize all queries to prevent state-machine corruption.
+        await queryGate.acquire()
+
         do {
             let statement = OracleStatement(stringLiteral: query)
             let stream = try await connection.execute(statement, logger: nioLogger)
@@ -183,6 +214,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 columnTypeNames = Array(repeating: "unknown", count: columns.count)
             }
 
+            await queryGate.release()
             return OracleQueryResult(
                 columns: columns,
                 columnTypeNames: columnTypeNames,
@@ -192,12 +224,16 @@ final class OracleConnectionWrapper: @unchecked Sendable {
             )
         } catch let sqlError as OracleSQLError {
             let detail = sqlError.serverInfo?.message ?? sqlError.description
+            await queryGate.release()
             throw OracleError(message: detail)
         } catch let error as OracleError {
+            await queryGate.release()
             throw error
         } catch is CancellationError {
+            await queryGate.release()
             throw CancellationError()
         } catch {
+            await queryGate.release()
             throw OracleError(message: "Query execution failed: \(String(describing: error))")
         }
     }
