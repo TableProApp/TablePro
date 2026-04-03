@@ -276,7 +276,6 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 c.DATA_PRECISION,
                 c.DATA_SCALE,
                 c.NULLABLE,
-                c.DATA_DEFAULT,
                 CASE WHEN cc.COLUMN_NAME IS NOT NULL THEN 'Y' ELSE 'N' END AS IS_PK
             FROM ALL_TAB_COLUMNS c
             LEFT JOIN (
@@ -300,8 +299,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let precision = row[safe: 3] ?? nil
             let scale = row[safe: 4] ?? nil
             let isNullable = (row[safe: 5] ?? nil) == "Y"
-            let defaultValue = (row[safe: 6] ?? nil)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isPk = (row[safe: 7] ?? nil) == "Y"
+            let isPk = (row[safe: 6] ?? nil) == "Y"
 
             let fullType = buildOracleFullType(dataType: dataType, dataLength: dataLength, precision: precision, scale: scale)
 
@@ -310,7 +308,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 dataType: fullType,
                 isNullable: isNullable,
                 isPrimaryKey: isPk,
-                defaultValue: defaultValue
+                defaultValue: nil
             )
         }
     }
@@ -537,7 +535,9 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String {
         let escapedView = view.replacingOccurrences(of: "'", with: "''")
         let escaped = effectiveSchemaEscaped(schema)
-        let sql = "SELECT TEXT FROM ALL_VIEWS WHERE VIEW_NAME = '\(escapedView)' AND OWNER = '\(escaped)'"
+        // Use DBMS_METADATA.GET_DDL instead of ALL_VIEWS.TEXT to avoid LONG column type
+        // that crashes OracleNIO's decoder
+        let sql = "SELECT DBMS_METADATA.GET_DDL('VIEW', '\(escapedView)', '\(escaped)') FROM DUAL"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.flatMap { $0 } ?? ""
     }
@@ -568,6 +568,19 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 comment: comment
             )
         }
+
+        // Fallback for views: ALL_TABLES returns no rows for views
+        let viewSQL = """
+            SELECT tc.COMMENTS
+            FROM ALL_TAB_COMMENTS tc
+            WHERE tc.TABLE_NAME = '\(escapedTable)' AND tc.OWNER = '\(escaped)'
+            """
+        let viewResult = try await execute(query: viewSQL)
+        if let row = viewResult.rows.first {
+            let comment = row[safe: 0] ?? nil
+            return PluginTableMetadata(tableName: table, comment: comment)
+        }
+
         return PluginTableMetadata(tableName: table)
     }
 
