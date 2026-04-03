@@ -244,8 +244,10 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         // Cmd+Return: preview referenced FK row
-        if key == .return && modifiers.contains(.command) {
-            coordinator?.showForeignKeyPreview(tableView: self, row: focusedRow, column: focusedColumn)
+        if key == .return && modifiers.contains(.command) && selectedRow >= 0 && focusedColumn >= 1 {
+            coordinator?.showForeignKeyPreview(
+                tableView: self, row: selectedRow, column: focusedColumn, columnIndex: focusedColumn - 1
+            )
             return
         }
 

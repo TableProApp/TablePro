@@ -32,7 +32,7 @@ struct ForeignKeyPreviewView: View {
             Divider()
             footer
         }
-        .frame(width: 380)
+        .frame(width: 400)
         .fixedSize(horizontal: false, vertical: true)
         .task { await fetchReferencedRow() }
     }
@@ -40,13 +40,19 @@ struct ForeignKeyPreviewView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 2) {
             Text("\(fkInfo.column) → \(fkInfo.referencedTable).\(fkInfo.referencedColumn)")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
-            Spacer()
+            if let cellValue {
+                Text(cellValue)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
@@ -68,7 +74,8 @@ struct ForeignKeyPreviewView: View {
             Text(errorMessage)
                 .foregroundStyle(.red)
                 .font(.system(size: 12))
-                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(12)
         } else if values.isEmpty {
             Text("Referenced row not found")
                 .foregroundStyle(.secondary)
@@ -76,37 +83,39 @@ struct ForeignKeyPreviewView: View {
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(zip(columns, values).enumerated()), id: \.offset) { _, pair in
-                        let (col, value) = pair
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(col)
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 120, alignment: .trailing)
-                                .lineLimit(1)
+            rowList
+        }
+    }
 
-                            if let val = value {
-                                Text(val)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(3)
-                                    .textSelection(.enabled)
-                            } else {
-                                Text("NULL")
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                    .italic()
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
+    private var rowList: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(Array(zip(columns, values).enumerated()), id: \.offset) { index, pair in
+                    let (col, value) = pair
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text(col)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+
+                        Text(valueText(value))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(value != nil ? .primary : .tertiary)
+                            .italic(value == nil)
+                            .lineLimit(3)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(1)
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.03))
                 }
             }
-            .frame(maxHeight: 300)
         }
+        .frame(maxHeight: 300)
     }
 
     // MARK: - Footer
@@ -124,10 +133,16 @@ struct ForeignKeyPreviewView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
-            .disabled(cellValue == nil || (!isLoading && values.isEmpty))
+            .disabled(cellValue == nil || isLoading || values.isEmpty)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Helpers
+
+    private func valueText(_ value: String?) -> String {
+        value ?? "NULL"
     }
 
     // MARK: - Data Fetching

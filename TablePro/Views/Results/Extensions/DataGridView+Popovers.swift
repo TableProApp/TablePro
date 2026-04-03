@@ -74,8 +74,7 @@ extension TableViewCoordinator {
         }
     }
 
-    func showForeignKeyPreview(tableView: NSTableView, row: Int, column: Int) {
-        let columnIndex = column - 1
+    func showForeignKeyPreview(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         guard columnIndex >= 0, columnIndex < rowProvider.columns.count else { return }
         let columnName = rowProvider.columns[columnIndex]
         guard let fkInfo = rowProvider.columnForeignKeys[columnName] else { return }
