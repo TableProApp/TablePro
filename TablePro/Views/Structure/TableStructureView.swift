@@ -578,14 +578,11 @@ struct TableStructureView: View {
         case .ddl, .parts: return nil
         }
 
-        let item = NSMenuItem(title: label, action: nil, keyEquivalent: "")
-        item.target = nil
-        menu.addItem(item)
-        menu.items.first?.action = #selector(StructureMenuTarget.addNewItem)
-
         let target = StructureMenuTarget { [self] in addNewRow() }
+        let item = NSMenuItem(title: label, action: #selector(StructureMenuTarget.addNewItem), keyEquivalent: "")
         item.target = target
         item.representedObject = target
+        menu.addItem(item)
         return menu
     }
 

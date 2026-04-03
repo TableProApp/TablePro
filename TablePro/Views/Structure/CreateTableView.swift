@@ -439,13 +439,13 @@ struct CreateTableView: View {
 
         let definition = PluginCreateTableDefinition(
             tableName: tableName.isEmpty ? "untitled" : tableName,
-            columns: columns.map { toPluginColumnDefinition($0) },
+            columns: columns.map { $0.toPlugin() },
             indexes: structureChangeManager.workingIndexes
                 .filter { !$0.name.isEmpty && !$0.columns.isEmpty }
-                .map { toPluginIndexDefinition($0) },
+                .map { $0.toPlugin() },
             foreignKeys: structureChangeManager.workingForeignKeys
                 .filter { !$0.name.isEmpty && !$0.columns.isEmpty && !$0.referencedTable.isEmpty }
-                .map { toPluginForeignKeyDefinition($0) },
+                .map { $0.toPlugin() },
             primaryKeyColumns: pkColumns,
             engine: showMySQLOptions ? tableOptions.engine : nil,
             charset: showMySQLOptions ? tableOptions.charset : nil,
@@ -455,40 +455,6 @@ struct CreateTableView: View {
 
         let pluginDriver = (DatabaseManager.shared.driver(for: connection.id) as? PluginDriverAdapter)?.schemaPluginDriver
         return pluginDriver?.generateCreateTableSQL(definition: definition)
-    }
-
-    private func toPluginColumnDefinition(_ col: EditableColumnDefinition) -> PluginColumnDefinition {
-        PluginColumnDefinition(
-            name: col.name,
-            dataType: col.dataType,
-            isNullable: col.isNullable,
-            defaultValue: col.defaultValue,
-            isPrimaryKey: col.isPrimaryKey,
-            autoIncrement: col.autoIncrement,
-            comment: col.comment,
-            unsigned: col.unsigned,
-            onUpdate: col.onUpdate
-        )
-    }
-
-    private func toPluginIndexDefinition(_ index: EditableIndexDefinition) -> PluginIndexDefinition {
-        PluginIndexDefinition(
-            name: index.name,
-            columns: index.columns,
-            isUnique: index.isUnique,
-            indexType: index.type.rawValue
-        )
-    }
-
-    private func toPluginForeignKeyDefinition(_ fk: EditableForeignKeyDefinition) -> PluginForeignKeyDefinition {
-        PluginForeignKeyDefinition(
-            name: fk.name,
-            columns: fk.columns,
-            referencedTable: fk.referencedTable,
-            referencedColumns: fk.referencedColumns,
-            onDelete: fk.onDelete.rawValue,
-            onUpdate: fk.onUpdate.rawValue
-        )
     }
 
     // MARK: - Create Table
