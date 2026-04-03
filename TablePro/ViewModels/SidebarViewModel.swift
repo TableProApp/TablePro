@@ -40,6 +40,7 @@ struct LiveTableFetcher: TableFetcher {
             return []
         }
         let fetched = try await driver.fetchTables()
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         NSLog("[LiveTableFetcher] fetched %d tables", fetched.count)
         if let provider = schemaProvider {
             await provider.updateTables(fetched)
