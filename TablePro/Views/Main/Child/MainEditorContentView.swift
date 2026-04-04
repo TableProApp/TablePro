@@ -418,6 +418,7 @@ struct MainEditorContentView: View {
             changeManager: currentChangeManager,
             resultVersion: tab.resultVersion,
             metadataVersion: tab.metadataVersion,
+            paginationVersion: tab.paginationVersion,
             isEditable: tab.isEditable && !tab.isView && !coordinator.safeModeLevel.blocksAllWrites,
             onRefresh: onRefresh,
             onCellEdit: onCellEdit,

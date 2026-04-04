@@ -96,6 +96,7 @@ extension MainContentCoordinator {
             guard let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
             mutate(&self.tabManager.tabs[idx].pagination)
+            self.tabManager.tabs[idx].paginationVersion += 1
             self.reloadCurrentPage()
         }
     }

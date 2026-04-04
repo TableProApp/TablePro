@@ -394,6 +394,9 @@ struct QueryTab: Identifiable, Equatable {
     // Version counter incremented when FK/metadata arrives (Phase 2), used to invalidate caches
     var metadataVersion: Int
 
+    // Version counter incremented on pagination changes, used to scroll grid to top
+    var paginationVersion: Int
+
     /// Whether the editor content differs from the last saved/loaded file content.
     /// Returns false for tabs not backed by a file.
     /// Uses O(1) length pre-check to avoid O(n) string comparison on every keystroke.
@@ -441,6 +444,7 @@ struct QueryTab: Identifiable, Equatable {
         self.sourceFileURL = nil
         self.resultVersion = 0
         self.metadataVersion = 0
+        self.paginationVersion = 0
     }
 
     /// Initialize from persisted tab state (used when restoring tabs)
@@ -476,6 +480,7 @@ struct QueryTab: Identifiable, Equatable {
         self.sourceFileURL = persisted.sourceFileURL
         self.resultVersion = 0
         self.metadataVersion = 0
+        self.paginationVersion = 0
     }
 
     /// Build a clean base query for a table tab (no filters/sort).
@@ -554,6 +559,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.errorMessage == rhs.errorMessage
             && lhs.executionTime == rhs.executionTime
             && lhs.resultVersion == rhs.resultVersion
+            && lhs.paginationVersion == rhs.paginationVersion
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState
             && lhs.showStructure == rhs.showStructure

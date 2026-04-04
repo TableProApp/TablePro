@@ -29,6 +29,7 @@ struct DataGridIdentity: Equatable {
     let reloadVersion: Int
     let resultVersion: Int
     let metadataVersion: Int
+    let paginationVersion: Int
     let rowCount: Int
     let columnCount: Int
     let isEditable: Bool
@@ -41,6 +42,7 @@ struct DataGridView: NSViewRepresentable {
     var changeManager: AnyChangeManager
     var resultVersion: Int = 0
     var metadataVersion: Int = 0
+    var paginationVersion: Int = 0
     let isEditable: Bool
     var onRefresh: (() -> Void)?
     var onCellEdit: ((Int, Int, String?) -> Void)?
@@ -228,6 +230,7 @@ struct DataGridView: NSViewRepresentable {
             reloadVersion: changeManager.reloadVersion,
             resultVersion: resultVersion,
             metadataVersion: metadataVersion,
+            paginationVersion: paginationVersion,
             rowCount: rowProvider.totalRowCount,
             columnCount: rowProvider.columns.count,
             isEditable: isEditable,
@@ -355,12 +358,15 @@ struct DataGridView: NSViewRepresentable {
 
         syncSortDescriptors(tableView: tableView, coordinator: coordinator)
 
+        let paginationChanged = previousIdentity.map { $0.paginationVersion != paginationVersion } ?? false
+
         reloadAndSyncSelection(
             tableView: tableView,
             coordinator: coordinator,
             needsFullReload: needsFullReload,
             versionChanged: versionChanged,
-            metadataChanged: metadataChanged
+            metadataChanged: metadataChanged,
+            paginationChanged: paginationChanged
         )
     }
 
@@ -546,7 +552,8 @@ struct DataGridView: NSViewRepresentable {
         coordinator: TableViewCoordinator,
         needsFullReload: Bool,
         versionChanged: Bool,
-        metadataChanged: Bool = false
+        metadataChanged: Bool = false,
+        paginationChanged: Bool = false
     ) {
         if needsFullReload {
             tableView.reloadData()
@@ -590,6 +597,11 @@ struct DataGridView: NSViewRepresentable {
         }
 
         coordinator.lastReloadVersion = changeManager.reloadVersion
+
+        // Scroll to first row when page changes
+        if paginationChanged && tableView.numberOfRows > 0 {
+            tableView.scrollRowToVisible(0)
+        }
 
         // Sync selection
         let currentSelection = tableView.selectedRowIndexes
