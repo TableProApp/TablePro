@@ -56,17 +56,10 @@ build_plugin() {
 
     echo "Built: $plugin_bundle" >&2
 
-    # Strip the plugin binary to reduce size
+    # Stripping is handled by Xcode build settings (COPY_PHASE_STRIP, DEPLOYMENT_POSTPROCESSING)
     local plugin_name
     plugin_name=$(basename "$plugin_bundle" .tableplugin)
     local plugin_binary="$plugin_bundle/Contents/MacOS/$plugin_name"
-    if [ -f "$plugin_binary" ]; then
-        local before after
-        before=$(ls -lh "$plugin_binary" | awk '{print $5}')
-        strip -x "$plugin_binary"
-        after=$(ls -lh "$plugin_binary" | awk '{print $5}')
-        echo "Stripped binary: $before -> $after" >&2
-    fi
 
     # Code sign inside-out: nested frameworks/dylibs first, then binary, then bundle
     echo "Code signing with: $SIGN_IDENTITY" >&2

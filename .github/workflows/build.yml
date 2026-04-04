@@ -137,6 +137,13 @@ jobs:
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
 
+      - name: Upload dSYMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsyms-arm64
+          path: build/Release/TablePro-*-dSYMs.zip
+          if-no-files-found: warn
+
   build-x86_64:
     name: Build x86_64
     runs-on: macos-15
@@ -255,6 +262,13 @@ jobs:
             build/Release/TablePro-*.dmg
             build/Release/TablePro-*.zip
 
+      - name: Upload dSYMs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsyms-x86_64
+          path: build/Release/TablePro-*-dSYMs.zip
+          if-no-files-found: warn
+
   release:
     name: Create GitHub Release
     runs-on: macos-15
@@ -278,7 +292,15 @@ jobs:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: artifacts-*
           path: artifacts-raw/
+          merge-multiple: true
+
+      - name: Download dSYMs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dsyms-*
+          path: dsyms-raw/
           merge-multiple: true
 
       - name: Flatten artifacts
@@ -286,6 +308,11 @@ jobs:
           mkdir -p artifacts/
           find artifacts-raw/ -type f \( -name "*.dmg" -o -name "*.zip" \) -exec mv {} artifacts/ \;
           rm -rf artifacts-raw/
+
+          # Move dSYMs to artifacts for release attachment
+          find dsyms-raw/ -name "*-dSYMs.zip" -exec mv {} artifacts/ \; 2>/dev/null || true
+          rm -rf dsyms-raw/
+
           echo "Artifacts:"
           ls -lh artifacts/
 
