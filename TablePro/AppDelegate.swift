@@ -66,6 +66,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Re-apply appearance now that NSApp exists.
+        // AppSettingsManager.shared may already be initialized (by @State in TableProApp),
+        // but NSApp was nil at that point so NSApp?.appearance was a no-op.
+        let appearanceSettings = AppSettingsManager.shared.appearance
+        ThemeEngine.shared.updateAppearanceAndTheme(
+            mode: appearanceSettings.appearanceMode,
+            lightThemeId: appearanceSettings.preferredLightThemeId,
+            darkThemeId: appearanceSettings.preferredDarkThemeId
+        )
+
         NSWindow.allowsAutomaticWindowTabbing = true
         let syncSettings = AppSettingsStorage.shared.loadSync()
         let passwordSyncExpected = syncSettings.enabled && syncSettings.syncConnections && syncSettings.syncPasswords
