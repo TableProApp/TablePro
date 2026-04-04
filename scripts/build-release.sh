@@ -7,6 +7,8 @@ set -euo pipefail
 # Usage: ./build-release.sh [arm64|x86_64|both]
 
 ARCH="${1:-both}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PROJECT="TablePro.xcodeproj"
 SCHEME="TablePro"
 CONFIG="Release"
@@ -15,6 +17,7 @@ SIGN_IDENTITY="${SIGN_IDENTITY:-Developer ID Application: Dat Ngo Quoc (D7HJ5TFY
 TEAM_ID="D7HJ5TFYCU"
 NOTARIZE="${NOTARIZE:-false}"
 APPLE_ID="${APPLE_ID:-datngoquoc@icloud.com}"
+ENTITLEMENTS="$REPO_ROOT/TablePro/TablePro.entitlements"
 
 echo "🏗️  Building TablePro for: $ARCH"
 
@@ -151,6 +154,8 @@ generate_export_options() {
     <string>manual</string>
     <key>signingCertificate</key>
     <string>Developer ID Application</string>
+    <key>stripSwiftSymbols</key>
+    <true/>
 </dict>
 </plist>
 PLIST
@@ -169,6 +174,8 @@ PLIST
     <string>manual</string>
     <key>signingCertificate</key>
     <string>Developer ID Application</string>
+    <key>stripSwiftSymbols</key>
+    <true/>
     <key>provisioningProfiles</key>
     <dict>
         <key>com.TablePro</key>
@@ -302,7 +309,7 @@ resign_after_dylib_bundle() {
 
     # Re-seal the outer app bundle (entitlements already embedded by exportArchive)
     codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp \
-        --entitlements "TablePro/TablePro.entitlements" "$app_path"
+        --entitlements "$ENTITLEMENTS" "$app_path"
 
     if ! codesign --verify --deep --strict "$app_path" 2>&1; then
         echo "❌ FATAL: Code signature verification failed after re-sign"
