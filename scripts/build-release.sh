@@ -341,6 +341,13 @@ build_for_arch() {
     prepare_libmongoc "$arch"
     prepare_hiredis "$arch"
 
+    # Remove AppIcon.icon if present — Xcode 26's automatic icon format
+    # crashes actool/ibtoold in headless CI environments.
+    if [ -d "TablePro/AppIcon.icon" ]; then
+        echo "🎨 Removing AppIcon.icon (not supported in headless CI)..."
+        rm -rf "TablePro/AppIcon.icon"
+    fi
+
     # Persistent SPM package cache
     SPM_CACHE_DIR="${HOME}/.spm-cache"
     mkdir -p "$SPM_CACHE_DIR"

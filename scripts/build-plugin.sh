@@ -37,6 +37,8 @@ build_plugin() {
         CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         CODE_SIGN_STYLE=Manual \
         DEVELOPMENT_TEAM="$TEAM_ID" \
+        DEPLOYMENT_POSTPROCESSING=YES \
+        STRIP_STYLE=non-global \
         -skipPackagePluginValidation \
         -derivedDataPath "$DERIVED_DATA_DIR" \
         build > "build-plugin-${arch}.log" 2>&1; then
