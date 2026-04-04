@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Refactored build pipeline to use Apple-standard `xcodebuild archive` + `exportArchive` flow with dSYM collection for crash symbolication
+- Use Apple-standard `xcodebuild archive` + `exportArchive` build pipeline with dSYM collection
 
 ## [0.27.3] - 2026-04-03
 
