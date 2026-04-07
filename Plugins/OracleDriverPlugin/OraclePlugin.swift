@@ -107,6 +107,13 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "OraclePluginDriver")
 
+    /// Column names per table that have LONG/LONG RAW types (crash OracleNIO).
+    /// Cached after the first SELECT * rewrite so subsequent queries can exclude them.
+    /// Protected by lock because writes happen in async execute() but reads happen
+    /// from buildBrowseQuery/buildFilteredQuery on the main thread.
+    private let unsafeColumnsLock = NSLock()
+    private var _unsafeColumnsByTable: [String: Set<String>] = [:]
+
     var currentSchema: String? { _currentSchema }
     var serverVersion: String? { _serverVersion }
     var supportsSchemas: Bool { true }
@@ -183,6 +190,10 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "select 1" {
             effectiveQuery = "SELECT 1 FROM DUAL"
         }
+
+        // OracleNIO crashes (EXC_BREAKPOINT) when decoding LONG/LONG RAW columns.
+        // Detect SELECT * queries and replace * with explicit columns excluding unsafe types.
+        effectiveQuery = await rewriteSelectStarIfNeeded(effectiveQuery, connection: conn)
 
         var result = try await conn.executeQuery(effectiveQuery)
         let executionTime = Date().timeIntervalSince(startTime)
@@ -781,7 +792,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int
     ) -> String? {
         let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        let selectClause = oracleBuildSelectClause(table: table, columns: columns)
+        var query = "SELECT \(selectClause) FROM \(quotedTable)"
         let orderBy = oracleBuildOrderByClause(sortColumns: sortColumns, columns: columns)
             ?? "ORDER BY 1"
         query += " \(orderBy) OFFSET \(offset) ROWS FETCH NEXT \(limit) ROWS ONLY"
@@ -798,7 +810,8 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         offset: Int
     ) -> String? {
         let quotedTable = oracleQuoteIdentifier(table)
-        var query = "SELECT * FROM \(quotedTable)"
+        let selectClause = oracleBuildSelectClause(table: table, columns: columns)
+        var query = "SELECT \(selectClause) FROM \(quotedTable)"
         let whereClause = oracleBuildWhereClause(filters: filters, logicMode: logicMode)
         if !whereClause.isEmpty {
             query += " WHERE \(whereClause)"
@@ -810,6 +823,23 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     // MARK: - Query Building Helpers
+
+    /// Build the SELECT clause, replacing LONG/LONG RAW columns with NULL placeholders.
+    private func oracleBuildSelectClause(table: String, columns: [String]) -> String {
+        guard !columns.isEmpty else { return "*" }
+        unsafeColumnsLock.lock()
+        let unsafe = _unsafeColumnsByTable[table.uppercased()] ?? []
+        unsafeColumnsLock.unlock()
+        if unsafe.isEmpty {
+            return columns.map { oracleQuoteIdentifier($0) }.joined(separator: ", ")
+        }
+        return columns.map { col -> String in
+            if unsafe.contains(col.uppercased()) {
+                return "NULL AS \(oracleQuoteIdentifier(col))"
+            }
+            return oracleQuoteIdentifier(col)
+        }.joined(separator: ", ")
+    }
 
     private func oracleQuoteIdentifier(_ identifier: String) -> String {
         "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
@@ -984,6 +1014,78 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             i -= 1
         }
         return query
+    }
+
+    /// Column types that crash OracleNIO's message decoder (EXC_BREAKPOINT).
+    /// These must be excluded from SELECT * queries to prevent unrecoverable crashes.
+    private static let unsafeOracleTypes: Set<String> = ["LONG", "LONG RAW"]
+
+    /// Regex to detect SELECT * FROM and capture just the "SELECT *" portion.
+    /// Group 1 captures "SELECT <whitespace> *" so we can replace only that part.
+    private static let selectStarPrefixRegex = try? NSRegularExpression(
+        pattern: #"^(SELECT\s+\*)\s+FROM\s"#,
+        options: .caseInsensitive
+    )
+
+    /// Rewrite SELECT * to an explicit column list excluding LONG/LONG RAW types.
+    /// Returns the original query unchanged if no unsafe columns are found.
+    private func rewriteSelectStarIfNeeded(_ sql: String, connection conn: OracleConnectionWrapper) async -> String {
+        // Fast path: skip queries that don't contain "*"
+        guard sql.contains("*") else { return sql }
+
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ns = trimmed as NSString
+        guard let match = Self.selectStarPrefixRegex?.firstMatch(
+            in: trimmed, range: NSRange(location: 0, length: ns.length)
+        ) else {
+            return sql
+        }
+
+        // Extract table name using existing helper
+        guard let tableName = Self.extractTableNameFromSelect(trimmed) else {
+            return sql
+        }
+
+        // Fetch column metadata to check for unsafe types
+        let escaped = tableName.replacingOccurrences(of: "'", with: "''")
+        let schema = effectiveSchemaEscaped(nil)
+        let colSQL = """
+            SELECT COLUMN_NAME, DATA_TYPE FROM ALL_TAB_COLUMNS \
+            WHERE OWNER = '\(schema)' AND TABLE_NAME = '\(escaped)' \
+            ORDER BY COLUMN_ID
+            """
+        guard let colResult = try? await conn.executeQuery(colSQL) else {
+            return sql
+        }
+
+        let columns = colResult.rows.compactMap { row -> (name: String, type: String)? in
+            guard let name = row[safe: 0] ?? nil else { return nil }
+            let dataType = (row[safe: 1] ?? nil)?.uppercased() ?? ""
+            return (name: name, type: dataType)
+        }
+        guard !columns.isEmpty else { return sql }
+
+        // Only rewrite if there are actually unsafe column types
+        let unsafeCols = Set(columns.filter { Self.unsafeOracleTypes.contains($0.type) }.map { $0.name.uppercased() })
+        guard !unsafeCols.isEmpty else { return sql }
+
+        // Cache unsafe columns so buildBrowseQuery/buildFilteredQuery can exclude them
+        unsafeColumnsLock.lock()
+        _unsafeColumnsByTable[tableName.uppercased()] = unsafeCols
+        unsafeColumnsLock.unlock()
+
+        // Build explicit column list, replacing unsafe columns with NULL placeholders
+        let safeColumns = columns.map { col -> String in
+            if unsafeCols.contains(col.name.uppercased()) {
+                return "NULL AS \(oracleQuoteIdentifier(col.name))"
+            }
+            return oracleQuoteIdentifier(col.name)
+        }
+
+        // Replace only the "SELECT *" portion, keep "FROM ..." and everything after
+        let selectStarRange = match.range(at: 1)
+        let replacement = "SELECT \(safeColumns.joined(separator: ", "))"
+        return (sql as NSString).replacingCharacters(in: selectStarRange, with: replacement)
     }
 
     private static let fromTableRegex = try? NSRegularExpression(
