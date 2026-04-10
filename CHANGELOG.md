@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Server Dashboard with active sessions, server metrics, and slow query monitoring (PostgreSQL, MySQL, MSSQL, ClickHouse, DuckDB, SQLite)
+
 ## [0.30.0] - 2026-04-10
 
 ### Added

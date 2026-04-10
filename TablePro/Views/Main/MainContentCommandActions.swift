@@ -478,6 +478,15 @@ final class MainContentCommandActions {
         coordinator?.showERDiagram()
     }
 
+    func showServerDashboard() {
+        coordinator?.openServerDashboardTab()
+    }
+
+    var supportsServerDashboard: Bool {
+        guard let type = coordinator?.connection.type else { return false }
+        return ServerDashboardQueryProviderFactory.provider(for: type) != nil
+    }
+
     // MARK: - Tab Navigation (Group A — Called Directly)
 
     func selectTab(number: Int) {

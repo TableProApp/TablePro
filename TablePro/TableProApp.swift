@@ -237,6 +237,11 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false))
 
+            Button(String(localized: "Server Dashboard")) {
+                actions?.showServerDashboard()
+            }
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsServerDashboard ?? false))
+
             Divider()
 
             Button(String(localized: "Export Connections...")) {
