@@ -206,12 +206,36 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         menu.onExplainWithAI = { [weak self] text in self?.onAIExplain?(text) }
         menu.onOptimizeWithAI = { [weak self] text in self?.onAIOptimize?(text) }
         menu.onSaveAsFavorite = { [weak self] text in self?.onSaveAsFavorite?(text) }
-        menu.onFormatSQL = { [weak self] in self?.onFormatSQL?() }
+        menu.onFormatSQL = { [weak self, weak controller] in
+            guard let self else { return }
+            if let onFormat = self.onFormatSQL {
+                onFormat()
+            } else if let textView = controller?.textView {
+                // Fallback: format directly via text view if callback is stale
+                self.formatSQLInTextView(textView)
+            }
+        }
         contextMenu = menu
+    }
+
+    private func formatSQLInTextView(_ textView: TextView) {
+        let sql = textView.string
+        guard !sql.isEmpty else { return }
+        let formatter = SQLFormatterService()
+        let cursorOffset = textView.selectedRange().location
+        do {
+            let result = try formatter.format(sql, dialect: .mysql, cursorOffset: cursorOffset)
+            textView.replaceCharacters(in: NSRange(location: 0, length: (textView.string as NSString).length), with: result.formattedSQL)
+        } catch {
+            Self.logger.error("Context menu format error: \(error.localizedDescription)")
+        }
     }
 
     /// Called by EditorEventRouter when a right-click is detected in this editor's text view.
     func showContextMenu(for event: NSEvent, in textView: TextView) {
+        if contextMenu == nil, let controller {
+            installAIContextMenu(controller: controller)
+        }
         guard let menu = contextMenu else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: textView)
     }
