@@ -19,26 +19,14 @@ extension TableViewCoordinator {
         let columnIndex = column - 1
         guard !changeManager.isRowDeleted(row) else { return }
 
-        // Dropdown columns open on single click
+        // Structure view dropdown columns (no chevron button — use full-cell click)
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
             showDropdownMenu(tableView: sender, row: row, column: column, columnIndex: columnIndex)
             return
         }
 
-        // ENUM/SET columns open on single click
-        if columnIndex < rowProvider.columnTypes.count,
-           columnIndex < rowProvider.columns.count {
-            let ct = rowProvider.columnTypes[columnIndex]
-            let columnName = rowProvider.columns[columnIndex]
-            if ct.isEnumType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                showEnumPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-                return
-            }
-            if ct.isSetType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                showSetPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-                return
-            }
-        }
+        // All other special editor columns are handled by their chevron button action.
+        // Single click on cell text area does nothing.
     }
 
     @objc func handleDoubleClick(_ sender: NSTableView) {
@@ -58,63 +46,13 @@ extension TableViewCoordinator {
             return
         }
 
-        // Dropdown columns already handled by single click
-        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-            return
-        }
-
-        // Type picker columns use database-specific type popover
-        if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-            showTypePickerPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // ENUM/SET columns already handled by single click
-        if columnIndex < rowProvider.columnTypes.count,
-           columnIndex < rowProvider.columns.count {
-            let ct = rowProvider.columnTypes[columnIndex]
-            if ct.isEnumType || ct.isSetType {
-                let columnName = rowProvider.columns[columnIndex]
-                if let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
-                    return
-                }
-            }
-        }
-
-        // FK columns use searchable dropdown popover
+        // FK columns use searchable dropdown popover on double click
         if columnIndex < rowProvider.columns.count {
             let columnName = rowProvider.columns[columnIndex]
             if let fkInfo = rowProvider.columnForeignKeys[columnName] {
                 showForeignKeyPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex, fkInfo: fkInfo)
                 return
             }
-        }
-
-        // Date columns use date picker popover
-        if columnIndex < rowProvider.columnTypes.count,
-           rowProvider.columnTypes[columnIndex].isDateType {
-            showDatePickerPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // JSON columns (or text columns containing JSON) use JSON editor popover
-        if columnIndex < rowProvider.columnTypes.count,
-           rowProvider.columnTypes[columnIndex].isJsonType {
-            showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        if let cellValue = rowProvider.value(atRow: row, column: columnIndex),
-           cellValue.looksLikeJson {
-            showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
-        }
-
-        // BLOB columns use hex editor popover
-        if columnIndex < rowProvider.columnTypes.count,
-           rowProvider.columnTypes[columnIndex].isBlobType {
-            showBlobEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
-            return
         }
 
         // Multiline values use the overlay editor instead of inline field editor
@@ -124,8 +62,76 @@ extension TableViewCoordinator {
             return
         }
 
+        // JSON-like text values in non-JSON/non-chevron columns
+        if columnIndex < rowProvider.columnTypes.count {
+            let ct = rowProvider.columnTypes[columnIndex]
+            if ct.isBooleanType || ct.isDateType || ct.isBlobType || ct.isEnumType || ct.isSetType {
+                return
+            }
+        }
+        if let cellValue = rowProvider.value(atRow: row, column: columnIndex),
+           cellValue.looksLikeJson {
+            showJSONEditorPopover(tableView: sender, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+
         // Regular columns — start inline editing
         sender.editColumn(column, row: row, with: nil, select: true)
+    }
+
+    // MARK: - Chevron Click
+
+    @objc func handleChevronClick(_ sender: NSButton) {
+        guard let button = sender as? CellChevronButton,
+              isEditable else { return }
+
+        let row = button.cellRow
+        let columnIndex = button.cellColumnIndex
+        guard row >= 0, columnIndex >= 0 else { return }
+        guard !changeManager.isRowDeleted(row) else { return }
+
+        // Walk up the view hierarchy to find the NSTableView
+        var current: NSView? = button.superview
+        var tableView: NSTableView?
+        while let view = current {
+            if let tv = view as? NSTableView {
+                tableView = tv
+                break
+            }
+            current = view.superview
+        }
+        guard let tableView else { return }
+        let column = columnIndex + 1
+
+        // Structure view: dropdown and type picker columns take priority
+        if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
+            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+        if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
+            showTypePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+            return
+        }
+
+        guard columnIndex < rowProvider.columnTypes.count,
+              columnIndex < rowProvider.columns.count else { return }
+
+        let ct = rowProvider.columnTypes[columnIndex]
+        let columnName = rowProvider.columns[columnIndex]
+
+        if ct.isBooleanType {
+            showDropdownMenu(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if ct.isEnumType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
+            showEnumPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if ct.isSetType, let values = rowProvider.columnEnumValues[columnName], !values.isEmpty {
+            showSetPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if ct.isDateType {
+            showDatePickerPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if ct.isJsonType {
+            showJSONEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        } else if ct.isBlobType {
+            showBlobEditorPopover(tableView: tableView, row: row, column: column, columnIndex: columnIndex)
+        }
     }
 
     // MARK: - FK Navigation
