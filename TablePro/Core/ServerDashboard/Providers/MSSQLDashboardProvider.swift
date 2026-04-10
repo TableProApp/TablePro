@@ -28,6 +28,7 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
                 user: value(row, at: col["login_name"]),
                 database: value(row, at: col["db_name"]),
                 state: value(row, at: col["status"]),
+                durationSeconds: secs,
                 duration: formatDuration(seconds: secs),
                 query: value(row, at: col["query_text"]),
                 canCancel: false

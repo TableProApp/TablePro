@@ -40,6 +40,7 @@ struct DashboardSession: Identifiable {
     let user: String
     let database: String
     let state: String
+    let durationSeconds: Int
     let duration: String
     let query: String
     var canKill: Bool = true

@@ -23,7 +23,7 @@ final class ServerDashboardViewModel {
     var refreshInterval: DashboardRefreshInterval = .fiveSeconds {
         didSet {
             guard oldValue != refreshInterval else { return }
-            if refreshTask != nil {
+            if refreshTask != nil || refreshInterval != .off {
                 startAutoRefresh()
             }
         }
@@ -43,7 +43,7 @@ final class ServerDashboardViewModel {
 
     // MARK: - Private
 
-    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var refreshTask: Task<Void, Never>?
 
     // MARK: - Computed Properties
 

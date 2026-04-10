@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SessionsTableView: View {
     @Bindable var viewModel: ServerDashboardViewModel
-    @State private var sortOrder = [KeyPathComparator(\DashboardSession.duration, order: .reverse)]
+    @State private var sortOrder = [KeyPathComparator(\DashboardSession.durationSeconds, order: .reverse)]
     @State private var selection: Set<String> = []
 
     var body: some View {

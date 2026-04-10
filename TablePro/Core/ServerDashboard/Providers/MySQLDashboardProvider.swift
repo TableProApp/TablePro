@@ -24,6 +24,7 @@ struct MySQLDashboardProvider: ServerDashboardQueryProvider {
                 user: value(row, at: col["user"]),
                 database: value(row, at: col["db"]),
                 state: value(row, at: col["command"]),
+                durationSeconds: secs,
                 duration: formatDuration(seconds: secs),
                 query: value(row, at: col["info"])
             )

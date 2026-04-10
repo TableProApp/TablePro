@@ -22,12 +22,14 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
             let readRows = value(row, at: col["read_rows"])
             let memUsage = value(row, at: col["memory_usage"])
             let stateDescription = "rows: \(readRows), mem: \(formatBytes(memUsage))"
+            let secs = Int(elapsed)
             return DashboardSession(
                 id: value(row, at: col["query_id"]),
                 user: value(row, at: col["user"]),
                 database: value(row, at: col["current_database"]),
                 state: stateDescription,
-                duration: formatDuration(seconds: Int(elapsed)),
+                durationSeconds: secs,
+                duration: formatDuration(seconds: secs),
                 query: value(row, at: col["query"]),
                 canCancel: false
             )
@@ -95,8 +97,11 @@ struct ClickHouseDashboardProvider: ServerDashboardQueryProvider {
     }
 
     func killSessionSQL(processId: String) -> String? {
-        let escaped = processId.replacingOccurrences(of: "'", with: "\\'")
-        return "KILL QUERY WHERE query_id = '\(escaped)'"
+        let uuidPattern = #"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"#
+        guard processId.range(of: uuidPattern, options: [.regularExpression, .caseInsensitive]) != nil else {
+            return nil
+        }
+        return "KILL QUERY WHERE query_id = '\(processId)'"
     }
 }
 

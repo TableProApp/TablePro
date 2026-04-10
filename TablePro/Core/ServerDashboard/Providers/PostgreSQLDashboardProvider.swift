@@ -27,6 +27,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
                 user: value(row, at: col["usename"]),
                 database: value(row, at: col["datname"]),
                 state: value(row, at: col["state"]),
+                durationSeconds: secs,
                 duration: formatDuration(seconds: secs),
                 query: value(row, at: col["query"])
             )
