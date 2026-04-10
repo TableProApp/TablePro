@@ -154,7 +154,9 @@ extension MainContentView {
     /// Update window title, proxy icon, and dirty dot based on the selected tab.
     func updateWindowTitleAndFileState() {
         let selectedTab = tabManager.selectedTab
-        if selectedTab?.tabType == .createTable {
+        if selectedTab?.tabType == .serverDashboard {
+            windowTitle = String(localized: "Server Dashboard")
+        } else if selectedTab?.tabType == .createTable {
             windowTitle = String(localized: "Create Table")
         } else if let fileURL = selectedTab?.sourceFileURL {
             windowTitle = fileURL.deletingPathExtension().lastPathComponent

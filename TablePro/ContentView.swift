@@ -37,7 +37,9 @@ struct ContentView: View {
     init(payload: EditorTabPayload?) {
         self.payload = payload
         let defaultTitle: String
-        if let tableName = payload?.tableName {
+        if payload?.tabType == .serverDashboard {
+            defaultTitle = String(localized: "Server Dashboard")
+        } else if let tableName = payload?.tableName {
             defaultTitle = tableName
         } else if let connectionId = payload?.connectionId,
                   let connection = DatabaseManager.shared.activeSessions[connectionId]?.connection {
