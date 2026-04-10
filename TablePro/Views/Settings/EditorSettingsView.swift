@@ -26,6 +26,7 @@ struct EditorSettingsView: View {
                     Text("8 spaces").tag(8)
                 }
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
+                Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
             }
         }
         .formStyle(.grouped)

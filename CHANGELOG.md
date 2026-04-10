@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Auto-uppercase SQL keywords setting (#660)
+
 ## [0.30.0] - 2026-04-10
 
 ### Added

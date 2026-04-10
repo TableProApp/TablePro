@@ -209,6 +209,15 @@ SELECT
 
 ## Editor Behavior
 
+### Auto-Uppercase Keywords
+
+| Option | Description |
+|--------|-------------|
+| **Off** | Keywords stay as typed (default) |
+| **On** | SQL keywords auto-uppercase when you type a space or delimiter |
+
+When enabled, recognized SQL keywords (`select`, `from`, `where`, `join`, etc.) are converted to uppercase as soon as you type a word boundary character (space, tab, newline, parenthesis, comma, or semicolon). Keywords inside strings, comments, and backtick-quoted identifiers are left unchanged.
+
 ### Autocomplete
 
 Autocomplete is always on. Dismiss with `Escape`. See [Autocomplete](/features/autocomplete) for details.

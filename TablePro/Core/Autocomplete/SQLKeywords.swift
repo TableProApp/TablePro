@@ -11,6 +11,8 @@ import Foundation
 enum SQLKeywords {
     // MARK: - Keywords
 
+    static let keywordSet: Set<String> = Set(keywords.filter { !$0.contains(" ") }.map { $0.lowercased() })
+
     /// Primary SQL keywords
     static let keywords: [String] = [
         // DQL

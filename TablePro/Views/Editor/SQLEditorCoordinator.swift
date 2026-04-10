@@ -15,7 +15,7 @@ import os
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @Observable
 @MainActor
-final class SQLEditorCoordinator: TextViewCoordinator {
+final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Properties
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
@@ -32,6 +32,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
+    @ObservationIgnored private var isUppercasing = false
     @ObservationIgnored private var wasEditorFocused = false
     @ObservationIgnored private var didDestroy = false
 
@@ -121,25 +122,22 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         }
     }
 
-    func textViewDidChangeText(controller: TextViewController) {
-        // Invalidate Vim buffer's cached line count after text changes
+    func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
 
-        // Notify inline suggestion manager immediately (lightweight)
         Task { [weak self] in
             self?.inlineSuggestionManager?.handleTextChange()
             self?.vimCursorManager?.updatePosition()
         }
 
-        // Throttle frame-change notification — during rapid typing, only the
-        // last notification matters. The highlighter recalculates the visible
-        // range on each notification, so coalescing saves redundant layout work.
         frameChangeTask?.cancel()
         frameChangeTask = Task { [weak controller] in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled, let controller, let textView = controller.textView else { return }
             NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: textView)
         }
+
+        uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -348,6 +346,118 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             self.handleVimSettingsChange(controller: controller)
             self.vimCursorManager?.updatePosition()
         }
+    }
+
+    // MARK: - Keyword Auto-Uppercase
+
+    private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
+        guard !isUppercasing,
+              AppSettingsManager.shared.editor.uppercaseKeywords,
+              isWordBoundary(string) else { return }
+
+        let nsText = textView.textStorage.string as NSString
+        let wordEnd = range.location
+
+        var wordStart = wordEnd
+        while wordStart > 0 {
+            let ch = nsText.character(at: wordStart - 1)
+            guard isWordCharacter(ch) else { break }
+            wordStart -= 1
+        }
+
+        let wordLength = wordEnd - wordStart
+        guard wordLength > 0 else { return }
+
+        let word = nsText.substring(with: NSRange(location: wordStart, length: wordLength))
+        guard SQLKeywords.keywordSet.contains(word.lowercased()) else { return }
+        guard !isInsideProtectedContext(nsText, at: wordStart) else { return }
+
+        let uppercased = word.uppercased()
+        guard uppercased != word else { return }
+
+        // Mutate textStorage directly — we're inside beginEditing/endEditing
+        // so NSTextStorage consolidates this with the delimiter insertion.
+        // Cannot use textView.replaceCharacters here because CEUndoManager's
+        // registerMutation calls inverseMutation which asserts mid-edit.
+        let wordRange = NSRange(location: wordStart, length: wordLength)
+        isUppercasing = true
+        textView.textStorage.replaceCharacters(in: wordRange, with: uppercased)
+        textView.selectionManager.didReplaceCharacters(in: wordRange, replacementLength: wordLength)
+        isUppercasing = false
+    }
+
+    private func isWordBoundary(_ string: String) -> Bool {
+        guard (string as NSString).length == 1, let ch = string.unicodeScalars.first else { return false }
+        switch ch {
+        case " ", "\t", "\n", "\r", "(", ")", ",", ";":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func isWordCharacter(_ ch: unichar) -> Bool {
+        (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) ||
+        (ch >= 0x30 && ch <= 0x39) || ch == 0x5F
+    }
+
+    private func isInsideProtectedContext(_ text: NSString, at position: Int) -> Bool {
+        let scanStart = max(0, position - 2000)
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var inBacktick = false
+        var inLineComment = false
+        var inBlockComment = false
+        var i = scanStart
+
+        while i < position {
+            let ch = text.character(at: i)
+
+            if inBlockComment {
+                if ch == 0x2A && i + 1 < position && text.character(at: i + 1) == 0x2F {
+                    inBlockComment = false
+                    i += 2
+                    continue
+                }
+                i += 1
+                continue
+            }
+            if inLineComment {
+                if ch == 0x0A { inLineComment = false }
+                i += 1
+                continue
+            }
+
+            // Skip backslash-escaped characters (e.g. \' inside strings)
+            if ch == 0x5C && (inSingleQuote || inDoubleQuote) {
+                i += 2
+                continue
+            }
+
+            switch ch {
+            case 0x27: if !inDoubleQuote && !inBacktick { inSingleQuote.toggle() }
+            case 0x22: if !inSingleQuote && !inBacktick { inDoubleQuote.toggle() }
+            case 0x60: if !inSingleQuote && !inDoubleQuote { inBacktick.toggle() }
+            case 0x2D:
+                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
+                   i + 1 < position && text.character(at: i + 1) == 0x2D {
+                    inLineComment = true
+                    i += 2
+                    continue
+                }
+            case 0x2F:
+                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
+                   i + 1 < position && text.character(at: i + 1) == 0x2A {
+                    inBlockComment = true
+                    i += 2
+                    continue
+                }
+            default: break
+            }
+            i += 1
+        }
+
+        return inSingleQuote || inDoubleQuote || inBacktick || inLineComment || inBlockComment
     }
 
     // MARK: - CodeEditSourceEditor Workarounds
