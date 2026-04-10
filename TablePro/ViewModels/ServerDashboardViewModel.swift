@@ -120,6 +120,9 @@ final class ServerDashboardViewModel {
             return
         }
 
+        // Skip silently if connection is not ready yet — the refresh loop will retry
+        guard DatabaseManager.shared.driver(for: connectionId) != nil else { return }
+
         isRefreshing = true
         defer { isRefreshing = false }
 
