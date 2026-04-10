@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Full-text search across all columns in iOS data browser
+
 ## [0.30.0] - 2026-04-10
 
 ### Added

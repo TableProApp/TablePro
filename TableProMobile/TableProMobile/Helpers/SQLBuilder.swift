@@ -143,6 +143,115 @@ enum SQLBuilder {
         return "SELECT COUNT(*) FROM \(quoted) \(whereClause)"
     }
 
+    // MARK: - Search
+
+    static func buildSearchSelect(
+        table: String, type: DatabaseType,
+        searchText: String, searchColumns: [ColumnInfo],
+        filters: [TableFilter] = [], logicMode: FilterLogicMode = .and,
+        sortState: SortState = SortState(),
+        limit: Int, offset: Int
+    ) -> String {
+        let quoted = quoteIdentifier(table, for: type)
+        let whereClause = buildSearchWhereClause(
+            searchText: searchText, searchColumns: searchColumns,
+            filters: filters, logicMode: logicMode, type: type
+        )
+        var sql = "SELECT * FROM \(quoted)"
+        if !whereClause.isEmpty { sql += " \(whereClause)" }
+        let orderBy = buildOrderByClause(sortState, for: type)
+        if !orderBy.isEmpty { sql += " \(orderBy)" }
+        sql += " LIMIT \(limit) OFFSET \(offset)"
+        return sql
+    }
+
+    static func buildSearchCount(
+        table: String, type: DatabaseType,
+        searchText: String, searchColumns: [ColumnInfo],
+        filters: [TableFilter] = [], logicMode: FilterLogicMode = .and
+    ) -> String {
+        let quoted = quoteIdentifier(table, for: type)
+        let whereClause = buildSearchWhereClause(
+            searchText: searchText, searchColumns: searchColumns,
+            filters: filters, logicMode: logicMode, type: type
+        )
+        var sql = "SELECT COUNT(*) FROM \(quoted)"
+        if !whereClause.isEmpty { sql += " \(whereClause)" }
+        return sql
+    }
+
+    private static func buildSearchWhereClause(
+        searchText: String, searchColumns: [ColumnInfo],
+        filters: [TableFilter], logicMode: FilterLogicMode,
+        type: DatabaseType
+    ) -> String {
+        var whereParts: [String] = []
+
+        let searchClause = buildSearchClause(searchText: searchText, columns: searchColumns, type: type)
+        if !searchClause.isEmpty {
+            whereParts.append(searchClause)
+        }
+
+        if let filterConditions = filterConditions(filters: filters, logicMode: logicMode, type: type) {
+            whereParts.append("(\(filterConditions))")
+        }
+
+        guard !whereParts.isEmpty else { return "" }
+        return "WHERE " + whereParts.joined(separator: " AND ")
+    }
+
+    private static func filterConditions(
+        filters: [TableFilter], logicMode: FilterLogicMode, type: DatabaseType
+    ) -> String? {
+        let dialect = dialectDescriptor(for: type)
+        let generator = FilterSQLGenerator(dialect: dialect)
+        let clause = generator.generateWhereClause(from: filters, logicMode: logicMode)
+        guard !clause.isEmpty else { return nil }
+        let wherePrefix = "WHERE "
+        return clause.hasPrefix(wherePrefix)
+            ? String(clause.dropFirst(wherePrefix.count))
+            : clause
+    }
+
+    private static func buildSearchClause(
+        searchText: String, columns: [ColumnInfo], type: DatabaseType
+    ) -> String {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !columns.isEmpty else { return "" }
+
+        let dialect = dialectDescriptor(for: type)
+        let pattern = escapeLikePattern(trimmed, dialect: dialect)
+        let likeEscape: String = dialect.likeEscapeStyle == .explicit ? " ESCAPE '\\'" : ""
+
+        let conditions = columns.map { col -> String in
+            let quotedCol = quoteIdentifier(col.name, for: type)
+            let castExpr: String
+            switch type {
+            case .mysql, .mariadb:
+                castExpr = "CAST(\(quotedCol) AS CHAR)"
+            case .postgresql, .redshift:
+                castExpr = "CAST(\(quotedCol) AS TEXT)"
+            default:
+                castExpr = quotedCol
+            }
+            return "\(castExpr) LIKE '%\(pattern)%'\(likeEscape)"
+        }
+
+        return "(\(conditions.joined(separator: " OR ")))"
+    }
+
+    private static func escapeLikePattern(_ value: String, dialect: SQLDialectDescriptor) -> String {
+        var result = value
+            .replacingOccurrences(of: "'", with: "''")
+            .replacingOccurrences(of: "\0", with: "")
+        if dialect.requiresBackslashEscaping {
+            result = result.replacingOccurrences(of: "\\", with: "\\\\")
+        }
+        result = result.replacingOccurrences(of: "%", with: "\\%")
+        result = result.replacingOccurrences(of: "_", with: "\\_")
+        return result
+    }
+
     private static func buildOrderByClause(_ sortState: SortState, for type: DatabaseType) -> String {
         guard sortState.isSorting else { return "" }
         let clauses = sortState.columns.map { col in

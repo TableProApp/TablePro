@@ -30,6 +30,8 @@ struct DataBrowserView: View {
     @State private var showOperationError = false
     @State private var showGoToPage = false
     @State private var goToPageInput = ""
+    @State private var searchText = ""
+    @State private var activeSearchText = ""
     @State private var filters: [TableFilter] = []
     @State private var filterLogicMode: FilterLogicMode = .and
     @State private var showFilterSheet = false
@@ -55,6 +57,14 @@ struct DataBrowserView: View {
             return "\(start)–\(end) of \(total)"
         }
         return "\(start)–\(end)"
+    }
+
+    private var hasActiveSearch: Bool {
+        !activeSearchText.isEmpty
+    }
+
+    private var isRedis: Bool {
+        connection.type == .redis
     }
 
     private var hasActiveFilters: Bool {
@@ -88,9 +98,7 @@ struct DataBrowserView: View {
     }
 
     var body: some View {
-        content
-            .navigationTitle(table.name)
-            .navigationBarTitleDisplayMode(.inline)
+        searchableContent
             .toolbar { topToolbar }
             .toolbar(rows.isEmpty ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
@@ -163,6 +171,26 @@ struct DataBrowserView: View {
             }
     }
 
+    @ViewBuilder
+    private var searchableContent: some View {
+        if isRedis {
+            content
+                .navigationTitle(table.name)
+                .navigationBarTitleDisplayMode(.inline)
+        } else {
+            content
+                .navigationTitle(table.name)
+                .navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $searchText, prompt: "Search all columns")
+                .onSubmit(of: .search) { applySearch() }
+                .onChange(of: searchText) { oldValue, newValue in
+                    if newValue.isEmpty, !oldValue.isEmpty, hasActiveSearch {
+                        clearSearch()
+                    }
+                }
+        }
+    }
+
     // MARK: - Content
 
     @ViewBuilder
@@ -172,6 +200,8 @@ struct DataBrowserView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let appError {
             ErrorView(error: appError) { await loadData() }
+        } else if rows.isEmpty, hasActiveSearch {
+            ContentUnavailableView.search(text: activeSearchText)
         } else if rows.isEmpty {
             ContentUnavailableView {
                 Label("No Data", systemImage: "tray")
@@ -421,7 +451,15 @@ struct DataBrowserView: View {
 
         do {
             let query: String
-            if hasActiveFilters {
+            if hasActiveSearch {
+                query = SQLBuilder.buildSearchSelect(
+                    table: table.name, type: connection.type,
+                    searchText: activeSearchText, searchColumns: columns,
+                    filters: filters, logicMode: filterLogicMode,
+                    sortState: sortState,
+                    limit: pagination.pageSize, offset: pagination.currentOffset
+                )
+            } else if hasActiveFilters {
                 query = SQLBuilder.buildFilteredSelect(
                     table: table.name, type: connection.type,
                     filters: filters, logicMode: filterLogicMode,
@@ -472,7 +510,13 @@ struct DataBrowserView: View {
     private func fetchTotalRows(session: ConnectionSession) async {
         do {
             let countQuery: String
-            if hasActiveFilters {
+            if hasActiveSearch {
+                countQuery = SQLBuilder.buildSearchCount(
+                    table: table.name, type: connection.type,
+                    searchText: activeSearchText, searchColumns: columns,
+                    filters: filters, logicMode: filterLogicMode
+                )
+            } else if hasActiveFilters {
                 countQuery = SQLBuilder.buildFilteredCount(
                     table: table.name, type: connection.type,
                     filters: filters, logicMode: filterLogicMode
@@ -555,6 +599,22 @@ struct DataBrowserView: View {
     }
 
     private func applySort() {
+        pagination.currentPage = 0
+        pagination.totalRows = nil
+        Task { await loadData() }
+    }
+
+    private func applySearch() {
+        activeSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard hasActiveSearch, !columns.isEmpty else { return }
+        pagination.currentPage = 0
+        pagination.totalRows = nil
+        Task { await loadData() }
+    }
+
+    private func clearSearch() {
+        searchText = ""
+        activeSearchText = ""
         pagination.currentPage = 0
         pagination.totalRows = nil
         Task { await loadData() }
