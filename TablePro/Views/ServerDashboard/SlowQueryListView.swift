@@ -47,7 +47,7 @@ struct SlowQueryListView: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 8)
                     }
-                    .frame(maxHeight: 150)
+                    .frame(maxHeight: 200)
                 }
             }
         }

@@ -34,12 +34,19 @@ final class ServerDashboardViewModel {
     var lastRefreshDate: Date?
     var panelErrors: [DashboardPanel: String] = [:]
 
+    // MARK: - Sort State
+
+    var sessionSortOrder: [KeyPathComparator<DashboardSession>] = [
+        KeyPathComparator(\DashboardSession.durationSeconds, order: .reverse),
+    ]
+
     // MARK: - Kill / Cancel Confirmation
 
     var showKillConfirmation: Bool = false
     var pendingKillProcessId: String?
     var showCancelConfirmation: Bool = false
     var pendingCancelProcessId: String?
+    var actionError: String?
 
     // MARK: - Private
 
@@ -86,14 +93,14 @@ final class ServerDashboardViewModel {
         }
 
         refreshTask = Task { [weak self] in
-            guard let self else { return }
-
             while !Task.isCancelled {
+                guard let self else { return }
                 if !self.isPaused {
                     await self.refreshNow()
                 }
-
-                try? await Task.sleep(for: .seconds(self.refreshInterval.rawValue))
+                let interval = self.refreshInterval.rawValue
+                guard interval > 0 else { break }
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
@@ -101,6 +108,7 @@ final class ServerDashboardViewModel {
     func stopAutoRefresh() {
         refreshTask?.cancel()
         refreshTask = nil
+        isRefreshing = false
     }
 
     // MARK: - Data Fetching
@@ -129,6 +137,7 @@ final class ServerDashboardViewModel {
         if provider.supportedPanels.contains(.activeSessions) {
             do {
                 sessions = try await provider.fetchSessions(execute: execute)
+                sessions.sort(using: sessionSortOrder)
             } catch {
                 Self.logger.warning("Failed to fetch sessions: \(error.localizedDescription)")
                 newPanelErrors[.activeSessions] = error.localizedDescription
@@ -182,6 +191,7 @@ final class ServerDashboardViewModel {
             await refreshNow()
         } catch {
             Self.logger.error("Failed to kill session \(processId): \(error.localizedDescription)")
+            actionError = error.localizedDescription
         }
     }
 
@@ -210,6 +220,7 @@ final class ServerDashboardViewModel {
             await refreshNow()
         } catch {
             Self.logger.error("Failed to cancel query for process \(processId): \(error.localizedDescription)")
+            actionError = error.localizedDescription
         }
     }
 }

@@ -16,12 +16,12 @@ enum DashboardPanel: Hashable {
 // MARK: - Refresh Interval
 
 enum DashboardRefreshInterval: Double, CaseIterable, Identifiable {
+    case off = 0
     case oneSecond = 1
     case twoSeconds = 2
     case fiveSeconds = 5
     case tenSeconds = 10
     case thirtySeconds = 30
-    case off = 0
 
     var id: Double { rawValue }
 

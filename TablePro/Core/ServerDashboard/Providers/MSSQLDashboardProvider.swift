@@ -11,7 +11,7 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
     func fetchSessions(execute: (String) async throws -> QueryResult) async throws -> [DashboardSession] {
         let sql = """
             SELECT s.session_id, s.login_name, DB_NAME(s.database_id) AS db_name,
-                   s.status, r.total_elapsed_time / 1000 AS duration_secs,
+                   s.status, r.total_elapsed_time AS duration_ms,
                    r.command, LEFT(t.text, 1000) AS query_text
             FROM sys.dm_exec_sessions s
             LEFT JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
@@ -22,7 +22,7 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
         let result = try await execute(sql)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
-            let secs = Int(value(row, at: col["duration_secs"])) ?? 0
+            let secs = (Int(value(row, at: col["duration_ms"])) ?? 0) / 1_000
             return DashboardSession(
                 id: value(row, at: col["session_id"]),
                 user: value(row, at: col["login_name"]),
@@ -87,18 +87,18 @@ struct MSSQLDashboardProvider: ServerDashboardQueryProvider {
     func fetchSlowQueries(execute: (String) async throws -> QueryResult) async throws -> [DashboardSlowQuery] {
         let sql = """
             SELECT s.session_id, s.login_name, DB_NAME(s.database_id) AS db_name,
-                   r.total_elapsed_time / 1000 AS duration_secs,
+                   r.total_elapsed_time AS duration_ms,
                    LEFT(t.text, 1000) AS query_text
             FROM sys.dm_exec_sessions s
             JOIN sys.dm_exec_requests r ON s.session_id = r.session_id
             OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) t
-            WHERE s.is_user_process = 1 AND r.total_elapsed_time > 1000
+            WHERE s.is_user_process = 1 AND r.total_elapsed_time > 1_000
             ORDER BY r.total_elapsed_time DESC
             """
         let result = try await execute(sql)
         let col = columnIndex(from: result.columns)
         return result.rows.map { row in
-            let secs = Int(value(row, at: col["duration_secs"])) ?? 0
+            let secs = (Int(value(row, at: col["duration_ms"])) ?? 0) / 1_000
             return DashboardSlowQuery(
                 duration: formatDuration(seconds: secs),
                 query: value(row, at: col["query_text"]),

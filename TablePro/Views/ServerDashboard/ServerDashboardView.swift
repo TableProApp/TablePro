@@ -57,5 +57,15 @@ struct ServerDashboardView: View {
         } message: {
             Text(String(localized: "Are you sure you want to cancel the running query for this session?"))
         }
+        .alert(String(localized: "Action Failed"), isPresented: Binding(
+            get: { viewModel.actionError != nil },
+            set: { if !$0 { viewModel.actionError = nil } }
+        )) {
+            Button(String(localized: "OK"), role: .cancel) { viewModel.actionError = nil }
+        } message: {
+            if let error = viewModel.actionError {
+                Text(error)
+            }
+        }
     }
 }

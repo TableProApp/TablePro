@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SessionsTableView: View {
     @Bindable var viewModel: ServerDashboardViewModel
-    @State private var sortOrder = [KeyPathComparator(\DashboardSession.durationSeconds, order: .reverse)]
     @State private var selection: Set<String> = []
 
     var body: some View {
@@ -22,7 +21,7 @@ struct SessionsTableView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
-            Table(viewModel.sessions, selection: $selection, sortOrder: $sortOrder) {
+            Table(viewModel.sessions, selection: $selection, sortOrder: $viewModel.sessionSortOrder) {
                 TableColumn(String(localized: "PID"), value: \.id) { session in
                     Text(session.id).monospacedDigit()
                 }
@@ -40,7 +39,7 @@ struct SessionsTableView: View {
                 }
                 .width(min: 60, ideal: 80)
 
-                TableColumn(String(localized: "Duration"), value: \.duration) { session in
+                TableColumn(String(localized: "Duration"), value: \.durationSeconds) { session in
                     Text(session.duration).monospacedDigit()
                 }
                 .width(min: 50, ideal: 80)
@@ -60,6 +59,7 @@ struct SessionsTableView: View {
                             }
                             .buttonStyle(.borderless)
                             .help(String(localized: "Cancel Query"))
+                            .accessibilityLabel(String(localized: "Cancel query for session \(session.id)"))
                         }
                         if session.canKill, viewModel.canKillSessions {
                             Button { viewModel.confirmKillSession(processId: session.id) } label: {
@@ -68,12 +68,13 @@ struct SessionsTableView: View {
                             }
                             .buttonStyle(.borderless)
                             .help(String(localized: "Terminate Session"))
+                            .accessibilityLabel(String(localized: "Terminate session \(session.id)"))
                         }
                     }
                 }
                 .width(60)
             }
-            .onChange(of: sortOrder) { _, newOrder in
+            .onChange(of: viewModel.sessionSortOrder) { _, newOrder in
                 viewModel.sessions.sort(using: newOrder)
             }
         }
