@@ -15,6 +15,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
                    left(query, 1000) AS query
             FROM pg_stat_activity
             WHERE pid <> pg_backend_pid()
+              AND backend_type = 'client backend'
             ORDER BY query_start NULLS LAST
             """
         let result = try await execute(sql)
@@ -37,7 +38,7 @@ struct PostgreSQLDashboardProvider: ServerDashboardQueryProvider {
     func fetchMetrics(execute: (String) async throws -> QueryResult) async throws -> [DashboardMetric] {
         var metrics: [DashboardMetric] = []
 
-        let connections = try await execute("SELECT count(*) FROM pg_stat_activity")
+        let connections = try await execute("SELECT count(*) FROM pg_stat_activity WHERE backend_type = 'client backend'")
         if let row = connections.rows.first {
             metrics.append(DashboardMetric(
                 id: "connections",
