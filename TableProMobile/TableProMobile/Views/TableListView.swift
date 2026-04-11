@@ -14,6 +14,24 @@ struct TableListView: View {
     var onRefresh: (() async -> Void)?
 
     @State private var searchText = ""
+    @State private var tableToTruncate: TableInfo?
+    @State private var tableToDrop: TableInfo?
+    @State private var errorMessage = ""
+    @State private var showError = false
+
+    private var showTruncateConfirmation: Binding<Bool> {
+        Binding(
+            get: { tableToTruncate != nil },
+            set: { if !$0 { tableToTruncate = nil } }
+        )
+    }
+
+    private var showDropConfirmation: Binding<Bool> {
+        Binding(
+            get: { tableToDrop != nil },
+            set: { if !$0 { tableToDrop = nil } }
+        )
+    }
 
     private var filteredTables: [TableInfo] {
         let filtered = searchText.isEmpty ? tables : tables.filter {
@@ -43,6 +61,30 @@ struct TableListView: View {
                     ForEach(items) { table in
                         NavigationLink(value: table) {
                             TableRow(table: table)
+                        }
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = table.name
+                            } label: {
+                                Label("Copy Name", systemImage: "doc.on.doc")
+                            }
+
+                            let isView = table.type == .view || table.type == .materializedView
+                            if !isView && !connection.safeModeLevel.blocksWrites {
+                                Divider()
+
+                                Button(role: .destructive) {
+                                    tableToTruncate = table
+                                } label: {
+                                    Label("Truncate Table", systemImage: "trash.slash")
+                                }
+
+                                Button(role: .destructive) {
+                                    tableToDrop = table
+                                } label: {
+                                    Label("Drop Table", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 } header: {
@@ -78,6 +120,57 @@ struct TableListView: View {
             } else if filteredTables.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView.search(text: searchText)
             }
+        }
+        .confirmationDialog(
+            String(localized: "Truncate Table"),
+            isPresented: showTruncateConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Truncate"), role: .destructive) {
+                if let table = tableToTruncate {
+                    Task {
+                        do {
+                            _ = try await session?.driver.execute(query: "TRUNCATE TABLE \"\(table.name)\"")
+                            await onRefresh?()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                            showError = true
+                        }
+                    }
+                }
+            }
+        } message: {
+            if let table = tableToTruncate {
+                Text("All data in \"\(table.name)\" will be permanently deleted.")
+            }
+        }
+        .confirmationDialog(
+            String(localized: "Drop Table"),
+            isPresented: showDropConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Drop"), role: .destructive) {
+                if let table = tableToDrop {
+                    Task {
+                        do {
+                            _ = try await session?.driver.execute(query: "DROP TABLE \"\(table.name)\"")
+                            await onRefresh?()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                            showError = true
+                        }
+                    }
+                }
+            }
+        } message: {
+            if let table = tableToDrop {
+                Text("The table \"\(table.name)\" and all its data will be permanently deleted.")
+            }
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage)
         }
     }
 }
