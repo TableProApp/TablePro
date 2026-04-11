@@ -66,6 +66,8 @@ struct ConnectionFormView: View {
     @State private var testResult: TestResult?
     @State private var credentialError: String?
     @State private var showCredentialError = false
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionFormView")
 
@@ -280,6 +282,8 @@ struct ConnectionFormView: View {
             } message: {
                 Text("Enter a name for the new SQLite database.")
             }
+            .sensoryFeedback(.success, trigger: hapticSuccess)
+            .sensoryFeedback(.error, trigger: hapticError)
             .alert("Keychain Warning", isPresented: $showCredentialError) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -529,6 +533,7 @@ struct ConnectionFormView: View {
             _ = try await appState.connectionManager.connect(testConn)
             await appState.connectionManager.disconnect(tempId)
             testResult = TestResult(success: true, message: String(localized: "Connection successful"), recovery: nil)
+            hapticSuccess.toggle()
         } catch {
             let context = ErrorContext(
                 operation: "testConnection",
@@ -538,6 +543,7 @@ struct ConnectionFormView: View {
             )
             let classified = ErrorClassifier.classify(error, context: context)
             testResult = TestResult(success: false, message: classified.message, recovery: classified.recovery)
+            hapticError.toggle()
         }
     }
 

@@ -41,6 +41,8 @@ struct DataBrowserView: View {
     @State private var foreignKeys: [ForeignKeyInfo] = []
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var memoryWarningMessage: String?
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
 
     private var isView: Bool {
         table.type == .view || table.type == .materializedView
@@ -157,6 +159,8 @@ struct DataBrowserView: View {
                     }
                 }
             }
+            .sensoryFeedback(.success, trigger: hapticSuccess)
+            .sensoryFeedback(.error, trigger: hapticError)
             .alert("Go to Page", isPresented: $showGoToPage) {
                 TextField("Page number", text: $goToPageInput)
                     .keyboardType(.numberPad)
@@ -595,12 +599,14 @@ struct DataBrowserView: View {
                 query: SQLBuilder.buildDelete(table: table.name, type: connection.type, primaryKeys: pkValues)
             )
             await loadData()
+            hapticSuccess.toggle()
         } catch {
             operationError = ErrorClassifier.classify(
                 error,
                 context: ErrorContext(operation: "deleteRow", databaseType: connection.type, host: connection.host)
             )
             showOperationError = true
+            hapticError.toggle()
         }
     }
 

@@ -31,6 +31,8 @@ struct ConnectedView: View {
     @State private var isSwitching = false
     @State private var isReconnecting = false
     @State private var connectTask: Task<Void, Never>?
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -88,6 +90,8 @@ struct ConnectedView: View {
                     .animation(.default, value: isSwitching)
             }
         }
+        .sensoryFeedback(.success, trigger: hapticSuccess)
+        .sensoryFeedback(.error, trigger: hapticError)
         .alert("Error", isPresented: $showFailureAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -249,6 +253,7 @@ struct ConnectedView: View {
             self.session = session
             self.tables = try await session.driver.fetchTables(schema: nil)
             isConnecting = false
+            hapticSuccess.toggle()
             await loadDatabases()
             await loadSchemas()
         } catch {
@@ -261,6 +266,7 @@ struct ConnectedView: View {
             )
             appError = ErrorClassifier.classify(error, context: context)
             isConnecting = false
+            hapticError.toggle()
         }
     }
 

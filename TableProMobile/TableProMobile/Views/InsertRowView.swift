@@ -39,6 +39,8 @@ struct InsertRowView: View {
     @State private var isSaving = false
     @State private var operationError: AppError?
     @State private var showOperationError = false
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
 
     var body: some View {
         NavigationStack {
@@ -133,6 +135,8 @@ struct InsertRowView: View {
                     .disabled(isSaving)
                 }
             }
+            .sensoryFeedback(.success, trigger: hapticSuccess)
+            .sensoryFeedback(.error, trigger: hapticError)
             .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -209,12 +213,14 @@ struct InsertRowView: View {
 
         do {
             _ = try await session.driver.execute(query: sql)
+            hapticSuccess.toggle()
             onInserted?()
             dismiss()
         } catch {
             let context = ErrorContext(operation: "insertRow", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)
             showOperationError = true
+            hapticError.toggle()
         }
     }
 }

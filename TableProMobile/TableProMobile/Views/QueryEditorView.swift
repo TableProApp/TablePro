@@ -31,6 +31,8 @@ struct QueryEditorView: View {
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
     @State private var pendingWriteQuery = ""
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
     var body: some View {
         VStack(spacing: 0) {
             editorSection
@@ -53,6 +55,8 @@ struct QueryEditorView: View {
         } message: {
             Text("This query will modify data. Are you sure you want to continue?")
         }
+        .sensoryFeedback(.success, trigger: hapticSuccess)
+        .sensoryFeedback(.error, trigger: hapticError)
         .sheet(isPresented: $showHistory) { historySheet }
     }
 
@@ -383,6 +387,7 @@ struct QueryEditorView: View {
             let queryResult = try await session.driver.execute(query: trimmed)
             self.result = queryResult
             self.executionTime = queryResult.executionTime
+            hapticSuccess.toggle()
 
             let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
             historyStorage.save(item)
@@ -390,6 +395,7 @@ struct QueryEditorView: View {
         } catch {
             let context = ErrorContext(operation: "executeQuery")
             self.appError = ErrorClassifier.classify(error, context: context)
+            hapticError.toggle()
         }
     }
 }

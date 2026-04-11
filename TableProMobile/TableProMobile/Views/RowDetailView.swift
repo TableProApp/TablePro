@@ -27,6 +27,9 @@ struct RowDetailView: View {
     @State private var showOperationError = false
     @State private var showSaveSuccess = false
     @State private var fkPreviewItem: FKPreviewItem?
+    @State private var hapticSuccess = false
+    @State private var hapticError = false
+    @State private var hapticSelection = 0
 
     init(
         columns: [ColumnInfo],
@@ -198,6 +201,7 @@ struct RowDetailView: View {
             ToolbarItemGroup(placement: .bottomBar) {
                 Button {
                     withAnimation { currentIndex -= 1 }
+                    hapticSelection += 1
                 } label: {
                     Image(systemName: "chevron.left")
                 }
@@ -215,12 +219,16 @@ struct RowDetailView: View {
 
                 Button {
                     withAnimation { currentIndex += 1 }
+                    hapticSelection += 1
                 } label: {
                     Image(systemName: "chevron.right")
                 }
                 .disabled(currentIndex >= rows.count - 1 || isEditing)
             }
         }
+        .sensoryFeedback(.success, trigger: hapticSuccess)
+        .sensoryFeedback(.error, trigger: hapticError)
+        .sensoryFeedback(.selection, trigger: hapticSelection)
         .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -365,6 +373,7 @@ struct RowDetailView: View {
             rows[currentIndex] = editedValues
             isEditing = false
             showSaveSuccess = true
+            hapticSuccess.toggle()
             onSaved?()
             Task {
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -374,6 +383,7 @@ struct RowDetailView: View {
             let context = ErrorContext(operation: "saveChanges", databaseType: databaseType)
             operationError = ErrorClassifier.classify(error, context: context)
             showOperationError = true
+            hapticError.toggle()
         }
     }
 }
