@@ -69,6 +69,7 @@ struct EditorSettings: Codable, Equatable {
     var autoIndent: Bool
     var wordWrap: Bool
     var vimModeEnabled: Bool
+    var uppercaseKeywords: Bool
 
     static let `default` = EditorSettings(
         showLineNumbers: true,
@@ -76,7 +77,8 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: 4,
         autoIndent: true,
         wordWrap: false,
-        vimModeEnabled: false
+        vimModeEnabled: false,
+        uppercaseKeywords: false
     )
 
     init(
@@ -85,7 +87,8 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: Int = 4,
         autoIndent: Bool = true,
         wordWrap: Bool = false,
-        vimModeEnabled: Bool = false
+        vimModeEnabled: Bool = false,
+        uppercaseKeywords: Bool = false
     ) {
         self.showLineNumbers = showLineNumbers
         self.highlightCurrentLine = highlightCurrentLine
@@ -93,6 +96,7 @@ struct EditorSettings: Codable, Equatable {
         self.autoIndent = autoIndent
         self.wordWrap = wordWrap
         self.vimModeEnabled = vimModeEnabled
+        self.uppercaseKeywords = uppercaseKeywords
     }
 
     init(from decoder: Decoder) throws {
@@ -104,6 +108,7 @@ struct EditorSettings: Codable, Equatable {
         autoIndent = try container.decodeIfPresent(Bool.self, forKey: .autoIndent) ?? true
         wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
+        uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
     }
 
     /// Clamped tab width (1-16)

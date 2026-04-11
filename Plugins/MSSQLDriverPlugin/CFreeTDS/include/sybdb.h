@@ -44,12 +44,17 @@ typedef struct loginrec LOGINREC;
 #define SYBDATETIMN     111
 #define SYBUNIQUE       36
 
-// Login property constants for dbsetlname() — values verified against FreeTDS 1.4 sybdb.h
-#define DBSETHOST   1
-#define DBSETUSER   2
-#define DBSETPWD    3
-#define DBSETAPP    5   // 4 is unused; real FreeTDS DBSETAPP = 5
-#define DBSETCHARSET 7  // Client charset for dbsetlname() — controls string encoding
+// Login property constants for dbsetlname() — values from FreeTDS master/include/sybdb.h
+#define DBSETHOST       1
+#define DBSETUSER       2
+#define DBSETPWD        3
+#define DBSETAPP        5
+#define DBSETBCP        6
+#define DBSETNATLANG    7
+#define DBSETCHARSET    10
+#define DBSETPACKET     11
+#define DBSETENCRYPT    12
+#define DBSETDBNAME     14
 
 // Convenience macros (match FreeTDS sybdb.h)
 #define DBSETLHOST(x, y)    dbsetlname((x), (y), DBSETHOST)

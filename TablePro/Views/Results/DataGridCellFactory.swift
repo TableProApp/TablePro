@@ -16,6 +16,13 @@ final class FKArrowButton: NSButton {
     var fkColumnIndex: Int = 0
 }
 
+/// Custom button that stores cell row/column context for the chevron click handler
+@MainActor
+final class CellChevronButton: NSButton {
+    var cellRow: Int = -1
+    var cellColumnIndex: Int = -1
+}
+
 /// Factory for creating data grid cell views
 @MainActor
 final class DataGridCellFactory {
@@ -138,6 +145,8 @@ final class DataGridCellFactory {
         isFKColumn: Bool = false,
         fkArrowTarget: AnyObject? = nil,
         fkArrowAction: Selector? = nil,
+        chevronTarget: AnyObject? = nil,
+        chevronAction: Selector? = nil,
         delegate: NSTextFieldDelegate
     ) -> NSView {
         let cellViewId: NSUserInterfaceItemIdentifier
@@ -177,9 +186,11 @@ final class DataGridCellFactory {
             cellView.addSubview(cell)
 
             if isDropdown {
-                let chevron = NSImageView()
+                let chevron = CellChevronButton()
                 chevron.tag = Self.chevronTag
-                chevron.image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: nil)
+                chevron.bezelStyle = .inline
+                chevron.isBordered = false
+                chevron.image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: String(localized: "Open editor"))
                 chevron.contentTintColor = .tertiaryLabelColor
                 chevron.translatesAutoresizingMaskIntoConstraints = false
                 chevron.setContentHuggingPriority(.required, for: .horizontal)
@@ -246,6 +257,13 @@ final class DataGridCellFactory {
             button.fkRow = row
             button.fkColumnIndex = columnIndex
             button.isHidden = (rawValue == nil || rawValue?.isEmpty == true)
+        }
+
+        if isDropdown, let chevronButton = cellView.viewWithTag(Self.chevronTag) as? CellChevronButton {
+            chevronButton.cellRow = row
+            chevronButton.cellColumnIndex = columnIndex
+            chevronButton.target = chevronTarget
+            chevronButton.action = chevronAction
         }
 
         cell.isEditable = isEditable

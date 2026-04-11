@@ -5283,6 +5283,9 @@
         }
       }
     },
+    "Auto-uppercase keywords" : {
+
+    },
     "Automatically check for updates" : {
       "localizations" : {
         "tr" : {

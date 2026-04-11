@@ -34,7 +34,7 @@ extension TableViewCoordinator {
             }
             if columnIndex < rowProvider.columnTypes.count {
                 let ct = rowProvider.columnTypes[columnIndex]
-                if ct.isDateType || ct.isJsonType || ct.isEnumType || ct.isSetType || ct.isBlobType { return false }
+                if ct.isDateType || ct.isJsonType || ct.isEnumType || ct.isSetType || ct.isBlobType || ct.isBooleanType { return false }
             }
             if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
                 return false

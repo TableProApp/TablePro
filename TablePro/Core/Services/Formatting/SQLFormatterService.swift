@@ -40,24 +40,15 @@ struct SQLFormatterService: SQLFormatterProtocol {
     // MARK: - Cached Regex Patterns (CPU-3, CPU-9, CPU-10)
 
     /// String literal extraction patterns — one per quote character
+    /// Handles both backslash escapes (\'') and SQL-standard doubled-quote escapes ('')
     private static let stringLiteralRegexes: [String: NSRegularExpression] = {
         var result: [String: NSRegularExpression] = [:]
         for quoteChar in ["'", "\"", "`"] {
             let escaped = NSRegularExpression.escapedPattern(for: quoteChar)
-            let pattern = "\(escaped)((?:\\\\\\\\\(quoteChar)|[^\(quoteChar)])*?)\(escaped)"
+            let pattern = "\(escaped)((?:\\\\\\\\\(quoteChar)|\(escaped)\(escaped)|[^\(quoteChar)])*)\(escaped)"
             result[quoteChar] = regex(pattern)
         }
         return result
-    }()
-
-    /// Line comment pattern: --[^\n]*
-    private static let lineCommentRegex: NSRegularExpression = {
-        regex("--[^\\n]*")
-    }()
-
-    /// Block comment pattern: /* ... */
-    private static let blockCommentRegex: NSRegularExpression = {
-        regex("/\\*.*?\\*/", options: .dotMatchesLineSeparators)
     }()
 
     /// Line break keyword patterns — pre-compiled for all 16 keywords (CPU-9)
@@ -207,7 +198,7 @@ struct SQLFormatterService: SQLFormatterProtocol {
         result = restoreStringLiterals(result, literals: stringLiterals)
 
         // Step 5: Add line breaks before major keywords
-        result = addLineBreaks(result)
+        result = addLineBreaks(result, options: options)
 
         // Step 6: Add indentation based on nesting
         if options.indentSize > 0 {
@@ -288,38 +279,28 @@ struct SQLFormatterService: SQLFormatterProtocol {
 
     // MARK: - Comment Handling (Fix #6: UUID placeholders)
 
-    /// Extract comments with UUID-based placeholders (prevents collisions)
+    /// Combined pattern matching both line comments (--...) and block comments (/*...*/)
+    private static let combinedCommentRegex: NSRegularExpression = {
+        regex("--[^\\n]*|/\\*.*?\\*/", options: .dotMatchesLineSeparators)
+    }()
+
+    /// Extract all comments in a single pass, ordered by position in the source SQL.
+    /// This ensures __COMMENT_0__ is always the first comment, __COMMENT_1__ the second, etc.
     private func extractComments(from sql: String) -> (String, [(placeholder: String, content: String)]) {
         var result = sql
         var comments: [(String, String)] = []
-        var counter = 0
 
-        // Extract line comments (-- ...) using cached regex
-        let lineMatches = Self.lineCommentRegex.matches(
+        let allMatches = Self.combinedCommentRegex.matches(
             in: result,
             range: NSRange(result.startIndex..., in: result)
         )
-        for match in lineMatches.reversed() {
-            if let range = safeRange(from: match.range, in: result) {
-                let comment = String(result[range])
-                let placeholder = "__COMMENT_\(counter)__"
-                counter += 1
-                comments.insert((placeholder, comment), at: 0)
-                result.replaceSubrange(range, with: placeholder)
-            }
-        }
 
-        // Extract block comments (/* ... */) using cached regex
-        // Note: This doesn't handle nested block comments (SQL doesn't officially support them)
-        let blockMatches = Self.blockCommentRegex.matches(
-            in: result,
-            range: NSRange(result.startIndex..., in: result)
-        )
-        for match in blockMatches.reversed() {
+        // Process in reverse to maintain valid indices; assign counters by source position
+        for (reverseIndex, match) in allMatches.reversed().enumerated() {
             if let range = safeRange(from: match.range, in: result) {
                 let comment = String(result[range])
+                let counter = allMatches.count - 1 - reverseIndex
                 let placeholder = "__COMMENT_\(counter)__"
-                counter += 1
                 comments.insert((placeholder, comment), at: 0)
                 result.replaceSubrange(range, with: placeholder)
             }
@@ -363,15 +344,16 @@ struct SQLFormatterService: SQLFormatterProtocol {
 
     // MARK: - Line Breaks
 
-    private func addLineBreaks(_ sql: String) -> String {
+    private func addLineBreaks(_ sql: String, options: SQLFormatterOptions) -> String {
         var result = sql
 
         // Use pre-compiled regex patterns for all line break keywords (CPU-9)
         for (keyword, regex) in Self.lineBreakRegexes {
+            let replacement = options.uppercaseKeywords ? keyword.uppercased() : keyword
             result = regex.stringByReplacingMatches(
                 in: result,
                 range: NSRange(result.startIndex..., in: result),
-                withTemplate: "\n\(keyword.uppercased())"
+                withTemplate: "\n\(replacement)"
             )
         }
 

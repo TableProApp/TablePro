@@ -46,6 +46,12 @@ extension TableViewCoordinator {
         let isEnumOrSet = enumOrSetColumns.contains(columnIndex)
         let isFKColumn = fkColumns.contains(columnIndex)
 
+        let hasSpecialEditor: Bool = {
+            guard columnIndex < rowProvider.columnTypes.count else { return false }
+            let ct = rowProvider.columnTypes[columnIndex]
+            return ct.isBooleanType || ct.isDateType || ct.isJsonType || ct.isBlobType
+        }()
+
         return cellFactory.makeDataCell(
             tableView: tableView,
             row: row,
@@ -56,10 +62,12 @@ extension TableViewCoordinator {
             isEditable: isEditable && !state.isDeleted,
             isLargeDataset: isLargeDataset,
             isFocused: isFocused,
-            isDropdown: isEditable && (isDropdown || isTypePicker || isEnumOrSet),
+            isDropdown: isEditable && (isDropdown || isTypePicker || isEnumOrSet || hasSpecialEditor),
             isFKColumn: isFKColumn && !isDropdown && !(typePickerColumns?.contains(columnIndex) == true),
             fkArrowTarget: self,
             fkArrowAction: #selector(handleFKArrowClick(_:)),
+            chevronTarget: self,
+            chevronAction: #selector(handleChevronClick(_:)),
             delegate: self
         )
     }

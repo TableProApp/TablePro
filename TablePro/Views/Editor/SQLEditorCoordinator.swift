@@ -15,7 +15,7 @@ import os
 /// Coordinator for the SQL editor — manages find panel, horizontal scrolling, and scroll-to-match
 @Observable
 @MainActor
-final class SQLEditorCoordinator: TextViewCoordinator {
+final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     // MARK: - Properties
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLEditorCoordinator")
@@ -32,6 +32,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
+    @ObservationIgnored private var isUppercasing = false
     @ObservationIgnored private var wasEditorFocused = false
     @ObservationIgnored private var didDestroy = false
 
@@ -50,6 +51,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
     @ObservationIgnored var onAIOptimize: ((String) -> Void)?
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
     @ObservationIgnored var onFormatSQL: (() -> Void)?
+    @ObservationIgnored var databaseType: DatabaseType?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -120,25 +122,22 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         }
     }
 
-    func textViewDidChangeText(controller: TextViewController) {
-        // Invalidate Vim buffer's cached line count after text changes
+    func textView(_ textView: TextView, didReplaceContentsIn range: NSRange, with string: String) {
         vimEngine?.invalidateLineCache()
 
-        // Notify inline suggestion manager immediately (lightweight)
         Task { [weak self] in
             self?.inlineSuggestionManager?.handleTextChange()
             self?.vimCursorManager?.updatePosition()
         }
 
-        // Throttle frame-change notification — during rapid typing, only the
-        // last notification matters. The highlighter recalculates the visible
-        // range on each notification, so coalescing saves redundant layout work.
         frameChangeTask?.cancel()
         frameChangeTask = Task { [weak controller] in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled, let controller, let textView = controller.textView else { return }
             NotificationCenter.default.post(name: NSView.frameDidChangeNotification, object: textView)
         }
+
+        uppercaseKeywordIfNeeded(textView: textView, range: range, string: string)
     }
 
     func textViewDidChangeSelection(controller: TextViewController, newPositions: [CursorPosition]) {
@@ -172,6 +171,7 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         onAIExplain = nil
         onAIOptimize = nil
         onSaveAsFavorite = nil
+        onFormatSQL = nil
         schemaProvider = nil
         contextMenu = nil
         vimEngine = nil
@@ -183,6 +183,17 @@ final class SQLEditorCoordinator: TextViewCoordinator {
         EditorEventRouter.shared.unregister(self)
         Self.logger.debug("SQLEditorCoordinator destroyed")
         cleanupMonitors()
+    }
+
+    func revive() {
+        guard didDestroy else { return }
+        didDestroy = false
+        if let controller, let textView = controller.textView {
+            EditorEventRouter.shared.register(self, textView: textView)
+        }
+        if contextMenu == nil, let controller {
+            installAIContextMenu(controller: controller)
+        }
     }
 
     // MARK: - AI Context Menu
@@ -212,6 +223,9 @@ final class SQLEditorCoordinator: TextViewCoordinator {
 
     /// Called by EditorEventRouter when a right-click is detected in this editor's text view.
     func showContextMenu(for event: NSEvent, in textView: TextView) {
+        if contextMenu == nil, let controller {
+            installAIContextMenu(controller: controller)
+        }
         guard let menu = contextMenu else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: textView)
     }
@@ -331,6 +345,49 @@ final class SQLEditorCoordinator: TextViewCoordinator {
             guard let self, let controller else { return }
             self.handleVimSettingsChange(controller: controller)
             self.vimCursorManager?.updatePosition()
+        }
+    }
+
+    // MARK: - Keyword Auto-Uppercase
+
+    private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
+        guard !isUppercasing,
+              AppSettingsManager.shared.editor.uppercaseKeywords,
+              KeywordUppercaseHelper.isWordBoundary(string) else { return }
+
+        let nsText = textView.textStorage.string as NSString
+        guard let match = KeywordUppercaseHelper.keywordBeforePosition(nsText, at: range.location) else { return }
+
+        let word = match.word
+        let wordRange = match.range
+        let uppercased = word.uppercased()
+
+        isUppercasing = true
+        DispatchQueue.main.async { [weak self, weak textView] in
+            guard let self, let textView, !self.didDestroy else {
+                self?.isUppercasing = false
+                return
+            }
+            guard wordRange.upperBound <= textView.textStorage.length else {
+                self.isUppercasing = false
+                return
+            }
+            let currentWord = (textView.textStorage.string as NSString).substring(with: wordRange)
+            guard currentWord == word else {
+                self.isUppercasing = false
+                return
+            }
+            // Mutate textStorage directly with proper attributes — skip CEUndoManager
+            // since auto-uppercase is automatic formatting, not a user edit.
+            let attrs = textView.typingAttributes
+            textView.textStorage.beginEditing()
+            textView.textStorage.replaceCharacters(
+                in: wordRange,
+                with: NSAttributedString(string: uppercased, attributes: attrs)
+            )
+            textView.textStorage.endEditing()
+            textView.needsDisplay = true
+            self.isUppercasing = false
         }
     }
 
