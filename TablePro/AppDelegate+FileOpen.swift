@@ -12,6 +12,58 @@ import SwiftUI
 private let fileOpenLogger = Logger(subsystem: "com.TablePro", category: "FileOpen")
 
 extension AppDelegate {
+    // MARK: - Handoff
+
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        handleHandoffActivity(userActivity)
+        return true
+    }
+
+    private func handleHandoffActivity(_ activity: NSUserActivity) {
+        guard let connectionIdString = activity.userInfo?["connectionId"] as? String,
+              let connectionId = UUID(uuidString: connectionIdString) else { return }
+
+        let connections = ConnectionStorage.shared.loadConnections()
+        guard let connection = connections.first(where: { $0.id == connectionId }) else {
+            fileOpenLogger.error("Handoff: no connection with ID '\(connectionIdString, privacy: .public)'")
+            return
+        }
+
+        let tableName = activity.userInfo?["tableName"] as? String
+
+        if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil {
+            if let tableName {
+                let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
+                WindowOpener.shared.openNativeTab(payload)
+            } else {
+                for window in NSApp.windows where isMainWindow(window) {
+                    window.makeKeyAndOrderFront(nil)
+                    return
+                }
+            }
+            return
+        }
+
+        let initialPayload = EditorTabPayload(connectionId: connectionId)
+        WindowOpener.shared.openNativeTab(initialPayload)
+
+        Task { @MainActor in
+            do {
+                try await DatabaseManager.shared.connectToSession(connection)
+                for window in NSApp.windows where self.isWelcomeWindow(window) {
+                    window.close()
+                }
+                if let tableName {
+                    let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
+                    WindowOpener.shared.openNativeTab(payload)
+                }
+            } catch {
+                fileOpenLogger.error("Handoff connect failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - URL Classification
 
     private func isDatabaseURL(_ url: URL) -> Bool {

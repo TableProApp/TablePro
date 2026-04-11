@@ -292,6 +292,25 @@ struct MainContentView: View {
             .onChange(of: pendingChangeTrigger) {
                 updateToolbarPendingState()
             }
+            .userActivity("com.TablePro.viewConnection") { activity in
+                activity.title = connection.name.isEmpty
+                    ? connection.host
+                    : connection.name
+                activity.isEligibleForHandoff = true
+                activity.userInfo = ["connectionId": connection.id.uuidString]
+            }
+            .userActivity("com.TablePro.viewTable") { activity in
+                guard let tableName = tabManager.selectedTab?.tableName else {
+                    activity.invalidate()
+                    return
+                }
+                activity.title = tableName
+                activity.isEligibleForHandoff = true
+                activity.userInfo = [
+                    "connectionId": connection.id.uuidString,
+                    "tableName": tableName
+                ]
+            }
     }
 
     private var bodyContentCore: some View {

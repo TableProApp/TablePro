@@ -204,6 +204,11 @@
 			</dict>
 		</dict>
 	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>com.TablePro.viewConnection</string>
+		<string>com.TablePro.viewTable</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
