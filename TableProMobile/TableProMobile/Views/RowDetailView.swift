@@ -165,7 +165,7 @@ struct RowDetailView: View {
 
             ToolbarItemGroup(placement: .bottomBar) {
                 Button {
-                    withAnimation { currentIndex -= 1 }
+                    currentIndex -= 1
                 } label: {
                     Image(systemName: "chevron.left")
                 }
@@ -182,7 +182,7 @@ struct RowDetailView: View {
                 Spacer()
 
                 Button {
-                    withAnimation { currentIndex += 1 }
+                    currentIndex += 1
                 } label: {
                     Image(systemName: "chevron.right")
                 }
