@@ -287,12 +287,13 @@ struct DataBrowserView: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     if !isView && hasPrimaryKeys && !connection.safeModeLevel.blocksWrites {
-                        Button(role: .destructive) {
+                        Button {
                             deleteTarget = primaryKeyValues(for: row)
                             showDeleteConfirmation = true
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                        .tint(.red)
                     }
                 }
             }

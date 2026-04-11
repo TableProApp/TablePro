@@ -337,11 +337,12 @@ struct ConnectionListView: View {
             ConnectionRow(connection: connection, tag: appState.tag(for: connection.tagId))
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
+            Button {
                 connectionToDelete = connection
             } label: {
                 Label("Delete", systemImage: "trash")
             }
+            .tint(.red)
         }
         .contextMenu {
             Button {
