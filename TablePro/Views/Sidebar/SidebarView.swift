@@ -159,7 +159,7 @@ struct SidebarView: View {
     }
 
     private var hasActiveConnection: Bool {
-        viewModel.isLoading || DatabaseManager.shared.driver(for: connectionId) != nil
+        viewModel.isLoading
     }
 
     private var loadingState: some View {
