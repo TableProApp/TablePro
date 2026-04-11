@@ -94,7 +94,7 @@ let result = try await driver.executeParameterized(query: "SELECT * FROM users W
 
 ### Braces
 
-K&R style -- opening brace on same line:
+K&R style: opening brace on same line:
 
 ```swift
 // Good
@@ -179,7 +179,7 @@ Never force unwrap. Use `if let`, `guard let`, or `as?` for safe optional handli
 
 ## SwiftUI Patterns
 
-Use @StateObject for viewmodels, @State for local state. Order property wrappers: Environment, StateObject, State, Binding, regular properties. Extract large views into subviews.
+Use `@State` for local state, `@Observable` for viewmodels (Swift 5.9+). Order property wrappers: Environment, State, Binding, regular properties. Extract large views into subviews.
 
 ## Limits
 

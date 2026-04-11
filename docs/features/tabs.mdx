@@ -165,10 +165,6 @@ Tab state auto-saves 500ms after any change. On reconnect, TablePro restores you
 
 Table tabs use SQL `LIMIT` and `OFFSET`. Only the current page loads from the database. Page navigation triggers a new query. Configure page size in **Settings** > **Data Grid**.
 
-<Tip>
-Server-side pagination is memory efficient. Only the visible page is kept in memory, even for tables with millions of rows.
-</Tip>
-
 {/* Screenshot: Server-side pagination in a table tab */}
 <Frame caption="Server-side pagination in a table tab">
   <img

@@ -24,16 +24,6 @@ Write and run SQL with tree-sitter-powered syntax highlighting, schema-aware aut
 
 ## Writing Queries
 
-### Single Query
-
-Write and execute a single query:
-
-```sql
-SELECT * FROM users WHERE active = true;
-```
-
-Press `Cmd+Enter` to execute.
-
 ### Multiple Queries
 
 Separate multiple queries with semicolons:
@@ -213,24 +203,6 @@ ORDER BY order_count DESC;
     className="hidden dark:block"
     src="/images/sql-format-result-dark.png"
     alt="SQL query before and after formatting"
-  />
-</Frame>
-
-### Error Handling
-
-Errors appear below the editor with the error message and relevant line number.
-
-{/* Screenshot: Query error message display */}
-<Frame caption="Query error message">
-  <img
-    className="block dark:hidden"
-    src="/images/query-error.png"
-    alt="Query error"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/query-error-dark.png"
-    alt="Query error"
   />
 </Frame>
 

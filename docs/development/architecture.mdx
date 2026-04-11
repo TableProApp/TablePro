@@ -147,19 +147,24 @@ Driver creation uses a plugin-based factory. `PluginManager` discovers and loads
 
 ### Database Driver Plugins
 
-Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, and SQLite are built into the app bundle; the rest are distributed via the plugin registry and downloaded on demand.
+Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, and Redis are built into the app bundle; the rest are distributed via the plugin registry and downloaded on demand.
 
 | Plugin | Database Types | C Bridge | Distribution |
 |--------|---------------|----------|--------------|
 | MySQLDriverPlugin | MySQL, MariaDB | CMariaDB (libmariadb) | Built-in |
 | PostgreSQLDriverPlugin | PostgreSQL, Redshift | CLibPQ (libpq) | Built-in |
 | SQLiteDriverPlugin | SQLite | Foundation sqlite3 | Built-in |
-| ClickHouseDriverPlugin | ClickHouse | URLSession HTTP | Registry |
-| MSSQLDriverPlugin | SQL Server | CFreeTDS | Registry |
+| ClickHouseDriverPlugin | ClickHouse | URLSession HTTP | Built-in |
+| MSSQLDriverPlugin | SQL Server | CFreeTDS | Built-in |
+| RedisDriverPlugin | Redis | CRedis | Built-in |
 | MongoDBDriverPlugin | MongoDB | CLibMongoc | Registry |
-| RedisDriverPlugin | Redis | CRedis | Registry |
 | DuckDBDriverPlugin | DuckDB | CDuckDB | Registry |
 | OracleDriverPlugin | Oracle | OracleNIO (SPM) | Registry |
+| CassandraDriverPlugin | Cassandra, ScyllaDB | CCassandra | Registry |
+| EtcdDriverPlugin | Etcd | gRPC/HTTP | Registry |
+| CloudflareD1Plugin | Cloudflare D1 | URLSession HTTP | Registry |
+| DynamoDBDriverPlugin | DynamoDB | AWS SDK | Registry |
+| BigQueryDriverPlugin | BigQuery | URLSession REST | Registry |
 
 ### Autocomplete Engine
 

@@ -411,19 +411,24 @@ Manage database driver plugins from the **Plugins** tab in Settings.
 
 Split-view: plugin list on the left, details on the right. Each row shows version, capability, and source (built-in or user-installed). Filter by name using the search field.
 
-TablePro ships with 3 built-in database driver plugins (MySQL, PostgreSQL, SQLite) and 3 built-in export plugins (CSV, JSON, SQL). Additional plugins are available from the plugin registry and can be installed from the Browse tab or downloaded automatically when you select a database type:
+TablePro ships with 6 built-in database driver plugins (MySQL, PostgreSQL, SQLite, ClickHouse, SQL Server, Redis) and 3 built-in export plugins (CSV, JSON, SQL). Additional plugins are available from the plugin registry and can be installed from the Browse tab or downloaded automatically when you select a database type:
 
 | Plugin | Database Types | Default Port | Distribution |
 |--------|---------------|--------------|--------------|
 | MySQL | MySQL, MariaDB | 3306 | Built-in |
 | PostgreSQL | PostgreSQL, Redshift | 5432 | Built-in |
 | SQLite | SQLite | -- | Built-in |
-| ClickHouse | ClickHouse | 8123 | Registry |
-| SQL Server | SQL Server | 1433 | Registry |
+| ClickHouse | ClickHouse | 8123 | Built-in |
+| SQL Server | SQL Server | 1433 | Built-in |
+| Redis | Redis | 6379 | Built-in |
 | MongoDB | MongoDB | 27017 | Registry |
-| Redis | Redis | 6379 | Registry |
 | DuckDB | DuckDB | -- | Registry |
 | Oracle | Oracle | 1521 | Registry |
+| Cassandra | Cassandra, ScyllaDB | 9042 | Registry |
+| Etcd | Etcd | 2379 | Registry |
+| Cloudflare D1 | Cloudflare D1 | -- | Registry |
+| DynamoDB | DynamoDB | -- | Registry |
+| BigQuery | BigQuery | -- | Registry |
 
 Toggle plugins on/off in the detail pane. Disabled plugins hide their database type from the connection dialog.
 

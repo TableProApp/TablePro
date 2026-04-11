@@ -5,8 +5,6 @@ description: Create, organize, and manage database connections across 18+ suppor
 
 # Connection Management
 
-TablePro connects to 18+ database systems. Create connections, organize them with colors, tags, and groups, and switch between them instantly.
-
 ## Supported Databases
 
 Natively supported:
@@ -359,9 +357,9 @@ For MySQL, MariaDB, and PostgreSQL, TablePro pings (`SELECT 1`) every **30 secon
 
 When a connection drops, TablePro reconnects with exponential backoff:
 
-1. **Attempt 1** -- waits 2 seconds, then reconnects
-2. **Attempt 2** -- waits 4 seconds, then reconnects
-3. **Attempt 3** -- waits 8 seconds, then reconnects
+1. **Attempt 1**: waits 2 seconds, then reconnects
+2. **Attempt 2**: waits 4 seconds, then reconnects
+3. **Attempt 3**: waits 8 seconds, then reconnects
 
 After three failures, the connection enters an error state. A **Reconnect** button appears in the toolbar.
 
@@ -395,7 +393,7 @@ SQLite connections are file-based and don't require health monitoring or auto-re
 
 ## Startup Commands
 
-SQL statements that run automatically on every connection. Use them to set session variables, timezone, encoding, or other session options.
+SQL statements that run automatically on every connection.
 
 Configure startup commands in the **Advanced** tab of the connection form. Enter one SQL statement per line.
 
@@ -416,12 +414,12 @@ Set a timezone here to ensure datetime results are consistent across team member
 </Tip>
 
 <Note>
-Startup commands run on every connection, including auto-reconnects. They are database-specific: use MySQL syntax for MySQL connections, PostgreSQL syntax for PostgreSQL, and so on.
+Startup commands run on every connection, including auto-reconnects.
 </Note>
 
 ## Editing and Deleting Connections
 
-Right-click a connection to edit or delete it. Changes take effect on the next connection. Deleting removes the saved settings only; your database is unaffected.
+Right-click a connection to edit or delete it. Changes take effect on the next connection. Deleting removes the saved settings only.
 
 ## Backup and Restore
 

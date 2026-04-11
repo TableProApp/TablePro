@@ -49,15 +49,6 @@ SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Suggests: ORDER
   />
 </Frame>
 
-**Suggested keywords include**:
-
-| Category | Keywords |
-|----------|----------|
-| Statements | SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP |
-| Clauses | FROM, WHERE, JOIN, ON, GROUP BY, ORDER BY, HAVING, LIMIT |
-| Operators | AND, OR, NOT, IN, LIKE, BETWEEN, IS NULL, EXISTS |
-| Joins | INNER JOIN, LEFT JOIN, RIGHT JOIN, CROSS JOIN |
-
 ### Table Names
 
 Tables are suggested after keywords that expect table references:
@@ -126,16 +117,6 @@ SELECT |  -- Suggests: COUNT, SUM, AVG, MAX, MIN, etc.
 SELECT COUNT(|  -- Suggests columns and *
 WHERE date_column > |  -- Suggests: NOW(), CURRENT_DATE, etc.
 ```
-
-**Common function suggestions**:
-
-| Category | Functions |
-|----------|-----------|
-| Aggregate | COUNT, SUM, AVG, MAX, MIN |
-| String | CONCAT, SUBSTRING, UPPER, LOWER, TRIM |
-| Date | NOW, CURRENT_DATE, DATE_FORMAT, DATEADD |
-| Math | ROUND, ABS, CEIL, FLOOR |
-| Conditional | COALESCE, NULLIF, CASE, IF |
 
 {/* Screenshot: SQL function suggestions */}
 <Frame caption="SQL function suggestions">

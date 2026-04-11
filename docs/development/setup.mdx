@@ -198,34 +198,13 @@ swiftformat --lint .
 Run SwiftFormat before committing to keep code style consistent.
 </Tip>
 
-## Configuration Files
-
-### .swiftlint.yml
-
-SwiftLint rules and configuration:
-
-- Line length limits
-- Function complexity limits
-- Disabled rules
-- Custom rules
-
-### .swiftformat
-
-SwiftFormat options:
-
-- Indentation style
-- Brace placement
-- Import ordering
-- Other formatting rules
-
 ## Development Workflow
 
-1. Create feature branch: `git checkout -b feature/my-feature`
-2. Make changes
-3. Lint: `swiftlint lint` and `swiftformat --lint .`
-4. Test: `xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation`
-5. Commit: `git commit -m "Add my feature"`
-6. Push: `git push origin feature/my-feature`
+Before committing, lint and format:
+
+```bash
+swiftlint --fix && swiftformat .
+```
 
 **Logging**: Use OSLog with `Logger(subsystem: "com.TablePro", category: "Name")`.
 

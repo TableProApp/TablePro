@@ -71,26 +71,7 @@ Store your API token securely. TablePro saves it in the macOS Keychain, but the 
 
 ### Create a D1 Database
 
-If you don't have a D1 database yet:
-
-```bash
-# Install Wrangler CLI
-npm install -g wrangler
-
-# Login to Cloudflare
-wrangler login
-
-# Create a database
-wrangler d1 create my-app-db
-
-# Seed with test data
-wrangler d1 execute my-app-db --remote \
-  --command "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)"
-wrangler d1 execute my-app-db --remote \
-  --command "INSERT INTO users VALUES (1, 'Alice', 'alice@example.com')"
-```
-
-You can also create databases directly from TablePro using the **Create Database** button in the database switcher.
+Create databases with `wrangler d1 create my-app-db` or from TablePro's **Create Database** button.
 
 ## Example Configuration
 
@@ -160,13 +141,7 @@ Export query results or table data to CSV, JSON, SQL, and other formats.
 
 ## SQL Dialect
 
-D1 uses SQLite's SQL syntax. Key points:
-
-- **Identifier quoting**: Double quotes (`"column_name"`)
-- **String literals**: Single quotes (`'value'`)
-- **Auto-increment**: `INTEGER PRIMARY KEY AUTOINCREMENT`
-- **Type affinity**: SQLite's flexible type system applies
-- **PRAGMA support**: Most SQLite PRAGMAs work (`PRAGMA table_info`, `PRAGMA foreign_key_list`, etc.)
+D1 uses SQLite syntax. See [SQLite](/databases/sqlite) for details.
 
 ## Troubleshooting
 

@@ -61,16 +61,6 @@ scripts/build-release.sh x86_64
 scripts/build-release.sh both
 ```
 
-### Build Script Details
-
-`build-release.sh` does the following:
-
-1. **Prepares libraries**: Extracts the correct architecture from universal libraries
-2. **Builds the app**: Runs xcodebuild with Release configuration
-3. **Copies output**: Places the app in `build/Release/`
-4. **Restores icon**: Ensures the full app icon is included
-5. **Verifies architecture**: Confirms the binary matches the target
-
 ### Output Location
 
 ```

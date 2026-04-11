@@ -30,11 +30,6 @@ flowchart LR
     TablePro -->|"Encrypted<br>Tunnel"| Jump -->|"Internal<br>Network"| Database
 ```
 
-1. TablePro opens an SSH connection to your jump server
-2. A local port (e.g., 60000) forwards through the tunnel
-3. All traffic between your Mac and the SSH server is encrypted
-4. The SSH server connects to the database on your behalf
-
 ## When to Use SSH Tunneling
 
 - Database in private network
@@ -337,51 +332,7 @@ Jump hosts only support **Private Key** and **SSH Agent** authentication. Passwo
 
 ## SSH Key Setup
 
-### Generating SSH Keys
-
-If you don't have SSH keys:
-
-```bash
-# Generate a new key pair
-ssh-keygen -t ed25519 -C "your_email@example.com"
-
-# Or use RSA for broader compatibility
-ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
-```
-
-### Key Locations
-
-Default key locations on macOS:
-
-| Key Type | Private Key | Public Key |
-|----------|-------------|------------|
-| Ed25519 | `~/.ssh/id_ed25519` | `~/.ssh/id_ed25519.pub` |
-| RSA | `~/.ssh/id_rsa` | `~/.ssh/id_rsa.pub` |
-| ECDSA | `~/.ssh/id_ecdsa` | `~/.ssh/id_ecdsa.pub` |
-
-### Adding Key to Server
-
-Copy your public key to the SSH server:
-
-```bash
-# Using ssh-copy-id
-ssh-copy-id -i ~/.ssh/id_ed25519.pub user@server
-
-# Or manually
-cat ~/.ssh/id_ed25519.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
-```
-
-### Key Permissions
-
-SSH keys must have correct permissions:
-
-```bash
-# Fix permissions
-chmod 700 ~/.ssh
-chmod 600 ~/.ssh/id_*
-chmod 644 ~/.ssh/id_*.pub
-chmod 644 ~/.ssh/config
-```
+Generate keys: `ssh-keygen -t ed25519`. Copy to server: `ssh-copy-id user@server`. Keys must be `chmod 600`.
 
 ## Import from URL
 

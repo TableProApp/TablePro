@@ -239,69 +239,7 @@ Column reordering is only available for MySQL and MariaDB. Other databases do no
 
 Drag is disabled when you have unsaved structure changes. Apply or discard pending changes first.
 
-### Adding Columns via SQL
-
-```sql
--- MySQL
-ALTER TABLE users ADD COLUMN phone VARCHAR(20) AFTER email;
-
--- PostgreSQL
-ALTER TABLE users ADD COLUMN phone VARCHAR(20);
-
--- SQLite (limited ALTER TABLE)
-ALTER TABLE users ADD COLUMN phone TEXT;
-```
-
-### Modifying Columns via SQL
-
-```sql
--- MySQL
-ALTER TABLE users MODIFY COLUMN name VARCHAR(200) NOT NULL;
-
--- PostgreSQL
-ALTER TABLE users ALTER COLUMN name TYPE VARCHAR(200);
-ALTER TABLE users ALTER COLUMN name SET NOT NULL;
-
--- SQLite (requires table recreation)
--- See SQLite documentation for workarounds
-```
-
-### Dropping Columns via SQL
-
-```sql
--- MySQL/PostgreSQL
-ALTER TABLE users DROP COLUMN phone;
-
--- SQLite (requires table recreation)
-```
-
-### Managing Indexes
-
-```sql
--- Create index
-CREATE INDEX idx_users_email ON users(email);
-
--- Create unique index
-CREATE UNIQUE INDEX idx_users_username ON users(username);
-
--- Drop index
-DROP INDEX idx_users_email ON users;  -- MySQL
-DROP INDEX idx_users_email;  -- PostgreSQL
-```
-
-### Managing Foreign Keys
-
-```sql
--- Add foreign key
-ALTER TABLE orders
-ADD CONSTRAINT fk_orders_user
-FOREIGN KEY (user_id) REFERENCES users(id)
-ON DELETE CASCADE;
-
--- Drop foreign key
-ALTER TABLE orders DROP FOREIGN KEY fk_orders_user;  -- MySQL
-ALTER TABLE orders DROP CONSTRAINT fk_orders_user;  -- PostgreSQL
-```
+For changes unsupported by the visual editor, use the SQL editor directly.
 
 ## Refreshing Structure
 
