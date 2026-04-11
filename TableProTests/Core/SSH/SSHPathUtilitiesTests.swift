@@ -62,17 +62,16 @@ struct SSHPathUtilitiesTests {
         #expect(result == "/keys/%backup/id_rsa")
     }
 
-    @Test("expandSSHTokens combines multiple tokens")
+    @Test("expandSSHTokens combines all tokens in a single path")
     func testExpandMultipleTokens() {
         let homeDir = NSHomeDirectory()
         let localUser = NSUserName()
         let result = SSHPathUtilities.expandSSHTokens(
-            "%d/.ssh/%h_%r_%%key",
+            "%d/.ssh/%u_%h_%r_%%key",
             hostname: "example.com",
             remoteUser: "admin"
         )
-        #expect(result == "\(homeDir)/.ssh/example.com_admin_%key")
-        _ = localUser  // %u not used in this test
+        #expect(result == "\(homeDir)/.ssh/\(localUser)_example.com_admin_%key")
     }
 
     @Test("expandSSHTokens leaves %h unexpanded when hostname is nil")
