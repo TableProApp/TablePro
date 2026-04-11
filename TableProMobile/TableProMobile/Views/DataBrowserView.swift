@@ -105,6 +105,14 @@ struct DataBrowserView: View {
 
     var body: some View {
         searchableContent
+            .userActivity("com.TablePro.viewTable") { activity in
+                activity.title = table.name
+                activity.isEligibleForHandoff = true
+                activity.userInfo = [
+                    "connectionId": connection.id.uuidString,
+                    "tableName": table.name
+                ]
+            }
             .toolbar { topToolbar }
             .toolbar(rows.isEmpty && !hasActiveSearch && !hasActiveFilters ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }

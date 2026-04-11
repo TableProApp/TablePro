@@ -37,6 +37,16 @@ struct TableProMobileApp: App {
                       let uuid = UUID(uuidString: identifier) else { return }
                 appState.pendingConnectionId = uuid
             }
+            .onContinueUserActivity("com.TablePro.viewConnection") { activity in
+                guard let connectionId = activity.userInfo?["connectionId"] as? String,
+                      let uuid = UUID(uuidString: connectionId) else { return }
+                appState.pendingConnectionId = uuid
+            }
+            .onContinueUserActivity("com.TablePro.viewTable") { activity in
+                guard let connectionId = activity.userInfo?["connectionId"] as? String,
+                      let uuid = UUID(uuidString: connectionId) else { return }
+                appState.pendingConnectionId = uuid
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {

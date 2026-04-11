@@ -72,6 +72,11 @@ struct ConnectedView: View {
                 }
             } else {
                 connectedContent
+                    .userActivity("com.TablePro.viewConnection") { activity in
+                        activity.title = connection.name.isEmpty ? connection.host : connection.name
+                        activity.isEligibleForHandoff = true
+                        activity.userInfo = ["connectionId": connection.id.uuidString]
+                    }
                     .allowsHitTesting(!isSwitching)
                     .overlay {
                         if isSwitching {

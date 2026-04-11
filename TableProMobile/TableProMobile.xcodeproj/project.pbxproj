@@ -1973,6 +1973,7 @@
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TableProMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TablePro;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
@@ -2015,6 +2016,7 @@
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TableProMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = TablePro;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
