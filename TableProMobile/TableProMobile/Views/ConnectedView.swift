@@ -11,6 +11,7 @@ import TableProModels
 struct ConnectedView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
     let connection: DatabaseConnection
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectedView")
@@ -29,6 +30,7 @@ struct ConnectedView: View {
     @State private var activeDatabase: String = ""
     @State private var schemas: [String] = []
     @State private var activeSchema: String = "public"
+    @State private var selectedTable: TableInfo?
     @State private var isSwitching = false
     @State private var isReconnecting = false
     @State private var hapticSuccess = false
@@ -129,16 +131,12 @@ struct ConnectedView: View {
         } message: {
             Text(failureAlertMessage ?? "")
         }
-        .navigationTitle(supportsDatabaseSwitching && databases.count > 1 ? "" : displayName)
+        .navigationTitle(sizeClass != .regular ? (supportsDatabaseSwitching && databases.count > 1 ? "" : displayName) : "")
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) {
-            Picker("Tab", selection: selectedTabBinding) {
-                Text("Tables").tag(ConnectedTab.tables)
-                Text("Query").tag(ConnectedTab.query)
+            if sizeClass != .regular {
+                tabPicker
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
         }
         .background {
             Button("") { selectedTabRaw = ConnectedTab.tables.rawValue }
@@ -149,63 +147,23 @@ struct ConnectedView: View {
                 .hidden()
         }
         .toolbar {
-            if connection.safeModeLevel != .off {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                        .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
-                        .font(.caption)
-                }
-            }
-            if supportsDatabaseSwitching && databases.count > 1 {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        ForEach(databases, id: \.self) { db in
-                            Button {
-                                Task { await switchDatabase(to: db) }
-                            } label: {
-                                if db == activeDatabase {
-                                    Label(db, systemImage: "checkmark")
-                                } else {
-                                    Text(db)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(activeDatabase)
-                                .font(.subheadline)
-                            if isSwitching {
-                                ProgressView()
-                                    .controlSize(.mini)
-                            } else {
-                                Image(systemName: "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+            if sizeClass != .regular {
+                if connection.safeModeLevel != .off {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                            .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+                            .font(.caption)
                     }
-                    .disabled(isSwitching)
                 }
-            }
-            if supportsSchemas && schemas.count > 1 && selectedTab == .tables {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(schemas, id: \.self) { schema in
-                            Button {
-                                Task { await switchSchema(to: schema) }
-                            } label: {
-                                if schema == activeSchema {
-                                    Label(schema, systemImage: "checkmark")
-                                } else {
-                                    Text(schema)
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(activeSchema, systemImage: "square.3.layers.3d")
-                            .font(.subheadline)
+                if supportsDatabaseSwitching && databases.count > 1 {
+                    ToolbarItem(placement: .topBarLeading) {
+                        databaseSwitcherMenu
                     }
-                    .disabled(isSwitching)
+                }
+                if supportsSchemas && schemas.count > 1 && selectedTab == .tables {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        schemaSwitcherMenu
+                    }
                 }
             }
         }
@@ -219,6 +177,9 @@ struct ConnectedView: View {
             let key = connection.id.uuidString
             activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
             activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
+            if let savedTable = UserDefaults.standard.string(forKey: "lastTable.\(key)") {
+                selectedTable = tables.first { $0.name == savedTable }
+            }
 
             let hasDriver = appState.connectionManager.session(for: connection.id)?.driver != nil
             if !hasDriver, !isConnecting, appError == nil {
@@ -232,6 +193,9 @@ struct ConnectedView: View {
         .onChange(of: activeSchema) { _, newValue in
             UserDefaults.standard.set(newValue, forKey: "lastSchema.\(connection.id.uuidString)")
         }
+        .onChange(of: selectedTable) { _, newValue in
+            UserDefaults.standard.set(newValue?.name, forKey: "lastTable.\(connection.id.uuidString)")
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, session != nil {
                 Task { await reconnectIfNeeded() }
@@ -239,7 +203,80 @@ struct ConnectedView: View {
         }
     }
 
+    @ViewBuilder
     private var connectedContent: some View {
+        if sizeClass == .regular {
+            iPadContent
+        } else {
+            iPhoneContent
+        }
+    }
+
+    private var iPadContent: some View {
+        NavigationSplitView {
+            TableListView(
+                connection: connection,
+                tables: tables,
+                session: session,
+                selectedTable: $selectedTable,
+                onRefresh: { await refreshTables() }
+            )
+            .navigationTitle(displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if connection.safeModeLevel != .off {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                            .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+                            .font(.caption)
+                    }
+                }
+                if supportsDatabaseSwitching && databases.count > 1 {
+                    ToolbarItem(placement: .topBarLeading) {
+                        databaseSwitcherMenu
+                    }
+                }
+                if supportsSchemas && schemas.count > 1 && selectedTab == .tables {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        schemaSwitcherMenu
+                    }
+                }
+            }
+        } detail: {
+            NavigationStack {
+                switch selectedTab {
+                case .tables:
+                    if let table = selectedTable {
+                        DataBrowserView(connection: connection, table: table, session: session)
+                            .id(table.id)
+                    } else {
+                        ContentUnavailableView(
+                            "Select a Table",
+                            systemImage: "tablecells",
+                            description: Text("Choose a table from the sidebar.")
+                        )
+                    }
+                case .query:
+                    QueryEditorView(
+                        session: session,
+                        tables: tables,
+                        databaseType: connection.type,
+                        safeModeLevel: connection.safeModeLevel,
+                        queryHistory: $queryHistory,
+                        connectionId: connection.id,
+                        historyStorage: historyStorage
+                    )
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .safeAreaInset(edge: .bottom) {
+            tabPicker
+                .background(.bar)
+        }
+    }
+
+    private var iPhoneContent: some View {
         VStack(spacing: 0) {
             switch selectedTab {
             case .tables:
@@ -261,6 +298,66 @@ struct ConnectedView: View {
                 )
             }
         }
+    }
+
+    private var tabPicker: some View {
+        Picker("Tab", selection: selectedTabBinding) {
+            Text("Tables").tag(ConnectedTab.tables)
+            Text("Query").tag(ConnectedTab.query)
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    private var databaseSwitcherMenu: some View {
+        Menu {
+            ForEach(databases, id: \.self) { db in
+                Button {
+                    Task { await switchDatabase(to: db) }
+                } label: {
+                    if db == activeDatabase {
+                        Label(db, systemImage: "checkmark")
+                    } else {
+                        Text(db)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(activeDatabase)
+                    .font(.subheadline)
+                if isSwitching {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .disabled(isSwitching)
+    }
+
+    private var schemaSwitcherMenu: some View {
+        Menu {
+            ForEach(schemas, id: \.self) { schema in
+                Button {
+                    Task { await switchSchema(to: schema) }
+                } label: {
+                    if schema == activeSchema {
+                        Label(schema, systemImage: "checkmark")
+                    } else {
+                        Text(schema)
+                    }
+                }
+            }
+        } label: {
+            Label(activeSchema, systemImage: "square.3.layers.3d")
+                .font(.subheadline)
+        }
+        .disabled(isSwitching)
     }
 
     private func connect() async {

@@ -11,6 +11,7 @@ struct TableListView: View {
     let connection: DatabaseConnection
     let tables: [TableInfo]
     let session: ConnectionSession?
+    var selectedTable: Binding<TableInfo?>?
     var onRefresh: (() async -> Void)?
 
     @State private var searchText = ""
@@ -55,62 +56,17 @@ struct TableListView: View {
     }
 
     var body: some View {
-        List {
-            ForEach(tableSections, id: \.0) { sectionTitle, items in
-                Section {
-                    ForEach(items) { table in
-                        NavigationLink(value: table) {
-                            TableRow(table: table)
-                        }
-                        .contextMenu {
-                            Button {
-                                UIPasteboard.general.string = table.name
-                            } label: {
-                                Label("Copy Name", systemImage: "doc.on.doc")
-                            }
-
-                            let isView = table.type == .view || table.type == .materializedView
-                            if !isView && !connection.safeModeLevel.blocksWrites {
-                                Divider()
-
-                                Button(role: .destructive) {
-                                    tableToTruncate = table
-                                } label: {
-                                    Label("Truncate Table", systemImage: "trash.slash")
-                                }
-
-                                Button(role: .destructive) {
-                                    tableToDrop = table
-                                } label: {
-                                    Label("Drop Table", systemImage: "trash")
-                                }
-                            }
-                        }
-                        .hoverEffect()
-                    }
-                } header: {
-                    HStack {
-                        Text(sectionTitle)
-                        Spacer()
-                        Text("\(items.count)")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
+        Group {
+            if let selectedTable {
+                iPadList(selection: selectedTable)
+            } else {
+                iPhoneList
             }
         }
-        .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
         .textInputAutocapitalization(.never)
         .refreshable {
             await onRefresh?()
-        }
-        .navigationDestination(for: TableInfo.self) { table in
-            DataBrowserView(
-                connection: connection,
-                table: table,
-                session: session
-            )
         }
         .overlay {
             if tables.isEmpty {
@@ -175,6 +131,90 @@ struct TableListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
+        }
+    }
+
+    private func iPadList(selection: Binding<TableInfo?>) -> some View {
+        List(selection: selection) {
+            ForEach(tableSections, id: \.0) { sectionTitle, items in
+                Section {
+                    ForEach(items) { table in
+                        TableRow(table: table)
+                            .tag(table)
+                            .contextMenu {
+                                tableContextMenu(for: table)
+                            }
+                            .hoverEffect()
+                    }
+                } header: {
+                    sectionHeader(title: sectionTitle, count: items.count)
+                }
+            }
+        }
+        .listStyle(.sidebar)
+    }
+
+    private var iPhoneList: some View {
+        List {
+            ForEach(tableSections, id: \.0) { sectionTitle, items in
+                Section {
+                    ForEach(items) { table in
+                        NavigationLink(value: table) {
+                            TableRow(table: table)
+                        }
+                        .contextMenu {
+                            tableContextMenu(for: table)
+                        }
+                        .hoverEffect()
+                    }
+                } header: {
+                    sectionHeader(title: sectionTitle, count: items.count)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationDestination(for: TableInfo.self) { table in
+            DataBrowserView(
+                connection: connection,
+                table: table,
+                session: session
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func tableContextMenu(for table: TableInfo) -> some View {
+        Button {
+            UIPasteboard.general.string = table.name
+        } label: {
+            Label("Copy Name", systemImage: "doc.on.doc")
+        }
+
+        let isView = table.type == .view || table.type == .materializedView
+        if !isView && !connection.safeModeLevel.blocksWrites {
+            Divider()
+
+            Button(role: .destructive) {
+                tableToTruncate = table
+            } label: {
+                Label("Truncate Table", systemImage: "trash.slash")
+            }
+
+            Button(role: .destructive) {
+                tableToDrop = table
+            } label: {
+                Label("Drop Table", systemImage: "trash")
+            }
+        }
+    }
+
+    private func sectionHeader(title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text("\(count)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 }

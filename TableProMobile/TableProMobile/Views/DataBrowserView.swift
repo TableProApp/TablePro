@@ -105,6 +105,20 @@ struct DataBrowserView: View {
 
     var body: some View {
         searchableContent
+            .navigationDestination(for: Int.self) { index in
+                RowDetailView(
+                    columns: columns,
+                    rows: rows,
+                    initialIndex: index,
+                    table: table,
+                    session: session,
+                    columnDetails: columnDetails,
+                    databaseType: connection.type,
+                    safeModeLevel: connection.safeModeLevel,
+                    foreignKeys: foreignKeys,
+                    onSaved: { Task { await loadData() } }
+                )
+            }
             .userActivity("com.TablePro.viewTable") { activity in
                 activity.title = table.name
                 activity.isEligibleForHandoff = true
@@ -248,20 +262,7 @@ struct DataBrowserView: View {
     private var rowList: some View {
         List {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                NavigationLink {
-                    RowDetailView(
-                        columns: columns,
-                        rows: rows,
-                        initialIndex: index,
-                        table: table,
-                        session: session,
-                        columnDetails: columnDetails,
-                        databaseType: connection.type,
-                        safeModeLevel: connection.safeModeLevel,
-                        foreignKeys: foreignKeys,
-                        onSaved: { Task { await loadData() } }
-                    )
-                } label: {
+                NavigationLink(value: index) {
                     RowCard(
                         columns: columns,
                         columnDetails: columnDetails,

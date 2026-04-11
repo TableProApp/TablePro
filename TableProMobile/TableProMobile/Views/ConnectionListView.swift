@@ -115,7 +115,7 @@ struct ConnectionListView: View {
                 navigateToPendingConnection(appState.pendingConnectionId)
             }
         } detail: {
-            NavigationStack {
+            if sizeClass == .regular {
                 if let connection = selectedConnection {
                     ConnectedView(connection: connection)
                         .id(connection.id)
@@ -125,6 +125,19 @@ struct ConnectionListView: View {
                         systemImage: "server.rack",
                         description: Text("Choose a connection from the sidebar.")
                     )
+                }
+            } else {
+                NavigationStack {
+                    if let connection = selectedConnection {
+                        ConnectedView(connection: connection)
+                            .id(connection.id)
+                    } else {
+                        ContentUnavailableView(
+                            "Select a Connection",
+                            systemImage: "server.rack",
+                            description: Text("Choose a connection from the sidebar.")
+                        )
+                    }
                 }
             }
         }
