@@ -45,7 +45,14 @@ struct QueryEditorView: View {
         }
         .toolbar { toolbarContent }
         .onAppear {
-            if !initialQuery.isEmpty { query = initialQuery }
+            if !initialQuery.isEmpty {
+                query = initialQuery
+            } else if query.isEmpty {
+                query = UserDefaults.standard.string(forKey: "lastQuery.\(connectionId.uuidString)") ?? ""
+            }
+        }
+        .onChange(of: query) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
         }
         .alert("Write Query Blocked", isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}

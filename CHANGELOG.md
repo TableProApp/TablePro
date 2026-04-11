@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - iPad keyboard shortcuts (Cmd+N new connection, Cmd+Return execute query, Cmd+1/2 switch tabs) and trackpad hover effects on list rows
 - Server Dashboard with active sessions, server metrics, and slow query monitoring (PostgreSQL, MySQL, MSSQL, ClickHouse, DuckDB, SQLite)
 - Handoff support for cross-device continuity between iOS and macOS
+- State restoration across app lifecycle on iOS (selected connection, active tab, query text, database/schema selection)
 
 ## [0.30.1] - 2026-04-10
 

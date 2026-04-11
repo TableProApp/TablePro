@@ -12,12 +12,12 @@ struct ConnectionListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
-    @State private var selectedConnectionId: UUID?
+    @AppStorage("lastConnectionId") private var selectedConnectionIdString: String?
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
     @State private var showingGroupManagement = false
     @State private var showingTagManagement = false
-    @State private var filterTagId: UUID?
-    @State private var groupByGroup = false
+    @AppStorage("lastFilterTagId") private var filterTagIdString: String?
+    @AppStorage("groupByGroup") private var groupByGroup = false
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
 
@@ -26,6 +26,21 @@ struct ConnectionListView: View {
             get: { connectionToDelete != nil },
             set: { if !$0 { connectionToDelete = nil } }
         )
+    }
+
+    private var selectedConnectionId: Binding<UUID?> {
+        Binding(
+            get: { selectedConnectionIdString.flatMap { UUID(uuidString: $0) } },
+            set: { selectedConnectionIdString = $0?.uuidString }
+        )
+    }
+
+    private var selectedConnectionUUID: UUID? {
+        selectedConnectionIdString.flatMap { UUID(uuidString: $0) }
+    }
+
+    private var filterTagId: UUID? {
+        filterTagIdString.flatMap { UUID(uuidString: $0) }
     }
 
     private var displayedConnections: [DatabaseConnection] {
@@ -44,8 +59,8 @@ struct ConnectionListView: View {
     }
 
     private var selectedConnection: DatabaseConnection? {
-        guard let selectedConnectionId else { return nil }
-        return appState.connections.first { $0.id == selectedConnectionId }
+        guard let id = selectedConnectionUUID else { return nil }
+        return appState.connections.first { $0.id == id }
     }
 
     var body: some View {
@@ -90,7 +105,7 @@ struct ConnectionListView: View {
             .onChange(of: appState.pendingConnectionId) { _, newId in
                 navigateToPendingConnection(newId)
             }
-            .onChange(of: filterTagId) {
+            .onChange(of: filterTagIdString) {
                 editMode = .inactive
             }
             .onChange(of: groupByGroup) {
@@ -135,7 +150,7 @@ struct ConnectionListView: View {
 
     @ViewBuilder
     private var connectionList: some View {
-        let list = List(selection: $selectedConnectionId) {
+        let list = List(selection: selectedConnectionId) {
             if groupByGroup {
                 groupedContent
             } else {
@@ -201,8 +216,8 @@ struct ConnectionListView: View {
             ) {
                 Button(String(localized: "Delete"), role: .destructive) {
                     if let connection = connectionToDelete {
-                        if selectedConnectionId == connection.id {
-                            selectedConnectionId = nil
+                        if selectedConnectionUUID == connection.id {
+                            selectedConnectionIdString = nil
                         }
                         appState.removeConnection(connection)
                     }
@@ -222,7 +237,7 @@ struct ConnectionListView: View {
             if !appState.tags.isEmpty {
                 Section("Filter by Tag") {
                     Button {
-                        filterTagId = nil
+                        filterTagIdString = nil
                     } label: {
                         HStack {
                             Text("All")
@@ -233,7 +248,7 @@ struct ConnectionListView: View {
                     }
                     ForEach(appState.tags) { tag in
                         Button {
-                            filterTagId = tag.id
+                            filterTagIdString = tag.id.uuidString
                         } label: {
                             HStack {
                                 Image(systemName: "circle.fill")
@@ -339,7 +354,7 @@ struct ConnectionListView: View {
     private func navigateToPendingConnection(_ id: UUID?) {
         guard let id,
               appState.connections.contains(where: { $0.id == id }) else { return }
-        selectedConnectionId = id
+        selectedConnectionIdString = id.uuidString
         appState.pendingConnectionId = nil
     }
 

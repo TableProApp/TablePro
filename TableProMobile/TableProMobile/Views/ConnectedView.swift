@@ -18,10 +18,11 @@ struct ConnectedView: View {
     @State private var session: ConnectionSession?
     @State private var tables: [TableInfo] = []
     @State private var isConnecting = true
+    @State private var isConnectInProgress = false
     @State private var appError: AppError?
     @State private var failureAlertMessage: String?
     @State private var showFailureAlert = false
-    @State private var selectedTab = ConnectedTab.tables
+    @AppStorage("lastSelectedTab") private var selectedTabRaw: String = ConnectedTab.tables.rawValue
     @State private var queryHistory: [QueryHistoryItem] = []
     @State private var historyStorage = QueryHistoryStorage()
     @State private var databases: [String] = []
@@ -38,6 +39,18 @@ struct ConnectedView: View {
     enum ConnectedTab: String, CaseIterable {
         case tables = "Tables"
         case query = "Query"
+    }
+
+    private var selectedTab: ConnectedTab {
+        get { ConnectedTab(rawValue: selectedTabRaw) ?? .tables }
+        set { selectedTabRaw = newValue.rawValue }
+    }
+
+    private var selectedTabBinding: Binding<ConnectedTab> {
+        Binding(
+            get: { ConnectedTab(rawValue: selectedTabRaw) ?? .tables },
+            set: { selectedTabRaw = $0.rawValue }
+        )
     }
 
     private var displayName: String {
@@ -119,7 +132,7 @@ struct ConnectedView: View {
         .navigationTitle(supportsDatabaseSwitching && databases.count > 1 ? "" : displayName)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) {
-            Picker("Tab", selection: $selectedTab) {
+            Picker("Tab", selection: selectedTabBinding) {
                 Text("Tables").tag(ConnectedTab.tables)
                 Text("Query").tag(ConnectedTab.query)
             }
@@ -128,10 +141,10 @@ struct ConnectedView: View {
             .padding(.vertical, 8)
         }
         .background {
-            Button("") { selectedTab = .tables }
+            Button("") { selectedTabRaw = ConnectedTab.tables.rawValue }
                 .keyboardShortcut("1", modifiers: .command)
                 .hidden()
-            Button("") { selectedTab = .query }
+            Button("") { selectedTabRaw = ConnectedTab.query.rawValue }
                 .keyboardShortcut("2", modifiers: .command)
                 .hidden()
         }
@@ -203,11 +216,21 @@ struct ConnectedView: View {
             }
         }
         .onAppear {
+            let key = connection.id.uuidString
+            activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
+            activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
+
             let hasDriver = appState.connectionManager.session(for: connection.id)?.driver != nil
-            if !hasDriver, !isConnecting {
-                appError = nil
+            if !hasDriver, !isConnecting, appError == nil {
                 Task { await connect() }
             }
+        }
+        .onChange(of: activeDatabase) { _, newValue in
+            guard !newValue.isEmpty else { return }
+            UserDefaults.standard.set(newValue, forKey: "lastDB.\(connection.id.uuidString)")
+        }
+        .onChange(of: activeSchema) { _, newValue in
+            UserDefaults.standard.set(newValue, forKey: "lastSchema.\(connection.id.uuidString)")
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, session != nil {
@@ -241,10 +264,14 @@ struct ConnectedView: View {
     }
 
     private func connect() async {
+        guard !isConnectInProgress else { return }
         guard session == nil else {
             isConnecting = false
             return
         }
+
+        isConnectInProgress = true
+        defer { isConnectInProgress = false }
 
         if let existing = appState.connectionManager.session(for: connection.id) {
             self.session = existing
@@ -271,10 +298,6 @@ struct ConnectedView: View {
 
         do {
             let session = try await appState.connectionManager.connect(connection)
-            guard !Task.isCancelled else {
-                await appState.connectionManager.disconnect(connection.id)
-                return
-            }
             self.session = session
             self.tables = try await session.driver.fetchTables(schema: nil)
             isConnecting = false
@@ -282,7 +305,6 @@ struct ConnectedView: View {
             await loadDatabases()
             await loadSchemas()
         } catch {
-            guard !Task.isCancelled else { return }
             let context = ErrorContext(
                 operation: "connect",
                 databaseType: connection.type,
@@ -324,8 +346,14 @@ struct ConnectedView: View {
         guard let session, supportsDatabaseSwitching else { return }
         do {
             databases = try await session.driver.fetchDatabases()
-            // Use session's active database (may differ from connection.database after a switch)
-            if let stored = appState.connectionManager.session(for: connection.id) {
+            if !activeDatabase.isEmpty, databases.contains(activeDatabase) {
+                let sessionDB = appState.connectionManager.session(for: connection.id)?.activeDatabase ?? connection.database
+                if activeDatabase != sessionDB {
+                    let target = activeDatabase
+                    activeDatabase = sessionDB
+                    await switchDatabase(to: target)
+                }
+            } else if let stored = appState.connectionManager.session(for: connection.id) {
                 activeDatabase = stored.activeDatabase
             } else {
                 activeDatabase = connection.database
@@ -339,7 +367,14 @@ struct ConnectedView: View {
         guard let session, supportsSchemas else { return }
         do {
             schemas = try await session.driver.fetchSchemas()
-            activeSchema = session.driver.currentSchema ?? "public"
+            let currentSchema = session.driver.currentSchema ?? "public"
+            if schemas.contains(activeSchema), activeSchema != currentSchema {
+                let target = activeSchema
+                activeSchema = currentSchema
+                await switchSchema(to: target)
+            } else if !schemas.contains(activeSchema) {
+                activeSchema = currentSchema
+            }
         } catch {
             // Silently fail — don't show picker
         }
