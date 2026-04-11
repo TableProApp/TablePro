@@ -86,6 +86,7 @@ struct TableListView: View {
                                 }
                             }
                         }
+                        .hoverEffect()
                     }
                 } header: {
                     HStack {

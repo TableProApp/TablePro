@@ -233,6 +233,7 @@ struct QueryEditorView: View {
                 Image(systemName: isExecuting ? "stop.fill" : "play.fill")
             }
             .disabled(!isExecuting && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .keyboardShortcut(.return, modifiers: .command)
         }
 
         ToolbarItem(placement: .topBarTrailing) {

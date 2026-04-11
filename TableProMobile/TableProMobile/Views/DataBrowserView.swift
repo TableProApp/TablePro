@@ -259,6 +259,7 @@ struct DataBrowserView: View {
                         row: row
                     )
                 }
+                .hoverEffect()
                 .contextMenu {
                     Menu("Share Row") {
                         ForEach(ExportFormat.allCases) { format in

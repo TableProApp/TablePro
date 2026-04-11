@@ -64,6 +64,7 @@ struct ConnectionListView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
+                        .keyboardShortcut("n", modifiers: .command)
                     }
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
@@ -336,6 +337,7 @@ struct ConnectionListView: View {
         NavigationLink(value: connection.id) {
             ConnectionRow(connection: connection, tag: appState.tag(for: connection.tagId))
         }
+        .hoverEffect()
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
                 connectionToDelete = connection

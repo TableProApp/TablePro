@@ -107,6 +107,14 @@ struct ConnectedView: View {
             .padding(.vertical, 8)
             .background(.bar)
         }
+        .background {
+            Button("") { selectedTab = .tables }
+                .keyboardShortcut("1", modifiers: .command)
+                .hidden()
+            Button("") { selectedTab = .query }
+                .keyboardShortcut("2", modifiers: .command)
+                .hidden()
+        }
         .toolbar {
             if connection.safeModeLevel != .off {
                 ToolbarItem(placement: .topBarTrailing) {
