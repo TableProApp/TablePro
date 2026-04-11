@@ -45,7 +45,7 @@ enum SQLKeywords {
         "CREATE", "ALTER", "DROP", "RENAME", "MODIFY",
         "TABLE", "VIEW", "INDEX", "DATABASE", "SCHEMA",
         "COLUMN", "CONSTRAINT", "PRIMARY", "FOREIGN", "KEY",
-        "REFERENCES", "UNIQUE", "CHECK", "DEFAULT",
+        "REFERENCES", "UNIQUE", "CHECK",
         "AUTO_INCREMENT", "AUTOINCREMENT", "SERIAL",
 
         // Data types (common)
@@ -85,7 +85,7 @@ enum SQLKeywords {
         "DEALLOCATE", "PREPARE", "EXECUTE",
 
         // Other
-        "WITH", "RECURSIVE", "TEMPORARY", "TEMP", "IF",
+        "WITH", "RECURSIVE", "TEMPORARY", "TEMP",
         "CASCADE", "RESTRICT", "NO", "ACTION",
         "EXPLAIN", "ANALYZE", "DESCRIBE", "SHOW"
     ]

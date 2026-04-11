@@ -353,111 +353,42 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
         guard !isUppercasing,
               AppSettingsManager.shared.editor.uppercaseKeywords,
-              isWordBoundary(string) else { return }
+              KeywordUppercaseHelper.isWordBoundary(string) else { return }
 
         let nsText = textView.textStorage.string as NSString
-        let wordEnd = range.location
+        guard let match = KeywordUppercaseHelper.keywordBeforePosition(nsText, at: range.location) else { return }
 
-        var wordStart = wordEnd
-        while wordStart > 0 {
-            let ch = nsText.character(at: wordStart - 1)
-            guard isWordCharacter(ch) else { break }
-            wordStart -= 1
-        }
-
-        let wordLength = wordEnd - wordStart
-        guard wordLength > 0 else { return }
-
-        let word = nsText.substring(with: NSRange(location: wordStart, length: wordLength))
-        guard SQLKeywords.keywordSet.contains(word.lowercased()) else { return }
-        guard !isInsideProtectedContext(nsText, at: wordStart) else { return }
-
+        let word = match.word
+        let wordRange = match.range
         let uppercased = word.uppercased()
-        guard uppercased != word else { return }
 
-        // Mutate textStorage directly — we're inside beginEditing/endEditing
-        // so NSTextStorage consolidates this with the delimiter insertion.
-        // Cannot use textView.replaceCharacters here because CEUndoManager's
-        // registerMutation calls inverseMutation which asserts mid-edit.
-        let wordRange = NSRange(location: wordStart, length: wordLength)
         isUppercasing = true
-        textView.textStorage.replaceCharacters(in: wordRange, with: uppercased)
-        textView.selectionManager.didReplaceCharacters(in: wordRange, replacementLength: wordLength)
-        isUppercasing = false
-    }
-
-    private func isWordBoundary(_ string: String) -> Bool {
-        guard (string as NSString).length == 1, let ch = string.unicodeScalars.first else { return false }
-        switch ch {
-        case " ", "\t", "\n", "\r", "(", ")", ",", ";":
-            return true
-        default:
-            return false
+        DispatchQueue.main.async { [weak self, weak textView] in
+            guard let self, let textView, !self.didDestroy else {
+                self?.isUppercasing = false
+                return
+            }
+            guard wordRange.upperBound <= textView.textStorage.length else {
+                self.isUppercasing = false
+                return
+            }
+            let currentWord = (textView.textStorage.string as NSString).substring(with: wordRange)
+            guard currentWord == word else {
+                self.isUppercasing = false
+                return
+            }
+            // Mutate textStorage directly with proper attributes — skip CEUndoManager
+            // since auto-uppercase is automatic formatting, not a user edit.
+            let attrs = textView.typingAttributes
+            textView.textStorage.beginEditing()
+            textView.textStorage.replaceCharacters(
+                in: wordRange,
+                with: NSAttributedString(string: uppercased, attributes: attrs)
+            )
+            textView.textStorage.endEditing()
+            textView.needsDisplay = true
+            self.isUppercasing = false
         }
-    }
-
-    private func isWordCharacter(_ ch: unichar) -> Bool {
-        (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) ||
-        (ch >= 0x30 && ch <= 0x39) || ch == 0x5F
-    }
-
-    private func isInsideProtectedContext(_ text: NSString, at position: Int) -> Bool {
-        let scanStart = max(0, position - 2_000)
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var inBacktick = false
-        var inLineComment = false
-        var inBlockComment = false
-        var i = scanStart
-
-        while i < position {
-            let ch = text.character(at: i)
-
-            if inBlockComment {
-                if ch == 0x2A && i + 1 < position && text.character(at: i + 1) == 0x2F {
-                    inBlockComment = false
-                    i += 2
-                    continue
-                }
-                i += 1
-                continue
-            }
-            if inLineComment {
-                if ch == 0x0A { inLineComment = false }
-                i += 1
-                continue
-            }
-
-            // Skip backslash-escaped characters (e.g. \' inside strings)
-            if ch == 0x5C && (inSingleQuote || inDoubleQuote) {
-                i += 2
-                continue
-            }
-
-            switch ch {
-            case 0x27: if !inDoubleQuote && !inBacktick { inSingleQuote.toggle() }
-            case 0x22: if !inSingleQuote && !inBacktick { inDoubleQuote.toggle() }
-            case 0x60: if !inSingleQuote && !inDoubleQuote { inBacktick.toggle() }
-            case 0x2D:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
-                   i + 1 < position && text.character(at: i + 1) == 0x2D {
-                    inLineComment = true
-                    i += 2
-                    continue
-                }
-            case 0x2F:
-                if !inSingleQuote && !inDoubleQuote && !inBacktick &&
-                   i + 1 < position && text.character(at: i + 1) == 0x2A {
-                    inBlockComment = true
-                    i += 2
-                    continue
-                }
-            default: break
-            }
-            i += 1
-        }
-
-        return inSingleQuote || inDoubleQuote || inBacktick || inLineComment || inBlockComment
     }
 
     // MARK: - CodeEditSourceEditor Workarounds
