@@ -117,7 +117,9 @@ struct SidebarView: View {
         }
         .onChange(of: tables) { _, newTables in
             let hasSession = DatabaseManager.shared.activeSessions[connectionId] != nil
-            if newTables.isEmpty && hasSession && !viewModel.isLoading {
+            if newTables.isEmpty && hasSession && !viewModel.isLoading
+                && coordinator?.isSwitchingDatabase != true
+            {
                 viewModel.loadTables()
             }
         }
