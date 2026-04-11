@@ -31,6 +31,7 @@ struct QueryEditorView: View {
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
     @State private var pendingWriteQuery = ""
+    @State private var showClearConfirmation = false
     @State private var showShareSheet = false
     @State private var shareText = ""
     @State private var hapticSuccess = false
@@ -63,6 +64,20 @@ struct QueryEditorView: View {
             ActivityViewController(items: [shareText])
         }
         .sheet(isPresented: $showHistory) { historySheet }
+        .confirmationDialog(
+            String(localized: "Clear Query"),
+            isPresented: $showClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "Clear"), role: .destructive) {
+                query = ""
+                result = nil
+                appError = nil
+                executionTime = nil
+            }
+        } message: {
+            Text("Query text and results will be cleared.")
+        }
     }
 
     // MARK: - Editor
@@ -290,10 +305,7 @@ struct QueryEditorView: View {
                 Divider()
 
                 Button(role: .destructive) {
-                    query = ""
-                    result = nil
-                    appError = nil
-                    executionTime = nil
+                    showClearConfirmation = true
                 } label: {
                     Label("Clear", systemImage: "trash")
                 }

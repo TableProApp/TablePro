@@ -888,7 +888,7 @@ private struct RowCard: View {
             ForEach(Array(detailPairs.enumerated()), id: \.offset) { _, pair in
                 HStack(spacing: 6) {
                     Text(pair.name)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                     Text(verbatim: pair.value)
                         .font(.caption)

@@ -167,6 +167,7 @@ struct ConnectionFormView: View {
                             Text(level.displayName).tag(level)
                         }
                     }
+                    .pickerStyle(.menu)
                 }
 
                 if type == .sqlite {
@@ -379,6 +380,7 @@ struct ConnectionFormView: View {
                     Text("Password").tag(SSHConfiguration.SSHAuthMethod.password)
                     Text("Private Key").tag(SSHConfiguration.SSHAuthMethod.privateKey)
                 }
+                .pickerStyle(.segmented)
             }
 
             if sshAuthMethod == .password {

@@ -31,7 +31,7 @@ struct TagManagementView: View {
 
                             if tag.isPreset {
                                 Image(systemName: "lock.fill")
-                                    .font(.caption2)
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
 

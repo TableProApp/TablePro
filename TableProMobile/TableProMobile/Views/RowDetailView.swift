@@ -247,9 +247,9 @@ struct RowDetailView: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "arrow.right.circle.fill")
-                                        .font(.caption2)
+                                        .font(.footnote)
                                     Text("\(fk.referencedTable).\(fk.referencedColumn)")
-                                        .font(.caption2)
+                                        .font(.footnote)
                                 }
                                 .foregroundStyle(.blue)
                             }
