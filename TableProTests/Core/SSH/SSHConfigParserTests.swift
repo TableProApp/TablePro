@@ -444,4 +444,233 @@ struct SSHConfigParserTests {
         #expect(jumpHosts[0].host == "fe80::1")
         #expect(jumpHosts[0].port == 22)
     }
+
+    // MARK: - Multi-Word Host Filtering
+
+    @Test("Multi-word Host entries are filtered out")
+    func testMultiWordHostFiltered() {
+        let content = """
+        Host prod dev staging
+            HostName example.com
+            User admin
+
+        Host single-host
+            HostName single.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].host == "single-host")
+        #expect(result[0].hostname == "single.com")
+    }
+
+    @Test("Multi-word Host as last entry is filtered out")
+    func testMultiWordHostAsLastEntryFiltered() {
+        let content = """
+        Host valid-host
+            HostName valid.com
+
+        Host prod staging
+            HostName multi.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].host == "valid-host")
+    }
+
+    // MARK: - SSH Token Expansion
+
+    @Test("SSH tokens in IdentityFile are expanded")
+    func testSSHTokensInIdentityFile() {
+        let content = """
+        Host myserver
+            HostName example.com
+            User admin
+            IdentityFile %d/.ssh/custom_key
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+
+        let homeDir = NSHomeDirectory()
+        #expect(result[0].identityFile == "\(homeDir)/.ssh/custom_key")
+    }
+
+    @Test("SSH %h token expands to hostname")
+    func testSSHHostnameTokenExpansion() {
+        let content = """
+        Host myserver
+            HostName example.com
+            User admin
+            IdentityFile ~/.ssh/%h_key
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+
+        let homeDir = NSHomeDirectory()
+        #expect(result[0].identityFile == "\(homeDir)/.ssh/example.com_key")
+    }
+
+    @Test("SSH %u token expands to local username")
+    func testSSHLocalUserTokenExpansion() {
+        let content = """
+        Host myserver
+            HostName example.com
+            IdentityFile ~/.ssh/%u_key
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+
+        let homeDir = NSHomeDirectory()
+        let localUser = NSUserName()
+        #expect(result[0].identityFile == "\(homeDir)/.ssh/\(localUser)_key")
+    }
+
+    @Test("SSH %r token expands to remote username")
+    func testSSHRemoteUserTokenExpansion() {
+        let content = """
+        Host myserver
+            HostName example.com
+            User deploy
+            IdentityFile ~/.ssh/%r_key
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+
+        let homeDir = NSHomeDirectory()
+        #expect(result[0].identityFile == "\(homeDir)/.ssh/deploy_key")
+    }
+
+    @Test("SSH %% literal percent is preserved")
+    func testSSHLiteralPercentExpansion() {
+        let content = """
+        Host myserver
+            HostName example.com
+            IdentityFile /keys/%%backup%%/id_rsa
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].identityFile == "/keys/%backup%/id_rsa")
+    }
+
+    // MARK: - Include Directive (parseContent — No Filesystem)
+
+    @Test("Include directive in parseContent is no-op without filesystem")
+    func testIncludeInParseContentNoOp() {
+        let content = """
+        Include config.d/*
+
+        Host myserver
+            HostName example.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 1)
+        #expect(result[0].host == "myserver")
+    }
+
+    @Test("Include between Host blocks flushes pending entry")
+    func testIncludeFlushesCurrentHost() {
+        let content = """
+        Host first
+            HostName first.com
+            User admin
+
+        Include nonexistent.conf
+
+        Host second
+            HostName second.com
+        """
+
+        let result = SSHConfigParser.parseContent(content)
+        #expect(result.count == 2)
+        #expect(result[0].host == "first")
+        #expect(result[0].hostname == "first.com")
+        #expect(result[1].host == "second")
+    }
+
+    // MARK: - Include Directive (parse — With Filesystem)
+
+    @Test("Include directive resolves files from filesystem")
+    func testIncludeWithFilesystem() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-ssh-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let includedContent = """
+        Host included-server
+            HostName included.example.com
+            User deploy
+        """
+        let includedFile = tempDir.appendingPathComponent("extra.conf")
+        try includedContent.write(to: includedFile, atomically: true, encoding: .utf8)
+
+        let mainContent = """
+        Include \(includedFile.path(percentEncoded: false))
+
+        Host main-server
+            HostName main.example.com
+        """
+        let mainFile = tempDir.appendingPathComponent("config")
+        try mainContent.write(to: mainFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parse(path: mainFile.path(percentEncoded: false))
+        #expect(result.count == 2)
+        #expect(result[0].host == "included-server")
+        #expect(result[0].hostname == "included.example.com")
+        #expect(result[0].user == "deploy")
+        #expect(result[1].host == "main-server")
+    }
+
+    @Test("Include with glob pattern resolves multiple files")
+    func testIncludeGlobPattern() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-ssh-test-\(UUID().uuidString)")
+        let configDir = tempDir.appendingPathComponent("config.d")
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        try "Host alpha\n    HostName alpha.com".write(
+            to: configDir.appendingPathComponent("a.conf"), atomically: true, encoding: .utf8)
+        try "Host beta\n    HostName beta.com".write(
+            to: configDir.appendingPathComponent("b.conf"), atomically: true, encoding: .utf8)
+
+        let mainContent = "Include \(configDir.path(percentEncoded: false))/*"
+        let mainFile = tempDir.appendingPathComponent("config")
+        try mainContent.write(to: mainFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parse(path: mainFile.path(percentEncoded: false))
+        #expect(result.count == 2)
+        let hosts = result.map(\.host).sorted()
+        #expect(hosts == ["alpha", "beta"])
+    }
+
+    @Test("Circular Include does not cause infinite loop")
+    func testCircularIncludeProtection() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tablepro-ssh-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let fileA = tempDir.appendingPathComponent("a.conf")
+        let fileB = tempDir.appendingPathComponent("b.conf")
+
+        try "Include \(fileB.path(percentEncoded: false))\n\nHost from-a\n    HostName a.com".write(
+            to: fileA, atomically: true, encoding: .utf8)
+        try "Include \(fileA.path(percentEncoded: false))\n\nHost from-b\n    HostName b.com".write(
+            to: fileB, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parse(path: fileA.path(percentEncoded: false))
+        // Should include entries from both files without infinite loop
+        // fileA includes fileB → parses "from-b", then fileB tries to include fileA → skipped (visited)
+        #expect(result.count == 2)
+        let hosts = result.map(\.host).sorted()
+        #expect(hosts == ["from-a", "from-b"])
+    }
 }

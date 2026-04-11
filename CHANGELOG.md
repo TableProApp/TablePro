@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Handoff support for cross-device continuity between iOS and macOS
 - State restoration across app lifecycle on iOS (selected connection, active tab, query text, database/schema selection)
 
+### Fixed
+
+- SSH Tunnel not working when `~/.ssh/config` uses `Include` directives (#672)
+- SSH tunnel cleanup not firing for profile-based connections
+- SSH config tokens (`%d`, `%h`, `%u`, `%r`) not expanded in `IdentityFile` paths
+- Multi-word `Host` entries in SSH config causing connection failures
+- SSH handshake error messages showing numeric codes instead of diagnostics
+
 ## [0.30.1] - 2026-04-10
 
 ### Added

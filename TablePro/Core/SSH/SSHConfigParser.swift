@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// Represents a parsed entry from ~/.ssh/config
 struct SSHConfigEntry: Identifiable, Hashable {
@@ -29,6 +30,9 @@ struct SSHConfigEntry: Identifiable, Hashable {
 
 /// Parser for SSH config file (~/.ssh/config)
 final class SSHConfigParser {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SSHConfigParser")
+    private static let maxIncludeDepth = 10
+
     /// Default SSH config file path
     static let defaultConfigPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".ssh/config").path(percentEncoded: false)
@@ -37,17 +41,51 @@ final class SSHConfigParser {
     /// - Parameter path: Path to the SSH config file (defaults to ~/.ssh/config)
     /// - Returns: Array of SSHConfigEntry
     static func parse(path: String = defaultConfigPath) -> [SSHConfigEntry] {
-        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return []
-        }
-
-        return parseContent(content)
+        var visitedPaths = Set<String>()
+        return parseFile(path: path, visitedPaths: &visitedPaths, depth: 0)
     }
 
     /// Parse SSH config content string
     /// - Parameter content: The content of the SSH config file
     /// - Returns: Array of SSHConfigEntry
     static func parseContent(_ content: String) -> [SSHConfigEntry] {
+        var visited = Set<String>()
+        return parseContent(content, visitedPaths: &visited, depth: 0)
+    }
+
+    /// Parse SSH config file with Include support.
+    private static func parseFile(
+        path: String,
+        visitedPaths: inout Set<String>,
+        depth: Int
+    ) -> [SSHConfigEntry] {
+        guard depth <= maxIncludeDepth else {
+            logger.warning("SSH config Include depth exceeded at: \(path)")
+            return []
+        }
+
+        let canonicalPath = (path as NSString).standardizingPath
+
+        guard !visitedPaths.contains(canonicalPath) else {
+            logger.warning("SSH config circular Include detected: \(path)")
+            return []
+        }
+
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else {
+            return []
+        }
+
+        visitedPaths.insert(canonicalPath)
+
+        return parseContent(content, visitedPaths: &visitedPaths, depth: depth)
+    }
+
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
+    private static func parseContent(
+        _ content: String,
+        visitedPaths: inout Set<String>,
+        depth: Int
+    ) -> [SSHConfigEntry] {
         var entries: [SSHConfigEntry] = []
         var currentHost: String?
         var currentHostname: String?
@@ -78,16 +116,22 @@ final class SSHConfigParser {
             case "host":
                 // Save previous entry if exists
                 if let host = currentHost {
-                    // Skip wildcard patterns like "*"
-                    if !host.contains("*") && !host.contains("?") {
+                    // Skip wildcard patterns and multi-word hosts
+                    if !host.contains("*") && !host.contains("?") && !host.contains(" ") {
                         entries.append(
                             SSHConfigEntry(
                                 host: host,
                                 hostname: currentHostname,
                                 port: currentPort,
                                 user: currentUser,
-                                identityFile: currentIdentityFile.map(SSHPathUtilities.expandTilde),
-                                identityAgent: currentIdentityAgent.map(SSHPathUtilities.expandTilde),
+                                identityFile: currentIdentityFile.map {
+                                    SSHPathUtilities.expandSSHTokens(
+                                        $0, hostname: currentHostname, remoteUser: currentUser)
+                                },
+                                identityAgent: currentIdentityAgent.map {
+                                    SSHPathUtilities.expandSSHTokens(
+                                        $0, hostname: currentHostname, remoteUser: currentUser)
+                                },
                                 proxyJump: currentProxyJump
                             ))
                     }
@@ -120,26 +164,108 @@ final class SSHConfigParser {
             case "proxyjump":
                 currentProxyJump = value
 
+            case "include":
+                // Flush current pending entry before processing includes
+                if let host = currentHost {
+                    if !host.contains("*") && !host.contains("?") && !host.contains(" ") {
+                        entries.append(
+                            SSHConfigEntry(
+                                host: host,
+                                hostname: currentHostname,
+                                port: currentPort,
+                                user: currentUser,
+                                identityFile: currentIdentityFile.map {
+                                    SSHPathUtilities.expandSSHTokens(
+                                        $0, hostname: currentHostname, remoteUser: currentUser)
+                                },
+                                identityAgent: currentIdentityAgent.map {
+                                    SSHPathUtilities.expandSSHTokens(
+                                        $0, hostname: currentHostname, remoteUser: currentUser)
+                                },
+                                proxyJump: currentProxyJump
+                            ))
+                    }
+                    currentHost = nil
+                    currentHostname = nil
+                    currentPort = nil
+                    currentUser = nil
+                    currentIdentityFile = nil
+                    currentIdentityAgent = nil
+                    currentProxyJump = nil
+                }
+
+                let includePaths = resolveIncludePaths(value)
+                for includePath in includePaths {
+                    let includedEntries = parseFile(
+                        path: includePath,
+                        visitedPaths: &visitedPaths,
+                        depth: depth + 1
+                    )
+                    entries.append(contentsOf: includedEntries)
+                }
+
             default:
                 break  // Ignore other directives
             }
         }
 
         // Don't forget the last entry
-        if let host = currentHost, !host.contains("*"), !host.contains("?") {
+        if let host = currentHost, !host.contains("*"), !host.contains("?"), !host.contains(" ") {
             entries.append(
                 SSHConfigEntry(
                     host: host,
                     hostname: currentHostname,
                     port: currentPort,
                     user: currentUser,
-                    identityFile: currentIdentityFile.map(SSHPathUtilities.expandTilde),
-                    identityAgent: currentIdentityAgent.map(SSHPathUtilities.expandTilde),
+                    identityFile: currentIdentityFile.map {
+                        SSHPathUtilities.expandSSHTokens(
+                            $0, hostname: currentHostname, remoteUser: currentUser)
+                    },
+                    identityAgent: currentIdentityAgent.map {
+                        SSHPathUtilities.expandSSHTokens(
+                            $0, hostname: currentHostname, remoteUser: currentUser)
+                    },
                     proxyJump: currentProxyJump
                 ))
         }
 
         return entries
+    }
+
+    /// Expand a glob pattern to matching file paths using POSIX glob(3).
+    private static func globPaths(_ pattern: String) -> [String] {
+        var gt = glob_t()
+        defer { globfree(&gt) }
+
+        guard glob(pattern, GLOB_TILDE | GLOB_BRACE, nil, &gt) == 0 else {
+            return []
+        }
+
+        var paths: [String] = []
+        for i in 0..<Int(gt.gl_matchc) {
+            if let cStr = gt.gl_pathv[i] {
+                paths.append(String(cString: cStr))
+            }
+        }
+        return paths.sorted()
+    }
+
+    /// Resolve an Include directive value to actual file paths.
+    /// Relative paths are resolved against ~/.ssh/ per OpenSSH convention.
+    private static func resolveIncludePaths(_ value: String) -> [String] {
+        let expanded = SSHPathUtilities.expandTilde(value)
+
+        // Relative paths resolve against ~/.ssh/ per OpenSSH convention
+        let resolved: String
+        if expanded.hasPrefix("/") {
+            resolved = expanded
+        } else {
+            let sshDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".ssh").path(percentEncoded: false)
+            resolved = (sshDir as NSString).appendingPathComponent(expanded)
+        }
+
+        return globPaths(resolved)
     }
 
     /// Find a specific entry by host name

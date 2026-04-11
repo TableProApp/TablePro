@@ -403,8 +403,12 @@ internal enum LibSSH2TunnelFactory {
 
         let rc = libssh2_session_handshake(session, socketFD)
         if rc != 0 {
+            var msgPtr: UnsafeMutablePointer<CChar>?
+            var msgLen: Int32 = 0
+            libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
+            let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             libssh2_session_free(session)
-            throw SSHTunnelError.tunnelCreationFailed("SSH handshake failed (error \(rc))")
+            throw SSHTunnelError.tunnelCreationFailed("SSH handshake failed: \(detail)")
         }
 
         return session

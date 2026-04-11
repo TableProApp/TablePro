@@ -28,6 +28,13 @@ extension DatabaseManager {
         let profile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
         let sshConfig = connection.effectiveSSHConfig(profile: profile)
         let isProfile = connection.sshProfileId != nil && profile != nil
+
+        if let profileId = connection.sshProfileId, profile == nil {
+            Self.logger.warning(
+                "SSH profile \(profileId) not found for connection '\(connection.name)' — falling back to inline SSH config"
+            )
+        }
+
         let secretOwnerId = (isProfile ? connection.sshProfileId : nil) ?? connection.id
 
         guard sshConfig.enabled else {
