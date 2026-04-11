@@ -231,10 +231,15 @@ enum SQLBuilder {
                 castExpr = "CAST(\(quotedCol) AS CHAR)"
             case .postgresql, .redshift:
                 castExpr = "CAST(\(quotedCol) AS TEXT)"
+            case .mssql:
+                castExpr = "CAST(\(quotedCol) AS NVARCHAR(MAX))"
+            case .clickhouse:
+                castExpr = "toString(\(quotedCol))"
             default:
-                castExpr = quotedCol
+                castExpr = "CAST(\(quotedCol) AS TEXT)"
             }
-            return "\(castExpr) LIKE '%\(pattern)%'\(likeEscape)"
+            let likeOp = (type == .postgresql || type == .redshift) ? "ILIKE" : "LIKE"
+            return "\(castExpr) \(likeOp) '%\(pattern)%'\(likeEscape)"
         }
 
         return "(\(conditions.joined(separator: " OR ")))"
