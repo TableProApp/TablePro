@@ -102,7 +102,9 @@ extension ConnectionFormView {
 
             // Load SSH configuration
             sshProfileId = existing.sshProfileId
-            sshEnabled = existing.sshConfig.enabled
+            let profile = existing.sshProfileId.flatMap { id in sshProfiles.first { $0.id == id } }
+            let effectiveSSH = existing.effectiveSSHConfig(profile: profile)
+            sshEnabled = effectiveSSH.enabled
 
             sshHost = existing.sshConfig.host
             sshPort = String(existing.sshConfig.port)
