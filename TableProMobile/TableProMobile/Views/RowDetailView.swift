@@ -30,6 +30,8 @@ struct RowDetailView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var hapticSelection = 0
+    @State private var showShareSheet = false
+    @State private var shareText = ""
 
     init(
         columns: [ColumnInfo],
@@ -103,15 +105,30 @@ struct RowDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    ForEach(ExportFormat.allCases) { format in
-                        Button {
-                            let text = ClipboardExporter.exportRow(
-                                columns: columns, row: currentRow,
-                                format: format, tableName: table?.name
-                            )
-                            ClipboardExporter.copyToClipboard(text)
-                        } label: {
-                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                    Section("Share") {
+                        ForEach(ExportFormat.allCases) { format in
+                            Button {
+                                shareText = ClipboardExporter.exportRow(
+                                    columns: columns, row: currentRow,
+                                    format: format, tableName: table?.name
+                                )
+                                showShareSheet = true
+                            } label: {
+                                Label(format.rawValue, systemImage: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                    Section("Copy to Clipboard") {
+                        ForEach(ExportFormat.allCases) { format in
+                            Button {
+                                let text = ClipboardExporter.exportRow(
+                                    columns: columns, row: currentRow,
+                                    format: format, tableName: table?.name
+                                )
+                                ClipboardExporter.copyToClipboard(text)
+                            } label: {
+                                Label(format.rawValue, systemImage: "doc.on.clipboard")
+                            }
                         }
                     }
                 } label: {
@@ -191,6 +208,9 @@ struct RowDetailView: View {
                 session: session,
                 databaseType: databaseType
             )
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ActivityViewController(items: [shareText])
         }
     }
 

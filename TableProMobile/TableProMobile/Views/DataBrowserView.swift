@@ -41,6 +41,8 @@ struct DataBrowserView: View {
     @State private var foreignKeys: [ForeignKeyInfo] = []
     @State private var fkPreviewItem: FKPreviewItem?
     @State private var memoryWarningMessage: String?
+    @State private var showShareSheet = false
+    @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var showStructure = false
@@ -124,6 +126,9 @@ struct DataBrowserView: View {
                     session: session,
                     databaseType: connection.type
                 )
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ActivityViewController(items: [shareText])
             }
             .confirmationDialog("Delete Row", isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
@@ -255,6 +260,17 @@ struct DataBrowserView: View {
                     )
                 }
                 .contextMenu {
+                    Menu("Share Row") {
+                        ForEach(ExportFormat.allCases) { format in
+                            Button(format.rawValue) {
+                                shareText = ClipboardExporter.exportRow(
+                                    columns: columns, row: row,
+                                    format: format, tableName: table.name
+                                )
+                                showShareSheet = true
+                            }
+                        }
+                    }
                     Menu("Copy Row") {
                         ForEach(ExportFormat.allCases) { format in
                             Button(format.rawValue) {

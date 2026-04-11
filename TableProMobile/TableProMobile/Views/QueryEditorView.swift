@@ -31,6 +31,8 @@ struct QueryEditorView: View {
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
     @State private var pendingWriteQuery = ""
+    @State private var showShareSheet = false
+    @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
     var body: some View {
@@ -57,6 +59,9 @@ struct QueryEditorView: View {
         }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
+        .sheet(isPresented: $showShareSheet) {
+            ActivityViewController(items: [shareText])
+        }
         .sheet(isPresented: $showHistory) { historySheet }
     }
 
@@ -253,6 +258,19 @@ struct QueryEditorView: View {
                 }
 
                 if let result, !result.rows.isEmpty {
+                    Section("Share Results") {
+                        ForEach(ExportFormat.allCases) { format in
+                            Button {
+                                shareText = ClipboardExporter.exportRows(
+                                    columns: result.columns, rows: result.rows,
+                                    format: format
+                                )
+                                showShareSheet = true
+                            } label: {
+                                Label(format.rawValue, systemImage: "square.and.arrow.up")
+                            }
+                        }
+                    }
                     Section("Copy Results") {
                         ForEach(ExportFormat.allCases) { format in
                             Button {
