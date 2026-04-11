@@ -180,6 +180,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var tagId: UUID?
     var groupId: UUID?
     var sshProfileId: UUID?
+    var sshTunnelMode: SSHTunnelMode
     var safeModeLevel: SafeModeLevel
     var aiPolicy: AIConnectionPolicy?
     var additionalFields: [String: String] = [:]
@@ -256,6 +257,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         tagId: UUID? = nil,
         groupId: UUID? = nil,
         sshProfileId: UUID? = nil,
+        sshTunnelMode: SSHTunnelMode = .disabled,
         safeModeLevel: SafeModeLevel = .silent,
         aiPolicy: AIConnectionPolicy? = nil,
         mongoAuthSource: String? = nil,
@@ -285,6 +287,21 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.groupId = groupId
         self.sshProfileId = sshProfileId
         self.safeModeLevel = safeModeLevel
+
+        // Auto-derive sshTunnelMode from legacy fields if not explicitly set
+        if sshTunnelMode == .disabled {
+            if let profileId = sshProfileId {
+                var snapshot = sshConfig
+                snapshot.enabled = true
+                self.sshTunnelMode = .profile(id: profileId, snapshot: snapshot)
+            } else if sshConfig.enabled {
+                self.sshTunnelMode = .inline(sshConfig)
+            } else {
+                self.sshTunnelMode = .disabled
+            }
+        } else {
+            self.sshTunnelMode = sshTunnelMode
+        }
         self.aiPolicy = aiPolicy
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
@@ -319,7 +336,76 @@ extension DatabaseConnection {
 
 // MARK: - Codable Conformance
 
-extension DatabaseConnection: Codable {}
+extension DatabaseConnection: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, name, host, port, database, username, type
+        case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
+        case sshTunnelMode, safeModeLevel, aiPolicy, additionalFields
+        case redisDatabase, startupCommands, sortOrder
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? "localhost"
+        port = try container.decodeIfPresent(Int.self, forKey: .port) ?? 3_306
+        database = try container.decodeIfPresent(String.self, forKey: .database) ?? ""
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? "root"
+        type = try container.decodeIfPresent(DatabaseType.self, forKey: .type) ?? .mysql
+        sshConfig = try container.decodeIfPresent(SSHConfiguration.self, forKey: .sshConfig) ?? SSHConfiguration()
+        sslConfig = try container.decodeIfPresent(SSLConfiguration.self, forKey: .sslConfig) ?? SSLConfiguration()
+        color = try container.decodeIfPresent(ConnectionColor.self, forKey: .color) ?? .none
+        tagId = try container.decodeIfPresent(UUID.self, forKey: .tagId)
+        groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId)
+        sshProfileId = try container.decodeIfPresent(UUID.self, forKey: .sshProfileId)
+        safeModeLevel = try container.decodeIfPresent(SafeModeLevel.self, forKey: .safeModeLevel) ?? .silent
+        aiPolicy = try container.decodeIfPresent(AIConnectionPolicy.self, forKey: .aiPolicy)
+        additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields) ?? [:]
+        redisDatabase = try container.decodeIfPresent(Int.self, forKey: .redisDatabase)
+        startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
+        sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+
+        // Migrate from legacy fields if sshTunnelMode is not present
+        if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
+            sshTunnelMode = tunnelMode
+        } else {
+            if let profileId = sshProfileId {
+                var snapshot = sshConfig
+                snapshot.enabled = true
+                sshTunnelMode = .profile(id: profileId, snapshot: snapshot)
+            } else if sshConfig.enabled {
+                sshTunnelMode = .inline(sshConfig)
+            } else {
+                sshTunnelMode = .disabled
+            }
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(host, forKey: .host)
+        try container.encode(port, forKey: .port)
+        try container.encode(database, forKey: .database)
+        try container.encode(username, forKey: .username)
+        try container.encode(type, forKey: .type)
+        try container.encode(sshConfig, forKey: .sshConfig)
+        try container.encode(sslConfig, forKey: .sslConfig)
+        try container.encode(color, forKey: .color)
+        try container.encodeIfPresent(tagId, forKey: .tagId)
+        try container.encodeIfPresent(groupId, forKey: .groupId)
+        try container.encodeIfPresent(sshProfileId, forKey: .sshProfileId)
+        try container.encode(sshTunnelMode, forKey: .sshTunnelMode)
+        try container.encode(safeModeLevel, forKey: .safeModeLevel)
+        try container.encodeIfPresent(aiPolicy, forKey: .aiPolicy)
+        try container.encode(additionalFields, forKey: .additionalFields)
+        try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
+        try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
+        try container.encode(sortOrder, forKey: .sortOrder)
+    }
+}
 
 // MARK: - String Helpers
 

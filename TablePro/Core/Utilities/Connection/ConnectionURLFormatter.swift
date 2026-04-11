@@ -23,7 +23,7 @@ struct ConnectionURLFormatter {
             return formatDuckDB(connection.database)
         }
 
-        let ssh = connection.effectiveSSHConfig(profile: sshProfile)
+        let ssh = connection.resolvedSSHConfig
         if ssh.enabled {
             return formatSSH(connection, sshConfig: ssh, scheme: scheme, password: password)
         }

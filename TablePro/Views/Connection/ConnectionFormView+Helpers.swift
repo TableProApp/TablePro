@@ -52,13 +52,14 @@ extension ConnectionFormView {
                 basicValid = basicValid && hasAccessKey && hasSecret
             }
         }
-        if sshEnabled && sshProfileId == nil {
-            let sshPortValid = sshPort.isEmpty || (Int(sshPort).map { (1...65_535).contains($0) } ?? false)
-            let sshValid = !sshHost.isEmpty && !sshUsername.isEmpty && sshPortValid
+        if sshState.enabled && sshState.profileId == nil {
+            let sshPortValid = sshState.port.isEmpty
+                || (Int(sshState.port).map { (1...65_535).contains($0) } ?? false)
+            let sshValid = !sshState.host.isEmpty && !sshState.username.isEmpty && sshPortValid
             let authValid =
-                sshAuthMethod == .password || sshAuthMethod == .sshAgent
-                || sshAuthMethod == .keyboardInteractive || !sshPrivateKeyPath.isEmpty
-            let jumpValid = jumpHosts.allSatisfy(\.isValid)
+                sshState.authMethod == .password || sshState.authMethod == .sshAgent
+                || sshState.authMethod == .keyboardInteractive || !sshState.privateKeyPath.isEmpty
+            let jumpValid = sshState.jumpHosts.allSatisfy(\.isValid)
             return basicValid && sshValid && authValid && jumpValid
         }
         return basicValid
@@ -88,7 +89,7 @@ extension ConnectionFormView {
     }
 
     func loadConnectionData() {
-        sshProfiles = SSHProfileStorage.shared.loadProfiles()
+        sshState.profiles = SSHProfileStorage.shared.loadProfiles()
         if let id = connectionId,
             let existing = storage.loadConnections().first(where: { $0.id == id })
         {
@@ -101,22 +102,8 @@ extension ConnectionFormView {
             type = existing.type
 
             // Load SSH configuration
-            sshProfileId = existing.sshProfileId
-            let profile = existing.sshProfileId.flatMap { id in sshProfiles.first { $0.id == id } }
-            let effectiveSSH = existing.effectiveSSHConfig(profile: profile)
-            sshEnabled = effectiveSSH.enabled
-
-            sshHost = existing.sshConfig.host
-            sshPort = String(existing.sshConfig.port)
-            sshUsername = existing.sshConfig.username
-            sshAuthMethod = existing.sshConfig.authMethod
-            sshPrivateKeyPath = existing.sshConfig.privateKeyPath
-            applySSHAgentSocketPath(existing.sshConfig.agentSocketPath)
-            jumpHosts = existing.sshConfig.jumpHosts
-            totpMode = existing.sshConfig.totpMode
-            totpAlgorithm = existing.sshConfig.totpAlgorithm
-            totpDigits = existing.sshConfig.totpDigits
-            totpPeriod = existing.sshConfig.totpPeriod
+            sshState.load(from: existing)
+            sshState.loadSecrets(connectionId: existing.id, storage: storage)
 
             // Load SSL configuration
             sslMode = existing.sslConfig.mode
@@ -160,18 +147,9 @@ extension ConnectionFormView {
             startupCommands = existing.startupCommands ?? ""
             preConnectScript = existing.preConnectScript ?? ""
 
-            // Load passwords from Keychain
-            if let savedSSHPassword = storage.loadSSHPassword(for: existing.id) {
-                sshPassword = savedSSHPassword
-            }
-            if let savedPassphrase = storage.loadKeyPassphrase(for: existing.id) {
-                keyPassphrase = savedPassphrase
-            }
+            // Load connection password from Keychain
             if let savedPassword = storage.loadPassword(for: existing.id) {
                 password = savedPassword
-            }
-            if let savedTOTPSecret = storage.loadTOTPSecret(for: existing.id) {
-                totpSecret = savedTOTPSecret
             }
         }
         Task { @MainActor in
@@ -180,29 +158,7 @@ extension ConnectionFormView {
     }
 
     func saveConnection() {
-        let sshConfig: SSHConfiguration
-        if sshEnabled,
-           let profileId = sshProfileId,
-           let profile = sshProfiles.first(where: { $0.id == profileId })
-        {
-            sshConfig = profile.toSSHConfiguration()
-        } else {
-            sshConfig = SSHConfiguration(
-                enabled: sshEnabled,
-                host: sshHost,
-                port: Int(sshPort) ?? 22,
-                username: sshUsername,
-                authMethod: sshAuthMethod,
-                privateKeyPath: sshPrivateKeyPath,
-                useSSHConfig: !selectedSSHConfigHost.isEmpty,
-                agentSocketPath: resolvedSSHAgentSocketPath,
-                jumpHosts: jumpHosts,
-                totpMode: totpMode,
-                totpAlgorithm: totpAlgorithm,
-                totpDigits: totpDigits,
-                totpPeriod: totpPeriod
-            )
-        }
+        let sshConfig = sshState.buildSSHConfig()
 
         let sslConfig = SSLConfiguration(
             mode: sslMode,
@@ -253,7 +209,7 @@ extension ConnectionFormView {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            sshProfileId: sshEnabled ? sshProfileId : nil,
+            sshProfileId: sshState.enabled ? sshState.profileId : nil,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
@@ -269,22 +225,21 @@ extension ConnectionFormView {
             storage.savePassword(password, for: connectionToSave.id)
         }
         // Only save SSH secrets per-connection when using inline config (not a profile)
-        if sshEnabled && sshProfileId == nil {
-            if (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
-                && !sshPassword.isEmpty
+        if sshState.enabled && sshState.profileId == nil {
+            if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
+                && !sshState.password.isEmpty
             {
-                storage.saveSSHPassword(sshPassword, for: connectionToSave.id)
+                storage.saveSSHPassword(sshState.password, for: connectionToSave.id)
             }
-            if sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
-                storage.saveKeyPassphrase(keyPassphrase, for: connectionToSave.id)
+            if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
+                storage.saveKeyPassphrase(sshState.keyPassphrase, for: connectionToSave.id)
             }
-            if totpMode == .autoGenerate && !totpSecret.isEmpty {
-                storage.saveTOTPSecret(totpSecret, for: connectionToSave.id)
+            if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
+                storage.saveTOTPSecret(sshState.totpSecret, for: connectionToSave.id)
             } else {
                 storage.deleteTOTPSecret(for: connectionToSave.id)
             }
         } else {
-            // Clean up stale per-connection SSH secrets when using a profile or SSH disabled
             storage.deleteSSHPassword(for: connectionToSave.id)
             storage.deleteKeyPassphrase(for: connectionToSave.id)
             storage.deleteTOTPSecret(for: connectionToSave.id)
@@ -382,29 +337,7 @@ extension ConnectionFormView {
         testSucceeded = false
         let window = NSApp.keyWindow
 
-        let sshConfig: SSHConfiguration
-        if sshEnabled,
-           let profileId = sshProfileId,
-           let profile = sshProfiles.first(where: { $0.id == profileId })
-        {
-            sshConfig = profile.toSSHConfiguration()
-        } else {
-            sshConfig = SSHConfiguration(
-                enabled: sshEnabled,
-                host: sshHost,
-                port: Int(sshPort) ?? 22,
-                username: sshUsername,
-                authMethod: sshAuthMethod,
-                privateKeyPath: sshPrivateKeyPath,
-                useSSHConfig: !selectedSSHConfigHost.isEmpty,
-                agentSocketPath: resolvedSSHAgentSocketPath,
-                jumpHosts: jumpHosts,
-                totpMode: totpMode,
-                totpAlgorithm: totpAlgorithm,
-                totpDigits: totpDigits,
-                totpPeriod: totpPeriod
-            )
-        }
+        let sshConfig = sshState.buildSSHConfig()
 
         let sslConfig = SSLConfiguration(
             mode: sslMode,
@@ -440,7 +373,7 @@ extension ConnectionFormView {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            sshProfileId: sshEnabled ? sshProfileId : nil,
+            sshProfileId: sshState.enabled ? sshState.profileId : nil,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,
@@ -454,17 +387,17 @@ extension ConnectionFormView {
                     ConnectionStorage.shared.savePassword(password, for: testConn.id)
                 }
                 // Only write inline SSH secrets when not using a profile
-                if sshEnabled && sshProfileId == nil {
-                    if (sshAuthMethod == .password || sshAuthMethod == .keyboardInteractive)
-                        && !sshPassword.isEmpty
+                if sshState.enabled && sshState.profileId == nil {
+                    if (sshState.authMethod == .password || sshState.authMethod == .keyboardInteractive)
+                        && !sshState.password.isEmpty
                     {
-                        ConnectionStorage.shared.saveSSHPassword(sshPassword, for: testConn.id)
+                        ConnectionStorage.shared.saveSSHPassword(sshState.password, for: testConn.id)
                     }
-                    if sshAuthMethod == .privateKey && !keyPassphrase.isEmpty {
-                        ConnectionStorage.shared.saveKeyPassphrase(keyPassphrase, for: testConn.id)
+                    if sshState.authMethod == .privateKey && !sshState.keyPassphrase.isEmpty {
+                        ConnectionStorage.shared.saveKeyPassphrase(sshState.keyPassphrase, for: testConn.id)
                     }
-                    if totpMode == .autoGenerate && !totpSecret.isEmpty {
-                        ConnectionStorage.shared.saveTOTPSecret(totpSecret, for: testConn.id)
+                    if sshState.totpMode == .autoGenerate && !sshState.totpSecret.isEmpty {
+                        ConnectionStorage.shared.saveTOTPSecret(sshState.totpSecret, for: testConn.id)
                     }
                 }
 
@@ -478,7 +411,7 @@ extension ConnectionFormView {
                     }
                 }
 
-                let sshPasswordForTest = sshProfileId == nil ? sshPassword : nil
+                let sshPasswordForTest = sshState.profileId == nil ? sshState.password : nil
                 let isApiOnly = PluginManager.shared.connectionMode(for: type) == .apiOnly
                 let testPwOverride: String? = promptForPassword
                     ? (password.isEmpty
@@ -582,16 +515,16 @@ extension ConnectionFormView {
             password = parsed.password
             sslMode = parsed.sslMode ?? .disabled
             if let sshHostValue = parsed.sshHost {
-                sshEnabled = true
-                sshHost = sshHostValue
-                sshPort = parsed.sshPort.map(String.init) ?? "22"
-                sshUsername = parsed.sshUsername ?? ""
+                sshState.enabled = true
+                sshState.host = sshHostValue
+                sshState.port = parsed.sshPort.map(String.init) ?? "22"
+                sshState.username = parsed.sshUsername ?? ""
                 if parsed.usePrivateKey == true {
-                    sshAuthMethod = .privateKey
+                    sshState.authMethod = .privateKey
                 }
                 if parsed.useSSHAgent == true {
-                    sshAuthMethod = .sshAgent
-                    applySSHAgentSocketPath(parsed.agentSocket ?? "")
+                    sshState.authMethod = .sshAgent
+                    sshState.applyAgentSocketPath(parsed.agentSocket ?? "")
                 }
             }
             // Clear stale MongoDB fields before applying new import
@@ -650,7 +583,7 @@ extension ConnectionFormView {
     func loadSSHConfig() {
         Task {
             let entries = await Task.detached { SSHConfigParser.parse() }.value
-            sshConfigEntries = entries
+            sshState.configEntries = entries
         }
     }
 }
@@ -659,14 +592,7 @@ extension ConnectionFormView {
 
 extension ConnectionFormView {
     func applySSHAgentSocketPath(_ socketPath: String) {
-        let option = SSHAgentSocketOption(socketPath: socketPath)
-        sshAgentSocketOption = option
-
-        if option == .custom {
-            customSSHAgentSocketPath = socketPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            customSSHAgentSocketPath = ""
-        }
+        sshState.applyAgentSocketPath(socketPath)
     }
 }
 

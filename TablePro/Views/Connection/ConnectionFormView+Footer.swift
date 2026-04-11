@@ -77,11 +77,11 @@ extension ConnectionFormView {
         .onChange(of: password) { _, _ in testSucceeded = false }
         .onChange(of: database) { _, _ in testSucceeded = false }
         .onChange(of: type) { _, _ in testSucceeded = false }
-        .onChange(of: sshEnabled) { _, _ in testSucceeded = false }
-        .onChange(of: sshHost) { _, _ in testSucceeded = false }
-        .onChange(of: sshPort) { _, _ in testSucceeded = false }
-        .onChange(of: sshUsername) { _, _ in testSucceeded = false }
-        .onChange(of: sshAuthMethod) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.enabled) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.host) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.port) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.username) { _, _ in testSucceeded = false }
+        .onChange(of: sshState.authMethod) { _, _ in testSucceeded = false }
         .onChange(of: sslMode) { _, _ in testSucceeded = false }
     }
 

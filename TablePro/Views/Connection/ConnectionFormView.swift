@@ -69,29 +69,7 @@ struct ConnectionFormView: View {
     @State var hasLoadedData = false
 
     // SSH Configuration
-    @State var sshProfileId: UUID?
-    @State var sshProfiles: [SSHProfile] = []
-    @State var showingCreateProfile = false
-    @State var editingProfile: SSHProfile?
-    @State var showingSaveAsProfile = false
-    @State var sshEnabled: Bool = false
-    @State var sshHost: String = ""
-    @State var sshPort: String = "22"
-    @State var sshUsername: String = ""
-    @State var sshPassword: String = ""
-    @State var sshAuthMethod: SSHAuthMethod = .password
-    @State var sshPrivateKeyPath: String = ""
-    @State var sshAgentSocketOption: SSHAgentSocketOption = .systemDefault
-    @State var customSSHAgentSocketPath: String = ""
-    @State var keyPassphrase: String = ""
-    @State var sshConfigEntries: [SSHConfigEntry] = []
-    @State var selectedSSHConfigHost: String = ""
-    @State var jumpHosts: [SSHJumpHost] = []
-    @State var totpMode: TOTPMode = .none
-    @State var totpSecret: String = ""
-    @State var totpAlgorithm: TOTPAlgorithm = .sha1
-    @State var totpDigits: Int = 6
-    @State var totpPeriod: Int = 30
+    @State var sshState = SSHTunnelFormState()
 
     // SSL Configuration
     @State var sslMode: SSLMode = .disabled
@@ -218,7 +196,7 @@ struct ConnectionFormView: View {
     }
 
     var resolvedSSHAgentSocketPath: String {
-        sshAgentSocketOption.resolvedPath(customPath: customSSHAgentSocketPath)
+        sshState.resolvedAgentSocketPath
     }
 
     // MARK: - Tab Form Content
@@ -230,29 +208,7 @@ struct ConnectionFormView: View {
             generalForm
         case .ssh:
             ConnectionSSHTunnelView(
-                sshEnabled: $sshEnabled,
-                sshProfileId: $sshProfileId,
-                sshProfiles: $sshProfiles,
-                showingCreateProfile: $showingCreateProfile,
-                editingProfile: $editingProfile,
-                showingSaveAsProfile: $showingSaveAsProfile,
-                sshHost: $sshHost,
-                sshPort: $sshPort,
-                sshUsername: $sshUsername,
-                sshPassword: $sshPassword,
-                sshAuthMethod: $sshAuthMethod,
-                sshPrivateKeyPath: $sshPrivateKeyPath,
-                sshAgentSocketOption: $sshAgentSocketOption,
-                customSSHAgentSocketPath: $customSSHAgentSocketPath,
-                keyPassphrase: $keyPassphrase,
-                sshConfigEntries: $sshConfigEntries,
-                selectedSSHConfigHost: $selectedSSHConfigHost,
-                jumpHosts: $jumpHosts,
-                totpMode: $totpMode,
-                totpSecret: $totpSecret,
-                totpAlgorithm: $totpAlgorithm,
-                totpDigits: $totpDigits,
-                totpPeriod: $totpPeriod,
+                sshState: $sshState,
                 databaseType: type
             )
         case .ssl:

@@ -24,34 +24,24 @@ extension DatabaseManager {
         for connection: DatabaseConnection,
         sshPasswordOverride: String? = nil
     ) async throws -> DatabaseConnection {
-        // Resolve SSH configuration: profile takes priority over inline
-        let profile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
-        let sshConfig = connection.effectiveSSHConfig(profile: profile)
-        let isProfile = connection.sshProfileId != nil && profile != nil
-
-        if let profileId = connection.sshProfileId, profile == nil {
-            Self.logger.warning(
-                "SSH profile \(profileId) not found for connection '\(connection.name)' — falling back to inline SSH config"
-            )
-        }
-
-        let secretOwnerId = (isProfile ? connection.sshProfileId : nil) ?? connection.id
-
-        guard sshConfig.enabled else {
-            return connection
-        }
+        let sshConfig = connection.resolvedSSHConfig
+        guard sshConfig.enabled else { return connection }
 
         let storedSshPassword: String?
         let keyPassphrase: String?
         let totpSecret: String?
-        if isProfile {
-            storedSshPassword = SSHProfileStorage.shared.loadSSHPassword(for: secretOwnerId)
-            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: secretOwnerId)
-            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: secretOwnerId)
-        } else {
-            storedSshPassword = ConnectionStorage.shared.loadSSHPassword(for: secretOwnerId)
-            keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: secretOwnerId)
-            totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: secretOwnerId)
+
+        switch connection.sshTunnelMode {
+        case .disabled:
+            return connection
+        case .profile(let profileId, _):
+            storedSshPassword = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
+            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId)
+            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId)
+        case .inline:
+            storedSshPassword = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
+            keyPassphrase = ConnectionStorage.shared.loadKeyPassphrase(for: connection.id)
+            totpSecret = ConnectionStorage.shared.loadTOTPSecret(for: connection.id)
         }
 
         let sshPassword = sshPasswordOverride ?? storedSshPassword

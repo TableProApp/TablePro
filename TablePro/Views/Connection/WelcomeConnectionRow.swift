@@ -61,7 +61,7 @@ struct WelcomeConnectionRow: View {
     }
 
     private var connectionSubtitle: String {
-        let ssh = connection.effectiveSSHConfig(profile: sshProfile)
+        let ssh = connection.resolvedSSHConfig
         if ssh.enabled {
             return "SSH : \(ssh.username)@\(ssh.host)"
         }
