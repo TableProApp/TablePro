@@ -423,7 +423,7 @@ extension MainContentCoordinator {
             await refreshTables()
         } catch {
             toolbarState.databaseName = previousDatabase
-            await refreshTables()
+            sidebarLoadingState = .error(error.localizedDescription)
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(

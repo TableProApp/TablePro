@@ -713,7 +713,9 @@ final class MainContentCommandActions {
             if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
-            await coordinator?.refreshTables()
+            if coordinator?.sidebarLoadingState != .loading {
+                await coordinator?.refreshTables()
+            }
             coordinator?.initRedisKeyTreeIfNeeded()
         }
     }

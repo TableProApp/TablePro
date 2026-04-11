@@ -365,6 +365,30 @@ final class MainContentCoordinator {
             DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
             let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
             await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
+
+            // Clean up stale selections and pending operations for tables that no longer exist
+            if let vm = sidebarViewModel {
+                let validNames = Set(tables.map(\.name))
+                let staleSelections = vm.selectedTables.filter { !validNames.contains($0.name) }
+                if !staleSelections.isEmpty {
+                    vm.selectedTables.subtract(staleSelections)
+                }
+                let stalePendingDeletes = vm.pendingDeletes.subtracting(validNames)
+                if !stalePendingDeletes.isEmpty {
+                    vm.pendingDeletes.subtract(stalePendingDeletes)
+                    for name in stalePendingDeletes {
+                        vm.tableOperationOptions.removeValue(forKey: name)
+                    }
+                }
+                let stalePendingTruncates = vm.pendingTruncates.subtracting(validNames)
+                if !stalePendingTruncates.isEmpty {
+                    vm.pendingTruncates.subtract(stalePendingTruncates)
+                    for name in stalePendingTruncates {
+                        vm.tableOperationOptions.removeValue(forKey: name)
+                    }
+                }
+            }
+
             sidebarLoadingState = .loaded
         } catch {
             sidebarLoadingState = .error(error.localizedDescription)
