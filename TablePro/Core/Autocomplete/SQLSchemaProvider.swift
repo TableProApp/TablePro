@@ -107,27 +107,17 @@ actor SQLSchemaProvider {
         isLoading
     }
 
-    /// Invalidate cache and reload
-    func invalidateCache() {
-        tables.removeAll()
-        columnCache.removeAll()
-        columnAccessOrder.removeAll()
-        cachedDriver = nil
-    }
-
-    func invalidateTables() {
-        tables.removeAll()
-    }
-
     func updateTables(_ newTables: [TableInfo]) {
         tables = newTables
     }
 
-    func fetchFreshTables() async throws -> [TableInfo]? {
-        guard let driver = cachedDriver else { return nil }
-        let fresh = try await driver.fetchTables()
-        tables = fresh
-        return fresh
+    func resetForDatabase(_ database: String?, tables newTables: [TableInfo], driver: DatabaseDriver) {
+        self.tables = newTables
+        self.columnCache.removeAll()
+        self.columnAccessOrder.removeAll()
+        self.cachedDriver = driver
+        self.isLoading = false
+        self.lastLoadError = nil
     }
 
     /// Find table name from alias

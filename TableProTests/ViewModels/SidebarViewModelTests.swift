@@ -10,22 +10,6 @@ import SwiftUI
 import Testing
 @testable import TablePro
 
-// MARK: - Mock TableFetcher
-
-private struct MockTableFetcher: TableFetcher {
-    var tables: [TableInfo]
-    var error: Error?
-
-    func fetchTables(force: Bool) async throws -> [TableInfo] {
-        if let error { throw error }
-        return tables
-    }
-}
-
-private enum TestError: Error {
-    case fetchFailed
-}
-
 // MARK: - Helper
 
 /// Creates a SidebarViewModel with controllable state bindings for testing
@@ -36,9 +20,7 @@ private func makeSUT(
     pendingTruncates: Set<String> = [],
     pendingDeletes: Set<String> = [],
     tableOperationOptions: [String: TableOperationOptions] = [:],
-    databaseType: DatabaseType = .mysql,
-    fetcherTables: [TableInfo] = [],
-    fetcherError: Error? = nil
+    databaseType: DatabaseType = .mysql
 ) -> (
     vm: SidebarViewModel,
     tables: Binding<[TableInfo]>,
@@ -59,7 +41,6 @@ private func makeSUT(
     let deletesBinding = Binding(get: { deletesState }, set: { deletesState = $0 })
     let optionsBinding = Binding(get: { optionsState }, set: { optionsState = $0 })
 
-    let fetcher = MockTableFetcher(tables: fetcherTables, error: fetcherError)
     let vm = SidebarViewModel(
         tables: tablesBinding,
         selectedTables: selectedBinding,
@@ -67,8 +48,7 @@ private func makeSUT(
         pendingDeletes: deletesBinding,
         tableOperationOptions: optionsBinding,
         databaseType: databaseType,
-        connectionId: UUID(),
-        tableFetcher: fetcher
+        connectionId: UUID()
     )
 
     return (vm, tablesBinding, selectedBinding, truncatesBinding, deletesBinding, optionsBinding)
@@ -78,125 +58,6 @@ private func makeSUT(
 
 @Suite("SidebarViewModel")
 struct SidebarViewModelTests {
-
-    // MARK: - Table Loading
-
-    @Test("loadTables sets isLoading and populates tables")
-    @MainActor
-    func loadTablesPopulatesTables() async throws {
-        let fetchedTables = [
-            TestFixtures.makeTableInfo(name: "users"),
-            TestFixtures.makeTableInfo(name: "orders")
-        ]
-        let (vm, tablesBinding, _, _, _, _) = makeSUT(fetcherTables: fetchedTables)
-
-        vm.loadTables()
-        // Wait for async task to complete
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        #expect(tablesBinding.wrappedValue.count == 2)
-        #expect(!vm.isLoading)
-        #expect(vm.errorMessage == nil)
-    }
-
-    @Test("loadTables handles fetch error gracefully")
-    @MainActor
-    func loadTablesHandlesError() async throws {
-        let (vm, _, _, _, _, _) = makeSUT(fetcherError: TestError.fetchFailed)
-
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        #expect(!vm.isLoading)
-        #expect(vm.errorMessage != nil)
-    }
-
-    @Test("loadTables guards against concurrent loads")
-    @MainActor
-    func loadTablesGuardsConcurrent() {
-        let (vm, _, _, _, _, _) = makeSUT(fetcherTables: [TestFixtures.makeTableInfo(name: "t1")])
-
-        vm.loadTables()
-        // Second call while first is loading should be a no-op
-        #expect(vm.isLoading)
-        vm.loadTables() // Should not crash or double-load
-    }
-
-    // MARK: - Stale Cleanup
-
-    @Test("removes stale selections after refresh")
-    @MainActor
-    func removesStaleSelections() async throws {
-        let oldTable = TestFixtures.makeTableInfo(name: "old_table")
-        let newTable = TestFixtures.makeTableInfo(name: "new_table")
-
-        let (vm, _, selectedBinding, _, _, _) = makeSUT(
-            tables: [oldTable],
-            selectedTables: [oldTable],
-            fetcherTables: [newTable]
-        )
-
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        // old_table was removed from fetched results, so selection should be cleared
-        let selectedNames = selectedBinding.wrappedValue.map(\.name)
-        #expect(!selectedNames.contains("old_table"))
-    }
-
-    @Test("removes stale pending deletes")
-    @MainActor
-    func removesStaleDeletes() async throws {
-        let (vm, _, _, _, deletesBinding, optionsBinding) = makeSUT(
-            pendingDeletes: ["gone_table"],
-            tableOperationOptions: ["gone_table": TableOperationOptions()],
-            fetcherTables: [TestFixtures.makeTableInfo(name: "users")]
-        )
-
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        #expect(!deletesBinding.wrappedValue.contains("gone_table"))
-        #expect(optionsBinding.wrappedValue["gone_table"] == nil)
-    }
-
-    @Test("removes stale pending truncates")
-    @MainActor
-    func removesStaletruncates() async throws {
-        let (vm, _, _, truncatesBinding, _, optionsBinding) = makeSUT(
-            pendingTruncates: ["gone_table"],
-            tableOperationOptions: ["gone_table": TableOperationOptions()],
-            fetcherTables: [TestFixtures.makeTableInfo(name: "users")]
-        )
-
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        #expect(!truncatesBinding.wrappedValue.contains("gone_table"))
-        #expect(optionsBinding.wrappedValue["gone_table"] == nil)
-    }
-
-    // MARK: - Selection Restoration
-
-    @Test("preserves selection when table still exists after refresh")
-    @MainActor
-    func preservesSelectionAfterRefresh() async throws {
-        let usersTable = TestFixtures.makeTableInfo(name: "users")
-        let fetchedUsers = TestFixtures.makeTableInfo(name: "users")
-
-        let (vm, _, selectedBinding, _, _, _) = makeSUT(
-            tables: [usersTable],
-            selectedTables: [usersTable],
-            fetcherTables: [fetchedUsers]
-        )
-
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        // Selection should be restored to the "users" table from fetched results
-        let selectedNames = selectedBinding.wrappedValue.map(\.name)
-        #expect(selectedNames.contains("users"))
-    }
 
     // MARK: - Batch Toggle Truncate
 

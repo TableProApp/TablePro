@@ -98,7 +98,7 @@ struct MultiConnectionNavigationTests {
         #expect(tab.databaseName == "primary_db")
     }
 
-    // Note: isSwitchingDatabase guard test lives in SwitchDatabaseTests.swift
+    // Note: sidebarLoadingState guard test lives in SwitchDatabaseTests.swift
 
     // MARK: - openTableTab: different database types create correct tab
 

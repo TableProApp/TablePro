@@ -45,7 +45,6 @@ struct SidebarView: View {
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
         databaseType: DatabaseType,
         connectionId: UUID,
-        schemaProvider: SQLSchemaProvider? = nil,
         coordinator: MainContentCoordinator? = nil
     ) {
         _tables = tables
@@ -64,8 +63,7 @@ struct SidebarView: View {
             pendingDeletes: pendingDeletes,
             tableOperationOptions: tableOperationOptions,
             databaseType: databaseType,
-            connectionId: connectionId,
-            schemaProvider: schemaProvider
+            connectionId: connectionId
         )
         vm.debouncedSearchText = sidebarState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
@@ -115,16 +113,7 @@ struct SidebarView: View {
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.debouncedSearchText = newValue
         }
-        .onChange(of: tables) { _, newTables in
-            let hasSession = DatabaseManager.shared.activeSessions[connectionId] != nil
-            if newTables.isEmpty && hasSession && !viewModel.isLoading
-                && coordinator?.isSwitchingDatabase != true
-            {
-                viewModel.loadTables()
-            }
-        }
         .onAppear {
-            viewModel.onAppear()
             coordinator?.sidebarViewModel = viewModel
         }
         .sheet(isPresented: $viewModel.showOperationDialog) {
@@ -149,19 +138,18 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        if let error = viewModel.errorMessage {
-            errorState(message: error)
-        } else if tables.isEmpty && hasActiveConnection {
+        switch coordinator?.sidebarLoadingState ?? .idle {
+        case .loading:
             loadingState
-        } else if tables.isEmpty {
+        case .error(let message):
+            errorState(message: message)
+        case .loaded where tables.isEmpty:
             emptyState
-        } else {
+        case .loaded:
             tableList
+        case .idle:
+            emptyState
         }
-    }
-
-    private var hasActiveConnection: Bool {
-        viewModel.isLoading
     }
 
     private var loadingState: some View {

@@ -239,8 +239,8 @@ struct SQLSchemaProviderTests {
         #expect(driver.fetchColumnsCallCount == countBeforeBC + 2)
     }
 
-    @Test("invalidateCache clears tables, columns, and LRU tracking")
-    func invalidateCacheClearsEverything() async {
+    @Test("resetForDatabase clears columns, updates tables, and sets driver")
+    func resetForDatabaseClearsAndUpdates() async {
         let driver = MockDatabaseDriver()
         driver.tablesToReturn = [TestFixtures.makeTableInfo(name: "users")]
         driver.columnsToReturn = [
@@ -251,13 +251,18 @@ struct SQLSchemaProviderTests {
         await provider.loadSchema(using: driver, connection: TestFixtures.makeConnection())
         _ = await provider.getColumns(for: "users")
 
-        await provider.invalidateCache()
+        let newTables = [TestFixtures.makeTableInfo(name: "orders")]
+        let newDriver = MockDatabaseDriver()
+        await provider.resetForDatabase("new_db", tables: newTables, driver: newDriver)
 
         let tables = await provider.getTables()
-        #expect(tables.isEmpty)
+        #expect(tables.count == 1)
+        #expect(tables.first?.name == "orders")
 
-        let columns = await provider.getColumns(for: "users")
-        #expect(columns.isEmpty)
+        // Column cache should be cleared (requires re-fetch)
+        newDriver.columnsToReturn = ["orders": [TestFixtures.makeColumnInfo(name: "order_id")]]
+        let columns = await provider.getColumns(for: "orders")
+        #expect(columns.first?.name == "order_id")
     }
 
     @Test("getColumns returns empty when driver is not available")

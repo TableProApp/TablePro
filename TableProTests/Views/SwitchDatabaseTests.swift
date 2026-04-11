@@ -13,16 +13,6 @@ import Testing
 
 @testable import TablePro
 
-// MARK: - Mock TableFetcher
-
-private struct MockTableFetcher: TableFetcher {
-    var tables: [TableInfo]
-
-    func fetchTables(force: Bool) async throws -> [TableInfo] {
-        tables
-    }
-}
-
 // MARK: - Helpers
 
 /// Simulates the tab-clearing logic from switchDatabase(to:).
@@ -37,11 +27,11 @@ private func simulateDatabaseSwitch(
 
 @Suite("SwitchDatabase")
 struct SwitchDatabaseTests {
-    // MARK: - isSwitchingDatabase flag
+    // MARK: - sidebarLoadingState
 
-    @Test("isSwitchingDatabase defaults to false")
+    @Test("sidebarLoadingState defaults to idle")
     @MainActor
-    func flagDefaultsToFalse() {
+    func loadingStateDefaultsToIdle() {
         let connection = TestFixtures.makeConnection()
         let tabManager = QueryTabManager()
         let changeManager = DataChangeManager()
@@ -58,35 +48,12 @@ struct SwitchDatabaseTests {
         )
         defer { coordinator.teardown() }
 
-        #expect(coordinator.isSwitchingDatabase == false)
-    }
-
-    @Test("isSwitchingDatabase can be set to true")
-    @MainActor
-    func flagCanBeSetToTrue() {
-        let connection = TestFixtures.makeConnection()
-        let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
-        let filterStateManager = FilterStateManager()
-        let toolbarState = ConnectionToolbarState()
-
-        let coordinator = MainContentCoordinator(
-            connection: connection,
-            tabManager: tabManager,
-            changeManager: changeManager,
-            filterStateManager: filterStateManager,
-            columnVisibilityManager: ColumnVisibilityManager(),
-            toolbarState: toolbarState
-        )
-        defer { coordinator.teardown() }
-
-        coordinator.isSwitchingDatabase = true
-        #expect(coordinator.isSwitchingDatabase == true)
+        #expect(coordinator.sidebarLoadingState == .idle)
     }
 
     // MARK: - openTableTab behavior during database switch
 
-    @Test("openTableTab skips new window when switching database with existing tabs")
+    @Test("openTableTab skips new window when sidebar is loading with existing tabs")
     @MainActor
     func openTableTabSkipsNewWindowDuringSwitch() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -105,23 +72,17 @@ struct SwitchDatabaseTests {
         )
         defer { coordinator.teardown() }
 
-        // Set up: one existing tab
         tabManager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "db_a")
         let tabCountBefore = tabManager.tabs.count
 
-        // Simulate database switch in progress
-        coordinator.isSwitchingDatabase = true
+        coordinator.sidebarLoadingState = .loading
 
-        // Opening a different table during switch should NOT add more tabs
-        // (because the guard returns early without calling WindowOpener)
         coordinator.openTableTab("orders")
 
-        // Tab count should remain unchanged — no new tab was added
-        // (isSwitchingDatabase guard returns early when tabs exist)
         #expect(tabManager.tabs.count == tabCountBefore)
     }
 
-    @Test("openTableTab adds tab in-place when switching database with empty tabs")
+    @Test("openTableTab adds tab in-place when sidebar is loading with empty tabs")
     @MainActor
     func openTableTabAddsInPlaceWhenSwitchingWithEmptyTabs() {
         let connection = TestFixtures.makeConnection(database: "db_a")
@@ -140,13 +101,10 @@ struct SwitchDatabaseTests {
         )
         defer { coordinator.teardown() }
 
-        // No existing tabs
         #expect(tabManager.tabs.isEmpty)
 
-        // Simulate database switch in progress
-        coordinator.isSwitchingDatabase = true
+        coordinator.sidebarLoadingState = .loading
 
-        // Opening a table during switch with empty tabs should add in-place
         coordinator.openTableTab("users")
 
         #expect(tabManager.tabs.count == 1)
@@ -225,52 +183,33 @@ struct SwitchDatabaseTests {
         #expect(tabManager.selectedTabId == nil)
     }
 
-    // MARK: - SidebarViewModel selection during database switch
+    // MARK: - sidebarLoadingState during database switch
 
-    @Test("SidebarViewModel skips selection restore during database switch")
+    @Test("switchDatabase sets sidebarLoadingState to loading then error when no driver")
     @MainActor
-    func sidebarSkipsSelectionRestoreDuringSwitch() async throws {
-        let newTables = [
-            TestFixtures.makeTableInfo(name: "orders"),
-            TestFixtures.makeTableInfo(name: "products")
-        ]
+    func switchDatabaseSetsLoadingState() async {
+        let connection = TestFixtures.makeConnection(database: "db_a")
+        let tabManager = QueryTabManager()
+        let changeManager = DataChangeManager()
+        let filterStateManager = FilterStateManager()
+        let toolbarState = ConnectionToolbarState()
 
-        // Start with empty tables and empty selection (simulates state after
-        // switchDatabase clears session.tables)
-        var tablesState: [TableInfo] = []
-        var selectedState: Set<TableInfo> = []
-        var truncatesState: Set<String> = []
-        var deletesState: Set<String> = []
-        var optionsState: [String: TableOperationOptions] = [:]
-
-        let tablesBinding = Binding(get: { tablesState }, set: { tablesState = $0 })
-        let selectedBinding = Binding(get: { selectedState }, set: { selectedState = $0 })
-        let truncatesBinding = Binding(get: { truncatesState }, set: { truncatesState = $0 })
-        let deletesBinding = Binding(get: { deletesState }, set: { deletesState = $0 })
-        let optionsBinding = Binding(get: { optionsState }, set: { optionsState = $0 })
-
-        let fetcher = MockTableFetcher(tables: newTables)
-        let vm = SidebarViewModel(
-            tables: tablesBinding,
-            selectedTables: selectedBinding,
-            pendingTruncates: truncatesBinding,
-            pendingDeletes: deletesBinding,
-            tableOperationOptions: optionsBinding,
-            databaseType: .mysql,
-            connectionId: UUID(),
-            tableFetcher: fetcher
+        let coordinator = MainContentCoordinator(
+            connection: connection,
+            tabManager: tabManager,
+            changeManager: changeManager,
+            filterStateManager: filterStateManager,
+            columnVisibilityManager: ColumnVisibilityManager(),
+            toolbarState: toolbarState
         )
+        defer { coordinator.teardown() }
 
-        // When tables list is empty (cleared by switchDatabase), previousSelectedName
-        // should be nil so no stale table name is restored as a selection
-        vm.loadTables()
-        try await Task.sleep(nanoseconds: 100_000_000)
+        #expect(coordinator.sidebarLoadingState == .idle)
 
-        // Tables should be populated from fetcher
-        #expect(tablesBinding.wrappedValue.count == 2)
+        await coordinator.switchDatabase(to: "db_b")
 
-        // No selection should be restored because there was no previous selection
-        // to preserve (tables were empty when loadTablesAsync captured previousSelectedName)
-        #expect(selectedBinding.wrappedValue.isEmpty)
+        // Without a driver, switchDatabase sets loading then returns early
+        // refreshTables will set error state since there's no driver
+        #expect(coordinator.sidebarLoadingState == .error("Not connected"))
     }
 }

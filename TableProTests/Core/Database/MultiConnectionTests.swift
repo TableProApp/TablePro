@@ -228,8 +228,8 @@ struct CoordinatorConnectionIsolationTests {
         #expect(coordinator2.connectionId == id2)
     }
 
-    @Test("isSwitchingDatabase is per-coordinator and does not bleed across instances")
-    func isSwitchingDatabaseIsPerCoordinator() {
+    @Test("sidebarLoadingState is per-coordinator and does not bleed across instances")
+    func sidebarLoadingStateIsPerCoordinator() {
         let conn1 = TestFixtures.makeConnection(id: UUID(), name: "Conn1", database: "db_a", type: .mysql)
         let conn2 = TestFixtures.makeConnection(id: UUID(), name: "Conn2", database: "db_b", type: .mysql)
 
@@ -253,10 +253,10 @@ struct CoordinatorConnectionIsolationTests {
         )
         defer { coordinator2.teardown() }
 
-        coordinator1.isSwitchingDatabase = true
+        coordinator1.sidebarLoadingState = .loading
 
-        #expect(coordinator1.isSwitchingDatabase == true)
-        #expect(coordinator2.isSwitchingDatabase == false)
+        #expect(coordinator1.sidebarLoadingState == .loading)
+        #expect(coordinator2.sidebarLoadingState == .idle)
     }
 
     @Test("openTableTab uses coordinator's connection database for the added tab")

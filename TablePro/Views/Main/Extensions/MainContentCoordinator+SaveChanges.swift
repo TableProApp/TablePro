@@ -256,7 +256,7 @@ extension MainContentCoordinator {
                         }
                     }
 
-                    reloadSidebar()
+                    Task { await self.refreshTables() }
                 }
 
                 if tabManager.selectedTabIndex != nil && !tabManager.tabs.isEmpty {

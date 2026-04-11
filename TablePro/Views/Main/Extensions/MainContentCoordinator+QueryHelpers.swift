@@ -466,8 +466,7 @@ extension MainContentCoordinator {
                 session.currentSchema = schema
             }
             toolbarState.databaseName = schema
-            await loadSchema()
-            reloadSidebar()
+            await refreshTables()
         } catch {
             Self.logger.warning("Failed to restore schema '\(schema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             return

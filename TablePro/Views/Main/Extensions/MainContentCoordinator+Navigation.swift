@@ -49,7 +49,7 @@ extension MainContentCoordinator {
 
         // During database switch, update the existing tab in-place instead of
         // opening a new native window tab.
-        if isSwitchingDatabase {
+        if sidebarLoadingState == .loading {
             if tabManager.tabs.isEmpty {
                 tabManager.addTableTab(
                     tableName: tableName,
@@ -369,23 +369,17 @@ extension MainContentCoordinator {
 
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
-        isSwitchingDatabase = true
-        defer {
-            isSwitchingDatabase = false
-        }
+        sidebarLoadingState = .loading
 
-        // Clear stale filter state from previous database/schema
         filterStateManager.clearAll()
 
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            sidebarLoadingState = .error(String(localized: "Not connected"))
             return
         }
 
-        // Snapshot current state for rollback on failure
         let previousDatabase = toolbarState.databaseName
 
-        // Immediately clear UI state so the sidebar shows a loading spinner
-        // instead of stale tables from the previous database/schema.
         toolbarState.databaseName = database
         closeSiblingNativeWindows()
         tabManager.tabs = []
@@ -393,13 +387,10 @@ extension MainContentCoordinator {
         DatabaseManager.shared.updateSession(connectionId) { session in
             session.tables = []
         }
-        // Yield so SwiftUI renders the empty/loading state before async work begins
-        await Task.yield()
 
         do {
             let pm = PluginManager.shared
             if pm.requiresReconnectForDatabaseSwitch(for: connection.type) {
-                // PostgreSQL: full reconnection required for database switch
                 DatabaseManager.shared.updateSession(connectionId) { session in
                     session.connection.database = database
                     session.currentDatabase = database
@@ -408,36 +399,31 @@ extension MainContentCoordinator {
                 AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
                 await DatabaseManager.shared.reconnectSession(connectionId)
             } else if pm.supportsSchemaSwitching(for: connection.type) {
-                // Redshift, Oracle: schema switching
-                guard let schemaDriver = driver as? SchemaSwitchable else { return }
+                guard let schemaDriver = driver as? SchemaSwitchable else {
+                    sidebarLoadingState = .idle
+                    return
+                }
                 try await schemaDriver.switchSchema(to: database)
                 DatabaseManager.shared.updateSession(connectionId) { session in
                     session.currentSchema = database
                 }
             } else {
-                // All others (MySQL, MariaDB, ClickHouse, MSSQL, MongoDB, Redis, etc.)
                 if let adapter = driver as? PluginDriverAdapter {
                     try await adapter.switchDatabase(to: database)
                 }
                 let grouping = pm.databaseGroupingStrategy(for: connection.type)
                 DatabaseManager.shared.updateSession(connectionId) { session in
                     session.currentDatabase = database
-                    // Schema-grouped databases (e.g. MSSQL) need currentSchema
-                    // reset to the plugin default (e.g. "dbo") on database switch.
                     if grouping == .bySchema {
                         session.currentSchema = pm.defaultSchemaName(for: connection.type)
                     }
                 }
             }
             AppSettingsStorage.shared.saveLastDatabase(database, for: connectionId)
-            await loadSchema()
-            await schemaProvider.invalidateTables()
-            sidebarViewModel?.forceLoadTables()
+            await refreshTables()
         } catch {
-            // Restore toolbar to previous database on failure
             toolbarState.databaseName = previousDatabase
-            // Reload previous tables so sidebar isn't left empty
-            reloadSidebar()
+            await refreshTables()
 
             navigationLogger.error("Failed to switch database: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(
@@ -453,13 +439,11 @@ extension MainContentCoordinator {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else { return }
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
-        // Clear stale filter state from previous schema
+        sidebarLoadingState = .loading
         filterStateManager.clearAll()
 
-        // Snapshot current state for rollback on failure
         let previousSchema = toolbarState.databaseName
 
-        // Immediately clear UI state so sidebar shows loading state
         toolbarState.databaseName = schema
         closeSiblingNativeWindows()
         tabManager.tabs = []
@@ -467,10 +451,12 @@ extension MainContentCoordinator {
         DatabaseManager.shared.updateSession(connectionId) { session in
             session.tables = []
         }
-        await Task.yield()
 
         do {
-            guard let schemaDriver = driver as? SchemaSwitchable else { return }
+            guard let schemaDriver = driver as? SchemaSwitchable else {
+                sidebarLoadingState = .idle
+                return
+            }
             try await schemaDriver.switchSchema(to: schema)
 
             DatabaseManager.shared.updateSession(connectionId) { session in
@@ -478,13 +464,10 @@ extension MainContentCoordinator {
             }
             AppSettingsStorage.shared.saveLastSchema(schema, for: connectionId)
 
-            await loadSchema()
-
-            reloadSidebar()
+            await refreshTables()
         } catch {
-            // Restore toolbar to previous schema on failure
             toolbarState.databaseName = previousSchema
-            reloadSidebar()
+            await refreshTables()
 
             navigationLogger.error("Failed to switch schema: \(error.localizedDescription, privacy: .public)")
             AlertHelper.showErrorSheet(

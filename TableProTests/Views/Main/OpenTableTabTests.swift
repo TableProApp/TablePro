@@ -5,7 +5,7 @@
 //  Tests for openTableTab logic — verifies skip/open behavior
 //  based on current tab state and database context.
 //
-//  Note: isSwitchingDatabase guard and same-table fast path tests
+//  Note: sidebarLoadingState guard and same-table fast path tests
 //  live in SwitchDatabaseTests.swift to avoid duplication.
 //
 

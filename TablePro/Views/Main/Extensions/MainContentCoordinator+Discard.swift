@@ -80,6 +80,6 @@ extension MainContentCoordinator {
             tabManager.tabs[index].pendingChanges = TabPendingChanges()
         }
 
-        reloadSidebar()
+        Task { await refreshTables() }
     }
 }

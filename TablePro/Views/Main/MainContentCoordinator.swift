@@ -29,6 +29,14 @@ struct QuerySortCacheEntry {
     let resultVersion: Int
 }
 
+/// Sidebar table loading state — single source of truth for sidebar UI
+enum SidebarLoadingState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case error(String)
+}
+
 /// Represents which sheet is currently active in MainContentView.
 /// Uses a single `.sheet(item:)` modifier instead of multiple `.sheet(isPresented:)`.
 enum ActiveSheet: Identifiable {
@@ -109,6 +117,7 @@ final class MainContentCoordinator {
     var activeSheet: ActiveSheet?
     var importFileURL: URL?
     var needsLazyLoad = false
+    var sidebarLoadingState: SidebarLoadingState = .idle
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
     @ObservationIgnored private(set) var querySortCache: [UUID: QuerySortCacheEntry] = [:]
@@ -145,10 +154,6 @@ final class MainContentCoordinator {
 
     /// Called during teardown to let the view layer release cached row providers and sort data.
     @ObservationIgnored var onTeardown: (() -> Void)?
-
-    /// True while a database switch is in progress. Guards against
-    /// side-effect window creation during the switch cascade.
-    @ObservationIgnored var isSwitchingDatabase = false
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
@@ -348,10 +353,21 @@ final class MainContentCoordinator {
         _teardownScheduled.withLock { $0 = false }
     }
 
-    func reloadSidebar() {
-        Task { @MainActor in
-            await schemaProvider.invalidateTables()
-            sidebarViewModel?.forceLoadTables()
+    func refreshTables() async {
+        sidebarLoadingState = .loading
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            sidebarLoadingState = .error(String(localized: "Not connected"))
+            return
+        }
+        do {
+            let tables = try await driver.fetchTables()
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
+            let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
+            await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
+            sidebarLoadingState = .loaded
+        } catch {
+            sidebarLoadingState = .error(error.localizedDescription)
         }
     }
 
@@ -497,7 +513,6 @@ final class MainContentCoordinator {
 
     func loadSchema() async {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
-        await schemaProvider.invalidateCache()
         await schemaProvider.loadSchema(using: driver, connection: connection)
     }
 
