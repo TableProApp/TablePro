@@ -196,6 +196,7 @@ extension ConnectionFormView {
             finalAdditionalFields.removeValue(forKey: field.id)
         }
 
+        let sshTunnelMode = sshState.buildTunnelMode()
         let connectionToSave = DatabaseConnection(
             id: finalId,
             name: name,
@@ -210,6 +211,7 @@ extension ConnectionFormView {
             tagId: selectedTagId,
             groupId: selectedGroupId,
             sshProfileId: sshState.enabled ? sshState.profileId : nil,
+            sshTunnelMode: sshTunnelMode,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
@@ -361,6 +363,7 @@ extension ConnectionFormView {
             finalAdditionalFields.removeValue(forKey: "preConnectScript")
         }
 
+        let testTunnelMode = sshState.buildTunnelMode()
         let testConn = DatabaseConnection(
             name: name,
             host: finalHost,
@@ -374,6 +377,7 @@ extension ConnectionFormView {
             tagId: selectedTagId,
             groupId: selectedGroupId,
             sshProfileId: sshState.enabled ? sshState.profileId : nil,
+            sshTunnelMode: testTunnelMode,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,

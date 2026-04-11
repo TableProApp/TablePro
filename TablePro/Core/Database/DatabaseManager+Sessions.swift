@@ -92,7 +92,7 @@ extension DatabaseManager {
             )
         } catch {
             // Close tunnel if SSH was established
-            if connection.sshConfig.enabled {
+            if connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
                         try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
@@ -157,7 +157,7 @@ extension DatabaseManager {
             }
         } catch {
             // Close tunnel if connection failed
-            if connection.sshConfig.enabled {
+            if connection.resolvedSSHConfig.enabled {
                 Task {
                     do {
                         try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
@@ -243,7 +243,7 @@ extension DatabaseManager {
         guard let session = activeSessions[sessionId] else { return }
 
         // Close SSH tunnel if exists
-        if session.connection.sshConfig.enabled {
+        if session.connection.resolvedSSHConfig.enabled {
             do {
                 try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
             } catch {

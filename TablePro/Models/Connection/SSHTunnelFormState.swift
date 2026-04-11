@@ -78,22 +78,43 @@ struct SSHTunnelFormState {
     // MARK: - Load Methods
 
     mutating func load(from connection: DatabaseConnection) {
-        profileId = connection.sshProfileId
-        enabled = connection.sshConfig.enabled
-        populateFields(from: connection.sshConfig)
+        switch connection.sshTunnelMode {
+        case .disabled:
+            enabled = false
+            profileId = nil
+        case .inline(let config):
+            enabled = true
+            profileId = nil
+            populateFields(from: config)
+        case .profile(let id, let snapshot):
+            enabled = true
+            profileId = id
+            populateFields(from: snapshot)
+        }
     }
 
     @MainActor
     mutating func loadSecrets(connectionId: UUID, storage: ConnectionStorage) {
-        if let savedPassword = storage.loadSSHPassword(for: connectionId) {
-            password = savedPassword
+        if case .profile(let profileId, _) = buildTunnelMode() {
+            // Profile-mode: load secrets from profile keychain namespace
+            password = SSHProfileStorage.shared.loadSSHPassword(for: profileId) ?? ""
+            keyPassphrase = SSHProfileStorage.shared.loadKeyPassphrase(for: profileId) ?? ""
+            totpSecret = SSHProfileStorage.shared.loadTOTPSecret(for: profileId) ?? ""
+        } else {
+            // Inline/disabled: load from connection keychain namespace
+            password = storage.loadSSHPassword(for: connectionId) ?? ""
+            keyPassphrase = storage.loadKeyPassphrase(for: connectionId) ?? ""
+            totpSecret = storage.loadTOTPSecret(for: connectionId) ?? ""
         }
-        if let savedPassphrase = storage.loadKeyPassphrase(for: connectionId) {
-            keyPassphrase = savedPassphrase
+    }
+
+    /// Build the SSHTunnelMode for saving to the connection.
+    func buildTunnelMode() -> SSHTunnelMode {
+        guard enabled else { return .disabled }
+        if let profileId, let profile = profiles.first(where: { $0.id == profileId }) {
+            return .profile(id: profileId, snapshot: profile.toSSHConfiguration())
         }
-        if let savedTOTPSecret = storage.loadTOTPSecret(for: connectionId) {
-            totpSecret = savedTOTPSecret
-        }
+        return .inline(buildInlineConfig())
     }
 
     // MARK: - Mutation Methods
@@ -146,6 +167,13 @@ struct SSHTunnelFormState {
         totpAlgorithm = config.totpAlgorithm
         totpDigits = config.totpDigits
         totpPeriod = config.totpPeriod
+
+        // Restore config host picker state if a config entry was used
+        if config.useSSHConfig {
+            selectedConfigHost = configEntries.first { $0.hostname == config.host || $0.host == config.host }?.host ?? ""
+        } else {
+            selectedConfigHost = ""
+        }
     }
 
     mutating func applyAgentSocketPath(_ socketPath: String) {
