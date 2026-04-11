@@ -72,8 +72,134 @@ struct RowDetailView: View {
     }
 
     var body: some View {
+        Group {
+            if isEditing {
+                rowContent(at: currentIndex)
+            } else {
+                TabView(selection: $currentIndex) {
+                    ForEach(Array(rows.indices), id: \.self) { index in
+                        rowContent(at: index)
+                            .tag(index)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+        }
+        .onChange(of: currentIndex) {
+            hapticSelection += 1
+        }
+        .overlay(alignment: .bottom) {
+            if showSaveSuccess {
+                Label("Row updated", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline)
+                    .padding()
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .navigationTitle(String(format: String(localized: "Row %d of %d"), currentIndex + 1, rows.count))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            let text = ClipboardExporter.exportRow(
+                                columns: columns, row: currentRow,
+                                format: format, tableName: table?.name
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        } label: {
+                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+
+            ToolbarItem(placement: .primaryAction) {
+                if canEdit {
+                    if isEditing {
+                        Button {
+                            Task { await saveChanges() }
+                        } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Save")
+                            }
+                        }
+                        .disabled(isSaving)
+                    } else {
+                        Button("Edit") { startEditing() }
+                    }
+                }
+            }
+
+            if isEditing {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { cancelEditing() }
+                        .disabled(isSaving)
+                }
+            }
+
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button {
+                    withAnimation { currentIndex -= 1 }
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(currentIndex <= 0 || isEditing)
+
+                Spacer()
+
+                Text("\(currentIndex + 1) of \(rows.count)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize()
+
+                Spacer()
+
+                Button {
+                    withAnimation { currentIndex += 1 }
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(currentIndex >= rows.count - 1 || isEditing)
+            }
+        }
+        .sensoryFeedback(.success, trigger: hapticSuccess)
+        .sensoryFeedback(.error, trigger: hapticError)
+        .sensoryFeedback(.selection, trigger: hapticSelection)
+        .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let recovery = operationError?.recovery {
+                Text(verbatim: "\(operationError?.message ?? "") \(recovery)")
+            } else {
+                Text(operationError?.message ?? "")
+            }
+        }
+        .sheet(item: $fkPreviewItem) { item in
+            FKPreviewView(
+                fk: item.fk,
+                value: item.value,
+                session: session,
+                databaseType: databaseType
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(at rowIndex: Int) -> some View {
+        let row = rowIndex >= 0 && rowIndex < rows.count ? rows[rowIndex] : []
+        let values = isEditing ? editedValues : row
         List {
-            ForEach(Array(zip(columns, isEditing ? editedValues : currentRow).enumerated()), id: \.offset) { index, pair in
+            ForEach(Array(zip(columns, values).enumerated()), id: \.offset) { index, pair in
                 let (column, value) = pair
                 let isPK = columnDetail(for: column.name)?.isPrimaryKey ?? column.isPrimaryKey
                 Section {
@@ -140,112 +266,6 @@ struct RowDetailView: View {
         }
         .listStyle(.insetGrouped)
         .scrollDismissesKeyboard(.interactively)
-        .overlay(alignment: .bottom) {
-            if showSaveSuccess {
-                Label("Row updated", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline)
-                    .padding()
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .navigationTitle(String(format: String(localized: "Row %d of %d"), currentIndex + 1, rows.count))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    ForEach(ExportFormat.allCases) { format in
-                        Button {
-                            let text = ClipboardExporter.exportRow(
-                                columns: columns, row: currentRow,
-                                format: format, tableName: table?.name
-                            )
-                            ClipboardExporter.copyToClipboard(text)
-                        } label: {
-                            Label(format.rawValue, systemImage: "doc.on.clipboard")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-            }
-
-            ToolbarItem(placement: .primaryAction) {
-                if canEdit {
-                    if isEditing {
-                        Button {
-                            Task { await saveChanges() }
-                        } label: {
-                            if isSaving {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Text("Save")
-                            }
-                        }
-                        .disabled(isSaving)
-                    } else {
-                        Button("Edit") { startEditing() }
-                    }
-                }
-            }
-
-            if isEditing {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { cancelEditing() }
-                        .disabled(isSaving)
-                }
-            }
-
-            ToolbarItemGroup(placement: .bottomBar) {
-                Button {
-                    withAnimation { currentIndex -= 1 }
-                    hapticSelection += 1
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .disabled(currentIndex <= 0 || isEditing)
-
-                Spacer()
-
-                Text("\(currentIndex + 1) of \(rows.count)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .fixedSize()
-
-                Spacer()
-
-                Button {
-                    withAnimation { currentIndex += 1 }
-                    hapticSelection += 1
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .disabled(currentIndex >= rows.count - 1 || isEditing)
-            }
-        }
-        .sensoryFeedback(.success, trigger: hapticSuccess)
-        .sensoryFeedback(.error, trigger: hapticError)
-        .sensoryFeedback(.selection, trigger: hapticSelection)
-        .alert(operationError?.title ?? "Error", isPresented: $showOperationError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let recovery = operationError?.recovery {
-                Text(verbatim: "\(operationError?.message ?? "") \(recovery)")
-            } else {
-                Text(operationError?.message ?? "")
-            }
-        }
-        .sheet(item: $fkPreviewItem) { item in
-            FKPreviewView(
-                fk: item.fk,
-                value: item.value,
-                session: session,
-                databaseType: databaseType
-            )
-        }
     }
 
     private func editableField(index: Int, value: String?) -> some View {
