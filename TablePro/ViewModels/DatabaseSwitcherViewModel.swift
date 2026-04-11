@@ -53,7 +53,6 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
-
     // MARK: - Initialization
 
     init(
@@ -137,7 +136,6 @@ final class DatabaseSwitcherViewModel {
 
         try await driver.createDatabase(name: name, charset: charset, collation: collation)
     }
-
 
     // MARK: - Private Methods
 
