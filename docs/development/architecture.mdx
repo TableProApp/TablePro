@@ -98,42 +98,7 @@ flowchart LR
     Model["Model<br>(Struct)"] <--> ViewModel["ViewModel<br>(Observable)"] <--> View["View<br>(SwiftUI)"]
 ```
 
-**Models**: Pure data structures (structs, enums)
-```swift
-struct DatabaseConnection: Codable, Identifiable {
-    let id: UUID
-    var name: String
-    var host: String
-    var port: Int
-    var type: DatabaseType
-}
-```
-
-**ViewModels**: Observable state containers
-```swift
-@MainActor
-class DatabaseManager: ObservableObject {
-    @Published var sessions: [DatabaseSession] = []
-    @Published var activeSessionId: UUID?
-
-    func connect(to connection: DatabaseConnection) async throws {
-        // Business logic
-    }
-}
-```
-
-**Views**: Declarative SwiftUI
-```swift
-struct ConnectionFormView: View {
-    @StateObject private var dbManager = DatabaseManager.shared
-
-    var body: some View {
-        Form {
-            // UI elements
-        }
-    }
-}
-```
+Models are structs, ViewModels are `@Observable`/`ObservableObject` classes, Views are SwiftUI.
 
 ### Protocol-Oriented Design
 
@@ -180,29 +145,6 @@ Driver creation uses a plugin-based factory. `PluginManager` discovers and loads
 
 ## Key Components
 
-### DatabaseManager
-
-Central manager for all database operations:
-
-- Manages active sessions
-- Coordinates connections/disconnections
-- Handles SSH tunnel lifecycle
-- Publishes state changes to UI
-
-```swift
-@MainActor
-class DatabaseManager: ObservableObject {
-    static let shared = DatabaseManager()
-
-    @Published var sessions: [DatabaseSession] = []
-    @Published var activeSessionId: UUID?
-
-    func connectToSession(_ connection: DatabaseConnection) async throws
-    func disconnectSession(_ id: UUID) async
-    func executeQuery(_ query: String) async throws -> QueryResult
-}
-```
-
 ### Database Driver Plugins
 
 Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, and SQLite are built into the app bundle; the rest are distributed via the plugin registry and downloaded on demand.
@@ -235,26 +177,6 @@ flowchart TB
 - **SQLContextAnalyzer**: Parses query context
 - **SQLSchemaProvider**: Provides schema information
 - **SQLKeywords**: SQL keyword definitions
-
-### SSH Tunnel Manager
-
-Actor-based SSH tunnel management:
-
-```swift
-actor SSHTunnelManager {
-    private var tunnels: [UUID: SSHTunnel] = [:]
-
-    func createTunnel(...) async throws -> Int
-    func closeTunnel(connectionId: UUID) async throws
-    func hasTunnel(connectionId: UUID) -> Bool
-}
-```
-
-Features:
-- Port forwarding via system `ssh`
-- Password and key authentication
-- Health monitoring
-- Automatic cleanup
 
 ## Data Flow
 
@@ -291,107 +213,13 @@ flowchart TB
 
 ## State Management
 
-### Published Properties
+| Pattern | What | Where |
+|---------|------|-------|
+| `@Published` | UI state (sessions, active tab) | ViewModels |
+| `@AppStorage` | User preferences | Settings |
+| Keychain | Passwords | ConnectionStorage |
+| SQLite FTS5 | Query history | QueryHistoryStorage |
+| JSON files | Tab state | TabStateStorage |
 
-UI state uses `@Published`:
-
-```swift
-@MainActor
-class DatabaseManager: ObservableObject {
-    @Published var sessions: [DatabaseSession] = []
-    @Published var activeSessionId: UUID?
-    @Published var isConnecting = false
-}
-```
-
-### App Storage
-
-Settings persist via `@AppStorage`:
-
-```swift
-@AppStorage("appearance.theme") var theme: AppTheme = .system
-@AppStorage("editor.fontSize") var fontSize: Int = 13
-```
-
-### Environment
-
-Shared state via SwiftUI environment:
-
-```swift
-@main
-struct TableProApp: App {
-    @StateObject private var dbManager = DatabaseManager.shared
-
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environmentObject(dbManager)
-        }
-    }
-}
-```
-
-## Error Handling
-
-### Driver Errors
-
-Each driver defines specific errors:
-
-```swift
-enum MySQLError: Error, LocalizedError {
-    case connectionFailed(String)
-    case queryFailed(String)
-    case authenticationFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .connectionFailed(let msg): return "Connection failed: \(msg)"
-        case .queryFailed(let msg): return "Query failed: \(msg)"
-        case .authenticationFailed: return "Authentication failed"
-        }
-    }
-}
-```
-
-### Error Propagation
-
-Errors propagate through async/await:
-
-```swift
-func executeQuery(_ query: String) async throws -> QueryResult {
-    guard let driver = activeDriver else {
-        throw DatabaseError.notConnected
-    }
-    return try await driver.execute(query: query)
-}
-```
-
-## Testing
-
-### Unit Tests
-
-Tests live in `TableProTests/`:
-
-```swift
-final class MySQLDriverTests: XCTestCase {
-    func testConnectionString() throws {
-        let connection = DatabaseConnection(...)
-        let driver = MySQLDriver(connection: connection)
-        XCTAssertEqual(driver.connectionString, "expected")
-    }
-}
-```
-
-### Integration Tests
-
-```swift
-func testExecuteQuery() async throws {
-    let driver = MySQLDriver(connection: testConnection)
-    try await driver.connect()
-    defer { driver.disconnect() }
-
-    let result = try await driver.execute(query: "SELECT 1")
-    XCTAssertEqual(result.rowCount, 1)
-}
-```
+Tests live in `TableProTests/`. Run with `xcodebuild test -skipPackagePluginValidation`.
 

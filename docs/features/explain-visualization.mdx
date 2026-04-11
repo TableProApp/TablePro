@@ -5,7 +5,7 @@ description: View query execution plans as diagrams, trees, or raw output
 
 # EXPLAIN Visualization
 
-See how your database executes a query. Click **Explain** in the query editor toolbar to get the execution plan.
+Click **Explain** in the query editor toolbar to get the execution plan.
 
 PostgreSQL shows a dropdown with **EXPLAIN** (estimated plan) and **EXPLAIN ANALYZE** (runs the query and shows actual timing). MySQL, MariaDB, SQLite, and other databases show a single Explain button.
 
@@ -70,5 +70,5 @@ Each node in the plan shows:
 Click a node to see all properties including join type, index name, filter conditions, and sort keys.
 
 <Note>
-EXPLAIN does not execute the query. EXPLAIN ANALYZE does execute it, so avoid using ANALYZE on slow queries in production.
+EXPLAIN does not execute the query. EXPLAIN ANALYZE executes it and shows actual timing; use it cautiously on production systems.
 </Note>

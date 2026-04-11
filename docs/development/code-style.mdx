@@ -5,8 +5,6 @@ description: Swift conventions, SwiftLint/SwiftFormat rules, naming, access cont
 
 # Code Style Guide
 
-These conventions keep TablePro's codebase consistent and readable.
-
 ## Tools
 
 | Tool | Purpose | Config File |
@@ -30,15 +28,7 @@ swiftformat .
 swiftformat --lint .
 ```
 
-<Tip>
-Run these before committing. SwiftLint also runs automatically during Xcode builds.
-</Tip>
-
-## Architecture Principles
-
-**Separation of Concerns**: Logic in viewmodels, presentation in views.
-**Value Types First**: Use `struct` for data, `class` for shared state.
-**Immutability**: Default to `let`; use `var` only when mutation is needed.
+SwiftLint also runs automatically during Xcode builds.
 
 ## Naming Conventions
 

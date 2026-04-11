@@ -23,7 +23,7 @@ Query results and table contents render in a spreadsheet-style grid. Edit cells 
 
 ## Viewing Data
 
-Click a table in the sidebar or run a `SELECT` query to load data into the grid. The header shows row count, execution time, and affected rows for UPDATE/DELETE queries.
+The header shows row count, execution time, and affected rows for UPDATE/DELETE queries.
 
 ## Column Features
 
@@ -41,9 +41,7 @@ Click a column header to sort:
 - **Second click**: Sort descending (Z-A, 9-0)
 - **Third click**: Remove sort
 
-<Tip>
-Sorting is done locally on the loaded data. For server-side sorting, use `ORDER BY` in your query.
-</Tip>
+Sorting is local to the loaded page. For server-side sorting, use `ORDER BY` in your query.
 
 {/* Screenshot: Column header with sort indicator */}
 <Frame caption="Column header with sort indicator">
@@ -285,7 +283,12 @@ The Cell Inspector is a right sidebar panel showing detailed information about t
 
 ### Row Details Mode
 
-When a row is selected, the inspector shows all column values with full (untruncated) content. Search columns by name. TEXT/VARCHAR columns get a multi-line editor. JSON/JSONB columns display syntax-highlighted JSON (colored keys, strings, numbers, and booleans) with brace matching. Edit values here; changes are queued like inline edits.
+When a row is selected, the inspector shows all column values with full content:
+
+- Search columns by name
+- TEXT/VARCHAR columns get a multi-line editor
+- JSON/JSONB columns display syntax-highlighted JSON with brace matching
+- Edits here are queued like inline edits
 
 ### Table Info Mode
 

@@ -51,7 +51,7 @@ Click **Reset Layout** (the circular arrow button) to return all tables to their
 
 ## Compact Mode
 
-Toggle compact mode with the filter button in the toolbar. In compact mode, each table shows only primary key and foreign key columns, hiding all other columns. This is useful for large schemas where you want to focus on relationships.
+Toggle compact mode with the filter button in the toolbar. In compact mode, each table shows only primary key and foreign key columns.
 
 ## Edge Notation
 
@@ -60,7 +60,7 @@ Edges use crow's foot notation:
 - A **fork** (three lines) marks the "many" side of the relationship (the table that holds the foreign key)
 - A **bar** (single perpendicular line) marks the "one" side (the referenced table)
 
-For example, an edge from `orders.user_id` to `users.id` has the fork at `orders` and the bar at `users`, indicating many orders can reference one user.
+For example, an edge from `orders.user_id` to `users.id` has the fork at `orders` and the bar at `users`.
 
 ## Export
 
@@ -86,12 +86,3 @@ ER diagrams work with any database that supports foreign key introspection:
 The diagram shows foreign keys defined in the current schema. Cross-schema foreign keys are included if the referenced table is in the same schema.
 </Note>
 
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd =` | Zoom in |
-| `Cmd -` | Zoom out |
-| `Cmd 0` | Reset zoom to 100% |
-| `Cmd Shift 0` | Fit diagram to window |
-| `Cmd C` | Copy diagram to clipboard |

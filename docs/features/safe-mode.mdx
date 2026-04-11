@@ -61,7 +61,13 @@ All write operations are blocked. The UI disables:
 
 Read queries (SELECT) execute normally.
 
-NoSQL databases (MongoDB, Redis, etc.) can't be parsed for read vs. write operations, so all operations are treated as writes. Every query in Alert/Safe Mode triggers a confirmation. Read-Only blocks everything.
+## NoSQL Databases
 
-The current safe mode level appears as a badge in the toolbar. Click it to change levels. Safe mode gates apply to query execution, saving cell edits, table operations, and sidebar changes. Silent still shows dangerous query warnings for DROP, TRUNCATE, and DELETE-without-WHERE.
+MongoDB, Redis, and other NoSQL databases can't be parsed for read vs. write operations. All operations are treated as writes. In Alert/Safe Mode, every query triggers a confirmation. Read-Only blocks everything.
+
+## Toolbar Badge
+
+The current safe mode level appears as a badge in the toolbar (orange for Alert levels, red for Safe Mode/Read-Only). Click it to change levels.
+
+Safe mode gates apply to query execution, saving cell edits, table operations, and sidebar changes.
 

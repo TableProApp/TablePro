@@ -128,7 +128,7 @@ UPDATE statements require a primary key on the table. If no primary key is defin
 
 ### Discarding Changes
 
-Click **Discard** to revert all pending changes. Modified cells return to their original values, inserted rows are removed, and deleted rows are unmarked. This also clears the undo/redo stack.
+Click **Discard** to revert all pending changes and clear the undo/redo stack.
 
 ### Previewing Data SQL
 
@@ -208,20 +208,7 @@ Table structure changes (columns, indexes, foreign keys) use the same queue-base
 
 Before applying schema changes, preview the generated SQL:
 
-<Steps>
-  <Step title="Make Changes">
-    Add, modify, or delete columns, indexes, or foreign keys in the Structure tab
-  </Step>
-  <Step title="Click Commit">
-    Click the Commit button or press `Cmd+S`
-  </Step>
-  <Step title="Review SQL">
-    A preview sheet shows all ALTER TABLE statements that will execute
-  </Step>
-  <Step title="Apply or Cancel">
-    Click **Apply Changes** to execute, or **Cancel** to go back and adjust
-  </Step>
-</Steps>
+Make your changes in the Structure tab, then click **Commit** (`Cmd+S`). A preview sheet shows the ALTER TABLE statements. Click **Apply Changes** to execute or **Cancel** to go back.
 
 {/* Screenshot: Schema preview sheet showing ALTER TABLE statements */}
 <Frame caption="Schema change preview with generated SQL">

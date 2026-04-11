@@ -3,6 +3,8 @@ title: Deep Links
 description: Open connections, tables, and queries from the terminal or other apps using database URLs or tablepro:// links
 ---
 
+# Deep Links
+
 TablePro supports two URL-based entry points: standard database URLs (`mysql://`, `postgresql://`, etc.) and the custom `tablepro://` scheme.
 
 ## Database URLs
@@ -75,8 +77,6 @@ Passwords can be included in URLs (`mysql://user:pass@host/db`), but avoid shari
 
 ## Custom Deep Links (tablepro://)
 
-TablePro registers a `tablepro://` URL scheme for opening connections, tables, and queries from your browser, terminal, Slack messages, or any app that supports links.
-
 ## URL Patterns
 
 ### Open a Connection
@@ -135,20 +135,3 @@ open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgres
 Supported `type` values: `MySQL`, `MariaDB`, `PostgreSQL`, `SQLite`, `MongoDB` (case-insensitive).
 
 
-## Terminal Usage
-
-Use the `open` command to trigger deep links from your terminal:
-
-```bash
-# Connect
-open "tablepro://connect/Production"
-
-# Open a specific table
-open "tablepro://connect/Production/table/users"
-
-# Run a query
-open "tablepro://connect/Production/query?sql=SELECT%20count(*)%20FROM%20orders"
-
-# Import a new connection for review
-open "tablepro://import?name=Dev&host=localhost&port=3306&type=mysql&username=root&database=app"
-```

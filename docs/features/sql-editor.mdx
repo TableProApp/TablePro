@@ -55,8 +55,6 @@ Select text and press `Cmd+Enter` to run only the selection. Multiple statements
 - The last `SELECT` result appears in the data grid
 - Each statement is recorded individually in query history
 
-Good for running migrations or batches of related statements:
-
 ```sql
 DROP TABLE IF EXISTS users;
 CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));
@@ -80,7 +78,7 @@ SELECT * FROM users;
 
 ## Autocomplete
 
-Autocomplete appears as you type. Use arrow keys to navigate, `Enter`/`Tab` to accept, `Escape` to dismiss.
+Autocomplete appears as you type. See [Autocomplete](/features/autocomplete) for details.
 
 {/* Screenshot: Autocomplete popup showing table and column suggestions */}
 <Frame caption="SQL autocomplete">
@@ -264,7 +262,7 @@ Key mappings:
 Standard motions (`h/j/k/l`, `w/b/e`, `0/$`, `gg/G`), operators (`d`, `c`, `y`), and count prefixes (`3dd`, `5j`) all work as expected. Text objects like `ciw` (change inner word) and `di"` (delete inside quotes) are supported.
 
 <Tip>
-Use `:w` as a quick way to execute queries without switching to the mouse.
+Use `:w` to execute queries.
 </Tip>
 
 ## Editor Settings
