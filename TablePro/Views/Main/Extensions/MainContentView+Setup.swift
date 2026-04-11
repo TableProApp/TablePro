@@ -161,7 +161,8 @@ extension MainContentView {
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             let queryLabel = "\(langName) Query"
-            windowTitle = selectedTab?.tableName
+            windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableName : nil)
+                ?? selectedTab?.title
                 ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
         }
         viewWindow?.representedURL = selectedTab?.sourceFileURL
