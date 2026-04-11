@@ -23,6 +23,7 @@ struct QueryEditorView: View {
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
+    @State private var executionStartTime: Date?
     @Binding var queryHistory: [QueryHistoryItem]
     let connectionId: UUID
     let historyStorage: QueryHistoryStorage
@@ -87,9 +88,16 @@ struct QueryEditorView: View {
             SQLHighlightTextView(text: $query)
                 .frame(minHeight: 80, maxHeight: result != nil || appError != nil ? 120 : 250)
 
-            if executionTime != nil || result != nil {
+            if isExecuting || executionTime != nil || result != nil {
                 HStack {
-                    if let time = executionTime {
+                    if isExecuting, let startTime = executionStartTime {
+                        TimelineView(.periodic(from: startTime, by: 0.1)) { context in
+                            let elapsed = context.date.timeIntervalSince(startTime)
+                            Label(String(format: "%.1fs", elapsed), systemImage: "clock")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else if let time = executionTime {
                         Label(String(format: "%.1fms", time * 1000), systemImage: "clock")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -410,7 +418,11 @@ struct QueryEditorView: View {
 
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         isExecuting = true
-        defer { isExecuting = false }
+        executionStartTime = Date()
+        defer {
+            isExecuting = false
+            executionStartTime = nil
+        }
         appError = nil
         result = nil
 

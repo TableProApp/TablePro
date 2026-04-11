@@ -348,6 +348,14 @@ struct ConnectionListView: View {
             ConnectionRow(connection: connection, tag: appState.tag(for: connection.tagId))
         }
         .hoverEffect()
+        .swipeActions(edge: .leading) {
+            Button {
+                editingConnection = connection
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button {
                 connectionToDelete = connection

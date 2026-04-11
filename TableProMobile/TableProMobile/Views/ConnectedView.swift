@@ -91,6 +91,22 @@ struct ConnectedView: View {
                         }
                     }
                     .animation(.default, value: isSwitching)
+                    .overlay(alignment: .top) {
+                        if isReconnecting {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.mini)
+                                Text(String(localized: "Reconnecting..."))
+                                    .font(.caption)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.regularMaterial, in: Capsule())
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .padding(.top, 4)
+                        }
+                    }
+                    .animation(.default, value: isReconnecting)
             }
         }
         .sensoryFeedback(.success, trigger: hapticSuccess)
