@@ -125,6 +125,19 @@ final class QueryTabManager {
         selectedTabId = newTab.id
     }
 
+    func addServerDashboardTab() {
+        if let existing = tabs.first(where: { $0.tabType == .serverDashboard }) {
+            selectedTabId = existing.id
+            return
+        }
+        let tabTitle = String(localized: "Server Dashboard")
+        var newTab = QueryTab(title: tabTitle, tabType: .serverDashboard)
+        newTab.isEditable = false
+        newTab.hasUserInteraction = true
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+    }
+
     func addPreviewTableTab(
         tableName: String,
         databaseType: DatabaseType = .mysql,

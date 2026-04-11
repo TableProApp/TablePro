@@ -7,10 +7,11 @@ import Foundation
 
 /// Type of tab
 enum TabType: Equatable, Codable, Hashable {
-    case query       // SQL editor tab
-    case table       // Direct table view tab
-    case createTable // Create new table tab
-    case erDiagram   // ER diagram tab
+    case query            // SQL editor tab
+    case table            // Direct table view tab
+    case createTable      // Create new table tab
+    case erDiagram        // ER diagram tab
+    case serverDashboard  // Server dashboard tab
 }
 
 /// Minimal representation of a tab for persistence

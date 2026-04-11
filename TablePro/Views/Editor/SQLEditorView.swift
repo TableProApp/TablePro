@@ -38,7 +38,18 @@ struct SQLEditorView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Group {
+        // Keep callbacks fresh on every parent re-render
+        coordinator.onCloseTab = onCloseTab
+        coordinator.onExecuteQuery = onExecuteQuery
+        coordinator.onAIExplain = onAIExplain
+        coordinator.onAIOptimize = onAIOptimize
+        coordinator.onSaveAsFavorite = onSaveAsFavorite
+        coordinator.onFormatSQL = onFormatSQL
+        coordinator.schemaProvider = schemaProvider
+        coordinator.connectionAIPolicy = connectionAIPolicy
+        coordinator.databaseType = databaseType
+
+        return Group {
             if editorReady {
             SourceEditor(
                 $text,
@@ -97,33 +108,23 @@ struct SQLEditorView: View {
                 editorConfiguration = Self.makeConfiguration()
             }
             .onAppear {
+                if coordinator.isDestroyed {
+                    coordinator.revive()
+                }
                 if completionAdapter == nil {
                     completionAdapter = SQLCompletionAdapter(schemaProvider: schemaProvider, databaseType: databaseType)
                 }
-                coordinator.schemaProvider = schemaProvider
-                coordinator.connectionAIPolicy = connectionAIPolicy
-                coordinator.onCloseTab = onCloseTab
-                coordinator.onExecuteQuery = onExecuteQuery
-                coordinator.onAIExplain = onAIExplain
-                coordinator.onAIOptimize = onAIOptimize
-                coordinator.onSaveAsFavorite = onSaveAsFavorite
-                coordinator.onFormatSQL = onFormatSQL
                 setupFavoritesObserver()
             }
         } else {
             Color(nsColor: .textBackgroundColor)
                 .onAppear {
+                    if coordinator.isDestroyed {
+                        coordinator.revive()
+                    }
                     if completionAdapter == nil {
                         completionAdapter = SQLCompletionAdapter(schemaProvider: schemaProvider, databaseType: databaseType)
                     }
-                    coordinator.schemaProvider = schemaProvider
-                    coordinator.connectionAIPolicy = connectionAIPolicy
-                    coordinator.onCloseTab = onCloseTab
-                    coordinator.onExecuteQuery = onExecuteQuery
-                    coordinator.onAIExplain = onAIExplain
-                    coordinator.onAIOptimize = onAIOptimize
-                    coordinator.onSaveAsFavorite = onSaveAsFavorite
-                    coordinator.onFormatSQL = onFormatSQL
                     setupFavoritesObserver()
                     editorReady = true
                 }

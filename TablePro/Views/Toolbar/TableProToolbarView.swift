@@ -186,6 +186,14 @@ struct TableProToolbar: ViewModifier {
 
                 ToolbarItemGroup(placement: .secondaryAction) {
                     Button {
+                        actions?.showServerDashboard()
+                    } label: {
+                        Label(String(localized: "Dashboard"), systemImage: "gauge.with.dots.needle.33percent")
+                    }
+                    .help(String(localized: "Server Dashboard"))
+                    .disabled(state.connectionState != .connected || !(actions?.supportsServerDashboard ?? false))
+
+                    Button {
                         actions?.toggleHistoryPanel()
                     } label: {
                         Label("History", systemImage: "clock")

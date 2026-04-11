@@ -72,6 +72,7 @@ struct MainEditorContentView: View {
     @State private var tabProviderCache: [UUID: RowProviderCacheEntry] = [:]
     @State private var cachedChangeManager: AnyChangeManager?
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
+    @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var favoriteDialogQuery: FavoriteDialogQuery?
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
@@ -121,7 +122,8 @@ struct MainEditorContentView: View {
             )
         }
         .onChange(of: tabManager.tabIds) { _, newIds in
-            guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty else {
+            guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty
+                || !serverDashboardViewModels.isEmpty else {
                 coordinator.cleanupSortCache(openTabIds: Set(newIds))
                 return
             }
@@ -130,6 +132,7 @@ struct MainEditorContentView: View {
             coordinator.cleanupSortCache(openTabIds: openTabIds)
             tabProviderCache = tabProviderCache.filter { openTabIds.contains($0.key) }
             erDiagramViewModels = erDiagramViewModels.filter { openTabIds.contains($0.key) }
+            serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, newId in
             updateHasQueryText()
@@ -184,7 +187,32 @@ struct MainEditorContentView: View {
             )
         case .erDiagram:
             erDiagramContent(tab: tab)
+        case .serverDashboard:
+            serverDashboardContent(tab: tab)
         }
+    }
+
+    // MARK: - Server Dashboard Tab Content
+
+    @ViewBuilder
+    private func serverDashboardContent(tab: QueryTab) -> some View {
+        Group {
+            if let vm = serverDashboardViewModels[tab.id] {
+                ServerDashboardView(viewModel: vm)
+            } else {
+                ProgressView(String(localized: "Loading dashboard..."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        guard serverDashboardViewModels[tab.id] == nil else { return }
+                        let vm = ServerDashboardViewModel(
+                            connectionId: connection.id,
+                            databaseType: connection.type
+                        )
+                        serverDashboardViewModels[tab.id] = vm
+                    }
+            }
+        }
+        .id(tab.id)
     }
 
     // MARK: - ER Diagram Tab Content

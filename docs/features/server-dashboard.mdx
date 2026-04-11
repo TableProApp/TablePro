@@ -1,0 +1,81 @@
+---
+title: Server Dashboard
+description: Monitor active sessions, server metrics, and slow queries in real time
+---
+
+# Server Dashboard
+
+View live server state at a glance. The dashboard shows active sessions, key server metrics, and slow-running queries with configurable auto-refresh.
+
+Open it from the menu bar **View > Server Dashboard** or click the **Dashboard** button in the toolbar overflow menu.
+
+<Frame caption="Server Dashboard showing active sessions, metrics, and slow queries">
+  <img
+    className="block dark:hidden"
+    src="/images/server-dashboard.png"
+    alt="Server Dashboard"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/server-dashboard-dark.png"
+    alt="Server Dashboard"
+  />
+</Frame>
+
+## Active Sessions
+
+A sortable table of all connections to the server, showing:
+
+- **PID** - process or session ID
+- **User** - connected user
+- **Database** - target database
+- **State** - current status (active, idle, sleeping)
+- **Duration** - how long the current operation has been running
+- **Query** - the SQL statement being executed (truncated, hover for full text)
+
+### Kill and Cancel
+
+Each session row has action buttons:
+
+- **Cancel Query** (stop icon) - cancels the running query without terminating the connection
+- **Terminate Session** (x icon) - kills the entire connection
+
+Both actions show a confirmation alert before executing.
+
+## Server Metrics
+
+A horizontal strip of key metrics displayed as cards:
+
+| Database | Metrics shown |
+|----------|--------------|
+| PostgreSQL | Active connections, cache hit ratio, database size, uptime, active queries |
+| MySQL/MariaDB | Threads connected, threads running, uptime, total queries, slow queries, max connections |
+| MSSQL | Active connections, uptime, database size |
+| ClickHouse | Active queries, merges, disk usage |
+| DuckDB | Database size, memory limit, threads |
+| SQLite | Database size, journal mode, cache size |
+
+## Slow Queries
+
+A collapsible list of queries running longer than 1 second, sorted by duration. Each entry shows the elapsed time, SQL text, user, and database.
+
+## Auto-refresh
+
+The dashboard toolbar provides refresh controls:
+
+- **Interval picker** - choose 1s, 2s, 5s (default), 10s, 30s, or Off
+- **Pause/Resume** - temporarily stop refreshing without changing the interval
+- **Manual refresh** - click or press **Cmd+R**
+- **Last refresh time** - shown on the right
+
+## Database Support
+
+| Feature | PostgreSQL | MySQL | MSSQL | ClickHouse | DuckDB | SQLite |
+|---------|:----------:|:-----:|:-----:|:----------:|:------:|:------:|
+| Active Sessions | Yes | Yes | Yes | Yes | - | - |
+| Server Metrics | Yes | Yes | Yes | Yes | Yes | Yes |
+| Slow Queries | Yes | Yes | Yes | Yes | - | - |
+| Kill Session | Yes | Yes | Yes | Yes | - | - |
+| Cancel Query | Yes | Yes | - | - | - | - |
+
+For databases that don't support a panel, that section is hidden automatically. NoSQL databases (Redis, MongoDB, etc.) do not support the dashboard - the menu item and toolbar button are disabled.

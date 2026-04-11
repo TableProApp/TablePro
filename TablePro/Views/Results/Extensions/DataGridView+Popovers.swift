@@ -238,6 +238,7 @@ extension TableViewCoordinator {
         let currentValue = rowProvider.value(atRow: row, column: columnIndex)
         pendingDropdownRow = row
         pendingDropdownColumn = columnIndex
+        pendingDropdownTableView = tableView
 
         let menu = NSMenu()
         for option in ["YES", "NO"] {
@@ -254,10 +255,14 @@ extension TableViewCoordinator {
     }
 
     @objc func dropdownMenuItemSelected(_ sender: NSMenuItem) {
-        let newValue = sender.title
-        let oldValue = rowProvider.value(atRow: pendingDropdownRow, column: pendingDropdownColumn)
-        guard oldValue != newValue else { return }
-        onCellEdit?(pendingDropdownRow, pendingDropdownColumn, newValue)
+        guard let tableView = pendingDropdownTableView else { return }
+        commitPopoverEdit(
+            tableView: tableView,
+            row: pendingDropdownRow,
+            column: pendingDropdownColumn + 1,
+            columnIndex: pendingDropdownColumn,
+            newValue: sender.title
+        )
     }
 
     func commitPopoverEdit(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, newValue: String?) {

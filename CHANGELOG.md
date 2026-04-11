@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Full-text search across all columns in iOS data browser
+- Server Dashboard with active sessions, server metrics, and slow query monitoring (PostgreSQL, MySQL, MSSQL, ClickHouse, DuckDB, SQLite)
+
+## [0.30.1] - 2026-04-10
+
+### Added
+
+- Auto-uppercase SQL keywords setting (#660)
+- Unified cell editor chevrons for boolean, enum, date, JSON, blob columns (#665)
+
+### Fixed
+
+- MSSQL connection failing on Docker/fresh SQL Server (#661)
+- Context menu Format SQL not working (#659)
 
 ## [0.30.0] - 2026-04-10
 
@@ -1231,7 +1244,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.30.1...HEAD
+[0.30.1]: https://github.com/TableProApp/TablePro/compare/v0.30.0...v0.30.1
 [0.30.0]: https://github.com/TableProApp/TablePro/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/TableProApp/TablePro/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/TableProApp/TablePro/compare/v0.27.5...v0.28.0

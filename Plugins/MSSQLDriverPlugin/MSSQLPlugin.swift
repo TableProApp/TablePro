@@ -196,6 +196,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlname(login, user, Int32(DBSETUSER))
         _ = dbsetlname(login, password, Int32(DBSETPWD))
         _ = dbsetlname(login, "TablePro", Int32(DBSETAPP))
+        _ = dbsetlname(login, "us_english", Int32(DBSETNATLANG))
         _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
 

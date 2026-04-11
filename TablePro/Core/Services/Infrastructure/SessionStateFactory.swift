@@ -98,6 +98,8 @@ enum SessionStateFactory {
                         schemaKey: payload.erDiagramSchemaKey ?? payload.databaseName ?? connection.database,
                         databaseName: payload.databaseName ?? connection.database
                     )
+                case .serverDashboard:
+                    tabMgr.addServerDashboardTab()
                 }
             case .newEmptyTab:
                 tabMgr.addTab(databaseName: payload.databaseName ?? connection.database)
