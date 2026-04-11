@@ -9,6 +9,7 @@ import TableProSync
 
 struct ConnectionListView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showingAddConnection = false
     @State private var editingConnection: DatabaseConnection?
     @State private var selectedConnectionId: UUID?
@@ -133,6 +134,32 @@ struct ConnectionListView: View {
     }
 
     @ViewBuilder
+    private var connectionList: some View {
+        let list = List(selection: $selectedConnectionId) {
+            if groupByGroup {
+                groupedContent
+            } else {
+                ForEach(displayedConnections) { connection in
+                    connectionRow(connection)
+                }
+                .onMove { source, destination in
+                    var items = displayedConnections
+                    items.move(fromOffsets: source, toOffset: destination)
+                    for index in items.indices {
+                        items[index].sortOrder = index
+                    }
+                    appState.reorderConnections(items)
+                }
+            }
+        }
+        if sizeClass == .regular {
+            list.listStyle(.sidebar)
+        } else {
+            list.listStyle(.insetGrouped)
+        }
+    }
+
+    @ViewBuilder
     private var sidebar: some View {
         if appState.connections.isEmpty && !isSyncing {
             ContentUnavailableView {
@@ -149,24 +176,7 @@ struct ConnectionListView: View {
             ProgressView("Syncing from iCloud...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(selection: $selectedConnectionId) {
-                if groupByGroup {
-                    groupedContent
-                } else {
-                    ForEach(displayedConnections) { connection in
-                        connectionRow(connection)
-                    }
-                    .onMove { source, destination in
-                        var items = displayedConnections
-                        items.move(fromOffsets: source, toOffset: destination)
-                        for index in items.indices {
-                            items[index].sortOrder = index
-                        }
-                        appState.reorderConnections(items)
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
+            connectionList
             .overlay {
                 if !appState.connections.isEmpty && displayedConnections.isEmpty {
                     ContentUnavailableView(
@@ -403,12 +413,12 @@ private struct ConnectionRow: View {
             if let tag {
                 Text(tag.name)
                     .font(.caption)
-                    .foregroundStyle(ConnectionColorPicker.swiftUIColor(for: tag.color))
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(
                         Capsule()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: tag.color).opacity(0.15))
+                            .fill(ConnectionColorPicker.swiftUIColor(for: tag.color))
                     )
             }
         }

@@ -113,6 +113,7 @@ struct InsertRowView: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .formStyle(.grouped)
             .navigationTitle("Insert Row")
             .navigationBarTitleDisplayMode(.inline)

@@ -29,37 +29,39 @@ struct StructureView: View {
     @State private var appError: AppError?
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
+            if isLoading {
+                ProgressView("Loading structure...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let appError {
+                ErrorView(error: appError) {
+                    await loadStructure()
+                }
+            } else {
+                switch selectedTab {
+                case .columns:
+                    columnsTab
+                case .indexes:
+                    indexesTab
+                case .foreignKeys:
+                    foreignKeysTab
+                }
+            }
+        }
+        .safeAreaInset(edge: .top) {
             Picker("Section", selection: $selectedTab) {
                 ForEach(Tab.allCases, id: \.self) { tab in
                     Text(tab.rawValue).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
-            .padding()
-
-            Group {
-                if isLoading {
-                    ProgressView("Loading structure...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let appError {
-                    ErrorView(error: appError) {
-                        await loadStructure()
-                    }
-                } else {
-                    switch selectedTab {
-                    case .columns:
-                        columnsTab
-                    case .indexes:
-                        indexesTab
-                    case .foreignKeys:
-                        foreignKeysTab
-                    }
-                }
-            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.bar)
         }
         .navigationTitle(table.name)
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await loadStructure() }
         .task { await loadStructure() }
     }
 

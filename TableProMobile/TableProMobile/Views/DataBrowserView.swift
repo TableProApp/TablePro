@@ -204,6 +204,7 @@ struct DataBrowserView: View {
                 .navigationTitle(table.name)
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $searchText, prompt: "Search all columns")
+                .textInputAutocapitalization(.never)
                 .onSubmit(of: .search) { applySearch() }
                 .onChange(of: searchText) { oldValue, newValue in
                     if newValue.isEmpty, !oldValue.isEmpty, hasActiveSearch {
@@ -696,6 +697,7 @@ private struct FilterSheetView: View {
 
     @State private var draft: [TableFilter] = []
     @State private var draftLogicMode: FilterLogicMode = .and
+    @State private var showClearConfirmation = false
 
     private var hasValidFilters: Bool {
         draft.contains { $0.isEnabled && $0.isValid }
@@ -763,10 +765,7 @@ private struct FilterSheetView: View {
                 if !draft.isEmpty {
                     Section {
                         Button("Clear All Filters", role: .destructive) {
-                            filters.removeAll()
-                            logicMode = .and
-                            onClear()
-                            dismiss()
+                            showClearConfirmation = true
                         }
                     }
                 }
@@ -790,6 +789,20 @@ private struct FilterSheetView: View {
             .onAppear {
                 draft = filters
                 draftLogicMode = logicMode
+            }
+            .confirmationDialog(
+                String(localized: "Clear All Filters"),
+                isPresented: $showClearConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Clear All"), role: .destructive) {
+                    filters.removeAll()
+                    logicMode = .and
+                    onClear()
+                    dismiss()
+                }
+            } message: {
+                Text("All filter conditions will be removed.")
             }
         }
     }

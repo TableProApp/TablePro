@@ -101,6 +101,7 @@ struct TableListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
+        .textInputAutocapitalization(.never)
         .refreshable {
             await onRefresh?()
         }
