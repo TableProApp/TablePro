@@ -116,7 +116,7 @@ struct DatabaseSwitcherSheet: View {
         .defaultFocus($focus, .search)
         .task { await viewModel.fetchDatabases() }
         .sheet(isPresented: $showCreateDialog) {
-            CreateDatabaseSheet { name, charset, collation in
+            CreateDatabaseSheet(databaseType: databaseType) { name, charset, collation in
                 try await viewModel.createDatabase(
                     name: name, charset: charset, collation: collation)
                 await viewModel.refreshDatabases()
@@ -174,7 +174,9 @@ struct DatabaseSwitcherSheet: View {
             .help(String(localized: "Refresh database list"))
 
             // Create (only for non-SQLite)
-            if databaseType != .sqlite && !isSchemaMode {
+            if databaseType != .sqlite && databaseType != .redis
+                && databaseType != .etcd && !isSchemaMode
+            {
                 Button(action: { showCreateDialog = true }) {
                     Image(systemName: "plus")
                         .frame(width: 24, height: 24)

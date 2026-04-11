@@ -10,27 +10,25 @@ import SwiftUI
 struct CreateDatabaseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    let databaseType: DatabaseType
     let onCreate: (String, String, String?) async throws -> Void
 
     @State private var databaseName = ""
-    @State private var charset = "utf8mb4"
-    @State private var collation = "utf8mb4_unicode_ci"
+    @State private var charset: String
+    @State private var collation: String
     @State private var isCreating = false
     @State private var errorMessage: String?
 
-    private let charsets = [
-        "utf8mb4",
-        "utf8",
-        "latin1",
-        "ascii"
-    ]
+    private let config: CreateDatabaseOptions.Config
 
-    private let collations: [String: [String]] = [
-        "utf8mb4": ["utf8mb4_unicode_ci", "utf8mb4_general_ci", "utf8mb4_bin"],
-        "utf8": ["utf8_unicode_ci", "utf8_general_ci", "utf8_bin"],
-        "latin1": ["latin1_swedish_ci", "latin1_general_ci", "latin1_bin"],
-        "ascii": ["ascii_general_ci", "ascii_bin"]
-    ]
+    init(databaseType: DatabaseType, onCreate: @escaping (String, String, String?) async throws -> Void) {
+        self.databaseType = databaseType
+        self.onCreate = onCreate
+        let cfg = CreateDatabaseOptions.config(for: databaseType)
+        self.config = cfg
+        self._charset = State(initialValue: cfg.defaultCharset)
+        self._collation = State(initialValue: cfg.defaultCollation)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,36 +52,38 @@ struct CreateDatabaseSheet: View {
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 }
 
-                // Charset
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Character Set")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
-                        .foregroundStyle(.secondary)
+                if config.showOptions {
+                    // Charset / Encoding
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(config.charsetLabel)
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                            .foregroundStyle(.secondary)
 
-                    Picker("", selection: $charset) {
-                        ForEach(charsets, id: \.self) { cs in
-                            Text(cs).tag(cs)
+                        Picker("", selection: $charset) {
+                            ForEach(config.charsets, id: \.self) { cs in
+                                Text(cs).tag(cs)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
-                }
 
-                // Collation
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Collation")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    // Collation / LC_COLLATE
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(config.collationLabel)
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                            .foregroundStyle(.secondary)
 
-                    Picker("", selection: $collation) {
-                        ForEach(collations[charset] ?? [], id: \.self) { col in
-                            Text(col).tag(col)
+                        Picker("", selection: $collation) {
+                            ForEach(config.collations[charset] ?? [], id: \.self) { col in
+                                Text(col).tag(col)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                 }
 
                 // Error message
@@ -116,14 +116,12 @@ struct CreateDatabaseSheet: View {
         }
         .frame(width: 380)
         .onExitCommand {
-            // Prevent dismissing the sheet via ESC while a database is being created
             if !isCreating {
                 dismiss()
             }
         }
         .onChange(of: charset) { _, newCharset in
-            // Update collation when charset changes
-            if let firstCollation = collations[newCharset]?.first {
+            if let firstCollation = config.collations[newCharset]?.first {
                 collation = firstCollation
             }
         }
@@ -137,7 +135,11 @@ struct CreateDatabaseSheet: View {
 
         Task {
             do {
-                try await onCreate(databaseName, charset, collation)
+                if config.showOptions {
+                    try await onCreate(databaseName, charset, collation)
+                } else {
+                    try await onCreate(databaseName, "", nil)
+                }
                 await MainActor.run {
                     dismiss()
                 }

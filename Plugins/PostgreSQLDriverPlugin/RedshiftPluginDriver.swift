@@ -621,7 +621,8 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
-        let validCharsets = ["UTF8", "LATIN1", "SQL_ASCII"]
+        let validCharsets = ["UTF8", "LATIN1", "SQL_ASCII", "WIN1252", "EUC_JP",
+                              "EUC_KR", "ISO_8859_5", "KOI8R", "SJIS", "BIG5", "GBK"]
         let normalizedCharset = charset.uppercased()
         guard validCharsets.contains(normalizedCharset) else {
             throw LibPQPluginError(message: "Invalid encoding: \(charset)", sqlState: nil, detail: nil)

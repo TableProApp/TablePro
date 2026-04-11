@@ -560,7 +560,9 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
 
-        let validCharsets = ["utf8mb4", "utf8", "latin1", "ascii"]
+        let validCharsets = ["utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
+                              "binary", "utf16", "utf32", "cp1251", "big5",
+                              "euckr", "gb2312", "gbk", "sjis"]
         guard validCharsets.contains(charset) else {
             throw MariaDBPluginError(code: 0, message: "Invalid character set: \(charset)", sqlState: nil)
         }
