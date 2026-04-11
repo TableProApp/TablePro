@@ -64,16 +64,22 @@ enum SQLSyntaxHighlighter {
     static func highlight(_ textStorage: NSTextStorage, in editedRange: NSRange) {
         let fullLength = textStorage.length
         guard fullLength > 0 else { return }
+        guard editedRange.location < fullLength else { return }
 
         let cappedLength = min(fullLength, maxHighlightLength)
         let nsString = textStorage.string as NSString
 
+        let safeEditedRange = NSRange(
+            location: editedRange.location,
+            length: min(editedRange.length, fullLength - editedRange.location)
+        )
+
         let highlightRange: NSRange
-        if editedRange.location == 0 && editedRange.length >= cappedLength {
+        if safeEditedRange.location == 0 && safeEditedRange.length >= cappedLength {
             highlightRange = NSRange(location: 0, length: cappedLength)
         } else {
-            let lineStart = nsString.lineRange(for: NSRange(location: editedRange.location, length: 0)).location
-            let editEnd = min(NSMaxRange(editedRange), cappedLength)
+            let lineStart = nsString.lineRange(for: NSRange(location: safeEditedRange.location, length: 0)).location
+            let editEnd = min(NSMaxRange(safeEditedRange), cappedLength)
             let lineEnd = NSMaxRange(nsString.lineRange(for: NSRange(location: max(editEnd - 1, 0), length: 0)))
             highlightRange = NSRange(location: lineStart, length: min(lineEnd - lineStart, cappedLength - lineStart))
         }
