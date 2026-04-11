@@ -711,7 +711,11 @@ final class MainContentCommandActions {
             if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
-            coordinator?.reloadSidebar()
+            // Skip sidebar reload during database switch — switchDatabase() handles it
+            // after schema invalidation to avoid flashing stale tables.
+            if coordinator?.isSwitchingDatabase != true {
+                coordinator?.reloadSidebar()
+            }
             coordinator?.initRedisKeyTreeIfNeeded()
         }
     }
