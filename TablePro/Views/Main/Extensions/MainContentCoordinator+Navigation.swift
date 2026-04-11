@@ -431,7 +431,8 @@ extension MainContentCoordinator {
             }
             AppSettingsStorage.shared.saveLastDatabase(database, for: connectionId)
             await loadSchema()
-            reloadSidebar()
+            await schemaProvider.invalidateTables()
+            sidebarViewModel?.forceLoadTables()
         } catch {
             // Restore toolbar to previous database on failure
             toolbarState.databaseName = previousDatabase
