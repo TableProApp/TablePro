@@ -17,11 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- SSH Tunnel not working when `~/.ssh/config` uses `Include` directives (#672)
-- SSH tunnel cleanup not firing for profile-based connections
-- SSH config tokens (`%d`, `%h`, `%u`, `%r`) not expanded in `IdentityFile` paths
-- Multi-word `Host` entries in SSH config causing connection failures
-- SSH handshake error messages showing numeric codes instead of diagnostics
+- SSH Tunnel not working with `~/.ssh/config` profiles (#672): added `Include` directive support, SSH token expansion (`%d`, `%h`, `%u`, `%r`), multi-word `Host` filtering, and detailed handshake error messages
 
 ## [0.30.1] - 2026-04-10
 
