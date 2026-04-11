@@ -38,6 +38,11 @@ struct ConnectionSSHTunnelView: View {
         Form {
             Section {
                 Toggle(String(localized: "Enable SSH Tunnel"), isOn: $sshEnabled)
+                    .onChange(of: sshEnabled) {
+                        if !sshEnabled {
+                            sshProfileId = nil
+                        }
+                    }
             }
 
             if sshEnabled {

@@ -181,7 +181,8 @@ extension ConnectionFormView {
 
     func saveConnection() {
         let sshConfig: SSHConfiguration
-        if let profileId = sshProfileId,
+        if sshEnabled,
+           let profileId = sshProfileId,
            let profile = sshProfiles.first(where: { $0.id == profileId })
         {
             sshConfig = profile.toSSHConfiguration()
@@ -252,7 +253,7 @@ extension ConnectionFormView {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            sshProfileId: sshProfileId,
+            sshProfileId: sshEnabled ? sshProfileId : nil,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
@@ -382,7 +383,8 @@ extension ConnectionFormView {
         let window = NSApp.keyWindow
 
         let sshConfig: SSHConfiguration
-        if let profileId = sshProfileId,
+        if sshEnabled,
+           let profileId = sshProfileId,
            let profile = sshProfiles.first(where: { $0.id == profileId })
         {
             sshConfig = profile.toSSHConfiguration()
@@ -438,7 +440,7 @@ extension ConnectionFormView {
             color: connectionColor,
             tagId: selectedTagId,
             groupId: selectedGroupId,
-            sshProfileId: sshProfileId,
+            sshProfileId: sshEnabled ? sshProfileId : nil,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,
