@@ -78,9 +78,9 @@ extension DatabaseManager {
             sshPasswordOverride: sshPassword
         )
 
-        // Resolve effective SSH config once for cleanup (profile takes priority over inline)
-        let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
-        let sshEnabled = connection.effectiveSSHConfig(profile: sshProfile).enabled
+        // Detect whether buildEffectiveConnection created a tunnel by checking
+        // if the returned connection was redirected to localhost (tunnel endpoint)
+        let tunnelWasCreated = testConnection.host == "127.0.0.1" && testConnection.port != connection.port
 
         let result: Bool
         do {
@@ -90,7 +90,7 @@ extension DatabaseManager {
             )
             result = try await driver.testConnection()
         } catch {
-            if sshEnabled {
+            if tunnelWasCreated {
                 do {
                     try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
                 } catch {
@@ -100,7 +100,7 @@ extension DatabaseManager {
             throw error
         }
 
-        if sshEnabled {
+        if tunnelWasCreated {
             do {
                 try await SSHTunnelManager.shared.closeTunnel(connectionId: connection.id)
             } catch {
