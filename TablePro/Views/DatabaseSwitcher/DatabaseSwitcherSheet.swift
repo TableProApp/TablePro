@@ -192,36 +192,8 @@ struct DatabaseSwitcherSheet: View {
     private var databaseList: some View {
         ScrollViewReader { proxy in
             List(selection: $viewModel.selectedDatabase) {
-                // Recent section
-                if !viewModel.recentDatabaseMetadata.isEmpty {
-                    Section {
-                        ForEach(viewModel.recentDatabaseMetadata) { db in
-                            databaseRow(db)
-                        }
-                    } header: {
-                        Text("RECENT")
-                            .font(
-                                .system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold)
-                            )
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                // All databases
-                Section {
-                    ForEach(viewModel.allDatabases) { db in
-                        databaseRow(db)
-                    }
-                } header: {
-                    if !viewModel.recentDatabaseMetadata.isEmpty {
-                        Text(isSchemaMode
-                            ? String(localized: "ALL SCHEMAS")
-                            : String(localized: "ALL DATABASES"))
-                            .font(
-                                .system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold)
-                            )
-                            .foregroundStyle(.secondary)
-                    }
+                ForEach(viewModel.filteredDatabases) { db in
+                    databaseRow(db)
                 }
             }
             .listStyle(.sidebar)
@@ -403,7 +375,7 @@ struct DatabaseSwitcherSheet: View {
     // MARK: - Actions
 
     private func moveSelection(up: Bool) {
-        let allDbs = viewModel.recentDatabaseMetadata + viewModel.allDatabases
+        let allDbs = viewModel.filteredDatabases
         guard !allDbs.isEmpty else { return }
 
         // Defer state update to avoid "Publishing changes from within view updates" warning
@@ -432,9 +404,6 @@ struct DatabaseSwitcherSheet: View {
             dismiss()
             return
         }
-
-        // Track access
-        viewModel.trackAccess(database: database)
 
         // Call appropriate callback
         if viewModel.isSchemaMode, PluginManager.shared.supportsSchemaSwitching(for: databaseType), let onSelectSchema {

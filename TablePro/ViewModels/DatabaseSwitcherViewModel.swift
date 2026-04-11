@@ -25,7 +25,6 @@ final class DatabaseSwitcherViewModel {
     // MARK: - Published State
 
     var databases: [DatabaseMetadata] = []
-    var recentDatabases: [String] = []
     var searchText = ""
     var selectedDatabase: String?
     var isLoading = false
@@ -54,18 +53,6 @@ final class DatabaseSwitcherViewModel {
         }
     }
 
-    var recentDatabaseMetadata: [DatabaseMetadata] {
-        recentDatabases.compactMap { dbName in
-            databases.first { $0.name == dbName }
-        }
-    }
-
-    var allDatabases: [DatabaseMetadata] {
-        // Filter out recent databases from "all" list
-        filteredDatabases.filter { db in
-            !recentDatabases.contains(db.name)
-        }
-    }
 
     // MARK: - Initialization
 
@@ -78,7 +65,6 @@ final class DatabaseSwitcherViewModel {
         self.currentSchema = currentSchema
         self.databaseType = databaseType
         self.mode = PluginManager.shared.supportsSchemaSwitching(for: databaseType) ? .schema : .database
-        self.recentDatabases = UserDefaults.standard.recentDatabases(for: connectionId)
     }
 
     // MARK: - Public Methods
@@ -152,11 +138,6 @@ final class DatabaseSwitcherViewModel {
         try await driver.createDatabase(name: name, charset: charset, collation: collation)
     }
 
-    /// Track database access
-    func trackAccess(database: String) {
-        UserDefaults.standard.trackDatabaseAccess(database, for: connectionId)
-        recentDatabases = UserDefaults.standard.recentDatabases(for: connectionId)
-    }
 
     // MARK: - Private Methods
 
