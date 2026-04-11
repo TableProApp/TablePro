@@ -131,7 +131,8 @@ struct TableListView: View {
                 if let table = tableToTruncate {
                     Task {
                         do {
-                            _ = try await session?.driver.execute(query: "TRUNCATE TABLE \"\(table.name)\"")
+                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
+                            _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
                             await onRefresh?()
                         } catch {
                             errorMessage = error.localizedDescription
@@ -154,7 +155,8 @@ struct TableListView: View {
                 if let table = tableToDrop {
                     Task {
                         do {
-                            _ = try await session?.driver.execute(query: "DROP TABLE \"\(table.name)\"")
+                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
+                            _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
                             await onRefresh?()
                         } catch {
                             errorMessage = error.localizedDescription
