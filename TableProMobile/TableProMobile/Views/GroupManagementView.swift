@@ -86,8 +86,10 @@ struct GroupManagementView: View {
             .navigationTitle("Groups")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     EditButton()
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         showingAddGroup = true
                     } label: {

@@ -43,6 +43,7 @@ struct DataBrowserView: View {
     @State private var memoryWarningMessage: String?
     @State private var hapticSuccess = false
     @State private var hapticError = false
+    @State private var showStructure = false
 
     private var isView: Bool {
         table.type == .view || table.type == .materializedView
@@ -161,6 +162,9 @@ struct DataBrowserView: View {
             }
             .sensoryFeedback(.success, trigger: hapticSuccess)
             .sensoryFeedback(.error, trigger: hapticError)
+            .navigationDestination(isPresented: $showStructure) {
+                StructureView(table: table, session: session, databaseType: connection.type)
+            }
             .alert("Go to Page", isPresented: $showGoToPage) {
                 TextField("Page number", text: $goToPageInput)
                     .keyboardType(.numberPad)
@@ -313,25 +317,6 @@ struct DataBrowserView: View {
     private var topToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
-                ForEach(ExportFormat.allCases) { format in
-                    Button {
-                        let text = ClipboardExporter.exportRows(
-                            columns: columns, rows: rows,
-                            format: format, tableName: table.name
-                        )
-                        ClipboardExporter.copyToClipboard(text)
-                    } label: {
-                        Label(format.rawValue, systemImage: "doc.on.clipboard")
-                    }
-                }
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .accessibilityLabel(Text("Export"))
-            }
-            .disabled(rows.isEmpty)
-        }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
                 Picker("Sort By", selection: sortColumnBinding) {
                     Text("Default").tag(String?.none)
                     ForEach(columns, id: \.name) { col in
@@ -365,11 +350,26 @@ struct DataBrowserView: View {
             .badge(activeFilterCount)
         }
         ToolbarItem(placement: .topBarTrailing) {
-            NavigationLink {
-                StructureView(table: table, session: session, databaseType: connection.type)
+            Menu {
+                Button { showStructure = true } label: {
+                    Label("Table Structure", systemImage: "info.circle")
+                }
+                Divider()
+                Section("Export") {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            let text = ClipboardExporter.exportRows(
+                                columns: columns, rows: rows,
+                                format: format, tableName: table.name
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        } label: {
+                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                        }
+                    }
+                }
             } label: {
-                Image(systemName: "info.circle")
-                    .accessibilityLabel(Text("Table Structure"))
+                Image(systemName: "ellipsis.circle")
             }
         }
         if !isView && !connection.safeModeLevel.blocksWrites {
