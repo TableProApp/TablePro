@@ -30,7 +30,6 @@ struct ConnectedView: View {
     @State private var activeSchema: String = "public"
     @State private var isSwitching = false
     @State private var isReconnecting = false
-    @State private var connectTask: Task<Void, Never>?
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
@@ -62,7 +61,6 @@ struct ConnectedView: View {
                         Text(String(format: String(localized: "Connecting to %@..."), displayName))
                     }
                     Button(String(localized: "Cancel")) {
-                        connectTask?.cancel()
                         dismiss()
                     }
                     .buttonStyle(.bordered)
@@ -171,11 +169,7 @@ struct ConnectedView: View {
             }
         }
         .task {
-            let task = Task {
-                await connect()
-            }
-            connectTask = task
-            await task.value
+            await connect()
             if !Task.isCancelled {
                 queryHistory = historyStorage.load(for: connection.id)
             }
