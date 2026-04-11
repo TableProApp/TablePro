@@ -18,6 +18,14 @@ struct ConnectionListView: View {
     @State private var filterTagId: UUID?
     @State private var groupByGroup = false
     @State private var editMode: EditMode = .inactive
+    @State private var connectionToDelete: DatabaseConnection?
+
+    private var showDeleteConfirmation: Binding<Bool> {
+        Binding(
+            get: { connectionToDelete != nil },
+            set: { if !$0 { connectionToDelete = nil } }
+        )
+    }
 
     private var displayedConnections: [DatabaseConnection] {
         var result = appState.connections
@@ -175,6 +183,22 @@ struct ConnectionListView: View {
                     localTags: appState.tags
                 )
             }
+            .confirmationDialog(
+                String(localized: "Delete Connection"),
+                isPresented: showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    if let connection = connectionToDelete {
+                        if selectedConnectionId == connection.id {
+                            selectedConnectionId = nil
+                        }
+                        appState.removeConnection(connection)
+                    }
+                }
+            } message: {
+                Text("Are you sure you want to delete this connection? Saved credentials will be permanently removed.")
+            }
         }
     }
 
@@ -314,10 +338,7 @@ struct ConnectionListView: View {
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
-                if selectedConnectionId == connection.id {
-                    selectedConnectionId = nil
-                }
-                appState.removeConnection(connection)
+                connectionToDelete = connection
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -338,10 +359,7 @@ struct ConnectionListView: View {
             }
             Divider()
             Button(role: .destructive) {
-                if selectedConnectionId == connection.id {
-                    selectedConnectionId = nil
-                }
-                appState.removeConnection(connection)
+                connectionToDelete = connection
             } label: {
                 Label("Delete", systemImage: "trash")
             }

@@ -11,6 +11,14 @@ struct GroupManagementView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editingGroup: ConnectionGroup?
     @State private var showingAddGroup = false
+    @State private var groupToDelete: ConnectionGroup?
+
+    private var showDeleteConfirmation: Binding<Bool> {
+        Binding(
+            get: { groupToDelete != nil },
+            set: { if !$0 { groupToDelete = nil } }
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,7 +45,7 @@ struct GroupManagementView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
-                            appState.deleteGroup(group.id)
+                            groupToDelete = group
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -60,6 +68,19 @@ struct GroupManagementView: View {
                         Text("Create a group to organize your connections.")
                     }
                 }
+            }
+            .confirmationDialog(
+                String(localized: "Delete Group"),
+                isPresented: showDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Delete"), role: .destructive) {
+                    if let group = groupToDelete {
+                        appState.deleteGroup(group.id)
+                    }
+                }
+            } message: {
+                Text("Connections in this group will be moved to ungrouped.")
             }
             .navigationTitle("Groups")
             .navigationBarTitleDisplayMode(.inline)
