@@ -110,7 +110,6 @@ struct ConnectedView: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.vertical, 8)
-            .background(.bar)
         }
         .background {
             Button("") { selectedTab = .tables }
@@ -187,6 +186,13 @@ struct ConnectedView: View {
                 queryHistory = historyStorage.load(for: connection.id)
             }
         }
+        .onAppear {
+            let hasDriver = appState.connectionManager.session(for: connection.id)?.driver != nil
+            if !hasDriver, !isConnecting {
+                appError = nil
+                Task { await connect() }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, session != nil {
                 Task { await reconnectIfNeeded() }
@@ -224,27 +230,23 @@ struct ConnectedView: View {
             return
         }
 
-        isConnecting = true
-        appError = nil
-
-        // Reuse existing session if still alive in ConnectionManager
         if let existing = appState.connectionManager.session(for: connection.id) {
             self.session = existing
             do {
                 self.tables = try await existing.driver.fetchTables(schema: nil)
-                guard !Task.isCancelled else { return }
+                isConnecting = false
                 await loadDatabases()
                 await loadSchemas()
             } catch {
-                // Session stale — disconnect and reconnect
+                self.session = nil
                 await appState.connectionManager.disconnect(connection.id)
                 await connectFresh()
-                return
             }
-            isConnecting = false
             return
         }
 
+        isConnecting = true
+        appError = nil
         await connectFresh()
     }
 
