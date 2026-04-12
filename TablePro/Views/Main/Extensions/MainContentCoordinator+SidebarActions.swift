@@ -58,15 +58,15 @@ extension MainContentCoordinator {
 
     // MARK: - Routine Tab Operations
 
-    func openRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType) {
+    func openRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType, forceNewTab: Bool = false) {
         // Fast path: already viewing this routine
         if let current = tabManager.selectedTab,
-           current.isRoutine && current.tableName == routineName {
+           current.isRoutine, current.tableName == routineName {
             return
         }
 
         // Check if this routine is open in current window's tabs
-        if let existing = tabManager.tabs.first(where: {
+        if !forceNewTab, let existing = tabManager.tabs.first(where: {
             $0.isRoutine && $0.tableName == routineName
         }) {
             tabManager.selectedTabId = existing.id
@@ -74,7 +74,7 @@ extension MainContentCoordinator {
         }
 
         // Check if another native window tab has this routine — switch to it
-        if let keyWindow = NSApp.keyWindow {
+        if !forceNewTab, let keyWindow = NSApp.keyWindow {
             let ownWindows = Set(WindowLifecycleMonitor.shared.windows(for: connectionId).map { ObjectIdentifier($0) })
             let tabbedWindows = keyWindow.tabbedWindows ?? [keyWindow]
             for window in tabbedWindows
@@ -84,8 +84,9 @@ extension MainContentCoordinator {
             }
         }
 
-        // Replace current tab if it's also a routine (read-only, no unsaved state)
-        if let idx = tabManager.selectedTabIndex, tabManager.tabs[idx].isRoutine {
+        // Replace current routine tab in-place (single click = browse)
+        // Cmd+Click skips this to force a new tab
+        if !forceNewTab, let idx = tabManager.selectedTabIndex, tabManager.tabs[idx].isRoutine {
             tabManager.tabs[idx].tableName = routineName
             tabManager.tabs[idx].routineType = routineType
             tabManager.tabs[idx].title = routineName
@@ -94,18 +95,11 @@ extension MainContentCoordinator {
 
         // No tabs open: create inline
         if tabManager.tabs.isEmpty {
-            var newTab = QueryTab(title: routineName, tabType: .table, tableName: routineName)
-            newTab.databaseName = connection.database
-            newTab.isRoutine = true
-            newTab.routineType = routineType
-            newTab.isEditable = false
-            newTab.showStructure = true
-            tabManager.tabs.append(newTab)
-            tabManager.selectedTabId = newTab.id
+            appendRoutineTab(routineName, routineType: routineType)
             return
         }
 
-        // Tabs exist but current is not a routine: open new native tab
+        // Tabs exist but current is not a routine (or forceNewTab): open new native tab
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .table,
@@ -116,6 +110,17 @@ extension MainContentCoordinator {
             showStructure: true
         )
         WindowOpener.shared.openNativeTab(payload)
+    }
+
+    private func appendRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType) {
+        var newTab = QueryTab(title: routineName, tabType: .table, tableName: routineName)
+        newTab.databaseName = connection.database
+        newTab.isRoutine = true
+        newTab.routineType = routineType
+        newTab.isEditable = false
+        newTab.showStructure = true
+        tabManager.tabs.append(newTab)
+        tabManager.selectedTabId = newTab.id
     }
 
     func openQueryInTab(_ query: String) {

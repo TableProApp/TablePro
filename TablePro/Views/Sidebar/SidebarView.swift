@@ -249,7 +249,11 @@ struct SidebarView: View {
                     Section(isExpanded: $viewModel.isRoutinesExpanded) {
                         ForEach(routines) { routine in
                             Button {
-                                coordinator?.openRoutineTab(routine.name, routineType: routine.type)
+                                let forceNewTab = NSEvent.modifierFlags.contains(.command)
+                                coordinator?.openRoutineTab(
+                                    routine.name, routineType: routine.type,
+                                    forceNewTab: forceNewTab
+                                )
                             } label: {
                                 RoutineRowView(routine: routine, isActive: false)
                             }
