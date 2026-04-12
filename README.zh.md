@@ -20,6 +20,7 @@
 
 <p align="center">
   <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.md">English</a>
 </p>
 
 ---
