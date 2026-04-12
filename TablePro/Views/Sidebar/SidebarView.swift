@@ -241,7 +241,7 @@ struct SidebarView: View {
                     Section(isExpanded: $viewModel.isRoutinesExpanded) {
                         ForEach(routines) { routine in
                             Button {
-                                let forceNewTab = NSEvent.modifierFlags.contains(.command)
+                                let forceNewTab = NSEvent.modifierFlags.contains(.option)
                                 coordinator?.openRoutineTab(
                                     routine.name, routineType: routine.type,
                                     forceNewTab: forceNewTab
