@@ -606,7 +606,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
         let query = """
-            SELECT p.proname, CASE p.prokind
+            SELECT DISTINCT ON (p.proname, p.prokind) p.proname, CASE p.prokind
                 WHEN 'f' THEN 'FUNCTION'
                 WHEN 'p' THEN 'PROCEDURE'
             END AS routine_type
@@ -614,7 +614,7 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             JOIN pg_namespace n ON p.pronamespace = n.oid
             WHERE n.nspname = '\(escapedSchema)'
               AND p.prokind IN ('f', 'p')
-            ORDER BY p.proname
+            ORDER BY p.proname, p.prokind
             """
         let result = try await execute(query: query)
         return result.rows.compactMap { row -> PluginRoutineInfo? in
@@ -624,12 +624,15 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let prokind = type.uppercased() == "FUNCTION" ? "f" : "p"
         let query = """
             SELECT pg_get_functiondef(p.oid)
             FROM pg_proc p
             JOIN pg_namespace n ON p.pronamespace = n.oid
             WHERE p.proname = '\(escapeLiteral(routine))'
               AND n.nspname = '\(escapedSchema)'
+              AND p.prokind = '\(prokind)'
+            ORDER BY p.oid
             LIMIT 1
             """
         let result = try await execute(query: query)
