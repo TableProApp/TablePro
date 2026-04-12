@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- License settings showing stale app version from initial activation instead of current version
+- Raw license key sent in analytics heartbeat — now sends boolean flag only
+- Deactivation showing no feedback when server-side deactivation fails
+
 ## [0.31.1] - 2026-04-12
 
 ### Fixed

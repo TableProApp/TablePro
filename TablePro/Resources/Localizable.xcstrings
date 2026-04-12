@@ -3086,9 +3086,6 @@
         }
       }
     },
-    "Action Failed" : {
-
-    },
     "Activate" : {
       "localizations" : {
         "tr" : {
@@ -3270,15 +3267,6 @@
           }
         }
       }
-    },
-    "Active Merges" : {
-
-    },
-    "Active Queries" : {
-
-    },
-    "Active Sessions" : {
-
     },
     "Actual" : {
       "localizations" : {
@@ -4121,7 +4109,6 @@
       }
     },
     "ALL DATABASES" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4166,7 +4153,6 @@
       }
     },
     "ALL SCHEMAS" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4894,9 +4880,6 @@
         }
       }
     },
-    "Are you sure you want to cancel the running query for this session?" : {
-
-    },
     "Are you sure you want to delete \"%@\"?" : {
       "localizations" : {
         "tr" : {
@@ -5007,9 +4990,6 @@
           }
         }
       }
-    },
-    "Are you sure you want to terminate this session? Any running queries will be aborted." : {
-
     },
     "As Copy" : {
       "localizations" : {
@@ -5801,9 +5781,6 @@
         }
       }
     },
-    "Block Size" : {
-
-    },
     "Blue" : {
       "localizations" : {
         "tr" : {
@@ -6069,12 +6046,6 @@
         }
       }
     },
-    "Bytes Received" : {
-
-    },
-    "Bytes Sent" : {
-
-    },
     "CA Cert" : {
       "localizations" : {
         "tr" : {
@@ -6119,12 +6090,6 @@
         }
       }
     },
-    "Cache Hit Ratio" : {
-
-    },
-    "Cache Size" : {
-
-    },
     "Cancel" : {
       "localizations" : {
         "tr" : {
@@ -6146,12 +6111,6 @@
           }
         }
       }
-    },
-    "Cancel Query" : {
-
-    },
-    "Cancel query for session %@" : {
-
     },
     "Cannot execute write queries: connection is read-only" : {
       "localizations" : {
@@ -6487,7 +6446,6 @@
       }
     },
     "Character Set" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -8244,9 +8202,6 @@
         }
       }
     },
-    "Connected Threads" : {
-
-    },
     "Connecting" : {
       "localizations" : {
         "tr" : {
@@ -8606,9 +8561,6 @@
           }
         }
       }
-    },
-    "Connections" : {
-
     },
     "Connections:" : {
       "localizations" : {
@@ -10231,12 +10183,6 @@
         }
       }
     },
-    "Dashboard" : {
-
-    },
-    "Dashboard Not Available" : {
-
-    },
     "Data" : {
       "localizations" : {
         "tr" : {
@@ -10546,9 +10492,6 @@
           }
         }
       }
-    },
-    "Database Size" : {
-
     },
     "Database Switch Failed" : {
       "localizations" : {
@@ -11980,9 +11923,6 @@
         }
       }
     },
-    "Disk Usage" : {
-
-    },
     "Dismiss" : {
       "localizations" : {
         "tr" : {
@@ -12537,9 +12477,6 @@
           }
         }
       }
-    },
-    "Duration" : {
-
     },
     "Each SQLite file is a separate database.\nTo open a different database, create a new connection." : {
       "localizations" : {
@@ -19324,9 +19261,6 @@
         }
       }
     },
-    "Journal Mode" : {
-
-    },
     "JSON" : {
       "localizations" : {
         "tr" : {
@@ -19459,9 +19393,6 @@
           }
         }
       }
-    },
-    "Keep Running" : {
-
     },
     "Keep This Mac's Version" : {
       "localizations" : {
@@ -20506,9 +20437,6 @@
         }
       }
     },
-    "Loading dashboard..." : {
-
-    },
     "Loading databases..." : {
       "localizations" : {
         "tr" : {
@@ -20930,9 +20858,6 @@
         }
       }
     },
-    "Max Connections" : {
-
-    },
     "Max schema tables: %d" : {
       "localizations" : {
         "tr" : {
@@ -21131,9 +21056,6 @@
           }
         }
       }
-    },
-    "Memory Limit" : {
-
     },
     "METADATA" : {
       "localizations" : {
@@ -23497,9 +23419,6 @@
         }
       }
     },
-    "No slow queries" : {
-
-    },
     "No SSL encryption" : {
       "localizations" : {
         "tr" : {
@@ -24298,9 +24217,6 @@
         }
       }
     },
-    "Off" : {
-
-    },
     "Offset" : {
       "localizations" : {
         "tr" : {
@@ -24587,9 +24503,6 @@
           }
         }
       }
-    },
-    "Open editor" : {
-
     },
     "Open File" : {
       "localizations" : {
@@ -25037,12 +24950,6 @@
         }
       }
     },
-    "Page Count" : {
-
-    },
-    "Page Size" : {
-
-    },
     "Page size must be between %@ and %@" : {
       "localizations" : {
         "en" : {
@@ -25070,9 +24977,6 @@
           }
         }
       }
-    },
-    "pages" : {
-
     },
     "Pagination" : {
       "localizations" : {
@@ -25161,9 +25065,6 @@
           }
         }
       }
-    },
-    "Part Mutations" : {
-
     },
     "Partition" : {
       "localizations" : {
@@ -25458,9 +25359,6 @@
         }
       }
     },
-    "Pause" : {
-
-    },
     "pending delete" : {
       "localizations" : {
         "tr" : {
@@ -25526,9 +25424,6 @@
           }
         }
       }
-    },
-    "PID" : {
-
     },
     "Pin Result" : {
       "localizations" : {
@@ -27892,7 +27787,6 @@
       }
     },
     "RECENT" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28321,9 +28215,6 @@
           }
         }
       }
-    },
-    "Refresh Now" : {
-
     },
     "Refreshing will discard all unsaved changes." : {
       "localizations" : {
@@ -29108,9 +28999,6 @@
         }
       }
     },
-    "Resume" : {
-
-    },
     "Retention" : {
       "localizations" : {
         "tr" : {
@@ -29663,9 +29551,6 @@
           }
         }
       }
-    },
-    "Running Threads" : {
-
     },
     "Safe Mode" : {
       "localizations" : {
@@ -31241,9 +31126,6 @@
         }
       }
     },
-    "Server Dashboard" : {
-
-    },
     "Server error (%d): %@" : {
       "localizations" : {
         "en" : {
@@ -31300,12 +31182,6 @@
           }
         }
       }
-    },
-    "Server Metrics" : {
-
-    },
-    "Server monitoring is not available for this database type." : {
-
     },
     "Service Account Key" : {
       "localizations" : {
@@ -32310,9 +32186,6 @@
           }
         }
       }
-    },
-    "Slow Queries" : {
-
     },
     "Small" : {
       "localizations" : {
@@ -33345,9 +33218,6 @@
           }
         }
       }
-    },
-    "State" : {
-
     },
     "statement" : {
       "localizations" : {
@@ -34884,15 +34754,6 @@
         }
       }
     },
-    "Terminate" : {
-
-    },
-    "Terminate Session" : {
-
-    },
-    "Terminate session %@" : {
-
-    },
     "Tertiary Text" : {
       "localizations" : {
         "tr" : {
@@ -35960,9 +35821,6 @@
         }
       }
     },
-    "Threads" : {
-
-    },
     "Tier:" : {
       "localizations" : {
         "en" : {
@@ -36569,12 +36427,6 @@
           }
         }
       }
-    },
-    "Total Blocks" : {
-
-    },
-    "Total Queries" : {
-
     },
     "Total Size" : {
       "localizations" : {
@@ -37638,9 +37490,6 @@
         }
       }
     },
-    "Uptime" : {
-
-    },
     "US Long (12/31/2024 11:59:59 PM)" : {
       "localizations" : {
         "tr" : {
@@ -37794,9 +37643,6 @@
           }
         }
       }
-    },
-    "User Sessions" : {
-
     },
     "User-installed" : {
       "localizations" : {
