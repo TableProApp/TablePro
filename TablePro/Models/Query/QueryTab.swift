@@ -186,7 +186,7 @@ struct QueryTab: Identifiable, Equatable {
     init(from persisted: PersistedTab) {
         self.id = persisted.id
         self.title = persisted.title
-        self.query = persisted.query
+        self.query = persisted.isRoutine ? "" : persisted.query
         self.tabType = persisted.tabType
         self.tableName = persisted.tableName
         self.primaryKeyColumn = nil
@@ -269,9 +269,11 @@ struct QueryTab: Identifiable, Equatable {
 
     /// Convert tab to persisted format for storage
     func toPersistedTab() -> PersistedTab {
-        // Truncate very large queries to prevent JSON encoding from blocking main thread
+        // Routine tabs have no query to persist. Truncate very large queries to prevent JSON freeze.
         let persistedQuery: String
-        if (query as NSString).length > Self.maxPersistableQuerySize {
+        if isRoutine {
+            persistedQuery = ""
+        } else if (query as NSString).length > Self.maxPersistableQuerySize {
             persistedQuery = ""
         } else {
             persistedQuery = query
