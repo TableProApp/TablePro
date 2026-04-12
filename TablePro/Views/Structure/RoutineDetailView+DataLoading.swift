@@ -11,11 +11,13 @@ extension RoutineDetailView {
         var driver = DatabaseManager.shared.driver(for: connection.id)
         if driver == nil {
             for _ in 0..<20 {
+                guard !Task.isCancelled else { return }
                 try? await Task.sleep(for: .milliseconds(250))
                 driver = DatabaseManager.shared.driver(for: connection.id)
                 if driver != nil { break }
             }
         }
+        guard !Task.isCancelled else { return }
 
         guard let driver else {
             errorMessage = String(localized: "Not connected")
@@ -45,7 +47,9 @@ extension RoutineDetailView {
             case .parameters:
                 parameters = try await driver.fetchRoutineParameters(routine: routineName, type: routineType)
             case .ddl:
-                ddlStatement = try await driver.fetchRoutineDefinition(routine: routineName, type: routineType)
+                ddlStatement = definition.isEmpty
+                    ? try await driver.fetchRoutineDefinition(routine: routineName, type: routineType)
+                    : definition
             }
             loadedTabs.insert(tab)
         } catch {

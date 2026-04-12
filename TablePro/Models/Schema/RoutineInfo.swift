@@ -1,7 +1,7 @@
 import Foundation
 
 struct RoutineInfo: Identifiable, Hashable {
-    var id: String { name }
+    var id: String { "\(type.rawValue)_\(name)" }
     let name: String
     let type: RoutineType
 

@@ -7,7 +7,6 @@
 
 import Foundation
 import Observation
-import os
 import TableProPluginKit
 
 /// Represents a single tab (query or table)
@@ -221,6 +220,16 @@ struct QueryTab: Identifiable, Equatable {
         self.paginationVersion = 0
     }
 
+    static func makeRoutineTab(name: String, routineType: RoutineInfo.RoutineType, databaseName: String) -> QueryTab {
+        var tab = QueryTab(title: name, tabType: .table, tableName: name)
+        tab.databaseName = databaseName
+        tab.isRoutine = true
+        tab.routineType = routineType
+        tab.isEditable = false
+        tab.showStructure = true
+        return tab
+    }
+
     /// Build a clean base query for a table tab (no filters/sort).
     /// Used when restoring table tabs from persistence to avoid stale WHERE clauses.
     @MainActor static func buildBaseTableQuery(
@@ -269,10 +278,6 @@ struct QueryTab: Identifiable, Equatable {
 
     /// Convert tab to persisted format for storage
     func toPersistedTab() -> PersistedTab {
-        if tabType == .table {
-            Logger(subsystem: "com.TablePro", category: "QueryTab")
-                .info("[toPersistedTab] title='\(title)' isRoutine=\(isRoutine) routineType=\(String(describing: routineType)) query='\((query as NSString).substring(to: min(40, (query as NSString).length)))'")
-        }
         // Routine tabs have no query to persist. Truncate very large queries to prevent JSON freeze.
         let persistedQuery: String
         if isRoutine {

@@ -56,12 +56,11 @@ enum SessionStateFactory {
                     toolbarSt.isTableTab = true
                     if let tableName = payload.tableName {
                         if payload.isRoutine {
-                            var newTab = QueryTab(title: tableName, tabType: .table, tableName: tableName)
-                            newTab.databaseName = payload.databaseName ?? connection.database
-                            newTab.isRoutine = true
-                            newTab.routineType = payload.routineType
-                            newTab.isEditable = false
-                            newTab.showStructure = true
+                            let newTab = QueryTab.makeRoutineTab(
+                                name: tableName,
+                                routineType: payload.routineType ?? .procedure,
+                                databaseName: payload.databaseName ?? connection.database
+                            )
                             tabMgr.tabs.append(newTab)
                             tabMgr.selectedTabId = newTab.id
                         } else {

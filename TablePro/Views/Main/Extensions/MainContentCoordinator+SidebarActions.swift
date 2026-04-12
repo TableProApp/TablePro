@@ -7,7 +7,6 @@
 
 import AppKit
 import Foundation
-import os
 import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
@@ -96,15 +95,9 @@ extension MainContentCoordinator {
 
         // No tabs: create inline in current window
         if tabManager.tabs.isEmpty {
-            var newTab = QueryTab(title: routineName, tabType: .table, tableName: routineName)
-            newTab.databaseName = connection.database
-            newTab.isRoutine = true
-            newTab.routineType = routineType
-            newTab.isEditable = false
-            newTab.showStructure = true
+            let newTab = QueryTab.makeRoutineTab(name: routineName, routineType: routineType, databaseName: connection.database)
             tabManager.tabs.append(newTab)
             tabManager.selectedTabId = newTab.id
-            Self.logger.info("[Routine] Created inline tab '\(routineName)' isRoutine=\(newTab.isRoutine)")
             return
         }
 
@@ -166,6 +159,7 @@ extension MainContentCoordinator {
             )
             guard confirmed else { return }
 
+            // Downcast required: dropObjectStatement is on PluginDriverAdapter, not DatabaseDriver protocol
             guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else { return }
             let sql = adapter.dropObjectStatement(name: routineName, objectType: keyword, schema: nil, cascade: false)
 

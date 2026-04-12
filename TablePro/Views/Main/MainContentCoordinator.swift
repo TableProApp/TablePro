@@ -411,7 +411,9 @@ final class MainContentCoordinator {
                     DatabaseManager.shared.updateSession(connectionId) { $0.routines = [] }
                 }
             } else {
-                DatabaseManager.shared.updateSession(connectionId) { $0.routines = [] }
+                if !(DatabaseManager.shared.session(for: connectionId)?.routines.isEmpty ?? true) {
+                    DatabaseManager.shared.updateSession(connectionId) { $0.routines = [] }
+                }
             }
 
             sidebarLoadingState = .loaded
@@ -606,11 +608,7 @@ final class MainContentCoordinator {
     func runQuery() {
         guard let index = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[index]
-        Self.logger.info("[runQuery] tab='\(tab.title)' tabType=\(String(describing: tab.tabType)) isRoutine=\(tab.isRoutine) query='\((tab.query as NSString).substring(to: min(60, (tab.query as NSString).length)))'")
-        guard !tab.isRoutine else {
-            Self.logger.info("[runQuery] blocked — routine tab")
-            return
-        }
+        guard !tab.isRoutine else { return }
         guard !tab.isExecuting else { return }
 
         let fullQuery = tab.query
