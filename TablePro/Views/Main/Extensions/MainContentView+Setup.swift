@@ -83,8 +83,11 @@ extension MainContentView {
         let result = await coordinator.persistence.restoreFromDisk()
         if !result.tabs.isEmpty {
             var restoredTabs = result.tabs
-            for i in restoredTabs.indices where restoredTabs[i].tabType == .table && !restoredTabs[i].isRoutine {
-                if let tableName = restoredTabs[i].tableName {
+            for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
+                if restoredTabs[i].isRoutine || restoredTabs[i].routineType != nil {
+                    restoredTabs[i].isRoutine = true
+                    restoredTabs[i].query = ""
+                } else if let tableName = restoredTabs[i].tableName {
                     restoredTabs[i].query = QueryTab.buildBaseTableQuery(
                         tableName: tableName,
                         databaseType: connection.type,
