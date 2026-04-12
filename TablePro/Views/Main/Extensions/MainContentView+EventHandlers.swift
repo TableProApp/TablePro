@@ -95,8 +95,8 @@ extension MainContentView {
             return
         }
 
-        // Option+Click forces a new native tab (same pattern as routine tabs)
-        let forceNewTab = NSEvent.modifierFlags.contains(.option)
+        // Cmd+Click forces a new native tab
+        let forceNewTab = NSEvent.modifierFlags.contains(.command)
 
         if !tabManager.tabs.isEmpty {
             // Skip if clicked table matches the active tab

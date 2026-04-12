@@ -240,15 +240,18 @@ struct SidebarView: View {
                 if let routines = routinesForCurrentConnection, !routines.isEmpty {
                     Section(isExpanded: $viewModel.isRoutinesExpanded) {
                         ForEach(routines) { routine in
-                            Button {
-                                coordinator?.openRoutineTab(routine.name, routineType: routine.type)
-                            } label: {
-                                RoutineRowView(routine: routine, isActive: false)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                routineContextMenu(routine: routine)
-                            }
+                            RoutineRowView(routine: routine, isActive: false)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    let forceNewTab = NSEvent.modifierFlags.contains(.command)
+                                    coordinator?.openRoutineTab(
+                                        routine.name, routineType: routine.type,
+                                        forceNewTab: forceNewTab
+                                    )
+                                }
+                                .contextMenu {
+                                    routineContextMenu(routine: routine)
+                                }
                         }
                     } header: {
                         Text("Routines")
