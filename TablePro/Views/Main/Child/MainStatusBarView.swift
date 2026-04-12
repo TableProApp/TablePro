@@ -35,8 +35,8 @@ struct MainStatusBarView: View {
 
     var body: some View {
         HStack {
-            // Left: Data/Structure toggle for table tabs
-            if let tab = tab, tab.tabType == .table, tab.tableName != nil {
+            // Left: Data/Structure toggle for table tabs (not for routines)
+            if let tab = tab, tab.tabType == .table, tab.tableName != nil, !tab.isRoutine {
                 Picker(String(localized: "View Mode"), selection: $showStructure) {
                     Label("Data", systemImage: "tablecells").tag(false)
                     Label("Structure", systemImage: "list.bullet.rectangle").tag(true)
@@ -95,8 +95,8 @@ struct MainStatusBarView: View {
                     }
                 }
 
-                // Filters toggle button
-                if let tab = tab, tab.tabType == .table, tab.tableName != nil {
+                // Filters toggle button (not for routines)
+                if let tab = tab, tab.tabType == .table, tab.tableName != nil, !tab.isRoutine {
                     Toggle(isOn: Binding(
                         get: { filterStateManager.isVisible },
                         set: { _ in filterStateManager.toggle() }
@@ -117,8 +117,8 @@ struct MainStatusBarView: View {
                     .help(String(localized: "Toggle Filters (⌘F)"))
                 }
 
-                // Pagination controls for table tabs
-                if let tab = tab, tab.tabType == .table, tab.tableName != nil,
+                // Pagination controls for table tabs (not for routines)
+                if let tab = tab, tab.tabType == .table, tab.tableName != nil, !tab.isRoutine,
                    let total = tab.pagination.totalRowCount, total > 0 {
                     PaginationControlsView(
                         pagination: tab.pagination,

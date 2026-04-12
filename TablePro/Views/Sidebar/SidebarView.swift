@@ -246,7 +246,31 @@ struct SidebarView: View {
                 }
 
                 if let routines = routinesForCurrentConnection, !routines.isEmpty {
-                    routinesSection(routines: routines)
+                    Section(isExpanded: $viewModel.isRoutinesExpanded) {
+                        ForEach(routines) { routine in
+                            Button {
+                                coordinator?.openRoutineTab(routine.name, routineType: routine.type)
+                            } label: {
+                                RoutineRowView(routine: routine, isActive: false)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                routineContextMenu(routine: routine)
+                            }
+                        }
+                    } header: {
+                        Text("Routines")
+                            .contextMenu {
+                                if !(coordinator?.safeModeLevel.blocksAllWrites ?? true) {
+                                    Button("Create Procedure...") {
+                                        coordinator?.createProcedure()
+                                    }
+                                    Button("Create Function...") {
+                                        coordinator?.createFunction()
+                                    }
+                                }
+                            }
+                    }
                 }
 
                 if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
@@ -298,35 +322,6 @@ struct SidebarView: View {
         guard !routines.isEmpty else { return nil }
         if viewModel.debouncedSearchText.isEmpty { return routines }
         return routines.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
-    }
-
-    @ViewBuilder
-    private func routinesSection(routines: [RoutineInfo]) -> some View {
-        Section(isExpanded: $viewModel.isRoutinesExpanded) {
-            ForEach(routines) { routine in
-                RoutineRowView(routine: routine, isActive: false)
-                    .overlay {
-                        DoubleClickDetector {
-                            coordinator?.openRoutineTab(routine.name, routineType: routine.type)
-                        }
-                    }
-                    .contextMenu {
-                        routineContextMenu(routine: routine)
-                    }
-            }
-        } header: {
-            Text("Routines")
-                .contextMenu {
-                    if !(coordinator?.safeModeLevel.blocksAllWrites ?? true) {
-                        Button("Create Procedure...") {
-                            coordinator?.createProcedure()
-                        }
-                        Button("Create Function...") {
-                            coordinator?.createFunction()
-                        }
-                    }
-                }
-        }
     }
 
     @ViewBuilder

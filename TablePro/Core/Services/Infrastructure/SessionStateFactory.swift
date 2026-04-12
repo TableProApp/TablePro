@@ -55,7 +55,17 @@ enum SessionStateFactory {
                 case .table:
                     toolbarSt.isTableTab = true
                     if let tableName = payload.tableName {
-                        if payload.isPreview {
+                        if payload.isRoutine {
+                            // Routines open directly to detail view — no data query
+                            var newTab = QueryTab(title: tableName, tabType: .table, tableName: tableName)
+                            newTab.databaseName = payload.databaseName ?? connection.database
+                            newTab.isRoutine = true
+                            newTab.routineType = payload.routineType
+                            newTab.isEditable = false
+                            newTab.showStructure = true
+                            tabMgr.tabs.append(newTab)
+                            tabMgr.selectedTabId = newTab.id
+                        } else if payload.isPreview {
                             tabMgr.addPreviewTableTab(
                                 tableName: tableName,
                                 databaseType: connection.type,
@@ -68,11 +78,9 @@ enum SessionStateFactory {
                                 databaseName: payload.databaseName ?? connection.database
                             )
                         }
-                        if let index = tabMgr.selectedTabIndex {
+                        if let index = tabMgr.selectedTabIndex, !payload.isRoutine {
                             tabMgr.tabs[index].isView = payload.isView
-                            tabMgr.tabs[index].isRoutine = payload.isRoutine
-                            tabMgr.tabs[index].routineType = payload.routineType
-                            tabMgr.tabs[index].isEditable = !payload.isView && !payload.isRoutine
+                            tabMgr.tabs[index].isEditable = !payload.isView
                             tabMgr.tabs[index].schemaName = payload.schemaName
                             if payload.showStructure {
                                 tabMgr.tabs[index].showStructure = true

@@ -199,13 +199,13 @@ struct QueryTab: Identifiable, Equatable {
         self.rowsAffected = 0
         self.errorMessage = nil
         self.isExecuting = false
-        self.isEditable = persisted.tabType == .table && !persisted.isView
+        self.isEditable = persisted.tabType == .table && !persisted.isView && !persisted.isRoutine
         self.isView = persisted.isView
         self.isRoutine = persisted.isRoutine
         self.routineType = persisted.routineType
         self.databaseName = persisted.databaseName
         self.schemaName = persisted.schemaName
-        self.showStructure = false
+        self.showStructure = persisted.isRoutine
         self.erDiagramSchemaKey = persisted.erDiagramSchemaKey
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
