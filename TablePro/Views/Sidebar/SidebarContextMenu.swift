@@ -77,6 +77,13 @@ struct SidebarContextMenu: View {
         }
         .disabled(clickedTable == nil)
 
+        Button("Open in New Tab") {
+            if let tableName = clickedTable?.name {
+                coordinator?.openTableTab(tableName, isView: isView, forceNewTab: true)
+            }
+        }
+        .disabled(clickedTable == nil)
+
         Button(String(localized: "View ER Diagram")) {
             coordinator?.showERDiagram()
         }

@@ -241,11 +241,7 @@ struct SidebarView: View {
                     Section(isExpanded: $viewModel.isRoutinesExpanded) {
                         ForEach(routines) { routine in
                             Button {
-                                let forceNewTab = NSEvent.modifierFlags.contains(.option)
-                                coordinator?.openRoutineTab(
-                                    routine.name, routineType: routine.type,
-                                    forceNewTab: forceNewTab
-                                )
+                                coordinator?.openRoutineTab(routine.name, routineType: routine.type)
                             } label: {
                                 RoutineRowView(routine: routine, isActive: false)
                             }
@@ -324,6 +320,10 @@ struct SidebarView: View {
     private func routineContextMenu(routine: RoutineInfo) -> some View {
         Button("View Definition") {
             coordinator?.openRoutineTab(routine.name, routineType: routine.type)
+        }
+
+        Button("Open in New Tab") {
+            coordinator?.openRoutineTab(routine.name, routineType: routine.type, forceNewTab: true)
         }
 
         Divider()
