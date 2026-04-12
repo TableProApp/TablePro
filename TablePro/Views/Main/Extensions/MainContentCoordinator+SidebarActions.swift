@@ -93,19 +93,30 @@ extension MainContentCoordinator {
             return
         }
 
-        // Append to current window's tab manager
-        appendRoutineTab(routineName, routineType: routineType)
-    }
+        // No tabs: create inline in current window
+        if tabManager.tabs.isEmpty {
+            var newTab = QueryTab(title: routineName, tabType: .table, tableName: routineName)
+            newTab.databaseName = connection.database
+            newTab.isRoutine = true
+            newTab.routineType = routineType
+            newTab.isEditable = false
+            newTab.showStructure = true
+            tabManager.tabs.append(newTab)
+            tabManager.selectedTabId = newTab.id
+            return
+        }
 
-    private func appendRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType) {
-        var newTab = QueryTab(title: routineName, tabType: .table, tableName: routineName)
-        newTab.databaseName = connection.database
-        newTab.isRoutine = true
-        newTab.routineType = routineType
-        newTab.isEditable = false
-        newTab.showStructure = true
-        tabManager.tabs.append(newTab)
-        tabManager.selectedTabId = newTab.id
+        // Open new native window tab
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .table,
+            tableName: routineName,
+            databaseName: connection.database,
+            isRoutine: true,
+            routineType: routineType,
+            showStructure: true
+        )
+        WindowOpener.shared.openNativeTab(payload)
     }
 
     func openQueryInTab(_ query: String) {
