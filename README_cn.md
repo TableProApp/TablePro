@@ -62,6 +62,7 @@ TablePro 是免费开源的。如果您觉得它有用，请考虑[购买许可�
    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
    <img alt="Star History Chart" src="https://api.star-history.com/image?repos=TableProApp/TablePro&type=date&legend=top-left" />
  </picture>
+</a>
 
 ## 许可证
 
