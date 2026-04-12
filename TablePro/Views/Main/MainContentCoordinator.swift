@@ -46,6 +46,7 @@ enum ActiveSheet: Identifiable {
     case quickSwitcher
     case exportQueryResults
     case maintenance(operation: String, tableName: String)
+    case executeRoutine(name: String, type: RoutineInfo.RoutineType, parameters: [RoutineParameterInfo])
 
     var id: String {
         switch self {
@@ -55,6 +56,7 @@ enum ActiveSheet: Identifiable {
         case .quickSwitcher: "quickSwitcher"
         case .exportQueryResults: "exportQueryResults"
         case .maintenance: "maintenance"
+        case .executeRoutine: "executeRoutine"
         }
     }
 }

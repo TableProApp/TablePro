@@ -50,6 +50,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
     func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
     func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo]
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
     func fetchDatabases() async throws -> [String]
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata
@@ -130,6 +131,9 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func createViewTemplate() -> String?
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
+
+    func createProcedureTemplate() -> String?
+    func createFunctionTemplate() -> String?
 
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
@@ -218,6 +222,7 @@ public extension PluginDatabaseDriver {
     func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
         throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "fetchRoutineDefinition not supported"])
     }
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo] { [] }
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "createDatabase not supported"])
@@ -263,6 +268,9 @@ public extension PluginDatabaseDriver {
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
+
+    func createProcedureTemplate() -> String? { nil }
+    func createFunctionTemplate() -> String? { nil }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
 

@@ -215,6 +215,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         )
     }
 
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo] {
+        let pluginParams = try await pluginDriver.fetchRoutineParameters(
+            routine: routine,
+            type: type == .function ? "FUNCTION" : "PROCEDURE",
+            schema: pluginDriver.currentSchema
+        )
+        return pluginParams.map { p in
+            RoutineParameterInfo(name: p.name, dataType: p.dataType,
+                                 direction: p.direction, ordinalPosition: p.ordinalPosition,
+                                 defaultValue: p.defaultValue)
+        }
+    }
+
+    func createProcedureTemplate() -> String? { pluginDriver.createProcedureTemplate() }
+    func createFunctionTemplate() -> String? { pluginDriver.createFunctionTemplate() }
+
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
         let pluginMeta = try await pluginDriver.fetchTableMetadata(
             table: tableName,

@@ -28,12 +28,6 @@ struct SidebarView: View {
         return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
     }
 
-    private var filteredRoutines: [RoutineInfo] {
-        let routines = coordinator?.routines ?? []
-        guard !viewModel.debouncedSearchText.isEmpty else { return routines }
-        return routines.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
-    }
-
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
         Binding(
             get: { sidebarState.selectedTables },
@@ -251,6 +245,10 @@ struct SidebarView: View {
                         }
                 }
 
+                if let routines = routinesForCurrentConnection, !routines.isEmpty {
+                    routinesSection(routines: routines)
+                }
+
                 if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                     Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                         RedisKeyTreeView(
@@ -273,23 +271,6 @@ struct SidebarView: View {
                     }
                 }
 
-                if !filteredRoutines.isEmpty {
-                    Section(isExpanded: $viewModel.isRoutinesExpanded) {
-                        ForEach(filteredRoutines) { routine in
-                            RoutineRow(routine: routine)
-                                .contextMenu {
-                                    Button("View Definition") {
-                                        coordinator?.viewRoutineDefinition(routine.name, type: routine.type)
-                                    }
-                                    Button("Copy Name") {
-                                        ClipboardService.shared.writeText(routine.name)
-                                    }
-                                }
-                        }
-                    } header: {
-                        Text("Routines")
-                    }
-                }
             }
         }
         .listStyle(.sidebar)
@@ -306,6 +287,73 @@ struct SidebarView: View {
         }
         .onExitCommand {
             sidebarState.selectedTables.removeAll()
+        }
+    }
+
+    // MARK: - Routines
+
+    private var routinesForCurrentConnection: [RoutineInfo]? {
+        let session = DatabaseManager.shared.session(for: connectionId)
+        let routines = session?.routines ?? []
+        guard !routines.isEmpty else { return nil }
+        if viewModel.debouncedSearchText.isEmpty { return routines }
+        return routines.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
+    }
+
+    @ViewBuilder
+    private func routinesSection(routines: [RoutineInfo]) -> some View {
+        Section(isExpanded: $viewModel.isRoutinesExpanded) {
+            ForEach(routines) { routine in
+                RoutineRowView(routine: routine, isActive: false)
+                    .overlay {
+                        DoubleClickDetector {
+                            coordinator?.openRoutineTab(routine.name, routineType: routine.type)
+                        }
+                    }
+                    .contextMenu {
+                        routineContextMenu(routine: routine)
+                    }
+            }
+        } header: {
+            Text("Routines")
+                .contextMenu {
+                    if !(coordinator?.safeModeLevel.blocksAllWrites ?? true) {
+                        Button("Create Procedure...") {
+                            coordinator?.createProcedure()
+                        }
+                        Button("Create Function...") {
+                            coordinator?.createFunction()
+                        }
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func routineContextMenu(routine: RoutineInfo) -> some View {
+        Button("View Definition") {
+            coordinator?.openRoutineTab(routine.name, routineType: routine.type)
+        }
+
+        Divider()
+
+        Button("Execute...") {
+            coordinator?.showExecuteRoutineSheet(routine.name, type: routine.type)
+        }
+
+        Divider()
+
+        let typeLabel = routine.type == .function ? "Function" : "Procedure"
+        Button("Drop \(typeLabel)", role: .destructive) {
+            coordinator?.dropRoutine(routine.name, type: routine.type)
+        }
+        .disabled(coordinator?.safeModeLevel.blocksAllWrites ?? true)
+
+        Divider()
+
+        Button("Copy Name") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(routine.name, forType: .string)
         }
     }
 }

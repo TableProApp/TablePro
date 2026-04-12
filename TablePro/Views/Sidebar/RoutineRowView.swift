@@ -1,31 +1,21 @@
-//
-//  RoutineRowView.swift
-//  TablePro
-//
-//  Row view for a stored procedure or function in the sidebar.
-//
-
 import SwiftUI
 
-struct RoutineRow: View {
+struct RoutineRowView: View {
     let routine: RoutineInfo
+    let isActive: Bool
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: routine.type == .function ? "f.cursive" : "gearshape.2")
-                .foregroundStyle(routine.type == .function
-                    ? Color(nsColor: .systemTeal)
-                    : Color(nsColor: .systemGreen))
-                .frame(width: ThemeEngine.shared.activeTheme.iconSizes.default)
-
+        HStack(spacing: 6) {
+            Image(systemName: routine.type == .function ? "function" : "gearshape.2")
+                .font(.system(size: 12))
+                .foregroundStyle(routine.type == .function ? .purple : .teal)
+                .frame(width: 16)
             Text(routine.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
                 .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
         }
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(routine.type == .function
-            ? String(format: String(localized: "Function: %@"), routine.name)
-            : String(format: String(localized: "Procedure: %@"), routine.name))
+        .padding(.vertical, 1)
+        .foregroundStyle(isActive ? .primary : .secondary)
     }
 }

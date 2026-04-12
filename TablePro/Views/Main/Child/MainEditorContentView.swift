@@ -349,7 +349,15 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
-            if tab.showStructure, let tableName = tab.tableName {
+            if tab.showStructure, tab.isRoutine, let routineName = tab.tableName,
+               let routineType = tab.routineType {
+                RoutineDetailView(
+                    routineName: routineName, routineType: routineType,
+                    connection: connection, coordinator: coordinator
+                )
+                .id(routineName)
+                .frame(maxHeight: .infinity)
+            } else if tab.showStructure, let tableName = tab.tableName {
                 TableStructureView(
                     tableName: tableName, connection: connection,
                     toolbarState: coordinator.toolbarState, coordinator: coordinator

@@ -201,6 +201,12 @@ struct MainContentView: View {
                 databaseType: connection.type,
                 onExecute: coordinator.executeMaintenance
             )
+        case .executeRoutine(let name, let type, let parameters):
+            ExecuteRoutineSheet(
+                routineName: name, routineType: type,
+                parameters: parameters, databaseType: connection.type,
+                onExecute: { sql in coordinator.openQueryInTab(sql) }
+            )
         }
     }
 

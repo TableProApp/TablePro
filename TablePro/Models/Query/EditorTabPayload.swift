@@ -37,6 +37,10 @@ internal struct EditorTabPayload: Codable, Hashable {
     internal let initialQuery: String?
     /// Whether this tab displays a database view (read-only)
     internal let isView: Bool
+    /// Whether this tab displays a stored procedure or function
+    internal let isRoutine: Bool
+    /// The type of routine (procedure or function)
+    internal let routineType: RoutineInfo.RoutineType?
     /// Whether to show the structure view instead of data (for "Show Structure" context menu)
     internal let showStructure: Bool
     /// Whether to skip automatic query execution (used for restored tabs that should lazy-load)
@@ -54,7 +58,7 @@ internal struct EditorTabPayload: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, connectionId, tabType, tableName, databaseName, schemaName
-        case initialQuery, isView, showStructure, skipAutoExecute, isPreview
+        case initialQuery, isView, isRoutine, routineType, showStructure, skipAutoExecute, isPreview
         case initialFilterState, sourceFileURL, erDiagramSchemaKey, intent
         // Legacy key for backward decoding only
         case isNewTab
@@ -69,6 +73,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         schemaName: String? = nil,
         initialQuery: String? = nil,
         isView: Bool = false,
+        isRoutine: Bool = false,
+        routineType: RoutineInfo.RoutineType? = nil,
         showStructure: Bool = false,
         skipAutoExecute: Bool = false,
         isPreview: Bool = false,
@@ -85,6 +91,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.schemaName = schemaName
         self.initialQuery = initialQuery
         self.isView = isView
+        self.isRoutine = isRoutine
+        self.routineType = routineType
         self.showStructure = showStructure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = isPreview
@@ -104,6 +112,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         schemaName = try container.decodeIfPresent(String.self, forKey: .schemaName)
         initialQuery = try container.decodeIfPresent(String.self, forKey: .initialQuery)
         isView = try container.decodeIfPresent(Bool.self, forKey: .isView) ?? false
+        isRoutine = try container.decodeIfPresent(Bool.self, forKey: .isRoutine) ?? false
+        routineType = try container.decodeIfPresent(RoutineInfo.RoutineType.self, forKey: .routineType)
         showStructure = try container.decodeIfPresent(Bool.self, forKey: .showStructure) ?? false
         skipAutoExecute = try container.decodeIfPresent(Bool.self, forKey: .skipAutoExecute) ?? false
         isPreview = try container.decodeIfPresent(Bool.self, forKey: .isPreview) ?? false
@@ -128,6 +138,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         try container.encodeIfPresent(schemaName, forKey: .schemaName)
         try container.encodeIfPresent(initialQuery, forKey: .initialQuery)
         try container.encode(isView, forKey: .isView)
+        try container.encode(isRoutine, forKey: .isRoutine)
+        try container.encodeIfPresent(routineType, forKey: .routineType)
         try container.encode(showStructure, forKey: .showStructure)
         try container.encode(skipAutoExecute, forKey: .skipAutoExecute)
         try container.encode(isPreview, forKey: .isPreview)
@@ -147,6 +159,8 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.schemaName = tab.schemaName
         self.initialQuery = tab.query
         self.isView = tab.isView
+        self.isRoutine = tab.isRoutine
+        self.routineType = tab.routineType
         self.showStructure = tab.showStructure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false

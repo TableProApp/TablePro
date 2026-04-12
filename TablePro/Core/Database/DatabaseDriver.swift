@@ -111,6 +111,9 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch the definition (CREATE PROCEDURE/FUNCTION) for a routine
     func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String
 
+    /// Fetch parameters for a stored procedure or function
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo]
+
     /// Fetch table metadata (size, comment, engine, etc.)
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata
 
@@ -172,6 +175,9 @@ protocol DatabaseDriver: AnyObject {
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
 
+    func createProcedureTemplate() -> String?
+    func createFunctionTemplate() -> String?
+
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
 
@@ -215,6 +221,9 @@ extension DatabaseDriver {
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
+
+    func createProcedureTemplate() -> String? { nil }
+    func createFunctionTemplate() -> String? { nil }
 
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }
@@ -315,6 +324,7 @@ extension DatabaseDriver {
     func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String {
         throw DatabaseError.connectionFailed("Routine definitions not supported")
     }
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo] { [] }
 
     func fetchAllDependentTypes(forTables tables: [String]) async throws -> [String: [(name: String, labels: [String])]] {
         var result: [String: [(name: String, labels: [String])]] = [:]

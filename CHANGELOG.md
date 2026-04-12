@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Browse stored procedures and functions in the sidebar for MySQL, MariaDB, PostgreSQL, and SQL Server (#693)
-- View routine definitions from the sidebar context menu
+- Stored procedure and function management: browse routines in sidebar, view definitions, inspect parameters, execute with input dialog, create from templates, drop with confirmation (MySQL, MariaDB, PostgreSQL, SQL Server)
 
 ## [0.31.1] - 2026-04-12
 
