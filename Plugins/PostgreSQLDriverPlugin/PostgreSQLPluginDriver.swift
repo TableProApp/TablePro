@@ -208,6 +208,136 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "CAST(\(column) AS TEXT)"
     }
 
+    // MARK: - Routines
+
+    var supportsRoutines: Bool { true }
+
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let result = try await execute(query: """
+            SELECT p.proname,
+                   CASE p.prokind WHEN 'f' THEN 'FUNCTION' WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END
+            FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE n.nspname = '\(escapedSchema)'
+              AND p.prokind IN ('f', 'p')
+            ORDER BY 2, 1
+            """)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[safe: 0] ?? nil,
+                  let type = row[safe: 1] ?? nil else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let prokind = type.uppercased() == "FUNCTION" ? "f" : "p"
+        let result = try await execute(query: """
+            SELECT pg_get_functiondef(p.oid)
+            FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE p.proname = '\(escapeLiteral(routine))'
+              AND n.nspname = '\(escapedSchema)'
+              AND p.prokind = '\(prokind)'
+            ORDER BY p.oid LIMIT 1
+            """)
+        return (result.rows.first?[safe: 0] ?? nil) ?? ""
+    }
+
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo] {
+        let prokind = type.uppercased() == "FUNCTION" ? "f" : "p"
+        let result = try await execute(query: """
+            SELECT p.oid,
+                pg_get_function_arguments(p.oid) AS arguments,
+                pg_get_function_result(p.oid) AS return_type
+            FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE p.proname = '\(escapeLiteral(routine))'
+              AND n.nspname = '\(escapedSchema)'
+              AND p.prokind = '\(prokind)'
+            ORDER BY p.oid LIMIT 1
+            """)
+        guard let firstRow = result.rows.first else { return [] }
+
+        var params: [PluginRoutineParameterInfo] = []
+
+        if let argsStr = firstRow[safe: 1] ?? nil, !argsStr.isEmpty {
+            let args = parsePostgreSQLArguments(argsStr)
+            for (index, arg) in args.enumerated() {
+                params.append(PluginRoutineParameterInfo(
+                    name: arg.name, dataType: arg.dataType,
+                    direction: arg.direction, ordinalPosition: index + 1,
+                    defaultValue: arg.defaultValue
+                ))
+            }
+        }
+
+        if prokind == "f", let returnType = firstRow[safe: 2] ?? nil, returnType != "void" {
+            params.insert(PluginRoutineParameterInfo(
+                name: nil, dataType: returnType, direction: "RETURN", ordinalPosition: 0
+            ), at: 0)
+        }
+
+        return params
+    }
+
+    private struct ParsedArg {
+        let name: String?
+        let dataType: String
+        let direction: String
+        let defaultValue: String?
+    }
+
+    private func parsePostgreSQLArguments(_ argsStr: String) -> [ParsedArg] {
+        var args: [String] = []
+        var current = ""
+        var depth = 0
+        for char in argsStr {
+            if char == "(" { depth += 1 } else if char == ")" { depth -= 1 }
+            if char == "," && depth == 0 {
+                args.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            } else {
+                current.append(char)
+            }
+        }
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty {
+            args.append(current.trimmingCharacters(in: .whitespaces))
+        }
+
+        return args.map { arg in
+            var parts = arg.components(separatedBy: " ").filter { !$0.isEmpty }
+            var direction = "IN"
+            var defaultValue: String?
+
+            if let defIdx = parts.firstIndex(where: { $0.uppercased() == "DEFAULT" }) {
+                defaultValue = parts[(defIdx + 1)...].joined(separator: " ")
+                parts = Array(parts[..<defIdx])
+            }
+
+            let firstUpper = parts.first?.uppercased() ?? ""
+            if ["IN", "OUT", "INOUT", "VARIADIC"].contains(firstUpper) {
+                direction = firstUpper == "VARIADIC" ? "IN" : firstUpper
+                parts.removeFirst()
+            }
+
+            if parts.count >= 2 {
+                let name = parts[0]
+                let dataType = parts[1...].joined(separator: " ")
+                return ParsedArg(name: name, dataType: dataType, direction: direction, defaultValue: defaultValue)
+            } else {
+                return ParsedArg(name: nil, dataType: parts.joined(separator: " "), direction: direction, defaultValue: defaultValue)
+            }
+        }
+    }
+
+    func createProcedureTemplate() -> String? {
+        "CREATE OR REPLACE PROCEDURE procedure_name(IN param1 TEXT)\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    -- procedure body\nEND;\n$$;"
+    }
+
+    func createFunctionTemplate() -> String? {
+        "CREATE OR REPLACE FUNCTION function_name(param1 INTEGER)\nRETURNS INTEGER\nLANGUAGE plpgsql\nAS $$\nBEGIN\n    RETURN param1;\nEND;\n$$;"
+    }
+
     // MARK: - Schema
 
     func fetchTables(schema: String?) async throws -> [PluginTableInfo] {

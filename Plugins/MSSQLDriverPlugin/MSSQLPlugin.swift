@@ -1091,6 +1091,64 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return result.rows.first?.first?.flatMap { $0 } ?? ""
     }
 
+    // MARK: - Routines
+
+    var supportsRoutines: Bool { true }
+
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let esc = effectiveSchemaEscaped(schema)
+        let sql = """
+            SELECT ROUTINE_NAME, ROUTINE_TYPE
+            FROM INFORMATION_SCHEMA.ROUTINES
+            WHERE ROUTINE_SCHEMA = '\(esc)'
+            ORDER BY ROUTINE_TYPE, ROUTINE_NAME
+            """
+        let result = try await execute(query: sql)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[safe: 0] ?? nil,
+                  let type = row[safe: 1] ?? nil else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let esc = effectiveSchemaEscaped(schema)
+        let escapedRoutine = "\(esc).\(routine.replacingOccurrences(of: "'", with: "''"))"
+        let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('\(escapedRoutine)')"
+        let result = try await execute(query: sql)
+        return result.rows.first?.first?.flatMap { $0 } ?? ""
+    }
+
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo] {
+        let esc = effectiveSchemaEscaped(schema)
+        let escapedRoutine = routine.replacingOccurrences(of: "'", with: "''")
+        let sql = """
+            SELECT PARAMETER_NAME, PARAMETER_MODE, DATA_TYPE, ORDINAL_POSITION
+            FROM INFORMATION_SCHEMA.PARAMETERS
+            WHERE SPECIFIC_SCHEMA = '\(esc)' AND SPECIFIC_NAME = '\(escapedRoutine)'
+            ORDER BY ORDINAL_POSITION
+            """
+        let result = try await execute(query: sql)
+        return result.rows.compactMap { row -> PluginRoutineParameterInfo? in
+            let rawName = row[safe: 0] ?? nil
+            let name: String? = if let rawName, rawName.hasPrefix("@") { String(rawName.dropFirst()) } else { rawName }
+            let mode = (row[safe: 1] ?? nil) ?? "IN"
+            guard let dataType = row[safe: 2] ?? nil,
+                  let posStr = row[safe: 3] ?? nil,
+                  let pos = Int(posStr) else { return nil }
+            let direction = pos == 0 ? "RETURN" : mode
+            return PluginRoutineParameterInfo(name: name, dataType: dataType, direction: direction, ordinalPosition: pos)
+        }
+    }
+
+    func createProcedureTemplate() -> String? {
+        "CREATE PROCEDURE procedure_name\n    @param1 NVARCHAR(255)\nAS\nBEGIN\n    SET NOCOUNT ON;\n    -- procedure body\nEND;"
+    }
+
+    func createFunctionTemplate() -> String? {
+        "CREATE FUNCTION function_name(@param1 INT)\nRETURNS INT\nAS\nBEGIN\n    DECLARE @result INT;\n    SET @result = @param1;\n    RETURN @result;\nEND;"
+    }
+
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let esc = effectiveSchemaEscaped(schema)

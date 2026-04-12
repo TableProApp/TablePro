@@ -56,6 +56,100 @@ extension MainContentCoordinator {
         openERDiagramTab()
     }
 
+    // MARK: - Routine Tab Operations
+
+    func openRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType) {
+        if tabManager.tabs.isEmpty {
+            tabManager.addTab(databaseName: connection.database)
+            if let idx = tabManager.selectedTabIndex {
+                tabManager.tabs[idx].tableName = routineName
+                tabManager.tabs[idx].isRoutine = true
+                tabManager.tabs[idx].routineType = routineType
+                tabManager.tabs[idx].showStructure = true
+            }
+        } else {
+            let payload = EditorTabPayload(
+                connectionId: connection.id,
+                tabType: .table,
+                tableName: routineName,
+                databaseName: connection.database,
+                isRoutine: true,
+                routineType: routineType,
+                showStructure: true
+            )
+            WindowOpener.shared.openNativeTab(payload)
+        }
+    }
+
+    func openQueryInTab(_ query: String) {
+        let payload = EditorTabPayload(
+            connectionId: connection.id,
+            tabType: .query,
+            databaseName: connection.database,
+            initialQuery: query
+        )
+        WindowOpener.shared.openNativeTab(payload)
+    }
+
+    func createProcedure() {
+        guard !safeModeLevel.blocksAllWrites else { return }
+        let driver = DatabaseManager.shared.driver(for: connection.id)
+        let template = driver?.createProcedureTemplate()
+            ?? "CREATE PROCEDURE procedure_name()\nBEGIN\n    -- procedure body\nEND;"
+        openQueryInTab(template)
+    }
+
+    func createFunction() {
+        guard !safeModeLevel.blocksAllWrites else { return }
+        let driver = DatabaseManager.shared.driver(for: connection.id)
+        let template = driver?.createFunctionTemplate()
+            ?? "CREATE FUNCTION function_name()\nRETURNS INT\nBEGIN\n    RETURN 0;\nEND;"
+        openQueryInTab(template)
+    }
+
+    func dropRoutine(_ routineName: String, type: RoutineInfo.RoutineType) {
+        guard !safeModeLevel.blocksAllWrites else { return }
+        let keyword = type == .function ? "FUNCTION" : "PROCEDURE"
+        let typeLabel = type == .function
+            ? String(localized: "function") : String(localized: "procedure")
+
+        Task { @MainActor in
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(format: String(localized: "Drop %@ '%@'?"), typeLabel, routineName),
+                message: String(format: String(localized: "This will permanently delete the %@. This action cannot be undone."), typeLabel),
+                confirmButton: String(localized: "Drop"),
+                window: contentWindow
+            )
+            guard confirmed else { return }
+
+            guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter else { return }
+            let sql = adapter.dropObjectStatement(name: routineName, objectType: keyword, schema: nil, cascade: false)
+
+            do {
+                _ = try await adapter.execute(query: sql)
+                await refreshTables()
+            } catch {
+                await AlertHelper.showErrorSheet(
+                    title: String(format: String(localized: "Drop %@ failed"), typeLabel),
+                    message: error.localizedDescription,
+                    window: contentWindow
+                )
+            }
+        }
+    }
+
+    func showExecuteRoutineSheet(_ routineName: String, type: RoutineInfo.RoutineType) {
+        Task { @MainActor in
+            guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
+            do {
+                let params = try await driver.fetchRoutineParameters(routine: routineName, type: type)
+                activeSheet = .executeRoutine(name: routineName, type: type, parameters: params)
+            } catch {
+                activeSheet = .executeRoutine(name: routineName, type: type, parameters: [])
+            }
+        }
+    }
+
     // MARK: - View Operations
 
     func createView() {

@@ -46,6 +46,7 @@ enum ActiveSheet: Identifiable {
     case quickSwitcher
     case exportQueryResults
     case maintenance(operation: String, tableName: String)
+    case executeRoutine(name: String, type: RoutineInfo.RoutineType, parameters: [RoutineParameterInfo])
 
     var id: String {
         switch self {
@@ -55,6 +56,7 @@ enum ActiveSheet: Identifiable {
         case .quickSwitcher: "quickSwitcher"
         case .exportQueryResults: "exportQueryResults"
         case .maintenance: "maintenance"
+        case .executeRoutine: "executeRoutine"
         }
     }
 }
@@ -371,6 +373,12 @@ final class MainContentCoordinator {
             DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
             let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
             await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
+
+            // Load routines if supported
+            if driver.supportsRoutines {
+                let routines = (try? await driver.fetchRoutines()) ?? []
+                DatabaseManager.shared.updateSession(connectionId) { $0.routines = routines }
+            }
 
             // Clean up stale selections and pending operations for tables that no longer exist
             if let vm = sidebarViewModel {

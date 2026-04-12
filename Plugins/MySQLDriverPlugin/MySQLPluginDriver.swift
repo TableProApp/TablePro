@@ -446,6 +446,61 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl
     }
 
+    // MARK: - Routines
+
+    var supportsRoutines: Bool { true }
+
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let result = try await execute(query: """
+            SELECT ROUTINE_NAME, ROUTINE_TYPE
+            FROM INFORMATION_SCHEMA.ROUTINES
+            WHERE ROUTINE_SCHEMA = DATABASE()
+            ORDER BY ROUTINE_TYPE, ROUTINE_NAME
+            """)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[safe: 0] ?? nil,
+                  let type = row[safe: 1] ?? nil else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let keyword = type.uppercased() == "FUNCTION" ? "FUNCTION" : "PROCEDURE"
+        let safeRoutine = routine.replacingOccurrences(of: "`", with: "``")
+        let result = try await execute(query: "SHOW CREATE \(keyword) `\(safeRoutine)`")
+        guard let firstRow = result.rows.first,
+              let ddl = firstRow[safe: 2] ?? nil else {
+            return ""
+        }
+        return ddl
+    }
+
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo] {
+        let escapedRoutine = routine.replacingOccurrences(of: "'", with: "''")
+        let result = try await execute(query: """
+            SELECT PARAMETER_NAME, PARAMETER_MODE, DTD_IDENTIFIER, ORDINAL_POSITION
+            FROM INFORMATION_SCHEMA.PARAMETERS
+            WHERE SPECIFIC_SCHEMA = DATABASE() AND SPECIFIC_NAME = '\(escapedRoutine)'
+            ORDER BY ORDINAL_POSITION
+            """)
+        return result.rows.compactMap { row -> PluginRoutineParameterInfo? in
+            let name = row[safe: 0] ?? nil
+            let mode = (row[safe: 1] ?? nil) ?? "RETURN"
+            guard let dataType = row[safe: 2] ?? nil,
+                  let posStr = row[safe: 3] ?? nil,
+                  let pos = Int(posStr) else { return nil }
+            return PluginRoutineParameterInfo(name: name, dataType: dataType, direction: mode, ordinalPosition: pos)
+        }
+    }
+
+    func createProcedureTemplate() -> String? {
+        "CREATE PROCEDURE procedure_name(IN param1 VARCHAR(255))\nBEGIN\n    -- procedure body\nEND;"
+    }
+
+    func createFunctionTemplate() -> String? {
+        "CREATE FUNCTION function_name(param1 INT)\nRETURNS INT\nDETERMINISTIC\nBEGIN\n    DECLARE result INT;\n    SET result = param1;\n    RETURN result;\nEND;"
+    }
+
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let result = try await execute(query: "SHOW TABLE STATUS WHERE Name = '\(escapedTable)'")

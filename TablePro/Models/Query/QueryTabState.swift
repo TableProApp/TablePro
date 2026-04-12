@@ -22,6 +22,8 @@ struct PersistedTab: Codable {
     let tabType: TabType
     let tableName: String?
     var isView: Bool = false
+    var isRoutine: Bool = false
+    var routineType: RoutineInfo.RoutineType?
     var databaseName: String = ""
     var schemaName: String?
     var sourceFileURL: URL?

@@ -166,6 +166,14 @@ protocol DatabaseDriver: AnyObject {
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
 
+    // Routine (stored procedure/function) support
+    var supportsRoutines: Bool { get }
+    func fetchRoutines() async throws -> [RoutineInfo]
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo]
+    func createProcedureTemplate() -> String?
+    func createFunctionTemplate() -> String?
+
     func foreignKeyDisableStatements() -> [String]?
     func foreignKeyEnableStatements() -> [String]?
 
@@ -209,6 +217,13 @@ extension DatabaseDriver {
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
+
+    var supportsRoutines: Bool { false }
+    func fetchRoutines() async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String { "" }
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo] { [] }
+    func createProcedureTemplate() -> String? { nil }
+    func createFunctionTemplate() -> String? { nil }
 
     func foreignKeyDisableStatements() -> [String]? { nil }
     func foreignKeyEnableStatements() -> [String]? { nil }

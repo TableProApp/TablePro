@@ -428,6 +428,48 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         pluginDriver.buildExplainQuery(sql)
     }
 
+    // MARK: - Routines
+
+    var supportsRoutines: Bool {
+        pluginDriver.supportsRoutines
+    }
+
+    func fetchRoutines() async throws -> [RoutineInfo] {
+        let pluginRoutines = try await pluginDriver.fetchRoutines(schema: pluginDriver.currentSchema)
+        return pluginRoutines.map { r in
+            RoutineInfo(
+                name: r.name,
+                type: r.type.uppercased() == "FUNCTION" ? .function : .procedure
+            )
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String {
+        try await pluginDriver.fetchRoutineDefinition(
+            routine: routine,
+            type: type == .function ? "FUNCTION" : "PROCEDURE",
+            schema: pluginDriver.currentSchema
+        )
+    }
+
+    func fetchRoutineParameters(routine: String, type: RoutineInfo.RoutineType) async throws -> [RoutineParameterInfo] {
+        let pluginParams = try await pluginDriver.fetchRoutineParameters(
+            routine: routine,
+            type: type == .function ? "FUNCTION" : "PROCEDURE",
+            schema: pluginDriver.currentSchema
+        )
+        return pluginParams.map { p in
+            RoutineParameterInfo(
+                name: p.name, dataType: p.dataType,
+                direction: p.direction, ordinalPosition: p.ordinalPosition,
+                defaultValue: p.defaultValue
+            )
+        }
+    }
+
+    func createProcedureTemplate() -> String? { pluginDriver.createProcedureTemplate() }
+    func createFunctionTemplate() -> String? { pluginDriver.createFunctionTemplate() }
+
     // MARK: - View Templates
 
     func createViewTemplate() -> String? {

@@ -69,6 +69,8 @@ struct QueryTab: Identifiable, Equatable {
     var primaryKeyColumn: String?  // Detected PK from schema (set by Phase 2 metadata)
     var isEditable: Bool
     var isView: Bool  // True for database views (read-only)
+    var isRoutine: Bool = false
+    var routineType: RoutineInfo.RoutineType?
     var databaseName: String  // Database this tab was opened in (for multi-database restore)
     var schemaName: String?  // Schema this tab was opened in (for multi-schema restore, e.g. PostgreSQL)
     var showStructure: Bool  // Toggle to show structure view instead of data
@@ -161,6 +163,8 @@ struct QueryTab: Identifiable, Equatable {
         self.primaryKeyColumn = nil
         self.isEditable = tabType == .table
         self.isView = false
+        self.isRoutine = false
+        self.routineType = nil
         self.databaseName = ""
         self.schemaName = nil
         self.showStructure = false
@@ -197,6 +201,8 @@ struct QueryTab: Identifiable, Equatable {
         self.isExecuting = false
         self.isEditable = persisted.tabType == .table && !persisted.isView
         self.isView = persisted.isView
+        self.isRoutine = persisted.isRoutine
+        self.routineType = persisted.routineType
         self.databaseName = persisted.databaseName
         self.schemaName = persisted.schemaName
         self.showStructure = false
@@ -278,6 +284,8 @@ struct QueryTab: Identifiable, Equatable {
             tabType: tabType,
             tableName: tableName,
             isView: isView,
+            isRoutine: isRoutine,
+            routineType: routineType,
             databaseName: databaseName,
             schemaName: schemaName,
             sourceFileURL: sourceFileURL,
@@ -298,6 +306,8 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.showStructure == rhs.showStructure
             && lhs.isEditable == rhs.isEditable
             && lhs.isView == rhs.isView
+            && lhs.isRoutine == rhs.isRoutine
+            && lhs.routineType == rhs.routineType
             && lhs.tabType == rhs.tabType
             && lhs.rowsAffected == rhs.rowsAffected
             && lhs.isPreview == rhs.isPreview

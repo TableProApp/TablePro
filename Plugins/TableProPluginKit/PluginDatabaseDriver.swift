@@ -129,6 +129,14 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func editViewFallbackTemplate(viewName: String) -> String?
     func castColumnToText(_ column: String) -> String
 
+    // Routine (stored procedure/function) support
+    var supportsRoutines: Bool { get }
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo]
+    func createProcedureTemplate() -> String?
+    func createFunctionTemplate() -> String?
+
     // All-tables metadata SQL (optional — returns nil for non-SQL databases)
     func allTablesMetadataSQL(schema: String?) -> String?
 
@@ -256,6 +264,13 @@ public extension PluginDatabaseDriver {
     func createViewTemplate() -> String? { nil }
     func editViewFallbackTemplate(viewName: String) -> String? { nil }
     func castColumnToText(_ column: String) -> String { column }
+
+    var supportsRoutines: Bool { false }
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] { [] }
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String { "" }
+    func fetchRoutineParameters(routine: String, type: String, schema: String?) async throws -> [PluginRoutineParameterInfo] { [] }
+    func createProcedureTemplate() -> String? { nil }
+    func createFunctionTemplate() -> String? { nil }
     func allTablesMetadataSQL(schema: String?) -> String? { nil }
     func defaultExportQuery(table: String) -> String? { nil }
 
