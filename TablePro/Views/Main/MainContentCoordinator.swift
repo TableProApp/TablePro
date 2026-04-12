@@ -605,6 +605,7 @@ final class MainContentCoordinator {
 
     func runQuery() {
         guard let index = tabManager.selectedTabIndex else { return }
+        guard !tabManager.tabs[index].isRoutine else { return }
         guard !tabManager.tabs[index].isExecuting else { return }
 
         let fullQuery = tabManager.tabs[index].query
