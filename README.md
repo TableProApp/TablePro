@@ -22,6 +22,7 @@
 
 <p align="center">
   <a href="README.vi.md">Tiếng Việt</a>
+  <a href="README.zh.md">简体中文</a>
 </p>
 
 ---
