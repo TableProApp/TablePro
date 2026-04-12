@@ -242,12 +242,11 @@ struct LicenseSettingsView: View {
     }
 
     private func deactivate() async {
-        do {
-            try await licenseManager.deactivate()
-        } catch {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Deactivation Failed"),
-                message: error.localizedDescription,
+        let serverSuccess = await licenseManager.deactivate()
+        if !serverSuccess {
+            AlertHelper.showInfoSheet(
+                title: String(localized: "License Removed"),
+                message: String(localized: "License removed from this Mac, but the server could not be reached. The activation slot may not be freed until it expires."),
                 window: NSApp.keyWindow
             )
         }

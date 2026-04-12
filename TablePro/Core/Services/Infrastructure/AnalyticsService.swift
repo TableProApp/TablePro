@@ -134,7 +134,7 @@ final class AnalyticsService {
         let databaseTypes = Array(Set(sessions.values.compactMap { $0.connection.type.rawValue }))
         let connectionCount = sessions.count
 
-        let licenseKey = LicenseStorage.shared.loadLicenseKey()
+        let hasLicense = LicenseStorage.shared.loadLicenseKey() != nil
 
         return AnalyticsPayload(
             machineId: LicenseStorage.shared.machineId,
@@ -144,7 +144,7 @@ final class AnalyticsService {
             locale: locale,
             databaseTypes: databaseTypes.isEmpty ? nil : databaseTypes,
             connectionCount: connectionCount,
-            licenseKey: licenseKey
+            hasLicense: hasLicense
         )
     }
 }
@@ -159,5 +159,5 @@ private struct AnalyticsPayload: Encodable {
     let locale: String
     let databaseTypes: [String]?
     let connectionCount: Int
-    let licenseKey: String?
+    let hasLicense: Bool
 }

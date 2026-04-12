@@ -108,10 +108,16 @@ struct LicenseActivationRequest: Codable {
 struct LicenseValidationRequest: Codable {
     let licenseKey: String
     let machineId: String
+    let machineName: String
+    let appVersion: String
+    let osVersion: String
 
     private enum CodingKeys: String, CodingKey {
         case licenseKey = "license_key"
         case machineId = "machine_id"
+        case machineName = "machine_name"
+        case appVersion = "app_version"
+        case osVersion = "os_version"
     }
 }
 
@@ -124,6 +130,11 @@ struct LicenseDeactivationRequest: Codable {
         case licenseKey = "license_key"
         case machineId = "machine_id"
     }
+}
+
+/// Response from the deactivation endpoint
+struct DeactivateResponse: Codable {
+    let message: String
 }
 
 /// Wrapper for API error responses

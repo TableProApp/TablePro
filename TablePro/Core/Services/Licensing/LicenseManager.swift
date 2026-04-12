@@ -158,8 +158,9 @@ final class LicenseManager {
     // MARK: - Deactivation
 
     /// Deactivate the license on this machine
-    func deactivate() async throws {
-        guard let license else { return }
+    @discardableResult
+    func deactivate() async -> Bool {
+        guard let license else { return true }
 
         isValidating = true
         lastError = nil
@@ -170,16 +171,14 @@ final class LicenseManager {
             machineId: storage.machineId
         )
 
+        var serverSuccess = true
         do {
             try await apiClient.deactivate(request: request)
         } catch {
-            // Log but don't block — clear local state regardless.
-            // By design, deactivation always clears local data even if the API call fails.
-            // The user will need their license key to reactivate.
-            Self.logger.warning("Deactivation API call failed: \(error.localizedDescription)")
+            Self.logger.warning("Server deactivation failed: \(error.localizedDescription)")
+            serverSuccess = false
         }
 
-        // Clear local state (Keychain key + UserDefaults payload)
         storage.clearAll()
         self.license = nil
         status = .deactivated
@@ -187,7 +186,8 @@ final class LicenseManager {
         revalidationTask?.cancel()
         revalidationTask = nil
 
-        Self.logger.info("License deactivated")
+        Self.logger.info("License deactivated locally (server: \(serverSuccess ? "ok" : "failed"))")
+        return serverSuccess
     }
 
     // MARK: - Re-validation
@@ -210,7 +210,10 @@ final class LicenseManager {
 
         let request = LicenseValidationRequest(
             licenseKey: license.key,
-            machineId: storage.machineId
+            machineId: storage.machineId,
+            machineName: storage.machineName,
+            appVersion: Bundle.main.appVersion,
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString
         )
 
         do {
