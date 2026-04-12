@@ -114,6 +114,9 @@ extension MainContentView {
     /// Navigation safety is guaranteed by `SidebarNavigationResult.resolve` returning `.skip`
     /// when the selected table matches the current tab.
     func syncSidebarToCurrentTab() {
+        // Routine tabs don't participate in table sidebar selection
+        if tabManager.selectedTab?.isRoutine == true { return }
+
         let target: Set<TableInfo>
         if let currentTableName = tabManager.selectedTab?.tableName,
             let match = tables.first(where: { $0.name == currentTableName })
