@@ -16,9 +16,8 @@ extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
     func openTableTab(_ tableName: String, showStructure: Bool = false, isView: Bool = false, forceNewTab: Bool = false) {
-        // Routines must use openRoutineTab, not openTableTab
-        if routines.contains(where: { $0.name == tableName }) {
-            Self.logger.warning("openTableTab called for routine '\(tableName)' — redirecting to openRoutineTab")
+        // Don't replace a routine tab with a table tab
+        if let current = tabManager.selectedTab, current.isRoutine, current.tableName == tableName {
             return
         }
         let navigationModel = PluginMetadataRegistry.shared.snapshot(

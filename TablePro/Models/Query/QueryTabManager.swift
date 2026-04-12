@@ -186,7 +186,8 @@ final class QueryTabManager {
         quoteIdentifier: ((String) -> String)? = nil
     ) -> Bool {
         guard let selectedId = selectedTabId,
-              let selectedIndex = tabs.firstIndex(where: { $0.id == selectedId })
+              let selectedIndex = tabs.firstIndex(where: { $0.id == selectedId }),
+              !tabs[selectedIndex].isRoutine
         else {
             return false
         }
