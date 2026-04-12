@@ -133,23 +133,6 @@ internal final class TabPersistenceCoordinator {
     // MARK: - Private
 
     private func convertToPersistedTab(_ tab: QueryTab) -> PersistedTab {
-        let persistedQuery: String
-        if (tab.query as NSString).length > QueryTab.maxPersistableQuerySize {
-            persistedQuery = ""
-        } else {
-            persistedQuery = tab.query
-        }
-
-        return PersistedTab(
-            id: tab.id,
-            title: tab.title,
-            query: persistedQuery,
-            tabType: tab.tabType,
-            tableName: tab.tableName,
-            isView: tab.isView,
-            databaseName: tab.databaseName,
-            schemaName: tab.schemaName,
-            sourceFileURL: tab.sourceFileURL
-        )
+        tab.toPersistedTab()
     }
 }
