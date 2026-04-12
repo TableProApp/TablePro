@@ -7,7 +7,17 @@ extension RoutineDetailView {
         isLoading = true
         errorMessage = nil
 
-        guard let driver = DatabaseManager.shared.driver(for: connection.id) else {
+        // Wait for connection to be ready (tab may restore before connection is established)
+        var driver = DatabaseManager.shared.driver(for: connection.id)
+        if driver == nil {
+            for _ in 0..<20 {
+                try? await Task.sleep(for: .milliseconds(250))
+                driver = DatabaseManager.shared.driver(for: connection.id)
+                if driver != nil { break }
+            }
+        }
+
+        guard let driver else {
             errorMessage = String(localized: "Not connected")
             isLoading = false
             return
