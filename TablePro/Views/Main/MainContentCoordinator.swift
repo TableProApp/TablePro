@@ -710,6 +710,7 @@ final class MainContentCoordinator {
     /// checks but still respect safe mode levels that apply to all queries.
     func executeTableTabQueryDirectly() {
         guard let index = tabManager.selectedTabIndex else { return }
+        guard !tabManager.tabs[index].isRoutine else { return }
         guard !tabManager.tabs[index].isExecuting else { return }
 
         let sql = tabManager.tabs[index].query
