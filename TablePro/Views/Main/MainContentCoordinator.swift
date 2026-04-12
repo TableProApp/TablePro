@@ -207,8 +207,24 @@ final class MainContentCoordinator {
 
     /// Collect non-preview tabs for persistence.
     private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
+        let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
+
+        // Sort by native window tab order to preserve left-to-right position
+        let orderedCoordinators: [MainContentCoordinator]
+        if let firstWindow = coordinators.compactMap({ $0.contentWindow }).first,
+           let tabbedWindows = firstWindow.tabbedWindows {
+            let windowOrder = tabbedWindows.map { ObjectIdentifier($0) }
+            orderedCoordinators = coordinators.sorted { a, b in
+                let aIdx = a.contentWindow.flatMap { w in windowOrder.firstIndex(of: ObjectIdentifier(w)) } ?? Int.max
+                let bIdx = b.contentWindow.flatMap { w in windowOrder.firstIndex(of: ObjectIdentifier(w)) } ?? Int.max
+                return aIdx < bIdx
+            }
+        } else {
+            orderedCoordinators = Array(coordinators)
+        }
+
+        return orderedCoordinators
             .flatMap { $0.tabManager.tabs }
             .filter { !$0.isPreview }
     }
@@ -301,12 +317,22 @@ final class MainContentCoordinator {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.isTearingDown else { return }
+                guard let self else { return }
                 // Only the first coordinator for this connection saves,
-                // aggregating tabs from all windows to fix last-write-wins bug
-                guard self.isFirstCoordinatorForConnection() else { return }
+                // aggregating tabs from all windows to fix last-write-wins bug.
+                // Skip isTearingDown check: during Cmd+Q, onDisappear fires
+                // markTeardownScheduled() before willTerminate, and we still
+                // need to save here.
+                guard self.isFirstCoordinatorForConnection() else {
+                    Self.logger.debug("willTerminate: skipping (not first coordinator for \(self.connectionId))")
+                    return
+                }
                 let allTabs = Self.aggregatedTabs(for: self.connectionId)
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
+                Self.logger.info("willTerminate: saving \(allTabs.count) tabs for \(self.connectionId), selected=\(selectedId?.uuidString ?? "nil")")
+                for tab in allTabs {
+                    Self.logger.debug("  tab: \(tab.title) query=\(String(tab.query.prefix(50)))")
+                }
                 self.persistence.saveNowSync(
                     tabs: allTabs,
                     selectedTabId: selectedId
@@ -360,14 +386,17 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
+        Self.logger.debug("refreshTables: start (connectionId=\(self.connectionId))")
         sidebarLoadingState = .loading
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            Self.logger.warning("refreshTables: no driver, setting error state")
             sidebarLoadingState = .error(String(localized: "Not connected"))
             return
         }
         do {
             let tables = try await driver.fetchTables()
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            Self.logger.debug("refreshTables: fetched \(tables.count) tables")
             DatabaseManager.shared.updateSession(connectionId) { $0.tables = tables }
             let currentDb = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
             await schemaProvider.resetForDatabase(currentDb, tables: tables, driver: driver)
@@ -395,8 +424,10 @@ final class MainContentCoordinator {
                 }
             }
 
+            Self.logger.debug("refreshTables: done, state=.loaded")
             sidebarLoadingState = .loaded
         } catch {
+            Self.logger.error("refreshTables: failed: \(error.localizedDescription)")
             sidebarLoadingState = .error(error.localizedDescription)
         }
     }

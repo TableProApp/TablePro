@@ -46,9 +46,8 @@ final class QueryTabManager {
 
     // MARK: - Tab Naming
 
-    /// Generate next query tab title by finding the max "Query N" number across the given tabs.
-    /// Called with all tabs from all windows for the same connection to avoid duplicate names.
-    static func nextQueryTitle(excluding existingTabs: [QueryTab]) -> String {
+    /// Next "Query N" title based on existing tabs across all windows.
+    static func nextQueryTitle(existingTabs: [QueryTab]) -> String {
         let maxNumber = existingTabs
             .filter { $0.tabType == .query }
             .compactMap { tab -> Int? in
@@ -71,7 +70,7 @@ final class QueryTabManager {
             return
         }
 
-        let tabTitle = title ?? Self.nextQueryTitle(excluding: tabs)
+        let tabTitle = title ?? Self.nextQueryTitle(existingTabs: tabs)
         var newTab = QueryTab(title: tabTitle, tabType: .query)
 
         if let query = initialQuery {

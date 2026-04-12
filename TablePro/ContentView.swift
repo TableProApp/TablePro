@@ -39,6 +39,8 @@ struct ContentView: View {
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
             defaultTitle = String(localized: "Server Dashboard")
+        } else if let tabTitle = payload?.tabTitle {
+            defaultTitle = tabTitle
         } else if let tableName = payload?.tableName {
             defaultTitle = tableName
         } else if let connectionId = payload?.connectionId,
@@ -63,9 +65,14 @@ struct ContentView: View {
 
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
-            _sessionState = State(initialValue: SessionStateFactory.create(
+            let state = SessionStateFactory.create(
                 connection: session.connection, payload: payload
-            ))
+            )
+            _sessionState = State(initialValue: state)
+            if payload?.intent == .newEmptyTab,
+               let tabTitle = state.coordinator.tabManager.selectedTab?.title {
+                _windowTitle = State(initialValue: tabTitle)
+            }
         } else {
             _rightPanelState = State(initialValue: nil)
             _sessionState = State(initialValue: nil)
