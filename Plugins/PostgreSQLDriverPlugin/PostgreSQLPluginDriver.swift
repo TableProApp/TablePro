@@ -604,6 +604,45 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl
     }
 
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let query = """
+            SELECT p.proname, CASE p.prokind
+                WHEN 'f' THEN 'FUNCTION'
+                WHEN 'p' THEN 'PROCEDURE'
+            END AS routine_type
+            FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE n.nspname = '\(escapedSchema)'
+              AND p.prokind IN ('f', 'p')
+            ORDER BY p.proname
+            """
+        let result = try await execute(query: query)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[0], let type = row[1] else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let query = """
+            SELECT pg_get_functiondef(p.oid)
+            FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE p.proname = '\(escapeLiteral(routine))'
+              AND n.nspname = '\(escapedSchema)'
+            LIMIT 1
+            """
+        let result = try await execute(query: query)
+        guard let firstRow = result.rows.first, let ddl = firstRow[0] else {
+            throw LibPQPluginError(
+                message: "Failed to fetch definition for \(type.lowercased()) '\(routine)'",
+                sqlState: nil,
+                detail: nil
+            )
+        }
+        return ddl
+    }
+
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let query = """
             SELECT

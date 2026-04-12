@@ -446,6 +446,35 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return ddl
     }
 
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let result = try await execute(query: """
+            SELECT ROUTINE_NAME, ROUTINE_TYPE
+            FROM INFORMATION_SCHEMA.ROUTINES
+            WHERE ROUTINE_SCHEMA = DATABASE()
+            ORDER BY ROUTINE_NAME
+            """)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[safe: 0] ?? nil,
+                  let type = row[safe: 1] ?? nil else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let safeRoutine = routine.replacingOccurrences(of: "`", with: "``")
+        let keyword = type.uppercased() == "FUNCTION" ? "FUNCTION" : "PROCEDURE"
+        let result = try await execute(query: "SHOW CREATE \(keyword) `\(safeRoutine)`")
+        guard let firstRow = result.rows.first,
+              let ddl = firstRow[safe: 2] ?? nil else {
+            throw MariaDBPluginError(
+                code: 0,
+                message: "Failed to fetch definition for \(keyword.lowercased()) '\(routine)'",
+                sqlState: nil
+            )
+        }
+        return ddl.hasSuffix(";") ? ddl : ddl + ";"
+    }
+
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
         let escapedTable = table.replacingOccurrences(of: "'", with: "''")
         let result = try await execute(query: "SHOW TABLE STATUS WHERE Name = '\(escapedTable)'")

@@ -19,6 +19,7 @@ struct ConnectionSession: Identifiable {
 
     // Per-connection state
     var tables: [TableInfo] = []
+    var routines: [RoutineInfo] = []
     var selectedTables: Set<TableInfo> = []
     var pendingTruncates: Set<String> = []
     var pendingDeletes: Set<String> = []
@@ -64,6 +65,7 @@ struct ConnectionSession: Identifiable {
     /// Note: `cachedPassword` is intentionally NOT cleared — auto-reconnect needs it after disconnect.
     mutating func clearCachedData() {
         tables = []
+        routines = []
         selectedTables = []
         pendingTruncates = []
         pendingDeletes = []
@@ -79,6 +81,7 @@ struct ConnectionSession: Identifiable {
             && status == other.status
             && connection == other.connection
             && tables == other.tables
+            && routines == other.routines
             && pendingTruncates == other.pendingTruncates
             && pendingDeletes == other.pendingDeletes
             && tableOperationOptions == other.tableOperationOptions

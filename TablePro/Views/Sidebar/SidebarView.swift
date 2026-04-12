@@ -28,6 +28,12 @@ struct SidebarView: View {
         return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
     }
 
+    private var filteredRoutines: [RoutineInfo] {
+        let routines = coordinator?.routines ?? []
+        guard !viewModel.debouncedSearchText.isEmpty else { return routines }
+        return routines.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
+    }
+
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
         Binding(
             get: { sidebarState.selectedTables },
@@ -115,6 +121,9 @@ struct SidebarView: View {
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
+            if coordinator?.sidebarLoadingState == .idle && !tables.isEmpty {
+                coordinator?.sidebarLoadingState = .loaded
+            }
         }
         .sheet(isPresented: $viewModel.showOperationDialog) {
             if let operationType = viewModel.pendingOperationType {
@@ -138,7 +147,7 @@ struct SidebarView: View {
 
     @ViewBuilder
     private var tablesContent: some View {
-        switch coordinator?.sidebarLoadingState ?? .idle {
+        switch coordinator?.sidebarLoadingState ?? (tables.isEmpty ? .idle : .loaded) {
         case .loading:
             loadingState
         case .error(let message):
@@ -261,6 +270,24 @@ struct SidebarView: View {
                         )
                     } header: {
                         Text("Keys")
+                    }
+                }
+
+                if !filteredRoutines.isEmpty {
+                    Section(isExpanded: $viewModel.isRoutinesExpanded) {
+                        ForEach(filteredRoutines) { routine in
+                            RoutineRow(routine: routine)
+                                .contextMenu {
+                                    Button("View Definition") {
+                                        coordinator?.viewRoutineDefinition(routine.name, type: routine.type)
+                                    }
+                                    Button("Copy Name") {
+                                        ClipboardService.shared.writeText(routine.name)
+                                    }
+                                }
+                        }
+                    } header: {
+                        Text("Routines")
                     }
                 }
             }

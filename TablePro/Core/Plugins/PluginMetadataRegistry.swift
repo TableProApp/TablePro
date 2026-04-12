@@ -50,6 +50,7 @@ struct PluginMetadataSnapshot: Sendable {
         let supportsReadOnlyMode: Bool
         let supportsQueryProgress: Bool
         let requiresReconnectForDatabaseSwitch: Bool
+        let supportsRoutines: Bool
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -61,7 +62,8 @@ struct PluginMetadataSnapshot: Sendable {
             supportsForeignKeyDisable: true,
             supportsReadOnlyMode: true,
             supportsQueryProgress: false,
-            requiresReconnectForDatabaseSwitch: false
+            requiresReconnectForDatabaseSwitch: false,
+            supportsRoutines: false
         )
     }
 
@@ -413,7 +415,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: true
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsRoutines: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -456,7 +459,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: true
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsRoutines: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -499,7 +503,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: true,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsRoutines: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -658,7 +663,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsForeignKeyDisable: driverType.supportsForeignKeyDisable,
                 supportsReadOnlyMode: driverType.supportsReadOnlyMode,
                 supportsQueryProgress: driverType.supportsQueryProgress,
-                requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch
+                requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
+                supportsRoutines: driverType.supportsRoutines
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

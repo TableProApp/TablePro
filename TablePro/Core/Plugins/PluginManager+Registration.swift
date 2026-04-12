@@ -276,6 +276,11 @@ extension PluginManager {
             .capabilities.supportsImport ?? true
     }
 
+    func supportsRoutines(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsRoutines ?? false
+    }
+
     func systemDatabaseNames(for databaseType: DatabaseType) -> [String] {
         PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
             .schema.systemDatabaseNames ?? []

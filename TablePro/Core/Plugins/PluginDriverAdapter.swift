@@ -199,6 +199,22 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.fetchViewDefinition(view: view, schema: pluginDriver.currentSchema)
     }
 
+    func fetchRoutines() async throws -> [RoutineInfo] {
+        let pluginRoutines = try await pluginDriver.fetchRoutines(schema: pluginDriver.currentSchema)
+        return pluginRoutines.map { routine in
+            let routineType: RoutineInfo.RoutineType = routine.type.uppercased() == "FUNCTION" ? .function : .procedure
+            return RoutineInfo(name: routine.name, type: routineType)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String {
+        try await pluginDriver.fetchRoutineDefinition(
+            routine: routine,
+            type: type == .function ? "FUNCTION" : "PROCEDURE",
+            schema: pluginDriver.currentSchema
+        )
+    }
+
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata {
         let pluginMeta = try await pluginDriver.fetchTableMetadata(
             table: tableName,

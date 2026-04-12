@@ -34,6 +34,15 @@ final class SidebarViewModel {
     }() {
         didSet { UserDefaults.standard.set(isRedisKeysExpanded, forKey: "sidebar.isRedisKeysExpanded") }
     }
+    var isRoutinesExpanded: Bool = {
+        let key = "sidebar.isRoutinesExpanded"
+        if UserDefaults.standard.object(forKey: key) != nil {
+            return UserDefaults.standard.bool(forKey: key)
+        }
+        return true
+    }() {
+        didSet { UserDefaults.standard.set(isRoutinesExpanded, forKey: "sidebar.isRoutinesExpanded") }
+    }
     var redisKeyTreeViewModel: RedisKeyTreeViewModel?
     var showOperationDialog = false
     var pendingOperationType: TableOperationType?

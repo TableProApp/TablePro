@@ -48,6 +48,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchForeignKeys(table: String, schema: String?) async throws -> [PluginForeignKeyInfo]
     func fetchTableDDL(table: String, schema: String?) async throws -> String
     func fetchViewDefinition(view: String, schema: String?) async throws -> String
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo]
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata
     func fetchDatabases() async throws -> [String]
     func fetchDatabaseMetadata(_ database: String) async throws -> PluginDatabaseMetadata
@@ -211,6 +213,11 @@ public extension PluginDatabaseDriver {
 
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])] { [] }
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)] { [] }
+
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] { [] }
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "fetchRoutineDefinition not supported"])
+    }
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "createDatabase not supported"])
