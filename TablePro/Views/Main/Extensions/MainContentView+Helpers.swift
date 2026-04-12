@@ -27,6 +27,8 @@ extension MainContentView {
                 || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
             guard !hasPendingEdits else { return }
             coordinator.needsLazyLoad = false
+            // Routine tabs don't need query execution — they load their own data
+            if tabManager.selectedTab?.isRoutine == true { return }
             if let selectedTab = tabManager.selectedTab,
                 !selectedTab.databaseName.isEmpty,
                 selectedTab.databaseName != session.activeDatabase
