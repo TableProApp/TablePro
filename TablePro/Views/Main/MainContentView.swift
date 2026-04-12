@@ -372,7 +372,7 @@ struct MainContentView: View {
                 DatabaseManager.shared.activeSessions[connection.id]?.isConnected ?? false
             let needsLazyLoad =
                 tabManager.selectedTab.map { tab in
-                    tab.tabType == .table
+                    tab.tabType == .table && !tab.isRoutine
                         && (tab.resultRows.isEmpty || tab.rowBuffer.isEvicted)
                         && (tab.lastExecutedAt == nil || tab.rowBuffer.isEvicted)
                         && tab.errorMessage == nil
