@@ -56,7 +56,6 @@ enum SessionStateFactory {
                     toolbarSt.isTableTab = true
                     if let tableName = payload.tableName {
                         if payload.isRoutine {
-                            // Routines open directly to detail view — no data query
                             var newTab = QueryTab(title: tableName, tabType: .table, tableName: tableName)
                             newTab.databaseName = payload.databaseName ?? connection.database
                             newTab.isRoutine = true
@@ -65,12 +64,6 @@ enum SessionStateFactory {
                             newTab.showStructure = true
                             tabMgr.tabs.append(newTab)
                             tabMgr.selectedTabId = newTab.id
-                        } else if payload.isPreview {
-                            tabMgr.addPreviewTableTab(
-                                tableName: tableName,
-                                databaseType: connection.type,
-                                databaseName: payload.databaseName ?? connection.database
-                            )
                         } else {
                             tabMgr.addTableTab(
                                 tableName: tableName,

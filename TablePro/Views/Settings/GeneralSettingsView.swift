@@ -78,12 +78,6 @@ struct GeneralSettingsView: View {
             }
 
             Section("Tabs") {
-                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
-
-                Text("Single-clicking a table opens a temporary tab that gets replaced on next click.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
                 Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
 
                 Text("When enabled, tabs from different connections share the same window instead of opening separate windows.")

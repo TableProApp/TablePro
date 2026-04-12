@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Stored procedure and function management: browse routines in sidebar, view definitions, inspect parameters, execute with input dialog, create from templates, drop with confirmation (MySQL, MariaDB, PostgreSQL, SQL Server)
+- Sidebar table click: single click replaces current table tab in-place, Cmd+Click opens new tab (replaces preview tab system)
 
 ## [0.31.1] - 2026-04-12
 
