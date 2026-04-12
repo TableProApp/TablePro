@@ -59,8 +59,8 @@ extension MainContentCoordinator {
     // MARK: - Routine Tab Operations
 
     func openRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType, forceNewTab: Bool = false) {
-        // Fast path: already viewing this routine
-        if let current = tabManager.selectedTab,
+        // Fast path: already viewing this routine (skip if forcing new tab)
+        if !forceNewTab, let current = tabManager.selectedTab,
            current.isRoutine, current.tableName == routineName {
             return
         }
