@@ -82,11 +82,10 @@ extension MainContentCoordinator {
                 tabManager.tabs[tabIndex].isView = isView
                 tabManager.tabs[tabIndex].isEditable = !isView
                 tabManager.tabs[tabIndex].schemaName = currentSchema
+                tabManager.tabs[tabIndex].showStructure = showStructure
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }
-            // In-place navigation needs selectRedisDatabaseAndQuery to ensure the correct
-            // database is SELECTed and session state is updated before querying.
             restoreColumnLayoutForTable(tableName)
             restoreFiltersForTable(tableName)
             if navigationModel == .inPlace, let dbIndex = Int(currentDatabase) {
