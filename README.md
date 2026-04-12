@@ -1,5 +1,3 @@
-[English](README.md) | [简体中文](README_cn.md)
-
 <p align="center">
   <img src=".github/assets/logo.png" width="128" height="128" alt="TablePro">
 </p>
