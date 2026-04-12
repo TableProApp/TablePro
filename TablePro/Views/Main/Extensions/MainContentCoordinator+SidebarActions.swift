@@ -93,23 +93,8 @@ extension MainContentCoordinator {
             return
         }
 
-        // No tabs open: create inline
-        if tabManager.tabs.isEmpty {
-            appendRoutineTab(routineName, routineType: routineType)
-            return
-        }
-
-        // Tabs exist but current is not a routine (or forceNewTab): open new native tab
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .table,
-            tableName: routineName,
-            databaseName: connection.database,
-            isRoutine: true,
-            routineType: routineType,
-            showStructure: true
-        )
-        WindowOpener.shared.openNativeTab(payload)
+        // Append to current window's tab manager
+        appendRoutineTab(routineName, routineType: routineType)
     }
 
     private func appendRoutineTab(_ routineName: String, routineType: RoutineInfo.RoutineType) {
