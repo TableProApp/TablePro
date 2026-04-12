@@ -231,9 +231,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
             let version = PQserverVersion(connection)
             if version > 0 {
                 let major = version / 10_000
-                let minor = (version / 100) % 100
-                let revision = version % 100
-                self._cachedServerVersion = "\(major).\(minor).\(revision)"
+                if major >= 10 {
+                    let minor = version % 10_000
+                    self._cachedServerVersion = "\(major).\(minor)"
+                } else {
+                    let minor = (version / 100) % 100
+                    let revision = version % 100
+                    self._cachedServerVersion = "\(major).\(minor).\(revision)"
+                }
             }
 
             self.stateLock.lock()
