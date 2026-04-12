@@ -72,6 +72,9 @@ final class MainContentCoordinator {
 
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
+    var routines: [RoutineInfo] {
+        DatabaseManager.shared.session(for: connectionId)?.routines ?? []
+    }
     /// Live safe mode level — reads from toolbar state (user-editable),
     /// not from the immutable connection snapshot.
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
@@ -393,6 +396,20 @@ final class MainContentCoordinator {
                         vm.tableOperationOptions.removeValue(forKey: name)
                     }
                 }
+            }
+
+            // Fetch routines for databases that support them
+            if PluginManager.shared.supportsRoutines(for: connection.type) {
+                do {
+                    let routines = try await driver.fetchRoutines()
+                        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    DatabaseManager.shared.updateSession(connectionId) { $0.routines = routines }
+                } catch {
+                    Self.logger.debug("Failed to fetch routines: \(error.localizedDescription)")
+                    DatabaseManager.shared.updateSession(connectionId) { $0.routines = [] }
+                }
+            } else {
+                DatabaseManager.shared.updateSession(connectionId) { $0.routines = [] }
             }
 
             sidebarLoadingState = .loaded

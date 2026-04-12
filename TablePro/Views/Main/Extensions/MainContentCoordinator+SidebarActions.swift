@@ -102,6 +102,36 @@ extension MainContentCoordinator {
         }
     }
 
+    // MARK: - Routine Operations
+
+    func viewRoutineDefinition(_ routineName: String, type: RoutineInfo.RoutineType) {
+        Task { @MainActor in
+            do {
+                guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
+                let definition = try await driver.fetchRoutineDefinition(routine: routineName, type: type)
+
+                let payload = EditorTabPayload(
+                    connectionId: connection.id,
+                    tabType: .query,
+                    initialQuery: definition
+                )
+                WindowOpener.shared.openNativeTab(payload)
+            } catch {
+                let typeLabel = type == .function
+                    ? String(localized: "function")
+                    : String(localized: "procedure")
+                let fallbackSQL = "-- " + String(format: String(localized: "Could not fetch %@ definition: %@"), typeLabel, error.localizedDescription)
+
+                let payload = EditorTabPayload(
+                    connectionId: connection.id,
+                    tabType: .query,
+                    initialQuery: fallbackSQL
+                )
+                WindowOpener.shared.openNativeTab(payload)
+            }
+        }
+    }
+
     // MARK: - Export/Import
 
     func openExportDialog() {

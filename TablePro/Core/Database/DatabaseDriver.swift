@@ -105,6 +105,12 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch the view definition (SELECT statement) for a specific view
     func fetchViewDefinition(view: String) async throws -> String
 
+    /// Fetch all stored procedures and functions in the current schema
+    func fetchRoutines() async throws -> [RoutineInfo]
+
+    /// Fetch the definition (CREATE PROCEDURE/FUNCTION) for a routine
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String
+
     /// Fetch table metadata (size, comment, engine, etc.)
     func fetchTableMetadata(tableName: String) async throws -> TableMetadata
 
@@ -303,6 +309,11 @@ extension DatabaseDriver {
     /// Default: no dependent sequences (MySQL/SQLite don't use standalone sequences)
     func fetchDependentSequences(forTable table: String) async throws -> [(name: String, ddl: String)] {
         []
+    }
+
+    func fetchRoutines() async throws -> [RoutineInfo] { [] }
+    func fetchRoutineDefinition(routine: String, type: RoutineInfo.RoutineType) async throws -> String {
+        throw DatabaseError.connectionFailed("Routine definitions not supported")
     }
 
     func fetchAllDependentTypes(forTables tables: [String]) async throws -> [String: [(name: String, labels: [String])]] {

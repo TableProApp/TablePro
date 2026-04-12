@@ -27,6 +27,7 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
     static let brandColorHex = "#E34517"
     static let systemDatabaseNames: [String] = ["master", "tempdb", "model", "msdb"]
+    static let supportsRoutines = true
     static let defaultSchemaName = "dbo"
     static let databaseGroupingStrategy: GroupingStrategy = .bySchema
     static let columnTypesByCategory: [String: [String]] = [
@@ -1089,6 +1090,34 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let sql = "SELECT definition FROM sys.sql_modules WHERE object_id = OBJECT_ID('\(escapedView)')"
         let result = try await execute(query: sql)
         return result.rows.first?.first?.flatMap { $0 } ?? ""
+    }
+
+    func fetchRoutines(schema: String?) async throws -> [PluginRoutineInfo] {
+        let esc = effectiveSchemaEscaped(schema)
+        let sql = """
+            SELECT ROUTINE_NAME, ROUTINE_TYPE
+            FROM INFORMATION_SCHEMA.ROUTINES
+            WHERE ROUTINE_SCHEMA = '\(esc)'
+            ORDER BY ROUTINE_NAME
+            """
+        let result = try await execute(query: sql)
+        return result.rows.compactMap { row -> PluginRoutineInfo? in
+            guard let name = row[safe: 0] ?? nil,
+                  let type = row[safe: 1] ?? nil else { return nil }
+            return PluginRoutineInfo(name: name, type: type)
+        }
+    }
+
+    func fetchRoutineDefinition(routine: String, type: String, schema: String?) async throws -> String {
+        let esc = effectiveSchemaEscaped(schema)
+        let escapedRoutine = routine.replacingOccurrences(of: "'", with: "''")
+        let sql = "SELECT OBJECT_DEFINITION(OBJECT_ID('\(esc).\(escapedRoutine)'))"
+        let result = try await execute(query: sql)
+        guard let firstRow = result.rows.first,
+              let ddl = firstRow[safe: 0] ?? nil else {
+            throw MSSQLPluginError.queryFailed("Failed to fetch definition for \(type.lowercased()) '\(routine)'")
+        }
+        return ddl
     }
 
     func fetchTableMetadata(table: String, schema: String?) async throws -> PluginTableMetadata {
