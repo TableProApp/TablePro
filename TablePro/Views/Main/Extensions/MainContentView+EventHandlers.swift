@@ -42,22 +42,12 @@ extension MainContentView {
         guard !coordinator.isTearingDown else { return }
         guard !coordinator.isUpdatingColumnLayout else { return }
 
-        // Promote preview tab if user has interacted with it
-        if let tab = tabManager.selectedTab, tab.isPreview, tab.hasUserInteraction {
-            coordinator.promotePreviewTab()
-        }
-
-        // Persist tab changes (exclude preview tabs from persistence)
-        let persistableTabs = newTabs.filter { !$0.isPreview }
-        if persistableTabs.isEmpty {
+        if newTabs.isEmpty {
             coordinator.persistence.clearSavedState()
         } else {
-            let normalizedSelectedId =
-                persistableTabs.contains(where: { $0.id == tabManager.selectedTabId })
-                ? tabManager.selectedTabId : persistableTabs.first?.id
             coordinator.persistence.saveNow(
-                tabs: persistableTabs,
-                selectedTabId: normalizedSelectedId
+                tabs: newTabs,
+                selectedTabId: tabManager.selectedTabId
             )
         }
     }
@@ -105,28 +95,18 @@ extension MainContentView {
             return
         }
 
-        let isPreviewMode = AppSettingsManager.shared.tabs.enablePreviewTabs
-        let hasPreview = WindowLifecycleMonitor.shared.previewWindow(for: connection.id) != nil
+        // Cmd+Click forces a new native tab (same pattern as routine tabs)
+        let forceNewTab = NSEvent.modifierFlags.contains(.command)
 
-        let result = SidebarNavigationResult.resolve(
-            clickedTableName: tableName,
-            currentTabTableName: tabManager.selectedTab?.tableName,
-            hasExistingTabs: !tabManager.tabs.isEmpty,
-            isPreviewTabMode: isPreviewMode,
-            hasPreviewTab: hasPreview
-        )
-
-        switch result {
-        case .skip:
-            return
-        case .openInPlace:
+        if !tabManager.tabs.isEmpty {
+            // Skip if clicked table matches the active tab
+            if tabManager.selectedTab?.tableName == tableName {
+                return
+            }
             selectedRowIndices = []
-            coordinator.openTableTab(tableName, isView: isView)
-        case .revertAndOpenNewWindow:
-            coordinator.openTableTab(tableName, isView: isView)
-        case .replacePreviewTab, .openNewPreviewTab:
-            coordinator.openTableTab(tableName, isView: isView)
         }
+
+        coordinator.openTableTab(tableName, isView: isView, forceNewTab: forceNewTab)
     }
 
     /// Keep sidebar selection in sync with the current window's tab.

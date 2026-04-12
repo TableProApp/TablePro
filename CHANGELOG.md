@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Sidebar table click: single click replaces current table tab in-place, Cmd+Click opens new tab (replaces preview tab system)
+
 ## [0.31.1] - 2026-04-12
 
 ### Fixed

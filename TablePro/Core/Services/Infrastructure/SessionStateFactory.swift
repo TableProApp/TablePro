@@ -55,19 +55,11 @@ enum SessionStateFactory {
                 case .table:
                     toolbarSt.isTableTab = true
                     if let tableName = payload.tableName {
-                        if payload.isPreview {
-                            tabMgr.addPreviewTableTab(
-                                tableName: tableName,
-                                databaseType: connection.type,
-                                databaseName: payload.databaseName ?? connection.database
-                            )
-                        } else {
-                            tabMgr.addTableTab(
-                                tableName: tableName,
-                                databaseType: connection.type,
-                                databaseName: payload.databaseName ?? connection.database
-                            )
-                        }
+                        tabMgr.addTableTab(
+                            tableName: tableName,
+                            databaseType: connection.type,
+                            databaseName: payload.databaseName ?? connection.database
+                        )
                         if let index = tabMgr.selectedTabIndex {
                             tabMgr.tabs[index].isView = payload.isView
                             tabMgr.tabs[index].isEditable = !payload.isView

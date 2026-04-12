@@ -15,7 +15,7 @@ private let navigationLogger = Logger(subsystem: "com.TablePro", category: "Main
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
-    func openTableTab(_ tableName: String, showStructure: Bool = false, isView: Bool = false) {
+    func openTableTab(_ tableName: String, showStructure: Bool = false, isView: Bool = false, forceNewTab: Bool = false) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -72,25 +72,12 @@ extension MainContentCoordinator {
         }
 
         // If no tabs exist (empty state), add a table tab directly.
-        // In preview mode, mark it as preview so subsequent clicks replace it.
         if tabManager.tabs.isEmpty {
-            if AppSettingsManager.shared.tabs.enablePreviewTabs {
-                tabManager.addPreviewTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase
-                )
-                if let wid = windowId {
-                    WindowLifecycleMonitor.shared.setPreview(true, for: wid)
-                    WindowLifecycleMonitor.shared.window(for: wid)?.subtitle = "\(connection.name) — Preview"
-                }
-            } else {
-                tabManager.addTableTab(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    databaseName: currentDatabase
-                )
-            }
+            tabManager.addTableTab(
+                tableName: tableName,
+                databaseType: connection.type,
+                databaseName: currentDatabase
+            )
             if let tabIndex = tabManager.selectedTabIndex {
                 tabManager.tabs[tabIndex].isView = isView
                 tabManager.tabs[tabIndex].isEditable = !isView
@@ -140,133 +127,20 @@ extension MainContentCoordinator {
         let hasActiveWork = changeManager.hasChanges
             || filterStateManager.hasAppliedFilters
             || (tabManager.selectedTab?.sortState.isSorting ?? false)
-        if hasActiveWork {
-            let payload = EditorTabPayload(
-                connectionId: connection.id,
-                tabType: .table,
-                tableName: tableName,
-                databaseName: currentDatabase,
-                schemaName: currentSchema,
-                isView: isView,
-                showStructure: showStructure
-            )
-            WindowOpener.shared.openNativeTab(payload)
-            return
-        }
 
-        // Preview tab mode: reuse or create a preview tab instead of a new native window
-        if AppSettingsManager.shared.tabs.enablePreviewTabs {
-            openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
-            return
-        }
-
-        // Default: open table in a new native tab
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .table,
-            tableName: tableName,
-            databaseName: currentDatabase,
-            schemaName: currentSchema,
-            isView: isView,
-            showStructure: showStructure
-        )
-        WindowOpener.shared.openNativeTab(payload)
-    }
-
-    // MARK: - Preview Tabs
-
-    func openPreviewTab(
-        _ tableName: String, isView: Bool = false,
-        databaseName: String = "", schemaName: String? = nil,
-        showStructure: Bool = false
-    ) {
-        // Check if a preview window already exists for this connection
-        if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId) {
-            if let previewCoordinator = Self.coordinator(for: preview.windowId) {
-                // Skip if preview tab already shows this table
-                if let current = previewCoordinator.tabManager.selectedTab,
-                   current.tableName == tableName,
-                   current.databaseName == databaseName {
-                    preview.window.makeKeyAndOrderFront(nil)
-                    return
-                }
-                if let oldTab = previewCoordinator.tabManager.selectedTab,
-                   let oldTableName = oldTab.tableName {
-                    previewCoordinator.filterStateManager.saveLastFilters(for: oldTableName)
-                }
-                previewCoordinator.tabManager.replaceTabContent(
-                    tableName: tableName,
-                    databaseType: connection.type,
-                    isView: isView,
-                    databaseName: databaseName,
-                    schemaName: schemaName,
-                    isPreview: true
-                )
-                previewCoordinator.filterStateManager.clearAll()
-                if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
-                    previewCoordinator.tabManager.tabs[tabIndex].showStructure = showStructure
-                    previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
-                    previewCoordinator.toolbarState.isTableTab = true
-                }
-                preview.window.makeKeyAndOrderFront(nil)
-                previewCoordinator.restoreColumnLayoutForTable(tableName)
-                previewCoordinator.restoreFiltersForTable(tableName)
-                previewCoordinator.runQuery()
-                return
-            }
-        }
-
-        // No preview window exists but current tab can be reused: replace in-place.
-        // This covers: preview tabs, non-preview table tabs with no active work,
-        // and empty/default query tabs (no user-entered content).
-        let isReusableTab: Bool = {
-            guard let tab = tabManager.selectedTab else { return false }
-            if tab.isPreview { return true }
-            // Table tab with no active work
-            if tab.tabType == .table && !changeManager.hasChanges
-                && !filterStateManager.hasAppliedFilters && !tab.sortState.isSorting {
-                return true
-            }
-            // Empty/default query tab (no user content, no results, never executed)
-            if tab.tabType == .query && tab.lastExecutedAt == nil
-                && tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return true
-            }
-            return false
-        }()
-        if let selectedTab = tabManager.selectedTab, isReusableTab {
-            // Skip if already showing this table
-            if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
-                return
-            }
-            // If preview tab has active work, promote it and open new tab instead
-            let previewHasWork = changeManager.hasChanges
-                || filterStateManager.hasAppliedFilters
-                || selectedTab.sortState.isSorting
-            if previewHasWork {
-                promotePreviewTab()
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .table,
-                    tableName: tableName,
-                    databaseName: databaseName,
-                    schemaName: schemaName,
-                    isView: isView,
-                    showStructure: showStructure
-                )
-                WindowOpener.shared.openNativeTab(payload)
-                return
-            }
-            if let oldTableName = selectedTab.tableName {
+        // When not forced to new tab: replace current table tab in-place if it has no active work
+        if !forceNewTab && !hasActiveWork,
+           let currentTab = tabManager.selectedTab,
+           currentTab.tabType == .table {
+            if let oldTableName = currentTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
             tabManager.replaceTabContent(
                 tableName: tableName,
                 databaseType: connection.type,
                 isView: isView,
-                databaseName: databaseName,
-                schemaName: schemaName,
-                isPreview: true
+                databaseName: currentDatabase,
+                schemaName: currentSchema
             )
             filterStateManager.clearAll()
             if let tabIndex = tabManager.selectedTabIndex {
@@ -280,29 +154,17 @@ extension MainContentCoordinator {
             return
         }
 
-        // No preview tab anywhere: create a new native preview tab
+        // Open table in a new native tab (Cmd+Click, active work, or current tab is not a table)
         let payload = EditorTabPayload(
             connectionId: connection.id,
             tabType: .table,
             tableName: tableName,
-            databaseName: databaseName,
-            schemaName: schemaName,
+            databaseName: currentDatabase,
+            schemaName: currentSchema,
             isView: isView,
-            showStructure: showStructure,
-            isPreview: true
+            showStructure: showStructure
         )
         WindowOpener.shared.openNativeTab(payload)
-    }
-
-    func promotePreviewTab() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabManager.tabs[tabIndex].isPreview else { return }
-        tabManager.tabs[tabIndex].isPreview = false
-
-        if let wid = windowId {
-            WindowLifecycleMonitor.shared.setPreview(false, for: wid)
-            WindowLifecycleMonitor.shared.window(for: wid)?.subtitle = connection.name
-        }
     }
 
     func showAllTablesMetadata() {
