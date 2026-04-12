@@ -79,25 +79,13 @@ extension MainContentCoordinator {
             do {
                 guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
                 let definition = try await driver.fetchViewDefinition(view: viewName)
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: definition
-                )
-                WindowOpener.shared.openNativeTab(payload)
+                openQueryInTab(definition)
             } catch {
                 let driver = DatabaseManager.shared.driver(for: self.connection.id)
                 let template = driver?.editViewFallbackTemplate(viewName: viewName)
                     ?? "CREATE OR REPLACE VIEW \(viewName) AS\nSELECT * FROM table_name;"
                 let fallbackSQL = "-- Could not fetch view definition: \(error.localizedDescription)\n\(template)"
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: fallbackSQL
-                )
-                WindowOpener.shared.openNativeTab(payload)
+                openQueryInTab(fallbackSQL)
             }
         }
     }
@@ -109,26 +97,27 @@ extension MainContentCoordinator {
             do {
                 guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
                 let definition = try await driver.fetchRoutineDefinition(routine: routineName, type: type)
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: definition
-                )
-                WindowOpener.shared.openNativeTab(payload)
+                openQueryInTab(definition)
             } catch {
                 let typeLabel = type == .function
                     ? String(localized: "function")
                     : String(localized: "procedure")
                 let fallbackSQL = "-- " + String(format: String(localized: "Could not fetch %@ definition: %@"), typeLabel, error.localizedDescription)
-
-                let payload = EditorTabPayload(
-                    connectionId: connection.id,
-                    tabType: .query,
-                    initialQuery: fallbackSQL
-                )
-                WindowOpener.shared.openNativeTab(payload)
+                openQueryInTab(fallbackSQL)
             }
+        }
+    }
+
+    private func openQueryInTab(_ query: String) {
+        if tabManager.tabs.isEmpty {
+            tabManager.addTab(initialQuery: query, databaseName: connection.database)
+        } else {
+            let payload = EditorTabPayload(
+                connectionId: connection.id,
+                tabType: .query,
+                initialQuery: query
+            )
+            WindowOpener.shared.openNativeTab(payload)
         }
     }
 
