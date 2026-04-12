@@ -269,6 +269,10 @@ struct QueryTab: Identifiable, Equatable {
 
     /// Convert tab to persisted format for storage
     func toPersistedTab() -> PersistedTab {
+        if tabType == .table {
+            Logger(subsystem: "com.TablePro", category: "QueryTab")
+                .info("[toPersistedTab] title='\(title)' isRoutine=\(isRoutine) routineType=\(String(describing: routineType)) query='\((query as NSString).substring(to: min(40, (query as NSString).length)))'")
+        }
         // Routine tabs have no query to persist. Truncate very large queries to prevent JSON freeze.
         let persistedQuery: String
         if isRoutine {

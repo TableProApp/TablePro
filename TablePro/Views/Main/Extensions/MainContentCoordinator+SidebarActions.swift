@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import os
 import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
@@ -103,6 +104,7 @@ extension MainContentCoordinator {
             newTab.showStructure = true
             tabManager.tabs.append(newTab)
             tabManager.selectedTabId = newTab.id
+            Self.logger.info("[Routine] Created inline tab '\(routineName)' isRoutine=\(newTab.isRoutine)")
             return
         }
 

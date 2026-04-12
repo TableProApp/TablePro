@@ -605,14 +605,19 @@ final class MainContentCoordinator {
 
     func runQuery() {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isRoutine else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        let tab = tabManager.tabs[index]
+        Self.logger.info("[runQuery] tab='\(tab.title)' tabType=\(String(describing: tab.tabType)) isRoutine=\(tab.isRoutine) query='\((tab.query as NSString).substring(to: min(60, (tab.query as NSString).length)))'")
+        guard !tab.isRoutine else {
+            Self.logger.info("[runQuery] blocked — routine tab")
+            return
+        }
+        guard !tab.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].query
+        let fullQuery = tab.query
 
         // For table tabs, use the full query. For query tabs, extract at cursor
         let sql: String
-        if tabManager.tabs[index].tabType == .table {
+        if tab.tabType == .table {
             sql = fullQuery
         } else if let firstCursor = cursorPositions.first,
                   firstCursor.range.length > 0 {
