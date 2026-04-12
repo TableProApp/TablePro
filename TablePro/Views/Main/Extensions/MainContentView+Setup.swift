@@ -25,7 +25,7 @@ extension MainContentView {
         case .openContent:
             if payload.skipAutoExecute { return }
             if let selectedTab = tabManager.selectedTab,
-                selectedTab.tabType == .table,
+                selectedTab.tabType == .table, !selectedTab.isRoutine,
                 !selectedTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
@@ -115,7 +115,7 @@ extension MainContentView {
                 }
             }
 
-            if selectedTab.tabType == .table,
+            if selectedTab.tabType == .table, !selectedTab.isRoutine,
                 !selectedTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],

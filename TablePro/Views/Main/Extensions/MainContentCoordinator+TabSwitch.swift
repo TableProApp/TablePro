@@ -103,7 +103,7 @@ extension MainContentCoordinator {
             }
 
             let isEvicted = newTab.rowBuffer.isEvicted
-            let needsLazyQuery = newTab.tabType == .table
+            let needsLazyQuery = newTab.tabType == .table && !newTab.isRoutine
                 && (newTab.resultRows.isEmpty || isEvicted)
                 && (newTab.lastExecutedAt == nil || isEvicted)
                 && newTab.errorMessage == nil
