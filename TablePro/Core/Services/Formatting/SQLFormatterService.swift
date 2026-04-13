@@ -2,7 +2,8 @@
 //  SQLFormatterService.swift
 //  TablePro
 //
-//  Created by OpenCode on 1/17/26.
+//  Token-based SQL formatter. Tokenizes input into a stream, then walks tokens
+//  with clause/nesting context to produce properly indented, readable SQL.
 //
 
 import Foundation
@@ -10,7 +11,6 @@ import Foundation
 // MARK: - Formatter Protocol
 
 protocol SQLFormatterProtocol {
-    /// Format SQL with optional cursor position preservation
     func format(
         _ sql: String,
         dialect: DatabaseType,
@@ -22,112 +22,7 @@ protocol SQLFormatterProtocol {
 // MARK: - Main Formatter Service
 
 struct SQLFormatterService: SQLFormatterProtocol {
-    private static func regex(_ pattern: String, options: NSRegularExpression.Options = []) -> NSRegularExpression {
-        do {
-            return try NSRegularExpression(pattern: pattern, options: options)
-        } catch {
-            preconditionFailure("Invalid regex pattern: \(pattern)")
-        }
-    }
-    // MARK: - Constants
-
-    /// Maximum input size: 10MB (protection against DoS)
     private static let maxInputSize = 10 * 1_024 * 1_024
-
-    /// Alignment for SELECT columns (length of "SELECT ")
-    private static let selectKeywordLength = 7
-
-    // MARK: - Cached Regex Patterns (CPU-3, CPU-9, CPU-10)
-
-    /// String literal extraction patterns — one per quote character
-    /// Handles both backslash escapes (\'') and SQL-standard doubled-quote escapes ('')
-    private static let stringLiteralRegexes: [String: NSRegularExpression] = {
-        var result: [String: NSRegularExpression] = [:]
-        for quoteChar in ["'", "\"", "`"] {
-            let escaped = NSRegularExpression.escapedPattern(for: quoteChar)
-            let pattern = "\(escaped)((?:\\\\\\\\\(quoteChar)|\(escaped)\(escaped)|[^\(quoteChar)])*)\(escaped)"
-            result[quoteChar] = regex(pattern)
-        }
-        return result
-    }()
-
-    /// Line break keyword patterns — pre-compiled for all 16 keywords (CPU-9)
-    /// Sorted by keyword length (longest first) to handle multi-word keywords correctly
-    private static let lineBreakRegexes: [(keyword: String, regex: NSRegularExpression)] = {
-        let keywords = [
-            "SELECT", "FROM", "WHERE", "JOIN", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN",
-            "FULL JOIN", "CROSS JOIN", "ORDER BY", "GROUP BY", "HAVING",
-            "UNION", "UNION ALL", "INTERSECT", "EXCEPT", "LIMIT", "OFFSET"
-        ]
-        return keywords.sorted(by: { $0.count > $1.count }).map { keyword in
-            let escapedKeyword = NSRegularExpression.escapedPattern(for: keyword)
-            let pattern = "\\s+\(escapedKeyword)\\b"
-            let regex = regex(pattern, options: .caseInsensitive)
-            return (keyword, regex)
-        }
-    }()
-
-    /// Subquery pattern: \(\s*SELECT\b  (CPU-10)
-    private static let subqueryRegex: NSRegularExpression = {
-        regex("\\(\\s*SELECT\\b", options: .caseInsensitive)
-    }()
-
-    /// Word boundary pattern for "END" keyword (CPU-10)
-    private static let endWordBoundaryRegex: NSRegularExpression = {
-        regex("\\bEND\\b", options: .caseInsensitive)
-    }()
-
-    /// Word boundary pattern for "CASE" keyword (CPU-10)
-    private static let caseWordBoundaryRegex: NSRegularExpression = {
-        regex("\\bCASE\\b", options: .caseInsensitive)
-    }()
-
-    /// WHERE condition alignment pattern: \s+(AND|OR)\s+
-    private static let majorKeywordRegex: NSRegularExpression = {
-        regex("\\b(ORDER|GROUP|HAVING|LIMIT|UNION|INTERSECT)\\b", options: .caseInsensitive)
-    }()
-
-    private static let whereConditionRegex: NSRegularExpression = {
-        regex("\\s+(AND|OR)\\s+", options: .caseInsensitive)
-    }()
-
-    /// Keyword uppercasing regex cache per DatabaseType (CPU-5)
-    /// Uses NSLock for thread safety since static mutable state is shared.
-    private static let keywordRegexLock = NSLock()
-    private static var keywordRegexCache: [DatabaseType: NSRegularExpression] = [:]
-
-    /// Get or create the keyword uppercasing regex for a given database type
-    private static func keywordRegex(for dialect: DatabaseType) -> NSRegularExpression? {
-        keywordRegexLock.lock()
-        if let cached = keywordRegexCache[dialect] {
-            keywordRegexLock.unlock()
-            return cached
-        }
-        keywordRegexLock.unlock()
-
-        let provider = resolveDialectProvider(for: dialect)
-        let allKeywords = provider.keywords.union(provider.functions).union(provider.dataTypes)
-        let escapedKeywords = allKeywords.map { NSRegularExpression.escapedPattern(for: $0) }
-        let pattern = "\\b(\(escapedKeywords.joined(separator: "|")))\\b"
-
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return nil
-        }
-
-        keywordRegexLock.lock()
-        defer { keywordRegexLock.unlock() }
-        if let cached = keywordRegexCache[dialect] {
-            return cached
-        }
-        keywordRegexCache[dialect] = regex
-        return regex
-    }
-
-    private static func resolveDialectProvider(for dialect: DatabaseType) -> SQLDialectProvider {
-        SQLDialectFactory.createDialect(for: dialect)
-    }
-
-    // MARK: - Public API
 
     func format(
         _ sql: String,
@@ -135,391 +30,544 @@ struct SQLFormatterService: SQLFormatterProtocol {
         cursorOffset: Int? = nil,
         options: SQLFormatterOptions = .default
     ) throws -> SQLFormatterResult {
-        // Fix #4: Input size limit (DoS protection)
         guard sql.utf8.count <= Self.maxInputSize else {
             throw SQLFormatterError.internalError("SQL too large (max \(Self.maxInputSize / 1_024 / 1_024)MB)")
         }
 
-        // Validate input
         let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             throw SQLFormatterError.emptyInput
         }
 
-        // CPU-8: Use utf16.count for O(1) length instead of O(n) String.count
         let sqlLength = sql.utf16.count
         if let cursor = cursorOffset, cursor > sqlLength {
             throw SQLFormatterError.invalidCursorPosition(cursor, max: sqlLength)
         }
 
-        let dialectProvider = Self.resolveDialectProvider(for: dialect)
+        let dialectProvider = SQLDialectFactory.createDialect(for: dialect)
+        let dialectKeywords = dialectProvider.keywords
+            .union(dialectProvider.functions)
+            .union(dialectProvider.dataTypes)
 
-        // Format the SQL
-        let formatted = formatSQL(sql, dialect: dialectProvider, databaseType: dialect, options: options)
+        let tokenizer = SQLTokenizer(dialectKeywords: dialectKeywords)
+        let tokens = tokenizer.tokenize(sql)
+        var tokenFormatter = SQLTokenFormatter(options: options)
+        let formatted = tokenFormatter.format(tokens)
 
-        // Cursor preservation
         let newCursor = cursorOffset.map { original in
-            preserveCursorPosition(original: original, oldText: sql, newText: formatted)
+            mapCursorPosition(original: original, oldLength: sql.utf16.count, newLength: formatted.utf16.count)
         }
 
-        return SQLFormatterResult(
-            formattedSQL: formatted,
-            cursorOffset: newCursor
-        )
+        return SQLFormatterResult(formattedSQL: formatted, cursorOffset: newCursor)
     }
 
-    // MARK: - Core Formatting Logic
-
-    private func formatSQL(
-        _ sql: String,
-        dialect: SQLDialectProvider,
-        databaseType: DatabaseType,
-        options: SQLFormatterOptions
-    ) -> String {
-        var result = sql
-
-        // Step 1: Preserve comments (replace with UUID placeholders)
-        let (sqlWithoutComments, comments) = options.preserveComments
-            ? extractComments(from: result)
-            : (result, [])
-
-        result = sqlWithoutComments
-
-        // Step 2: Extract string literals (to protect from keyword replacement)
-        let (sqlWithoutStrings, stringLiterals) = extractStringLiterals(from: result, dialect: dialect)
-        result = sqlWithoutStrings
-
-        // Step 3: Uppercase keywords (now safe - strings removed)
-        if options.uppercaseKeywords {
-            result = uppercaseKeywords(result, databaseType: databaseType)
-        }
-
-        // Step 4: Restore string literals
-        result = restoreStringLiterals(result, literals: stringLiterals)
-
-        // Step 5: Add line breaks before major keywords
-        result = addLineBreaks(result, options: options)
-
-        // Step 6: Add indentation based on nesting
-        if options.indentSize > 0 {
-            result = addIndentation(result, indentSize: options.indentSize)
-        }
-
-        // Step 7: Align SELECT columns
-        if options.alignColumns {
-            result = alignSelectColumns(result)
-        }
-
-        // Step 8: Format JOINs (handled by line breaks)
-        if options.formatJoins {
-            result = formatJoins(result)
-        }
-
-        // Step 9: Align WHERE conditions
-        if options.alignWhere {
-            result = alignWhereConditions(result)
-        }
-
-        // Step 10: Restore comments
-        if options.preserveComments {
-            result = restoreComments(result, comments: comments)
-        }
-
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    // MARK: - String Literal Protection (Fix #2)
-
-    /// Extract string literals to protect from keyword replacement
-    /// Handles: 'single quotes', "double quotes", `backticks`
-    private func extractStringLiterals(from sql: String, dialect: SQLDialectProvider) -> (String, [(placeholder: String, content: String)]) {
-        var counter = 0
-        var result = sql
-        var literals: [(String, String)] = []
-
-        // Determine quote characters based on dialect
-        // MySQL/SQLite: single quotes and backticks
-        // PostgreSQL: single quotes and double quotes
-        let quoteChars: [String]
-        switch dialect.identifierQuote {
-        case "\"":
-            quoteChars = ["'", "\""]  // PostgreSQL
-        default:
-            quoteChars = ["'", "`"]   // MySQL, SQLite
-        }
-
-        // Extract each type of string literal using cached regex
-        for quoteChar in quoteChars {
-            guard let regex = Self.stringLiteralRegexes[quoteChar] else { continue }
-            let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result))
-
-            // Process in reverse to maintain valid indices
-            for match in matches.reversed() {
-                if let range = safeRange(from: match.range, in: result) {
-                    let literal = String(result[range])
-                    let placeholder = "__STRING_\(counter)__"
-                    counter += 1
-                    literals.insert((placeholder, literal), at: 0)
-                    result.replaceSubrange(range, with: placeholder)
-                }
-            }
-        }
-
-        return (result, literals)
-    }
-
-    /// Restore string literals after formatting
-    private func restoreStringLiterals(_ sql: String, literals: [(placeholder: String, content: String)]) -> String {
-        var result = sql
-        for (placeholder, content) in literals {
-            result = result.replacingOccurrences(of: placeholder, with: content)
-        }
-        return result
-    }
-
-    // MARK: - Comment Handling (Fix #6: UUID placeholders)
-
-    /// Combined pattern matching both line comments (--...) and block comments (/*...*/)
-    private static let combinedCommentRegex: NSRegularExpression = {
-        regex("--[^\\n]*|/\\*.*?\\*/", options: .dotMatchesLineSeparators)
-    }()
-
-    /// Extract all comments in a single pass, ordered by position in the source SQL.
-    /// This ensures __COMMENT_0__ is always the first comment, __COMMENT_1__ the second, etc.
-    private func extractComments(from sql: String) -> (String, [(placeholder: String, content: String)]) {
-        var result = sql
-        var comments: [(String, String)] = []
-
-        let allMatches = Self.combinedCommentRegex.matches(
-            in: result,
-            range: NSRange(result.startIndex..., in: result)
-        )
-
-        // Process in reverse to maintain valid indices; assign counters by source position
-        for (reverseIndex, match) in allMatches.reversed().enumerated() {
-            if let range = safeRange(from: match.range, in: result) {
-                let comment = String(result[range])
-                let counter = allMatches.count - 1 - reverseIndex
-                let placeholder = "__COMMENT_\(counter)__"
-                comments.insert((placeholder, comment), at: 0)
-                result.replaceSubrange(range, with: placeholder)
-            }
-        }
-
-        return (result, comments)
-    }
-
-    /// Restore comments after formatting
-    private func restoreComments(_ sql: String, comments: [(placeholder: String, content: String)]) -> String {
-        var result = sql
-        for (placeholder, content) in comments {
-            result = result.replacingOccurrences(of: placeholder, with: content)
-        }
-        return result
-    }
-
-    // MARK: - Keyword Uppercasing (Fix #1: Single-pass optimization)
-
-    /// Uppercase keywords using single regex pass with cached pattern (CPU-5)
-    private func uppercaseKeywords(_ sql: String, databaseType: DatabaseType) -> String {
-        guard let regex = Self.keywordRegex(for: databaseType) else {
-            return sql
-        }
-
-        // Use NSMutableString for O(1) in-place replacement instead of
-        // reverse-iterating Swift String replaceSubrange (SVC-11)
-        let mutable = NSMutableString(string: sql)
-        let fullRange = NSRange(location: 0, length: mutable.length)
-        let matches = regex.matches(in: sql, range: fullRange)
-
-        // Process in reverse to maintain valid indices
-        for match in matches.reversed() {
-            let matchRange = match.range
-            let keyword = mutable.substring(with: matchRange)
-            mutable.replaceCharacters(in: matchRange, with: keyword.uppercased())
-        }
-
-        return mutable as String
-    }
-
-    // MARK: - Line Breaks
-
-    private func addLineBreaks(_ sql: String, options: SQLFormatterOptions) -> String {
-        var result = sql
-
-        // Use pre-compiled regex patterns for all line break keywords (CPU-9)
-        for (keyword, regex) in Self.lineBreakRegexes {
-            let replacement = options.uppercaseKeywords ? keyword.uppercased() : keyword
-            result = regex.stringByReplacingMatches(
-                in: result,
-                range: NSRange(result.startIndex..., in: result),
-                withTemplate: "\n\(replacement)"
-            )
-        }
-
-        return result
-    }
-
-    // MARK: - Indentation (Fix #5: Word boundaries instead of contains)
-
-    private func addIndentation(_ sql: String, indentSize: Int) -> String {
-        let lines = sql.components(separatedBy: "\n")
-        var indentLevel = 0
-        var result: [String] = []
-
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-
-            // Decrease indent before processing closing parens or END
-            // Uses cached regex for word boundary checks (CPU-10)
-            if trimmed.starts(with: ")") || Self.hasWordBoundary(trimmed, regex: Self.endWordBoundaryRegex) {
-                indentLevel = max(0, indentLevel - 1)
-            }
-
-            // Add indentation
-            let indent = String(repeating: " ", count: indentLevel * indentSize)
-            result.append(indent + trimmed)
-
-            // Increase indent after opening parens or CASE keyword
-            if trimmed.hasSuffix("(") || Self.hasWordBoundary(trimmed, regex: Self.caseWordBoundaryRegex) {
-                indentLevel += 1
-            }
-
-            // Special handling for subqueries: (SELECT — uses cached regex (CPU-10)
-            if Self.subqueryRegex.firstMatch(
-                in: trimmed,
-                range: NSRange(trimmed.startIndex..., in: trimmed)
-            ) != nil {
-                indentLevel += 1
-            }
-
-            // Decrease after closing paren (if not at start)
-            if trimmed.hasSuffix(")") && !trimmed.starts(with: ")") {
-                indentLevel = max(0, indentLevel - 1)
-            }
-        }
-
-        return result.joined(separator: "\n")
-    }
-
-    /// Check if a word appears with word boundaries using a pre-compiled regex (CPU-10)
-    private static func hasWordBoundary(_ text: String, regex: NSRegularExpression) -> Bool {
-        regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
-    }
-
-    // MARK: - Column Alignment
-
-    /// Align SELECT columns vertically
-    ///
-    /// Example:
-    ///   SELECT id, name, email FROM users
-    /// Becomes:
-    ///   SELECT id,
-    ///          name,
-    ///          email
-    ///   FROM users
-    private func alignSelectColumns(_ sql: String) -> String {
-        // Find SELECT...FROM region
-        guard let selectRange = sql.range(of: "SELECT", options: .caseInsensitive),
-              let fromRange = sql.range(of: "FROM", options: .caseInsensitive, range: selectRange.upperBound..<sql.endIndex) else {
-            return sql
-        }
-
-        // Fix #3: Work with immutable substrings to avoid index invalidation
-        let selectClause = String(sql[selectRange.upperBound..<fromRange.lowerBound])
-        let columns = selectClause.components(separatedBy: ",")
-
-        guard columns.count > 1 else {
-            return sql  // Only one column, no alignment needed
-        }
-
-        // Align columns with proper spacing
-        let alignedColumns = columns.enumerated().map { index, column in
-            let trimmed = column.trimmingCharacters(in: .whitespacesAndNewlines)
-            if index == 0 {
-                return trimmed
-            } else {
-                return String(repeating: " ", count: Self.selectKeywordLength) + trimmed
-            }
-        }.joined(separator: ",\n")
-
-        // Rebuild SQL (Fix #3: Use string concatenation instead of replaceSubrange)
-        let before = String(sql[..<selectRange.upperBound])
-        let after = String(sql[fromRange.lowerBound...])
-        return before + " " + alignedColumns + "\n" + after
-    }
-
-    // MARK: - JOIN Formatting
-
-    private func formatJoins(_ sql: String) -> String {
-        // Already handled by addLineBreaks
-        sql
-    }
-
-    // MARK: - WHERE Condition Alignment
-
-    private func alignWhereConditions(_ sql: String) -> String {
-        // Find WHERE clause
-        guard let whereRange = sql.range(of: "WHERE", options: .caseInsensitive) else {
-            return sql
-        }
-
-        // Find end of WHERE clause using single regex scan
-        let searchStart = whereRange.upperBound
-        let searchNSRange = NSRange(searchStart..<sql.endIndex, in: sql)
-        var endIndex = sql.endIndex
-
-        if let match = Self.majorKeywordRegex.firstMatch(in: sql, range: searchNSRange),
-           let matchRange = Range(match.range, in: sql) {
-            endIndex = matchRange.lowerBound
-        }
-
-        // Fix #3: Work with immutable substring
-        let whereClause = String(sql[whereRange.upperBound..<endIndex])
-
-        // Add line breaks before AND/OR using cached regex
-        let replaced = Self.whereConditionRegex.stringByReplacingMatches(
-            in: whereClause,
-            range: NSRange(whereClause.startIndex..., in: whereClause),
-            withTemplate: "\n  $1 "
-        )
-
-        // Rebuild SQL (Fix #3: Use string concatenation)
-        let before = String(sql[..<whereRange.upperBound])
-        let after = String(sql[endIndex...])
-        return before + replaced + after
-    }
-
-    // MARK: - Cursor Preservation
-
-    /// Preserve cursor position using ratio-based approach
-    ///
-    /// - Note: This is a simple heuristic. For better accuracy, consider:
-    ///   - Tracking cursor context (inside string, after keyword, etc.)
-    ///   - Using token-based positioning
-    /// - Returns: New cursor position, clamped to valid range
-    private func preserveCursorPosition(original: Int, oldText: String, newText: String) -> Int {
-        guard !oldText.isEmpty else { return 0 }
-
-        // CPU-8: Use utf16.count for O(1) length instead of O(n) String.count
-        let oldLength = oldText.utf16.count
-        let newLength = newText.utf16.count
-
+    private func mapCursorPosition(original: Int, oldLength: Int, newLength: Int) -> Int {
+        guard oldLength > 0 else { return 0 }
         let ratio = Double(original) / Double(oldLength)
-        let newPosition = Int(ratio * Double(newLength))
+        return min(Int(ratio * Double(newLength)), newLength)
+    }
+}
 
-        return min(newPosition, newLength)
+// MARK: - Token Formatter (Stateful Walker)
+
+/// Walks the token stream with clause/nesting context to produce formatted output.
+/// Extracted from SQLFormatterService to keep each function under lint limits.
+internal struct SQLTokenFormatter {
+    let options: SQLFormatterOptions
+
+    init(options: SQLFormatterOptions) {
+        self.options = options
     }
 
-    // MARK: - Helper Methods
+    // Mutable state
+    private var output = ""
+    private var indent = 0
+    private var clauseStack: [ClauseContext] = []
+    private var afterNewline = true
+    private var isFirstClause = true
+    private var selectColumnIndent = 0
+    private var inSelectColumns = false
+    private var skipCount = 0
+    private var suppressNextSpace = false
+    private var caseBaseIndent = 0
+    /// Stack to save/restore selectColumnIndent across subquery boundaries
+    private var selectColumnIndentStack: [Int] = []
 
-    /// Safe NSRange to Range conversion (Fix #7: Unicode handling)
-    ///
-    /// NSRange uses UTF-16 code units, Swift String.Index uses Unicode scalars.
-    /// This can cause issues with emoji and other multi-byte characters.
-    private func safeRange(from nsRange: NSRange, in string: String) -> Range<String.Index>? {
-        // Use proper Range initializer that handles UTF-16 conversion
-        Range(nsRange, in: string)
+    private enum ClauseContext {
+        case select, from, where_, join, caseExpr, subquery, with
+        case insert, update, set, createTable, createTableBody
+        case inlineParen, windowParen
+    }
+
+    /// True after BETWEEN keyword — suppresses the next AND from being a clause break
+    private var afterBetween = false
+
+    // MARK: - Public
+
+    mutating func format(_ tokens: [SQLToken]) -> String {
+        let meaningful = tokens.compactMap { t -> SQLToken? in
+            t.type == .whitespace ? nil : t
+        }
+
+        for mi in meaningful.indices {
+            if skipCount > 0 {
+                skipCount -= 1
+                continue
+            }
+
+            let token = meaningful[mi]
+            let next: SQLToken? = mi + 1 < meaningful.count ? meaningful[mi + 1] : nil
+            let prev: SQLToken? = mi > 0 ? meaningful[mi - 1] : nil
+            let next2: SQLToken? = mi + 2 < meaningful.count ? meaningful[mi + 2] : nil
+
+            processToken(token, prev: prev, next: next, next2: next2)
+        }
+
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - Token Processing
+
+    private mutating func processToken(_ token: SQLToken, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
+        if token.type == .comment {
+            handleComment(token)
+            return
+        }
+
+        if token.type == .punctuation {
+            handlePunctuation(token, prev: prev, next: next)
+            return
+        }
+
+        if token.type == .keyword {
+            handleKeyword(token, prev: prev, next: next, next2: next2)
+            return
+        }
+
+        // All other tokens: identifiers, numbers, strings, operators, placeholders
+        appendToken(token.value)
+    }
+
+    // MARK: - Comment Handling
+
+    private mutating func handleComment(_ token: SQLToken) {
+        guard options.preserveComments else { return }
+        if !afterNewline { newline() }
+        output += token.value
+        output += "\n"
+        afterNewline = true
+    }
+
+    // MARK: - Punctuation Handling
+
+    private mutating func handlePunctuation(_ token: SQLToken, prev: SQLToken?, next: SQLToken?) {
+        switch token.value {
+        case ";":
+            output += ";"
+            output += "\n"
+            afterNewline = true
+            isFirstClause = true
+            indent = 0
+            clauseStack.removeAll()
+            inSelectColumns = false
+
+        case ",":
+            output += ","
+            if inSelectColumns {
+                output += "\n" + String(repeating: " ", count: selectColumnIndent)
+                afterNewline = false
+                suppressNextSpace = true
+            } else if currentContext == .set {
+                output += "\n" + indentStr() + "    "
+                afterNewline = false
+                suppressNextSpace = true
+            } else if currentContext == .createTableBody {
+                output += "\n"
+                afterNewline = true
+            }
+
+        case "(":
+            handleOpenParen(next: next, prev: prev)
+
+        case ")":
+            handleCloseParen()
+
+        case ".":
+            // Qualified name dot — no spaces around it
+            output += "."
+            afterNewline = false
+            suppressNextSpace = true
+
+        default:
+            appendToken(token.value)
+        }
+    }
+
+    private mutating func handleOpenParen(next: SQLToken?, prev: SQLToken?) {
+        // Subquery: ( SELECT ...
+        if next?.upperValue == "SELECT" {
+            if suppressNextSpace {
+                output += "("
+            } else {
+                output += " ("
+            }
+            output += "\n"
+            selectColumnIndentStack.append(selectColumnIndent)
+            indent += 1
+            afterNewline = true
+            isFirstClause = true
+            suppressNextSpace = false
+            clauseStack.append(.subquery)
+            return
+        }
+        // CTE body: AS (
+        if prev?.upperValue == "AS" && clauseStack.contains(.with) {
+            output += " ("
+            output += "\n"
+            selectColumnIndentStack.append(selectColumnIndent)
+            indent += 1
+            afterNewline = true
+            isFirstClause = true
+            suppressNextSpace = false
+            clauseStack.append(.subquery)
+            return
+        }
+        // CREATE TABLE columns: table_name (
+        if clauseStack.contains(.createTable) && !clauseStack.contains(.createTableBody) {
+            output += " ("
+            output += "\n"
+            indent += 1
+            afterNewline = true
+            suppressNextSpace = false
+            clauseStack.append(.createTableBody)
+            return
+        }
+        // Window function: OVER(...)
+        if prev?.upperValue == "OVER" {
+            output += "("
+            afterNewline = false
+            suppressNextSpace = true
+            clauseStack.append(.windowParen)
+            return
+        }
+        // Inline parenthesized expression: COUNT(*), VARCHAR(255), etc.
+        output += "("
+        afterNewline = false
+        suppressNextSpace = true
+        clauseStack.append(.inlineParen)
+    }
+
+    private mutating func handleCloseParen() {
+        // Inline or window paren: just close it
+        if currentContext == .inlineParen || currentContext == .windowParen {
+            clauseStack.removeLast()
+            output += ")"
+            afterNewline = false
+            suppressNextSpace = false
+            return
+        }
+        // Block paren (subquery or CREATE TABLE body): pop back to the block opener
+        if let idx = clauseStack.lastIndex(where: { $0 == .subquery || $0 == .createTableBody }) {
+            clauseStack.removeSubrange(idx...)
+            indent = max(0, indent - 1)
+            output += "\n" + indentStr() + ")"
+            afterNewline = false
+            isFirstClause = false
+            // Restore outer SELECT state after leaving subquery
+            inSelectColumns = clauseStack.contains(.select)
+            if let saved = selectColumnIndentStack.popLast() {
+                selectColumnIndent = saved
+            }
+            suppressNextSpace = false
+            return
+        }
+        // Unmatched paren — just append
+        output += ")"
+        afterNewline = false
+        suppressNextSpace = false
+    }
+
+    // MARK: - Keyword Handling
+
+    private mutating func handleKeyword(_ token: SQLToken, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
+        let upper = token.upperValue
+        let kw = options.uppercaseKeywords ? upper : token.value
+
+        switch upper {
+        case "SELECT":
+            handleSelect(kw: kw)
+        case "FROM":
+            handleFrom(kw: kw, prev: prev)
+        case "WHERE":
+            handleClauseKeyword(kw: kw, context: .where_)
+        case "AND", "OR":
+            handleAndOr(kw: kw, upper: upper)
+        case "JOIN":
+            handleClauseKeyword(kw: kw, context: .join)
+        case "INNER", "LEFT", "RIGHT", "FULL", "CROSS", "NATURAL":
+            handleJoinPrefix(upper: upper, kw: kw, next: next, next2: next2)
+        case "OUTER":
+            break // absorbed by JOIN prefix handler
+        case "ON":
+            handleOn(kw: kw)
+        case "OVER":
+            appendToken(kw)
+        case "PARTITION":
+            appendToken(kw)
+        case "BETWEEN":
+            afterBetween = true
+            appendToken(kw)
+        case "ORDER", "GROUP":
+            handleOrderGroup(upper: upper, kw: kw, next: next)
+        case "BY":
+            // standalone BY (not consumed by ORDER/GROUP) — should not happen normally
+            appendToken(kw)
+        case "HAVING", "LIMIT", "OFFSET":
+            handleClauseKeyword(kw: kw, context: nil)
+        case "UNION", "INTERSECT", "EXCEPT":
+            handleSetOperation(upper: upper, kw: kw, next: next)
+        case "ALL":
+            // standalone ALL (not consumed by UNION ALL)
+            appendToken(kw)
+        case "CASE":
+            handleCase(kw: kw)
+        case "WHEN", "ELSE":
+            handleWhenElse(kw: kw)
+        case "THEN":
+            output += " " + kw
+            afterNewline = false
+        case "END":
+            handleEnd(kw: kw)
+        case "WITH":
+            handleWith(kw: kw)
+        case "INSERT":
+            handleInsert(kw: kw, next: next)
+        case "INTO":
+            // standalone INTO (not consumed by INSERT INTO)
+            appendToken(kw)
+        case "VALUES":
+            newline()
+            appendToken(kw)
+        case "UPDATE":
+            handleStatementStart(kw: kw, context: .update)
+        case "SET":
+            handleClauseKeyword(kw: kw, context: .set)
+        case "DELETE":
+            handleStatementStart(kw: kw, context: nil)
+        case "CREATE":
+            handleStatementStart(kw: kw, context: .createTable)
+        case "TABLE", "AS":
+            appendToken(kw)
+        default:
+            appendToken(kw)
+        }
+    }
+
+    // MARK: - Specific Keyword Handlers
+
+    private mutating func handleSelect(kw: String) {
+        if !isFirstClause { newline() }
+        output += (afterNewline ? indentStr() : "") + kw
+        isFirstClause = false
+        afterNewline = false
+        inSelectColumns = true
+        selectColumnIndent = indent * options.indentSize + 7
+        clauseStack.append(.select)
+    }
+
+    private mutating func handleFrom(kw: String, prev: SQLToken?) {
+        if prev?.upperValue == "DELETE" {
+            newline()
+            appendToken(kw)
+            inSelectColumns = false
+            return
+        }
+        inSelectColumns = false
+        newline()
+        appendToken(kw)
+        replaceTop(with: .from)
+    }
+
+    private mutating func handleClauseKeyword(kw: String, context: ClauseContext?) {
+        inSelectColumns = false
+        newline()
+        appendToken(kw)
+        if let ctx = context { replaceTop(with: ctx) }
+    }
+
+    private mutating func handleAndOr(kw: String, upper: String) {
+        // BETWEEN x AND y — AND stays inline
+        if upper == "AND" && afterBetween {
+            afterBetween = false
+            output += " " + kw
+            afterNewline = false
+            return
+        }
+        if currentContext == .where_ {
+            newline()
+            output += indentStr() + "  " + kw
+            afterNewline = false
+        } else {
+            output += " " + kw
+            afterNewline = false
+        }
+    }
+
+    private mutating func handleJoinPrefix(upper: String, kw: String, next: SQLToken?, next2: SQLToken?) {
+        // LEFT OUTER JOIN → skip 2 tokens (OUTER, JOIN)
+        if next?.upperValue == "OUTER" && next2?.upperValue == "JOIN" {
+            inSelectColumns = false
+            let joinKw = options.uppercaseKeywords ? "\(upper) OUTER JOIN" : "\(upper.lowercased()) outer join"
+            newline()
+            appendToken(joinKw)
+            replaceTop(with: .join)
+            skipCount = 2
+        // LEFT JOIN → skip 1 token (JOIN)
+        } else if next?.upperValue == "JOIN" {
+            inSelectColumns = false
+            let joinKw = options.uppercaseKeywords ? "\(upper) JOIN" : "\(upper.lowercased()) join"
+            newline()
+            appendToken(joinKw)
+            replaceTop(with: .join)
+            skipCount = 1
+        } else {
+            appendToken(kw)
+        }
+    }
+
+    private mutating func handleOn(kw: String) {
+        if currentContext == .join {
+            newline()
+            output += indentStr() + "  " + kw
+            afterNewline = false
+        } else {
+            output += " " + kw
+            afterNewline = false
+        }
+    }
+
+    private mutating func handleOrderGroup(upper: String, kw: String, next: SQLToken?) {
+        // Inside window function parens — stay inline
+        if clauseStack.contains(.windowParen) {
+            if next?.upperValue == "BY" {
+                let byKw = options.uppercaseKeywords ? "BY" : "by"
+                output += " " + kw + " " + byKw
+                afterNewline = false
+                skipCount = 1
+            } else {
+                appendToken(kw)
+            }
+            return
+        }
+        inSelectColumns = false
+        if next?.upperValue == "BY" {
+            let byKw = options.uppercaseKeywords ? "BY" : "by"
+            newline()
+            output += indentStr() + kw + " " + byKw
+            afterNewline = false
+            skipCount = 1
+        } else {
+            appendToken(kw)
+        }
+    }
+
+    private mutating func handleSetOperation(upper: String, kw: String, next: SQLToken?) {
+        inSelectColumns = false
+        indent = 0
+        clauseStack.removeAll()
+        if upper == "UNION" && next?.upperValue == "ALL" {
+            let allKw = options.uppercaseKeywords ? "ALL" : "all"
+            output += "\n\n" + kw + " " + allKw + "\n"
+            skipCount = 1 // skip ALL
+        } else {
+            output += "\n\n" + kw + "\n"
+        }
+        afterNewline = true
+        isFirstClause = true
+    }
+
+    private mutating func handleCase(kw: String) {
+        if inSelectColumns {
+            caseBaseIndent = selectColumnIndent
+        } else {
+            caseBaseIndent = indent * options.indentSize
+        }
+        appendToken(kw)
+        clauseStack.append(.caseExpr)
+    }
+
+    private mutating func handleWhenElse(kw: String) {
+        let whenIndent = caseBaseIndent + options.indentSize
+        output += "\n" + String(repeating: " ", count: whenIndent) + kw
+        afterNewline = false
+        suppressNextSpace = false
+    }
+
+    private mutating func handleEnd(kw: String) {
+        if clauseStack.last == .caseExpr { clauseStack.removeLast() }
+        // Align END at same level as CASE
+        output += "\n" + String(repeating: " ", count: caseBaseIndent)
+        output += kw
+        afterNewline = false
+    }
+
+    private mutating func handleWith(kw: String) {
+        if !isFirstClause { output += "\n" }
+        output += kw
+        isFirstClause = false
+        afterNewline = false
+        clauseStack.append(.with)
+    }
+
+    private mutating func handleInsert(kw: String, next: SQLToken?) {
+        if !isFirstClause { output += "\n" }
+        if next?.upperValue == "INTO" {
+            let intoKw = options.uppercaseKeywords ? "INTO" : "into"
+            output += kw + " " + intoKw
+            skipCount = 1 // skip INTO
+        } else {
+            output += kw
+        }
+        isFirstClause = false
+        afterNewline = false
+        clauseStack.append(.insert)
+    }
+
+    private mutating func handleStatementStart(kw: String, context: ClauseContext?) {
+        if !isFirstClause { output += "\n" }
+        output += kw
+        isFirstClause = false
+        afterNewline = false
+        if let ctx = context { clauseStack.append(ctx) }
+    }
+
+    // MARK: - Helpers
+
+    private var currentContext: ClauseContext? { clauseStack.last }
+
+    private mutating func replaceTop(with ctx: ClauseContext) {
+        if !clauseStack.isEmpty { clauseStack.removeLast() }
+        clauseStack.append(ctx)
+    }
+
+    private func indentStr() -> String {
+        String(repeating: " ", count: indent * options.indentSize)
+    }
+
+    private mutating func newline() {
+        output += "\n"
+        afterNewline = true
+    }
+
+    private mutating func appendToken(_ value: String) {
+        if afterNewline {
+            output += indentStr() + value
+        } else if suppressNextSpace {
+            output += value
+        } else {
+            output += " " + value
+        }
+        afterNewline = false
+        suppressNextSpace = false
     }
 }
