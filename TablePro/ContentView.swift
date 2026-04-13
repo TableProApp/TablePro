@@ -95,7 +95,8 @@ struct ContentView: View {
                 Text("Are you sure you want to delete \"\(connection.name)\"?")
             }
             .onReceive(NotificationCenter.default.publisher(for: .newConnection)) { _ in
-                openWindow(id: "connection-form", value: nil as UUID?)
+                // ⌘N opens the Welcome window (connection list) — not the blank form
+                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
             }
             // Right sidebar toggle is handled by MainContentView (has the binding)
             // Left sidebar toggle uses native NSSplitViewController.toggleSidebar via responder chain

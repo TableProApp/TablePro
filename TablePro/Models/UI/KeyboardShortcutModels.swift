@@ -36,7 +36,7 @@ enum ShortcutCategory: String, Codable, CaseIterable, Identifiable {
 /// All customizable keyboard shortcut actions
 enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // File
-    case newConnection
+    case manageConnections
     case newTab
     case openDatabase
     case openFile
@@ -46,6 +46,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case previewSQL
     case closeTab
     case refresh
+    case executeQuery
     case explainQuery
     case formatQuery
     case export
@@ -83,10 +84,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case closeResultTab
 
     // Tabs
-    case showPreviousTabBrackets
-    case showNextTabBrackets
-    case previousTabArrows
-    case nextTabArrows
+    case showPreviousTab
+    case showNextTab
 
     // AI
     case aiExplainQuery
@@ -96,9 +95,9 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var category: ShortcutCategory {
         switch self {
-        case .newConnection, .newTab, .openDatabase, .openFile, .switchConnection,
+        case .manageConnections, .newTab, .openDatabase, .openFile, .switchConnection,
              .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
-             .explainQuery, .formatQuery, .export, .importData, .quickSwitcher,
+             .executeQuery, .explainQuery, .formatQuery, .export, .importData, .quickSwitcher,
              .previousPage, .nextPage:
             return .file
         case .undo, .redo, .cut, .copy, .copyWithHeaders, .copyAsJson, .paste,
@@ -108,8 +107,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleTableBrowser, .toggleInspector, .toggleFilters, .toggleHistory,
              .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab:
             return .view
-        case .showPreviousTabBrackets, .showNextTabBrackets,
-             .previousTabArrows, .nextTabArrows:
+        case .showPreviousTab, .showNextTab:
             return .tabs
         case .aiExplainQuery, .aiOptimizeQuery:
             return .ai
@@ -118,7 +116,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .newConnection: return String(localized: "New Connection")
+        case .manageConnections: return String(localized: "Manage Connections")
+        case .executeQuery: return String(localized: "Execute Query")
         case .newTab: return String(localized: "New Tab")
         case .openDatabase: return String(localized: "Open Database")
         case .openFile: return String(localized: "Open File")
@@ -157,10 +156,8 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .previousResultTab: return String(localized: "Previous Result")
         case .nextResultTab: return String(localized: "Next Result")
         case .closeResultTab: return String(localized: "Close Result Tab")
-        case .showPreviousTabBrackets: return String(localized: "Show Previous Tab")
-        case .showNextTabBrackets: return String(localized: "Show Next Tab")
-        case .previousTabArrows: return String(localized: "Previous Tab (Alt)")
-        case .nextTabArrows: return String(localized: "Next Tab (Alt)")
+        case .showPreviousTab: return String(localized: "Show Previous Tab")
+        case .showNextTab: return String(localized: "Show Next Tab")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }
@@ -452,7 +449,8 @@ struct KeyboardSettings: Codable, Equatable {
     /// Default shortcuts — applied when user has no overrides
     static let defaultShortcuts: [ShortcutAction: KeyCombo] = [
         // File
-        .newConnection: KeyCombo(key: "n", command: true),
+        .manageConnections: KeyCombo(key: "n", command: true),
+        .executeQuery: KeyCombo(key: "return", command: true, isSpecialKey: true),
         .newTab: KeyCombo(key: "t", command: true),
         .openDatabase: KeyCombo(key: "k", command: true),
         .openFile: KeyCombo(key: "o", command: true),
@@ -497,10 +495,8 @@ struct KeyboardSettings: Codable, Equatable {
         .closeResultTab: KeyCombo(key: "w", command: true, shift: true),
 
         // Tabs
-        .showPreviousTabBrackets: KeyCombo(key: "[", command: true, shift: true),
-        .showNextTabBrackets: KeyCombo(key: "]", command: true, shift: true),
-        .previousTabArrows: KeyCombo(key: "leftArrow", command: true, option: true, isSpecialKey: true),
-        .nextTabArrows: KeyCombo(key: "rightArrow", command: true, option: true, isSpecialKey: true),
+        .showPreviousTab: KeyCombo(key: "[", command: true, shift: true),
+        .showNextTab: KeyCombo(key: "]", command: true, shift: true),
 
         // AI
         .aiExplainQuery: KeyCombo(key: "l", command: true),

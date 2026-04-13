@@ -600,6 +600,31 @@ final class MainContentCommandActions {
         )
     }
 
+    func runQuery() {
+        coordinator?.runQuery()
+    }
+
+    func formatQuery() {
+        guard let coordinator,
+              let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
+        let tab = coordinator.tabManager.tabs[tabIndex]
+        let dbType = connection.type
+        let formatter = SQLFormatterService()
+        let options = SQLFormatterOptions.default
+
+        do {
+            let result = try formatter.format(
+                tab.query,
+                dialect: dbType,
+                cursorOffset: 0,
+                options: options
+            )
+            coordinator.tabManager.tabs[tabIndex].query = result.formattedSQL
+        } catch {
+            Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - UI Operations (Group A — Called Directly)
 
     func toggleHistoryPanel() {

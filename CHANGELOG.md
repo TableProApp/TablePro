@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Keyboard shortcuts follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar
 - Format Query and Pagination shortcuts now customizable in Settings
+- Menu bar restructured per macOS HIG: ⌘N opens connection list (#722), new Query menu, Help search restored, duplicate items removed
 
 ## [0.31.2] - 2026-04-13
 

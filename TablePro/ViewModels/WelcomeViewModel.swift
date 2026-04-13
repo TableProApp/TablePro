@@ -129,13 +129,8 @@ final class WelcomeViewModel {
             }
         }
 
-        newConnectionObserver = NotificationCenter.default.addObserver(
-            forName: .newConnection, object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.openWindow?(id: "connection-form", value: nil as UUID?)
-            }
-        }
+        // ⌘N now shows the Welcome window (handled by ContentView and AppDelegate).
+        // The Welcome window is already open in this context, so no action needed here.
 
         connectionUpdatedObserver = NotificationCenter.default.addObserver(
             forName: .connectionUpdated, object: nil, queue: .main
