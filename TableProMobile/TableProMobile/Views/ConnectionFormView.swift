@@ -29,6 +29,7 @@ struct ConnectionFormView: View {
         var id: Int { hashValue }
     }
     @State private var activeFilePicker: ActiveFilePicker?
+    @State private var pendingFilePicker: ActiveFilePicker?
     @State private var selectedFileURL: URL?
     @State private var showNewDatabaseAlert = false
     @State private var newDatabaseName = ""
@@ -252,7 +253,8 @@ struct ConnectionFormView: View {
                 allowedContentTypes: activeFilePicker == .sqliteDatabase ? sqliteContentTypes : [.data],
                 allowsMultipleSelection: false
             ) { result in
-                let picker = activeFilePicker
+                let picker = pendingFilePicker
+                pendingFilePicker = nil
                 activeFilePicker = nil
                 switch picker {
                 case .sqliteDatabase:
@@ -320,6 +322,7 @@ struct ConnectionFormView: View {
             }
 
             Button {
+                pendingFilePicker = .sqliteDatabase
                 activeFilePicker = .sqliteDatabase
             } label: {
                 Label("Open Database File", systemImage: "folder")
@@ -398,6 +401,7 @@ struct ConnectionFormView: View {
 
                     if sshKeyInputMode == .file {
                         Button {
+                            pendingFilePicker = .sshKey
                             activeFilePicker = .sshKey
                         } label: {
                             HStack {
