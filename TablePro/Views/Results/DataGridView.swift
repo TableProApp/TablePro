@@ -474,7 +474,7 @@ struct DataGridView: NSViewRepresentable {
                 }
                 if !newWidths.isEmpty && newWidths != columnLayout.columnWidths {
                     coordinator.isWritingColumnLayout = true
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         coordinator.isWritingColumnLayout = false
                         self.columnLayout.columnWidths = newWidths
                     }
@@ -507,7 +507,7 @@ struct DataGridView: NSViewRepresentable {
                 let orderChanged = !currentOrder.isEmpty && columnLayout.columnOrder != currentOrder
                 if widthsChanged || orderChanged {
                     coordinator.isWritingColumnLayout = true
-                    DispatchQueue.main.async {
+                    Task { @MainActor in
                         coordinator.isWritingColumnLayout = false
                         if widthsChanged {
                             self.columnLayout.columnWidths = currentWidths
@@ -617,13 +617,13 @@ struct DataGridView: NSViewRepresentable {
             let tableColumn = cell.column + 1
             if cell.row < tableView.numberOfRows && tableColumn < tableView.numberOfColumns {
                 tableView.scrollRowToVisible(cell.row)
-                DispatchQueue.main.async { [weak tableView] in
+                Task { @MainActor [weak tableView] in
                     guard let tableView = tableView else { return }
                     tableView.selectRowIndexes(IndexSet(integer: cell.row), byExtendingSelection: false)
                     tableView.editColumn(tableColumn, row: cell.row, with: nil, select: true)
                 }
             }
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.editingCell = nil
             }
         }

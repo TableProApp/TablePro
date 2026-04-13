@@ -167,7 +167,7 @@ extension TableViewCoordinator {
         rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
         onCellEdit?(row, columnIndex, newValue)
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
             tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
         }
 
@@ -199,7 +199,7 @@ extension TableViewCoordinator {
                 nextColumn = tableView.numberOfColumns - 1
             }
 
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
                 tableView.editColumn(nextColumn, row: nextRow, with: nil, select: true)
             }
@@ -221,7 +221,7 @@ extension TableViewCoordinator {
                 prevColumn = 1
             }
 
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 tableView.selectRowIndexes(IndexSet(integer: prevRow), byExtendingSelection: false)
                 tableView.editColumn(prevColumn, row: prevRow, with: nil, select: true)
             }

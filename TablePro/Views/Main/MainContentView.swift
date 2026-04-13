@@ -60,6 +60,7 @@ struct MainContentView: View {
     @State var hasInitialized = false
     /// Tracks whether this view's window is the key (focused) window
     @State var isKeyWindow = false
+    @State var lastResignKeyDate = Date.distantPast
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
 
@@ -373,7 +374,9 @@ struct MainContentView: View {
                         && tab.errorMessage == nil
                         && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 } ?? false
-            if needsLazyLoad && !hasPendingEdits && isConnected {
+            // Skip lazy-load if this is a menu-interaction bounce (resign+become within 200ms)
+            let isMenuBounce = Date().timeIntervalSince(lastResignKeyDate) < 0.2
+            if needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce {
                 coordinator.runQuery()
             }
 
@@ -389,6 +392,7 @@ struct MainContentView: View {
                 notificationWindow === viewWindow
             else { return }
             isKeyWindow = false
+            lastResignKeyDate = Date()
 
             // Schedule row data eviction for inactive native window-tabs.
             // 5s delay avoids thrashing when quickly switching between tabs.

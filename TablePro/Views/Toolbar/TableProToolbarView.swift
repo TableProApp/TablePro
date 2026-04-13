@@ -153,7 +153,7 @@ struct TableProToolbar: ViewModifier {
                     }
                     .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
                     .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
-                    .popover(isPresented: $state.showSQLReviewPopover) {
+                    .popover(isPresented: $state.showSQLReviewPopover, attachmentAnchor: .point(.bottom)) {
                         SQLReviewPopover(statements: state.previewStatements, databaseType: state.databaseType)
                     }
                 }

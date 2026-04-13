@@ -225,6 +225,7 @@ struct ContentView: View {
                         toolbarState: sessionState.toolbarState,
                         coordinator: sessionState.coordinator
                     )
+                    .transaction { $0.animation = nil }
                     .frame(maxWidth: .infinity)
 
                     if RightPanelVisibility.shared.isPresented {
@@ -241,7 +242,6 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing))
                     }
                 }
-                .animation(.easeInOut(duration: 0.2), value: RightPanelVisibility.shared.isPresented)
             } else {
                 VStack(spacing: 16) {
                     ProgressView()

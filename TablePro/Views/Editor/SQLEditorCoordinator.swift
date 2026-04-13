@@ -93,7 +93,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         // Deferred to next run loop because prepareCoordinator runs during
         // TextViewController.init, before the view hierarchy is fully loaded.
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(50))
             guard let self else { return }
             self.fixFindPanelHitTesting(controller: controller)
             self.installAIContextMenu(controller: controller)

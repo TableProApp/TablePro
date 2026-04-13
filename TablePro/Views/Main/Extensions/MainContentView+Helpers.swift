@@ -62,17 +62,13 @@ extension MainContentView {
 
     // MARK: - Inspector Context
 
-    /// Coalesces multiple onChange-triggered updates into a single deferred call.
-    /// During tab switch, onChange handlers fire 3-4x — this ensures we only rebuild once,
-    /// and defers the work so SwiftUI can render the tab switch first.
+    /// Synchronously updates inspector state. Previously deferred by 100ms to coalesce
+    /// multiple onChange calls, but the deferred Task caused a double layout pass.
     func scheduleInspectorUpdate() {
         inspectorUpdateTask?.cancel()
-        inspectorUpdateTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(100))
-            guard !Task.isCancelled else { return }
-            updateSidebarEditState()
-            updateInspectorContext()
-        }
+        inspectorUpdateTask = nil
+        updateSidebarEditState()
+        updateInspectorContext()
     }
 
     func updateInspectorContext() {
