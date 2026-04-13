@@ -15,6 +15,7 @@
 
 import Combine
 import SwiftUI
+import TableProPluginKit
 
 /// Main content view - thin presentation layer
 struct MainContentView: View {
@@ -374,6 +375,12 @@ struct MainContentView: View {
                 } ?? false
             if needsLazyLoad && !hasPendingEdits && isConnected {
                 coordinator.runQuery()
+            }
+
+            // Auto-refresh schema for file-based connections (SQLite, DuckDB)
+            // when window regains focus — catches external modifications.
+            if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
+                Task { await coordinator.refreshTablesIfStale() }
             }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification))

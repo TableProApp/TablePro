@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI settings: fix Ollama model selection and improve error messages (#712)
 - Rewrite SQL formatter with token-based architecture for better formatting (#705)
 - Fix filter logic: `= NULL` auto-converts to `IS NULL`, BETWEEN works on all drivers, IN/NOT IN handles NULL values (#706)
+- SQLite/DuckDB: auto-detect schema changes from external tools (#704)
 
 ## [0.31.2] - 2026-04-13
 

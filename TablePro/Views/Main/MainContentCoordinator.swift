@@ -137,6 +137,8 @@ final class MainContentCoordinator {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
+    @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
+    @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
     /// Set during handleTabChange to suppress redundant onChange(of: resultColumns) reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
@@ -342,6 +344,7 @@ final class MainContentCoordinator {
         _didActivate.withLock { $0 = true }
         registerForPersistence()
         setupPluginDriver()
+        startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
             pluginDriverObserver = NotificationCenter.default.addObserver(
@@ -352,6 +355,28 @@ final class MainContentCoordinator {
                 }
             }
         }
+    }
+
+    /// Start watching the database file for external changes (SQLite, DuckDB).
+    private func startFileWatcherIfNeeded() {
+        guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
+        let filePath = connection.database
+        guard !filePath.isEmpty else { return }
+
+        let watcher = DatabaseFileWatcher()
+        watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
+            guard let self, self.sidebarLoadingState != .loading else { return }
+            Task { await self.refreshTablesIfStale() }
+        }
+        fileWatcher = watcher
+    }
+
+    /// Refresh schema only if not recently refreshed (avoids redundant work
+    /// when both the file watcher and window focus trigger close together).
+    func refreshTablesIfStale() async {
+        guard Date().timeIntervalSince(lastSchemaRefreshDate) > 2 else { return }
+        lastSchemaRefreshDate = Date()
+        await refreshTables()
     }
 
     func showAIChatPanel() {
@@ -381,6 +406,7 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
+        lastSchemaRefreshDate = Date()
         sidebarLoadingState = .loading
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
             sidebarLoadingState = .error(String(localized: "Not connected"))
@@ -440,6 +466,8 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             pluginDriverObserver = nil
         }
+        fileWatcher?.stopWatching(connectionId: connectionId)
+        fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
         changeManagerUpdateTask?.cancel()
