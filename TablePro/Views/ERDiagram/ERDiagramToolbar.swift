@@ -12,7 +12,6 @@ struct ERDiagramToolbar: View {
                 Image(systemName: "minus.magnifyingglass")
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut("-", modifiers: .command)
             .accessibilityLabel(String(localized: "Zoom Out"))
 
             Button {
@@ -25,7 +24,6 @@ struct ERDiagramToolbar: View {
             }
             .buttonStyle(.plain)
             .help(String(localized: "Reset Zoom"))
-            .keyboardShortcut("0", modifiers: .command)
 
             Button {
                 viewModel.zoom(to: viewModel.magnification + 0.25)
@@ -33,7 +31,6 @@ struct ERDiagramToolbar: View {
                 Image(systemName: "plus.magnifyingglass")
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut("=", modifiers: .command)
             .accessibilityLabel(String(localized: "Zoom In"))
 
             Button {
@@ -42,7 +39,6 @@ struct ERDiagramToolbar: View {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(.borderless)
-            .keyboardShortcut("0", modifiers: [.command, .shift])
             .accessibilityLabel(String(localized: "Fit to Window"))
             .help(String(localized: "Fit to Window"))
 

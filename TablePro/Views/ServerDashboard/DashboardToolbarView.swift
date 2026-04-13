@@ -42,7 +42,6 @@ struct DashboardToolbarView: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Refresh Now"))
             .disabled(viewModel.isRefreshing)
-            .keyboardShortcut("r", modifiers: .command)
 
             Spacer()
 

@@ -89,7 +89,7 @@ struct KeyboardSettingsView: View {
                 systemReservedAlert = nil
             }
         } message: {
-            Text("This shortcut is reserved by macOS and cannot be assigned.")
+            Text(String(localized: "This shortcut is reserved by macOS and cannot be assigned."))
         }
     }
 

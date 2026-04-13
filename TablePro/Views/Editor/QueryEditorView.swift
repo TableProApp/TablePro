@@ -93,7 +93,7 @@ struct QueryEditorView: View {
             }
             .buttonStyle(.borderless)
             .help(String(localized: "Format Query (⌥⌘F)"))
-            .keyboardShortcut("f", modifiers: [.option, .command])
+            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .formatQuery))
 
             Divider()
                 .frame(height: 16)

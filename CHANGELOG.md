@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Default keyboard shortcuts updated to follow macOS HIG: `⌘F` is now Find (filter toggle moved to `⌘⇧F`), inspector toggle is `⌘⌥I`, sidebar toggle is `⌘0`
+- Keyboard shortcuts: crash-safe deserialization, expanded system-reserved list, Format Query and Pagination now customizable, removed hardcoded shortcuts from ER Diagram/Dashboard/context menus
 
 ## [0.31.2] - 2026-04-13
 

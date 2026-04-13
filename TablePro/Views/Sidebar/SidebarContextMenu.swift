@@ -90,7 +90,6 @@ struct SidebarContextMenu: View {
             }
             ClipboardService.shared.writeText(names.joined(separator: ","))
         }
-        .keyboardShortcut("c", modifiers: .command)
         .disabled(!hasSelection)
 
         Button("Export...") {
@@ -99,7 +98,6 @@ struct SidebarContextMenu: View {
             }
             coordinator?.openExportDialog()
         }
-        .keyboardShortcut("e", modifiers: [.command, .shift])
         .disabled(!hasSelection)
 
         if SidebarContextMenuLogic.importVisible(
@@ -111,7 +109,6 @@ struct SidebarContextMenu: View {
             Button("Import...") {
                 coordinator?.openImportDialog()
             }
-            .keyboardShortcut("i", modifiers: [.command, .shift])
             .disabled(isReadOnly)
         }
 
@@ -149,7 +146,6 @@ struct SidebarContextMenu: View {
             }
             onBatchToggleDelete()
         }
-        .keyboardShortcut(.delete, modifiers: .command)
         .disabled(!hasSelection || isReadOnly)
     }
 }
