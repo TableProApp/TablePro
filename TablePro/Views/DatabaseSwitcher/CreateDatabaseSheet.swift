@@ -133,18 +133,14 @@ struct CreateDatabaseSheet: View {
         isCreating = true
         errorMessage = nil
 
-        // Capture @State values as local lets before the async boundary.
-        // This avoids passing strings through async closure thunks which
-        // have a macOS 26 (Tahoe) runtime bug with ImplicitActor argument shifting.
         let name = databaseName
         let cs = config.showOptions ? charset : ""
         let col: String? = config.showOptions ? collation : nil
-        let vm = viewModel
 
         Task {
             do {
-                try await vm.createDatabase(name: name, charset: cs, collation: col)
-                await vm.refreshDatabases()
+                try await viewModel.createDatabase(name: name, charset: cs, collation: col)
+                await viewModel.refreshDatabases()
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

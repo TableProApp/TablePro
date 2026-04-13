@@ -116,11 +116,7 @@ struct DatabaseSwitcherSheet: View {
         .defaultFocus($focus, .search)
         .task { await viewModel.fetchDatabases() }
         .sheet(isPresented: $showCreateDialog) {
-            CreateDatabaseSheet(databaseType: databaseType) { name, charset, collation in
-                try await viewModel.createDatabase(
-                    name: name, charset: charset, collation: collation)
-                await viewModel.refreshDatabases()
-            }
+            CreateDatabaseSheet(databaseType: databaseType, viewModel: viewModel)
         }
         .onExitCommand {
             // SwiftUI handles sheet priority automatically - no nested sheets take precedence
