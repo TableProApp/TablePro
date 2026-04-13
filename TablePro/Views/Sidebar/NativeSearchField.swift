@@ -18,6 +18,8 @@ struct NativeSearchField: NSViewRepresentable {
         field.delegate = context.coordinator
         field.bezelStyle = .roundedBezel
         field.controlSize = .regular
+        field.sendsSearchStringImmediately = true
+        field.setAccessibilityIdentifier("sidebar-filter")
         return field
     }
 
@@ -42,6 +44,11 @@ struct NativeSearchField: NSViewRepresentable {
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSSearchField else { return }
             text.wrappedValue = field.stringValue
+        }
+
+        func searchFieldDidEndSearching(_ sender: NSSearchField) {
+            text.wrappedValue = ""
+            sender.window?.makeFirstResponder(sender.superview)
         }
     }
 }

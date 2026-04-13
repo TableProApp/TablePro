@@ -98,7 +98,9 @@ struct SidebarView: View {
                         get: { sidebarState.searchText },
                         set: { sidebarState.searchText = $0 }
                     ),
-                    placeholder: String(localized: "Filter")
+                    placeholder: sidebarState.selectedSidebarTab == .tables
+                        ? String(localized: "Filter")
+                        : String(localized: "Filter favorites")
                 )
                 .padding(.horizontal, 8)
                 .padding(.top, 6)

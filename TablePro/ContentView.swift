@@ -304,8 +304,6 @@ struct ContentView: View {
         )
     }
 
-
-
     private var sessionTableOperationOptionsBinding: Binding<[String: TableOperationOptions]> {
         createSessionBinding(
             get: { $0.tableOperationOptions },
