@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rewrite SQL formatter with token-based architecture for better formatting (#705)
 - Fix filter logic: `= NULL` auto-converts to `IS NULL`, BETWEEN works on all drivers, IN/NOT IN handles NULL values (#706)
 - SQLite/DuckDB: auto-detect schema changes from external tools (#704)
+- Fix UI layout breaks when clicking certain menus (#702)
+
+### Changed
+
+- Default keyboard shortcuts updated to follow macOS HIG: `⌘F` is now Find (filter toggle moved to `⌘⇧F`), inspector toggle is `⌘⌥I`, sidebar toggle is `⌘0`
 
 ## [0.31.2] - 2026-04-13
 
