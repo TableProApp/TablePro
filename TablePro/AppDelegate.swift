@@ -125,6 +125,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor [weak self] in
                     let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
                     if !diskIds.isEmpty {
+                        self?.closeWelcomeWindowEagerly()
                         self?.attemptAutoReconnectAll(connectionIds: diskIds)
                     } else {
                         self?.closeRestoredMainWindows()

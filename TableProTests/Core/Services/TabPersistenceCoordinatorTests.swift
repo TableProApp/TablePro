@@ -237,7 +237,7 @@ struct TabPersistenceCoordinatorTests {
     @Test("Preview tabs are excluded from persistence")
     func previewTabsExcludedFromPersistence() async {
         let coordinator = makeCoordinator()
-        var normalTab = QueryTab(id: UUID(), title: "Normal", query: "SELECT 1", tabType: .query)
+        let normalTab = QueryTab(id: UUID(), title: "Normal", query: "SELECT 1", tabType: .query)
         var previewTab = QueryTab(id: UUID(), title: "Preview", query: "SELECT 2", tabType: .table, tableName: "users")
         previewTab.isPreview = true
 
