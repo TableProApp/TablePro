@@ -27,9 +27,14 @@ enum SQLTokenType: Equatable {
 struct SQLToken: Equatable {
     let type: SQLTokenType
     let value: String
+    /// Pre-computed uppercase value for keyword comparison
+    let upperValue: String
 
-    /// Uppercase value for keyword comparison
-    var upperValue: String { value.uppercased() }
+    init(type: SQLTokenType, value: String) {
+        self.type = type
+        self.value = value
+        self.upperValue = value.uppercased()
+    }
 }
 
 // MARK: - Tokenizer

@@ -396,4 +396,25 @@ struct SQLFormatterServiceTests {
         FROM users
         """)
     }
+
+    @Test("BETWEEN x AND y stays inline")
+    func betweenAnd() throws {
+        let result = try format("select * from users where id between 1 and 100 and active = true")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE id BETWEEN 1 AND 100
+          AND active = TRUE
+        """)
+    }
+
+    @Test("Window function OVER(PARTITION BY...ORDER BY) stays inline")
+    func windowFunction() throws {
+        let result = try format("select *, row_number() over (partition by department order by salary desc) as rank from employees")
+        #expect(result == """
+        SELECT *,
+               row_number() OVER(PARTITION BY department ORDER BY salary DESC) AS rank
+        FROM employees
+        """)
+    }
 }
