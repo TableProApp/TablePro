@@ -109,9 +109,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let settings = AppSettingsStorage.shared.loadGeneral()
-        if settings.startupBehavior == .reopenLast,
-           let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
-            attemptAutoReconnect(connectionId: lastConnectionId)
+        if settings.startupBehavior == .reopenLast {
+            let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
+            if !connectionIds.isEmpty {
+                closeWelcomeWindowEagerly()
+                attemptAutoReconnectAll(connectionIds: connectionIds)
+            } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
+                // Backward compat: fall back to single lastConnectionId for upgrades
+                closeWelcomeWindowEagerly()
+                attemptAutoReconnect(connectionId: lastConnectionId)
+            } else {
+                // Crash recovery: if the app crashed before applicationWillTerminate
+                // could save the list, scan the TabState directory for connections
+                // that still have saved tab state on disk.
+                Task { @MainActor [weak self] in
+                    let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
+                    if !diskIds.isEmpty {
+                        self?.attemptAutoReconnectAll(connectionIds: diskIds)
+                    } else {
+                        self?.closeRestoredMainWindows()
+                    }
+                }
+            }
         } else {
             closeRestoredMainWindows()
         }
@@ -143,6 +162,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // Save all currently open connection IDs for multi-session restore.
+        // Sort by connection name for deterministic restore order across launches
+        // (Dictionary.keys has no guaranteed order).
+        let connections = ConnectionStorage.shared.loadConnections()
+        let activeIds = Set(DatabaseManager.shared.activeSessions.keys)
+        let openConnectionIds = connections
+            .filter { activeIds.contains($0.id) }
+            .map(\.id)
+        AppSettingsStorage.shared.saveLastOpenConnectionIds(openConnectionIds)
+
         LinkedFolderWatcher.shared.stop()
         UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()

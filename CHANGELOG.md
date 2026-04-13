@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Restore all open connections and tabs after quitting the app (#703)
+
 ## [0.31.2] - 2026-04-13
 
 ### Fixed
