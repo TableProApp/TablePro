@@ -127,8 +127,11 @@ struct ConnectionFormView: View {
                             Label {
                                 Text(label)
                             } icon: {
-                                Image(dbType.iconAssetName)
+                                Image(dbType.iconName)
                                     .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
                             }
                             .tag(dbType)
                         }

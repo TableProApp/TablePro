@@ -32,8 +32,8 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         .etcd, .cloudflareD1, .dynamodb, .bigquery
     ]
 
-    /// Asset catalog icon name for this database type (e.g. "mysql-icon", "postgresql-icon")
-    public var iconAssetName: String {
+    /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
+    public var iconName: String {
         switch self {
         case .mysql: return "mysql-icon"
         case .mariadb: return "mariadb-icon"
