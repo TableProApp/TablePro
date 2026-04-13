@@ -182,8 +182,15 @@ struct AppMenuCommands: Commands {
             Button(actions != nil ? "Close Tab" : "Close") {
                 if let actions {
                     actions.closeTab()
-                } else {
-                    NSApp.keyWindow?.performClose(nil)
+                } else if let window = NSApp.keyWindow {
+                    // Only performClose for non-main windows (Settings, Welcome, Connection Form).
+                    // For main windows where @FocusedValue hasn't resolved yet, do nothing —
+                    // prevents accidentally closing the connection window when user intended
+                    // to close a tab.
+                    let isMainWindow = window.identifier?.rawValue.hasPrefix("main") == true
+                    if !isMainWindow {
+                        window.performClose(nil)
+                    }
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
