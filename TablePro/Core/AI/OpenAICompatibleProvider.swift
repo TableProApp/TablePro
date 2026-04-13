@@ -107,9 +107,26 @@ final class OpenAICompatibleProvider: AIProvider {
     func testConnection() async throws -> Bool {
         switch providerType {
         case .ollama:
-            // Ollama is local — just verify reachability
-            let models = try await fetchAvailableModels()
-            return !models.isEmpty
+            // Ollama is local — verify reachability and model availability
+            do {
+                let models = try await fetchAvailableModels()
+                if models.isEmpty {
+                    throw AIProviderError.networkError(
+                        String(localized: "Ollama is running but has no models. Run \"ollama pull <model>\" to download one.")
+                    )
+                }
+                return true
+            } catch let error as AIProviderError {
+                throw error
+            } catch is URLError {
+                throw AIProviderError.networkError(
+                    String(format: String(localized: "Cannot connect to Ollama at %@. Is Ollama running?"), endpoint)
+                )
+            } catch {
+                throw AIProviderError.networkError(
+                    String(format: String(localized: "Cannot connect to Ollama at %@. Is Ollama running?"), endpoint)
+                )
+            }
         default:
             // Send a minimal non-streaming chat request to verify auth
             let chatPath = "/v1/chat/completions"
@@ -306,7 +323,10 @@ final class OpenAICompatibleProvider: AIProvider {
         guard let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200
         else {
-            throw AIProviderError.networkError("Failed to fetch Ollama models")
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw AIProviderError.networkError(
+                String(format: String(localized: "Failed to fetch models from %@ (HTTP %d)"), endpoint, statusCode)
+            )
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data)

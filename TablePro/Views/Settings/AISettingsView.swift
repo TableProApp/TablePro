@@ -400,6 +400,7 @@ private struct AIProviderEditorSheet: View {
             if draft.endpoint.isEmpty || allDefaults.contains(draft.endpoint) {
                 draft.endpoint = newType.defaultEndpoint
             }
+            AIProviderFactory.invalidateCache(for: draft.id)
             fetchedModels = []
             draft.model = ""
             scheduleFetchModels()
@@ -423,6 +424,7 @@ private struct AIProviderEditorSheet: View {
         TextField("Endpoint", text: $draft.endpoint)
             .textFieldStyle(.roundedBorder)
             .onChange(of: draft.endpoint) {
+                AIProviderFactory.invalidateCache(for: draft.id)
                 fetchedModels = []
                 scheduleFetchModels()
             }
@@ -430,23 +432,27 @@ private struct AIProviderEditorSheet: View {
 
     private var modelField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if fetchedModels.isEmpty {
+            if isFetchingModels {
                 HStack {
                     Text("Model")
                     Spacer()
-                    if isFetchingModels {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text(String(localized: "No models loaded"))
-                            .foregroundStyle(.secondary)
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            } else if fetchedModels.isEmpty {
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    Button {
+                        fetchModels()
+                    } label: {
+                        Label(String(localized: "Load Models"), systemImage: "arrow.clockwise")
+                            .font(.caption)
                     }
+                    .buttonStyle(.borderless)
                 }
             } else {
                 Picker("Model", selection: $draft.model) {
-                    if !fetchedModels.contains(draft.model) && !draft.model.isEmpty {
-                        Text(draft.model).tag(draft.model)
-                    }
                     ForEach(fetchedModels, id: \.self) { model in
                         Text(model).tag(model)
                     }
@@ -454,18 +460,9 @@ private struct AIProviderEditorSheet: View {
             }
 
             if let error = modelFetchError {
-                HStack {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(Color(nsColor: .systemRed))
-                    Button {
-                        fetchModels()
-                    } label: {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                }
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
         }
     }
@@ -550,7 +547,7 @@ private struct AIProviderEditorSheet: View {
                 let models = try await provider.fetchAvailableModels()
                 fetchedModels = models
 
-                // Auto-select first model if field is empty
+                // Auto-select first model if none is selected
                 if draft.model.isEmpty, let first = models.first {
                     draft.model = first
                 }
