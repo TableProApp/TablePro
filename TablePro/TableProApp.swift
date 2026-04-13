@@ -207,12 +207,9 @@ struct AppMenuCommands: Commands {
                 if let actions {
                     actions.closeTab()
                 } else {
-                    // Only close if it's a main content window, not a sheet or popover
-                    if let window = NSApp.keyWindow,
-                        window.identifier?.rawValue.hasPrefix("main") == true
-                    {
-                        window.close()
-                    }
+                    // No active connection — fall back to standard macOS close behavior.
+                    // This handles Settings, Welcome, and other non-main windows.
+                    NSApp.keyWindow?.performClose(nil)
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
