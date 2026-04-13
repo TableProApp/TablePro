@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Auto-selection of first item fails with fast input in Database Switcher (#714)
 - AI settings: fix Ollama model selection and improve error messages (#712)
 - Rewrite SQL formatter with token-based architecture for better formatting (#705)
+- Fix filter logic: `= NULL` auto-converts to `IS NULL`, BETWEEN works on all drivers, IN/NOT IN handles NULL values (#706)
 
 ## [0.31.2] - 2026-04-13
 

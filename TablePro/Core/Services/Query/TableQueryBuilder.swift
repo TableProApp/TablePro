@@ -105,7 +105,15 @@ struct TableQueryBuilder {
             let sortCols = sortColumnsAsTuples(sortState)
             let filterTuples = filters
                 .filter { $0.isEnabled && !$0.columnName.isEmpty }
-                .map { ($0.columnName, $0.filterOperator.rawValue, $0.value) }
+                .map { filter in
+                    let value: String
+                    if filter.filterOperator == .between, let second = filter.secondValue {
+                        value = "\(filter.value),\(second)"
+                    } else {
+                        value = filter.value
+                    }
+                    return (filter.columnName, filter.filterOperator.rawValue, value)
+                }
             if let result = pluginDriver.buildFilteredQuery(
                 table: tableName, filters: filterTuples,
                 logicMode: logicMode == .and ? "and" : "or",
