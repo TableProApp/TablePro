@@ -255,7 +255,6 @@ struct ConnectionFormView: View {
             ) { result in
                 let picker = pendingFilePicker
                 pendingFilePicker = nil
-                activeFilePicker = nil
                 switch picker {
                 case .sqliteDatabase:
                     handleFilePickerResult(result)
