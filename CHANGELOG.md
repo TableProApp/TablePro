@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Auto-selection of first item fails with fast input in Database Switcher (#714)
 - AI settings: fix Ollama model selection and improve error messages (#712)
+
 ## [0.31.2] - 2026-04-13
 
 ### Fixed
