@@ -13,17 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Auto-selection of first item fails with fast input in Database Switcher (#714)
-- AI settings: fix Ollama model selection and improve error messages (#712)
-- Rewrite SQL formatter with token-based architecture for better formatting (#705)
-- Fix filter logic: `= NULL` auto-converts to `IS NULL`, BETWEEN works on all drivers, IN/NOT IN handles NULL values (#706)
-- SQLite/DuckDB: auto-detect schema changes from external tools (#704)
-- Fix UI layout breaks when clicking certain menus (#702)
+- Database Switcher: auto-select first item on fast typing (#714)
+- AI settings: fix Ollama model selection and error messages (#712)
+- SQL formatter: rewrite with token-based architecture (#705)
+- Filters: `= NULL` auto-converts to `IS NULL`, BETWEEN and IN/NOT IN NULL handling (#706)
+- SQLite: auto-detect schema changes from external tools (#704)
+- UI layout stability when toggling menus, panels, and inspectors (#702)
 
 ### Changed
 
-- Default keyboard shortcuts updated to follow macOS HIG: `⌘F` is now Find (filter toggle moved to `⌘⇧F`), inspector toggle is `⌘⌥I`, sidebar toggle is `⌘0`
-- Keyboard shortcuts: crash-safe deserialization, expanded system-reserved list, Format Query and Pagination now customizable, removed hardcoded shortcuts from ER Diagram/Dashboard/context menus
+- Keyboard shortcuts follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar
+- Format Query and Pagination shortcuts now customizable in Settings
 
 ## [0.31.2] - 2026-04-13
 
