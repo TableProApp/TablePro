@@ -83,7 +83,7 @@ internal final class QuickSwitcherViewModel {
                     ))
                 }
             } catch {
-                Self.logger.debug("Failed to fetch databases for quick switcher: \(error.localizedDescription, privacy: .public)")
+                Self.logger.warning("Failed to fetch databases for quick switcher: \(error.localizedDescription, privacy: .public)")
             }
 
             // Schemas (only for databases that support them)
@@ -100,7 +100,7 @@ internal final class QuickSwitcherViewModel {
                         ))
                     }
                 } catch {
-                    Self.logger.debug("Failed to fetch schemas for quick switcher: \(error.localizedDescription, privacy: .public)")
+                    Self.logger.warning("Failed to fetch schemas for quick switcher: \(error.localizedDescription, privacy: .public)")
                 }
             }
         }

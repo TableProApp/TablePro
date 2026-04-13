@@ -71,7 +71,7 @@ struct HexEditorContentView: View {
                     } else if !isValid, !editableHex.isEmpty {
                         Text(String(localized: "Invalid hex"))
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     }
 
                     Spacer()

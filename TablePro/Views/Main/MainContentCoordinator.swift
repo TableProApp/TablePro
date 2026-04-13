@@ -982,6 +982,9 @@ final class MainContentCoordinator {
                     // in-flight query at the C-level DispatchQueue and execute immediately after.
                     if needsMetadataFetch {
                         let connId = connectionId
+                        // Note: Schema fetch operations are not tracked by ConnectionHealthMonitor.queriesInFlight.
+                        // This is acceptable because the health monitor checks session.isConnected before pinging,
+                        // and schema fetches are short-lived.
                         parallelSchemaTask = Task {
                             guard let driver = DatabaseManager.shared.driver(for: connId) else {
                                 throw DatabaseError.notConnected

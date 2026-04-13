@@ -33,7 +33,7 @@ struct WelcomeLeftPanel: View {
                     if LicenseManager.shared.status.isValid {
                         Label("Pro", systemImage: "checkmark.seal.fill")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Color(nsColor: .systemGreen))
                     } else {
                         Button(action: onActivateLicense) {
                             Text("Activate License")

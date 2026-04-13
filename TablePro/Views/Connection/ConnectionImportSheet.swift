@@ -192,11 +192,11 @@ struct ConnectionImportSheet: View {
         case .ready:
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color(nsColor: .systemGreen))
         case .warnings:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Color(nsColor: .systemYellow))
         case .duplicate:
             EmptyView()
         }
@@ -236,7 +236,7 @@ struct ConnectionImportSheet: View {
             if let passphraseError {
                 Text(passphraseError)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
 
             Spacer()

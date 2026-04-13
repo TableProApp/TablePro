@@ -13,7 +13,7 @@ internal struct FavoriteRowView: View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
                 .font(.system(size: 10))
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Color(nsColor: .systemYellow))
                 .accessibilityHidden(true)
 
             Text(favorite.name)

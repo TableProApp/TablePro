@@ -25,7 +25,7 @@ struct ExportSuccessView: View {
             // Success icon
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color(nsColor: .systemGreen))
 
             // Title and message
             VStack(spacing: 6) {

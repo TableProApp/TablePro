@@ -89,7 +89,7 @@ struct RegistryPluginDetailView: View {
                 } else if plugin.category == .theme {
                     Divider()
                     Label("Installed", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color(nsColor: .systemGreen))
                         .font(.callout)
                 }
             }
@@ -120,7 +120,7 @@ struct RegistryPluginDetailView: View {
                 }
             case .completed:
                 Label("Installed", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color(nsColor: .systemGreen))
                     .font(.callout)
             case .failed:
                 Button("Retry Install") { onInstall() }
@@ -133,6 +133,7 @@ struct RegistryPluginDetailView: View {
                 : String(localized: "Install Plugin")) { onInstall() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
+                .disabled(installProgress != nil)
         }
     }
 

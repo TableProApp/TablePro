@@ -378,7 +378,9 @@ final class SyncCoordinator {
         )
     }
 
-    // TODO: Move storage I/O off @MainActor for large datasets
+    // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
+    // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
+    // for large payloads.
     private func applyRemoteChanges(_ result: PullResult) {
         let settings = AppSettingsStorage.shared.loadSync()
 

@@ -7,6 +7,9 @@
 
 import AppKit
 import Foundation
+import os
+
+private let discardLogger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator+Discard")
 
 extension MainContentCoordinator {
     // MARK: - Table Creation
@@ -44,7 +47,11 @@ extension MainContentCoordinator {
             }
             try await driver.commitTransaction()
         } catch {
-            try? await driver.rollbackTransaction()
+            do {
+                try await driver.rollbackTransaction()
+            } catch {
+                discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+            }
             throw error
         }
     }
@@ -70,6 +77,10 @@ extension MainContentCoordinator {
                     tabManager.tabs[index].resultRows.remove(at: rowIndex)
                 }
             }
+        }
+
+        if let tableName = tabManager.selectedTab?.tableName {
+            filterStateManager.saveLastFilters(for: tableName)
         }
 
         pendingTruncates.removeAll()

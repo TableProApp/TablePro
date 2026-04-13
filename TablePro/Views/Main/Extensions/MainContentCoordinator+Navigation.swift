@@ -240,9 +240,13 @@ extension MainContentCoordinator {
                 return
             }
             // If preview tab has active work, promote it and open new tab instead
+            let hasUnsavedQuery = tabManager.selectedTab.map { tab in
+                tab.tabType == .query && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            } ?? false
             let previewHasWork = changeManager.hasChanges
                 || filterStateManager.hasAppliedFilters
                 || selectedTab.sortState.isSorting
+                || hasUnsavedQuery
             if previewHasWork {
                 promotePreviewTab()
                 let payload = EditorTabPayload(
@@ -382,6 +386,7 @@ extension MainContentCoordinator {
 
         toolbarState.databaseName = database
         closeSiblingNativeWindows()
+        persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
         tabManager.tabs = []
         tabManager.selectedTabId = nil
         DatabaseManager.shared.updateSession(connectionId) { session in

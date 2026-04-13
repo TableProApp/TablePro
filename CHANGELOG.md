@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Filters: `= NULL` auto-converts to `IS NULL`, BETWEEN and IN/NOT IN NULL handling (#706)
 - SQLite: auto-detect schema changes from external tools (#704)
 - UI layout stability when toggling menus, panels, and inspectors (#702)
+- Misc bug fixes: save tabs before DB switch, log rollback failures, standardize colors, fix localization, button safety, filter validation (#707)
 
 ### Changed
 

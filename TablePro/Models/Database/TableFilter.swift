@@ -112,9 +112,10 @@ struct TableFilter: Identifiable, Equatable, Hashable, Codable {
         guard !columnName.isEmpty else { return false }
         if filterOperator.requiresValue {
             if filterOperator.requiresSecondValue {
-                return !value.isEmpty && !(secondValue?.isEmpty ?? true)
+                return !value.trimmingCharacters(in: .whitespaces).isEmpty
+                    && !(secondValue?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
             }
-            return !value.isEmpty
+            return !value.trimmingCharacters(in: .whitespaces).isEmpty
         }
         return true
     }

@@ -223,7 +223,11 @@ extension MainContentCoordinator {
                     }
                 } catch {
                     if useTransaction {
-                        try? await driver.rollbackTransaction()
+                        do {
+                            try await driver.rollbackTransaction()
+                        } catch {
+                            saveChangesLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                        }
                     }
                     throw error
                 }

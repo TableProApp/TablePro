@@ -97,7 +97,7 @@ struct LicenseSettingsView: View {
             if let error = activationLoadError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
             if !activations.isEmpty {
                 ForEach(activations) { activation in
@@ -183,7 +183,7 @@ struct LicenseSettingsView: View {
                     Button("Activate") {
                         Task { await activate() }
                     }
-                    .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty || isActivating)
                 }
             }
 

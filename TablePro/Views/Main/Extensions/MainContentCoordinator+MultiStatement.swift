@@ -8,6 +8,9 @@
 
 import AppKit
 import Foundation
+import os
+
+private let multiStatementLogger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator+MultiStatement")
 
 extension MainContentCoordinator {
     // MARK: - Multi-Statement Execution
@@ -57,7 +60,11 @@ extension MainContentCoordinator {
                 /// Rollback transaction and reset executing state for early exits.
                 @MainActor func rollbackAndResetState() async {
                     if useTransaction {
-                        try? await driver.rollbackTransaction()
+                        do {
+                            try await driver.rollbackTransaction()
+                        } catch {
+                            multiStatementLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                        }
                     }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         tabManager.tabs[idx].isExecuting = false
@@ -138,7 +145,11 @@ extension MainContentCoordinator {
                 }
             } catch {
                 if let driver = DatabaseManager.shared.driver(for: conn.id), driver.supportsTransactions {
-                    try? await driver.rollbackTransaction()
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        multiStatementLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                    }
                 }
 
                 // Always reset isExecuting even if generation is stale —

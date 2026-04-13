@@ -31,7 +31,7 @@ struct DataGridSettingsView: View {
                     if let error = settings.nullDisplayValidationError {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     } else {
                         Text("Max \(SettingsValidationRules.nullDisplayMaxLength) characters")
                             .font(.caption)
