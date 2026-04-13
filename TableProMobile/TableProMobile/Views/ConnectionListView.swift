@@ -409,8 +409,7 @@ private struct ConnectionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName(for: connection.type))
-                .font(.title3)
+            databaseIcon(for: connection.type, size: 18)
                 .foregroundStyle(iconColor(for: connection.type))
                 .frame(width: 32, height: 32)
                 .background(iconColor(for: connection.type).opacity(0.12))
@@ -448,16 +447,7 @@ private struct ConnectionRow: View {
     }
 
     private func iconName(for type: DatabaseType) -> String {
-        switch type {
-        case .mysql, .mariadb: return "cylinder"
-        case .postgresql, .redshift: return "cylinder.split.1x2"
-        case .sqlite: return "doc"
-        case .redis: return "key"
-        case .mongodb: return "leaf"
-        case .clickhouse: return "bolt"
-        case .mssql: return "server.rack"
-        default: return "externaldrive"
-        }
+        type.iconAssetName
     }
 
     private func iconColor(for type: DatabaseType) -> Color {
@@ -470,6 +460,21 @@ private struct ConnectionRow: View {
         case .clickhouse: return .yellow
         case .mssql: return .indigo
         default: return .gray
+        }
+    }
+
+    @ViewBuilder
+    private func databaseIcon(for type: DatabaseType, size: CGFloat) -> some View {
+        let name = iconName(for: type)
+        if name.hasSuffix("-icon") {
+            Image(name)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: name)
+                .font(.system(size: size))
         }
     }
 }

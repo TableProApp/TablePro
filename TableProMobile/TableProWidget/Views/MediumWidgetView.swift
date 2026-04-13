@@ -34,8 +34,7 @@ struct MediumWidgetView: View {
                     if let url = URL(string: "tablepro://connect/\(connection.id.uuidString)") {
                         Link(destination: url) {
                             HStack(spacing: 8) {
-                                Image(systemName: DatabaseTypeStyle.iconName(for: connection.type))
-                                    .font(.callout)
+                                DatabaseTypeStyle.iconImage(for: connection.type, size: 14)
                                     .foregroundStyle(DatabaseTypeStyle.iconColor(for: connection.type))
                                     .frame(width: 28, height: 28)
                                     .background(DatabaseTypeStyle.iconColor(for: connection.type).opacity(0.15))
