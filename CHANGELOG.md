@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Restore all open connections and tabs after quitting the app (#703)
 
+### Fixed
+
+- Auto-selection of first item fails with fast input in Database Switcher (#714)
+
 ## [0.31.2] - 2026-04-13
 
 ### Fixed
