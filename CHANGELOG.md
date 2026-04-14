@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix AI chat hanging the app during streaming, schema fetch, and conversation loading (#735)
 - SSH Agent auth: fall back to key file from `~/.ssh/config` or default paths when agent has no loaded identities (#729)
 - SSH-tunneled connections failing to reconnect after idle/sleep — health monitor now rebuilds the tunnel, OS-level TCP keepalive detects dead NAT mappings, and wake-from-sleep triggers immediate validation (#736)
-- Editing a row in a composite primary key table updates all rows sharing the first PK value — now uses all PK columns in WHERE clause
-- Structure view saves (ALTER TABLE) bypass safe mode on read-only connections
+- Composite primary key tables: editing or deleting a row affects all rows sharing the first PK value instead of just the target row
+- Structure view saves bypass safe mode on read-only connections
 
 ## [0.31.4] - 2026-04-14
 

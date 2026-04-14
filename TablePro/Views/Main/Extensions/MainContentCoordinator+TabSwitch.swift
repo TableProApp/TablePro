@@ -61,7 +61,9 @@ extension MainContentCoordinator {
                 changeManager.configureForTable(
                     tableName: newTab.tableName ?? "",
                     columns: newTab.resultColumns,
-                    primaryKeyColumns: !newTab.primaryKeyColumns.isEmpty ? newTab.primaryKeyColumns : [newTab.resultColumns.first].compactMap { $0 },
+                    primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
+                        ? newTab.resultColumns.prefix(1).map { $0 }
+                        : newTab.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
                 )

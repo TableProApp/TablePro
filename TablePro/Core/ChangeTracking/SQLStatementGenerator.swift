@@ -254,7 +254,7 @@ struct SQLStatementGenerator {
             var conditions: [String] = []
 
             for pkColumn in primaryKeyColumns {
-                guard let pkColumnIndex = columns.firstIndex(of: pkColumn) else { continue }
+                guard let pkColumnIndex = columns.firstIndex(of: pkColumn) else { return nil }
 
                 var pkValue: Any?
                 if let originalRow = change.originalRow, pkColumnIndex < originalRow.count {
