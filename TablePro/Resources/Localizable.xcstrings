@@ -36412,24 +36412,24 @@
         }
       }
     },
-    "Toggle Inspector (⌘⌥B)" : {
+    "Toggle Inspector (⌘⌥I)" : {
       "localizations" : {
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Toggle Inspector (⌘⌥B)"
+            "value" : "Toggle Inspector (⌘⌥I)"
           }
         },
         "vi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bật/tắt thanh kiểm tra (⌘⌥B)"
+            "value" : "Bật/tắt thanh kiểm tra (⌘⌥I)"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切换检查器 (⌘⌥B)"
+            "value" : "切换检查器 (⌘⌥I)"
           }
         }
       }

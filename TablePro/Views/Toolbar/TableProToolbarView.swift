@@ -76,18 +76,20 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                if PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType) {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            actions?.openDatabaseSwitcher()
-                        } label: {
-                            Label("Database", systemImage: "cylinder")
-                        }
-                        .help(String(localized: "Open Database (⌘K)"))
-                        .disabled(
-                            state.connectionState != .connected
-                                || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
+                ToolbarItem(placement: .navigation) {
+                    let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+                    Button {
+                        actions?.openDatabaseSwitcher()
+                    } label: {
+                        Label("Database", systemImage: "cylinder")
                     }
+                    .help(String(localized: "Open Database (⌘K)"))
+                    .disabled(
+                        !supportsSwitch
+                            || state.connectionState != .connected
+                            || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
+                    .opacity(supportsSwitch ? 1 : 0)
+                    .allowsHitTesting(supportsSwitch)
                 }
 
                 ToolbarItemGroup(placement: .navigation) {
@@ -179,7 +181,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Inspector", systemImage: "sidebar.trailing")
                     }
-                    .help(String(localized: "Toggle Inspector (⌘⌥B)"))
+                    .help(String(localized: "Toggle Inspector (⌘⌥I)"))
                 }
 
                 // MARK: - Secondary Action (Overflow)

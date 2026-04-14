@@ -32,6 +32,29 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         .etcd, .cloudflareD1, .dynamodb, .bigquery
     ]
 
+    /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
+    public var iconName: String {
+        switch self {
+        case .mysql: return "mysql-icon"
+        case .mariadb: return "mariadb-icon"
+        case .postgresql: return "postgresql-icon"
+        case .redshift: return "redshift-icon"
+        case .sqlite: return "sqlite-icon"
+        case .redis: return "redis-icon"
+        case .mongodb: return "mongodb-icon"
+        case .clickhouse: return "clickhouse-icon"
+        case .mssql: return "mssql-icon"
+        case .oracle: return "oracle-icon"
+        case .duckdb: return "duckdb-icon"
+        case .cassandra: return "cassandra-icon"
+        case .etcd: return "etcd-icon"
+        case .cloudflareD1: return "cloudflare-d1-icon"
+        case .dynamodb: return "dynamodb-icon"
+        case .bigquery: return "bigquery-icon"
+        default: return "externaldrive"
+        }
+    }
+
     /// Plugin type ID for plugin lookup.
     /// Multi-type plugins share a single driver: MariaDB -> "MySQL", Redshift -> "PostgreSQL"
     public var pluginTypeId: String {

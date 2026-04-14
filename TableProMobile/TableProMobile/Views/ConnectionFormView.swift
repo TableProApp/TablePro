@@ -29,6 +29,7 @@ struct ConnectionFormView: View {
         var id: Int { hashValue }
     }
     @State private var activeFilePicker: ActiveFilePicker?
+    @State private var pendingFilePicker: ActiveFilePicker?
     @State private var selectedFileURL: URL?
     @State private var showNewDatabaseAlert = false
     @State private var newDatabaseName = ""
@@ -123,7 +124,16 @@ struct ConnectionFormView: View {
 
                     Picker("Database Type", selection: $type) {
                         ForEach(databaseTypes, id: \.0.rawValue) { dbType, label in
-                            Text(label).tag(dbType)
+                            Label {
+                                Text(label)
+                            } icon: {
+                                Image(dbType.iconName)
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
+                            }
+                            .tag(dbType)
                         }
                     }
                     .onChange(of: type) { _, newType in
@@ -252,8 +262,8 @@ struct ConnectionFormView: View {
                 allowedContentTypes: activeFilePicker == .sqliteDatabase ? sqliteContentTypes : [.data],
                 allowsMultipleSelection: false
             ) { result in
-                let picker = activeFilePicker
-                activeFilePicker = nil
+                let picker = pendingFilePicker
+                pendingFilePicker = nil
                 switch picker {
                 case .sqliteDatabase:
                     handleFilePickerResult(result)
@@ -320,6 +330,7 @@ struct ConnectionFormView: View {
             }
 
             Button {
+                pendingFilePicker = .sqliteDatabase
                 activeFilePicker = .sqliteDatabase
             } label: {
                 Label("Open Database File", systemImage: "folder")
@@ -398,6 +409,7 @@ struct ConnectionFormView: View {
 
                     if sshKeyInputMode == .file {
                         Button {
+                            pendingFilePicker = .sshKey
                             activeFilePicker = .sshKey
                         } label: {
                             HStack {
@@ -521,11 +533,15 @@ struct ConnectionFormView: View {
         if sshEnabled && !sshKeyPassphrase.isEmpty {
             try? secureStore.store(sshKeyPassphrase, forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
         }
+        if sshEnabled && !sshKeyContent.isEmpty {
+            try? secureStore.store(sshKeyContent, forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
+        }
 
         defer {
             try? appState.connectionManager.deletePassword(for: tempId)
             try? secureStore.delete(forKey: "com.TablePro.sshpassword.\(tempId.uuidString)")
             try? secureStore.delete(forKey: "com.TablePro.keypassphrase.\(tempId.uuidString)")
+            try? secureStore.delete(forKey: "com.TablePro.sshkeydata.\(tempId.uuidString)")
             isTesting = false
         }
 

@@ -3,6 +3,112 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.31.4</title>
+            <pubDate>Mon, 13 Apr 2026 18:53:27 +0000</pubDate>
+            <sparkle:version>68</sparkle:version>
+            <sparkle:shortVersionString>0.31.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>iOS: database brand icons instead of SF Symbols (#733)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Native tab bar "+" button always creates "Query 1" instead of incrementing (#727)</li>
+<li>Sidebar gap inconsistent when switching tabs (#728)</li>
+<li>SSH Agent auth failing when SSH_AUTH_SOCK not in process env (#729)</li>
+<li>iOS: SSH private key import file not working during test connection (#730)</li>
+<li>iOS: SQLite file picker not updating after file selection (#732)</li>
+<li>Default shortcut mismatch with toast in toggle inspector (#726)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.31.4/TablePro-0.31.4-arm64.zip" length="24608164" type="application/octet-stream" sparkle:edSignature="vdn6ufZscFuHal4NPo90GyKhn7grfvQqasGPJiArg6OqhOgSZLAuPwrXR+TTdIi0fRKVu3RSACofsQrFbG4iDw=="/>
+        </item>
+        <item>
+            <title>0.31.4</title>
+            <pubDate>Mon, 13 Apr 2026 18:53:28 +0000</pubDate>
+            <sparkle:version>68</sparkle:version>
+            <sparkle:shortVersionString>0.31.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>iOS: database brand icons instead of SF Symbols (#733)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Native tab bar "+" button always creates "Query 1" instead of incrementing (#727)</li>
+<li>Sidebar gap inconsistent when switching tabs (#728)</li>
+<li>SSH Agent auth failing when SSH_AUTH_SOCK not in process env (#729)</li>
+<li>iOS: SSH private key import file not working during test connection (#730)</li>
+<li>iOS: SQLite file picker not updating after file selection (#732)</li>
+<li>Default shortcut mismatch with toast in toggle inspector (#726)</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.31.4/TablePro-0.31.4-x86_64.zip" length="23900174" type="application/octet-stream" sparkle:edSignature="pJ7eph0nksQNoKAJhlDeMn2CbAnvk8hD6p0rjmHhWumIKvxFlV3OoPYqlON9Adn32bVnfQJN/SdwbQAb9loTCw=="/>
+        </item>
+        <item>
+            <title>0.31.3</title>
+            <pubDate>Mon, 13 Apr 2026 09:46:22 +0000</pubDate>
+            <sparkle:version>67</sparkle:version>
+            <sparkle:shortVersionString>0.31.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Restore all open connections and tabs after quitting the app (#703)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Database Switcher: auto-select first item on fast typing (#714)</li>
+<li>AI settings: fix Ollama model selection and error messages (#712)</li>
+<li>SQL formatter: rewrite with token-based architecture (#705)</li>
+<li>Filters: `= NULL` auto-converts to `IS NULL`, BETWEEN and IN/NOT IN NULL handling (#706)</li>
+<li>SQLite: auto-detect schema changes from external tools (#704)</li>
+<li>UI layout stability when toggling menus, panels, and inspectors (#702)</li>
+<li>Misc bug fixes: save tabs before DB switch, log rollback failures, standardize colors, fix localization, button safety, filter validation (#707)</li>
+<li>Fix Ollama AI chat streaming — responses were silently discarded due to wrong stream format parsing</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Keyboard shortcuts follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar</li>
+<li>Format Query and Pagination shortcuts now customizable in Settings</li>
+<li>Menu bar restructured per macOS HIG: ⌘N opens connection list (#722), new Query menu, Help search restored, duplicate items removed</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.31.3/TablePro-0.31.3-arm64.zip" length="24605193" type="application/octet-stream" sparkle:edSignature="stfm3pT8hAfSDLWxShg/+qj8DQZhL56Heg6nUqpzodhxbOc0uUfI3+HPEcS/sHfeIymD/r1pb+RQk6rigZG6BA=="/>
+        </item>
+        <item>
+            <title>0.31.3</title>
+            <pubDate>Mon, 13 Apr 2026 09:46:23 +0000</pubDate>
+            <sparkle:version>67</sparkle:version>
+            <sparkle:shortVersionString>0.31.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>Restore all open connections and tabs after quitting the app (#703)</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Database Switcher: auto-select first item on fast typing (#714)</li>
+<li>AI settings: fix Ollama model selection and error messages (#712)</li>
+<li>SQL formatter: rewrite with token-based architecture (#705)</li>
+<li>Filters: `= NULL` auto-converts to `IS NULL`, BETWEEN and IN/NOT IN NULL handling (#706)</li>
+<li>SQLite: auto-detect schema changes from external tools (#704)</li>
+<li>UI layout stability when toggling menus, panels, and inspectors (#702)</li>
+<li>Misc bug fixes: save tabs before DB switch, log rollback failures, standardize colors, fix localization, button safety, filter validation (#707)</li>
+<li>Fix Ollama AI chat streaming — responses were silently discarded due to wrong stream format parsing</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Keyboard shortcuts follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar</li>
+<li>Format Query and Pagination shortcuts now customizable in Settings</li>
+<li>Menu bar restructured per macOS HIG: ⌘N opens connection list (#722), new Query menu, Help search restored, duplicate items removed</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.31.3/TablePro-0.31.3-x86_64.zip" length="23896532" type="application/octet-stream" sparkle:edSignature="l3G3p2blaVoh8ok9VSkj4i/AGApyqGcvfoMF4zXWBUpHSw9TfibSAWOZLPCCycCG3SqPsh5tHALPYru5EMQiAg=="/>
+        </item>
+        <item>
             <title>0.31.2</title>
             <pubDate>Sun, 12 Apr 2026 18:00:14 +0000</pubDate>
             <sparkle:version>66</sparkle:version>

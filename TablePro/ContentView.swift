@@ -195,11 +195,6 @@ struct ContentView: View {
                         coordinator: sessionState.coordinator
                     )
                 }
-                .searchable(
-                    text: sidebarSearchTextBinding(for: currentSession.connection.id),
-                    placement: .sidebar,
-                    prompt: sidebarSearchPrompt(for: currentSession.connection.id)
-                )
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
             } else {
                 Color.clear
@@ -307,24 +302,6 @@ struct ContentView: View {
             set: { $0.pendingDeletes = $1 },
             defaultValue: []
         )
-    }
-
-    private func sidebarSearchTextBinding(for connectionId: UUID) -> Binding<String> {
-        let state = SharedSidebarState.forConnection(connectionId)
-        return Binding(
-            get: { state.searchText },
-            set: { state.searchText = $0 }
-        )
-    }
-
-    private func sidebarSearchPrompt(for connectionId: UUID) -> String {
-        let state = SharedSidebarState.forConnection(connectionId)
-        switch state.selectedSidebarTab {
-        case .tables:
-            return String(localized: "Filter")
-        case .favorites:
-            return String(localized: "Filter favorites")
-        }
     }
 
     private var sessionTableOperationOptionsBinding: Binding<[String: TableOperationOptions]> {

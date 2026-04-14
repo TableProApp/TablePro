@@ -75,7 +75,9 @@ extension MainContentView {
     private func handleRestoreOrDefault() async {
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
             if tabManager.tabs.isEmpty {
-                tabManager.addTab(databaseName: connection.database)
+                let allTabs = MainContentCoordinator.allTabs(for: connection.id)
+                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
+                tabManager.addTab(title: title, databaseName: connection.database)
             }
             return
         }
