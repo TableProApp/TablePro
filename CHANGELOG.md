@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fix AI chat hanging the app during streaming, schema fetch, and conversation loading (#735)
+- SSH-tunneled connections failing to reconnect after idle/sleep — health monitor now rebuilds the tunnel, OS-level TCP keepalive detects dead NAT mappings, and wake-from-sleep triggers immediate validation (#736)
 
 ## [0.31.4] - 2026-04-14
 

@@ -92,6 +92,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 KeychainHelper.shared.migratePasswordSyncState(synchronizable: passwordSyncExpected)
             }
         }
+        DatabaseManager.shared.startObservingSystemEvents()
+
         PluginManager.shared.loadPlugins()
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
 

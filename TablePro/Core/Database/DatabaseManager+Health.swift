@@ -52,11 +52,12 @@ extension DatabaseManager {
                 guard let self else { return false }
                 guard let session = await self.activeSessions[connectionId] else { return false }
                 do {
-                    let driver = try await self.trackOperation(sessionId: connectionId) {
+                    let result = try await self.trackOperation(sessionId: connectionId) {
                         try await self.reconnectDriver(for: session)
                     }
                     await self.updateSession(connectionId) { session in
-                        session.driver = driver
+                        session.driver = result.driver
+                        session.effectiveConnection = result.effectiveConnection
                         session.status = .connected
                     }
                     return true
@@ -103,19 +104,40 @@ extension DatabaseManager {
         await monitor.startMonitoring()
     }
 
+    /// Result of a driver reconnect, containing the new driver and its effective connection.
+    internal struct ReconnectResult {
+        let driver: DatabaseDriver
+        let effectiveConnection: DatabaseConnection
+    }
+
     /// Creates a fresh driver, connects, and applies timeout for the given session.
-    /// Uses the session's effective connection (SSH-tunneled if applicable).
-    internal func reconnectDriver(for session: ConnectionSession) async throws -> DatabaseDriver {
+    /// For SSH-tunneled sessions, rebuilds the tunnel before connecting the driver.
+    internal func reconnectDriver(for session: ConnectionSession) async throws -> ReconnectResult {
         // Disconnect existing driver
         session.driver?.disconnect()
 
-        // Use effective connection (tunneled) if available, otherwise original
-        let connectionForDriver = session.effectiveConnection ?? session.connection
+        // Rebuild SSH tunnel if needed; otherwise reuse effective connection
+        let connectionForDriver: DatabaseConnection
+        if session.connection.resolvedSSHConfig.enabled {
+            connectionForDriver = try await buildEffectiveConnection(for: session.connection)
+        } else {
+            connectionForDriver = session.effectiveConnection ?? session.connection
+        }
+
         let driver = try DatabaseDriverFactory.createDriver(
             for: connectionForDriver,
             passwordOverride: session.cachedPassword
         )
-        try await driver.connect()
+
+        do {
+            try await driver.connect()
+        } catch {
+            driver.disconnect()
+            if session.connection.resolvedSSHConfig.enabled {
+                try? await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+            }
+            throw error
+        }
 
         // Apply timeout
         let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
@@ -146,7 +168,7 @@ extension DatabaseManager {
             }
         }
 
-        return driver
+        return ReconnectResult(driver: driver, effectiveConnection: connectionForDriver)
     }
 
     /// Stop health monitoring for a connection

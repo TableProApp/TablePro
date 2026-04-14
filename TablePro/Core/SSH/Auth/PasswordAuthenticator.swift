@@ -18,7 +18,13 @@ internal struct PasswordAuthenticator: SSHAuthenticator {
             nil
         )
         guard rc == 0 else {
-            throw SSHTunnelError.authenticationFailed
+            var msgPtr: UnsafeMutablePointer<CChar>?
+            var msgLen: Int32 = 0
+            libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
+            let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
+            throw SSHTunnelError.tunnelCreationFailed(
+                "Password authentication failed: \(detail)"
+            )
         }
     }
 }

@@ -102,9 +102,16 @@ extension DatabaseManager {
 
     // MARK: - SSH Tunnel Recovery
 
-    /// Handle SSH tunnel death by attempting reconnection with exponential backoff
+    /// Handle SSH tunnel death by attempting reconnection with exponential backoff.
+    /// Guarded by `recoveringConnectionIds` to prevent duplicate concurrent recovery
+    /// when both the keepalive death callback and the wake-from-sleep handler fire
+    /// for the same connection.
     func handleSSHTunnelDied(connectionId: UUID) async {
-        guard let session = activeSessions[connectionId] else { return }
+        guard let session = activeSessions[connectionId],
+              !recoveringConnectionIds.contains(connectionId) else { return }
+
+        recoveringConnectionIds.insert(connectionId)
+        defer { recoveringConnectionIds.remove(connectionId) }
 
         Self.logger.warning("SSH tunnel died for connection: \(session.connection.name)")
 
@@ -113,15 +120,15 @@ extension DatabaseManager {
 
         // Disconnect the stale driver and invalidate it so connectToSession
         // creates a fresh connection instead of short-circuiting on driver != nil
-        session.driver?.disconnect()
+        activeSessions[connectionId]?.driver?.disconnect()
         updateSession(connectionId) { session in
             session.driver = nil
             session.status = .connecting
         }
 
-        let maxRetries = 5
+        let maxRetries = 10
         for retryCount in 0..<maxRetries {
-            let delay = ExponentialBackoff.delay(for: retryCount + 1, maxDelay: 60)
+            let delay = ExponentialBackoff.delay(for: retryCount + 1, maxDelay: 120)
             Self.logger.info("SSH reconnect attempt \(retryCount + 1)/\(maxRetries) in \(delay)s for: \(session.connection.name)")
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
 
