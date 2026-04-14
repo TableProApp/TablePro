@@ -49,7 +49,7 @@ struct AIChatPanelView: View {
         }
         .task(id: tables) {
             viewModel.tables = tables
-            await viewModel.fetchSchemaContext()
+            viewModel.fetchSchemaContext()
         }
         .alert(
             String(localized: "Allow AI Access"),
@@ -207,17 +207,17 @@ struct AIChatPanelView: View {
                 scrollProxy = proxy
                 scrollToBottom(proxy: proxy)
             }
-            .onChange(of: viewModel.messages.last?.content) {
-                if !isUserScrolledUp {
-                    scrollToBottom(proxy: proxy)
-                }
-            }
             .onChange(of: viewModel.messages.count) {
                 isUserScrolledUp = false
                 scrollToBottom(proxy: proxy)
             }
             .onChange(of: viewModel.activeConversationID) {
                 scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: viewModel.isStreaming) { _, newValue in
+                if !newValue, !isUserScrolledUp {
+                    scrollToBottom(proxy: proxy)
+                }
             }
         }
 

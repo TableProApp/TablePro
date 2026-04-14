@@ -60,16 +60,36 @@ final class AnthropicProvider: AIProvider {
 
                         guard line.hasPrefix("data: ") else { continue }
                         let jsonString = String(line.dropFirst(6))
-                        guard jsonString != "[DONE]" else { break }
+                        guard jsonString != "[DONE]",
+                              let data = jsonString.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let type = json["type"] as? String
+                        else { continue }
 
-                        if let text = parseContentBlockDelta(jsonString) {
-                            continuation.yield(.text(text))
-                        }
-                        if let tokens = parseInputTokens(jsonString) {
-                            inputTokens = tokens
-                        }
-                        if let tokens = parseOutputTokens(jsonString) {
-                            outputTokens = tokens
+                        switch type {
+                        case "content_block_delta":
+                            if let delta = json["delta"] as? [String: Any],
+                               let text = delta["text"] as? String {
+                                continuation.yield(.text(text))
+                            }
+                        case "message_start":
+                            if let message = json["message"] as? [String: Any],
+                               let usage = message["usage"] as? [String: Any],
+                               let tokens = usage["input_tokens"] as? Int {
+                                inputTokens = tokens
+                            }
+                        case "message_delta":
+                            if let usage = json["usage"] as? [String: Any],
+                               let tokens = usage["output_tokens"] as? Int {
+                                outputTokens = tokens
+                            }
+                        case "error":
+                            if let errorObj = json["error"] as? [String: Any],
+                               let message = errorObj["message"] as? String {
+                                throw AIProviderError.streamingFailed(message)
+                            }
+                        default:
+                            break
                         }
                     }
 
@@ -195,45 +215,5 @@ final class AnthropicProvider: AIProvider {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         return request
-    }
-
-    private func parseContentBlockDelta(_ jsonString: String) -> String? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String,
-              type == "content_block_delta",
-              let delta = json["delta"] as? [String: Any],
-              let text = delta["text"] as? String
-        else {
-            return nil
-        }
-        return text
-    }
-
-    private func parseInputTokens(_ jsonString: String) -> Int? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String,
-              type == "message_start",
-              let message = json["message"] as? [String: Any],
-              let usage = message["usage"] as? [String: Any],
-              let inputTokens = usage["input_tokens"] as? Int
-        else {
-            return nil
-        }
-        return inputTokens
-    }
-
-    private func parseOutputTokens(_ jsonString: String) -> Int? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String,
-              type == "message_delta",
-              let usage = json["usage"] as? [String: Any],
-              let outputTokens = usage["output_tokens"] as? Int
-        else {
-            return nil
-        }
-        return outputTokens
     }
 }

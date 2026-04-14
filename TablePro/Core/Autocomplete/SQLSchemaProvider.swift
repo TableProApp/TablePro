@@ -165,23 +165,26 @@ actor SQLSchemaProvider {
         let dbType = connection.type
         let dbName = connection.database
         let capturedTables = tables
-        let idQuote = await MainActor.run {
-            PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
+        let (idQuote, editorLanguage, queryLanguageName) = await MainActor.run {
+            let quote = PluginManager.shared.sqlDialect(for: dbType)?.identifierQuote ?? "\""
+            let lang = PluginManager.shared.editorLanguage(for: dbType)
+            let langName = PluginManager.shared.queryLanguageName(for: dbType)
+            return (quote, lang, langName)
         }
 
-        return await MainActor.run {
-            AISchemaContext.buildSystemPrompt(
-                databaseType: dbType,
-                databaseName: dbName,
-                tables: capturedTables,
-                columnsByTable: columnsByTable,
-                foreignKeys: [:],
-                currentQuery: nil,
-                queryResults: nil,
-                settings: settings,
-                identifierQuote: idQuote
-            )
-        }
+        return AISchemaContext.buildSystemPrompt(
+            databaseType: dbType,
+            databaseName: dbName,
+            tables: capturedTables,
+            columnsByTable: columnsByTable,
+            foreignKeys: [:],
+            currentQuery: nil,
+            queryResults: nil,
+            settings: settings,
+            identifierQuote: idQuote,
+            editorLanguage: editorLanguage,
+            queryLanguageName: queryLanguageName
+        )
     }
 
     // MARK: - Completion Items

@@ -63,38 +63,52 @@ final class OpenAICompatibleProvider: AIProvider {
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
 
+                        let jsonString: String
                         if self.providerType == .ollama {
                             // Ollama: raw newline-delimited JSON (no SSE "data: " prefix)
                             guard !line.isEmpty else { continue }
                             Self.logger.debug("Ollama stream line: \(line.prefix(200), privacy: .public)")
-
-                            if let text = self.parseChatCompletionDelta(line) {
-                                continuation.yield(.text(text))
-                            }
-                            if let usage = self.parseUsageFromChunk(line) {
-                                inputTokens = usage.inputTokens
-                                outputTokens = usage.outputTokens
-                            }
-                            // Ollama signals completion with "done":true
-                            if let data = line.data(using: .utf8),
-                               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                               json["done"] as? Bool == true
-                            {
-                                break
-                            }
+                            jsonString = line
                         } else {
                             // OpenAI/OpenRouter/Custom: SSE with "data: " prefix
                             guard line.hasPrefix("data: ") else { continue }
-                            let jsonString = String(line.dropFirst(6))
-                            guard jsonString != "[DONE]" else { break }
+                            let payload = String(line.dropFirst(6))
+                            guard payload != "[DONE]" else { break }
+                            jsonString = payload
+                        }
 
-                            if let text = self.parseChatCompletionDelta(jsonString) {
-                                continuation.yield(.text(text))
-                            }
-                            if let usage = self.parseUsageFromChunk(jsonString) {
-                                inputTokens = usage.inputTokens
-                                outputTokens = usage.outputTokens
-                            }
+                        // Single JSON parse per SSE line
+                        guard let data = jsonString.data(using: .utf8),
+                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                        else { continue }
+
+                        // Text extraction
+                        if let choices = json["choices"] as? [[String: Any]],
+                           let delta = choices.first?["delta"] as? [String: Any],
+                           let content = delta["content"] as? String {
+                            continuation.yield(.text(content))
+                        } else if let message = json["message"] as? [String: Any],
+                                  let content = message["content"] as? String,
+                                  !content.isEmpty {
+                            continuation.yield(.text(content))
+                        }
+
+                        // Usage extraction
+                        if let usage = json["usage"] as? [String: Any],
+                           let promptTokens = usage["prompt_tokens"] as? Int,
+                           let completionTokens = usage["completion_tokens"] as? Int {
+                            inputTokens = promptTokens
+                            outputTokens = completionTokens
+                        } else if let done = json["done"] as? Bool, done,
+                                  let promptEval = json["prompt_eval_count"] as? Int,
+                                  let evalCount = json["eval_count"] as? Int {
+                            inputTokens = promptEval
+                            outputTokens = evalCount
+                        }
+
+                        // Ollama signals completion with "done":true
+                        if json["done"] as? Bool == true {
+                            break
                         }
                     }
 
@@ -250,56 +264,6 @@ final class OpenAICompatibleProvider: AIProvider {
         return request
     }
 
-    // MARK: - Response Parsing
-
-    private func parseChatCompletionDelta(_ jsonString: String) -> String? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data)
-                  as? [String: Any]
-        else {
-            return nil
-        }
-
-        // OpenAI/OpenRouter format
-        if let choices = json["choices"] as? [[String: Any]],
-           let delta = choices.first?["delta"] as? [String: Any],
-           let content = delta["content"] as? String {
-            return content
-        }
-
-        // Ollama format
-        if let message = json["message"] as? [String: Any],
-           let content = message["content"] as? String,
-           !content.isEmpty {
-            return content
-        }
-
-        return nil
-    }
-
-    private func parseUsageFromChunk(_ jsonString: String) -> AITokenUsage? {
-        guard let data = jsonString.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
-            return nil
-        }
-
-        // OpenAI/OpenRouter format: usage object in the chunk
-        if let usage = json["usage"] as? [String: Any],
-           let promptTokens = usage["prompt_tokens"] as? Int,
-           let completionTokens = usage["completion_tokens"] as? Int {
-            return AITokenUsage(inputTokens: promptTokens, outputTokens: completionTokens)
-        }
-
-        // Ollama format: done=true with eval counts
-        if let done = json["done"] as? Bool, done,
-           let promptEval = json["prompt_eval_count"] as? Int,
-           let evalCount = json["eval_count"] as? Int {
-            return AITokenUsage(inputTokens: promptEval, outputTokens: evalCount)
-        }
-
-        return nil
-    }
 
     // MARK: - Model Fetching
 

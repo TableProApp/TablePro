@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix AI chat hanging the app during streaming, schema fetch, and conversation loading (#735)
+
 ## [0.31.3] - 2026-04-13
 
 ### Added
