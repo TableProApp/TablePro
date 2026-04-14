@@ -36,14 +36,25 @@ final class PluginManager {
     private var initialLoadWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Await completion of the initial plugin load (non-blocking alternative to loadPendingPlugins).
+    /// Times out after 10 seconds to prevent indefinite suspension.
     func waitForInitialLoad() async {
         if hasFinishedInitialLoad { return }
-        await withCheckedContinuation { continuation in
-            if hasFinishedInitialLoad {
-                continuation.resume()
-            } else {
-                initialLoadWaiters.append(continuation)
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if self.hasFinishedInitialLoad {
+                        continuation.resume()
+                    } else {
+                        self.initialLoadWaiters.append(continuation)
+                    }
+                }
             }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(10))
+            }
+            // Return when either completes (load finishes or timeout)
+            await group.next()
+            group.cancelAll()
         }
     }
 

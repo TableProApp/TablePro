@@ -276,8 +276,9 @@ internal struct BigQueryQueryBuilder {
     ]
 
     private static func quoteIdentifier(_ name: String) -> String {
-        let escaped = name.replacingOccurrences(of: "`", with: "\\`")
-        return "`\(escaped)`"
+        // BigQuery does not support escaping backticks inside backtick-quoted identifiers
+        let sanitized = name.replacingOccurrences(of: "`", with: "")
+        return "`\(sanitized)`"
     }
 
     private static func buildFilterClause(

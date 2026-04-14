@@ -125,15 +125,15 @@ private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
     }
 }
 
-private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
+private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
     freetdsErrorLock.lock()
     defer { freetdsErrorLock.unlock() }
     if let dbproc {
         let key = UnsafeRawPointer(dbproc)
-        if freetdsConnectionErrors[key]?.isEmpty ?? true {
+        if overwrite || (freetdsConnectionErrors[key]?.isEmpty ?? true) {
             freetdsConnectionErrors[key] = msg
         }
-    } else if freetdsGlobalError.isEmpty {
+    } else if overwrite || freetdsGlobalError.isEmpty {
         freetdsGlobalError = msg
     }
 }
@@ -160,7 +160,9 @@ private let freetdsInitOnce: Void = {
         guard let text = msgtext else { return 0 }
         let msg = String(cString: text)
         if severity > 10 {
-            freetdsSetError(msg, for: dbproc)
+            // SQL Server sends informational messages first, error messages last —
+            // overwrite so the most specific error is kept
+            freetdsSetError(msg, for: dbproc, overwrite: true)
             freetdsLogger.error("FreeTDS msg \(msgno) sev \(severity): \(msg)")
         } else {
             freetdsLogger.debug("FreeTDS msg \(msgno): \(msg)")

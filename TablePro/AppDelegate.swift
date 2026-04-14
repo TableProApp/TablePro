@@ -168,7 +168,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handlePluginsRejected(_ notification: Notification) {
         guard let rejected = notification.object as? [(name: String, reason: String)],
               !rejected.isEmpty else { return }
-        let names = rejected.map(\.name).joined(separator: ", ")
         let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
         Task { @MainActor in
             let alert = NSAlert()

@@ -676,7 +676,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         resultBuffers[i] = newBuffer
                         resultBinds[i].buffer = newBuffer
                         resultBinds[i].buffer_length = UInt(actualLength)
-                        mysql_stmt_fetch_column(stmt, &resultBinds[i], UInt32(i), 0)
+                        if mysql_stmt_fetch_column(stmt, &resultBinds[i], UInt32(i), 0) != 0 {
+                            logger.warning("mysql_stmt_fetch_column failed for column \(i)")
+                        }
                     }
                 }
             }
