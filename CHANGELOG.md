@@ -7,21 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Wire AI Explain/Optimize shortcuts (⌘L, ⌘⌥L) to menu bar commands
-- Wire Toggle Sidebar shortcut (⌘0) to menu bar command
-
 ### Fixed
 
 - Fix AI chat hanging the app during streaming, schema fetch, and conversation loading (#735)
 - SSH Agent auth: fall back to key file from `~/.ssh/config` or default paths when agent has no loaded identities (#729)
-
-### Changed
-
-- Remap Quick Switcher from ⌘P to ⌘⇧O — ⌘P is the macOS Print standard
-- Remap Format Query from ⌘⌥F to ⌘⇧L — ⌘⌥F is Find & Replace
-- Suppress system Print menu item (app has no print feature)
+- Wire AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) shortcuts to menu bar commands
+- Keyboard shortcuts follow macOS HIG — remap Quick Switcher to ⌘⇧O, Format Query to ⌘⇧L, fix stale tooltip hints
 - SSH-tunneled connections failing to reconnect after idle/sleep — health monitor now rebuilds the tunnel, OS-level TCP keepalive detects dead NAT mappings, and wake-from-sleep triggers immediate validation (#736)
 - Composite primary key tables: editing or deleting a row affects all rows sharing the first PK value instead of just the target row
 - Structure view saves bypass safe mode on read-only connections
