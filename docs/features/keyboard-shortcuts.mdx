@@ -17,7 +17,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | New connection | `Cmd+N` |
 | Open history | `Cmd+Y` |
 | Settings | `Cmd+,` |
-| Quick Switcher | `Cmd+P` |
+| Quick Switcher | `Cmd+Shift+O` |
 | Close window | `Cmd+W` |
 | Quit | `Cmd+Q` |
 
@@ -37,7 +37,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 |--------|----------|-------------|
 | Execute query | `Cmd+Enter` | Run query at cursor, or all selected statements sequentially |
 | Explain query | `Option+Cmd+E` | Show execution plan for query at cursor |
-| Format SQL | `Option+Cmd+F` | Format SQL query |
+| Format SQL | `Cmd+Shift+L` | Format SQL query |
 
 ### Text Editing
 
@@ -77,7 +77,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 
 | Action | Shortcut |
 |--------|----------|
-| Select word | `Cmd+D` |
+| Duplicate line | `Cmd+D` |
 | Expand selection | `Cmd+Shift+Right` |
 | Shrink selection | `Cmd+Shift+Left` |
 
@@ -101,7 +101,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 
 | Action | Shortcut |
 |--------|----------|
-| Edit cell | `Enter` or `F2` |
+| Edit cell | `Enter` |
 | Preview FK reference | `Space` |
 | Cancel edit | `Escape` |
 | Add row | `Cmd+Shift+N` |
@@ -134,7 +134,7 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | Action | Shortcut |
 |--------|----------|
 | Copy selection | `Cmd+C` |
-| Copy as CSV | `Cmd+Shift+C` |
+| Copy with Headers | `Cmd+Shift+C` |
 | Copy as JSON | `Cmd+Option+J` |
 | Copy as TSV | Available from context menu |
 
@@ -147,10 +147,9 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | Close window / tab | `Cmd+W` |
 | New query tab | `Cmd+T` |
 | Switch to tab 1-9 | `Cmd+1` through `Cmd+9` |
-| Next tab | `Cmd+Shift+]` or `Cmd+Option+Right` |
-| Previous tab | `Cmd+Shift+[` or `Cmd+Option+Left` |
+| Next tab | `Cmd+Shift+]` |
+| Previous tab | `Cmd+Shift+[` |
 | Minimize | `Cmd+M` |
-| Zoom | `Cmd+Option+Z` |
 
 ### Connections
 
@@ -158,7 +157,6 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 |--------|----------|
 | New connection | `Cmd+N` |
 | Switch connection | `Cmd+Control+C` |
-| Disconnect | `Cmd+D` |
 | Refresh connection | `Cmd+R` |
 | Delete selected connections | `Cmd+Delete` |
 
@@ -178,7 +176,6 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 | Query History | `Cmd+Y` |
 | Toggle Cell Inspector | `Cmd+Option+I` |
 | Toggle Results | `Cmd+Opt+R` |
-| Toggle AI Chat | `Cmd+Shift+L` |
 | Settings | `Cmd+,` |
 
 ### Results
@@ -193,9 +190,8 @@ TablePro is keyboard-driven. Most actions have shortcuts, and most menu shortcut
 
 | Action | Shortcut | Description |
 |--------|----------|-------------|
-| Toggle AI Chat | `Cmd+Shift+L` | Open or close the AI chat panel |
-| Explain with AI | `Cmd+L` | Send selected SQL (or current query) to AI for explanation |
-| Optimize with AI | `Cmd+Option+L` | Send selected SQL (or current query) to AI for optimization |
+| Explain with AI | `Cmd+L` | Send current query to AI for explanation |
+| Optimize with AI | `Cmd+Option+L` | Send current query to AI for optimization |
 
 ## ER Diagram
 
@@ -309,11 +305,11 @@ Vim mode keybindings only apply in the SQL editor. They don't affect the data gr
 
 ## Quick switcher
 
-The Quick Switcher (`Cmd+P`) lets you search and jump to any table, view, database, schema, or recent query. It uses fuzzy matching, so typing `usr` finds `users`, `user_settings`, etc.
+The Quick Switcher (`Cmd+Shift+O`) lets you search and jump to any table, view, database, schema, or recent query. It uses fuzzy matching, so typing `usr` finds `users`, `user_settings`, etc.
 
 | Action | Shortcut |
 |--------|----------|
-| Open Quick Switcher | `Cmd+P` |
+| Open Quick Switcher | `Cmd+Shift+O` |
 | Navigate results | `Up` / `Down` arrows |
 | Open selected item | `Return` |
 | Dismiss | `Escape` |
@@ -326,7 +322,6 @@ Results are grouped by type (tables, views, system tables, databases, schemas, r
 |--------|----------|
 | Quit application | `Cmd+Q` |
 | Preferences | `Cmd+,` |
-| Search documentation | `Cmd+?` |
 
 ## Customizing Shortcuts
 

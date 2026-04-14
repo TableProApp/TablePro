@@ -576,6 +576,18 @@ final class MainContentCommandActions {
         coordinator?.runExplainQuery()
     }
 
+    func aiExplainQuery() {
+        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        coordinator?.showAIChatPanel()
+        coordinator?.aiViewModel?.handleExplainSelection(query)
+    }
+
+    func aiOptimizeQuery() {
+        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        coordinator?.showAIChatPanel()
+        coordinator?.aiViewModel?.handleOptimizeSelection(query)
+    }
+
     func previewFKReference() {
         coordinator?.toggleFKPreviewForFocusedCell()
     }

@@ -277,6 +277,20 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Explain with AI")) {
+                actions?.aiExplainQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .aiExplainQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Button(String(localized: "Optimize with AI")) {
+                actions?.aiOptimizeQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .aiOptimizeQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Divider()
+
             Button(String(localized: "Preview FK Reference")) {
                 actions?.previewFKReference()
             }
@@ -351,6 +365,11 @@ struct AppMenuCommands: Commands {
 
         // View menu
         CommandGroup(after: .sidebar) {
+            Button(String(localized: "Toggle Sidebar")) {
+                NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .toggleTableBrowser))
+
             Button("Toggle Inspector") {
                 actions?.toggleRightSidebar()
             }

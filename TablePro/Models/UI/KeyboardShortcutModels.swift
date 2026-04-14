@@ -365,6 +365,9 @@ struct KeyCombo: Codable, Equatable, Hashable {
         KeyCombo(key: "3", command: true, shift: true), // Screenshot full
         KeyCombo(key: "4", command: true, shift: true), // Screenshot area
         KeyCombo(key: "5", command: true, shift: true), // Screenshot options
+        KeyCombo(key: "q", command: true, control: true), // Lock Screen
+        KeyCombo(key: "f", command: true, control: true), // Full Screen
+        KeyCombo(key: "d", command: true, option: true), // Toggle Dock
     ]
 
     /// Check if this combo is reserved by the system
@@ -461,10 +464,10 @@ struct KeyboardSettings: Codable, Equatable {
         .closeTab: KeyCombo(key: "w", command: true),
         .refresh: KeyCombo(key: "r", command: true),
         .explainQuery: KeyCombo(key: "e", command: true, option: true),
-        .formatQuery: KeyCombo(key: "f", command: true, option: true),
+        .formatQuery: KeyCombo(key: "l", command: true, shift: true),
         .export: KeyCombo(key: "e", command: true, shift: true),
         .importData: KeyCombo(key: "i", command: true, shift: true),
-        .quickSwitcher: KeyCombo(key: "p", command: true),
+        .quickSwitcher: KeyCombo(key: "o", command: true, shift: true),
         .previousPage: KeyCombo(key: "[", command: true),
         .nextPage: KeyCombo(key: "]", command: true),
 
