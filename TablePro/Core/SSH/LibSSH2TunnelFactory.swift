@@ -556,11 +556,12 @@ internal enum LibSSH2TunnelFactory {
             return identityFile
         }
 
-        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        let sshDir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ssh", isDirectory: true)
         let defaultPaths = [
-            "\(home).ssh/id_ed25519",
-            "\(home).ssh/id_rsa",
-            "\(home).ssh/id_ecdsa",
+            sshDir.appendingPathComponent("id_ed25519").path,
+            sshDir.appendingPathComponent("id_rsa").path,
+            sshDir.appendingPathComponent("id_ecdsa").path
         ]
         for path in defaultPaths {
             if FileManager.default.isReadableFile(atPath: path) {
