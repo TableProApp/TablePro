@@ -493,15 +493,26 @@ internal enum LibSSH2TunnelFactory {
 
         case .sshAgent:
             let socketPath = config.agentSocketPath.isEmpty ? nil : config.agentSocketPath
-            let primary = AgentAuthenticator(socketPath: socketPath)
+            var authenticators: [any SSHAuthenticator] = [AgentAuthenticator(socketPath: socketPath)]
+
+            // Fallback: try key file if agent has no loaded identities
+            if let keyPath = resolveIdentityFile(config: config) {
+                authenticators.append(PublicKeyAuthenticator(
+                    privateKeyPath: keyPath,
+                    passphrase: credentials.keyPassphrase
+                ))
+            }
+
             if config.totpMode != .none {
-                let totpAuth = KeyboardInteractiveAuthenticator(
+                authenticators.append(KeyboardInteractiveAuthenticator(
                     password: nil,
                     totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                )
-                return CompositeAuthenticator(authenticators: [primary, totpAuth])
+                ))
             }
-            return primary
+
+            return authenticators.count == 1
+                ? authenticators[0]
+                : CompositeAuthenticator(authenticators: authenticators)
 
         case .keyboardInteractive:
             let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
@@ -520,8 +531,44 @@ internal enum LibSSH2TunnelFactory {
                 passphrase: nil
             )
         case .sshAgent:
-            return AgentAuthenticator(socketPath: nil)
+            let agent = AgentAuthenticator(socketPath: nil)
+            if !jumpHost.privateKeyPath.isEmpty {
+                let keyAuth = PublicKeyAuthenticator(
+                    privateKeyPath: jumpHost.privateKeyPath,
+                    passphrase: nil
+                )
+                return CompositeAuthenticator(authenticators: [agent, keyAuth])
+            }
+            return agent
         }
+    }
+
+    /// Resolve an identity file path for agent auth fallback.
+    /// Priority: user-configured path > ~/.ssh/config IdentityFile > default key paths.
+    private static func resolveIdentityFile(config: SSHConfiguration) -> String? {
+        if !config.privateKeyPath.isEmpty {
+            return config.privateKeyPath
+        }
+
+        if let entry = SSHConfigParser.findEntry(for: config.host),
+           let identityFile = entry.identityFile,
+           !identityFile.isEmpty {
+            return identityFile
+        }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.path(percentEncoded: false)
+        let defaultPaths = [
+            "\(home).ssh/id_ed25519",
+            "\(home).ssh/id_rsa",
+            "\(home).ssh/id_ecdsa",
+        ]
+        for path in defaultPaths {
+            if FileManager.default.isReadableFile(atPath: path) {
+                return path
+            }
+        }
+
+        return nil
     }
 
     private static func buildTOTPProvider(
