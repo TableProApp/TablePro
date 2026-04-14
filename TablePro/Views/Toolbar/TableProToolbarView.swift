@@ -147,15 +147,17 @@ struct TableProToolbar: ViewModifier {
                 }
 
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        actions?.previewSQL()
-                    } label: {
-                        let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-                        Label("Preview \(langName)", systemImage: "eye")
+                    VStack {
+                        Button {
+                            actions?.previewSQL()
+                        } label: {
+                            let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
+                            Label("Preview \(langName)", systemImage: "eye")
+                        }
+                        .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
+                        .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
                     }
-                    .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
-                    .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
-                    .popover(isPresented: $state.showSQLReviewPopover, attachmentAnchor: .point(.bottom)) {
+                    .popover(isPresented: $state.showSQLReviewPopover) {
                         SQLReviewPopover(statements: state.previewStatements, databaseType: state.databaseType)
                     }
                 }
