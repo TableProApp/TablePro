@@ -28,9 +28,14 @@ final class RegistryClient {
     static let customRegistryURLKey = "com.TablePro.customRegistryURL"
     private static let lastRegistryURLKey = "com.TablePro.lastRegistryURL"
 
+    var isUsingCustomRegistry: Bool {
+        registryURL != Self.defaultRegistryURL
+    }
+
     private var registryURL: URL {
         if let raw = UserDefaults.standard.string(forKey: Self.customRegistryURLKey),
            let custom = URL(string: raw) {
+            Self.logger.warning("Using custom plugin registry URL: \(raw)")
             return custom
         }
         return Self.defaultRegistryURL

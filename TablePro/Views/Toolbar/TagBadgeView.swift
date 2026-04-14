@@ -31,7 +31,7 @@ struct TagBadgeView: View {
             )
             .padding(.leading, ThemeEngine.shared.activeTheme.spacing.xs)
             .help(String(format: String(localized: "Tag: %@"), tag.name))
-            .accessibilityLabel("Tag: \(tag.name)")
+            .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
     }
 }
 

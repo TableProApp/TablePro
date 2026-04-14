@@ -36,8 +36,7 @@ run_quiet() {
 
 DEPLOY_TARGET="14.0"
 PG_VERSION="17.4"
-OPENSSL_VERSION="3.4.1"
-OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
 PG_SHA256="c4605b73fea11963406699f949b966e5d173a7ee0ccaef8938dec0ca8a995fe7"
 
 ARCH="${1:-both}"

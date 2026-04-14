@@ -19,7 +19,7 @@ struct ConnectionSSLView: View {
             Section {
                 Picker(String(localized: "SSL Mode"), selection: $sslMode) {
                     ForEach(SSLMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.displayLabel).tag(mode)
                     }
                 }
             }

@@ -42,6 +42,9 @@ final class LicenseStorage {
     }
 
     // MARK: - Signed Payload (UserDefaults)
+    // Note: The signed license payload (email, expiry) is stored in UserDefaults rather than
+    // Keychain because it is a verifiable signed blob — the RSA-SHA256 signature is re-verified
+    // on every cold start (LicenseManager). The license key itself is in Keychain.
 
     /// Save cached license (including signed payload) to UserDefaults
     func saveLicense(_ license: License) {
@@ -81,7 +84,11 @@ final class LicenseStorage {
 
     /// Hardware UUID from IOKit, SHA256-hashed for privacy.
     /// Stable across OS reinstalls (tied to hardware).
-    var machineId: String {
+    private lazy var _machineId: String = Self.computeMachineId(defaults: defaults)
+
+    var machineId: String { _machineId }
+
+    private static func computeMachineId(defaults: UserDefaults) -> String {
         let platformExpert = IOServiceGetMatchingService(
             kIOMainPortDefault,
             IOServiceMatching("IOPlatformExpertDevice")
@@ -107,6 +114,11 @@ final class LicenseStorage {
         }
 
         return uuidCF.sha256
+    }
+
+    /// Hardware UUID from IOKit, SHA256-hashed for privacy (uncached, for migration).
+    static func currentMachineId() -> String {
+        computeMachineId(defaults: UserDefaults.standard)
     }
 
     /// Human-readable machine name (e.g., "John's MacBook Pro")

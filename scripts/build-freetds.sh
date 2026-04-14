@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 LIBS_DIR="$PROJECT_DIR/Libs"
 FREETDS_VERSION="1.4.22"
+FREETDS_SHA256="6acb9086350425f5178e544bbe2d54a001097e8e20277a2b766ad0799a2e7d87"
 FREETDS_URL="https://www.freetds.org/files/stable/freetds-${FREETDS_VERSION}.tar.gz"
 BUILD_DIR="/tmp/freetds-build"
 INCLUDE_DST="$PROJECT_DIR/TablePro/Core/Database/CFreeTDS/include"
@@ -18,7 +19,9 @@ INCLUDE_DST="$PROJECT_DIR/TablePro/Core/Database/CFreeTDS/include"
 mkdir -p "$BUILD_DIR" "$LIBS_DIR" "$INCLUDE_DST"
 
 echo "Downloading FreeTDS ${FREETDS_VERSION}..."
-curl -L "$FREETDS_URL" | tar xz -C "$BUILD_DIR"
+curl -fSL "$FREETDS_URL" -o "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz"
+echo "$FREETDS_SHA256  $BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz" | shasum -a 256 -c -
+tar xz -C "$BUILD_DIR" -f "$BUILD_DIR/freetds-${FREETDS_VERSION}.tar.gz"
 SOURCE_DIR="$BUILD_DIR/freetds-${FREETDS_VERSION}"
 
 build_arch() {

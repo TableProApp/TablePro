@@ -21,7 +21,34 @@ final class PluginManager {
     internal(set) var isInstalling = false
 
     /// True once the initial plugin discovery + loading pass has completed.
-    internal(set) var hasFinishedInitialLoad = false
+    internal(set) var hasFinishedInitialLoad = false {
+        didSet {
+            if hasFinishedInitialLoad {
+                for continuation in initialLoadWaiters {
+                    continuation.resume()
+                }
+                initialLoadWaiters.removeAll()
+            }
+        }
+    }
+
+    /// Continuations waiting for the initial load to complete.
+    private var initialLoadWaiters: [CheckedContinuation<Void, Never>] = []
+
+    /// Await completion of the initial plugin load (non-blocking alternative to loadPendingPlugins).
+    func waitForInitialLoad() async {
+        if hasFinishedInitialLoad { return }
+        await withCheckedContinuation { continuation in
+            if hasFinishedInitialLoad {
+                continuation.resume()
+            } else {
+                initialLoadWaiters.append(continuation)
+            }
+        }
+    }
+
+    /// Plugins that were rejected during discovery (version mismatch, signature, etc.).
+    internal(set) var rejectedPlugins: [(name: String, reason: String)] = []
 
     private static let needsRestartKey = "com.TablePro.needsRestart"
 
@@ -131,6 +158,9 @@ final class PluginManager {
             self.validateDependencies()
             self.hasFinishedInitialLoad = true
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
+            if !self.rejectedPlugins.isEmpty {
+                NotificationCenter.default.post(name: .pluginsRejected, object: self.rejectedPlugins)
+            }
         }
     }
 
@@ -317,6 +347,12 @@ final class PluginManager {
                 try discoverPlugin(at: itemURL, source: source)
             } catch {
                 Self.logger.error("Failed to discover plugin at \(itemURL.lastPathComponent): \(error.localizedDescription)")
+                if source == .userInstalled {
+                    rejectedPlugins.append((
+                        name: itemURL.deletingPathExtension().lastPathComponent,
+                        reason: error.localizedDescription
+                    ))
+                }
             }
         }
     }

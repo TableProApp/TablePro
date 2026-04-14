@@ -25,6 +25,7 @@ internal final class SQLFavoriteStorage {
         }
     }
 
+    #if DEBUG
     /// Creates an isolated instance with a unique database file. For testing only.
     init(isolatedForTesting: Bool) {
         testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
@@ -35,6 +36,7 @@ internal final class SQLFavoriteStorage {
         }
         semaphore.wait()
     }
+    #endif
 
     private var testDatabaseSuffix: String?
 

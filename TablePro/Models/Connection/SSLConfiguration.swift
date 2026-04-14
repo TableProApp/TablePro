@@ -14,6 +14,17 @@ enum SSLMode: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// User-facing picker label that clarifies the actual behavior.
+    var displayLabel: String {
+        switch self {
+        case .disabled: return String(localized: "Disabled")
+        case .preferred: return String(localized: "Preferred")
+        case .required: return String(localized: "Required (skip verify)")
+        case .verifyCa: return String(localized: "Verify CA")
+        case .verifyIdentity: return String(localized: "Verify Identity")
+        }
+    }
+
     var description: String {
         switch self {
         case .disabled: return String(localized: "No SSL encryption")

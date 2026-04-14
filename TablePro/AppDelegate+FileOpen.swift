@@ -181,7 +181,17 @@ extension AppDelegate {
             }
 
         case .openQuery(let name, let sql):
-            let preview = (sql as NSString).length > 300 ? String(sql.prefix(300)) + "…" : sql
+            let maxDeeplinkSQLLength = 51_200
+            let sqlLength = (sql as NSString).length
+            guard sqlLength <= maxDeeplinkSQLLength else { return }
+            let preview: String
+            if sqlLength > 300 {
+                let hiddenCount = sqlLength - 300
+                preview = String(sql.prefix(300))
+                    + String(format: String(localized: "\n\n… (%d more characters not shown)"), hiddenCount)
+            } else {
+                preview = sql
+            }
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(localized: "Open Query from Link"),
                 message: String(format: String(localized: "An external link wants to open a query on connection \"%@\":\n\n%@"), name, preview),

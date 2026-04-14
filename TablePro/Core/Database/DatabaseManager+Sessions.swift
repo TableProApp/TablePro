@@ -86,9 +86,10 @@ extension DatabaseManager {
         // Create appropriate driver with effective connection
         let driver: DatabaseDriver
         do {
-            driver = try DatabaseDriverFactory.createDriver(
+            driver = try await DatabaseDriverFactory.createDriver(
                 for: effectiveConnection,
-                passwordOverride: passwordOverride
+                passwordOverride: passwordOverride,
+                awaitPlugins: true
             )
         } catch {
             // Close tunnel if SSH was established

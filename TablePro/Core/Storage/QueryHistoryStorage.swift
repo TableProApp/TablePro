@@ -61,6 +61,7 @@ final class QueryHistoryStorage {
         }
     }
 
+    #if DEBUG
     /// Creates an isolated instance with a unique database file. For testing only.
     init(isolatedForTesting: Bool) {
         testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
@@ -71,6 +72,7 @@ final class QueryHistoryStorage {
         }
         semaphore.wait()
     }
+    #endif
 
     private var testDatabaseSuffix: String?
 

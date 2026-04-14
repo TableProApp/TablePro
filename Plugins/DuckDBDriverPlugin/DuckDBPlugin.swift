@@ -563,8 +563,12 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         try await connectionActor.open(path: path)
 
         // Enable auto-install and auto-load of extensions (e.g. core_functions)
-        try? await connectionActor.executeQuery("SET autoinstall_known_extensions=1")
-        try? await connectionActor.executeQuery("SET autoload_known_extensions=1")
+        do {
+            try await connectionActor.executeQuery("SET autoinstall_known_extensions=1")
+            try await connectionActor.executeQuery("SET autoload_known_extensions=1")
+        } catch {
+            Self.logger.warning("Failed to enable DuckDB extension autoloading: \(error.localizedDescription)")
+        }
 
         if let conn = await connectionActor.connectionHandleForInterrupt {
             setInterruptHandle(conn)

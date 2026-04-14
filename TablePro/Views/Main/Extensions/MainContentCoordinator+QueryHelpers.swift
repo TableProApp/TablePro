@@ -271,13 +271,18 @@ extension MainContentCoordinator {
                 }
 
                 let quotedTable = mainDriver.quoteIdentifier(tableName)
-                let countResult = try? await mainDriver.execute(
-                    query: "SELECT COUNT(*) FROM \(quotedTable)"
-                )
-                if let firstRow = countResult?.rows.first,
-                   let countStr = firstRow.first.flatMap({ $0 }) {
-                    count = Int(countStr)
-                } else {
+                do {
+                    let countResult = try await mainDriver.execute(
+                        query: "SELECT COUNT(*) FROM \(quotedTable)"
+                    )
+                    if let firstRow = countResult.rows.first,
+                       let countStr = firstRow.first.flatMap({ $0 }) {
+                        count = Int(countStr)
+                    } else {
+                        count = nil
+                    }
+                } catch {
+                    Self.logger.warning("COUNT(*) query failed for \(tableName): \(error.localizedDescription)")
                     count = nil
                 }
                 isApproximate = false
@@ -375,13 +380,18 @@ extension MainContentCoordinator {
                 }
 
                 let quotedTable = mainDriver.quoteIdentifier(tableName)
-                let countResult = try? await mainDriver.execute(
-                    query: "SELECT COUNT(*) FROM \(quotedTable)"
-                )
-                if let firstRow = countResult?.rows.first,
-                   let countStr = firstRow.first.flatMap({ $0 }) {
-                    count = Int(countStr)
-                } else {
+                do {
+                    let countResult = try await mainDriver.execute(
+                        query: "SELECT COUNT(*) FROM \(quotedTable)"
+                    )
+                    if let firstRow = countResult.rows.first,
+                       let countStr = firstRow.first.flatMap({ $0 }) {
+                        count = Int(countStr)
+                    } else {
+                        count = nil
+                    }
+                } catch {
+                    Self.logger.warning("COUNT(*) query failed for \(tableName): \(error.localizedDescription)")
                     count = nil
                 }
                 isApproximate = false

@@ -7,7 +7,9 @@ set -euo pipefail
 # Dependencies: cmake, libuv (built automatically), OpenSSL (from Libs/)
 
 CASSANDRA_VERSION="2.17.1"
+CASSANDRA_SHA256="e6ab5f5c60a916dd6c0dd9a19a883a4a1ab3d6b4e95cab925a186fecff08344e"
 LIBUV_VERSION="1.48.0"
+LIBUV_SHA256="7f1db8ac368d89d1baf163bac1ea5fe5120697a73910c8ae6b2fffb3551d59fb"
 BUILD_DIR="/tmp/cassandra-build"
 LIBS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Libs"
 HEADERS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Plugins/CassandraDriverPlugin/CCassandra/include"
@@ -34,7 +36,8 @@ build_libuv() {
     cd "$BUILD_DIR"
 
     if [ ! -d "libuv-v${LIBUV_VERSION}" ]; then
-        curl -sL "https://dist.libuv.org/dist/v${LIBUV_VERSION}/libuv-v${LIBUV_VERSION}.tar.gz" -o libuv.tar.gz
+        curl -fSL "https://dist.libuv.org/dist/v${LIBUV_VERSION}/libuv-v${LIBUV_VERSION}.tar.gz" -o libuv.tar.gz
+        echo "$LIBUV_SHA256  libuv.tar.gz" | shasum -a 256 -c -
         tar xzf libuv.tar.gz
     fi
 
@@ -71,7 +74,8 @@ build_cassandra() {
     cd "$BUILD_DIR"
 
     if [ ! -d "cassandra-cpp-driver-${CASSANDRA_VERSION}" ]; then
-        curl -sL "https://github.com/datastax/cpp-driver/archive/refs/tags/${CASSANDRA_VERSION}.tar.gz" -o cpp-driver.tar.gz
+        curl -fSL "https://github.com/datastax/cpp-driver/archive/refs/tags/${CASSANDRA_VERSION}.tar.gz" -o cpp-driver.tar.gz
+        echo "$CASSANDRA_SHA256  cpp-driver.tar.gz" | shasum -a 256 -c -
         tar xzf cpp-driver.tar.gz
     fi
 

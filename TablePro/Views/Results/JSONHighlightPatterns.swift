@@ -4,6 +4,7 @@
 
 import Foundation
 
+// Patterns are compile-time string literals — NSRegularExpression init cannot fail.
 // swiftlint:disable force_try
 internal enum JSONHighlightPatterns {
     static let string = try! NSRegularExpression(pattern: "\"(?:[^\"\\\\]|\\\\.)*\"")

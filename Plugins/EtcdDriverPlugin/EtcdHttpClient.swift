@@ -1065,7 +1065,8 @@ internal final class EtcdHttpClient: @unchecked Sendable {
                 return
             }
 
-            let identity = unsafeBitCast(identityRef, to: SecIdentity.self)
+            // swiftlint:disable:next force_cast
+            let identity = identityRef as! SecIdentity
             let credential = URLCredential(
                 identity: identity,
                 certificates: nil,

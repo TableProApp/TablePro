@@ -200,6 +200,13 @@ final class MainContentCoordinator {
         activeCoordinators.values.first { $0.windowId == windowId }
     }
 
+    /// Check whether any active coordinator has unsaved edits.
+    static func hasAnyUnsavedChanges() -> Bool {
+        activeCoordinators.values.contains { coordinator in
+            coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
+        }
+    }
+
     /// Collect all tabs from all active coordinators for a given connectionId.
     static func allTabs(for connectionId: UUID) -> [QueryTab] {
         activeCoordinators.values
@@ -350,7 +357,7 @@ final class MainContentCoordinator {
             pluginDriverObserver = NotificationCenter.default.addObserver(
                 forName: .databaseDidConnect, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated {
+                Task { @MainActor in
                     self?.setupPluginDriver()
                 }
             }

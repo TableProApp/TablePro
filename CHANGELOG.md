@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Raw SQL injection via external URL scheme deeplinks — now requires user confirmation
+- MySQL prepared statements silently truncating columns larger than 64KB
+- MSSQL error messages misattributed when multiple connections open simultaneously
+- BigQuery filter injection via unescaped column names and unvalidated operators
+- App quitting without warning when tabs have unsaved edits
+- Connection list corruption risk from non-atomic UserDefaults writes
+- Stale user-installed plugins silently rejected with no UI feedback
+- SSL mode picker showing misleading "Required" instead of "Required (skip verify)"
+- Plugin load blocking main thread on first connection after launch
+
+### Changed
+
+- OpenSSL updated to 3.4.3 (CVE-2025-9230, CVE-2025-9231)
+- SHA-256 checksum verification added to FreeTDS, Cassandra, and DuckDB build scripts
+- Memory pressure monitoring now reactive via DispatchSource
+
 ## [0.31.5] - 2026-04-14
 
 ### Fixed

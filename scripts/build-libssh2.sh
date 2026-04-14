@@ -34,8 +34,7 @@ run_quiet() {
 
 DEPLOY_TARGET="14.0"
 LIBSSH2_VERSION="1.11.1"
-OPENSSL_VERSION="3.4.1"
-OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
 LIBSSH2_SHA256="d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
 
 ARCH="${1:-both}"

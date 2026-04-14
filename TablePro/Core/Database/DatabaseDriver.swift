@@ -351,18 +351,42 @@ extension DatabaseDriver {
 enum DatabaseDriverFactory {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseDriverFactory")
 
+    /// Async variant that awaits background plugin loading instead of blocking the main thread.
+    /// Preferred for all call sites that are already in an async context.
+    static func createDriver(
+        for connection: DatabaseConnection,
+        passwordOverride: String? = nil,
+        awaitPlugins: Bool
+    ) async throws -> DatabaseDriver {
+        let pluginId = connection.type.pluginTypeId
+        if PluginManager.shared.driverPlugins[pluginId] == nil,
+           !PluginManager.shared.hasFinishedInitialLoad {
+            logger.info("Plugin '\(pluginId)' not loaded yet — waiting for background load")
+            await PluginManager.shared.waitForInitialLoad()
+        }
+        return try createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+    }
+
+    /// Sync variant — falls back to synchronous plugin loading if needed.
+    /// Only use when an async context is not available.
     static func createDriver(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil
     ) throws -> DatabaseDriver {
         let pluginId = connection.type.pluginTypeId
-        // If the plugin isn't registered yet and background loading hasn't finished,
-        // fall back to synchronous loading for this critical code path.
         if PluginManager.shared.driverPlugins[pluginId] == nil,
            !PluginManager.shared.hasFinishedInitialLoad {
             logger.warning("Plugin '\(pluginId)' not loaded yet — performing synchronous load")
             PluginManager.shared.loadPendingPlugins()
         }
+        return try createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
+    }
+
+    private static func createDriverFromPlugin(
+        for connection: DatabaseConnection,
+        passwordOverride: String? = nil
+    ) throws -> DatabaseDriver {
+        let pluginId = connection.type.pluginTypeId
         guard let plugin = PluginManager.shared.driverPlugins[pluginId] else {
             if connection.type.isDownloadablePlugin {
                 throw PluginError.pluginNotInstalled(connection.type.rawValue)

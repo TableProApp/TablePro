@@ -224,8 +224,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 throw error
             }
 
-            _ = "SET client_encoding TO 'UTF8'".withCString { cStr in
-                PQexec(connection, cStr)
+            "SET client_encoding TO 'UTF8'".withCString { cStr in
+                let result = PQexec(connection, cStr)
+                PQclear(result)
             }
 
             let version = PQserverVersion(connection)

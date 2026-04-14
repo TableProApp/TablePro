@@ -94,6 +94,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         DatabaseManager.shared.startObservingSystemEvents()
 
+        MemoryPressureAdvisor.startMonitoring()
         PluginManager.shared.loadPlugins()
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
 
@@ -158,10 +159,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handleDatabaseDidConnect),
             name: .databaseDidConnect, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handlePluginsRejected(_:)),
+            name: .pluginsRejected, object: nil
+        )
+    }
+
+    @objc private func handlePluginsRejected(_ notification: Notification) {
+        guard let rejected = notification.object as? [(name: String, reason: String)],
+              !rejected.isEmpty else { return }
+        let names = rejected.map(\.name).joined(separator: ", ")
+        let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
+        Task { @MainActor in
+            let alert = NSAlert()
+            alert.messageText = String(
+                format: String(localized: "%d plugin(s) could not be loaded"),
+                rejected.count
+            )
+            alert.informativeText = String(
+                format: String(localized: "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry."),
+                details
+            )
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "OK"))
+            alert.runModal()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         SyncCoordinator.shared.syncIfNeeded()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
+        guard hasUnsaved else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = String(localized: "You have unsaved changes")
+        alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "Quit Anyway"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationWillTerminate(_ notification: Notification) {

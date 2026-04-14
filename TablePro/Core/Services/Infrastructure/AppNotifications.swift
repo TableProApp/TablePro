@@ -36,6 +36,10 @@ extension Notification.Name {
 
     static let sqlFavoritesDidUpdate = Notification.Name("sqlFavoritesDidUpdate")
 
+    // MARK: - Plugins
+
+    static let pluginsRejected = Notification.Name("pluginsRejected")
+
     // MARK: - Settings Window
 
     static let openSettingsWindow = Notification.Name("com.TablePro.openSettingsWindow")

@@ -35,8 +35,7 @@ run_quiet() {
 
 DEPLOY_TARGET="14.0"
 HIREDIS_VERSION="1.2.0"
-OPENSSL_VERSION="3.4.1"
-OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/openssl-version.sh"
 HIREDIS_SHA256="82ad632d31ee05da13b537c124f819eb88e18851d9cb0c30ae0552084811588c"
 
 ARCH="${1:-both}"

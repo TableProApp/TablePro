@@ -354,6 +354,24 @@ extension AppDelegate {
 
                 if parsed.filterColumn != nil || parsed.filterCondition != nil {
                     await waitForNotification(.refreshData, timeout: .seconds(3))
+
+                    // Raw SQL from external URL requires explicit user confirmation
+                    if let condition = parsed.filterCondition, !condition.isEmpty {
+                        let preview = (condition as NSString).length > 300
+                            ? String(condition.prefix(300)) + "…" : condition
+                        let confirmed = await AlertHelper.confirmDestructive(
+                            title: String(localized: "Apply Filter from Link"),
+                            message: String(
+                                format: String(localized: "An external link wants to apply a raw SQL filter:\n\n%@"),
+                                preview
+                            ),
+                            confirmButton: String(localized: "Apply Filter"),
+                            cancelButton: String(localized: "Cancel"),
+                            window: NSApp.keyWindow
+                        )
+                        guard confirmed else { return }
+                    }
+
                     NotificationCenter.default.post(
                         name: .applyURLFilter,
                         object: nil,

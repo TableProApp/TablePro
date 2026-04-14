@@ -208,7 +208,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 guard let self, let tableView = self.tableView else { return }
                 Self.updateVisibleCellFonts(tableView: tableView)
             }
@@ -222,7 +222,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: connectionId,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.releaseData()
             }
         }

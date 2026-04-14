@@ -124,9 +124,10 @@ extension DatabaseManager {
             connectionForDriver = session.effectiveConnection ?? session.connection
         }
 
-        let driver = try DatabaseDriverFactory.createDriver(
+        let driver = try await DatabaseDriverFactory.createDriver(
             for: connectionForDriver,
-            passwordOverride: session.cachedPassword
+            passwordOverride: session.cachedPassword,
+            awaitPlugins: true
         )
 
         do {
@@ -134,7 +135,11 @@ extension DatabaseManager {
         } catch {
             driver.disconnect()
             if session.connection.resolvedSSHConfig.enabled {
-                try? await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+                do {
+                    try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
+                } catch {
+                    Self.logger.warning("Failed to close SSH tunnel during reconnect: \(error.localizedDescription)")
+                }
             }
             throw error
         }
@@ -222,9 +227,10 @@ extension DatabaseManager {
             }
 
             // Create new driver and connect
-            let driver = try DatabaseDriverFactory.createDriver(
+            let driver = try await DatabaseDriverFactory.createDriver(
                 for: effectiveConnection,
-                passwordOverride: passwordOverride
+                passwordOverride: passwordOverride,
+                awaitPlugins: true
             )
             try await driver.connect()
 
