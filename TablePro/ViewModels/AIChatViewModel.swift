@@ -485,28 +485,29 @@ final class AIChatViewModel {
             var columns: [String: [ColumnInfo]] = [:]
             var foreignKeys: [String: [ForeignKeyInfo]] = [:]
 
+            let fetchColumns: @Sendable (TableInfo) async -> (String, [ColumnInfo]) = { table in
+                if let provider = capturedProvider {
+                    let cached = await provider.getColumns(for: table.name)
+                    if !cached.isEmpty {
+                        return (table.name, cached)
+                    }
+                }
+                do {
+                    let cols = try await driver.fetchColumns(table: table.name)
+                    return (table.name, cols)
+                } catch {
+                    return (table.name, [])
+                }
+            }
+
             let concurrencyLimit = 4
             await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
                 var pending = tablesToFetch.makeIterator()
-                var inFlight = 0
 
                 // Seed initial batch
-                while inFlight < concurrencyLimit, let table = pending.next() {
-                    group.addTask {
-                        if let provider = capturedProvider {
-                            let cached = await provider.getColumns(for: table.name)
-                            if !cached.isEmpty {
-                                return (table.name, cached)
-                            }
-                        }
-                        do {
-                            let cols = try await driver.fetchColumns(table: table.name)
-                            return (table.name, cols)
-                        } catch {
-                            return (table.name, [])
-                        }
-                    }
-                    inFlight += 1
+                for _ in 0..<concurrencyLimit {
+                    guard let table = pending.next() else { break }
+                    group.addTask { await fetchColumns(table) }
                 }
 
                 // Drip-feed remaining tables as each completes
@@ -515,20 +516,7 @@ final class AIChatViewModel {
                         columns[tableName] = cols
                     }
                     if let next = pending.next() {
-                        group.addTask {
-                            if let provider = capturedProvider {
-                                let cached = await provider.getColumns(for: next.name)
-                                if !cached.isEmpty {
-                                    return (next.name, cached)
-                                }
-                            }
-                            do {
-                                let cols = try await driver.fetchColumns(table: next.name)
-                                return (next.name, cols)
-                            } catch {
-                                return (next.name, [])
-                            }
-                        }
+                        group.addTask { await fetchColumns(next) }
                     }
                 }
             }

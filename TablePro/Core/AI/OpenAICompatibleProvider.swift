@@ -264,7 +264,6 @@ final class OpenAICompatibleProvider: AIProvider {
         return request
     }
 
-
     // MARK: - Model Fetching
 
     private func fetchOpenAIModels() async throws -> [String] {
