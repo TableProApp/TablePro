@@ -56,23 +56,28 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentabl
 
         if isBottomCollapsed != wasCollapsed {
             context.coordinator.lastCollapsedState = isBottomCollapsed
-            if isBottomCollapsed {
-                // Save divider position before collapsing
-                if splitView.subviews.count >= 2 {
-                    context.coordinator.savedDividerPosition = splitView.subviews[0].frame.height
+            let collapse = isBottomCollapsed
+            let coordinator = context.coordinator
+            DispatchQueue.main.async {
+                guard splitView.bounds.height > 0 else { return }
+                if collapse {
+                    // Save divider position before collapsing
+                    if splitView.subviews.count >= 2 {
+                        coordinator.savedDividerPosition = splitView.subviews[0].frame.height
+                    }
+                    // Move divider to bottom edge to collapse
+                    splitView.setPosition(splitView.bounds.height, ofDividerAt: 0)
+                    bottomView.isHidden = true
+                    splitView.display()
+                } else {
+                    bottomView.isHidden = false
+                    splitView.adjustSubviews()
+                    // Restore divider position
+                    if let saved = coordinator.savedDividerPosition {
+                        splitView.setPosition(saved, ofDividerAt: 0)
+                    }
+                    splitView.display()
                 }
-                // Move divider to bottom edge to collapse
-                splitView.setPosition(splitView.bounds.height, ofDividerAt: 0)
-                bottomView.isHidden = true
-                splitView.display()
-            } else {
-                bottomView.isHidden = false
-                splitView.adjustSubviews()
-                // Restore divider position
-                if let saved = context.coordinator.savedDividerPosition {
-                    splitView.setPosition(saved, ofDividerAt: 0)
-                }
-                splitView.display()
             }
         }
     }
@@ -96,7 +101,7 @@ struct QuerySplitView<TopContent: View, BottomContent: View>: NSViewRepresentabl
             constrainMaxCoordinate proposedMaximumPosition: CGFloat,
             ofSubviewAt dividerIndex: Int
         ) -> CGFloat {
-            splitView.bounds.height - 150
+            max(splitView.bounds.height - 150, 100)
         }
 
         func splitView(

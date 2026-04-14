@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 // MARK: - HexColorPicker
@@ -28,6 +29,7 @@ struct HexColorPicker: View {
 // MARK: - ThemeEditorColorsSection
 
 internal struct ThemeEditorColorsSection: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ThemeEditorColorsSection")
     private var engine: ThemeEngine { ThemeEngine.shared }
     private var theme: ThemeDefinition { engine.activeTheme }
 
@@ -255,7 +257,11 @@ internal struct ThemeEditorColorsSection: View {
                 guard theme.isEditable else { return }
                 var updated = theme
                 updated[keyPath: keyPath] = newValue
-                try? engine.saveUserTheme(updated)
+                do {
+                    try engine.saveUserTheme(updated)
+                } catch {
+                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                }
             }
         )
     }

@@ -21,12 +21,12 @@ extension TableViewCoordinator {
     }
 
     private func scheduleLayoutPersist() {
-        layoutPersistWorkItem?.cancel()
-        let workItem = DispatchWorkItem { [weak self] in
+        layoutPersistTask?.cancel()
+        layoutPersistTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
             self?.persistColumnLayoutToStorage()
         }
-        layoutPersistWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {

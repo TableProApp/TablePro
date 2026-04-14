@@ -16,14 +16,41 @@ final class ConnectionStorage {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectionStorage")
 
     private let connectionsKey = "com.TablePro.connections"
+    private let migratedToFileKey = "com.TablePro.connectionsMigratedToFile"
     private let defaults = UserDefaults.standard
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    /// In-memory cache to avoid re-decoding JSON from UserDefaults on every access
+    /// In-memory cache to avoid re-decoding JSON from file on every access
     private var cachedConnections: [DatabaseConnection]?
 
-    private init() {}
+    private let fileURL: URL
+
+    private init() {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        let dir = appSupport.appendingPathComponent("TablePro", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        fileURL = dir.appendingPathComponent("connections.json")
+
+        migrateFromUserDefaultsIfNeeded()
+    }
+
+    /// One-time migration from UserDefaults to atomic file storage.
+    private func migrateFromUserDefaultsIfNeeded() {
+        guard !defaults.bool(forKey: migratedToFileKey),
+              let data = defaults.data(forKey: connectionsKey) else { return }
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            defaults.set(true, forKey: migratedToFileKey)
+            defaults.removeObject(forKey: connectionsKey)
+            Self.logger.info("Migrated connections from UserDefaults to \(self.fileURL.path)")
+        } catch {
+            Self.logger.error("Failed to migrate connections to file: \(error)")
+        }
+    }
 
     // MARK: - Connection CRUD
 
@@ -31,7 +58,7 @@ final class ConnectionStorage {
     func loadConnections() -> [DatabaseConnection] {
         if let cached = cachedConnections { return cached }
 
-        guard let data = defaults.data(forKey: connectionsKey) else {
+        guard let data = try? Data(contentsOf: fileURL) else {
             return []
         }
 
@@ -48,7 +75,7 @@ final class ConnectionStorage {
                 for i in migrated.indices { migrated[i].sortOrder = i }
                 let migratedStored = migrated.map { StoredConnection(from: $0) }
                 if let data = try? encoder.encode(migratedStored) {
-                    defaults.set(data, forKey: connectionsKey)
+                    try? data.write(to: fileURL, options: .atomic)
                 }
                 cachedConnections = migrated
                 return migrated
@@ -68,7 +95,7 @@ final class ConnectionStorage {
 
         do {
             let data = try encoder.encode(storedConnections)
-            defaults.set(data, forKey: connectionsKey)
+            try data.write(to: fileURL, options: .atomic)
             cachedConnections = nil
         } catch {
             Self.logger.error("Failed to save connections: \(error)")

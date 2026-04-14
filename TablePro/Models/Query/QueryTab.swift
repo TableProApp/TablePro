@@ -65,7 +65,9 @@ struct QueryTab: Identifiable, Equatable {
 
     // Editing support
     var tableName: String?
-    var primaryKeyColumn: String?  // Detected PK from schema (set by Phase 2 metadata)
+    var primaryKeyColumns: [String] = []  // Detected PKs from schema (set by Phase 2 metadata)
+    /// First PK column, for UI contexts that need a single column (filters, ORDER BY)
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
     var isEditable: Bool
     var isView: Bool  // True for database views (read-only)
     var isRoutine: Bool = false
@@ -159,7 +161,7 @@ struct QueryTab: Identifiable, Equatable {
         self.errorMessage = nil
         self.isExecuting = false
         self.tableName = tableName
-        self.primaryKeyColumn = nil
+        self.primaryKeyColumns = []
         self.isEditable = tabType == .table
         self.isView = false
         self.isRoutine = false
@@ -188,7 +190,7 @@ struct QueryTab: Identifiable, Equatable {
         self.query = persisted.isRoutine ? "" : persisted.query
         self.tabType = persisted.tabType
         self.tableName = persisted.tableName
-        self.primaryKeyColumn = nil
+        self.primaryKeyColumns = []
 
         // Initialize runtime state with defaults
         self.lastExecutedAt = nil

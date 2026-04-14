@@ -190,7 +190,7 @@ internal struct BigQueryQueryBuilder {
                 : columns
             let escapedSearch = searchText.replacingOccurrences(of: "'", with: "''")
             let searchClauses = searchCols.map { col in
-                "CAST(`\(col)` AS STRING) LIKE '%\(escapedSearch)%'"
+                "CAST(\(quoteIdentifier(col)) AS STRING) LIKE '%\(escapedSearch)%'"
             }
             if !searchClauses.isEmpty {
                 whereClauses.append("(\(searchClauses.joined(separator: " OR ")))")
@@ -206,7 +206,7 @@ internal struct BigQueryQueryBuilder {
             let orderClauses = sortColumns.compactMap { sort -> String? in
                 guard sort.columnIndex < columns.count else { return nil }
                 let col = columns[sort.columnIndex]
-                return "`\(col)` \(sort.ascending ? "ASC" : "DESC")"
+                return "\(quoteIdentifier(col)) \(sort.ascending ? "ASC" : "DESC")"
             }
             if !orderClauses.isEmpty {
                 sql += " ORDER BY " + orderClauses.joined(separator: ", ")
@@ -241,7 +241,7 @@ internal struct BigQueryQueryBuilder {
                 : columns
             let escapedSearch = searchText.replacingOccurrences(of: "'", with: "''")
             let searchClauses = searchCols.map { col in
-                "CAST(`\(col)` AS STRING) LIKE '%\(escapedSearch)%'"
+                "CAST(\(quoteIdentifier(col)) AS STRING) LIKE '%\(escapedSearch)%'"
             }
             if !searchClauses.isEmpty {
                 whereClauses.append("(\(searchClauses.joined(separator: " OR ")))")
@@ -269,11 +269,23 @@ internal struct BigQueryQueryBuilder {
         return "'\(escaped)'"
     }
 
+    private static let allowedFilterOperators: Set<String> = [
+        "=", "!=", "<>", ">", ">=", "<", "<=",
+        "LIKE", "NOT LIKE", "IN", "NOT IN",
+        "IS NULL", "IS NOT NULL", "CONTAINS"
+    ]
+
+    private static func quoteIdentifier(_ name: String) -> String {
+        // BigQuery does not support escaping backticks inside backtick-quoted identifiers
+        let sanitized = name.replacingOccurrences(of: "`", with: "")
+        return "`\(sanitized)`"
+    }
+
     private static func buildFilterClause(
         _ filter: BigQueryFilterSpec,
         columns: [String]
     ) -> String? {
-        let col = "`\(filter.column)`"
+        let col = quoteIdentifier(filter.column)
         let escaped = filter.value.replacingOccurrences(of: "'", with: "''")
 
         switch filter.op.uppercased() {
@@ -312,7 +324,7 @@ internal struct BigQueryQueryBuilder {
         case "CONTAINS":
             return "CAST(\(col) AS STRING) LIKE '%\(escaped)%'"
         default:
-            return "\(col) \(filter.op) \(formatFilterValue(filter.value))"
+            return nil
         }
     }
 

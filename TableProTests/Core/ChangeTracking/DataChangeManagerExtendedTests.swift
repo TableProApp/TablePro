@@ -20,7 +20,7 @@ struct DataChangeManagerExtendedTests {
         manager.configureForTable(
             tableName: "test_table",
             columns: columns,
-            primaryKeyColumn: pk
+            primaryKeyColumns: [pk].compactMap { $0 }
         )
         return manager
     }
@@ -688,7 +688,7 @@ struct DataChangeManagerExtendedTests {
         manager.configureForTable(
             tableName: "test",
             columns: ["a", "b"],
-            primaryKeyColumn: "a",
+            primaryKeyColumns: ["a"],
             triggerReload: false
         )
         #expect(manager.reloadVersion == before)

@@ -354,6 +354,31 @@ extension AppDelegate {
 
                 if parsed.filterColumn != nil || parsed.filterCondition != nil {
                     await waitForNotification(.refreshData, timeout: .seconds(3))
+
+                    // All filters from external URLs require explicit user confirmation
+                    let filterDescription: String
+                    if let condition = parsed.filterCondition, !condition.isEmpty {
+                        let preview = (condition as NSString).length > 300
+                            ? String(condition.prefix(300)) + "…" : condition
+                        filterDescription = preview
+                    } else {
+                        filterDescription = [parsed.filterColumn, parsed.filterOperation, parsed.filterValue]
+                            .compactMap { $0 }.joined(separator: " ")
+                    }
+                    if !filterDescription.isEmpty {
+                        let confirmed = await AlertHelper.confirmDestructive(
+                            title: String(localized: "Apply Filter from Link"),
+                            message: String(
+                                format: String(localized: "An external link wants to apply a filter:\n\n%@"),
+                                filterDescription
+                            ),
+                            confirmButton: String(localized: "Apply Filter"),
+                            cancelButton: String(localized: "Cancel"),
+                            window: NSApp.keyWindow
+                        )
+                        guard confirmed else { return }
+                    }
+
                     NotificationCenter.default.post(
                         name: .applyURLFilter,
                         object: nil,

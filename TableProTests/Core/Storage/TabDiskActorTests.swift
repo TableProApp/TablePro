@@ -313,4 +313,42 @@ struct TabDiskActorTests {
 
         await actor.clear(connectionId: connectionId)
     }
+
+    // MARK: - connectionIdsWithSavedState
+
+    @Test("connectionIdsWithSavedState returns correct IDs after saving multiple connections")
+    func connectionIdsWithSavedStateReturnsCorrectIds() async throws {
+        let connA = UUID()
+        let connB = UUID()
+        let tab = makeTab()
+
+        try await actor.save(connectionId: connA, tabs: [tab], selectedTabId: tab.id)
+        try await actor.save(connectionId: connB, tabs: [tab], selectedTabId: tab.id)
+
+        let ids = await actor.connectionIdsWithSavedState()
+
+        #expect(ids.contains(connA))
+        #expect(ids.contains(connB))
+
+        await actor.clear(connectionId: connA)
+        await actor.clear(connectionId: connB)
+    }
+
+    @Test("connectionIdsWithSavedState excludes cleared connections")
+    func connectionIdsWithSavedStateExcludesCleared() async throws {
+        let connA = UUID()
+        let connB = UUID()
+        let tab = makeTab()
+
+        try await actor.save(connectionId: connA, tabs: [tab], selectedTabId: tab.id)
+        try await actor.save(connectionId: connB, tabs: [tab], selectedTabId: tab.id)
+        await actor.clear(connectionId: connA)
+
+        let ids = await actor.connectionIdsWithSavedState()
+
+        #expect(!ids.contains(connA))
+        #expect(ids.contains(connB))
+
+        await actor.clear(connectionId: connB)
+    }
 }

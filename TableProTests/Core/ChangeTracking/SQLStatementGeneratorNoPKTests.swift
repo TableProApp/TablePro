@@ -16,13 +16,13 @@ struct SQLStatementGeneratorNoPKTests {
     private func makeGenerator(
         tableName: String = "users",
         columns: [String] = ["id", "name", "email"],
-        primaryKeyColumn: String? = nil,
+        primaryKeyColumns: [String] = [],
         databaseType: DatabaseType = .mysql
     ) -> SQLStatementGenerator {
         SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             dialect: nil
         )

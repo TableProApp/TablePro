@@ -135,10 +135,10 @@ struct AppMenuCommands: Commands {
 
         // File menu
         CommandGroup(replacing: .newItem) {
-            Button("New Connection...") {
+            Button("Manage Connections") {
                 NotificationCenter.default.post(name: .newConnection, object: nil)
             }
-            .optionalKeyboardShortcut(shortcut(for: .newConnection))
+            .optionalKeyboardShortcut(shortcut(for: .manageConnections))
         }
 
         CommandGroup(after: .newItem) {
@@ -165,18 +165,6 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .openFile))
             .disabled(!(actions?.isConnected ?? false))
 
-            Button("Switch Connection...") {
-                NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
-            }
-            .optionalKeyboardShortcut(shortcut(for: .switchConnection))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button("Quick Switcher...") {
-                actions?.openQuickSwitcher()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .quickSwitcher))
-            .disabled(!(actions?.isConnected ?? false))
-
             Divider()
 
             Button("Save Changes") {
@@ -191,56 +179,21 @@ struct AppMenuCommands: Commands {
             .optionalKeyboardShortcut(shortcut(for: .saveAs))
             .disabled(!(actions?.isConnected ?? false))
 
-            Button {
-                actions?.previewSQL()
-            } label: {
-                if let dbType = actions?.currentDatabaseType {
-                    Text(String(format: String(localized: "Preview %@"), PluginManager.shared.queryLanguageName(for: dbType)))
-                } else {
-                    Text("Preview SQL")
-                }
-            }
-            .optionalKeyboardShortcut(shortcut(for: .previewSQL))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button("Close Tab") {
+            Button(actions != nil ? "Close Tab" : "Close") {
                 if let actions {
                     actions.closeTab()
-                } else {
-                    NSApp.keyWindow?.close()
+                } else if let window = NSApp.keyWindow {
+                    // Only performClose for non-main windows (Settings, Welcome, Connection Form).
+                    // For main windows where @FocusedValue hasn't resolved yet, do nothing —
+                    // prevents accidentally closing the connection window when user intended
+                    // to close a tab.
+                    let isMainWindow = window.identifier?.rawValue.hasPrefix("main") == true
+                    if !isMainWindow {
+                        window.performClose(nil)
+                    }
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
-
-            Divider()
-
-            Button("Refresh") {
-                NotificationCenter.default.post(name: .refreshData, object: nil)
-            }
-            .optionalKeyboardShortcut(shortcut(for: .refresh))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button("Explain Query") {
-                actions?.explainQuery()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .explainQuery))
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
-
-            Button(String(localized: "Preview FK Reference")) {
-                actions?.previewFKReference()
-            }
-            .optionalKeyboardShortcut(shortcut(for: .previewFKReference))
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button(String(localized: "View ER Diagram")) {
-                actions?.showERDiagram()
-            }
-            .disabled(!(actions?.isConnected ?? false))
-
-            Button(String(localized: "Server Dashboard")) {
-                actions?.showServerDashboard()
-            }
-            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsServerDashboard ?? false))
 
             Divider()
 
@@ -265,13 +218,90 @@ struct AppMenuCommands: Commands {
             }
             .disabled(!(actions?.isConnected ?? false))
 
-            if actions.map({ PluginManager.shared.supportsImport(for: $0.currentDatabaseType) }) ?? true {
-                Button("Import...") {
-                    actions?.importTables()
-                }
-                .optionalKeyboardShortcut(shortcut(for: .importData))
-                .disabled(!(actions?.isConnected ?? false) || actions?.isReadOnly ?? false)
+            Button("Import...") {
+                actions?.importTables()
             }
+            .optionalKeyboardShortcut(shortcut(for: .importData))
+            .disabled(
+                !(actions?.isConnected ?? false)
+                    || actions?.isReadOnly ?? false
+                    || !(actions.map { PluginManager.shared.supportsImport(for: $0.currentDatabaseType) } ?? true)
+            )
+        }
+
+        // Query menu
+        CommandMenu("Query") {
+            Button("Execute Query") {
+                actions?.runQuery()
+            }
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Button("Explain Query") {
+                actions?.explainQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .explainQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Button("Format Query") {
+                actions?.formatQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .formatQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Button {
+                actions?.previewSQL()
+            } label: {
+                if let dbType = actions?.currentDatabaseType {
+                    Text(String(format: String(localized: "Preview %@"), PluginManager.shared.queryLanguageName(for: dbType)))
+                } else {
+                    Text("Preview SQL")
+                }
+            }
+            .optionalKeyboardShortcut(shortcut(for: .previewSQL))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button("Refresh") {
+                NotificationCenter.default.post(name: .refreshData, object: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .refresh))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Quick Switcher...") {
+                actions?.openQuickSwitcher()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .quickSwitcher))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Divider()
+
+            Button(String(localized: "Explain with AI")) {
+                actions?.aiExplainQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .aiExplainQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Button(String(localized: "Optimize with AI")) {
+                actions?.aiOptimizeQuery()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .aiOptimizeQuery))
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
+            Divider()
+
+            Button(String(localized: "Preview FK Reference")) {
+                actions?.previewFKReference()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .previewFKReference))
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button("Switch Connection...") {
+                NotificationCenter.default.post(name: .openConnectionSwitcher, object: nil)
+            }
+            .optionalKeyboardShortcut(shortcut(for: .switchConnection))
+            .disabled(!(actions?.isConnected ?? false))
         }
 
         // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
@@ -335,11 +365,10 @@ struct AppMenuCommands: Commands {
 
         // View menu
         CommandGroup(after: .sidebar) {
-            Button("Toggle Table Browser") {
+            Button(String(localized: "Toggle Sidebar")) {
                 NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .toggleTableBrowser))
-            .disabled(!(actions?.isConnected ?? false))
 
             Button("Toggle Inspector") {
                 actions?.toggleRightSidebar()
@@ -389,12 +418,24 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            Button("Zoom In") {
+            Button(String(localized: "View ER Diagram")) {
+                actions?.showERDiagram()
+            }
+            .disabled(!(actions?.isConnected ?? false))
+
+            Button(String(localized: "Server Dashboard")) {
+                actions?.showServerDashboard()
+            }
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.supportsServerDashboard ?? false))
+
+            Divider()
+
+            Button("Increase Text Size") {
                 ThemeEngine.shared.adjustEditorFontSize(by: 1)
             }
             .keyboardShortcut("=", modifiers: .command)
 
-            Button("Zoom Out") {
+            Button("Decrease Text Size") {
                 ThemeEngine.shared.adjustEditorFontSize(by: -1)
             }
             .keyboardShortcut("-", modifiers: .command)
@@ -420,33 +461,25 @@ struct AppMenuCommands: Commands {
             Button("Show Previous Tab") {
                 NSApp.sendAction(#selector(NSWindow.selectPreviousTab(_:)), to: nil, from: nil)
             }
-            .optionalKeyboardShortcut(shortcut(for: .showPreviousTabBrackets))
+            .optionalKeyboardShortcut(shortcut(for: .showPreviousTab))
             .disabled(!(actions?.isConnected ?? false))
 
             // Next tab (Cmd+Shift+]) — delegate to native macOS tab switching
             Button("Show Next Tab") {
                 NSApp.sendAction(#selector(NSWindow.selectNextTab(_:)), to: nil, from: nil)
             }
-            .optionalKeyboardShortcut(shortcut(for: .showNextTabBrackets))
+            .optionalKeyboardShortcut(shortcut(for: .showNextTab))
             .disabled(!(actions?.isConnected ?? false))
 
-            // Previous tab (Cmd+Option+Left)
-            Button("Previous Tab") {
-                NSApp.sendAction(#selector(NSWindow.selectPreviousTab(_:)), to: nil, from: nil)
-            }
-            .optionalKeyboardShortcut(shortcut(for: .previousTabArrows))
-            .disabled(!(actions?.isConnected ?? false))
+            Divider()
 
-            // Next tab (Cmd+Option+Right)
-            Button("Next Tab") {
-                NSApp.sendAction(#selector(NSWindow.selectNextTab(_:)), to: nil, from: nil)
+            Button("Bring All to Front") {
+                NSApp.arrangeInFront(nil)
             }
-            .optionalKeyboardShortcut(shortcut(for: .nextTabArrows))
-            .disabled(!(actions?.isConnected ?? false))
         }
 
-        // Help menu
-        CommandGroup(replacing: .help) {
+        // Help menu — append after system-provided search field
+        CommandGroup(after: .help) {
             Button(String(localized: "TablePro Website")) {
                 if let url = URL(string: "https://tablepro.app") { NSWorkspace.shared.open(url) }
             }
@@ -459,10 +492,6 @@ struct AppMenuCommands: Commands {
 
             Button("GitHub Repository") {
                 if let url = URL(string: "https://github.com/TableProApp/TablePro") { NSWorkspace.shared.open(url) }
-            }
-
-            Button(String(localized: "Sponsor TablePro")) {
-                if let url = URL(string: "https://github.com/sponsors/datlechin") { NSWorkspace.shared.open(url) }
             }
         }
     }

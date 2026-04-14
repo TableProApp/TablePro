@@ -622,6 +622,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             for bind in resultBinds {
                 bind.length?.deallocate()
                 bind.is_null?.deallocate()
+                bind.error?.deallocate()
             }
         }
 
@@ -635,6 +636,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             resultBinds[i].buffer_length = UInt(bufferSize)
             resultBinds[i].length = UnsafeMutablePointer<UInt>.allocate(capacity: 1)
             resultBinds[i].is_null = UnsafeMutablePointer<my_bool>.allocate(capacity: 1)
+            resultBinds[i].error = UnsafeMutablePointer<my_bool>.allocate(capacity: 1)
         }
 
         if mysql_stmt_bind_result(stmt, &resultBinds) != 0 {
@@ -645,7 +647,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         let maxRows = PluginRowLimits.defaultMax
         var truncated = false
 
-        while mysql_stmt_fetch(stmt) == 0 {
+        while true {
+            let fetchStatus = mysql_stmt_fetch(stmt)
+            if fetchStatus != 0 && fetchStatus != MYSQL_DATA_TRUNCATED { break }
+
             stateLock.lock()
             let shouldCancel = _isCancelled
             if shouldCancel { _isCancelled = false }
@@ -657,6 +662,25 @@ final class MariaDBPluginConnection: @unchecked Sendable {
             if rows.count >= maxRows {
                 truncated = true
                 break
+            }
+
+            // Re-fetch truncated columns with correctly sized buffers
+            if fetchStatus == MYSQL_DATA_TRUNCATED {
+                for i in 0..<numFields {
+                    let actualLength = Int(resultBinds[i].length?.pointee ?? 0)
+                    if actualLength > Int(resultBinds[i].buffer_length) {
+                        let newBuffer = UnsafeMutableRawPointer.allocate(
+                            byteCount: actualLength, alignment: 1
+                        )
+                        resultBuffers[i].deallocate()
+                        resultBuffers[i] = newBuffer
+                        resultBinds[i].buffer = newBuffer
+                        resultBinds[i].buffer_length = UInt(actualLength)
+                        if mysql_stmt_fetch_column(stmt, &resultBinds[i], UInt32(i), 0) != 0 {
+                            logger.warning("mysql_stmt_fetch_column failed for column \(i)")
+                        }
+                    }
+                }
             }
 
             var row: [String?] = []

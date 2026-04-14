@@ -20,7 +20,7 @@ struct HistoryPanelView: View {
     @State private var entries: [QueryHistoryEntry] = []
     @State private var showClearAllAlert = false
     @State private var searchTask: Task<Void, Never>?
-    @State private var copyButtonTitle = "Copy Query"
+    @State private var copyButtonTitle = String(localized: "Copy Query")
     @State private var copyResetTask: Task<Void, Never>?
     @State private var favoriteDialogQuery: FavoriteDialogQuery?
     @FocusedValue(\.commandActions) private var actions
@@ -413,7 +413,7 @@ private struct HistoryRowSwiftUI: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: entry.wasSuccessful ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundStyle(entry.wasSuccessful ? .green : .red)
+                .foregroundStyle(entry.wasSuccessful ? Color(nsColor: .systemGreen) : Color(nsColor: .systemRed))
                 .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.default))
 
             VStack(alignment: .leading, spacing: 2) {

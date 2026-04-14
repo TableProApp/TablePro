@@ -86,6 +86,9 @@ struct ForeignKeyPopoverContentView: View {
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .task { await fetchForeignKeyValues() }
+        .onChange(of: searchText) {
+            selectedId = filteredValues.first?.id
+        }
     }
 
     // MARK: - Row View

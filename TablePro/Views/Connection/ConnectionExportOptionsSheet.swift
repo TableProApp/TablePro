@@ -66,7 +66,7 @@ struct ConnectionExportOptionsSheet: View {
                     if !passphrase.isEmpty && !confirmPassphrase.isEmpty && passphrase != confirmPassphrase {
                         Text("Passphrases do not match")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     }
                 }
             }

@@ -123,14 +123,14 @@ struct SQLRowToStatementConverterTests {
 
     @Test("UPDATE without primary key uses all columns in SET and WHERE")
     func updateWithoutPrimaryKey() {
-        let converter = makeConverter(primaryKeyColumn: nil)
+        let converter = makeConverter(primaryKeyColumns: [])
         let result = converter.generateUpdates(rows: [["1", "Alice", "alice@example.com"]])
         #expect(result == "UPDATE `users` SET `id` = '1', `name` = 'Alice', `email` = 'alice@example.com' WHERE `id` = '1' AND `name` = 'Alice' AND `email` = 'alice@example.com';")
     }
 
     @Test("UPDATE without PK uses IS NULL in WHERE clause for NULL values")
     func updateNullValuesInWhereClauseNoPK() {
-        let converter = makeConverter(primaryKeyColumn: nil)
+        let converter = makeConverter(primaryKeyColumns: [])
         let result = converter.generateUpdates(rows: [["1", nil, "alice@example.com"]])
         #expect(result == "UPDATE `users` SET `id` = '1', `name` = NULL, `email` = 'alice@example.com' WHERE `id` = '1' AND `name` IS NULL AND `email` = 'alice@example.com';")
     }
@@ -199,7 +199,7 @@ struct SQLRowToStatementConverterTests {
     func updatePkNotInColumnsFallsBack() {
         let converter = makeConverter(
             columns: ["name", "email"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .mysql
         )
         let result = converter.generateUpdates(rows: [["Alice", "alice@example.com"]])
@@ -219,7 +219,7 @@ struct SQLRowToStatementConverterTests {
     func rowCapAt50k() {
         let converter = makeConverter(
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
         let rows: [[String?]] = (1...50_001).map { i in ["\(i)", "name\(i)"] }
         let result = converter.generateInserts(rows: rows)

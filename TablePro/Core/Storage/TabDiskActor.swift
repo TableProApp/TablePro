@@ -157,6 +157,21 @@ internal actor TabDiskActor {
         }
     }
 
+    /// List all connection IDs that have saved tab state on disk.
+    internal func connectionIdsWithSavedState() -> [UUID] {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(
+            at: tabStateDirectory,
+            includingPropertiesForKeys: nil
+        ) else {
+            return []
+        }
+        return files.compactMap { url -> UUID? in
+            guard url.pathExtension == "json" else { return nil }
+            return UUID(uuidString: url.deletingPathExtension().lastPathComponent)
+        }
+    }
+
     // MARK: - Static Path Helpers
 
     nonisolated private static func resolvedTabStateDirectory() -> URL {

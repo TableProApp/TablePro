@@ -19,7 +19,7 @@ struct RowOperationsManagerTests {
         changeManager.configureForTable(
             tableName: "users",
             columns: ["id", "name", "email"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .mysql
         )
         let manager = RowOperationsManager(changeManager: changeManager)

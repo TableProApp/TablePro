@@ -11,7 +11,7 @@ struct CreateDatabaseSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let databaseType: DatabaseType
-    let onCreate: (String, String, String?) async throws -> Void
+    let viewModel: DatabaseSwitcherViewModel
 
     @State private var databaseName = ""
     @State private var charset: String
@@ -21,9 +21,9 @@ struct CreateDatabaseSheet: View {
 
     private let config: CreateDatabaseOptions.Config
 
-    init(databaseType: DatabaseType, onCreate: @escaping (String, String, String?) async throws -> Void) {
+    init(databaseType: DatabaseType, viewModel: DatabaseSwitcherViewModel) {
         self.databaseType = databaseType
-        self.onCreate = onCreate
+        self.viewModel = viewModel
         let cfg = CreateDatabaseOptions.config(for: databaseType)
         self.config = cfg
         self._charset = State(initialValue: cfg.defaultCharset)
@@ -90,7 +90,7 @@ struct CreateDatabaseSheet: View {
                 if let error = errorMessage {
                     Text(error)
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(nsColor: .systemRed))
                 }
             }
             .padding(20)
@@ -133,21 +133,18 @@ struct CreateDatabaseSheet: View {
         isCreating = true
         errorMessage = nil
 
+        let name = databaseName
+        let cs = config.showOptions ? charset : ""
+        let col: String? = config.showOptions ? collation : nil
+
         Task {
             do {
-                if config.showOptions {
-                    try await onCreate(databaseName, charset, collation)
-                } else {
-                    try await onCreate(databaseName, "", nil)
-                }
-                await MainActor.run {
-                    dismiss()
-                }
+                try await viewModel.createDatabase(name: name, charset: cs, collation: col)
+                await viewModel.refreshDatabases()
+                dismiss()
             } catch {
-                await MainActor.run {
-                    errorMessage = error.localizedDescription
-                    isCreating = false
-                }
+                errorMessage = error.localizedDescription
+                isCreating = false
             }
         }
     }

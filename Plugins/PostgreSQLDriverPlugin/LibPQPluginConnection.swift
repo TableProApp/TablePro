@@ -224,16 +224,22 @@ final class LibPQPluginConnection: @unchecked Sendable {
                 throw error
             }
 
-            _ = "SET client_encoding TO 'UTF8'".withCString { cStr in
-                PQexec(connection, cStr)
+            "SET client_encoding TO 'UTF8'".withCString { cStr in
+                let result = PQexec(connection, cStr)
+                PQclear(result)
             }
 
             let version = PQserverVersion(connection)
             if version > 0 {
                 let major = version / 10_000
-                let minor = (version / 100) % 100
-                let revision = version % 100
-                self._cachedServerVersion = "\(major).\(minor).\(revision)"
+                if major >= 10 {
+                    let minor = version % 10_000
+                    self._cachedServerVersion = "\(major).\(minor)"
+                } else {
+                    let minor = (version / 100) % 100
+                    let revision = version % 100
+                    self._cachedServerVersion = "\(major).\(minor).\(revision)"
+                }
             }
 
             self.stateLock.lock()

@@ -100,41 +100,69 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
 
 // MARK: - Global FreeTDS initialization
 
-private let freetdsLastErrorLock = NSLock()
-private var _freetdsLastError = ""
+/// Per-connection error storage keyed by DBPROCESS pointer.
+/// Falls back to a global error string when the DBPROCESS is nil (pre-connection errors).
+private let freetdsErrorLock = NSLock()
+private var freetdsConnectionErrors: [UnsafeRawPointer: String] = [:]
+private var freetdsGlobalError = ""
 
-private var freetdsLastError: String {
-    get {
-        freetdsLastErrorLock.lock()
-        defer { freetdsLastErrorLock.unlock() }
-        return _freetdsLastError
+private func freetdsGetError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) -> String {
+    freetdsErrorLock.lock()
+    defer { freetdsErrorLock.unlock() }
+    if let dbproc {
+        return freetdsConnectionErrors[UnsafeRawPointer(dbproc)] ?? freetdsGlobalError
     }
-    set {
-        freetdsLastErrorLock.lock()
-        defer { freetdsLastErrorLock.unlock() }
-        _freetdsLastError = newValue
+    return freetdsGlobalError
+}
+
+private func freetdsClearError(for dbproc: UnsafeMutablePointer<DBPROCESS>?) {
+    freetdsErrorLock.lock()
+    defer { freetdsErrorLock.unlock() }
+    if let dbproc {
+        freetdsConnectionErrors[UnsafeRawPointer(dbproc)] = nil
+    } else {
+        freetdsGlobalError = ""
     }
+}
+
+private func freetdsSetError(_ msg: String, for dbproc: UnsafeMutablePointer<DBPROCESS>?, overwrite: Bool = false) {
+    freetdsErrorLock.lock()
+    defer { freetdsErrorLock.unlock() }
+    if let dbproc {
+        let key = UnsafeRawPointer(dbproc)
+        if overwrite || (freetdsConnectionErrors[key]?.isEmpty ?? true) {
+            freetdsConnectionErrors[key] = msg
+        }
+    } else if overwrite || freetdsGlobalError.isEmpty {
+        freetdsGlobalError = msg
+    }
+}
+
+private func freetdsUnregister(_ dbproc: UnsafeMutablePointer<DBPROCESS>) {
+    freetdsErrorLock.lock()
+    defer { freetdsErrorLock.unlock() }
+    freetdsConnectionErrors.removeValue(forKey: UnsafeRawPointer(dbproc))
 }
 
 private let freetdsLogger = Logger(subsystem: "com.TablePro", category: "FreeTDSConnection")
 
 private let freetdsInitOnce: Void = {
     _ = dbinit()
-    _ = dberrhandle { _, _, dberr, _, dberrstr, oserrstr in
+    _ = dberrhandle { dbproc, _, dberr, _, dberrstr, oserrstr in
         var msg = "db-lib error \(dberr)"
         if let s = dberrstr { msg += ": \(String(cString: s))" }
         if let s = oserrstr, String(cString: s) != "Success" { msg += " (os: \(String(cString: s)))" }
         freetdsLogger.error("FreeTDS: \(msg)")
-        if freetdsLastError.isEmpty {
-            freetdsLastError = msg
-        }
+        freetdsSetError(msg, for: dbproc)
         return INT_CANCEL
     }
-    _ = dbmsghandle { _, msgno, _, severity, msgtext, _, _, _ in
+    _ = dbmsghandle { dbproc, msgno, _, severity, msgtext, _, _, _ in
         guard let text = msgtext else { return 0 }
         let msg = String(cString: text)
         if severity > 10 {
-            freetdsLastError = msg
+            // SQL Server sends informational messages first, error messages last —
+            // overwrite so the most specific error is kept
+            freetdsSetError(msg, for: dbproc, overwrite: true)
             freetdsLogger.error("FreeTDS msg \(msgno) sev \(severity): \(msg)")
         } else {
             freetdsLogger.debug("FreeTDS msg \(msgno): \(msg)")
@@ -200,11 +228,12 @@ private final class FreeTDSConnection: @unchecked Sendable {
         _ = dbsetlname(login, "UTF-8", Int32(DBSETCHARSET))
         _ = dbsetlversion(login, UInt8(DBVERSION_74))
 
-        freetdsLastError = ""
+        freetdsClearError(for: nil)
         let serverName = "\(host):\(port)"
         guard let proc = dbopen(login, serverName) else {
-            let detail = freetdsLastError.isEmpty ? "Check host, port, and credentials" : freetdsLastError
-            throw MSSQLPluginError.connectionFailed("Failed to connect to \(host):\(port) — \(detail)")
+            let detail = freetdsGetError(for: nil)
+            let msg = detail.isEmpty ? "Check host, port, and credentials" : detail
+            throw MSSQLPluginError.connectionFailed("Failed to connect to \(host):\(port) — \(msg)")
         }
 
         if !database.isEmpty {
@@ -240,6 +269,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
         lock.unlock()
 
         if let handle = handle {
+            freetdsUnregister(handle)
             queue.async {
                 _ = dbclose(handle)
             }
@@ -274,13 +304,14 @@ private final class FreeTDSConnection: @unchecked Sendable {
         _isCancelled = false
         lock.unlock()
 
-        freetdsLastError = ""
+        freetdsClearError(for: proc)
         if dbcmd(proc, query) == FAIL {
             throw MSSQLPluginError.queryFailed("Failed to prepare query")
         }
         if dbsqlexec(proc) == FAIL {
-            let detail = freetdsLastError.isEmpty ? "Query execution failed" : freetdsLastError
-            throw MSSQLPluginError.queryFailed(detail)
+            let detail = freetdsGetError(for: proc)
+            let msg = detail.isEmpty ? "Query execution failed" : detail
+            throw MSSQLPluginError.queryFailed(msg)
         }
 
         var allColumns: [String] = []

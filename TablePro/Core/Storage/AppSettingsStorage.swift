@@ -31,6 +31,7 @@ final class AppSettingsStorage {
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
         static let lastConnectionId = "com.TablePro.settings.lastConnectionId"
+        static let lastOpenConnectionIds = "com.TablePro.settings.lastOpenConnectionIds"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
     }
 
@@ -143,6 +144,25 @@ final class AppSettingsStorage {
             defaults.set(connectionId.uuidString, forKey: Keys.lastConnectionId)
         } else {
             defaults.removeObject(forKey: Keys.lastConnectionId)
+        }
+    }
+
+    // MARK: - Last Open Connections (for multi-session restore)
+
+    /// Load all connection IDs that were open when the app last quit
+    func loadLastOpenConnectionIds() -> [UUID] {
+        guard let strings = defaults.stringArray(forKey: Keys.lastOpenConnectionIds) else {
+            return []
+        }
+        return strings.compactMap { UUID(uuidString: $0) }
+    }
+
+    /// Save all currently open connection IDs for restoration on next launch
+    func saveLastOpenConnectionIds(_ connectionIds: [UUID]) {
+        if connectionIds.isEmpty {
+            defaults.removeObject(forKey: Keys.lastOpenConnectionIds)
+        } else {
+            defaults.set(connectionIds.map(\.uuidString), forKey: Keys.lastOpenConnectionIds)
         }
     }
 

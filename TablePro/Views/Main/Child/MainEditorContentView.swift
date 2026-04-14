@@ -109,11 +109,9 @@ struct MainEditorContentView: View {
                 Divider()
                 HistoryPanelView(connectionId: connectionId)
                     .frame(height: 300)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .background(.background)
-        .animation(.easeInOut(duration: 0.2), value: isHistoryVisible)
         .sheet(item: $favoriteDialogQuery) { item in
             FavoriteEditDialog(
                 connectionId: connectionId,
@@ -415,7 +413,6 @@ struct MainEditorContentView: View {
                             onApply: onApplyFilters,
                             onUnset: onClearFilters
                         )
-                        .transition(.move(edge: .top).combined(with: .opacity))
                         Divider()
                     }
 
@@ -507,7 +504,7 @@ struct MainEditorContentView: View {
             connectionId: connection.id,
             databaseType: connection.type,
             tableName: tab.tableName,
-            primaryKeyColumn: changeManager.primaryKeyColumn,
+            primaryKeyColumns: changeManager.primaryKeyColumns,
             tabType: tab.tabType,
             showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
             hiddenColumns: columnVisibilityManager.hiddenColumns,

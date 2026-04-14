@@ -5,6 +5,7 @@ set -euo pipefail
 # Usage: ./scripts/build-duckdb.sh [arm64|x86_64|both]
 
 DUCKDB_VERSION="v1.5.0"
+DUCKDB_SHA256="26f2b5ba7b2e01ec321707a1b82116d31202ac96cbf089f47d1c1b6dbae15379"
 BUILD_DIR="/tmp/duckdb-build"
 LIBS_DIR="$(cd "$(dirname "$0")/.." && pwd)/Libs"
 ARCH="${1:-both}"
@@ -17,7 +18,8 @@ cd "$BUILD_DIR"
 # Download source amalgamation if not present
 if [ ! -f "duckdb.cpp" ]; then
     echo "Downloading DuckDB source amalgamation..."
-    curl -sL "https://github.com/duckdb/duckdb/releases/download/$DUCKDB_VERSION/libduckdb-src.zip" -o libduckdb-src.zip
+    curl -fSL "https://github.com/duckdb/duckdb/releases/download/$DUCKDB_VERSION/libduckdb-src.zip" -o libduckdb-src.zip
+    echo "$DUCKDB_SHA256  libduckdb-src.zip" | shasum -a 256 -c -
     unzip -o libduckdb-src.zip
 fi
 

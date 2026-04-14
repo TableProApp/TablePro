@@ -333,7 +333,7 @@ struct ImportDialog: View {
                 tempPreviewURL = urlToRead
             }
         } catch {
-            filePreview = "Failed to decompress file: \(error.localizedDescription)"
+            filePreview = String(format: String(localized: "Failed to decompress file: %@"), error.localizedDescription)
             hasPreviewError = true
             return
         }
@@ -355,11 +355,11 @@ struct ImportDialog: View {
                 filePreview = preview
                 hasPreviewError = false
             } else {
-                filePreview = "Failed to load preview using encoding: \(selectedEncoding.rawValue). Try selecting a different text encoding."
+                filePreview = String(format: String(localized: "Failed to load preview using encoding: %@. Try selecting a different text encoding."), selectedEncoding.rawValue)
                 hasPreviewError = true
             }
         } catch {
-            filePreview = "Failed to load preview: \(error.localizedDescription)"
+            filePreview = String(format: String(localized: "Failed to load preview: %@"), error.localizedDescription)
             hasPreviewError = true
         }
 
@@ -381,7 +381,8 @@ struct ImportDialog: View {
             }.value
             statementCount = count
         } catch {
-            statementCount = -1
+            Self.logger.warning("Failed to count statements: \(error.localizedDescription, privacy: .public)")
+            statementCount = 0
         }
 
         isCountingStatements = false

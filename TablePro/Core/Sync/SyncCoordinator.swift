@@ -378,7 +378,9 @@ final class SyncCoordinator {
         )
     }
 
-    // TODO: Move storage I/O off @MainActor for large datasets
+    // Performance: storage reads here (loadSync, loadConnections, loadGroups, etc.) run on
+    // @MainActor and can block the UI on large sync batches. Consider moving to Task.detached
+    // for large payloads.
     private func applyRemoteChanges(_ result: PullResult) {
         let settings = AppSettingsStorage.shared.loadSync()
 
@@ -681,16 +683,21 @@ final class SyncCoordinator {
         let storage = AppSettingsStorage.shared
         let encoder = JSONEncoder()
 
-        switch category {
-        case "general": return try? encoder.encode(storage.loadGeneral())
-        case "appearance": return try? encoder.encode(storage.loadAppearance())
-        case "editor": return try? encoder.encode(storage.loadEditor())
-        case "dataGrid": return try? encoder.encode(storage.loadDataGrid())
-        case "history": return try? encoder.encode(storage.loadHistory())
-        case "tabs": return try? encoder.encode(storage.loadTabs())
-        case "keyboard": return try? encoder.encode(storage.loadKeyboard())
-        case "ai": return try? encoder.encode(storage.loadAI())
-        default: return nil
+        do {
+            switch category {
+            case "general": return try encoder.encode(storage.loadGeneral())
+            case "appearance": return try encoder.encode(storage.loadAppearance())
+            case "editor": return try encoder.encode(storage.loadEditor())
+            case "dataGrid": return try encoder.encode(storage.loadDataGrid())
+            case "history": return try encoder.encode(storage.loadHistory())
+            case "tabs": return try encoder.encode(storage.loadTabs())
+            case "keyboard": return try encoder.encode(storage.loadKeyboard())
+            case "ai": return try encoder.encode(storage.loadAI())
+            default: return nil
+            }
+        } catch {
+            Self.logger.error("Failed to encode settings category '\(category)': \(error.localizedDescription)")
+            return nil
         }
     }
 

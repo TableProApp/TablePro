@@ -97,7 +97,7 @@ struct LicenseSettingsView: View {
             if let error = activationLoadError {
                 Text(error)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
             if !activations.isEmpty {
                 ForEach(activations) { activation in
@@ -183,7 +183,7 @@ struct LicenseSettingsView: View {
                     Button("Activate") {
                         Task { await activate() }
                     }
-                    .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(licenseKeyInput.trimmingCharacters(in: .whitespaces).isEmpty || isActivating)
                 }
             }
 
@@ -242,12 +242,11 @@ struct LicenseSettingsView: View {
     }
 
     private func deactivate() async {
-        do {
-            try await licenseManager.deactivate()
-        } catch {
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Deactivation Failed"),
-                message: error.localizedDescription,
+        let serverSuccess = await licenseManager.deactivate()
+        if !serverSuccess {
+            AlertHelper.showInfoSheet(
+                title: String(localized: "License Removed"),
+                message: String(localized: "License removed from this Mac, but the server could not be reached. The activation slot may not be freed until it expires."),
                 window: NSApp.keyWindow
             )
         }

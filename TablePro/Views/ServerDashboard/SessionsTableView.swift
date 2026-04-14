@@ -15,7 +15,7 @@ struct SessionsTableView: View {
                 if let error = viewModel.panelErrors[.activeSessions] {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(nsColor: .systemRed))
                 }
             }
             .padding(.horizontal, 12)
@@ -64,7 +64,7 @@ struct SessionsTableView: View {
                         if session.canKill, viewModel.canKillSessions {
                             Button { viewModel.confirmKillSession(processId: session.id) } label: {
                                 Image(systemName: "xmark.circle")
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(Color(nsColor: .systemRed))
                             }
                             .buttonStyle(.borderless)
                             .help(String(localized: "Terminate Session"))

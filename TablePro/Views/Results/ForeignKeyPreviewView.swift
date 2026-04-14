@@ -51,6 +51,8 @@ struct ForeignKeyPreviewView: View {
             Text("\(fkInfo.column) → \(referencedTableDisplay).\(fkInfo.referencedColumn)")
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
             Spacer()
         }
         .padding(.horizontal, 10)
@@ -73,7 +75,7 @@ struct ForeignKeyPreviewView: View {
                 .frame(height: 60)
         } else if let errorMessage {
             Text(errorMessage)
-                .foregroundStyle(.red)
+                .foregroundStyle(Color(nsColor: .systemRed))
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
                 .padding(10)
         } else if values.isEmpty {

@@ -142,6 +142,8 @@ final class MainContentCoordinator {
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pluginDriverObserver: NSObjectProtocol?
+    @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
+    @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
     /// Set during handleTabChange to suppress redundant onChange(of: resultColumns) reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
@@ -203,6 +205,13 @@ final class MainContentCoordinator {
         activeCoordinators.values.first { $0.windowId == windowId }
     }
 
+    /// Check whether any active coordinator has unsaved edits.
+    static func hasAnyUnsavedChanges() -> Bool {
+        activeCoordinators.values.contains { coordinator in
+            coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
+        }
+    }
+
     /// Collect all tabs from all active coordinators for a given connectionId.
     static func allTabs(for connectionId: UUID) -> [QueryTab] {
         activeCoordinators.values
@@ -212,8 +221,26 @@ final class MainContentCoordinator {
 
     /// Collect non-preview tabs for persistence.
     private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
-        activeCoordinators.values
+        let coordinators = activeCoordinators.values
             .filter { $0.connectionId == connectionId }
+
+        // Sort by native window tab order to preserve left-to-right position
+        let orderedCoordinators: [MainContentCoordinator]
+        if let firstWindow = coordinators.compactMap({ $0.contentWindow }).first,
+           let tabbedWindows = firstWindow.tabbedWindows {
+            let windowOrder = Dictionary(uniqueKeysWithValues:
+                tabbedWindows.enumerated().map { (ObjectIdentifier($0.element), $0.offset) }
+            )
+            orderedCoordinators = coordinators.sorted { a, b in
+                let aIdx = a.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
+                let bIdx = b.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
+                return aIdx < bIdx
+            }
+        } else {
+            orderedCoordinators = Array(coordinators)
+        }
+
+        return orderedCoordinators
             .flatMap { $0.tabManager.tabs }
             .filter { !$0.isPreview }
     }
@@ -306,9 +333,12 @@ final class MainContentCoordinator {
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.isTearingDown else { return }
+                guard let self else { return }
                 // Only the first coordinator for this connection saves,
-                // aggregating tabs from all windows to fix last-write-wins bug
+                // aggregating tabs from all windows to fix last-write-wins bug.
+                // Skip isTearingDown check: during Cmd+Q, onDisappear fires
+                // markTeardownScheduled() before willTerminate, and we still
+                // need to save here.
                 guard self.isFirstCoordinatorForConnection() else { return }
                 let allTabs = Self.aggregatedTabs(for: self.connectionId)
                 let selectedId = Self.aggregatedSelectedTabId(for: self.connectionId)
@@ -326,16 +356,39 @@ final class MainContentCoordinator {
         _didActivate.withLock { $0 = true }
         registerForPersistence()
         setupPluginDriver()
+        startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
         if changeManager.pluginDriver == nil {
             pluginDriverObserver = NotificationCenter.default.addObserver(
                 forName: .databaseDidConnect, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated {
+                Task { @MainActor in
                     self?.setupPluginDriver()
                 }
             }
         }
+    }
+
+    /// Start watching the database file for external changes (SQLite, DuckDB).
+    private func startFileWatcherIfNeeded() {
+        guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
+        let filePath = connection.database
+        guard !filePath.isEmpty else { return }
+
+        let watcher = DatabaseFileWatcher()
+        watcher.watch(filePath: filePath, connectionId: connectionId) { [weak self] in
+            guard let self, self.sidebarLoadingState != .loading else { return }
+            Task { await self.refreshTablesIfStale() }
+        }
+        fileWatcher = watcher
+    }
+
+    /// Refresh schema only if not recently refreshed (avoids redundant work
+    /// when both the file watcher and window focus trigger close together).
+    func refreshTablesIfStale() async {
+        guard Date().timeIntervalSince(lastSchemaRefreshDate) > 2 else { return }
+        lastSchemaRefreshDate = Date()
+        await refreshTables()
     }
 
     func showAIChatPanel() {
@@ -365,6 +418,7 @@ final class MainContentCoordinator {
     }
 
     func refreshTables() async {
+        lastSchemaRefreshDate = Date()
         sidebarLoadingState = .loading
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
             sidebarLoadingState = .error(String(localized: "Not connected"))
@@ -440,6 +494,8 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             pluginDriverObserver = nil
         }
+        fileWatcher?.stopWatching(connectionId: connectionId)
+        fileWatcher = nil
         currentQueryTask?.cancel()
         currentQueryTask = nil
         changeManagerUpdateTask?.cancel()
@@ -957,6 +1013,9 @@ final class MainContentCoordinator {
                     // in-flight query at the C-level DispatchQueue and execute immediately after.
                     if needsMetadataFetch {
                         let connId = connectionId
+                        // Note: Schema fetch operations are not tracked by ConnectionHealthMonitor.queriesInFlight.
+                        // This is acceptable because the health monitor checks session.isConnected before pinging,
+                        // and schema fetches are short-lived.
                         parallelSchemaTask = Task {
                             guard let driver = DatabaseManager.shared.driver(for: connId) else {
                                 throw DatabaseError.notConnected

@@ -93,6 +93,7 @@ final class AIChatViewModel {
     /// nonisolated(unsafe) is required because deinit is not @MainActor-isolated,
     /// so accessing a @MainActor property from deinit requires opting out of isolation.
     @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var schemaFetchTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
     private var lastUsedFeature: AIFeature = .chat
     private let chatStorage = AIChatStorage.shared
@@ -107,6 +108,7 @@ final class AIChatViewModel {
 
     deinit {
         streamingTask?.cancel()
+        schemaFetchTask?.cancel()
     }
 
     // MARK: - Actions
@@ -142,8 +144,10 @@ final class AIChatViewModel {
         isStreaming = false
 
         // Remove empty assistant placeholder left by cancelled stream
-        if let last = messages.last, last.role == .assistant, last.content.isEmpty {
-            messages.removeLast()
+        if let assistantID = streamingAssistantID,
+           let idx = messages.firstIndex(where: { $0.id == assistantID }),
+           messages[idx].content.isEmpty {
+            messages.remove(at: idx)
         }
         streamingAssistantID = nil
         persistCurrentConversation()
@@ -211,12 +215,16 @@ final class AIChatViewModel {
 
     /// Load saved conversations from disk
     func loadConversations() {
-        Task {
-            let loaded = await chatStorage.loadAll()
-            conversations = loaded
-            if let mostRecent = loaded.first {
-                activeConversationID = mostRecent.id
-                messages = mostRecent.messages
+        let storage = chatStorage
+        Task.detached(priority: .utility) { [weak self] in
+            let loaded = await storage.loadAll()
+            await MainActor.run {
+                guard let self else { return }
+                self.conversations = loaded
+                if let mostRecent = loaded.first {
+                    self.activeConversationID = mostRecent.id
+                    self.messages = mostRecent.messages
+                }
             }
         }
     }
@@ -245,6 +253,9 @@ final class AIChatViewModel {
     func clearSessionData() {
         streamingTask?.cancel()
         streamingTask = nil
+        schemaFetchTask?.cancel()
+        schemaFetchTask = nil
+        AIProviderFactory.invalidateCache()
         schemaProvider = nil
         connection = nil
         tables = []
@@ -315,6 +326,19 @@ final class AIChatViewModel {
     }
 
     private func startStreaming(feature: AIFeature) {
+        // Cancel any in-flight stream before starting a new one
+        if streamingTask != nil {
+            streamingTask?.cancel()
+            streamingTask = nil
+            if let id = streamingAssistantID,
+               let idx = messages.firstIndex(where: { $0.id == id }),
+               messages[idx].content.isEmpty {
+                messages.remove(at: idx)
+            }
+            streamingAssistantID = nil
+            isStreaming = false
+        }
+
         lastUsedFeature = feature
         lastMessageFailed = false
 
@@ -354,49 +378,98 @@ final class AIChatViewModel {
 
         isStreaming = true
 
-        streamingTask = Task { [weak self] in
-            guard let self else { return }
+        // Capture value types on main actor before detaching
+        let chatMessages = Array(messages.dropLast())
+        let assistantIndex = messages.count - 1
 
+        streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                // Exclude the empty assistant placeholder from sent messages
-                let chatMessages = Array(self.messages.dropLast())
                 let stream = resolved.provider.streamChat(
                     messages: chatMessages,
                     model: resolved.model,
                     systemPrompt: systemPrompt
                 )
 
+                // Batch tokens off the main actor, flush on interval
+                var pendingContent = ""
+                var pendingUsage: AITokenUsage?
+                let flushInterval: ContinuousClock.Duration = .milliseconds(80)
+                var lastFlushTime: ContinuousClock.Instant = .now
+
                 for try await event in stream {
-                    guard !Task.isCancelled,
-                          let idx = self.messages.firstIndex(where: { $0.id == assistantID })
-                    else { break }
+                    guard !Task.isCancelled else { break }
                     switch event {
                     case .text(let token):
-                        self.messages[idx].content += token
+                        pendingContent += token
                     case .usage(let usage):
-                        self.messages[idx].usage = usage
+                        pendingUsage = usage
+                    }
+
+                    if ContinuousClock.now - lastFlushTime >= flushInterval {
+                        let content = pendingContent
+                        let usage = pendingUsage
+                        pendingContent = ""
+                        pendingUsage = nil
+                        await MainActor.run { [weak self] in
+                            guard let self,
+                                  assistantIndex < self.messages.count,
+                                  self.messages[assistantIndex].id == assistantID
+                            else { return }
+                            if !content.isEmpty {
+                                self.messages[assistantIndex].content += content
+                            }
+                            if let usage {
+                                self.messages[assistantIndex].usage = usage
+                            }
+                        }
+                        lastFlushTime = .now
                     }
                 }
 
-                self.isStreaming = false
-                self.streamingTask = nil
-                self.streamingAssistantID = nil
-                self.persistCurrentConversation()
+                // Final flush — deliver remaining buffered tokens
+                if !Task.isCancelled, !pendingContent.isEmpty || pendingUsage != nil {
+                    let content = pendingContent
+                    let usage = pendingUsage
+                    await MainActor.run { [weak self] in
+                        guard let self,
+                              assistantIndex < self.messages.count,
+                              self.messages[assistantIndex].id == assistantID
+                        else { return }
+                        if !content.isEmpty {
+                            self.messages[assistantIndex].content += content
+                        }
+                        if let usage {
+                            self.messages[assistantIndex].usage = usage
+                        }
+                    }
+                }
+
+                guard !Task.isCancelled else { return }
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.isStreaming = false
+                    self.streamingTask = nil
+                    self.streamingAssistantID = nil
+                    self.persistCurrentConversation()
+                }
             } catch {
-                if !Task.isCancelled {
-                    Self.logger.error("Streaming failed: \(error.localizedDescription)")
-                    self.lastMessageFailed = true
-                    self.errorMessage = error.localizedDescription
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if !Task.isCancelled {
+                        Self.logger.error("Streaming failed: \(error.localizedDescription)")
+                        self.lastMessageFailed = true
+                        self.errorMessage = error.localizedDescription
 
-                    // Remove empty assistant message on error
-                    if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
-                       self.messages[idx].content.isEmpty {
-                        self.messages.remove(at: idx)
+                        // Remove empty assistant message on error
+                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }),
+                           self.messages[idx].content.isEmpty {
+                            self.messages.remove(at: idx)
+                        }
                     }
+                    self.isStreaming = false
+                    self.streamingTask = nil
+                    self.streamingAssistantID = nil
                 }
-                self.isStreaming = false
-                self.streamingTask = nil
-                self.streamingAssistantID = nil
             }
         }
     }
@@ -419,6 +492,8 @@ final class AIChatViewModel {
         guard let connection else { return nil }
 
         let idQuote = PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\""
+        let editorLanguage = PluginManager.shared.editorLanguage(for: connection.type)
+        let queryLanguageName = PluginManager.shared.queryLanguageName(for: connection.type)
         return AISchemaContext.buildSystemPrompt(
             databaseType: connection.type,
             databaseName: connection.database,
@@ -428,58 +503,81 @@ final class AIChatViewModel {
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
-            identifierQuote: idQuote
+            identifierQuote: idQuote,
+            editorLanguage: editorLanguage,
+            queryLanguageName: queryLanguageName
         )
     }
 
     // MARK: - Schema Context
 
-    func fetchSchemaContext() async {
+    func fetchSchemaContext() {
         let settings = AppSettingsManager.shared.ai
         guard settings.includeSchema,
               let connection,
               let driver = DatabaseManager.shared.driver(for: connection.id)
         else { return }
 
+        schemaFetchTask?.cancel()
+
         let tablesToFetch = Array(tables.prefix(settings.maxSchemaTables))
-        var columns: [String: [ColumnInfo]] = [:]
-        var foreignKeys: [String: [ForeignKeyInfo]] = [:]
+        let capturedProvider = schemaProvider
 
-        await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
-            for table in tablesToFetch {
-                group.addTask { [schemaProvider] in
-                    if let schemaProvider {
-                        let cached = await schemaProvider.getColumns(for: table.name)
-                        if !cached.isEmpty {
-                            return (table.name, cached)
-                        }
+        schemaFetchTask = Task.detached(priority: .userInitiated) { [weak self] in
+            var columns: [String: [ColumnInfo]] = [:]
+            var foreignKeys: [String: [ForeignKeyInfo]] = [:]
+
+            let fetchColumns: @Sendable (TableInfo) async -> (String, [ColumnInfo]) = { table in
+                if let provider = capturedProvider {
+                    let cached = await provider.getColumns(for: table.name)
+                    if !cached.isEmpty {
+                        return (table.name, cached)
                     }
-                    do {
-                        let cols = try await driver.fetchColumns(table: table.name)
-                        return (table.name, cols)
-                    } catch {
-                        Self.logger.debug("Schema context: failed to fetch columns for '\(table.name)'")
-                        return (table.name, [])
+                }
+                do {
+                    let cols = try await driver.fetchColumns(table: table.name)
+                    return (table.name, cols)
+                } catch {
+                    return (table.name, [])
+                }
+            }
+
+            let concurrencyLimit = 4
+            await withTaskGroup(of: (String, [ColumnInfo]).self) { group in
+                var pending = tablesToFetch.makeIterator()
+
+                // Seed initial batch
+                for _ in 0..<concurrencyLimit {
+                    guard let table = pending.next() else { break }
+                    group.addTask { await fetchColumns(table) }
+                }
+
+                // Drip-feed remaining tables as each completes
+                for await (tableName, cols) in group {
+                    if !cols.isEmpty {
+                        columns[tableName] = cols
+                    }
+                    if let next = pending.next() {
+                        group.addTask { await fetchColumns(next) }
                     }
                 }
             }
-            for await (tableName, cols) in group {
-                if !cols.isEmpty {
-                    columns[tableName] = cols
+
+            do {
+                let fkResult = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
+                for (table, fks) in fkResult {
+                    foreignKeys[table] = fks
                 }
+            } catch {
+                // Foreign key fetch is best-effort for AI context
+            }
+
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.columnsByTable = columns
+                self.foreignKeysByTable = foreignKeys
             }
         }
-
-        do {
-            let fkResult = try await driver.fetchForeignKeys(forTables: tablesToFetch.map(\.name))
-            for (table, fks) in fkResult {
-                foreignKeys[table] = fks
-            }
-        } catch {
-            Self.logger.warning("Failed to bulk fetch foreign keys: \(error.localizedDescription)")
-        }
-
-        columnsByTable = columns
-        foreignKeysByTable = foreignKeys
     }
 }

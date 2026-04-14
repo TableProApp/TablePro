@@ -15,13 +15,9 @@ import Foundation
 /// Configuration for SQL formatting behavior
 struct SQLFormatterOptions {
     var uppercaseKeywords: Bool = true
-    var indentSize: Int = 2  // spaces per indent level
-    var alignColumns: Bool = true
+    var indentSize: Int = 2
     var preserveComments: Bool = true
-    var formatJoins: Bool = true
-    var alignWhere: Bool = true
 
-    /// Default options with all features enabled
     static let `default` = SQLFormatterOptions()
 }
 

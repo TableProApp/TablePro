@@ -32,7 +32,9 @@ final class DataChangeManager {
     private(set) var changedRowIndices: Set<Int> = []
 
     var tableName: String = ""
-    var primaryKeyColumn: String?
+    var primaryKeyColumns: [String] = []
+    /// First PK column, for contexts that need a single column (paste, filters)
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
     var databaseType: DatabaseType = .mysql
     var pluginDriver: (any PluginDatabaseDriver)?
 
@@ -141,13 +143,13 @@ final class DataChangeManager {
     func configureForTable(
         tableName: String,
         columns: [String],
-        primaryKeyColumn: String?,
+        primaryKeyColumns: [String],
         databaseType: DatabaseType = .mysql,
         triggerReload: Bool = true
     ) {
         self.tableName = tableName
         self.columns = columns
-        self.primaryKeyColumn = primaryKeyColumn
+        self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
 
         changeIndex.removeAll()
@@ -847,7 +849,7 @@ final class DataChangeManager {
         let generator = SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             dialect: PluginManager.shared.sqlDialect(for: databaseType),
             quoteIdentifier: pluginDriver?.quoteIdentifier
@@ -909,6 +911,7 @@ final class DataChangeManager {
         insertedRowIndices.removeAll()
         modifiedCells.removeAll()
         insertedRowData.removeAll()
+        changedRowIndices.removeAll()
         hasChanges = false
         reloadVersion += 1
     }
@@ -922,7 +925,7 @@ final class DataChangeManager {
         state.insertedRowIndices = insertedRowIndices
         state.modifiedCells = modifiedCells
         state.insertedRowData = insertedRowData
-        state.primaryKeyColumn = primaryKeyColumn
+        state.primaryKeyColumns = primaryKeyColumns
         state.columns = columns
         return state
     }
@@ -930,7 +933,7 @@ final class DataChangeManager {
     func restoreState(from state: TabPendingChanges, tableName: String, databaseType: DatabaseType) {
         self.tableName = tableName
         self.columns = state.columns
-        self.primaryKeyColumn = state.primaryKeyColumn
+        self.primaryKeyColumns = state.primaryKeyColumns
         self.databaseType = databaseType
         self.changes = state.changes
         self.deletedRowIndices = state.deletedRowIndices

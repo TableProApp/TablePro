@@ -64,7 +64,7 @@ struct InstalledPluginsView: View {
     private var restartBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Color(nsColor: .systemYellow))
             Text("Restart TablePro to fully unload removed plugins.")
                 .font(.callout)
             Spacer()

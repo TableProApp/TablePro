@@ -92,6 +92,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 KeychainHelper.shared.migratePasswordSyncState(synchronizable: passwordSyncExpected)
             }
         }
+        DatabaseManager.shared.startObservingSystemEvents()
+
+        MemoryPressureAdvisor.startMonitoring()
         PluginManager.shared.loadPlugins()
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
 
@@ -109,9 +112,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let settings = AppSettingsStorage.shared.loadGeneral()
-        if settings.startupBehavior == .reopenLast,
-           let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
-            attemptAutoReconnect(connectionId: lastConnectionId)
+        if settings.startupBehavior == .reopenLast {
+            let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
+            if !connectionIds.isEmpty {
+                closeWelcomeWindowEagerly()
+                attemptAutoReconnectAll(connectionIds: connectionIds)
+            } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
+                // Backward compat: fall back to single lastConnectionId for upgrades
+                closeWelcomeWindowEagerly()
+                attemptAutoReconnect(connectionId: lastConnectionId)
+            } else {
+                // Crash recovery: if the app crashed before applicationWillTerminate
+                // could save the list, scan the TabState directory for connections
+                // that still have saved tab state on disk.
+                Task { @MainActor [weak self] in
+                    let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
+                    if !diskIds.isEmpty {
+                        self?.closeWelcomeWindowEagerly()
+                        self?.attemptAutoReconnectAll(connectionIds: diskIds)
+                    } else {
+                        self?.closeRestoredMainWindows()
+                    }
+                }
+            }
         } else {
             closeRestoredMainWindows()
         }
@@ -136,13 +159,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handleDatabaseDidConnect),
             name: .databaseDidConnect, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handlePluginsRejected(_:)),
+            name: .pluginsRejected, object: nil
+        )
+    }
+
+    @objc private func handlePluginsRejected(_ notification: Notification) {
+        guard let rejected = notification.object as? [(name: String, reason: String)],
+              !rejected.isEmpty else { return }
+        let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
+        Task { @MainActor in
+            let alert = NSAlert()
+            alert.messageText = String(
+                format: String(localized: "%d plugin(s) could not be loaded"),
+                rejected.count
+            )
+            alert.informativeText = String(
+                format: String(localized: "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry."),
+                details
+            )
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "OK"))
+            alert.runModal()
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
         SyncCoordinator.shared.syncIfNeeded()
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
+        guard hasUnsaved else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = String(localized: "You have unsaved changes")
+        alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: String(localized: "Quit Anyway"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        // Save all currently open connection IDs for multi-session restore.
+        // Sort by connection name for deterministic restore order across launches
+        // (Dictionary.keys has no guaranteed order).
+        let connections = ConnectionStorage.shared.loadConnections()
+        let activeIds = Set(DatabaseManager.shared.activeSessions.keys)
+        let openConnectionIds = connections
+            .filter { activeIds.contains($0.id) }
+            .map(\.id)
+        AppSettingsStorage.shared.saveLastOpenConnectionIds(openConnectionIds)
+
         LinkedFolderWatcher.shared.stop()
         UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()

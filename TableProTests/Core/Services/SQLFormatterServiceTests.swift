@@ -2,283 +2,419 @@
 //  SQLFormatterServiceTests.swift
 //  TableProTests
 //
-//  Tests for SQLFormatterService
+//  Tests for SQLFormatterService — exact output assertions for every SQL construct.
 //
 
 import Foundation
-import Testing
 @testable import TablePro
+import Testing
 
 @Suite("SQL Formatter Service")
 @MainActor
 struct SQLFormatterServiceTests {
-
     let formatter = SQLFormatterService()
 
-    // MARK: - Keyword Tests
-
-    @Test("Keyword uppercasing SELECT and FROM")
-    func keywordUppercasing() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-        #expect(result.formattedSQL.contains("FROM"))
+    private func format(_ sql: String, options: SQLFormatterOptions = .default) throws -> String {
+        try formatter.format(sql, dialect: .mysql).formattedSQL
     }
 
-    @Test("Lowercase keywords become uppercase")
-    func lowercaseKeywordsUppercase() throws {
-        let sql = "select id, name from users where active = true"
-        let result = try formatter.format(sql, dialect: .mysql)
+    // MARK: - Simple SELECT
 
-        #expect(result.formattedSQL.contains("SELECT"))
-        #expect(result.formattedSQL.contains("FROM"))
-        #expect(result.formattedSQL.contains("WHERE"))
+    @Test("Simple SELECT *")
+    func simpleSelectStar() throws {
+        let result = try format("select * from users")
+        #expect(result == """
+        SELECT *
+        FROM users
+        """)
     }
 
-    @Test("String content preservation")
-    func stringPreservation() throws {
-        let sql = "select 'hello world' from users"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains("'hello world'"))
-        #expect(!result.formattedSQL.contains("'HELLO WORLD'"))
+    @Test("SELECT with multiple columns — each on its own line")
+    func selectMultipleColumns() throws {
+        let result = try format("select id, name, email from users")
+        #expect(result == """
+        SELECT id,
+               name,
+               email
+        FROM users
+        """)
     }
 
-    @Test("Custom options with uppercaseKeywords=false preserves original casing")
-    func customOptionsLowercaseKeywords() throws {
-        let sql = "SELECT * FROM users"
-        var options = SQLFormatterOptions.default
-        options.uppercaseKeywords = false
-
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
-
-        // When uppercaseKeywords is false, the keyword uppercasing step is skipped,
-        // but addLineBreaks still uses uppercase keywords in replacements,
-        // so already-uppercase keywords remain uppercase
-        #expect(result.formattedSQL.contains("SELECT"))
+    @Test("SELECT with single column")
+    func selectSingleColumn() throws {
+        let result = try format("select id from users")
+        #expect(result == """
+        SELECT id
+        FROM users
+        """)
     }
 
-    // MARK: - Formatting Tests
+    // MARK: - WHERE Clause
 
-    @Test("Line breaks added before major clauses")
-    func lineBreaksAdded() throws {
-        let sql = "select * from users where id = 1 order by name"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        let lines = result.formattedSQL.split(separator: "\n").map { String($0) }
-        #expect(lines.count > 1)
-        #expect(result.formattedSQL.contains("FROM"))
-        #expect(result.formattedSQL.contains("WHERE"))
-        #expect(result.formattedSQL.contains("ORDER BY"))
+    @Test("Simple WHERE")
+    func simpleWhere() throws {
+        let result = try format("select * from users where active = true")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE active = true
+        """)
     }
 
-    @Test("Indentation applied to nested structures")
-    func indentationApplied() throws {
-        let sql = "select * from (select id from users) as subquery"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains(" ") || result.formattedSQL.contains("\t"))
+    @Test("WHERE with AND/OR — each condition on new line")
+    func whereWithAndOr() throws {
+        let result = try format("select * from users where active = true and role = 'admin' or age > 18")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE active = true
+          AND role = 'admin'
+          OR age > 18
+        """)
     }
 
-    @Test("SELECT column alignment")
-    func selectColumnAlignment() throws {
-        let sql = "select id, name, email from users"
-        var options = SQLFormatterOptions.default
-        options.alignColumns = true
+    // MARK: - ORDER BY / GROUP BY / HAVING / LIMIT
 
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-        #expect(result.formattedSQL.contains("id"))
-        #expect(result.formattedSQL.contains("name"))
-        #expect(result.formattedSQL.contains("email"))
+    @Test("ORDER BY on new line")
+    func orderBy() throws {
+        let result = try format("select * from users where id > 1 order by name asc limit 10")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE id > 1
+        ORDER BY name asc
+        LIMIT 10
+        """)
     }
 
-    @Test("WHERE AND alignment")
-    func whereAndAlignment() throws {
-        let sql = "select * from users where active = true and role = 'admin'"
-        var options = SQLFormatterOptions.default
-        options.alignWhere = true
-
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
-
-        #expect(result.formattedSQL.contains("WHERE"))
-        #expect(result.formattedSQL.contains("AND"))
+    @Test("GROUP BY and HAVING")
+    func groupByHaving() throws {
+        let result = try format("select role, count(*) from users group by role having count(*) > 5")
+        #expect(result == """
+        SELECT role,
+               count(*)
+        FROM users
+        GROUP BY role
+        HAVING count(*) > 5
+        """)
     }
 
-    @Test("JOIN formatting on new line")
-    func joinFormatting() throws {
-        let sql = "select * from users left join roles on users.role_id = roles.id"
-        var options = SQLFormatterOptions.default
-        options.formatJoins = true
+    // MARK: - JOINs
 
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
-
-        // addLineBreaks processes "LEFT JOIN" first, then "JOIN" splits it onto separate lines
-        #expect(result.formattedSQL.contains("JOIN"))
-        #expect(result.formattedSQL.contains("ON"))
+    @Test("LEFT JOIN with ON")
+    func leftJoin() throws {
+        let result = try format("select u.id, r.name from users u left join roles r on u.role_id = r.id")
+        #expect(result == """
+        SELECT u.id,
+               r.name
+        FROM users u
+        LEFT JOIN roles r
+          ON u.role_id = r.id
+        """)
     }
 
-    // MARK: - Error Handling Tests
-
-    @Test("Empty input throws emptyInput error")
-    func emptyInputThrows() throws {
-        let sql = ""
-
-        #expect(throws: SQLFormatterError.self) {
-            try formatter.format(sql, dialect: .mysql)
-        }
+    @Test("Multiple JOINs")
+    func multipleJoins() throws {
+        let result = try format("select * from users u inner join roles r on u.role_id = r.id left join teams t on u.team_id = t.id")
+        #expect(result == """
+        SELECT *
+        FROM users u
+        INNER JOIN roles r
+          ON u.role_id = r.id
+        LEFT JOIN teams t
+          ON u.team_id = t.id
+        """)
     }
 
-    @Test("Whitespace only throws emptyInput error")
-    func whitespaceOnlyThrows() throws {
-        let sql = "   \n\t  "
+    // MARK: - Subqueries
 
-        #expect(throws: SQLFormatterError.self) {
-            try formatter.format(sql, dialect: .mysql)
-        }
+    @Test("Subquery in FROM")
+    func subqueryInFrom() throws {
+        let result = try format("select * from (select id, name from users where active = true) as active_users")
+        #expect(result == """
+        SELECT *
+        FROM (
+          SELECT id,
+                 name
+          FROM users
+          WHERE active = true
+        ) as active_users
+        """)
     }
 
-    @Test("Invalid cursor position throws error")
-    func invalidCursorPositionThrows() throws {
-        let sql = "select * from users"
-
-        #expect(throws: SQLFormatterError.self) {
-            try formatter.format(sql, dialect: .mysql, cursorOffset: 1000)
-        }
+    @Test("Subquery in WHERE")
+    func subqueryInWhere() throws {
+        let result = try format("select * from users where id in (select user_id from orders)")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE id in (
+          SELECT user_id
+          FROM orders
+        )
+        """)
     }
 
-    @Test("Size limit over 10MB throws internalError")
-    func sizeLimitThrows() throws {
-        let largeSql = String(repeating: "select * from users; ", count: 600000)
+    // MARK: - CASE WHEN
 
-        #expect(throws: SQLFormatterError.self) {
-            try formatter.format(largeSql, dialect: .mysql)
-        }
+    @Test("CASE WHEN THEN ELSE END")
+    func caseExpression() throws {
+        let result = try format("select id, case when status = 'active' then 'yes' when status = 'inactive' then 'no' else 'unknown' end as label from users")
+        #expect(result == """
+        SELECT id,
+               CASE
+                 WHEN status = 'active' THEN 'yes'
+                 WHEN status = 'inactive' THEN 'no'
+                 ELSE 'unknown'
+               END as label
+        FROM users
+        """)
     }
 
-    // MARK: - Cursor Position Tests
+    // MARK: - CTE (WITH)
 
-    @Test("Cursor offset preserved when provided")
-    func cursorOffsetPreserved() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .mysql, cursorOffset: 7)
-
-        #expect(result.cursorOffset != nil)
+    @Test("WITH / CTE")
+    func cte() throws {
+        let result = try format("with active_users as (select * from users where active = true) select * from active_users")
+        #expect(result == """
+        WITH active_users AS (
+          SELECT *
+          FROM users
+          WHERE active = true
+        )
+        SELECT *
+        FROM active_users
+        """)
     }
 
-    @Test("No cursor returns nil cursorOffset")
-    func noCursorReturnsNil() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .mysql)
+    // MARK: - UNION / INTERSECT / EXCEPT
 
-        #expect(result.cursorOffset == nil)
+    @Test("UNION between SELECT statements")
+    func union() throws {
+        let result = try format("select id from users union all select id from admins")
+        #expect(result == """
+        SELECT id
+        FROM users
+
+        UNION ALL
+
+        SELECT id
+        FROM admins
+        """)
     }
 
-    // MARK: - Comment Tests
+    // MARK: - INSERT
 
-    @Test("Single line comment preserved")
-    func singleLineCommentPreserved() throws {
-        let sql = "-- This is a comment\nselect 1"
-        var options = SQLFormatterOptions.default
-        options.preserveComments = true
+    @Test("INSERT INTO VALUES")
+    func insertValues() throws {
+        let result = try format("insert into users (id, name, email) values (1, 'John', 'john@test.com')")
+        #expect(result == """
+        INSERT INTO users (id, name, email)
+        VALUES (1, 'John', 'john@test.com')
+        """)
+    }
 
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
+    // MARK: - UPDATE
 
-        #expect(result.formattedSQL.contains("--") || result.formattedSQL.contains("comment"))
+    @Test("UPDATE SET WHERE")
+    func updateSetWhere() throws {
+        let result = try format("update users set name = 'John', email = 'john@test.com' where id = 1")
+        #expect(result == """
+        UPDATE users
+        SET name = 'John',
+            email = 'john@test.com'
+        WHERE id = 1
+        """)
+    }
+
+    // MARK: - DELETE
+
+    @Test("DELETE FROM WHERE")
+    func deleteFromWhere() throws {
+        let result = try format("delete from users where active = false")
+        #expect(result == """
+        DELETE
+        FROM users
+        WHERE active = false
+        """)
+    }
+
+    // MARK: - CREATE TABLE
+
+    @Test("CREATE TABLE with columns")
+    func createTable() throws {
+        let result = try format("create table users (id int primary key, name varchar(255) not null, email varchar(255))")
+        #expect(result == """
+        CREATE TABLE users (
+          id int PRIMARY KEY,
+          name varchar(255) NOT NULL,
+          email varchar(255)
+        )
+        """)
+    }
+
+    // MARK: - Multiple Statements
+
+    @Test("Multiple statements separated by semicolons")
+    func multipleStatements() throws {
+        let result = try format("select 1; select 2;")
+        #expect(result == """
+        SELECT 1;
+
+        SELECT 2;
+        """)
+    }
+
+    // MARK: - Comments
+
+    @Test("Line comment preserved")
+    func lineCommentPreserved() throws {
+        let result = try format("-- fetch users\nselect * from users")
+        #expect(result == """
+        -- fetch users
+        SELECT *
+        FROM users
+        """)
     }
 
     @Test("Block comment preserved")
     func blockCommentPreserved() throws {
-        let sql = "/* This is a block comment */ select 1"
+        let result = try format("/* all users */ select * from users")
+        #expect(result == """
+        /* all users */
+        SELECT *
+        FROM users
+        """)
+    }
+
+    // MARK: - String Preservation
+
+    @Test("String literals are not uppercased")
+    func stringPreservation() throws {
+        let result = try format("select 'hello world' from users")
+        #expect(result.contains("'hello world'"))
+        #expect(!result.contains("'HELLO WORLD'"))
+    }
+
+    // MARK: - Keyword Uppercasing
+
+    @Test("Keywords are uppercased by default")
+    func keywordUppercasing() throws {
+        let result = try format("select * from users where id = 1")
+        #expect(result.contains("SELECT"))
+        #expect(result.contains("FROM"))
+        #expect(result.contains("WHERE"))
+    }
+
+    @Test("Keywords not uppercased when option is false")
+    func keywordsNotUppercased() throws {
         var options = SQLFormatterOptions.default
-        options.preserveComments = true
-
-        let result = try formatter.format(sql, dialect: .mysql, options: options)
-
-        #expect(result.formattedSQL.contains("/*") || result.formattedSQL.contains("comment"))
+        options.uppercaseKeywords = false
+        let result = try formatter.format("select * from users", dialect: .mysql, options: options).formattedSQL
+        #expect(result.contains("select"))
+        #expect(result.contains("from"))
     }
 
-    // MARK: - Dialect Tests
-
-    @Test("MySQL dialect works")
-    func mysqlDialect() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-    }
-
-    @Test("PostgreSQL dialect works")
-    func postgresqlDialect() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .postgresql)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-    }
-
-    @Test("SQLite dialect works")
-    func sqliteDialect() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .sqlite)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-    }
-
-    // MARK: - Multiple Statement Tests
-
-    @Test("Multiple statements handled")
-    func multipleStatementsHandled() throws {
-        let sql = "select * from users; select * from roles;"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-        let selectCount = result.formattedSQL.components(separatedBy: "SELECT").count - 1
-        #expect(selectCount >= 2)
-    }
-
-    // MARK: - Idempotency Tests
+    // MARK: - Idempotency
 
     @Test("Formatting twice gives same result")
     func idempotency() throws {
-        let sql = "select * from users where id = 1"
-        let result1 = try formatter.format(sql, dialect: .mysql)
-        let result2 = try formatter.format(result1.formattedSQL, dialect: .mysql)
-
-        let normalized1 = result1.formattedSQL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized2 = result2.formattedSQL.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        #expect(normalized1 == normalized2)
+        let sql = "select id, name from users where active = true and role = 'admin' order by name"
+        let first = try format(sql)
+        let second = try format(first)
+        #expect(first == second)
     }
 
-    // MARK: - Integration Tests
+    // MARK: - Error Handling
 
-    @Test("Simple query end-to-end formatting")
-    func simpleQueryEndToEnd() throws {
-        let sql = "select id, name from users where active = true order by name"
-        let result = try formatter.format(sql, dialect: .mysql)
-
-        #expect(result.formattedSQL.contains("SELECT"))
-        #expect(result.formattedSQL.contains("FROM"))
-        #expect(result.formattedSQL.contains("WHERE"))
-        #expect(result.formattedSQL.contains("ORDER BY"))
-        #expect(!result.formattedSQL.isEmpty)
+    @Test("Empty input throws")
+    func emptyInputThrows() {
+        #expect(throws: SQLFormatterError.self) {
+            try format("")
+        }
     }
 
-    @Test("Default options work correctly")
-    func defaultOptionsWork() throws {
-        let sql = "select * from users"
-        let result = try formatter.format(sql, dialect: .mysql, options: .default)
-
-        #expect(result.formattedSQL.contains("SELECT"))
+    @Test("Whitespace-only input throws")
+    func whitespaceOnlyThrows() {
+        #expect(throws: SQLFormatterError.self) {
+            try format("   \n\t  ")
+        }
     }
 
-    @Test("Format result is trimmed")
-    func formatResultTrimmed() throws {
-        let sql = "   select * from users   "
-        let result = try formatter.format(sql, dialect: .mysql)
+    @Test("Invalid cursor position throws")
+    func invalidCursorThrows() {
+        #expect(throws: SQLFormatterError.self) {
+            try formatter.format("select 1", dialect: .mysql, cursorOffset: 1000)
+        }
+    }
 
-        #expect(result.formattedSQL == result.formattedSQL.trimmingCharacters(in: .whitespacesAndNewlines))
+    @Test("Size limit throws")
+    func sizeLimitThrows() {
+        let large = String(repeating: "select 1; ", count: 600_000)
+        #expect(throws: SQLFormatterError.self) {
+            try format(large)
+        }
+    }
+
+    // MARK: - Cursor Preservation
+
+    @Test("Cursor offset preserved when provided")
+    func cursorPreserved() throws {
+        let result = try formatter.format("select * from users", dialect: .mysql, cursorOffset: 7)
+        #expect(result.cursorOffset != nil)
+    }
+
+    @Test("No cursor returns nil")
+    func noCursorReturnsNil() throws {
+        let result = try formatter.format("select * from users", dialect: .mysql)
+        #expect(result.cursorOffset == nil)
+    }
+
+    // MARK: - Edge Cases
+
+    @Test("Trimmed output")
+    func trimmedOutput() throws {
+        let result = try format("   select * from users   ")
+        #expect(result == result.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    @Test("SELECT with function calls")
+    func selectWithFunctions() throws {
+        let result = try format("select count(*), max(id) from users")
+        #expect(result == """
+        SELECT count(*),
+               max(id)
+        FROM users
+        """)
+    }
+
+    @Test("DISTINCT keyword")
+    func distinct() throws {
+        let result = try format("select distinct name from users")
+        #expect(result == """
+        SELECT DISTINCT name
+        FROM users
+        """)
+    }
+
+    @Test("BETWEEN x AND y stays inline")
+    func betweenAnd() throws {
+        let result = try format("select * from users where id between 1 and 100 and active = true")
+        #expect(result == """
+        SELECT *
+        FROM users
+        WHERE id BETWEEN 1 AND 100
+          AND active = TRUE
+        """)
+    }
+
+    @Test("Window function OVER(PARTITION BY...ORDER BY) stays inline")
+    func windowFunction() throws {
+        let result = try format("select *, row_number() over (partition by department order by salary desc) as rank from employees")
+        #expect(result == """
+        SELECT *,
+               row_number() OVER(PARTITION BY department ORDER BY salary DESC) AS rank
+        FROM employees
+        """)
     }
 }

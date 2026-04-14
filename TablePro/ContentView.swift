@@ -39,6 +39,8 @@ struct ContentView: View {
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
             defaultTitle = String(localized: "Server Dashboard")
+        } else if let tabTitle = payload?.tabTitle {
+            defaultTitle = tabTitle
         } else if let tableName = payload?.tableName {
             defaultTitle = tableName
         } else if let connectionId = payload?.connectionId,
@@ -63,9 +65,14 @@ struct ContentView: View {
 
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
-            _sessionState = State(initialValue: SessionStateFactory.create(
+            let state = SessionStateFactory.create(
                 connection: session.connection, payload: payload
-            ))
+            )
+            _sessionState = State(initialValue: state)
+            if payload?.intent == .newEmptyTab,
+               let tabTitle = state.coordinator.tabManager.selectedTab?.title {
+                _windowTitle = State(initialValue: tabTitle)
+            }
         } else {
             _rightPanelState = State(initialValue: nil)
             _sessionState = State(initialValue: nil)
@@ -88,7 +95,8 @@ struct ContentView: View {
                 Text("Are you sure you want to delete \"\(connection.name)\"?")
             }
             .onReceive(NotificationCenter.default.publisher(for: .newConnection)) { _ in
-                openWindow(id: "connection-form", value: nil as UUID?)
+                // ⌘N opens the Welcome window (connection list) — not the blank form
+                NotificationCenter.default.post(name: .openWelcomeWindow, object: nil)
             }
             // Right sidebar toggle is handled by MainContentView (has the binding)
             // Left sidebar toggle uses native NSSplitViewController.toggleSidebar via responder chain
@@ -168,11 +176,6 @@ struct ContentView: View {
                         coordinator: sessionState.coordinator
                     )
                 }
-                .searchable(
-                    text: sidebarSearchTextBinding(for: currentSession.connection.id),
-                    placement: .sidebar,
-                    prompt: sidebarSearchPrompt(for: currentSession.connection.id)
-                )
                 .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 600)
             } else {
                 Color.clear
@@ -199,6 +202,7 @@ struct ContentView: View {
                         toolbarState: sessionState.toolbarState,
                         coordinator: sessionState.coordinator
                     )
+                    .transaction { $0.animation = nil }
                     .frame(maxWidth: .infinity)
 
                     if RightPanelVisibility.shared.isPresented {
@@ -215,7 +219,6 @@ struct ContentView: View {
                         .transition(.move(edge: .trailing))
                     }
                 }
-                .animation(.easeInOut(duration: 0.2), value: RightPanelVisibility.shared.isPresented)
             } else {
                 VStack(spacing: 16) {
                     ProgressView()
@@ -280,24 +283,6 @@ struct ContentView: View {
             set: { $0.pendingDeletes = $1 },
             defaultValue: []
         )
-    }
-
-    private func sidebarSearchTextBinding(for connectionId: UUID) -> Binding<String> {
-        let state = SharedSidebarState.forConnection(connectionId)
-        return Binding(
-            get: { state.searchText },
-            set: { state.searchText = $0 }
-        )
-    }
-
-    private func sidebarSearchPrompt(for connectionId: UUID) -> String {
-        let state = SharedSidebarState.forConnection(connectionId)
-        switch state.selectedSidebarTab {
-        case .tables:
-            return String(localized: "Filter")
-        case .favorites:
-            return String(localized: "Filter favorites")
-        }
     }
 
     private var sessionTableOperationOptionsBinding: Binding<[String: TableOperationOptions]> {

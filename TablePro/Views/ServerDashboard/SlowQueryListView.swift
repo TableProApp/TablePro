@@ -19,7 +19,7 @@ struct SlowQueryListView: View {
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle")
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     }
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .foregroundStyle(.secondary)

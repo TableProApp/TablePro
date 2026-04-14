@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// Factory for creating AI provider instances
 enum AIProviderFactory {
@@ -16,46 +17,50 @@ enum AIProviderFactory {
         let config: AIProviderConfig
     }
 
-    private static var cachedProviders: [UUID: (apiKey: String?, provider: AIProvider)] = [:]
+    private static let cacheLock = OSAllocatedUnfairLock(
+        initialState: [UUID: (apiKey: String?, provider: AIProvider)]()
+    )
 
     /// Create or return a cached AI provider for the given configuration
     static func createProvider(
         for config: AIProviderConfig,
         apiKey: String?
     ) -> AIProvider {
-        if let cached = cachedProviders[config.id], cached.apiKey == apiKey {
-            return cached.provider
-        }
+        cacheLock.withLock { cache in
+            if let cached = cache[config.id], cached.apiKey == apiKey {
+                return cached.provider
+            }
 
-        let provider: AIProvider
-        switch config.type {
-        case .claude:
-            provider = AnthropicProvider(
-                endpoint: config.endpoint,
-                apiKey: apiKey ?? ""
-            )
-        case .gemini:
-            provider = GeminiProvider(
-                endpoint: config.endpoint,
-                apiKey: apiKey ?? ""
-            )
-        case .openAI, .openRouter, .ollama, .custom:
-            provider = OpenAICompatibleProvider(
-                endpoint: config.endpoint,
-                apiKey: apiKey,
-                providerType: config.type
-            )
+            let provider: AIProvider
+            switch config.type {
+            case .claude:
+                provider = AnthropicProvider(
+                    endpoint: config.endpoint,
+                    apiKey: apiKey ?? ""
+                )
+            case .gemini:
+                provider = GeminiProvider(
+                    endpoint: config.endpoint,
+                    apiKey: apiKey ?? ""
+                )
+            case .openAI, .openRouter, .ollama, .custom:
+                provider = OpenAICompatibleProvider(
+                    endpoint: config.endpoint,
+                    apiKey: apiKey,
+                    providerType: config.type
+                )
+            }
+            cache[config.id] = (apiKey, provider)
+            return provider
         }
-        cachedProviders[config.id] = (apiKey, provider)
-        return provider
     }
 
     static func invalidateCache() {
-        cachedProviders.removeAll()
+        cacheLock.withLock { $0.removeAll() }
     }
 
     static func invalidateCache(for configID: UUID) {
-        cachedProviders.removeValue(forKey: configID)
+        cacheLock.withLock { $0.removeValue(forKey: configID) }
     }
 
     static func resolveProvider(

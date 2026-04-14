@@ -50,12 +50,11 @@ struct ERDiagramView: View {
                     diagramContent
                 }
                 ERDiagramToolbar(viewModel: viewModel, onExport: exportDiagram)
-                .background(
-                    Button("") { copyDiagramToClipboard() }
-                        .keyboardShortcut("c", modifiers: .command)
-                        .opacity(0)
-                        .allowsHitTesting(false)
-                )
+                .onKeyPress(characters: .init(charactersIn: "c"), phases: .down) { keyPress in
+                    guard keyPress.modifiers.contains(.command) else { return .ignored }
+                    copyDiagramToClipboard()
+                    return .handled
+                }
             }
         }
         .task { await viewModel.loadDiagram() }

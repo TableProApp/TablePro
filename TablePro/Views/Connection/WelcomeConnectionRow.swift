@@ -49,6 +49,7 @@ struct WelcomeConnectionRow: View {
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .help(connectionSubtitle)
             }
 
             Spacer()

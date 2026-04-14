@@ -164,7 +164,7 @@ extension MainContentCoordinator {
 
         let pastedRows = rowOperationsManager.pasteRowsFromClipboard(
             columns: tab.resultColumns,
-            primaryKeyColumn: changeManager.primaryKeyColumn,
+            primaryKeyColumns: changeManager.primaryKeyColumns,
             resultRows: &tab.resultRows
         )
 

@@ -84,9 +84,10 @@ extension DatabaseManager {
 
         let result: Bool
         do {
-            let driver = try DatabaseDriverFactory.createDriver(
+            let driver = try await DatabaseDriverFactory.createDriver(
                 for: testConnection,
-                passwordOverride: passwordOverride
+                passwordOverride: passwordOverride,
+                awaitPlugins: true
             )
             result = try await driver.testConnection()
         } catch {

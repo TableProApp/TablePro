@@ -42,7 +42,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
-    var primaryKeyColumn: String?
+    var primaryKeyColumns: [String] = []
+    /// First PK column, for copy-as-SQL and single-column contexts
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
 
     /// Check if undo is available
@@ -108,8 +110,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var hasUserResizedColumns: Bool = false
     /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
-    /// Debounced work item for persisting column layout after resize/reorder
-    var layoutPersistWorkItem: DispatchWorkItem?
+    /// Debounced task for persisting column layout after resize/reorder
+    var layoutPersistTask: Task<Void, Never>?
 
     private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
@@ -206,7 +208,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 guard let self, let tableView = self.tableView else { return }
                 Self.updateVisibleCellFonts(tableView: tableView)
             }
@@ -220,7 +222,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             object: connectionId,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.releaseData()
             }
         }

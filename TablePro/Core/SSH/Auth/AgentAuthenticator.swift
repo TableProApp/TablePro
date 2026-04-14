@@ -16,14 +16,51 @@ internal struct AgentAuthenticator: SSHAuthenticator {
 
     let socketPath: String?
 
+    /// Resolve SSH_AUTH_SOCK via launchctl for GUI apps that don't inherit shell env.
+    private static func resolveSocketViaLaunchctl() -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["getenv", "SSH_AUTH_SOCK"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let path, !path.isEmpty {
+                logger.debug("Resolved SSH_AUTH_SOCK via launchctl: \(path, privacy: .private)")
+                return path
+            }
+        } catch {
+            logger.warning("Failed to resolve SSH_AUTH_SOCK via launchctl: \(error.localizedDescription)")
+        }
+        return nil
+    }
+
     func authenticate(session: OpaquePointer, username: String) throws {
         // Save original SSH_AUTH_SOCK so we can restore it
         let originalSocketPath = ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"]
-        let needsSocketOverride = socketPath != nil
 
-        if let overridePath = socketPath.map(SSHPathUtilities.expandTilde), needsSocketOverride {
+        // Resolve the effective socket path:
+        // - Custom path: use it directly
+        // - System default (nil): use process env, or fall back to launchctl
+        //   (GUI apps launched from Finder may not inherit SSH_AUTH_SOCK)
+        let effectivePath: String?
+        if let customPath = socketPath {
+            effectivePath = SSHPathUtilities.expandTilde(customPath)
+        } else if originalSocketPath != nil {
+            effectivePath = nil // already set in process env
+        } else {
+            effectivePath = Self.resolveSocketViaLaunchctl()
+        }
+
+        let needsSocketOverride = effectivePath != nil
+
+        if let overridePath = effectivePath, needsSocketOverride {
             Self.agentSocketLock.lock()
-            Self.logger.debug("Using custom SSH agent socket: \(overridePath, privacy: .private)")
+            Self.logger.debug("Setting SSH_AUTH_SOCK: \(overridePath, privacy: .private)")
             setenv("SSH_AUTH_SOCK", overridePath, 1)
         }
 

@@ -4,6 +4,70 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="April 14, 2026" description="v0.31.5">
+  ### Improvements
+
+  - **Keyboard Shortcuts**: Follow macOS HIG — Quick Switcher remapped to ⌘⇧O, Format Query to ⌘⇧L, AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) now wired to menu bar
+
+  ### Bug Fixes
+
+  - **AI Chat**: Fix app hanging during AI streaming, schema fetch, and conversation loading
+  - **SSH Tunnel**: Agent auth falls back to key file from `~/.ssh/config` when agent has no loaded identities
+  - **SSH Tunnel**: Fix connections failing to reconnect after idle or sleep
+  - **Data Grid**: Fix composite primary key tables editing/deleting wrong rows
+  - **Structure View**: Prevent saves from bypassing safe mode on read-only connections
+</Update>
+
+<Update label="April 14, 2026" description="v0.31.4">
+  ### New Features
+
+  - **iOS Database Icons**: Brand icons for MySQL, PostgreSQL, MongoDB, Redis, etc. instead of generic SF Symbols
+
+  ### Bug Fixes
+
+  - Fixed native tab bar "+" button always creating "Query 1" (#727)
+  - Fixed sidebar gap shifting when switching tabs (#728)
+  - Fixed SSH Agent auth failing on apps launched from Finder (#729)
+  - Fixed iOS SSH private key import not working during test connection (#730)
+  - Fixed iOS SQLite file picker not updating after file selection (#732)
+  - Fixed toggle inspector shortcut mismatch (#726)
+</Update>
+
+<Update label="April 13, 2026" description="v0.31.3">
+  ### New Features
+
+  - **Restore Sessions**: All open connections and tabs are restored after quitting the app (#703)
+  - **SQLite Auto-Refresh**: Schema changes from external tools (migrations, CLI) are detected automatically (#704)
+  - **Query Menu**: New dedicated menu for Execute, Explain, Format, and Preview SQL actions
+
+  ### Improvements
+
+  - **SQL Formatter**: Complete rewrite with token-based architecture — proper handling of JOINs, subqueries, CASE expressions, CTEs, window functions, and 15+ SQL constructs (#705)
+  - **Keyboard Shortcuts**: Updated to follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar. Format Query and Pagination now customizable.
+  - **Menu Bar**: Restructured per macOS HIG — `⌘N` opens connection list (#722), Help search restored, duplicates removed
+  - **UI Colors**: Standardized to macOS semantic colors across all error/success/warning indicators
+
+  ### Bug Fixes
+
+  - Fixed auto-selection of first item failing with fast input in Database Switcher (#714)
+  - Fixed Ollama model selection and error messages in AI settings (#712)
+  - Fixed filter logic: `= NULL` auto-converts to `IS NULL`, BETWEEN works on all drivers, IN/NOT IN handles NULL values (#706)
+  - Fixed UI layout breaks when toggling menus, panels, and inspectors (#702)
+  - Fixed `⌘W` accidentally closing connection window instead of tab
+  - Fixed tabs not saved before database switch, rollback failures now logged, filter validation improved (#707)
+  - Fixed Ollama AI chat streaming — responses were silently discarded
+</Update>
+
+<Update label="April 13, 2026" description="v0.31.2">
+  ### Bug Fixes
+
+  - Fixed query tabs always named "Query 1" instead of incrementing (#695)
+  - Fixed sidebar empty in new or restored window tabs (#694)
+  - Fixed tab titles, order, and persistence lost on quit/restore
+  - Fixed PostgreSQL version display for v10+ (#698)
+  - Fixed license activation metadata and deactivation error handling
+</Update>
+
 <Update label="April 12, 2026" description="v0.31.1">
   ### Bug Fixes
 

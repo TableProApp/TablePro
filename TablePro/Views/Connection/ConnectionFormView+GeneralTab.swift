@@ -63,7 +63,7 @@ extension ConnectionFormView {
                         } else if let error = pluginInstallError {
                             HStack(spacing: 6) {
                                 Text(error)
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(Color(nsColor: .systemRed))
                                     .font(.caption)
                                     .lineLimit(2)
                                 Button("Retry") {

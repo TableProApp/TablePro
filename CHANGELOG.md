@@ -7,9 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Raw SQL injection via external URL scheme deeplinks — now requires user confirmation
+- MySQL prepared statements silently truncating columns larger than 64KB
+- MSSQL error messages misattributed when multiple connections open simultaneously
+- BigQuery filter injection via unescaped column names and unvalidated operators
+- App quitting without warning when tabs have unsaved edits
+- Connection list corruption risk from non-atomic UserDefaults writes
+- Stale user-installed plugins silently rejected with no UI feedback
+- SSL mode picker showing misleading "Required" instead of "Required (skip verify)"
+- Plugin load blocking main thread on first connection after launch
+
 ### Changed
 
 - Sidebar table click: single click replaces current table tab in-place, Cmd+Click opens new tab (replaces preview tab system)
+- OpenSSL updated to 3.4.3 (CVE-2025-9230, CVE-2025-9231)
+- SHA-256 checksum verification added to FreeTDS, Cassandra, and DuckDB build scripts
+- Memory pressure monitoring now reactive via DispatchSource
+
+## [0.31.5] - 2026-04-14
+
+### Fixed
+
+- Fix AI chat hanging the app during streaming, schema fetch, and conversation loading (#735)
+- SSH Agent auth: fall back to key file from `~/.ssh/config` or default paths when agent has no loaded identities (#729)
+- Wire AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) shortcuts to menu bar commands
+- Keyboard shortcuts follow macOS HIG — remap Quick Switcher to ⌘⇧O, Format Query to ⌘⇧L, fix stale tooltip hints
+- SSH-tunneled connections failing to reconnect after idle/sleep — health monitor now rebuilds the tunnel, OS-level TCP keepalive detects dead NAT mappings, and wake-from-sleep triggers immediate validation (#736)
+- Composite primary key tables: editing or deleting a row affects all rows sharing the first PK value instead of just the target row
+- Structure view saves bypass safe mode on read-only connections
+
+## [0.31.4] - 2026-04-14
+
+### Added
+
+- iOS: database brand icons instead of SF Symbols (#733)
+
+### Fixed
+
+- Native tab bar "+" button always creates "Query 1" instead of incrementing (#727)
+- Sidebar gap inconsistent when switching tabs (#728)
+- SSH Agent auth failing when SSH_AUTH_SOCK not in process env (#729)
+- iOS: SSH private key import file not working during test connection (#730)
+- iOS: SQLite file picker not updating after file selection (#732)
+- Default shortcut mismatch with toast in toggle inspector (#726)
+
+## [0.31.3] - 2026-04-13
+
+### Added
+
+- Restore all open connections and tabs after quitting the app (#703)
+
+### Fixed
+
+- Database Switcher: auto-select first item on fast typing (#714)
+- AI settings: fix Ollama model selection and error messages (#712)
+- SQL formatter: rewrite with token-based architecture (#705)
+- Filters: `= NULL` auto-converts to `IS NULL`, BETWEEN and IN/NOT IN NULL handling (#706)
+- SQLite: auto-detect schema changes from external tools (#704)
+- UI layout stability when toggling menus, panels, and inspectors (#702)
+- Misc bug fixes: save tabs before DB switch, log rollback failures, standardize colors, fix localization, button safety, filter validation (#707)
+- Fix Ollama AI chat streaming — responses were silently discarded due to wrong stream format parsing
+
+### Changed
+
+- Keyboard shortcuts follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar
+- Format Query and Pagination shortcuts now customizable in Settings
+- Menu bar restructured per macOS HIG: ⌘N opens connection list (#722), new Query menu, Help search restored, duplicate items removed
+
+## [0.31.2] - 2026-04-13
+
+### Fixed
+
+- Query tabs always named "Query 1" instead of incrementing (#695)
+- Sidebar empty in new or restored window tabs (#694)
+- Tab titles, order, and persistence lost on quit/restore
+- PostgreSQL version display for v10+ (#698)
+- License activation metadata and deactivation error handling
 
 ## [0.31.1] - 2026-04-12
 
@@ -1266,7 +1341,11 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.31.5...HEAD
+[0.31.5]: https://github.com/TableProApp/TablePro/compare/v0.31.4...v0.31.5
+[0.31.4]: https://github.com/TableProApp/TablePro/compare/v0.31.3...v0.31.4
+[0.31.3]: https://github.com/TableProApp/TablePro/compare/v0.31.2...v0.31.3
+[0.31.2]: https://github.com/TableProApp/TablePro/compare/v0.31.1...v0.31.2
 [0.31.1]: https://github.com/TableProApp/TablePro/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/TableProApp/TablePro/compare/v0.30.1...v0.31.0
 [0.30.1]: https://github.com/TableProApp/TablePro/compare/v0.30.0...v0.30.1

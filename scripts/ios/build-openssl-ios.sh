@@ -14,8 +14,7 @@ set -eo pipefail
 #   - Xcode Command Line Tools
 #   - curl
 
-OPENSSL_VERSION="3.4.1"
-OPENSSL_SHA256="002a2d6b30b58bf4bea46c43bdd96365aaf8daa6c428782aa4feee06da197df3"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../openssl-version.sh"
 IOS_DEPLOY_TARGET="17.0"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

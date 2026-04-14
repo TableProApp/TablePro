@@ -45,7 +45,7 @@ struct LicenseActivationSheet: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Color(nsColor: .systemRed))
                 }
             }
             .padding(.horizontal, 32)

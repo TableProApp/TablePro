@@ -22,7 +22,7 @@ struct SQLStatementGenerator {
 
     let tableName: String
     let columns: [String]
-    let primaryKeyColumn: String?
+    let primaryKeyColumns: [String]
     let databaseType: DatabaseType
     let parameterStyle: ParameterStyle
     private let quoteIdentifierFn: (String) -> String
@@ -30,7 +30,7 @@ struct SQLStatementGenerator {
     init(
         tableName: String,
         columns: [String],
-        primaryKeyColumn: String?,
+        primaryKeyColumns: [String],
         databaseType: DatabaseType,
         parameterStyle: ParameterStyle? = nil,
         dialect: SQLDialectDescriptor? = nil,
@@ -38,7 +38,7 @@ struct SQLStatementGenerator {
     ) {
         self.tableName = tableName
         self.columns = columns
-        self.primaryKeyColumn = primaryKeyColumn
+        self.primaryKeyColumns = primaryKeyColumns
         self.databaseType = databaseType
         self.parameterStyle = parameterStyle ?? Self.defaultParameterStyle(for: databaseType)
         self.quoteIdentifierFn = quoteIdentifier ?? quoteIdentifierFromDialect(dialect)
@@ -250,27 +250,35 @@ struct SQLStatementGenerator {
             }
         }.joined(separator: ", ")
 
-        if let pkColumn = primaryKeyColumn,
-            let pkColumnIndex = columns.firstIndex(of: pkColumn)
-        {
-            var pkValue: Any?
-            if let originalRow = change.originalRow, pkColumnIndex < originalRow.count {
-                pkValue = originalRow[pkColumnIndex]
-            } else if let pkChange = change.cellChanges.first(where: { $0.columnName == pkColumn })
-            {
-                pkValue = pkChange.oldValue
-            }
+        if !primaryKeyColumns.isEmpty {
+            var conditions: [String] = []
 
-            guard pkValue != nil else {
-                Self.logger.warning(
-                    "Skipping UPDATE for table '\(self.tableName)' - cannot determine primary key value for row"
+            for pkColumn in primaryKeyColumns {
+                guard let pkColumnIndex = columns.firstIndex(of: pkColumn) else { return nil }
+
+                var pkValue: Any?
+                if let originalRow = change.originalRow, pkColumnIndex < originalRow.count {
+                    pkValue = originalRow[pkColumnIndex]
+                } else if let pkChange = change.cellChanges.first(where: { $0.columnName == pkColumn }) {
+                    pkValue = pkChange.oldValue
+                }
+
+                guard pkValue != nil else {
+                    Self.logger.warning(
+                        "Skipping UPDATE for table '\(self.tableName)' - cannot determine value for PK column '\(pkColumn)'"
+                    )
+                    return nil
+                }
+
+                parameters.append(pkValue)
+                conditions.append(
+                    "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
                 )
-                return nil
             }
 
-            parameters.append(pkValue)
-            let whereClause =
-                "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
+            guard !conditions.isEmpty else { return nil }
+
+            let whereClause = conditions.joined(separator: " AND ")
             let sql =
                 "UPDATE \(quoteIdentifierFn(tableName)) SET \(setClauses) WHERE \(whereClause)"
             return ParameterizedStatement(sql: sql, parameters: parameters)
@@ -311,27 +319,35 @@ struct SQLStatementGenerator {
     private func generateBatchDeleteSQL(for changes: [RowChange]) -> ParameterizedStatement? {
         guard !changes.isEmpty else { return nil }
 
-        // If we have a primary key, use it for efficient deletion
-        if let pkColumn = primaryKeyColumn,
-            let pkIndex = columns.firstIndex(of: pkColumn)
-        {
-            // Build OR conditions for all rows using PK
-            var parameters: [Any?] = []
-            let conditions = changes.compactMap { change -> String? in
-                guard let originalRow = change.originalRow,
-                    pkIndex < originalRow.count
-                else {
-                    return nil
-                }
+        // If we have primary key(s), use them for efficient deletion
+        if !primaryKeyColumns.isEmpty {
+            let pkIndices: [(column: String, index: Int)] = primaryKeyColumns.compactMap { col in
+                guard let idx = columns.firstIndex(of: col) else { return nil }
+                return (col, idx)
+            }
+            guard !pkIndices.isEmpty else { return nil }
 
-                parameters.append(originalRow[pkIndex])
-                return
-                    "\(quoteIdentifierFn(pkColumn)) = \(placeholder(at: parameters.count - 1))"
+            var parameters: [Any?] = []
+            let rowConditions = changes.compactMap { change -> String? in
+                guard let originalRow = change.originalRow else { return nil }
+
+                var pkConditions: [String] = []
+                for pk in pkIndices {
+                    guard pk.index < originalRow.count else { return nil }
+                    parameters.append(originalRow[pk.index])
+                    pkConditions.append(
+                        "\(quoteIdentifierFn(pk.column)) = \(placeholder(at: parameters.count - 1))"
+                    )
+                }
+                // Single PK: "id = $1", composite: "(order_id = $1 AND product_id = $2)"
+                return pkIndices.count > 1
+                    ? "(\(pkConditions.joined(separator: " AND ")))"
+                    : pkConditions.joined()
             }
 
-            guard !conditions.isEmpty else { return nil }
+            guard !rowConditions.isEmpty else { return nil }
 
-            let whereClause = conditions.joined(separator: " OR ")
+            let whereClause = rowConditions.joined(separator: " OR ")
             let sql = "DELETE FROM \(quoteIdentifierFn(tableName)) WHERE \(whereClause)"
 
             return ParameterizedStatement(sql: sql, parameters: parameters)

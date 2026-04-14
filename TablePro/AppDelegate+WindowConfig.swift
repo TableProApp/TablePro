@@ -142,6 +142,15 @@ extension AppDelegate {
 
     // MARK: - Welcome Window
 
+    /// Hide the Welcome window immediately when we know we're going to
+    /// auto-reconnect. Prevents a visible flash of the Welcome screen
+    /// before the main editor window appears.
+    func closeWelcomeWindowEagerly() {
+        for window in NSApp.windows where isWelcomeWindow(window) {
+            window.orderOut(nil)
+        }
+    }
+
     func openWelcomeWindow() {
         for window in NSApp.windows where isWelcomeWindow(window) {
             window.makeKeyAndOrderFront(nil)
@@ -323,6 +332,59 @@ extension AppDelegate {
     }
 
     // MARK: - Auto-Reconnect
+
+    func attemptAutoReconnectAll(connectionIds: [UUID]) {
+        let connections = ConnectionStorage.shared.loadConnections()
+        let validConnections = connectionIds.compactMap { id in
+            connections.first { $0.id == id }
+        }
+
+        guard !validConnections.isEmpty else {
+            AppSettingsStorage.shared.saveLastOpenConnectionIds([])
+            AppSettingsStorage.shared.saveLastConnectionId(nil)
+            closeRestoredMainWindows()
+            openWelcomeWindow()
+            return
+        }
+
+        isAutoReconnecting = true
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isAutoReconnecting = false }
+
+            for connection in validConnections {
+                let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
+                WindowOpener.shared.openNativeTab(payload)
+
+                do {
+                    try await DatabaseManager.shared.connectToSession(connection)
+                } catch is CancellationError {
+                    for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
+                        window.close()
+                    }
+                    continue
+                } catch {
+                    windowLogger.error(
+                        "Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)"
+                    )
+                    for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
+                        window.close()
+                    }
+                    continue
+                }
+            }
+
+            for window in NSApp.windows where self.isWelcomeWindow(window) {
+                window.close()
+            }
+
+            // If all connections failed, show the welcome window
+            if !NSApp.windows.contains(where: { self.isMainWindow($0) && $0.isVisible }) {
+                self.openWelcomeWindow()
+            }
+        }
+    }
 
     func attemptAutoReconnect(connectionId: UUID) {
         let connections = ConnectionStorage.shared.loadConnections()

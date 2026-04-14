@@ -19,7 +19,7 @@ struct DataChangeManagerClickHouseTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .clickhouse
         )
 
@@ -48,7 +48,7 @@ struct DataChangeManagerClickHouseTests {
         manager.configureForTable(
             tableName: "events",
             columns: ["id", "status"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .clickhouse
         )
 
@@ -73,7 +73,7 @@ struct DataChangeManagerClickHouseTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .mysql
         )
 
@@ -99,7 +99,7 @@ struct DataChangeManagerClickHouseTests {
         manager.configureForTable(
             tableName: "logs",
             columns: ["timestamp", "message"],
-            primaryKeyColumn: nil,
+            primaryKeyColumns: [],
             databaseType: .clickhouse
         )
 

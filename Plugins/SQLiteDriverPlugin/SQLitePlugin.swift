@@ -520,7 +520,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             }
 
             let isNullable = row[3] == "0"
-            let isPrimaryKey = row[5] == "1"
+            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            let isPrimaryKey = row[5] != nil && row[5] != "0"
             let defaultValue = row[4]
 
             return PluginColumnInfo(
@@ -554,7 +555,8 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             let isNullable = row[4] == "0"
             let defaultValue = row[5]
-            let isPrimaryKey = row[6] == "1"
+            // PRAGMA table_info pk column: 0 = not PK, 1+ = position in composite PK
+            let isPrimaryKey = row[6] != nil && row[6] != "0"
 
             let column = PluginColumnInfo(
                 name: columnName,

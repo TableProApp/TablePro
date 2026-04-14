@@ -88,6 +88,7 @@ enum SessionStateFactory {
                 case .query:
                     tabMgr.addTab(
                         initialQuery: payload.initialQuery,
+                        title: payload.tabTitle,
                         databaseName: payload.databaseName ?? connection.database,
                         sourceFileURL: payload.sourceFileURL
                     )
@@ -105,7 +106,7 @@ enum SessionStateFactory {
                 }
             case .newEmptyTab:
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
-                let title = QueryTabManager.nextQueryTitle(excluding: allTabs)
+                let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
                 tabMgr.addTab(title: title, databaseName: payload.databaseName ?? connection.database)
             case .restoreOrDefault:
                 break

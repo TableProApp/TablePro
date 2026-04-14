@@ -14,13 +14,13 @@ struct SQLStatementGeneratorPKRegressionTests {
     private func makeGenerator(
         tableName: String = "users",
         columns: [String] = ["id", "name", "email"],
-        primaryKeyColumn: String? = "id",
+        primaryKeyColumns: [String] = ["id"],
         databaseType: DatabaseType = .postgresql
     ) -> SQLStatementGenerator {
         SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             dialect: nil
         )

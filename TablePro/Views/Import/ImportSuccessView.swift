@@ -16,7 +16,7 @@ struct ImportSuccessView: View {
         VStack(spacing: 20) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.green)
+                .foregroundStyle(Color(nsColor: .systemGreen))
 
             VStack(spacing: 6) {
                 Text("Import Successful")

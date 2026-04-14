@@ -57,7 +57,7 @@ struct SyncSettingsView: View {
                 LabeledContent(String(localized: "Account:")) {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
+                            .foregroundStyle(Color(nsColor: .systemGreen))
                             .font(.caption)
                         Text(String(localized: "iCloud Connected"))
                     }
@@ -96,7 +96,7 @@ struct SyncSettingsView: View {
             if case .error(let error) = syncCoordinator.syncStatus {
                 Text(error.localizedDescription)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color(nsColor: .systemRed))
             }
         }
     }

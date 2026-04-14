@@ -76,18 +76,20 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                if PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType) {
-                    ToolbarItem(placement: .navigation) {
-                        Button {
-                            actions?.openDatabaseSwitcher()
-                        } label: {
-                            Label("Database", systemImage: "cylinder")
-                        }
-                        .help(String(localized: "Open Database (⌘K)"))
-                        .disabled(
-                            state.connectionState != .connected
-                                || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
+                ToolbarItem(placement: .navigation) {
+                    let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
+                    Button {
+                        actions?.openDatabaseSwitcher()
+                    } label: {
+                        Label("Database", systemImage: "cylinder")
                     }
+                    .help(String(localized: "Open Database (⌘K)"))
+                    .disabled(
+                        !supportsSwitch
+                            || state.connectionState != .connected
+                            || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
+                    .opacity(supportsSwitch ? 1 : 0)
+                    .allowsHitTesting(supportsSwitch)
                 }
 
                 ToolbarItemGroup(placement: .navigation) {
@@ -123,7 +125,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Quick Switcher", systemImage: "magnifyingglass")
                     }
-                    .help(String(localized: "Quick Switcher (⌘P)"))
+                    .help(String(localized: "Quick Switcher (⇧⌘O)"))
                     .disabled(state.connectionState != .connected)
 
                     Button {
@@ -140,19 +142,21 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    .help(String(localized: "Toggle Filters (⌘F)"))
+                    .help(String(localized: "Toggle Filters (⇧⌘F)"))
                     .disabled(state.connectionState != .connected || !state.isTableTab)
                 }
 
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        actions?.previewSQL()
-                    } label: {
-                        let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-                        Label("Preview \(langName)", systemImage: "eye")
+                    VStack {
+                        Button {
+                            actions?.previewSQL()
+                        } label: {
+                            let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
+                            Label("Preview \(langName)", systemImage: "eye")
+                        }
+                        .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
+                        .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
                     }
-                    .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
-                    .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)
                     .popover(isPresented: $state.showSQLReviewPopover) {
                         SQLReviewPopover(statements: state.previewStatements, databaseType: state.databaseType)
                     }
@@ -179,7 +183,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Inspector", systemImage: "sidebar.trailing")
                     }
-                    .help(String(localized: "Toggle Inspector (⌘⌥B)"))
+                    .help(String(localized: "Toggle Inspector (⌘⌥I)"))
                 }
 
                 // MARK: - Secondary Action (Overflow)

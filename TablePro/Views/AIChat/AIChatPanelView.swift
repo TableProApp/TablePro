@@ -5,7 +5,6 @@
 //  AI chat panel view - right-side panel for conversing with AI about database queries.
 //
 
-import OSLog
 import SwiftUI
 
 /// AI chat panel displayed alongside the main editor content
@@ -19,6 +18,7 @@ struct AIChatPanelView: View {
     private let settingsManager = AppSettingsManager.shared
     @State private var isUserScrolledUp = false
     @State private var scrollProxy: ScrollViewProxy?
+    @State private var lastAutoScrollTime: Date = .distantPast
 
     private var hasConfiguredProvider: Bool {
         settingsManager.ai.providers.contains(where: { $0.isEnabled })
@@ -49,7 +49,7 @@ struct AIChatPanelView: View {
         }
         .task(id: tables) {
             viewModel.tables = tables
-            await viewModel.fetchSchemaContext()
+            viewModel.fetchSchemaContext()
         }
         .alert(
             String(localized: "Allow AI Access"),
@@ -207,17 +207,24 @@ struct AIChatPanelView: View {
                 scrollProxy = proxy
                 scrollToBottom(proxy: proxy)
             }
-            .onChange(of: viewModel.messages.last?.content) {
-                if !isUserScrolledUp {
-                    scrollToBottom(proxy: proxy)
-                }
-            }
             .onChange(of: viewModel.messages.count) {
                 isUserScrolledUp = false
                 scrollToBottom(proxy: proxy)
             }
             .onChange(of: viewModel.activeConversationID) {
                 scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: viewModel.messages.last?.content) {
+                guard !isUserScrolledUp else { return }
+                let now = Date()
+                guard now.timeIntervalSince(lastAutoScrollTime) >= 0.1 else { return }
+                lastAutoScrollTime = now
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: viewModel.isStreaming) { _, newValue in
+                if !newValue, !isUserScrolledUp {
+                    scrollToBottom(proxy: proxy)
+                }
             }
         }
 
@@ -313,10 +320,6 @@ struct AIChatPanelView: View {
             .padding(8)
         }
     }
-
-    // MARK: - Schema Context
-
-    private static let logger = Logger(subsystem: "com.TablePro", category: "AIChatPanelView")
 
     // MARK: - Helpers
 

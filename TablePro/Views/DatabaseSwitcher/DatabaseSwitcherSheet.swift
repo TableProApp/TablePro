@@ -116,11 +116,7 @@ struct DatabaseSwitcherSheet: View {
         .defaultFocus($focus, .search)
         .task { await viewModel.fetchDatabases() }
         .sheet(isPresented: $showCreateDialog) {
-            CreateDatabaseSheet(databaseType: databaseType) { name, charset, collation in
-                try await viewModel.createDatabase(
-                    name: name, charset: charset, collation: collation)
-                await viewModel.refreshDatabases()
-            }
+            CreateDatabaseSheet(databaseType: databaseType, viewModel: viewModel)
         }
         .onExitCommand {
             // SwiftUI handles sheet priority automatically - no nested sheets take precedence
@@ -131,21 +127,21 @@ struct DatabaseSwitcherSheet: View {
             return .handled
         }
         .onKeyPress(.upArrow) {
-            moveSelection(up: true)
+            viewModel.moveUp()
             return .handled
         }
         .onKeyPress(.downArrow) {
-            moveSelection(up: false)
+            viewModel.moveDown()
             return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            moveSelection(up: false)
+            viewModel.moveDown()
             return .handled
         }
         .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
-            moveSelection(up: true)
+            viewModel.moveUp()
             return .handled
         }
     }
@@ -375,28 +371,6 @@ struct DatabaseSwitcherSheet: View {
     }
 
     // MARK: - Actions
-
-    private func moveSelection(up: Bool) {
-        let allDbs = viewModel.filteredDatabases
-        guard !allDbs.isEmpty else { return }
-
-        // Defer state update to avoid "Publishing changes from within view updates" warning
-        Task { @MainActor in
-            if let selected = viewModel.selectedDatabase,
-               let currentIndex = allDbs.firstIndex(where: { $0.name == selected })
-            {
-                if up {
-                    let newIndex = max(0, currentIndex - 1)
-                    viewModel.selectedDatabase = allDbs[newIndex].name
-                } else {
-                    let newIndex = min(allDbs.count - 1, currentIndex + 1)
-                    viewModel.selectedDatabase = allDbs[newIndex].name
-                }
-            } else {
-                viewModel.selectedDatabase = up ? allDbs.last?.name : allDbs.first?.name
-            }
-        }
-    }
 
     private func openSelectedDatabase() {
         guard let database = viewModel.selectedDatabase else { return }

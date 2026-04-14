@@ -25,7 +25,9 @@ final class DatabaseSwitcherViewModel {
     // MARK: - Published State
 
     var databases: [DatabaseMetadata] = []
-    var searchText = ""
+    var searchText = "" {
+        didSet { selectedDatabase = filteredDatabases.first?.name }
+    }
     var selectedDatabase: String?
     var isLoading = false
     var errorMessage: String?
@@ -102,6 +104,7 @@ final class DatabaseSwitcherViewModel {
                 do {
                     let metadataList = try await driver.fetchAllDatabaseMetadata()
                     databases = metadataList.sorted { $0.name < $1.name }
+                    preselectDatabase()
                 } catch {
                     Self.logger.error("Failed to fetch database metadata: \(error)")
                 }
@@ -135,6 +138,31 @@ final class DatabaseSwitcherViewModel {
         }
 
         try await driver.createDatabase(name: name, charset: charset, collation: collation)
+    }
+
+    // MARK: - Keyboard Navigation
+
+    func moveUp() {
+        let items = filteredDatabases
+        guard !items.isEmpty else { return }
+        guard let current = selectedDatabase,
+              let index = items.firstIndex(where: { $0.name == current }),
+              index > 0
+        else { return }
+        selectedDatabase = items[index - 1].name
+    }
+
+    func moveDown() {
+        let items = filteredDatabases
+        guard !items.isEmpty else { return }
+        if let current = selectedDatabase,
+           let index = items.firstIndex(where: { $0.name == current }),
+           index < items.count - 1
+        {
+            selectedDatabase = items[index + 1].name
+        } else if selectedDatabase == nil {
+            selectedDatabase = items.first?.name
+        }
     }
 
     // MARK: - Private Methods

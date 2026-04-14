@@ -167,7 +167,7 @@ struct BrowsePluginsView: View {
                     .controlSize(.mini)
             case .completed:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(Color(nsColor: .systemGreen))
                     .font(.caption)
             case .failed:
                 Button("Retry") { installPlugin(plugin) }

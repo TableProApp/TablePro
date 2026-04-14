@@ -21,7 +21,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name", "email"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .postgresql
         )
 
@@ -37,7 +37,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -52,7 +52,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "products",
             columns: ["id", "title"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         #expect(!manager.hasChanges)
@@ -77,7 +77,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -97,7 +97,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -123,7 +123,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -144,7 +144,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -175,7 +175,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -205,7 +205,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -235,7 +235,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -257,7 +257,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice"])
@@ -271,7 +271,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -297,7 +297,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordRowDeletion(rowIndex: 2, originalRow: ["3", "Charlie"])
@@ -314,7 +314,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         let rows = [
@@ -338,7 +338,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -369,7 +369,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -393,7 +393,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -418,7 +418,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -443,7 +443,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -463,7 +463,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -487,7 +487,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -509,7 +509,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(
@@ -550,7 +550,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         let initialVersion = manager.reloadVersion
@@ -572,7 +572,7 @@ struct DataChangeManagerTests {
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
 
         manager.recordCellChange(

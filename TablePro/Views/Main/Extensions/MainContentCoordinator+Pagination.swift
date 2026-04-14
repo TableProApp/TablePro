@@ -36,7 +36,7 @@ extension MainContentCoordinator {
     func goToFirstPage() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
-              tabManager.tabs[tabIndex].pagination.currentPage != 1 else { return }
+              tabManager.tabs[tabIndex].pagination.hasPreviousPage else { return }
 
         paginateAfterConfirmation(tabIndex: tabIndex) { pagination in
             pagination.goToFirstPage()

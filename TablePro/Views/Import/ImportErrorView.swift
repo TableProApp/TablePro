@@ -16,7 +16,7 @@ struct ImportErrorView: View {
         VStack(spacing: 20) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 48))
-                .foregroundStyle(.red)
+                .foregroundStyle(Color(nsColor: .systemRed))
 
             VStack(spacing: 6) {
                 Text("Import Failed")
@@ -43,7 +43,7 @@ struct ImportErrorView: View {
                                 .padding(.top, 8)
                             Text(underlyingError.localizedDescription)
                                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Color(nsColor: .systemRed))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

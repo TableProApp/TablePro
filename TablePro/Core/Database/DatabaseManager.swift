@@ -53,6 +53,11 @@ final class DatabaseManager {
     /// Tracks when the first query started for each session (used for staleness detection).
     @ObservationIgnored internal var queryStartTimes: [UUID: Date] = [:]
 
+    /// Connection IDs currently undergoing SSH tunnel recovery.
+    /// Prevents duplicate concurrent recovery when both the keepalive death handler
+    /// and the wake-from-sleep handler fire for the same connection.
+    @ObservationIgnored internal var recoveringConnectionIds = Set<UUID>()
+
     /// Current session (computed from currentSessionId)
     var currentSession: ConnectionSession? {
         guard let sessionId = currentSessionId else { return nil }

@@ -75,11 +75,9 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             tablesContent
                 .opacity(sidebarState.selectedSidebarTab == .tables ? 1 : 0)
-                .frame(maxHeight: sidebarState.selectedSidebarTab == .tables ? .infinity : 0)
-                .clipped()
                 .allowsHitTesting(sidebarState.selectedSidebarTab == .tables)
 
             FavoritesTabView(
@@ -88,23 +86,35 @@ struct SidebarView: View {
                 coordinator: coordinator
             )
             .opacity(sidebarState.selectedSidebarTab == .favorites ? 1 : 0)
-            .frame(maxHeight: sidebarState.selectedSidebarTab == .favorites ? .infinity : 0)
-            .clipped()
             .allowsHitTesting(sidebarState.selectedSidebarTab == .favorites)
         }
-        .animation(.easeInOut(duration: 0.18), value: sidebarState.selectedSidebarTab)
         .safeAreaInset(edge: .top, spacing: 0) {
-            Picker("", selection: Binding(
-                get: { sidebarState.selectedSidebarTab },
-                set: { sidebarState.selectedSidebarTab = $0 }
-            )) {
-                Text("Tables").tag(SidebarTab.tables)
-                Text("Favorites").tag(SidebarTab.favorites)
+            VStack(spacing: 0) {
+                NativeSearchField(
+                    text: Binding(
+                        get: { sidebarState.searchText },
+                        set: { sidebarState.searchText = $0 }
+                    ),
+                    placeholder: sidebarState.selectedSidebarTab == .tables
+                        ? String(localized: "Filter")
+                        : String(localized: "Filter favorites")
+                )
+                .padding(.horizontal, 8)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
+
+                Picker("", selection: Binding(
+                    get: { sidebarState.selectedSidebarTab },
+                    set: { sidebarState.selectedSidebarTab = $0 }
+                )) {
+                    Text("Tables").tag(SidebarTab.tables)
+                    Text("Favorites").tag(SidebarTab.favorites)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
         }
         .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in
@@ -113,6 +123,20 @@ struct SidebarView: View {
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
             if coordinator?.sidebarLoadingState == .idle && !tables.isEmpty {
+                coordinator?.sidebarLoadingState = .loaded
+            }
+            // Update toolbar version if driver connected before this window's observer was set up
+            if let driver = DatabaseManager.shared.driver(for: connectionId),
+               coordinator?.toolbarState.databaseVersion == nil {
+                coordinator?.toolbarState.databaseVersion = driver.serverVersion
+            }
+        }
+        .onChange(of: tables) { _, newTables in
+            // Heal sidebar state when tables arrive from another window's refreshTables().
+            // Safe unlike the old onChange that was removed in PR #690: this only transitions
+            // .idle -> .loaded (no fetching, no cache reads). The old version called
+            // loadTables() which fetched from stale schema provider cache.
+            if !newTables.isEmpty && coordinator?.sidebarLoadingState == .idle {
                 coordinator?.sidebarLoadingState = .loaded
             }
         }

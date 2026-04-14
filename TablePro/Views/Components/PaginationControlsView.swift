@@ -65,7 +65,7 @@ struct PaginationControlsView: View {
             .buttonStyle(.borderless)
             .disabled(!pagination.hasPreviousPage || pagination.isLoading)
             .help(String(localized: "Previous Page (⌘[)"))
-            .keyboardShortcut("[", modifiers: .command)
+            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .previousPage))
 
             // Page indicator: "1 of 25"
             Text("\(pagination.currentPage) of \(pagination.totalPages)")
@@ -87,7 +87,7 @@ struct PaginationControlsView: View {
             .buttonStyle(.borderless)
             .disabled(!pagination.hasNextPage || pagination.isLoading)
             .help(String(localized: "Next Page (⌘])"))
-            .keyboardShortcut("]", modifiers: .command)
+            .optionalKeyboardShortcut(AppSettingsManager.shared.keyboard.keyboardShortcut(for: .nextPage))
         }
     }
 
