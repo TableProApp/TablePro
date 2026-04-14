@@ -75,9 +75,10 @@ final class RowOperationsManager {
 
         var newValues = resultRows[sourceRowIndex]
 
-        if let pkColumn = changeManager.primaryKeyColumn,
-           let pkIndex = columns.firstIndex(of: pkColumn) {
-            newValues[pkIndex] = "__DEFAULT__"
+        for pkColumn in changeManager.primaryKeyColumns {
+            if let pkIndex = columns.firstIndex(of: pkColumn) {
+                newValues[pkIndex] = "__DEFAULT__"
+            }
         }
 
         let newRowIndex = resultRows.count
@@ -311,7 +312,7 @@ final class RowOperationsManager {
     /// Paste rows from clipboard (TSV format) and insert into table
     /// - Parameters:
     ///   - columns: Column names for the table
-    ///   - primaryKeyColumn: Primary key column name (will be set to __DEFAULT__)
+    ///   - primaryKeyColumns: Primary key column names (will be set to __DEFAULT__)
     ///   - resultRows: Current rows (will be mutated)
     ///   - clipboard: Clipboard provider (injectable for testing)
     ///   - parser: Row data parser (injectable for testing)
@@ -319,7 +320,7 @@ final class RowOperationsManager {
     @MainActor
     func pasteRowsFromClipboard(
         columns: [String],
-        primaryKeyColumn: String?,
+        primaryKeyColumns: [String],
         resultRows: inout [[String?]],
         clipboard: ClipboardProvider? = nil,
         parser: RowDataParser? = nil
@@ -333,7 +334,7 @@ final class RowOperationsManager {
         // Create schema
         let schema = TableSchema(
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn
+            primaryKeyColumns: primaryKeyColumns
         )
 
         // Parse clipboard text (auto-detect CSV vs TSV)

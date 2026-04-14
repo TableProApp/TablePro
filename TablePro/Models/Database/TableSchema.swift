@@ -12,19 +12,25 @@ struct TableSchema {
     /// Column names in order
     let columns: [String]
 
-    /// Primary key column name (if exists)
-    let primaryKeyColumn: String?
+    /// Primary key column names (empty if no PK). Supports composite keys.
+    let primaryKeyColumns: [String]
+
+    /// First primary key column name, for UI contexts that need a single column
+    /// (e.g., default filter column, ORDER BY).
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
 
     /// Number of columns
     var columnCount: Int {
         columns.count
     }
 
-    /// Get index of primary key column
-    var primaryKeyIndex: Int? {
-        guard let pkColumn = primaryKeyColumn else { return nil }
-        return columns.firstIndex(of: pkColumn)
+    /// Get indices of all primary key columns
+    var primaryKeyIndices: [Int] {
+        primaryKeyColumns.compactMap { columns.firstIndex(of: $0) }
     }
+
+    /// Get index of first primary key column
+    var primaryKeyIndex: Int? { primaryKeyIndices.first }
 
     /// Check if a column name exists
     func hasColumn(_ name: String) -> Bool {

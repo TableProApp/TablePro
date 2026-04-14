@@ -24,7 +24,7 @@ struct RowProviderSyncTests {
         let rows = TestFixtures.makeRows(count: rowCount, columns: columns)
         let provider = InMemoryRowProvider(rows: rows, columns: columns)
         let manager = DataChangeManager()
-        manager.configureForTable(tableName: "test", columns: columns, primaryKeyColumn: "id")
+        manager.configureForTable(tableName: "test", columns: columns, primaryKeyColumns: ["id"])
         return (manager, provider)
     }
 

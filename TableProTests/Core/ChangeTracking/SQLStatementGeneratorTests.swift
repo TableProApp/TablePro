@@ -17,13 +17,13 @@ struct SQLStatementGeneratorTests {
     private func makeGenerator(
         tableName: String = "users",
         columns: [String] = ["id", "name", "email"],
-        primaryKeyColumn: String? = "id",
+        primaryKeyColumns: [String] = ["id"],
         databaseType: DatabaseType = .mysql
     ) -> SQLStatementGenerator {
         return SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             dialect: nil
         )
@@ -574,7 +574,7 @@ struct SQLStatementGeneratorTests {
 
     @Test("Individual delete without PK matches all columns")
     func testIndividualDeleteNoPK() {
-        let generator = makeGenerator(primaryKeyColumn: nil)
+        let generator = makeGenerator(primaryKeyColumns: [])
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -602,7 +602,7 @@ struct SQLStatementGeneratorTests {
 
     @Test("Individual delete with NULL column uses IS NULL")
     func testIndividualDeleteWithNull() {
-        let generator = makeGenerator(primaryKeyColumn: nil)
+        let generator = makeGenerator(primaryKeyColumns: [])
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -627,7 +627,7 @@ struct SQLStatementGeneratorTests {
 
     @Test("MySQL/MariaDB individual delete adds LIMIT 1")
     func testDeleteMySQLLimitOne() {
-        let generator = makeGenerator(primaryKeyColumn: nil, databaseType: .mysql)
+        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .mysql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -650,7 +650,7 @@ struct SQLStatementGeneratorTests {
 
     @Test("PostgreSQL delete no LIMIT 1")
     func testDeletePostgreSQLNoLimit() {
-        let generator = makeGenerator(primaryKeyColumn: nil, databaseType: .postgresql)
+        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .postgresql)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -1130,7 +1130,7 @@ struct SQLStatementGeneratorTests {
 
     @Test("Redshift delete no LIMIT 1")
     func testDeleteRedshiftNoLimit() {
-        let generator = makeGenerator(primaryKeyColumn: nil, databaseType: .redshift)
+        let generator = makeGenerator(primaryKeyColumns: [], databaseType: .redshift)
         let changes: [RowChange] = [
             RowChange(
                 rowIndex: 0,
@@ -1217,7 +1217,7 @@ struct SQLStatementGeneratorTests {
         let generator = makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "table", "order"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
         let changes: [RowChange] = [
             RowChange(
@@ -1249,7 +1249,7 @@ struct SQLStatementGeneratorTests {
         let generator = makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "order"],
-            primaryKeyColumn: "id"
+            primaryKeyColumns: ["id"]
         )
         let insertedRowData: [Int: [String?]] = [
             0: ["1", "mydb", "5"]
@@ -1278,7 +1278,7 @@ struct SQLStatementGeneratorTests {
         let generator = makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "select"],
-            primaryKeyColumn: nil
+            primaryKeyColumns: []
         )
         let changes: [RowChange] = [
             RowChange(
@@ -1307,7 +1307,7 @@ struct SQLStatementGeneratorTests {
         let generator = makeGenerator(
             tableName: "connections",
             columns: ["id", "database", "order"],
-            primaryKeyColumn: "id",
+            primaryKeyColumns: ["id"],
             databaseType: .postgresql
         )
         let changes: [RowChange] = [

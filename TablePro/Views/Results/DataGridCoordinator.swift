@@ -42,7 +42,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
-    var primaryKeyColumn: String?
+    var primaryKeyColumns: [String] = []
+    /// First PK column, for copy-as-SQL and single-column contexts
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
 
     /// Check if undo is available

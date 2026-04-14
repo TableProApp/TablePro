@@ -496,7 +496,7 @@ struct MainEditorContentView: View {
             connectionId: connection.id,
             databaseType: connection.type,
             tableName: tab.tableName,
-            primaryKeyColumn: changeManager.primaryKeyColumn,
+            primaryKeyColumns: changeManager.primaryKeyColumns,
             tabType: tab.tabType,
             showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
             hiddenColumns: columnVisibilityManager.hiddenColumns,

@@ -18,14 +18,14 @@ struct SQLStatementGeneratorParameterStyleTests {
     private func makeGenerator(
         tableName: String = "users",
         columns: [String] = ["id", "name", "email"],
-        primaryKeyColumn: String? = "id",
+        primaryKeyColumns: [String] = ["id"],
         databaseType: DatabaseType = .mysql,
         parameterStyle: ParameterStyle? = nil
     ) -> SQLStatementGenerator {
         SQLStatementGenerator(
             tableName: tableName,
             columns: columns,
-            primaryKeyColumn: primaryKeyColumn,
+            primaryKeyColumns: primaryKeyColumns,
             databaseType: databaseType,
             parameterStyle: parameterStyle,
             dialect: nil

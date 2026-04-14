@@ -62,7 +62,7 @@ struct DataGridView: NSViewRepresentable {
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
-    var primaryKeyColumn: String?
+    var primaryKeyColumns: [String] = []
     var tabType: TabType?
     var showRowNumbers: Bool = true
     var hiddenColumns: Set<String> = []
@@ -327,7 +327,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.connectionId = connectionId
         coordinator.databaseType = databaseType
         coordinator.tableName = tableName
-        coordinator.primaryKeyColumn = primaryKeyColumn
+        coordinator.primaryKeyColumns = primaryKeyColumns
         coordinator.tabType = tabType
 
         coordinator.rebuildVisualStateCache()

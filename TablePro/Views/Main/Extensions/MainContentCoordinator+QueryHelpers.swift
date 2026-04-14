@@ -19,7 +19,7 @@ extension MainContentCoordinator {
         let columnDefaults: [String: String?]
         let columnForeignKeys: [String: ForeignKeyInfo]
         let columnNullable: [String: Bool]
-        let primaryKeyColumn: String?
+        let primaryKeyColumns: [String]
         let approximateRowCount: Int?
         let columnEnumValues: [String: [String]]
     }
@@ -52,7 +52,7 @@ extension MainContentCoordinator {
             columnDefaults: defaults,
             columnForeignKeys: fks,
             columnNullable: nullable,
-            primaryKeyColumn: schema.columnInfo.first(where: { $0.isPrimaryKey })?.name,
+            primaryKeyColumns: schema.columnInfo.filter { $0.isPrimaryKey }.map(\.name),
             approximateRowCount: schema.approximateRowCount,
             columnEnumValues: enumValues
         )
@@ -66,7 +66,7 @@ extension MainContentCoordinator {
         let tab = tabManager.tabs[idx]
         guard tab.tableName == tableName,
               !tab.columnDefaults.isEmpty,
-              tab.primaryKeyColumn != nil else {
+              !tab.primaryKeyColumns.isEmpty else {
             return false
         }
         // Ensure every ENUM/SET column has its allowed values loaded
@@ -194,25 +194,25 @@ extension MainContentCoordinator {
             cachedTableColumnNames[cacheKey] = columns
         }
 
-        let resolvedPK: String?
-        if let pk = metadata?.primaryKeyColumn {
-            resolvedPK = pk
+        let resolvedPKs: [String]
+        if let pks = metadata?.primaryKeyColumns, !pks.isEmpty {
+            resolvedPKs = pks
         } else if let defaultPK = PluginManager.shared.defaultPrimaryKeyColumn(for: conn.type) {
-            resolvedPK = defaultPK
+            resolvedPKs = [defaultPK]
         } else {
-            // Preserve existing PK when metadata is cached and not re-fetched
-            resolvedPK = tabManager.tabs[idx].primaryKeyColumn
+            // Preserve existing PKs when metadata is cached and not re-fetched
+            resolvedPKs = tabManager.tabs[idx].primaryKeyColumns
         }
 
-        if let pk = resolvedPK {
-            tabManager.tabs[idx].primaryKeyColumn = pk
+        if !resolvedPKs.isEmpty {
+            tabManager.tabs[idx].primaryKeyColumns = resolvedPKs
         }
 
         if tabManager.selectedTabId == tabId {
             changeManager.configureForTable(
                 tableName: tableName ?? "",
                 columns: columns,
-                primaryKeyColumn: resolvedPK,
+                primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type
             )
         }
