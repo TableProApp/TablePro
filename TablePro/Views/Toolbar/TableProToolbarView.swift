@@ -125,7 +125,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Quick Switcher", systemImage: "magnifyingglass")
                     }
-                    .help(String(localized: "Quick Switcher (⌘P)"))
+                    .help(String(localized: "Quick Switcher (⇧⌘O)"))
                     .disabled(state.connectionState != .connected)
 
                     Button {
@@ -142,7 +142,7 @@ struct TableProToolbar: ViewModifier {
                     } label: {
                         Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    .help(String(localized: "Toggle Filters (⌘F)"))
+                    .help(String(localized: "Toggle Filters (⇧⌘F)"))
                     .disabled(state.connectionState != .connected || !state.isTableTab)
                 }
 

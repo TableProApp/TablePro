@@ -114,7 +114,7 @@ struct MainStatusBarView: View {
                     }
                     .toggleStyle(.button)
                     .controlSize(.small)
-                    .help(String(localized: "Toggle Filters (⌘F)"))
+                    .help(String(localized: "Toggle Filters (⇧⌘F)"))
                 }
 
                 // Pagination controls for table tabs
