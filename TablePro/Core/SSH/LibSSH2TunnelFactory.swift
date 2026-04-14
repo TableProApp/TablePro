@@ -457,27 +457,25 @@ internal enum LibSSH2TunnelFactory {
         config: SSHConfiguration,
         credentials: SSHTunnelCredentials
     ) throws -> any SSHAuthenticator {
-        // Guard against nil password for password-based auth methods.
-        // A nil password means the Keychain lookup failed — proceeding with an
-        // empty string would always be rejected by the server.
-        if config.authMethod == .password, credentials.sshPassword == nil {
-            logger.error("SSH password is nil (Keychain lookup may have failed) for \(config.host)")
-            throw SSHTunnelError.tunnelCreationFailed(
-                "SSH password not found. The credential may have been removed from the Keychain."
-            )
-        }
-
         switch config.authMethod {
         case .password where config.totpMode != .none:
-            // Server requires password + keyboard-interactive for TOTP
+            // Guard: nil password means the Keychain lookup failed
+            guard let sshPassword = credentials.sshPassword else {
+                logger.error("SSH password is nil (Keychain lookup may have failed) for \(config.host)")
+                throw SSHTunnelError.authenticationFailed
+            }
             let totpProvider = buildTOTPProvider(config: config, credentials: credentials)
             return CompositeAuthenticator(authenticators: [
-                PasswordAuthenticator(password: credentials.sshPassword ?? ""),
+                PasswordAuthenticator(password: sshPassword),
                 KeyboardInteractiveAuthenticator(password: nil, totpProvider: totpProvider),
             ])
 
         case .password:
-            return PasswordAuthenticator(password: credentials.sshPassword ?? "")
+            guard let sshPassword = credentials.sshPassword else {
+                logger.error("SSH password is nil (Keychain lookup may have failed) for \(config.host)")
+                throw SSHTunnelError.authenticationFailed
+            }
+            return PasswordAuthenticator(password: sshPassword)
 
         case .privateKey:
             let primary = PublicKeyAuthenticator(

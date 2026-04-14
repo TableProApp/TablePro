@@ -130,9 +130,7 @@ internal struct KeyboardInteractiveAuthenticator: SSHAuthenticator {
             libssh2_session_last_error(session, &msgPtr, &msgLen, 0)
             let detail = msgPtr.map { String(cString: $0) } ?? "Unknown error"
             Self.logger.error("Keyboard-interactive authentication failed: \(detail)")
-            throw SSHTunnelError.tunnelCreationFailed(
-                "Keyboard-interactive authentication failed: \(detail)"
-            )
+            throw SSHTunnelError.authenticationFailed
         }
 
         Self.logger.info("Keyboard-interactive authentication succeeded")
