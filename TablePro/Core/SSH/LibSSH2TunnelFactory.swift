@@ -543,43 +543,66 @@ internal enum LibSSH2TunnelFactory {
 
     /// Build a key file authenticator with native macOS passphrase resolution.
     ///
-    /// Resolves passphrase via: provided → macOS SSH Keychain → user prompt.
-    /// After successful prompt, saves to Keychain if user opted in.
-    /// Wraps with AddKeyToAgent behavior if SSH config enables it.
+    /// Passphrase resolution is DEFERRED to auth time (not build time) so that
+    /// when used as an agent fallback, the user is only prompted if the agent
+    /// actually fails — not preemptively during construction.
     private static func buildKeyFileAuthenticator(
         keyPath: String,
         providedPassphrase: String?,
         configEntry: SSHConfigEntry?,
         canPrompt: Bool
     ) -> any SSHAuthenticator {
-        // Resolve passphrase using the native macOS chain
-        let resolved = SSHPassphraseResolver.resolve(
-            forKeyAt: keyPath,
-            provided: providedPassphrase,
-            canPrompt: canPrompt
+        let authenticator = KeyFileAuthenticator(
+            keyPath: keyPath,
+            providedPassphrase: providedPassphrase,
+            canPrompt: canPrompt,
+            addKeysToAgent: configEntry?.addKeysToAgent == true
         )
+        return authenticator
+    }
 
-        let authenticator = PublicKeyAuthenticator(
-            privateKeyPath: keyPath,
-            passphrase: resolved?.passphrase
-        )
+    /// Authenticator that resolves the passphrase at AUTH time (not build time),
+    /// then delegates to PublicKeyAuthenticator. Saves to Keychain and adds to
+    /// agent only after authentication succeeds.
+    private struct KeyFileAuthenticator: SSHAuthenticator {
+        let keyPath: String
+        let providedPassphrase: String?
+        let canPrompt: Bool
+        let addKeysToAgent: Bool
 
-        // Post-auth: save passphrase to macOS Keychain if user opted in
-        if let resolved, resolved.source == .userPrompt, resolved.saveToKeychain {
-            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
-            SSHKeychainLookup.savePassphrase(resolved.passphrase, forKeyAt: expandedPath)
-        }
+        func authenticate(session: OpaquePointer, username: String) throws {
+            // Resolve passphrase using the native macOS chain
+            let resolved = SSHPassphraseResolver.resolve(
+                forKeyAt: keyPath,
+                provided: providedPassphrase,
+                canPrompt: canPrompt
+            )
 
-        // Wrap with AddKeysToAgent behavior if SSH config enables it
-        if configEntry?.addKeysToAgent == true {
-            return AddKeyToAgentAuthenticator(
-                wrapped: authenticator,
-                keyPath: keyPath,
+            let inner = PublicKeyAuthenticator(
+                privateKeyPath: keyPath,
                 passphrase: resolved?.passphrase
             )
-        }
+            try inner.authenticate(session: session, username: username)
 
-        return authenticator
+            // Auth succeeded — now safe to save and add to agent
+            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+
+            if let resolved, resolved.source == .userPrompt, resolved.saveToKeychain {
+                SSHKeychainLookup.savePassphrase(resolved.passphrase, forKeyAt: expandedPath)
+            }
+
+            if addKeysToAgent {
+                DispatchQueue.global(qos: .utility).async {
+                    let process = Process()
+                    process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
+                    process.arguments = [expandedPath]
+                    process.standardOutput = FileHandle.nullDevice
+                    process.standardError = FileHandle.nullDevice
+                    try? process.run()
+                    process.waitUntilExit()
+                }
+            }
+        }
     }
 
     private static func buildJumpAuthenticator(jumpHost: SSHJumpHost) throws -> any SSHAuthenticator {
@@ -641,32 +664,6 @@ internal enum LibSSH2TunnelFactory {
         return nil
     }
 
-    /// Wraps an authenticator to add the key to the SSH agent after successful auth.
-    /// Calls `/usr/bin/ssh-add` asynchronously — non-blocking, non-failing.
-    private struct AddKeyToAgentAuthenticator: SSHAuthenticator {
-        let wrapped: any SSHAuthenticator
-        let keyPath: String
-        let passphrase: String?
-
-        func authenticate(session: OpaquePointer, username: String) throws {
-            try wrapped.authenticate(session: session, username: username)
-
-            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
-            DispatchQueue.global(qos: .utility).async {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
-                process.arguments = [expandedPath]
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                do {
-                    try process.run()
-                    process.waitUntilExit()
-                } catch {
-                    // Non-critical — connection already succeeded
-                }
-            }
-        }
-    }
 
     private static func buildTOTPProvider(
         config: SSHConfiguration,
