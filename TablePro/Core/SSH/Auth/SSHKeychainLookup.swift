@@ -2,9 +2,16 @@
 //  SSHKeychainLookup.swift
 //  TablePro
 //
-//  Queries the macOS system Keychain for SSH key passphrases stored by
-//  `ssh-add --apple-use-keychain`. Uses the same Keychain item format
-//  as the native OpenSSH tools.
+//  Queries the user's login Keychain for SSH key passphrases stored by
+//  `ssh-add --apple-use-keychain`. Uses the same item format as the
+//  native OpenSSH tools (service="OpenSSH", label="SSH: /path/to/key").
+//
+//  Confirmed via `strings /usr/bin/ssh-add`: "SSH: %@", "OpenSSH",
+//  "com.apple.ssh.passphrases".
+//
+//  Uses kSecUseDataProtectionKeychain=false to query the legacy file-based
+//  keychain (login.keychain-db) where macOS SSH stores passphrases, without
+//  triggering the System keychain admin password prompt.
 //
 
 import Foundation
@@ -13,16 +20,9 @@ import Security
 
 internal enum SSHKeychainLookup {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHKeychainLookup")
-
-    /// Look up a passphrase stored by `ssh-add --apple-use-keychain` for the given key path.
-    ///
-    /// macOS stores SSH passphrases as `kSecClassGenericPassword` items with
-    /// `kSecAttrLabel = "SSH: /absolute/path/to/key"`.
-    /// macOS `ssh-add --apple-use-keychain` stores passphrases with:
-    ///   service = "OpenSSH", label = "SSH: /path/to/key"
-    /// Confirmed via `strings /usr/bin/ssh-add`: "SSH: %@", "OpenSSH", "com.apple.ssh.passphrases"
     private static let keychainService = "OpenSSH"
 
+    /// Look up a passphrase stored by `ssh-add --apple-use-keychain`.
     static func loadPassphrase(forKeyAt absolutePath: String) -> String? {
         let label = "SSH: \(absolutePath)"
 
@@ -30,6 +30,7 @@ internal enum SSHKeychainLookup {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrLabel as String: label,
+            kSecUseDataProtectionKeychain as String: false,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -59,7 +60,7 @@ internal enum SSHKeychainLookup {
         }
     }
 
-    /// Save a passphrase to the macOS Keychain in the same format as `ssh-add --apple-use-keychain`.
+    /// Save a passphrase in the same format as `ssh-add --apple-use-keychain`.
     static func savePassphrase(_ passphrase: String, forKeyAt absolutePath: String) {
         let label = "SSH: \(absolutePath)"
         guard let data = passphrase.data(using: .utf8) else { return }
@@ -68,6 +69,7 @@ internal enum SSHKeychainLookup {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrLabel as String: label,
             kSecAttrService as String: keychainService,
+            kSecUseDataProtectionKeychain as String: false,
             kSecValueData as String: data
         ]
 
@@ -77,7 +79,8 @@ internal enum SSHKeychainLookup {
             let updateQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: keychainService,
-                kSecAttrLabel as String: label
+                kSecAttrLabel as String: label,
+                kSecUseDataProtectionKeychain as String: false
             ]
             let updateAttrs: [String: Any] = [
                 kSecValueData as String: data
