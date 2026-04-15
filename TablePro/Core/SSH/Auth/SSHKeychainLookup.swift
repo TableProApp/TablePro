@@ -18,11 +18,18 @@ internal enum SSHKeychainLookup {
     ///
     /// macOS stores SSH passphrases as `kSecClassGenericPassword` items with
     /// `kSecAttrLabel = "SSH: /absolute/path/to/key"`.
+    /// macOS `ssh-add --apple-use-keychain` stores passphrases with:
+    ///   service = "OpenSSH", label = "SSH: /path/to/key"
+    /// Confirmed via `strings /usr/bin/ssh-add`: "SSH: %@", "OpenSSH", "com.apple.ssh.passphrases"
+    private static let keychainService = "OpenSSH"
+
     static func loadPassphrase(forKeyAt absolutePath: String) -> String? {
+        let label = "SSH: \(absolutePath)"
+
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "SSH",
-            kSecAttrAccount as String: absolutePath,
+            kSecAttrService as String: keychainService,
+            kSecAttrLabel as String: label,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -60,8 +67,7 @@ internal enum SSHKeychainLookup {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrLabel as String: label,
-            kSecAttrService as String: "SSH",
-            kSecAttrAccount as String: absolutePath,
+            kSecAttrService as String: keychainService,
             kSecValueData as String: data
         ]
 
@@ -70,8 +76,8 @@ internal enum SSHKeychainLookup {
         if status == errSecDuplicateItem {
             let updateQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: "SSH",
-                kSecAttrAccount as String: absolutePath
+                kSecAttrService as String: keychainService,
+                kSecAttrLabel as String: label
             ]
             let updateAttrs: [String: Any] = [
                 kSecValueData as String: data

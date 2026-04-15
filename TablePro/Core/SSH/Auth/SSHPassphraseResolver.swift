@@ -2,8 +2,10 @@
 //  SSHPassphraseResolver.swift
 //  TablePro
 //
-//  Single source of truth for SSH key passphrase resolution.
-//  Follows the native macOS chain: provided → macOS Keychain → user prompt.
+//  Resolves SSH key passphrases from non-interactive sources.
+//  Chain: provided (TablePro Keychain) → macOS SSH Keychain.
+//  Interactive prompting is handled by the caller (KeyFileAuthenticator)
+//  after a first authentication attempt fails.
 //
 
 import Foundation
@@ -12,61 +14,33 @@ import os
 internal enum SSHPassphraseResolver {
     private static let logger = Logger(subsystem: "com.TablePro", category: "SSHPassphraseResolver")
 
-    struct Result {
-        let passphrase: String
-        let source: Source
-        let saveToKeychain: Bool
-    }
-
-    enum Source {
-        case provided       // From TablePro's own Keychain (connection config)
-        case keychainSystem // From macOS SSH Keychain (ssh-add --apple-use-keychain)
-        case userPrompt     // From interactive dialog
-    }
-
-    /// Resolve passphrase following the native macOS priority chain.
+    /// Resolve passphrase from non-interactive sources only.
     ///
     /// 1. `provided` passphrase (from TablePro Keychain, passed by caller)
     /// 2. macOS SSH Keychain (where `ssh-add --apple-use-keychain` stores passphrases)
-    /// 3. Interactive prompt (with "Save to Keychain" checkbox)
     ///
-    /// - Parameters:
-    ///   - keyPath: Absolute path to the SSH private key file
-    ///   - provided: Passphrase from TablePro's own storage (may be nil)
-    ///   - canPrompt: Whether to show an interactive dialog if all else fails
-    /// - Returns: Resolved passphrase with its source, or nil if unavailable
+    /// Returns nil if no passphrase is found — the caller should try auth
+    /// with nil (for unencrypted keys) and prompt interactively if that fails.
     static func resolve(
         forKeyAt keyPath: String,
         provided: String?,
-        canPrompt: Bool,
         useKeychain: Bool = true
-    ) -> Result? {
+    ) -> String? {
         let expandedPath = SSHPathUtilities.expandTilde(keyPath)
 
         // 1. Use provided passphrase from TablePro's own Keychain
         if let provided, !provided.isEmpty {
             logger.debug("Using provided passphrase for \(expandedPath, privacy: .private)")
-            return Result(passphrase: provided, source: .provided, saveToKeychain: false)
+            return provided
         }
 
         // 2. Check macOS SSH Keychain (ssh-add --apple-use-keychain format)
-        //    Respects UseKeychain directive from ~/.ssh/config
         if useKeychain,
            let systemPassphrase = SSHKeychainLookup.loadPassphrase(forKeyAt: expandedPath) {
             logger.debug("Found passphrase in macOS Keychain for \(expandedPath, privacy: .private)")
-            return Result(passphrase: systemPassphrase, source: .keychainSystem, saveToKeychain: false)
+            return systemPassphrase
         }
 
-        // 3. Prompt the user interactively
-        guard canPrompt else { return nil }
-
-        let provider = PromptPassphraseProvider(keyPath: expandedPath)
-        guard let promptResult = provider.providePassphrase() else { return nil }
-
-        return Result(
-            passphrase: promptResult.passphrase,
-            source: .userPrompt,
-            saveToKeychain: promptResult.saveToKeychain && useKeychain
-        )
+        return nil
     }
 }

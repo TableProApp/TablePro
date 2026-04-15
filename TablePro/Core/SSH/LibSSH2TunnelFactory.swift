@@ -573,29 +573,30 @@ internal enum LibSSH2TunnelFactory {
         let addKeysToAgent: Bool
 
         func authenticate(session: OpaquePointer, username: String) throws {
-            // 1. Try with provided passphrase (or nil for unencrypted keys)
-            let initialPassphrase = SSHPassphraseResolver.resolve(
+            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+
+            // 1. Try with stored passphrase or nil (covers unencrypted keys + Keychain hits)
+            let storedPassphrase = SSHPassphraseResolver.resolve(
                 forKeyAt: keyPath,
                 provided: providedPassphrase,
-                canPrompt: false,
                 useKeychain: useKeychain
             )
             let firstAttempt = PublicKeyAuthenticator(
                 privateKeyPath: keyPath,
-                passphrase: initialPassphrase?.passphrase
+                passphrase: storedPassphrase
             )
             do {
                 try firstAttempt.authenticate(session: session, username: username)
-                postAuthActions(passphrase: initialPassphrase?.passphrase, resolved: initialPassphrase)
+                addToAgentIfNeeded(path: expandedPath)
                 return
             } catch {
                 // Auth failed — key likely needs a passphrase we don't have yet
             }
 
-            // 2. Prompt the user if allowed (key is encrypted and no passphrase found)
+            // 2. Prompt the user if allowed (key is encrypted, no stored passphrase)
             guard canPrompt else { throw SSHTunnelError.authenticationFailed }
 
-            let provider = PromptPassphraseProvider(keyPath: SSHPathUtilities.expandTilde(keyPath))
+            let provider = PromptPassphraseProvider(keyPath: expandedPath)
             guard let promptResult = provider.providePassphrase() else {
                 throw SSHTunnelError.authenticationFailed
             }
@@ -606,21 +607,21 @@ internal enum LibSSH2TunnelFactory {
             )
             try retryAuth.authenticate(session: session, username: username)
 
-            // Auth succeeded with prompted passphrase — save if opted in
+            // Auth succeeded — save to Keychain if user opted in
             if promptResult.saveToKeychain && useKeychain {
-                let expandedPath = SSHPathUtilities.expandTilde(keyPath)
                 SSHKeychainLookup.savePassphrase(promptResult.passphrase, forKeyAt: expandedPath)
             }
-            postAuthActions(passphrase: promptResult.passphrase, resolved: nil)
+            addToAgentIfNeeded(path: expandedPath)
         }
 
-        private func postAuthActions(passphrase: String?, resolved: SSHPassphraseResolver.Result?) {
+        private func addToAgentIfNeeded(path: String) {
             guard addKeysToAgent else { return }
-            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
             DispatchQueue.global(qos: .utility).async {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
-                process.arguments = [expandedPath]
+                // Use --apple-use-keychain so ssh-add reads the passphrase from
+                // Keychain for encrypted keys (no TTY available in GUI apps)
+                process.arguments = ["--apple-use-keychain", path]
                 process.standardOutput = FileHandle.nullDevice
                 process.standardError = FileHandle.nullDevice
                 try? process.run()
