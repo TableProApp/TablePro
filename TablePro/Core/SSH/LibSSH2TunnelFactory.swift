@@ -495,11 +495,15 @@ internal enum LibSSH2TunnelFactory {
             let socketPath = config.agentSocketPath.isEmpty ? nil : config.agentSocketPath
             var authenticators: [any SSHAuthenticator] = [AgentAuthenticator(socketPath: socketPath)]
 
-            // Fallback: try key file if agent has no loaded identities
+            // Fallback: try key file if agent has no loaded identities.
+            // Use promptIfNeeded so the user is asked for the passphrase if the
+            // key is encrypted and they didn't configure one in the connection UI.
             if let keyPath = resolveIdentityFile(config: config) {
+                let hasPassphrase = credentials.keyPassphrase?.isEmpty == false
                 authenticators.append(PublicKeyAuthenticator(
                     privateKeyPath: keyPath,
-                    passphrase: credentials.keyPassphrase
+                    passphrase: credentials.keyPassphrase,
+                    promptIfNeeded: !hasPassphrase
                 ))
             }
 
