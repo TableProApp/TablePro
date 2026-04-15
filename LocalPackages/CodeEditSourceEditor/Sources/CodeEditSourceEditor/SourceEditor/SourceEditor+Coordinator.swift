@@ -131,16 +131,17 @@ extension SourceEditor {
             // For large documents, debounce the binding writeback to avoid
             // copying megabytes of text into SwiftUI on every keystroke.
             let docLength = textView.textStorage.length
+            // Set flag immediately so SwiftUI's updateNSViewController knows
+            // the text view is the source of truth during the debounce window.
+            isUpdateFromTextView = true
             if docLength > 500_000 {
                 textBindingTask?.cancel()
                 textBindingTask = Task { @MainActor [weak self, weak textView] in
                     try? await Task.sleep(for: .milliseconds(150))
                     guard !Task.isCancelled, let self, let textView else { return }
-                    self.isUpdateFromTextView = true
                     binding.wrappedValue = textView.string
                 }
             } else {
-                isUpdateFromTextView = true
                 binding.wrappedValue = textView.string
             }
         }

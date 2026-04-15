@@ -163,9 +163,10 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         guard offset >= prefixStart, offset <= docLength else { return nil }
 
         let prefixLength = offset - prefixStart
-        // Completion prefixes should never be more than ~100 chars.
-        // A large prefix means the replacementRange is stale — dismiss.
-        guard prefixLength > 0, prefixLength <= 100 else { return nil }
+        // Guard against stale replacementRange producing an unreasonably
+        // large prefix read. Normal prefixes are <200 chars even for
+        // qualified identifiers (schema.table.column).
+        guard prefixLength > 0, prefixLength <= 500 else { return nil }
 
         let prefixRange = NSRange(location: prefixStart, length: prefixLength)
         let currentPrefix = (textView.textView.textStorage?.string as NSString?)?

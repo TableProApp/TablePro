@@ -83,7 +83,6 @@ class Highlighter: NSObject {
 
     public var maxHighlightableLength: Int = 5_000_000
 
-
     // MARK: - Init
 
     init(

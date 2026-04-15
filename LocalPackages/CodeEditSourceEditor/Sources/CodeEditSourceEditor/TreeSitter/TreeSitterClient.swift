@@ -226,13 +226,9 @@ public final class TreeSitterClient: HighlightProviding {
         let execAsync = longQuery || longDocument
 
         if !execAsync || forceSyncOperation {
-            if isSmallQuery {
-                // Small queries bypass the executor queue — must not be
-                // blocked by a pending large parse from paste/load.
-                let highlights = operation()
-                DispatchQueue.dispatchMainIfNot { completion(.success(highlights)) }
-                return
-            }
+            // Small queries attempt sync first. If the executor queue is
+            // busy (e.g., pending large parse), fall through to async path.
+            // This is thread-safe because execSync acquires the lock.
             let result = executor.execSync(operation)
             if case .success(let highlights) = result {
                 DispatchQueue.dispatchMainIfNot { completion(.success(highlights)) }
