@@ -507,7 +507,7 @@ struct SSHProfileEditorView: View {
                 customAgentSocketPath = agentPath.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             authMethod = .sshAgent
-        } else if let keyPath = entry.identityFile {
+        } else if let keyPath = entry.identityFiles.first {
             privateKeyPath = keyPath
             authMethod = .privateKey
         }

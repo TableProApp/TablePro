@@ -381,7 +381,7 @@ struct ConnectionSSHTunnelView: View {
         if let agentPath = entry.identityAgent {
             sshState.applyAgentSocketPath(agentPath)
             sshState.authMethod = .sshAgent
-        } else if let keyPath = entry.identityFile {
+        } else if let keyPath = entry.identityFiles.first {
             sshState.privateKeyPath = keyPath
             sshState.authMethod = .privateKey
         }

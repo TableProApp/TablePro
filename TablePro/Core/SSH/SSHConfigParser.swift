@@ -15,7 +15,7 @@ struct SSHConfigEntry: Identifiable, Hashable {
     let hostname: String?  // Actual hostname/IP
     let port: Int?  // Port number
     let user: String?  // Username
-    let identityFile: String?  // Path to private key
+    let identityFiles: [String]  // Paths to private keys (multiple IdentityFile directives)
     let identityAgent: String?  // Path to SSH agent socket
     let proxyJump: String?  // ProxyJump directive
     let identitiesOnly: Bool?  // Only use explicitly configured keys
@@ -123,7 +123,7 @@ final class SSHConfigParser {
                 pending.user = value
 
             case "identityfile":
-                pending.identityFile = value
+                pending.identityFiles.append(value)
 
             case "identityagent":
                 pending.identityAgent = value
@@ -170,7 +170,7 @@ final class SSHConfigParser {
         var hostname: String?
         var port: Int?
         var user: String?
-        var identityFile: String?
+        var identityFiles: [String] = []
         var identityAgent: String?
         var proxyJump: String?
         var identitiesOnly: Bool?
@@ -192,7 +192,7 @@ final class SSHConfigParser {
                     hostname: hostname,
                     port: port,
                     user: user,
-                    identityFile: identityFile.map {
+                    identityFiles: identityFiles.map {
                         SSHPathUtilities.expandSSHTokens($0, hostname: hostname, remoteUser: user)
                     },
                     identityAgent: identityAgent.map {
