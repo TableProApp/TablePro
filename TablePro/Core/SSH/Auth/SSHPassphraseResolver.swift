@@ -38,7 +38,8 @@ internal enum SSHPassphraseResolver {
     static func resolve(
         forKeyAt keyPath: String,
         provided: String?,
-        canPrompt: Bool
+        canPrompt: Bool,
+        useKeychain: Bool = true
     ) -> Result? {
         let expandedPath = SSHPathUtilities.expandTilde(keyPath)
 
@@ -49,7 +50,9 @@ internal enum SSHPassphraseResolver {
         }
 
         // 2. Check macOS SSH Keychain (ssh-add --apple-use-keychain format)
-        if let systemPassphrase = SSHKeychainLookup.loadPassphrase(forKeyAt: expandedPath) {
+        //    Respects UseKeychain directive from ~/.ssh/config
+        if useKeychain,
+           let systemPassphrase = SSHKeychainLookup.loadPassphrase(forKeyAt: expandedPath) {
             logger.debug("Found passphrase in macOS Keychain for \(expandedPath, privacy: .private)")
             return Result(passphrase: systemPassphrase, source: .keychainSystem, saveToKeychain: false)
         }
@@ -63,7 +66,7 @@ internal enum SSHPassphraseResolver {
         return Result(
             passphrase: promptResult.passphrase,
             source: .userPrompt,
-            saveToKeychain: promptResult.saveToKeychain
+            saveToKeychain: promptResult.saveToKeychain && useKeychain
         )
     }
 }

@@ -556,6 +556,7 @@ internal enum LibSSH2TunnelFactory {
             keyPath: keyPath,
             providedPassphrase: providedPassphrase,
             canPrompt: canPrompt,
+            useKeychain: configEntry?.useKeychain ?? true,
             addKeysToAgent: configEntry?.addKeysToAgent == true
         )
         return authenticator
@@ -568,6 +569,7 @@ internal enum LibSSH2TunnelFactory {
         let keyPath: String
         let providedPassphrase: String?
         let canPrompt: Bool
+        let useKeychain: Bool
         let addKeysToAgent: Bool
 
         func authenticate(session: OpaquePointer, username: String) throws {
@@ -575,7 +577,8 @@ internal enum LibSSH2TunnelFactory {
             let resolved = SSHPassphraseResolver.resolve(
                 forKeyAt: keyPath,
                 provided: providedPassphrase,
-                canPrompt: canPrompt
+                canPrompt: canPrompt,
+                useKeychain: useKeychain
             )
 
             let inner = PublicKeyAuthenticator(

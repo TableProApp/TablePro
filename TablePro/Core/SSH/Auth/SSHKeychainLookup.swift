@@ -19,12 +19,10 @@ internal enum SSHKeychainLookup {
     /// macOS stores SSH passphrases as `kSecClassGenericPassword` items with
     /// `kSecAttrLabel = "SSH: /absolute/path/to/key"`.
     static func loadPassphrase(forKeyAt absolutePath: String) -> String? {
-        let filename = (absolutePath as NSString).lastPathComponent
-
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "OpenSSH",
-            kSecAttrAccount as String: filename,
+            kSecAttrService as String: "SSH",
+            kSecAttrAccount as String: absolutePath,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -56,15 +54,14 @@ internal enum SSHKeychainLookup {
 
     /// Save a passphrase to the macOS Keychain in the same format as `ssh-add --apple-use-keychain`.
     static func savePassphrase(_ passphrase: String, forKeyAt absolutePath: String) {
-        let filename = (absolutePath as NSString).lastPathComponent
-        let label = "SSH: \(filename)"
+        let label = "SSH: \(absolutePath)"
         guard let data = passphrase.data(using: .utf8) else { return }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrLabel as String: label,
-            kSecAttrService as String: "OpenSSH",
-            kSecAttrAccount as String: filename,
+            kSecAttrService as String: "SSH",
+            kSecAttrAccount as String: absolutePath,
             kSecValueData as String: data
         ]
 
@@ -73,8 +70,8 @@ internal enum SSHKeychainLookup {
         if status == errSecDuplicateItem {
             let updateQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: "OpenSSH",
-                kSecAttrAccount as String: filename
+                kSecAttrService as String: "SSH",
+                kSecAttrAccount as String: absolutePath
             ]
             let updateAttrs: [String: Any] = [
                 kSecValueData as String: data
