@@ -573,37 +573,58 @@ internal enum LibSSH2TunnelFactory {
         let addKeysToAgent: Bool
 
         func authenticate(session: OpaquePointer, username: String) throws {
-            // Resolve passphrase using the native macOS chain
-            let resolved = SSHPassphraseResolver.resolve(
+            // 1. Try with provided passphrase (or nil for unencrypted keys)
+            let initialPassphrase = SSHPassphraseResolver.resolve(
                 forKeyAt: keyPath,
                 provided: providedPassphrase,
-                canPrompt: canPrompt,
+                canPrompt: false,
                 useKeychain: useKeychain
             )
-
-            let inner = PublicKeyAuthenticator(
+            let firstAttempt = PublicKeyAuthenticator(
                 privateKeyPath: keyPath,
-                passphrase: resolved?.passphrase
+                passphrase: initialPassphrase?.passphrase
             )
-            try inner.authenticate(session: session, username: username)
-
-            // Auth succeeded — now safe to save and add to agent
-            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
-
-            if let resolved, resolved.source == .userPrompt, resolved.saveToKeychain {
-                SSHKeychainLookup.savePassphrase(resolved.passphrase, forKeyAt: expandedPath)
+            do {
+                try firstAttempt.authenticate(session: session, username: username)
+                postAuthActions(passphrase: initialPassphrase?.passphrase, resolved: initialPassphrase)
+                return
+            } catch {
+                // Auth failed — key likely needs a passphrase we don't have yet
             }
 
-            if addKeysToAgent {
-                DispatchQueue.global(qos: .utility).async {
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
-                    process.arguments = [expandedPath]
-                    process.standardOutput = FileHandle.nullDevice
-                    process.standardError = FileHandle.nullDevice
-                    try? process.run()
-                    process.waitUntilExit()
-                }
+            // 2. Prompt the user if allowed (key is encrypted and no passphrase found)
+            guard canPrompt else { throw SSHTunnelError.authenticationFailed }
+
+            let provider = PromptPassphraseProvider(keyPath: SSHPathUtilities.expandTilde(keyPath))
+            guard let promptResult = provider.providePassphrase() else {
+                throw SSHTunnelError.authenticationFailed
+            }
+
+            let retryAuth = PublicKeyAuthenticator(
+                privateKeyPath: keyPath,
+                passphrase: promptResult.passphrase
+            )
+            try retryAuth.authenticate(session: session, username: username)
+
+            // Auth succeeded with prompted passphrase — save if opted in
+            if promptResult.saveToKeychain && useKeychain {
+                let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+                SSHKeychainLookup.savePassphrase(promptResult.passphrase, forKeyAt: expandedPath)
+            }
+            postAuthActions(passphrase: promptResult.passphrase, resolved: nil)
+        }
+
+        private func postAuthActions(passphrase: String?, resolved: SSHPassphraseResolver.Result?) {
+            guard addKeysToAgent else { return }
+            let expandedPath = SSHPathUtilities.expandTilde(keyPath)
+            DispatchQueue.global(qos: .utility).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh-add")
+                process.arguments = [expandedPath]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try? process.run()
+                process.waitUntilExit()
             }
         }
     }
