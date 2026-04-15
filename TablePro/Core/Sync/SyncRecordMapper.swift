@@ -83,15 +83,16 @@ struct SyncRecordMapper {
             record["sshProfileId"] = sshProfileId.uuidString as CKRecordValue
         }
 
-        // Encode complex structs as JSON Data
+        // Encode complex structs as JSON Data — contract device-local paths
+        // to portable ~/… form so they resolve correctly on other devices.
         do {
-            let sshData = try encoder.encode(connection.sshConfig)
+            let sshData = try encoder.encode(Self.makePortable(connection.sshConfig))
             record["sshConfigJson"] = sshData as CKRecordValue
         } catch {
             logger.warning("Failed to encode SSH config for sync: \(error.localizedDescription)")
         }
         do {
-            let sslData = try encoder.encode(connection.sslConfig)
+            let sslData = try encoder.encode(Self.makePortable(connection.sslConfig))
             record["sslConfigJson"] = sslData as CKRecordValue
         } catch {
             logger.warning("Failed to encode SSL config for sync: \(error.localizedDescription)")
@@ -132,14 +133,17 @@ struct SyncRecordMapper {
         let sortOrder = (record["sortOrder"] as? Int64).map { Int($0) } ?? 0
         let sshProfileId = (record["sshProfileId"] as? String).flatMap { UUID(uuidString: $0) }
 
+        // Decode complex structs and expand portable ~/… paths to device-local form.
         var sshConfig = SSHConfiguration()
         if let sshData = record["sshConfigJson"] as? Data {
             sshConfig = (try? decoder.decode(SSHConfiguration.self, from: sshData)) ?? SSHConfiguration()
+            Self.expandPaths(&sshConfig)
         }
 
         var sslConfig = SSLConfiguration()
         if let sslData = record["sslConfigJson"] as? Data {
             sslConfig = (try? decoder.decode(SSLConfiguration.self, from: sslData)) ?? SSLConfiguration()
+            Self.expandPaths(&sslConfig)
         }
 
         var additionalFields: [String: String]?
@@ -285,9 +289,9 @@ struct SyncRecordMapper {
         record["port"] = Int64(profile.port) as CKRecordValue
         record["username"] = profile.username as CKRecordValue
         record["authMethod"] = profile.authMethod.rawValue as CKRecordValue
-        record["privateKeyPath"] = profile.privateKeyPath as CKRecordValue
+        record["privateKeyPath"] = PathPortability.contractHome(profile.privateKeyPath) as CKRecordValue
         record["useSSHConfig"] = Int64(profile.useSSHConfig ? 1 : 0) as CKRecordValue
-        record["agentSocketPath"] = profile.agentSocketPath as CKRecordValue
+        record["agentSocketPath"] = PathPortability.contractHome(profile.agentSocketPath) as CKRecordValue
         record["totpMode"] = profile.totpMode.rawValue as CKRecordValue
         record["totpAlgorithm"] = profile.totpAlgorithm.rawValue as CKRecordValue
         record["totpDigits"] = Int64(profile.totpDigits) as CKRecordValue
@@ -297,7 +301,8 @@ struct SyncRecordMapper {
 
         if !profile.jumpHosts.isEmpty {
             do {
-                let jumpHostsData = try encoder.encode(profile.jumpHosts)
+                let portableJumpHosts = Self.makePortable(profile.jumpHosts)
+                let jumpHostsData = try encoder.encode(portableJumpHosts)
                 record["jumpHostsJson"] = jumpHostsData as CKRecordValue
             } catch {
                 logger.warning("Failed to encode jump hosts for sync: \(error.localizedDescription)")
@@ -320,9 +325,9 @@ struct SyncRecordMapper {
         let port = (record["port"] as? Int64).map { Int($0) } ?? 22
         let username = record["username"] as? String ?? ""
         let authMethodRaw = record["authMethod"] as? String ?? SSHAuthMethod.password.rawValue
-        let privateKeyPath = record["privateKeyPath"] as? String ?? ""
+        let privateKeyPath = PathPortability.expandHome(record["privateKeyPath"] as? String ?? "")
         let useSSHConfig = (record["useSSHConfig"] as? Int64 ?? 1) != 0
-        let agentSocketPath = record["agentSocketPath"] as? String ?? ""
+        let agentSocketPath = PathPortability.expandHome(record["agentSocketPath"] as? String ?? "")
         let totpModeRaw = record["totpMode"] as? String ?? TOTPMode.none.rawValue
         let totpAlgorithmRaw = record["totpAlgorithm"] as? String ?? TOTPAlgorithm.sha1.rawValue
         let totpDigits = (record["totpDigits"] as? Int64).map { Int($0) } ?? 6
@@ -331,6 +336,7 @@ struct SyncRecordMapper {
         var jumpHosts: [SSHJumpHost] = []
         if let jumpHostsData = record["jumpHostsJson"] as? Data {
             jumpHosts = (try? decoder.decode([SSHJumpHost].self, from: jumpHostsData)) ?? []
+            Self.expandPaths(&jumpHosts)
         }
 
         return SSHProfile(
@@ -349,5 +355,54 @@ struct SyncRecordMapper {
             totpDigits: totpDigits,
             totpPeriod: totpPeriod
         )
+    }
+
+    // MARK: - Path Portability
+    // Contract device-local paths to portable ~/… form before pushing to iCloud,
+    // expand them back to device-local form when pulling. Matches the proven
+    // pattern in ConnectionExportService.
+
+    private static func makePortable(_ ssh: SSHConfiguration) -> SSHConfiguration {
+        var config = ssh
+        config.privateKeyPath = PathPortability.contractHome(config.privateKeyPath)
+        config.agentSocketPath = PathPortability.contractHome(config.agentSocketPath)
+        config.jumpHosts = makePortable(config.jumpHosts)
+        return config
+    }
+
+    private static func expandPaths(_ ssh: inout SSHConfiguration) {
+        ssh.privateKeyPath = PathPortability.expandHome(ssh.privateKeyPath)
+        ssh.agentSocketPath = PathPortability.expandHome(ssh.agentSocketPath)
+        expandPaths(&ssh.jumpHosts)
+    }
+
+    private static func makePortable(_ ssl: SSLConfiguration) -> SSLConfiguration {
+        var config = ssl
+        config.caCertificatePath = PathPortability.contractHome(config.caCertificatePath)
+        config.clientCertificatePath = PathPortability.contractHome(config.clientCertificatePath)
+        config.clientKeyPath = PathPortability.contractHome(config.clientKeyPath)
+        return config
+    }
+
+    private static func expandPaths(_ ssl: inout SSLConfiguration) {
+        ssl.caCertificatePath = PathPortability.expandHome(ssl.caCertificatePath)
+        ssl.clientCertificatePath = PathPortability.expandHome(ssl.clientCertificatePath)
+        ssl.clientKeyPath = PathPortability.expandHome(ssl.clientKeyPath)
+    }
+
+    private static func makePortable(_ jumpHosts: [SSHJumpHost]) -> [SSHJumpHost] {
+        jumpHosts.map { host in
+            var h = host
+            h.privateKeyPath = PathPortability.contractHome(h.privateKeyPath)
+            return h
+        }
+    }
+
+    private static func expandPaths(_ jumpHosts: inout [SSHJumpHost]) {
+        jumpHosts = jumpHosts.map { host in
+            var h = host
+            h.privateKeyPath = PathPortability.expandHome(h.privateKeyPath)
+            return h
+        }
     }
 }
