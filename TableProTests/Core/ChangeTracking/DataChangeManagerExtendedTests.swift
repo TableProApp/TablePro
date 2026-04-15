@@ -227,7 +227,7 @@ struct DataChangeManagerExtendedTests {
         let manager = makeManager(columns: ["a", "b", "c"], pk: "a")
         let state = manager.saveState()
         #expect(state.columns == ["a", "b", "c"])
-        #expect(state.primaryKeyColumn == "a")
+        #expect(state.primaryKeyColumns == ["a"])
     }
 
     @Test("Round-trip save/restore preserves hasChanges")

@@ -8,6 +8,7 @@ import Testing
 @testable import TablePro
 
 @Suite("ConnectionStorage Additional Fields", .serialized)
+@MainActor
 struct ConnectionStorageAdditionalFieldsTests {
     private let storage = ConnectionStorage.shared
 

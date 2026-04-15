@@ -8,6 +8,7 @@ import Testing
 @testable import TablePro
 
 @Suite("ConnectionStorage Persistence", .serialized)
+@MainActor
 struct ConnectionStoragePersistenceTests {
     private let storage = ConnectionStorage.shared
 

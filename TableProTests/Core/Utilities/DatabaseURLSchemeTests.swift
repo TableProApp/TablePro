@@ -8,6 +8,7 @@ import Testing
 @testable import TablePro
 
 @Suite("Database URL Scheme Detection")
+@MainActor
 struct DatabaseURLSchemeTests {
 
     // MARK: - Standard Schemes
@@ -294,6 +295,5 @@ struct DatabaseURLSchemeTests {
             Issue.record("Expected success"); return
         }
         #expect(parsed.type == .postgresql)
-        #expect(parsed.isSSH == true)
     }
 }

@@ -10,6 +10,7 @@ import Testing
 @testable import TablePro
 
 @Suite("SafeModeMigration")
+@MainActor
 struct SafeModeMigrationTests {
     // MARK: - Round-Trip Through ConnectionStorage API
 

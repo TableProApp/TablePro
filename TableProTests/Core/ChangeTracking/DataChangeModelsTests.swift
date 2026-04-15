@@ -125,7 +125,7 @@ struct DataChangeModelsTests {
         #expect(pending.insertedRowIndices.isEmpty)
         #expect(pending.modifiedCells.isEmpty)
         #expect(pending.insertedRowData.isEmpty)
-        #expect(pending.primaryKeyColumn == nil)
+        #expect(pending.primaryKeyColumns.isEmpty)
         #expect(pending.columns.isEmpty)
     }
 

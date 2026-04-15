@@ -8,6 +8,7 @@ import Foundation
 import Testing
 
 @Suite("Connection URL Formatter")
+@MainActor
 struct ConnectionURLFormatterTests {
     // MARK: - Basic URLs
 
