@@ -5,6 +5,7 @@
 //  Tests for MySQL generateCreateTableSQL implementation.
 //
 
+#if canImport(MySQLDriverPlugin)
 import Foundation
 import TableProPluginKit
 import Testing
@@ -181,3 +182,4 @@ struct MySQLCreateTableTests {
         #expect(sql.contains("`col``name`"))
     }
 }
+#endif

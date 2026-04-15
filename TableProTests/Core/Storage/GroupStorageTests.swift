@@ -6,6 +6,7 @@
 @testable import TablePro
 import XCTest
 
+@MainActor
 final class GroupStorageTests: XCTestCase {
     private let storage = GroupStorage.shared
     private let testKey = "com.TablePro.groups"

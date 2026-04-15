@@ -62,43 +62,43 @@ struct InspectorTriggerTests {
 struct PendingChangeTriggerTests {
     @Test("Same values are equal")
     func sameValuesAreEqual() {
-        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false)
-        let b = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: ["t1"], pendingDeletes: ["t2"], hasStructureChanges: false, isFileDirty: false)
         #expect(a == b)
     }
 
     @Test("Empty sets are equal")
     func emptySetsAreEqual() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
         #expect(a == b)
     }
 
     @Test("Different hasDataChanges produces unequal triggers")
     func differentHasDataChanges() {
-        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: true, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
         #expect(a != b)
     }
 
     @Test("Different pendingTruncates produces unequal triggers")
     func differentPendingTruncates() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t1"], pendingDeletes: [], hasStructureChanges: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t2"], pendingDeletes: [], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t1"], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: ["t2"], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
         #expect(a != b)
     }
 
     @Test("Different pendingDeletes produces unequal triggers")
     func differentPendingDeletes() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d1"], hasStructureChanges: false)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d2"], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d1"], hasStructureChanges: false, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: ["d2"], hasStructureChanges: false, isFileDirty: false)
         #expect(a != b)
     }
 
     @Test("Different hasStructureChanges produces unequal triggers")
     func differentHasStructureChanges() {
-        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: true)
-        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false)
+        let a = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: true, isFileDirty: false)
+        let b = PendingChangeTrigger(hasDataChanges: false, pendingTruncates: [], pendingDeletes: [], hasStructureChanges: false, isFileDirty: false)
         #expect(a != b)
     }
 }
