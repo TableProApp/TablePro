@@ -18,6 +18,9 @@ struct SSHConfigEntry: Identifiable, Hashable {
     let identityFile: String?  // Path to private key
     let identityAgent: String?  // Path to SSH agent socket
     let proxyJump: String?  // ProxyJump directive
+    let identitiesOnly: Bool?  // Only use explicitly configured keys
+    let addKeysToAgent: Bool?  // Add key to agent after successful auth
+    let useKeychain: Bool?  // Store/retrieve passphrases from macOS Keychain
 
     /// Display name for UI
     var displayName: String {
@@ -128,6 +131,15 @@ final class SSHConfigParser {
             case "proxyjump":
                 pending.proxyJump = value
 
+            case "identitiesonly":
+                pending.identitiesOnly = value.lowercased() == "yes"
+
+            case "addkeystoagent":
+                pending.addKeysToAgent = value.lowercased() == "yes"
+
+            case "usekeychain":
+                pending.useKeychain = value.lowercased() == "yes"
+
             case "include":
                 pending.flush(into: &entries)
                 for includePath in resolveIncludePaths(value) {
@@ -161,6 +173,9 @@ final class SSHConfigParser {
         var identityFile: String?
         var identityAgent: String?
         var proxyJump: String?
+        var identitiesOnly: Bool?
+        var addKeysToAgent: Bool?
+        var useKeychain: Bool?
 
         /// Flush the pending entry into the entries array and reset state.
         /// Skips wildcard patterns (`*`, `?`) and multi-word hosts.
@@ -183,7 +198,10 @@ final class SSHConfigParser {
                     identityAgent: identityAgent.map {
                         SSHPathUtilities.expandSSHTokens($0, hostname: hostname, remoteUser: user)
                     },
-                    proxyJump: proxyJump
+                    proxyJump: proxyJump,
+                    identitiesOnly: identitiesOnly,
+                    addKeysToAgent: addKeysToAgent,
+                    useKeychain: useKeychain
                 ))
         }
     }

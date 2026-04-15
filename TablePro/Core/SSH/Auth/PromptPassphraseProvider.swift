@@ -3,12 +3,17 @@
 //  TablePro
 //
 //  Prompts the user for an SSH key passphrase via a modal NSAlert dialog.
-//  Used when the agent auth fallback tries a key file that requires a passphrase
-//  the user hasn't configured in the connection UI.
+//  Optionally offers to save the passphrase to the macOS Keychain,
+//  matching the native ssh-add --apple-use-keychain behavior.
 //
 
 import AppKit
 import Foundation
+
+internal struct PassphrasePromptResult: Sendable {
+    let passphrase: String
+    let saveToKeychain: Bool
+}
 
 internal final class PromptPassphraseProvider: @unchecked Sendable {
     private let keyPath: String
@@ -17,23 +22,23 @@ internal final class PromptPassphraseProvider: @unchecked Sendable {
         self.keyPath = keyPath
     }
 
-    func providePassphrase() -> String? {
+    func providePassphrase() -> PassphrasePromptResult? {
         if Thread.isMainThread {
             return showAlert()
         }
 
         let semaphore = DispatchSemaphore(value: 0)
-        var passphrase: String?
+        var result: PassphrasePromptResult?
         DispatchQueue.main.async {
-            passphrase = self.showAlert()
+            result = self.showAlert()
             semaphore.signal()
         }
-        let result = semaphore.wait(timeout: .now() + 120)
-        guard result == .success else { return nil }
-        return passphrase
+        let waitResult = semaphore.wait(timeout: .now() + 120)
+        guard waitResult == .success else { return nil }
+        return result
     }
 
-    private func showAlert() -> String? {
+    private func showAlert() -> PassphrasePromptResult? {
         let alert = NSAlert()
         alert.messageText = String(localized: "SSH Key Passphrase Required")
         let keyName = (keyPath as NSString).lastPathComponent
@@ -47,10 +52,31 @@ internal final class PromptPassphraseProvider: @unchecked Sendable {
 
         let textField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         textField.placeholderString = String(localized: "Passphrase")
-        alert.accessoryView = textField
+
+        let checkbox = NSButton(
+            checkboxWithTitle: String(localized: "Save passphrase in Keychain"),
+            target: nil,
+            action: nil
+        )
+        checkbox.state = .on
+
+        let stackView = NSStackView(views: [textField, checkbox])
+        stackView.orientation = .vertical
+        stackView.alignment = .leading
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        textField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+
+        alert.accessoryView = stackView
         alert.window.initialFirstResponder = textField
 
         let response = alert.runModal()
-        return response == .alertFirstButtonReturn ? textField.stringValue : nil
+        guard response == .alertFirstButtonReturn,
+              !textField.stringValue.isEmpty else { return nil }
+
+        return PassphrasePromptResult(
+            passphrase: textField.stringValue,
+            saveToKeychain: checkbox.state == .on
+        )
     }
 }
