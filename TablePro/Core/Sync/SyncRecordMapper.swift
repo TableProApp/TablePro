@@ -85,6 +85,9 @@ struct SyncRecordMapper {
 
         // Encode complex structs as JSON Data — contract device-local paths
         // to portable ~/… form so they resolve correctly on other devices.
+        // Note: sshTunnelMode is intentionally NOT synced — it is re-derived
+        // on decode from sshConfig + sshProfileId. If adding sshTunnelMode to
+        // the sync schema in the future, apply path contraction to its snapshot.
         do {
             let sshData = try encoder.encode(Self.makePortable(connection.sshConfig))
             record["sshConfigJson"] = sshData as CKRecordValue
