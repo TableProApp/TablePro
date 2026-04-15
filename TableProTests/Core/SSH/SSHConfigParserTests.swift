@@ -35,8 +35,8 @@ struct SSHConfigParserTests {
         #expect(entry.hostname == "example.com")
         #expect(entry.port == 2_222)
         #expect(entry.user == "admin")
-        #expect(entry.identityFile != nil)
-        #expect(entry.identityFile?.contains(".ssh/id_rsa") == true)
+        #expect(entry.identityFiles.first != nil)
+        #expect(entry.identityFiles.first?.contains(".ssh/id_rsa") == true)
     }
 
     @Test("Multiple host entries")
@@ -129,8 +129,8 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
 
         let homeDir = NSHomeDirectory()
-        #expect(result[0].identityFile?.contains(homeDir) == true)
-        #expect(result[0].identityFile?.contains("keys/id_rsa") == true)
+        #expect(result[0].identityFiles.first?.contains(homeDir) == true)
+        #expect(result[0].identityFiles.first?.contains("keys/id_rsa") == true)
     }
 
     @Test("Host without hostname")
@@ -494,7 +494,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
 
         let homeDir = NSHomeDirectory()
-        #expect(result[0].identityFile == "\(homeDir)/.ssh/custom_key")
+        #expect(result[0].identityFiles.first == "\(homeDir)/.ssh/custom_key")
     }
 
     @Test("SSH %h token expands to hostname")
@@ -510,7 +510,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
 
         let homeDir = NSHomeDirectory()
-        #expect(result[0].identityFile == "\(homeDir)/.ssh/example.com_key")
+        #expect(result[0].identityFiles.first == "\(homeDir)/.ssh/example.com_key")
     }
 
     @Test("SSH %u token expands to local username")
@@ -526,7 +526,7 @@ struct SSHConfigParserTests {
 
         let homeDir = NSHomeDirectory()
         let localUser = NSUserName()
-        #expect(result[0].identityFile == "\(homeDir)/.ssh/\(localUser)_key")
+        #expect(result[0].identityFiles.first == "\(homeDir)/.ssh/\(localUser)_key")
     }
 
     @Test("SSH %r token expands to remote username")
@@ -542,7 +542,7 @@ struct SSHConfigParserTests {
         #expect(result.count == 1)
 
         let homeDir = NSHomeDirectory()
-        #expect(result[0].identityFile == "\(homeDir)/.ssh/deploy_key")
+        #expect(result[0].identityFiles.first == "\(homeDir)/.ssh/deploy_key")
     }
 
     @Test("SSH %% literal percent is preserved")
@@ -555,7 +555,7 @@ struct SSHConfigParserTests {
 
         let result = SSHConfigParser.parseContent(content)
         #expect(result.count == 1)
-        #expect(result[0].identityFile == "/keys/%backup%/id_rsa")
+        #expect(result[0].identityFiles.first == "/keys/%backup%/id_rsa")
     }
 
     // MARK: - Include Directive (parseContent — No Filesystem)
