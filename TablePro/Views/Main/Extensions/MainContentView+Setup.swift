@@ -6,18 +6,24 @@
 //  for MainContentView. Extracted to reduce main view complexity.
 //
 
+import os
 import SwiftUI
+
+private let setupLogger = Logger(subsystem: "com.TablePro", category: "MainContentSetup")
 
 extension MainContentView {
     // MARK: - Initialization
 
     func initializeAndRestoreTabs() async {
+        let start = ContinuousClock.now
         guard !hasInitialized else { return }
         hasInitialized = true
         Task { await coordinator.loadSchemaIfNeeded() }
 
         guard let payload else {
+            setupLogger.info("[PERF] initializeAndRestoreTabs: no payload, calling handleRestoreOrDefault")
             await handleRestoreOrDefault()
+            setupLogger.info("[PERF] initializeAndRestoreTabs: total=\(ContinuousClock.now - start) (restoreOrDefault path)")
             return
         }
 
@@ -65,14 +71,17 @@ extension MainContentView {
             }
 
         case .newEmptyTab:
+            setupLogger.info("[PERF] initializeAndRestoreTabs: newEmptyTab (total=\(ContinuousClock.now - start))")
             return
 
         case .restoreOrDefault:
             await handleRestoreOrDefault()
+            setupLogger.info("[PERF] initializeAndRestoreTabs: restoreOrDefault (total=\(ContinuousClock.now - start))")
         }
     }
 
     private func handleRestoreOrDefault() async {
+        let restoreStart = ContinuousClock.now
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
             if tabManager.tabs.isEmpty {
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
@@ -82,7 +91,9 @@ extension MainContentView {
             return
         }
 
+        let preRestore = ContinuousClock.now
         let result = await coordinator.persistence.restoreFromDisk()
+        setupLogger.info("[PERF] handleRestoreOrDefault: restoreFromDisk took \(ContinuousClock.now - preRestore), tabCount=\(result.tabs.count)")
         if !result.tabs.isEmpty {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
@@ -95,44 +106,24 @@ extension MainContentView {
                 }
             }
 
-            let selectedId = result.selectedTabId
+            // All tabs go into one QueryTabManager — no native window loop
+            tabManager.tabs = restoredTabs
+            tabManager.selectedTabId = result.selectedTabId ?? restoredTabs.first?.id
 
-            // First tab in the array gets the current window to preserve order.
-            // Remaining tabs open as native window tabs in order.
-            let firstTab = restoredTabs[0]
-            tabManager.tabs = [firstTab]
-            tabManager.selectedTabId = firstTab.id
-
-            let remainingTabs = Array(restoredTabs.dropFirst())
-
-            if !remainingTabs.isEmpty {
-                let selectedWasFirst = firstTab.id == selectedId
-                Task { @MainActor in
-                    for tab in remainingTabs {
-                        let restorePayload = EditorTabPayload(
-                            from: tab, connectionId: connection.id, skipAutoExecute: true)
-                        WindowOpener.shared.openNativeTab(restorePayload)
-                    }
-                    // Bring the first window to front only if it had the selected tab.
-                    // Otherwise let the last restored window stay focused.
-                    if selectedWasFirst {
-                        viewWindow?.makeKeyAndOrderFront(nil)
-                    }
-                }
-            }
-
-            if firstTab.tabType == .table,
-                !firstTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // Execute the selected tab's query if it's a table tab
+            if let selectedTab = tabManager.selectedTab,
+                selectedTab.tabType == .table,
+                !selectedTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
-                    if !firstTab.databaseName.isEmpty,
-                        firstTab.databaseName != session.activeDatabase
+                    if !selectedTab.databaseName.isEmpty,
+                        selectedTab.databaseName != session.activeDatabase
                     {
-                        Task { await coordinator.switchDatabase(to: firstTab.databaseName) }
+                        Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
                     } else {
-                        if let tableName = firstTab.tableName {
+                        if let tableName = selectedTab.tableName {
                             coordinator.restoreColumnLayoutForTable(tableName)
                         }
                         coordinator.executeTableTabQueryDirectly()
@@ -179,6 +170,7 @@ extension MainContentView {
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
     func configureWindow(_ window: NSWindow) {
+        let configStart = ContinuousClock.now
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
             window.subtitle = "\(connection.name) — Preview"
@@ -188,15 +180,19 @@ extension MainContentView {
 
         let resolvedId = WindowOpener.tabbingIdentifier(for: connection.id)
         window.tabbingIdentifier = resolvedId
-        window.tabbingMode = .preferred
+        // Disallow native window tabbing — tabs are managed in-app via EditorTabBar
+        window.tabbingMode = .disallowed
         coordinator.windowId = windowId
 
+        let registerStart = ContinuousClock.now
         WindowLifecycleMonitor.shared.register(
             window: window,
             connectionId: connection.id,
             windowId: windowId,
             isPreview: isPreview
         )
+        setupLogger.info("[PERF] configureWindow: WindowLifecycleMonitor.register took \(ContinuousClock.now - registerStart)")
+
         viewWindow = window
         coordinator.contentWindow = window
         isKeyWindow = window.isKeyWindow
@@ -211,6 +207,7 @@ extension MainContentView {
 
         // Update command actions window reference now that it's available
         commandActions?.window = window
+        setupLogger.info("[PERF] configureWindow: total=\(ContinuousClock.now - configStart)")
     }
 
     func setupCommandActions() {

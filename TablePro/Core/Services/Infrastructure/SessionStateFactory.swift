@@ -7,6 +7,9 @@
 //
 
 import Foundation
+import os
+
+private let sessionFactoryLogger = Logger(subsystem: "com.TablePro", category: "SessionStateFactory")
 
 @MainActor
 enum SessionStateFactory {
@@ -23,6 +26,7 @@ enum SessionStateFactory {
         connection: DatabaseConnection,
         payload: EditorTabPayload?
     ) -> SessionState {
+        let factoryStart = ContinuousClock.now
         let tabMgr = QueryTabManager()
         let changeMgr = DataChangeManager()
         changeMgr.databaseType = connection.type
@@ -111,6 +115,7 @@ enum SessionStateFactory {
             }
         }
 
+        let preCoordTime = ContinuousClock.now
         let coord = MainContentCoordinator(
             connection: connection,
             tabManager: tabMgr,
@@ -119,6 +124,9 @@ enum SessionStateFactory {
             columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt
         )
+        let coordTime = ContinuousClock.now
+
+        sessionFactoryLogger.info("[PERF] SessionStateFactory.create total=\(ContinuousClock.now - factoryStart), coordinator.init=\(coordTime - preCoordTime), tabSetup=\(preCoordTime - factoryStart)")
 
         return SessionState(
             tabManager: tabMgr,

@@ -14,8 +14,11 @@
 //
 
 import Combine
+import os
 import SwiftUI
 import TableProPluginKit
+
+private let mcvLogger = Logger(subsystem: "com.TablePro", category: "MainContentView")
 
 /// Main content view - thin presentation layer
 struct MainContentView: View {
@@ -64,9 +67,7 @@ struct MainContentView: View {
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
 
-    /// Grace period for onDisappear: SwiftUI fires onDisappear transiently
-    /// during tab group merges, then re-fires onAppear shortly after.
-    private static let tabGroupMergeGracePeriod: Duration = .milliseconds(200)
+    // Grace period removed — no longer needed with in-app tabs (no native tab group merges)
 
     // MARK: - Environment
 
@@ -253,40 +254,26 @@ struct MainContentView: View {
                 // Window registration is handled by WindowAccessor in .background
             }
             .onDisappear {
-                // Mark teardown intent synchronously so deinit doesn't warn
-                // if SwiftUI deallocates the coordinator before the delayed Task fires
+                let disappearStart = ContinuousClock.now
+                mcvLogger.info("[PERF] onDisappear: START windowId=\(self.windowId)")
                 coordinator.markTeardownScheduled()
 
-                let capturedWindowId = windowId
                 let connectionId = connection.id
                 Task { @MainActor in
-                    // Grace period: SwiftUI fires onDisappear transiently during tab group
-                    // merges/splits, then re-fires onAppear shortly after. The onAppear
-                    // handler re-registers via WindowLifecycleMonitor on DispatchQueue.main.async,
-                    // so this delay must exceed that dispatch latency to avoid tearing down
-                    // a window that's about to reappear.
-                    try? await Task.sleep(for: Self.tabGroupMergeGracePeriod)
-
-                    // If this window re-registered (temporary disappear during tab group merge), skip cleanup
-                    if WindowLifecycleMonitor.shared.isRegistered(windowId: capturedWindowId) {
-                        coordinator.clearTeardownScheduled()
-                        return
-                    }
-
-                    // Window truly closed — teardown coordinator
+                    // Direct teardown — no grace period needed since we no longer
+                    // create native window tabs that trigger merge cascades.
+                    let teardownStart = ContinuousClock.now
                     coordinator.teardown()
+                    mcvLogger.info("[PERF] onDisappear: coordinator.teardown took \(ContinuousClock.now - teardownStart)")
                     rightPanelState.teardown()
 
-                    // If no more windows for this connection, disconnect.
-                    // Tab state is NOT cleared here — it's preserved for next reconnect.
-                    // Only handleTabsChange(count=0) clears state (user explicitly closed all tabs).
                     guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else {
+                        mcvLogger.info("[PERF] onDisappear: other windows exist, skipping disconnect (total=\(ContinuousClock.now - disappearStart))")
                         return
                     }
                     await DatabaseManager.shared.disconnectSession(connectionId)
+                    mcvLogger.info("[PERF] onDisappear: TOTAL=\(ContinuousClock.now - disappearStart)")
 
-                    // Give SwiftUI/AppKit time to deallocate view hierarchies,
-                    // then hint malloc to return freed pages to the OS
                     try? await Task.sleep(for: .seconds(2))
                     malloc_zone_pressure_relief(nil, 0)
                 }

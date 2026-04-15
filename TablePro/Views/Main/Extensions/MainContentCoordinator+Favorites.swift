@@ -42,12 +42,6 @@ extension MainContentCoordinator {
             return
         }
 
-        let payload = EditorTabPayload(
-            connectionId: connection.id,
-            tabType: .query,
-            databaseName: connection.database,
-            initialQuery: favorite.query
-        )
-        WindowOpener.shared.openNativeTab(payload)
+        tabManager.addTab(initialQuery: favorite.query, databaseName: connection.database)
     }
 }

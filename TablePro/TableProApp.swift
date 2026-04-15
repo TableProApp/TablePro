@@ -457,16 +457,16 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
-            // Previous tab (Cmd+Shift+[) — delegate to native macOS tab switching
+            // Previous tab (Cmd+Shift+[) — in-app tab switching
             Button("Show Previous Tab") {
-                NSApp.sendAction(#selector(NSWindow.selectPreviousTab(_:)), to: nil, from: nil)
+                actions?.selectPreviousTab()
             }
             .optionalKeyboardShortcut(shortcut(for: .showPreviousTab))
             .disabled(!(actions?.isConnected ?? false))
 
-            // Next tab (Cmd+Shift+]) — delegate to native macOS tab switching
+            // Next tab (Cmd+Shift+]) — in-app tab switching
             Button("Show Next Tab") {
-                NSApp.sendAction(#selector(NSWindow.selectNextTab(_:)), to: nil, from: nil)
+                actions?.selectNextTab()
             }
             .optionalKeyboardShortcut(shortcut(for: .showNextTab))
             .disabled(!(actions?.isConnected ?? false))

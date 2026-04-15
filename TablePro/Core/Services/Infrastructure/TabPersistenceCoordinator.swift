@@ -8,6 +8,9 @@
 
 import Foundation
 import Observation
+import os
+
+private let persistLogger = Logger(subsystem: "com.TablePro", category: "TabPersistence")
 
 /// Result of tab restoration from disk
 internal struct RestoreResult {
@@ -99,15 +102,20 @@ internal final class TabPersistenceCoordinator {
 
     /// Restore tabs from disk. Called once at window creation.
     internal func restoreFromDisk() async -> RestoreResult {
+        let start = ContinuousClock.now
         guard let state = await TabDiskActor.shared.load(connectionId: connectionId) else {
+            persistLogger.info("[PERF] restoreFromDisk: no saved state (\(ContinuousClock.now - start))")
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
 
         guard !state.tabs.isEmpty else {
+            persistLogger.info("[PERF] restoreFromDisk: empty tabs (\(ContinuousClock.now - start))")
             return RestoreResult(tabs: [], selectedTabId: nil, source: .none)
         }
 
+        let mapStart = ContinuousClock.now
         let restoredTabs = state.tabs.map { QueryTab(from: $0) }
+        persistLogger.info("[PERF] restoreFromDisk: diskLoad=\(mapStart - start), tabMapping=\(ContinuousClock.now - mapStart), totalTabs=\(restoredTabs.count), total=\(ContinuousClock.now - start)")
         return RestoreResult(
             tabs: restoredTabs,
             selectedTabId: state.selectedTabId,

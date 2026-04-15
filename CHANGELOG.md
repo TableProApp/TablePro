@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Replace native macOS window tabs with in-app tab bar for instant tab switching (was 600ms+ per tab)
+- Tab restoration now loads all tabs in a single window instead of opening N separate windows
+
 ### Fixed
 
 - Raw SQL injection via external URL scheme deeplinks — now requires user confirmation

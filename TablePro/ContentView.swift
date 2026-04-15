@@ -35,6 +35,7 @@ struct ContentView: View {
     private let storage = ConnectionStorage.shared
 
     init(payload: EditorTabPayload?) {
+        let initStart = ContinuousClock.now
         self.payload = payload
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
@@ -62,6 +63,7 @@ struct ContentView: View {
             resolvedSession = DatabaseManager.shared.activeSessions[currentId]
         }
         _currentSession = State(initialValue: resolvedSession)
+        let sessionResolved = ContinuousClock.now
 
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
@@ -77,6 +79,7 @@ struct ContentView: View {
             _rightPanelState = State(initialValue: nil)
             _sessionState = State(initialValue: nil)
         }
+        Self.logger.info("[PERF] ContentView.init: total=\(ContinuousClock.now - initStart), sessionResolve=\(sessionResolved - initStart), stateFactory=\(ContinuousClock.now - sessionResolved)")
     }
 
     var body: some View {

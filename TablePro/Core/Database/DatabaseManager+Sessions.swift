@@ -241,21 +241,29 @@ extension DatabaseManager {
 
     /// Disconnect a specific session
     func disconnectSession(_ sessionId: UUID) async {
+        let disconnStart = ContinuousClock.now
         guard let session = activeSessions[sessionId] else { return }
 
         // Close SSH tunnel if exists
         if session.connection.resolvedSSHConfig.enabled {
+            let sshStart = ContinuousClock.now
             do {
                 try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
             } catch {
                 Self.logger.warning("SSH tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
             }
+            Self.logger.info("[PERF] disconnectSession: SSH tunnel close=\(ContinuousClock.now - sshStart)")
         }
 
         // Stop health monitoring
+        let healthStart = ContinuousClock.now
         await stopHealthMonitor(for: sessionId)
+        Self.logger.info("[PERF] disconnectSession: stopHealthMonitor=\(ContinuousClock.now - healthStart)")
 
+        let driverStart = ContinuousClock.now
         session.driver?.disconnect()
+        Self.logger.info("[PERF] disconnectSession: driver.disconnect=\(ContinuousClock.now - driverStart)")
+
         removeSessionEntry(for: sessionId)
 
         // Clean up shared schema cache for this connection
@@ -274,6 +282,7 @@ extension DatabaseManager {
                 AppSettingsStorage.shared.saveLastConnectionId(nil)
             }
         }
+        Self.logger.info("[PERF] disconnectSession: TOTAL=\(ContinuousClock.now - disconnStart)")
     }
 
     /// Disconnect all sessions
