@@ -50,24 +50,31 @@ internal final class PromptPassphraseProvider: @unchecked Sendable {
         alert.addButton(withTitle: String(localized: "Connect"))
         alert.addButton(withTitle: String(localized: "Cancel"))
 
-        let textField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        let width: CGFloat = 260
+        let fieldHeight: CGFloat = 22
+        let checkboxHeight: CGFloat = 18
+        let spacing: CGFloat = 8
+        let totalHeight = fieldHeight + spacing + checkboxHeight
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: totalHeight))
+
+        let textField = NSSecureTextField(frame: NSRect(
+            x: 0, y: checkboxHeight + spacing,
+            width: width, height: fieldHeight
+        ))
         textField.placeholderString = String(localized: "Passphrase")
+        container.addSubview(textField)
 
         let checkbox = NSButton(
             checkboxWithTitle: String(localized: "Save passphrase in Keychain"),
             target: nil,
             action: nil
         )
+        checkbox.frame = NSRect(x: 0, y: 0, width: width, height: checkboxHeight)
         checkbox.state = .on
+        container.addSubview(checkbox)
 
-        let stackView = NSStackView(views: [textField, checkbox])
-        stackView.orientation = .vertical
-        stackView.alignment = .leading
-        stackView.spacing = 8
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        textField.widthAnchor.constraint(equalToConstant: 260).isActive = true
-
-        alert.accessoryView = stackView
+        alert.accessoryView = container
         alert.window.initialFirstResponder = textField
 
         let response = alert.runModal()
