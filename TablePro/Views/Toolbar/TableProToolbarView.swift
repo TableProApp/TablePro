@@ -162,19 +162,23 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                if !state.isTableTab {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { actions?.toggleResults() } label: {
-                            Label(
-                                "Results",
-                                systemImage: state.isResultsCollapsed
-                                    ? "rectangle.bottomhalf.inset.filled"
-                                    : "rectangle.inset.filled"
-                            )
-                        }
-                        .help(String(localized: "Toggle Results (⌘⌥R)"))
-                        .disabled(state.connectionState != .connected)
+                // Always include this ToolbarItem to keep the toolbar layout
+                // stable across tab types. Conditionally adding/removing
+                // ToolbarItems causes NavigationSplitView to recalculate the
+                // sidebar's top safe-area inset, producing a visible gap (#759).
+                ToolbarItem(placement: .primaryAction) {
+                    Button { actions?.toggleResults() } label: {
+                        Label(
+                            "Results",
+                            systemImage: state.isResultsCollapsed
+                                ? "rectangle.bottomhalf.inset.filled"
+                                : "rectangle.inset.filled"
+                        )
                     }
+                    .help(String(localized: "Toggle Results (⌘⌥R)"))
+                    .disabled(state.connectionState != .connected)
+                    .opacity(state.isTableTab ? 0 : 1)
+                    .allowsHitTesting(!state.isTableTab)
                 }
 
                 ToolbarItem(placement: .primaryAction) {
