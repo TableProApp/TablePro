@@ -83,6 +83,7 @@ class Highlighter: NSObject {
 
     public var maxHighlightableLength: Int = 5_000_000
 
+
     // MARK: - Init
 
     init(
@@ -228,7 +229,8 @@ extension Highlighter: @preconcurrency NSTextStorageDelegate {
         // This method is called whenever attributes are updated, so to avoid re-highlighting the entire document
         // each time an attribute is applied, we check to make sure this is in response to an edit.
         guard editedMask.contains(.editedCharacters) else { return }
-        guard textView?.textStorage.length ?? 0 <= maxHighlightableLength else { return }
+        let docLength = textView?.textStorage.length ?? 0
+        guard docLength <= maxHighlightableLength else { return }
 
         styleContainer.storageUpdated(editedRange: editedRange, changeInLength: delta)
 

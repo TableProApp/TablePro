@@ -354,7 +354,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     private func uppercaseKeywordIfNeeded(textView: TextView, range: NSRange, string: String) {
         guard !isUppercasing,
               AppSettingsManager.shared.editor.uppercaseKeywords,
-              KeywordUppercaseHelper.isWordBoundary(string) else { return }
+              KeywordUppercaseHelper.isWordBoundary(string),
+              (textView.textStorage.string as NSString).length < 500_000 else { return }
 
         let nsText = textView.textStorage.string as NSString
         guard let match = KeywordUppercaseHelper.keywordBeforePosition(nsText, at: range.location) else { return }

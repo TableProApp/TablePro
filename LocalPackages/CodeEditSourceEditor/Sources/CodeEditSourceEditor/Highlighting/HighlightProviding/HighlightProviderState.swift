@@ -121,9 +121,13 @@ class HighlightProviderState {
     }
 
     /// Accumulates all pending ranges and calls `queryHighlights`.
+    /// For large documents, limits to a reasonable number of chunks per cycle
+    /// to avoid blocking the main thread with tree-sitter queries.
     func highlightInvalidRanges() {
         let docLength = visibleRangeProvider?.documentRange.length ?? 0
-        let maxRanges = docLength > Self.largeDocThreshold ? 2 : Int.max
+        // For large docs, allow enough chunks to cover the visible viewport
+        // (~60 lines ≈ 3-4 chunks of 4096 chars), not just 2.
+        let maxRanges = docLength > Self.largeDocThreshold ? 8 : Int.max
 
         var ranges: [NSRange] = []
         while ranges.count < maxRanges, let nextRange = getNextRange() {
@@ -146,7 +150,6 @@ extension HighlightProviderState {
             switch result {
             case .success(let invalidSet):
                 let modifiedRange = NSRange(location: range.location, length: range.length + delta)
-                // Make sure we add in the edited range too
                 self?.invalidate(invalidSet.union(IndexSet(integersIn: modifiedRange)))
             case .failure(let error):
                 if case HighlightProvidingError.operationCancelled = error {

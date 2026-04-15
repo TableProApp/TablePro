@@ -82,30 +82,39 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         try? await Task.sleep(nanoseconds: debounceNanoseconds)
         guard myGeneration == debounceGeneration else { return nil }
 
-        let text = textView.text
+        let nsText = (textView.textView.textStorage?.string ?? "") as NSString
+        let docLength = nsText.length
         let offset = cursorPosition.range.location
 
         // Don't show autocomplete right after semicolon or newline
         if offset > 0 {
-            let nsString = text as NSString
-            guard offset - 1 < nsString.length else { return nil }
-            let prevChar = nsString.character(at: offset - 1)
+            guard offset - 1 < docLength else { return nil }
+            let prevChar = nsText.character(at: offset - 1)
             let semicolon = UInt16(UnicodeScalar(";").value)
             let newline = UInt16(UnicodeScalar("\n").value)
 
             if prevChar == semicolon || prevChar == newline {
-                guard offset < nsString.length else { return nil }
-                let afterCursor = nsString.substring(from: offset)
+                guard offset < docLength else { return nil }
+                let afterCursor = nsText.substring(from: offset)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if afterCursor.isEmpty { return nil }
             }
         }
 
+        // Extract a windowed substring around the cursor to avoid copying
+        // the entire document. CompletionEngine only needs local context.
+        let windowRadius = 5_000
+        let windowStart = max(0, offset - windowRadius)
+        let windowEnd = min(docLength, offset + windowRadius)
+        let windowRange = NSRange(location: windowStart, length: windowEnd - windowStart)
+        let text = nsText.substring(with: windowRange)
+        let adjustedOffset = offset - windowStart
+
         await completionEngine.retrySchemaIfNeeded()
 
         guard let context = await completionEngine.getCompletions(
             text: text,
-            cursorPosition: offset
+            cursorPosition: adjustedOffset
         ) else {
             return nil
         }
@@ -123,7 +132,15 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             }
         }
 
-        self.currentCompletionContext = context
+        // Adjust replacement range from window-relative back to document coordinates
+        self.currentCompletionContext = CompletionContext(
+            items: context.items,
+            replacementRange: NSRange(
+                location: context.replacementRange.location + windowStart,
+                length: context.replacementRange.length
+            ),
+            sqlContext: context.sqlContext
+        )
 
         let entries: [CodeSuggestionEntry] = context.items.map { item in
             SQLSuggestionEntry(item: item)
@@ -139,16 +156,20 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
         guard let context = currentCompletionContext,
               let provider = completionEngine?.provider else { return nil }
 
-        let text = textView.text
         let offset = cursorPosition.range.location
-        let nsText = text as NSString
+        let docLength = (textView.textView.textStorage?.string as NSString?)?.length ?? 0
 
         let prefixStart = context.replacementRange.location
-        guard offset >= prefixStart, offset <= nsText.length else { return nil }
+        guard offset >= prefixStart, offset <= docLength else { return nil }
 
-        let currentPrefix = nsText.substring(
-            with: NSRange(location: prefixStart, length: offset - prefixStart)
-        ).lowercased()
+        let prefixLength = offset - prefixStart
+        // Completion prefixes should never be more than ~100 chars.
+        // A large prefix means the replacementRange is stale — dismiss.
+        guard prefixLength > 0, prefixLength <= 100 else { return nil }
+
+        let prefixRange = NSRange(location: prefixStart, length: prefixLength)
+        let currentPrefix = (textView.textView.textStorage?.string as NSString?)?
+            .substring(with: prefixRange).lowercased() ?? ""
 
         guard !currentPrefix.isEmpty else { return nil }
 
