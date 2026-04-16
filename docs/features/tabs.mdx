@@ -44,6 +44,7 @@ A preview tab becomes permanent when you:
 
 - **Double-click** a table in the sidebar
 - **Interact** with the tab (sort, filter, edit data, select rows)
+- **Make data changes** — tabs with unsaved edits are promoted to protect your work
 
 Preview tabs are not saved across restarts.
 
@@ -82,10 +83,21 @@ Disable preview tabs in **Settings** > **Tabs** if you prefer every click to ope
 | Close current tab | `Cmd+W` |
 | Close specific tab | Hover and click **x** |
 | Close other tabs | Right-click > **Close Other Tabs** |
+| Close tabs to the right | Right-click > **Close Tabs to the Right** |
+| Close all tabs | Right-click > **Close All** |
+| Reopen closed tab | `Cmd+Shift+T` |
 
-<Warning>
-Closing a tab with unsaved changes discards those changes. TablePro warns you before closing if there are pending data modifications.
-</Warning>
+Closing a tab with unsaved changes shows a confirmation dialog. Closing the last tab closes the window.
+
+When you close a tab, TablePro selects the most recently used tab (not just the adjacent one), matching browser behavior.
+
+### Reopening Closed Tabs
+
+Press `Cmd+Shift+T` to reopen the last closed tab. TablePro keeps a history of up to 20 closed tabs per window. Reopened tabs re-execute their query to fetch fresh data.
+
+<Tip>
+Remap `Cmd+Shift+T` in **Settings** > **Keyboard** if it conflicts with your workflow.
+</Tip>
 
 ### Switching Tabs
 
@@ -117,9 +129,10 @@ Drag any tab to a new position. The tab bar scrolls horizontally when tabs overf
 
 Right-click a tab > **Pin Tab**. Pinned tabs:
 
+- Always appear at the left side of the tab bar, separated by a divider
 - Cannot be closed via close button, `Cmd+W`, or context menu
-- Are not closed by **Close Other Tabs**
-- Are not replaced by table tab reuse
+- Survive **Close Other Tabs**, **Close Tabs to the Right**, and **Close All**
+- Cannot be dragged across the pinned/unpinned boundary
 - Persist across sessions
 
 Unpin via right-click > **Unpin Tab**.
@@ -191,10 +204,13 @@ Right-click any tab:
 
 | Action | Description |
 |--------|-------------|
-| **Duplicate Tab** | Create a copy of this tab |
+| **Rename** | Rename a query tab (query tabs only) |
 | **Pin Tab** / **Unpin Tab** | Toggle pin state |
-| **Close Tab** | Close this tab |
-| **Close Other Tabs** | Close all except this one (respects pins) |
+| **Close** | Close this tab |
+| **Close Others** | Close all except this one (respects pins) |
+| **Close Tabs to the Right** | Close tabs after this one (respects pins) |
+| **Close All** | Close all unpinned tabs |
+| **Duplicate** | Create a copy of this tab |
 
 {/* Screenshot: Tab context menu */}
 <Frame caption="Tab context menu">

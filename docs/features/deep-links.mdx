@@ -47,7 +47,7 @@ open "redis://localhost:6379" -a TablePro
 open "sqlite:///Users/me/data/app.db" -a TablePro
 ```
 
-TablePro checks if a saved connection matches the URL. If found, it reuses that connection. If the connection is already open, the existing window comes to front. Otherwise, a temporary connection is created.
+TablePro checks if a saved connection matches the URL. If found, it reuses that connection. If the connection is already open, the table or query opens as a new tab in the existing window. Otherwise, a temporary connection is created.
 
 ### Query Parameters
 
