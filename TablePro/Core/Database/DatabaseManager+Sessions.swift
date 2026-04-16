@@ -144,6 +144,7 @@ extension DatabaseManager {
 
             // Save as last connection for "Reopen Last Session" feature
             AppSettingsStorage.shared.saveLastConnectionId(connection.id)
+            persistOpenConnectionIds()
 
             // Post notification for reliable delivery
             NotificationCenter.default.post(name: .databaseDidConnect, object: nil)
@@ -264,6 +265,7 @@ extension DatabaseManager {
 
         // Clean up shared sidebar state for this connection
         SharedSidebarState.removeConnection(sessionId)
+        persistOpenConnectionIds()
 
         // If this was the current session, switch to another or clear
         if currentSessionId == sessionId {
@@ -314,6 +316,18 @@ extension DatabaseManager {
         activeSessions.removeValue(forKey: connectionId)
         connectionStatusVersions.removeValue(forKey: connectionId)
         NotificationCenter.default.post(name: .connectionStatusDidChange, object: connectionId)
+    }
+
+    /// Persist active connection IDs to UserDefaults immediately.
+    /// Apple's recommended pattern: save critical state incrementally as it changes,
+    /// not only in applicationWillTerminate (which doesn't fire on SIGKILL/Force Quit).
+    private func persistOpenConnectionIds() {
+        let connections = ConnectionStorage.shared.loadConnections()
+        let activeIds = Set(activeSessions.keys)
+        let openIds = connections
+            .filter { activeIds.contains($0.id) }
+            .map(\.id)
+        AppSettingsStorage.shared.saveLastOpenConnectionIds(openIds)
     }
 
     #if DEBUG
