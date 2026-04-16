@@ -229,6 +229,7 @@ struct MainContentView: View {
             // and Phase 2 tab switch settlement. Removed .task(id: currentTab?.tableName)
             // which created N queued tasks during rapid Cmd+1/2/3 switching.
             .onChange(of: inspectorTrigger) {
+                guard !coordinator.isHandlingTabSwitch else { return }
                 MainContentCoordinator.logger.warning("[DBG] onChange(inspectorTrigger)")
                 scheduleInspectorUpdate()
             }
@@ -268,7 +269,7 @@ struct MainContentView: View {
                 // during view hierarchy reconstruction and is not reliable for resource cleanup.
             }
             .onChange(of: pendingChangeTrigger) {
-                MainContentCoordinator.logger.warning("[DBG] onChange(pendingChangeTrigger)")
+                guard !coordinator.isHandlingTabSwitch else { return }
                 updateToolbarPendingState()
             }
             .userActivity("com.TablePro.viewConnection") { activity in
@@ -311,6 +312,7 @@ struct MainContentView: View {
                 handleTabsChange(newTabs)
             }
             .onChange(of: currentTab?.resultColumns) { _, newColumns in
+                guard !coordinator.isHandlingTabSwitch else { return }
                 MainContentCoordinator.logger.warning("[DBG] onChange(resultColumns) count=\(newColumns?.count ?? -1)")
                 handleColumnsChange(newColumns: newColumns)
             }

@@ -190,17 +190,17 @@ struct MainEditorContentView: View {
             }
         }
         .onChange(of: tabManager.selectedTab?.resultVersion) { _, newVersion in
-            MainContentCoordinator.logger.warning("[DBG] EC.onChange(resultVersion) → \(String(describing: newVersion))")
+            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.metadataVersion) { _, newVersion in
-            MainContentCoordinator.logger.warning("[DBG] EC.onChange(metadataVersion) → \(String(describing: newVersion))")
+            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.activeResultSetId) { _, _ in
-            MainContentCoordinator.logger.warning("[DBG] EC.onChange(activeResultSetId)")
+            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }

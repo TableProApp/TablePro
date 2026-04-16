@@ -101,8 +101,11 @@ extension MainContentCoordinator {
                 }
             }
 
-            // Notify view layer to update title, sidebar, and persistence
-            // after deferred state has settled.
+            // Only run settled callback if THIS tab is still selected.
+            // During rapid Cmd+1/2/3, the user may have already switched to
+            // another tab — running sidebar sync/title/persist for a stale
+            // tab causes cascading onChange(selectedTables) body re-evals.
+            guard self.tabManager.selectedTabId == capturedNewId else { return }
             self.onTabSwitchSettled?()
         }
     }
