@@ -113,6 +113,7 @@ struct MainEditorContentView: View {
                     databaseType: connection.type,
                     onClose: { id in coordinator.closeInAppTab(id) },
                     onCloseOthers: { id in coordinator.closeOtherTabs(excluding: id) },
+                    onCloseTabsToRight: { id in coordinator.closeTabsToRight(of: id) },
                     onCloseAll: { coordinator.closeAllTabs() },
                     onReorder: { tabs in coordinator.reorderTabs(tabs) },
                     onRename: { id, name in coordinator.renameTab(id, to: name) },

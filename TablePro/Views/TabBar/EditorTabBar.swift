@@ -15,6 +15,7 @@ struct EditorTabBar: View {
     let databaseType: DatabaseType
     var onClose: (UUID) -> Void
     var onCloseOthers: (UUID) -> Void
+    var onCloseTabsToRight: (UUID) -> Void
     var onCloseAll: () -> Void
     var onReorder: ([QueryTab]) -> Void
     var onRename: (UUID, String) -> Void
@@ -82,7 +83,7 @@ struct EditorTabBar: View {
             onSelect: { selectedTabId = tab.id },
             onClose: { onClose(tab.id) },
             onCloseOthers: { onCloseOthers(tab.id) },
-            onCloseTabsToRight: { closeTabsToRight(of: tab.id) },
+            onCloseTabsToRight: { onCloseTabsToRight(tab.id) },
             onCloseAll: onCloseAll,
             onDuplicate: { onDuplicate(tab.id) },
             onRename: { name in onRename(tab.id, name) },
@@ -99,14 +100,6 @@ struct EditorTabBar: View {
             draggedTabId: $draggedTabId,
             onReorder: onReorder
         ))
-    }
-
-    private func closeTabsToRight(of id: UUID) {
-        guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let idsToClose = tabs[(index + 1)...].filter { !$0.isPinned }.map(\.id)
-        for tabId in idsToClose {
-            onClose(tabId)
-        }
     }
 }
 
@@ -129,6 +122,9 @@ private struct TabDropDelegate: DropDelegate {
               let fromIndex = tabs.firstIndex(where: { $0.id == draggedId }),
               let toIndex = tabs.firstIndex(where: { $0.id == targetId })
         else { return }
+
+        // Don't allow dragging across the pinned/unpinned boundary
+        guard tabs[fromIndex].isPinned == tabs[toIndex].isPinned else { return }
 
         var reordered = tabs
         let moved = reordered.remove(at: fromIndex)

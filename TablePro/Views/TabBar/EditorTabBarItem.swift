@@ -62,6 +62,10 @@ struct EditorTabBarItem: View {
                     }
                     .onChange(of: isEditingFocused) { _, focused in
                         if !focused && isEditing {
+                            let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !trimmed.isEmpty {
+                                onRename(trimmed)
+                            }
                             isEditing = false
                         }
                     }
@@ -95,6 +99,7 @@ struct EditorTabBarItem: View {
                 }
                 .buttonStyle(.plain)
                 .frame(width: 14, height: 14)
+                .accessibilityLabel(String(localized: "Close tab"))
             } else {
                 Color.clear
                     .frame(width: 14, height: 14)
@@ -109,6 +114,9 @@ struct EditorTabBarItem: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onSelect() }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(tab.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
             if tab.tabType == .query {
                 Button(String(localized: "Rename")) {

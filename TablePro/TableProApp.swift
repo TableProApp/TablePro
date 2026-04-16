@@ -469,7 +469,7 @@ struct AppMenuCommands: Commands {
             Button(String(localized: "Reopen Closed Tab")) {
                 actions?.reopenClosedTab()
             }
-            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .optionalKeyboardShortcut(shortcut(for: .reopenClosedTab))
             .disabled(!(actions?.canReopenClosedTab ?? false))
 
             Divider()

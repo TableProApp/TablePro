@@ -86,6 +86,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     // Tabs
     case showPreviousTab
     case showNextTab
+    case reopenClosedTab
 
     // AI
     case aiExplainQuery
@@ -107,7 +108,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .toggleTableBrowser, .toggleInspector, .toggleFilters, .toggleHistory,
              .toggleResults, .previousResultTab, .nextResultTab, .closeResultTab:
             return .view
-        case .showPreviousTab, .showNextTab:
+        case .showPreviousTab, .showNextTab, .reopenClosedTab:
             return .tabs
         case .aiExplainQuery, .aiOptimizeQuery:
             return .ai
@@ -158,6 +159,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .closeResultTab: return String(localized: "Close Result Tab")
         case .showPreviousTab: return String(localized: "Show Previous Tab")
         case .showNextTab: return String(localized: "Show Next Tab")
+        case .reopenClosedTab: return String(localized: "Reopen Closed Tab")
         case .aiExplainQuery: return String(localized: "Explain with AI")
         case .aiOptimizeQuery: return String(localized: "Optimize with AI")
         }
@@ -500,6 +502,7 @@ struct KeyboardSettings: Codable, Equatable {
         // Tabs
         .showPreviousTab: KeyCombo(key: "[", command: true, shift: true),
         .showNextTab: KeyCombo(key: "]", command: true, shift: true),
+        .reopenClosedTab: KeyCombo(key: "t", command: true, shift: true),
 
         // AI
         .aiExplainQuery: KeyCombo(key: "l", command: true),

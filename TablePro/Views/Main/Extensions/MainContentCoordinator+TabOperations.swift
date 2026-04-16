@@ -158,6 +158,52 @@ extension MainContentCoordinator {
         persistTabs()
     }
 
+    func closeTabsToRight(of id: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let tabsToClose = Array(tabManager.tabs[(index + 1)...]).filter { !$0.isPinned }
+        guard !tabsToClose.isEmpty else { return }
+
+        let selectedIsBeingClosed = tabsToClose.contains { $0.id == tabManager.selectedTabId }
+        let hasUnsavedWork = tabsToClose.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
+            || (selectedIsBeingClosed && changeManager.hasChanges)
+
+        if hasUnsavedWork {
+            Task { @MainActor in
+                let result = await AlertHelper.confirmSaveChanges(
+                    message: String(localized: "Some tabs to the right have unsaved changes that will be lost."),
+                    window: contentWindow
+                )
+                switch result {
+                case .save, .dontSave:
+                    if selectedIsBeingClosed {
+                        changeManager.clearChangesAndUndoHistory()
+                    }
+                    forceCloseTabsToRight(of: id)
+                case .cancel:
+                    return
+                }
+            }
+            return
+        }
+
+        forceCloseTabsToRight(of: id)
+    }
+
+    private func forceCloseTabsToRight(of id: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
+        let toClose = Array(tabManager.tabs[(index + 1)...]).filter { !$0.isPinned }
+        for tab in toClose {
+            tabManager.pushClosedTab(tab)
+            tab.rowBuffer.evict()
+        }
+        let closeIds = Set(toClose.map(\.id))
+        tabManager.tabs.removeAll { closeIds.contains($0.id) }
+        if let selectedId = tabManager.selectedTabId, closeIds.contains(selectedId) {
+            tabManager.selectedTabId = id
+        }
+        persistTabs()
+    }
+
     func closeAllTabs() {
         // Skip pinned tabs — they survive "Close All"
         let closableTabs = tabManager.tabs.filter { !$0.isPinned }
