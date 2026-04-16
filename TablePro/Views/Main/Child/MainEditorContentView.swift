@@ -116,10 +116,21 @@ struct MainEditorContentView: View {
                 Divider()
             }
 
-            if let tab = tabManager.selectedTab {
-                tabContent(for: tab)
-            } else {
+            if tabManager.tabs.isEmpty {
                 emptyStateView
+            } else {
+                // Keep all tab views alive — only the active tab is visible.
+                // Matches Apple's NSTabViewController pattern: views are not
+                // destroyed/recreated on switch, avoiding ~200ms NSTableView
+                // + TreeSitter reconstruction cost.
+                ZStack {
+                    ForEach(tabManager.tabs) { tab in
+                        let isActive = tab.id == tabManager.selectedTabId
+                        tabContent(for: tab)
+                            .opacity(isActive ? 1 : 0)
+                            .allowsHitTesting(isActive)
+                    }
+                }
             }
 
             // Global History Panel
@@ -177,7 +188,7 @@ struct MainEditorContentView: View {
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
-        .onChange(of: tabManager.selectedTab?.metadataVersion) { _, _ in
+        .onChange(of: tabManager.selectedTab?.metadataVersion) { _, newVersion in
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }
@@ -575,8 +586,7 @@ struct MainEditorContentView: View {
     }
 
     private func cacheRowProvider(for tab: QueryTab) {
-        // Skip if the cached entry is still valid — avoids redundant
-        // applyDisplayFormats() + UserDefaults I/O on every tab switch
+        // Skip if the cached entry is still valid
         if let entry = tabProviderCache[tab.id],
            entry.resultVersion == tab.resultVersion,
            entry.metadataVersion == tab.metadataVersion,
