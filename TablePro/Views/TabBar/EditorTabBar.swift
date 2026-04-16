@@ -46,7 +46,7 @@ struct EditorTabBar: View {
                     }
                     .padding(.horizontal, 4)
                 }
-                .onChange(of: selectedTabId) { _, newId in
+                .onChange(of: selectedTabId, initial: true) { _, newId in
                     if let id = newId {
                         withAnimation(.easeInOut(duration: 0.15)) {
                             proxy.scrollTo(id, anchor: .center)
