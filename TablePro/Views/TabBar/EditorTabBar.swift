@@ -21,6 +21,7 @@ struct EditorTabBar: View {
     var onAddTab: () -> Void
     var onDuplicate: (UUID) -> Void
     var onTogglePin: (UUID) -> Void
+    var isActiveTabDirty: Bool = false
 
     @State private var draggedTabId: UUID?
 
@@ -76,6 +77,7 @@ struct EditorTabBar: View {
         EditorTabBarItem(
             tab: tab,
             isSelected: tab.id == selectedTabId,
+            isActiveTabDirty: tab.id == selectedTabId && isActiveTabDirty,
             databaseType: databaseType,
             onSelect: { selectedTabId = tab.id },
             onClose: { onClose(tab.id) },

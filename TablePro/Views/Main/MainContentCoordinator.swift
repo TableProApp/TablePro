@@ -211,7 +211,8 @@ final class MainContentCoordinator {
     /// Check whether any active coordinator has unsaved edits.
     static func hasAnyUnsavedChanges() -> Bool {
         activeCoordinators.values.contains { coordinator in
-            coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
+            coordinator.changeManager.hasChanges
+                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
         }
     }
 

@@ -21,8 +21,13 @@ extension MainContentCoordinator {
 
         let isSelected = tabManager.selectedTabId == id
 
-        // Check for unsaved changes on this specific tab
-        if isSelected && changeManager.hasChanges {
+        // Check for unsaved changes — live changeManager for selected tab,
+        // persisted pendingChanges for background tabs
+        let hasUnsavedData = isSelected
+            ? changeManager.hasChanges
+            : tab.pendingChanges.hasChanges
+
+        if hasUnsavedData {
             Task { @MainActor in
                 let result = await AlertHelper.confirmSaveChanges(
                     message: String(localized: "Your changes will be lost if you don't save them."),
@@ -30,9 +35,17 @@ extension MainContentCoordinator {
                 )
                 switch result {
                 case .save:
-                    await self.saveDataChangesAndClose(tabId: id)
+                    if isSelected {
+                        await self.saveDataChangesAndClose(tabId: id)
+                    } else {
+                        // Background tabs can't be saved through changeManager — discard and close.
+                        // The dialog gives the user a chance to cancel and switch to the tab first.
+                        removeTab(id)
+                    }
                 case .dontSave:
-                    changeManager.clearChangesAndUndoHistory()
+                    if isSelected {
+                        changeManager.clearChangesAndUndoHistory()
+                    }
                     removeTab(id)
                 case .cancel:
                     return
@@ -86,10 +99,11 @@ extension MainContentCoordinator {
             }
         }
 
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
     }
 
     private func saveDataChangesAndClose(tabId: UUID) async {
+        guard saveCompletionContinuation == nil else { return }
         var truncates: Set<String> = []
         var deletes: Set<String> = []
         var options: [String: TableOperationOptions] = [:]
@@ -117,6 +131,9 @@ extension MainContentCoordinator {
                 )
                 switch result {
                 case .save, .dontSave:
+                    // Bulk close can't individually save each tab's changes — changeManager
+                    // only holds the active tab's state. Both options discard and close.
+                    // The dialog gives users a chance to cancel and save individual tabs first.
                     if selectedIsBeingClosed {
                         changeManager.clearChangesAndUndoHistory()
                     }
@@ -138,7 +155,7 @@ extension MainContentCoordinator {
         }
         tabManager.tabs.removeAll { $0.id != id && !$0.isPinned }
         tabManager.selectedTabId = id
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
     }
 
     func closeAllTabs() {
@@ -157,6 +174,7 @@ extension MainContentCoordinator {
                 )
                 switch result {
                 case .save, .dontSave:
+                    // Bulk close can't individually save each tab — see closeOtherTabs comment
                     changeManager.clearChangesAndUndoHistory()
                     forceCloseAllTabs()
                 case .cancel:
@@ -179,12 +197,10 @@ extension MainContentCoordinator {
 
         if tabManager.tabs.isEmpty {
             tabManager.selectedTabId = nil
-            persistence.clearSavedState()
         } else {
-            // Pinned tabs remain — select the first one
             tabManager.selectedTabId = tabManager.tabs.first?.id
-            persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
         }
+        persistTabs()
     }
 
     // MARK: - Reopen Closed Tab (Cmd+Shift+T)
@@ -192,12 +208,13 @@ extension MainContentCoordinator {
     func reopenClosedTab() {
         guard var tab = tabManager.popClosedTab() else { return }
         tab.rowBuffer = RowBuffer()
+        tab.pendingChanges = TabPendingChanges()
         tabManager.tabs.append(tab)
         tabManager.selectedTabId = tab.id
         if tab.tabType == .table, !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             runQuery()
         }
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
     }
 
     // MARK: - Pin Tab
@@ -211,14 +228,28 @@ extension MainContentCoordinator {
         let unpinned = tabManager.tabs.filter { !$0.isPinned }
         tabManager.tabs = pinned + unpinned
 
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
+    }
+
+    // MARK: - Persistence Helper
+
+    /// Persist tabs to disk, excluding preview tabs (consistent with handleTabsChange).
+    private func persistTabs() {
+        let persistableTabs = tabManager.tabs.filter { !$0.isPreview }
+        if persistableTabs.isEmpty {
+            persistence.clearSavedState()
+        } else {
+            let selectedId = persistableTabs.contains(where: { $0.id == tabManager.selectedTabId })
+                ? tabManager.selectedTabId : persistableTabs.first?.id
+            persistence.saveNow(tabs: persistableTabs, selectedTabId: selectedId)
+        }
     }
 
     // MARK: - Tab Reorder
 
     func reorderTabs(_ newOrder: [QueryTab]) {
         tabManager.tabs = newOrder
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
     }
 
     // MARK: - Tab Rename
@@ -226,7 +257,7 @@ extension MainContentCoordinator {
     func renameTab(_ id: UUID, to name: String) {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
         tabManager.tabs[index].title = name
-        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        persistTabs()
     }
 
     // MARK: - Add Tab

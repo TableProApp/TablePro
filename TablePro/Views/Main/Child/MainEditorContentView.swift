@@ -118,7 +118,8 @@ struct MainEditorContentView: View {
                     onRename: { id, name in coordinator.renameTab(id, to: name) },
                     onAddTab: { coordinator.addNewQueryTab() },
                     onDuplicate: { id in coordinator.duplicateTab(id) },
-                    onTogglePin: { id in coordinator.togglePinTab(id) }
+                    onTogglePin: { id in coordinator.togglePinTab(id) },
+                    isActiveTabDirty: changeManager.hasChanges
                 )
                 Divider()
             }

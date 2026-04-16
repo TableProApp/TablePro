@@ -314,6 +314,7 @@ extension MainContentCoordinator {
         )
         if let tabIndex = tabManager.selectedTabIndex {
             tabManager.tabs[tabIndex].isView = isView
+            tabManager.tabs[tabIndex].isEditable = !isView
             tabManager.tabs[tabIndex].schemaName = schemaName
             if showStructure {
                 tabManager.tabs[tabIndex].showStructure = true

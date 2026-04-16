@@ -10,6 +10,7 @@ import SwiftUI
 struct EditorTabBarItem: View {
     let tab: QueryTab
     let isSelected: Bool
+    var isActiveTabDirty: Bool = false
     let databaseType: DatabaseType
     var onSelect: () -> Void
     var onClose: () -> Void
@@ -71,7 +72,7 @@ struct EditorTabBarItem: View {
                     .lineLimit(1)
             }
 
-            if tab.isFileDirty || tab.pendingChanges.hasChanges {
+            if tab.isFileDirty || tab.pendingChanges.hasChanges || isActiveTabDirty {
                 Circle()
                     .fill(Color.primary.opacity(0.5))
                     .frame(width: 6, height: 6)
