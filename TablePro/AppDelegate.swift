@@ -114,6 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = AppSettingsStorage.shared.loadGeneral()
         if settings.startupBehavior == .reopenLast {
             let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
+            Self.logger.info("[RESTORE] startupBehavior=reopenLast, savedConnectionIds=\(connectionIds.map(\.uuidString))")
             if !connectionIds.isEmpty {
                 closeWelcomeWindowEagerly()
                 attemptAutoReconnectAll(connectionIds: connectionIds)
@@ -212,6 +213,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let openConnectionIds = connections
             .filter { activeIds.contains($0.id) }
             .map(\.id)
+        Self.logger.info("[RESTORE] applicationWillTerminate: activeSessions=\(activeIds.map(\.uuidString)), saving connectionIds=\(openConnectionIds.map(\.uuidString))")
         AppSettingsStorage.shared.saveLastOpenConnectionIds(openConnectionIds)
 
         LinkedFolderWatcher.shared.stop()

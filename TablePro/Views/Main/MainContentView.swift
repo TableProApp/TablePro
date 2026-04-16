@@ -14,6 +14,7 @@
 //
 
 import Combine
+import os
 import SwiftUI
 import TableProPluginKit
 
@@ -249,21 +250,29 @@ struct MainContentView: View {
                 // Window registration is handled by WindowAccessor in .background
             }
             .onDisappear {
+                MainContentCoordinator.logger.info("[RESTORE] MainContentView.onDisappear: windowId=\(self.windowId), connection=\(self.connection.name)")
                 coordinator.markTeardownScheduled()
 
-                let connectionId = connection.id
+                let capturedWindowId = windowId
                 Task { @MainActor in
-                    // Direct teardown — no grace period needed with in-app tabs.
-                    coordinator.teardown()
-                    rightPanelState.teardown()
+                    // Grace period: SwiftUI fires onDisappear transiently when the
+                    // view hierarchy is reconstructed (e.g., sessionState changing from
+                    // nil → value causes if-let branches to rebuild). Wait briefly to
+                    // let onAppear re-register if this is a transient removal.
+                    try? await Task.sleep(for: .milliseconds(200))
 
-                    guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else {
+                    if WindowLifecycleMonitor.shared.isRegistered(windowId: capturedWindowId) {
+                        coordinator.clearTeardownScheduled()
                         return
                     }
-                    await DatabaseManager.shared.disconnectSession(connectionId)
 
-                    try? await Task.sleep(for: .seconds(2))
-                    malloc_zone_pressure_relief(nil, 0)
+                    // View truly removed — teardown coordinator.
+                    // Database disconnect is NOT done here — it's handled by
+                    // WindowLifecycleMonitor.handleWindowClose when the NSWindow
+                    // actually closes (a deterministic AppKit signal, not a
+                    // SwiftUI lifecycle heuristic).
+                    coordinator.teardown()
+                    rightPanelState.teardown()
                 }
             }
             .onChange(of: pendingChangeTrigger) {

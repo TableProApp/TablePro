@@ -349,25 +349,29 @@ extension AppDelegate {
         }
 
         isAutoReconnecting = true
+        windowLogger.info("[RESTORE] attemptAutoReconnectAll: \(validConnections.count) connection(s): \(validConnections.map(\.name))")
 
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isAutoReconnecting = false }
 
             for connection in validConnections {
+                windowLogger.info("[RESTORE] opening window for '\(connection.name)' (\(connection.id))")
                 let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
                 WindowOpener.shared.openNativeTab(payload)
 
                 do {
                     try await DatabaseManager.shared.connectToSession(connection)
+                    windowLogger.info("[RESTORE] connected '\(connection.name)' successfully")
                 } catch is CancellationError {
+                    windowLogger.info("[RESTORE] connection cancelled for '\(connection.name)'")
                     for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                         window.close()
                     }
                     continue
                 } catch {
                     windowLogger.error(
-                        "Auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)"
+                        "[RESTORE] auto-reconnect failed for '\(connection.name)': \(error.localizedDescription)"
                     )
                     for window in WindowLifecycleMonitor.shared.windows(for: connection.id) {
                         window.close()

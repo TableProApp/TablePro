@@ -35,6 +35,7 @@ struct ContentView: View {
     private let storage = ConnectionStorage.shared
 
     init(payload: EditorTabPayload?) {
+        Self.logger.info("[RESTORE] ContentView.init: payload=\(String(describing: payload?.connectionId)), intent=\(String(describing: payload?.intent))")
         self.payload = payload
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
@@ -296,6 +297,7 @@ struct ContentView: View {
         }
         guard let newSession = sessions[sid] else {
             if currentSession?.id == sid {
+                Self.logger.info("[RESTORE] handleConnectionStatusChange: session \(sid) removed from activeSessions — tearing down")
                 closingSessionId = sid
                 rightPanelState?.teardown()
                 rightPanelState = nil
@@ -323,6 +325,7 @@ struct ContentView: View {
     /// because SwiftUI may call init speculatively during body evaluation.
     private func ensureSessionState(for session: ConnectionSession) {
         guard sessionState == nil else { return }
+        Self.logger.info("[RESTORE] ensureSessionState: creating for '\(session.connection.name)' (\(session.connection.id)), payload=\(String(describing: self.payload?.intent))")
         if rightPanelState == nil {
             rightPanelState = RightPanelState()
         }
