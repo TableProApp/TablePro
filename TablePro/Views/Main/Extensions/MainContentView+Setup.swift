@@ -187,6 +187,29 @@ extension MainContentView {
         coordinator.contentWindow = window
         isKeyWindow = window.isKeyWindow
 
+        // Intercept Cmd+W via NSEvent monitor — close the active in-app tab
+        // instead of the window. Uses event monitor (like VimKeyInterceptor)
+        // instead of window.delegate to avoid overwriting SwiftUI's internal delegate.
+        if coordinator.closeTabMonitor == nil {
+            let capturedTabManager = tabManager
+            let capturedCoordinator = coordinator
+            weak var capturedWindow = window
+            coordinator.closeTabMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard event.modifierFlags.contains(.command),
+                      !event.modifierFlags.contains(.shift),
+                      event.charactersIgnoringModifiers == "w",
+                      NSApp.keyWindow === capturedWindow
+                else { return event }
+
+                if let selectedId = capturedTabManager.selectedTabId {
+                    capturedCoordinator.closeInAppTab(selectedId)
+                } else {
+                    capturedWindow?.close()
+                }
+                return nil // Consume the event
+            }
+        }
+
         if let payloadId = payload?.id {
             WindowOpener.shared.acknowledgePayload(payloadId)
         }

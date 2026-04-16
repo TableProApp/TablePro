@@ -374,18 +374,12 @@ final class MainContentCommandActions {
             return
         }
 
-        // Multiple in-app tabs: close the selected tab
-        if coordinator.tabManager.tabs.count > 1, let selectedId = coordinator.tabManager.selectedTabId {
+        // Close the active in-app tab. Empty state is shown when no tabs remain.
+        if let selectedId = coordinator.tabManager.selectedTabId {
             coordinator.closeInAppTab(selectedId)
         } else {
-            // Last tab or no tabs: close the window
-            for tab in coordinator.tabManager.tabs {
-                tab.rowBuffer.evict()
-            }
-            coordinator.tabManager.tabs.removeAll()
-            coordinator.tabManager.selectedTabId = nil
-            coordinator.toolbarState.isTableTab = false
-            NSApp.keyWindow?.close()
+            // No tabs open — close the connection window
+            coordinator.contentWindow?.close()
         }
     }
 
@@ -457,6 +451,12 @@ final class MainContentCommandActions {
         pendingTruncates.wrappedValue.removeAll()
         pendingDeletes.wrappedValue.removeAll()
         rightPanelState.editState.clearEdits()
+        // Clear file dirty state to prevent closeInAppTab from showing a second dialog
+        if let tab = coordinator?.tabManager.selectedTab, tab.isFileDirty,
+           let index = coordinator?.tabManager.selectedTabIndex
+        {
+            coordinator?.tabManager.tabs[index].savedFileContent = tab.query
+        }
         performClose()
     }
 

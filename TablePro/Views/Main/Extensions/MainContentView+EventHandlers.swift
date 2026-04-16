@@ -6,15 +6,10 @@
 //  Extracted to reduce main view complexity.
 //
 
-import os
 import SwiftUI
 
 extension MainContentView {
     // MARK: - Event Handlers
-
-    func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
-        coordinator.scheduleTabSwitch(from: oldTabId, to: newTabId)
-    }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
         // Skip during tab switch — handleTabChange saves outgoing tab state which

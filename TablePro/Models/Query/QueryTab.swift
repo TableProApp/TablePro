@@ -133,6 +133,15 @@ struct QueryTab: Identifiable, Equatable {
     // Version counter incremented on pagination changes, used to scroll grid to top
     var paginationVersion: Int
 
+    /// Composite version for NSHostingView rootView rebuild decisions.
+    /// Includes all state that affects visual content.
+    var contentVersion: Int {
+        var v = resultVersion &+ metadataVersion &+ paginationVersion
+        if errorMessage != nil { v = v &+ 1 }
+        if isExecuting { v = v &+ 2 }
+        return v
+    }
+
     /// Whether the editor content differs from the last saved/loaded file content.
     /// Returns false for tabs not backed by a file.
     /// Uses O(1) length pre-check to avoid O(n) string comparison on every keystroke.

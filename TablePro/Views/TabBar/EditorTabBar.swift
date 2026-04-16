@@ -48,9 +48,7 @@ struct EditorTabBar: View {
                 }
                 .onChange(of: selectedTabId, initial: true) { _, newId in
                     if let id = newId {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            proxy.scrollTo(id, anchor: .center)
-                        }
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
             }
@@ -141,6 +139,7 @@ private struct TabDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        draggedTabId = nil
+        // Don't clear draggedTabId here — during reorder, dropEntered on the
+        // next tab needs it. It's cleared in performDrop when the drag ends.
     }
 }

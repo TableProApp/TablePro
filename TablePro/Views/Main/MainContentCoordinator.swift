@@ -108,6 +108,10 @@ final class MainContentCoordinator {
     /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
     @ObservationIgnored weak var contentWindow: NSWindow?
 
+    /// NSEvent monitor that intercepts Cmd+W to close tabs instead of the window.
+    /// Removed in teardown.
+    @ObservationIgnored var closeTabMonitor: Any?
+
     // MARK: - Published State
 
     var schemaProvider: SQLSchemaProvider
@@ -207,7 +211,7 @@ final class MainContentCoordinator {
     /// Check whether any active coordinator has unsaved edits.
     static func hasAnyUnsavedChanges() -> Bool {
         activeCoordinators.values.contains { coordinator in
-            coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
+            coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
         }
     }
 
@@ -409,6 +413,16 @@ final class MainContentCoordinator {
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
         _didTeardown.withLock { $0 = true }
+
+        // Resume any pending save continuation to prevent Task leak
+        saveCompletionContinuation?.resume(returning: false)
+        saveCompletionContinuation = nil
+
+        // Remove Cmd+W event monitor
+        if let monitor = closeTabMonitor {
+            NSEvent.removeMonitor(monitor)
+            closeTabMonitor = nil
+        }
 
         unregisterFromPersistence()
         for observer in urlFilterObservers {

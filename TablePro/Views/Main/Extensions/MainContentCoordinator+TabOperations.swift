@@ -79,7 +79,6 @@ extension MainContentCoordinator {
         if wasSelected {
             if tabManager.tabs.isEmpty {
                 tabManager.selectedTabId = nil
-                contentWindow?.close()
             } else {
                 // MRU: select the most recently active tab, not just adjacent
                 tabManager.selectedTabId = tabManager.mruTabId(excluding: id)
@@ -133,8 +132,9 @@ extension MainContentCoordinator {
     }
 
     private func forceCloseOtherTabs(excluding id: UUID) {
-        for index in tabManager.tabs.indices where tabManager.tabs[index].id != id && !tabManager.tabs[index].isPinned {
-            tabManager.tabs[index].rowBuffer.evict()
+        for tab in tabManager.tabs where tab.id != id && !tab.isPinned {
+            tabManager.pushClosedTab(tab)
+            tab.rowBuffer.evict()
         }
         tabManager.tabs.removeAll { $0.id != id && !$0.isPinned }
         tabManager.selectedTabId = id
@@ -172,6 +172,7 @@ extension MainContentCoordinator {
     private func forceCloseAllTabs() {
         let closable = tabManager.tabs.filter { !$0.isPinned }
         for tab in closable {
+            tabManager.pushClosedTab(tab)
             tab.rowBuffer.evict()
         }
         tabManager.tabs.removeAll { !$0.isPinned }
@@ -179,7 +180,6 @@ extension MainContentCoordinator {
         if tabManager.tabs.isEmpty {
             tabManager.selectedTabId = nil
             persistence.clearSavedState()
-            contentWindow?.close()
         } else {
             // Pinned tabs remain — select the first one
             tabManager.selectedTabId = tabManager.tabs.first?.id

@@ -47,22 +47,23 @@ struct EditorTabBarItem: View {
                 .foregroundStyle(.secondary)
 
             if isEditing {
-                TextField("", text: $editingTitle, onCommit: {
-                    let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty {
-                        onRename(trimmed)
-                    }
-                    isEditing = false
-                })
-                .textFieldStyle(.plain)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                .frame(minWidth: 40, maxWidth: 120)
-                .focused($isEditingFocused)
-                .onChange(of: isEditingFocused) { _, focused in
-                    if !focused && isEditing {
+                TextField("", text: $editingTitle)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .frame(minWidth: 40, maxWidth: 120)
+                    .focused($isEditingFocused)
+                    .onSubmit {
+                        let trimmed = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            onRename(trimmed)
+                        }
                         isEditing = false
                     }
-                }
+                    .onChange(of: isEditingFocused) { _, focused in
+                        if !focused && isEditing {
+                            isEditing = false
+                        }
+                    }
             } else {
                 Text(tab.title)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
@@ -106,18 +107,16 @@ struct EditorTabBarItem: View {
         )
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .gesture(
-            TapGesture(count: 2).onEnded {
-                guard tab.tabType == .query else { return }
-                editingTitle = tab.title
-                isEditing = true
-                isEditingFocused = true
-            }
-            .exclusively(before: TapGesture(count: 1).onEnded {
-                onSelect()
-            })
-        )
+        .onTapGesture { onSelect() }
         .contextMenu {
+            if tab.tabType == .query {
+                Button(String(localized: "Rename")) {
+                    editingTitle = tab.title
+                    isEditing = true
+                    isEditingFocused = true
+                }
+                Divider()
+            }
             Button(tab.isPinned ? String(localized: "Unpin Tab") : String(localized: "Pin Tab")) {
                 onTogglePin()
             }

@@ -14,7 +14,6 @@
 //
 
 import Combine
-import os
 import SwiftUI
 import TableProPluginKit
 
@@ -107,7 +106,6 @@ struct MainContentView: View {
     // MARK: - Body
 
     var body: some View {
-        let _ = MainContentCoordinator.logger.warning("[DBG] MCV.body eval")
         bodyContent
             .sheet(item: Bindable(coordinator).activeSheet) { sheet in
                 sheetContent(for: sheet)
@@ -229,8 +227,6 @@ struct MainContentView: View {
             // and Phase 2 tab switch settlement. Removed .task(id: currentTab?.tableName)
             // which created N queued tasks during rapid Cmd+1/2/3 switching.
             .onChange(of: inspectorTrigger) {
-                guard !coordinator.isHandlingTabSwitch else { return }
-                MainContentCoordinator.logger.warning("[DBG] onChange(inspectorTrigger)")
                 scheduleInspectorUpdate()
             }
             .onAppear {
@@ -246,17 +242,18 @@ struct MainContentView: View {
                 rightPanelState.aiViewModel.schemaProvider = coordinator.schemaProvider
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
-                coordinator.onTabSwitchSettled = { [self] in
-                    updateWindowTitleAndFileState()
-                    syncSidebarToCurrentTab()
-                    guard !coordinator.isTearingDown else { return }
-                    coordinator.persistence.saveNow(
-                        tabs: tabManager.tabs,
-                        selectedTabId: tabManager.selectedTabId
+                coordinator.onTabSwitchSettled = {
+                    // Capture reference types explicitly — MainContentView is a struct,
+                    // but @State/@Binding storage is reference-stable.
+                    self.updateWindowTitleAndFileState()
+                    self.syncSidebarToCurrentTab()
+                    guard !self.coordinator.isTearingDown else { return }
+                    self.coordinator.persistence.saveNow(
+                        tabs: self.tabManager.tabs,
+                        selectedTabId: self.tabManager.selectedTabId
                     )
-                    // Load table metadata for the settled tab
-                    if let tab = tabManager.selectedTab, tab.lastExecutedAt != nil {
-                        Task { await loadTableMetadataIfNeeded() }
+                    if let tab = self.tabManager.selectedTab, tab.lastExecutedAt != nil {
+                        Task { await self.loadTableMetadataIfNeeded() }
                     }
                 }
 
@@ -269,7 +266,6 @@ struct MainContentView: View {
                 // during view hierarchy reconstruction and is not reliable for resource cleanup.
             }
             .onChange(of: pendingChangeTrigger) {
-                guard !coordinator.isHandlingTabSwitch else { return }
                 updateToolbarPendingState()
             }
             .userActivity("com.TablePro.viewConnection") { activity in
@@ -308,12 +304,9 @@ struct MainContentView: View {
                 previousSelectedTabId = newTabId
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
-                MainContentCoordinator.logger.warning("[DBG] onChange(tabs) count=\(newTabs.count)")
                 handleTabsChange(newTabs)
             }
             .onChange(of: currentTab?.resultColumns) { _, newColumns in
-                guard !coordinator.isHandlingTabSwitch else { return }
-                MainContentCoordinator.logger.warning("[DBG] onChange(resultColumns) count=\(newColumns?.count ?? -1)")
                 handleColumnsChange(newColumns: newColumns)
             }
             .task { handleConnectionStatusChange() }
@@ -325,7 +318,6 @@ struct MainContentView: View {
             }
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
-                MainContentCoordinator.logger.warning("[DBG] onChange(selectedTables) count=\(newTables.count)")
                 handleTableSelectionChange(from: previousSelectedTables, to: newTables)
                 previousSelectedTables = newTables
             }

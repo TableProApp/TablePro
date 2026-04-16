@@ -8,7 +8,6 @@
 
 import AppKit
 import CodeEditSourceEditor
-import os
 import SwiftUI
 
 /// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation
@@ -91,10 +90,16 @@ struct MainEditorContentView: View {
         return AnyChangeManager(dataManager: changeManager)
     }
 
+    /// Composite version counter for the active tab — drives `updateNSView`
+    /// when query results, metadata, or pagination change. Hidden tabs are
+    /// not tracked; their rootView is refreshed when they become active.
+    private var activeTabContentVersion: Int {
+        tabManager.selectedTab?.contentVersion ?? 0
+    }
+
     // MARK: - Body
 
     var body: some View {
-        let _ = MainContentCoordinator.logger.warning("[DBG] EditorContent.body eval selected=\(tabManager.selectedTab?.title ?? "nil", privacy: .public)")
         let isHistoryVisible = coordinator.toolbarState.isHistoryPanelVisible
 
         VStack(spacing: 0) {
@@ -121,18 +126,15 @@ struct MainEditorContentView: View {
             if tabManager.tabs.isEmpty {
                 emptyStateView
             } else {
-                // Keep all tab views alive — only the active tab is visible.
-                // Matches Apple's NSTabViewController pattern: views are not
-                // destroyed/recreated on switch, avoiding ~200ms NSTableView
-                // + TreeSitter reconstruction cost.
-                ZStack {
-                    ForEach(tabManager.tabs) { tab in
-                        let isActive = tab.id == tabManager.selectedTabId
-                        tabContent(for: tab)
-                            .opacity(isActive ? 1 : 0)
-                            .allowsHitTesting(isActive)
-                    }
-                }
+                // Tab content lives in AppKit NSHostingViews managed by a
+                // Coordinator. Tab switching toggles NSView.isHidden —
+                // no SwiftUI body re-evaluation, no CALayer opacity relayout.
+                TabContentContainerView(
+                    tabManager: tabManager,
+                    tabIds: tabManager.tabIds,
+                    activeTabContentVersion: activeTabContentVersion,
+                    contentBuilder: { tab in AnyView(tabContent(for: tab)) }
+                )
             }
 
             // Global History Panel
@@ -151,7 +153,6 @@ struct MainEditorContentView: View {
             )
         }
         .onChange(of: tabManager.tabIds) { _, newIds in
-            MainContentCoordinator.logger.warning("[DBG] EC.onChange(tabIds) count=\(newIds.count)")
             guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty
                 || !serverDashboardViewModels.isEmpty else {
                 coordinator.cleanupSortCache(openTabIds: Set(newIds))
@@ -165,7 +166,6 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, newId in
-            MainContentCoordinator.logger.warning("[DBG] EC.onChange(selectedTabId) → \(String(describing: newId))")
             updateHasQueryText()
 
             guard let newId, let tab = tabManager.selectedTab else { return }
@@ -173,8 +173,7 @@ struct MainEditorContentView: View {
             if cached?.resultVersion != tab.resultVersion
                 || cached?.metadataVersion != tab.metadataVersion
             {
-                MainContentCoordinator.logger.warning("[DBG] EC.cacheRowProvider called (cache miss)")
-                cacheRowProvider(for: tab)
+                    cacheRowProvider(for: tab)
             }
         }
         .onAppear {
@@ -190,17 +189,14 @@ struct MainEditorContentView: View {
             }
         }
         .onChange(of: tabManager.selectedTab?.resultVersion) { _, newVersion in
-            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.metadataVersion) { _, newVersion in
-            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.activeResultSetId) { _, _ in
-            guard !coordinator.isHandlingTabSwitch else { return }
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }

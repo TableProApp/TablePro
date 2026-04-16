@@ -46,6 +46,10 @@ final class QueryTabManager {
     func trackActivation(_ tabId: UUID) {
         tabActivationOrder.removeAll { $0 == tabId }
         tabActivationOrder.append(tabId)
+        // Cap to prevent unbounded growth from open/close cycles
+        if tabActivationOrder.count > 50 {
+            tabActivationOrder.removeFirst(tabActivationOrder.count - 50)
+        }
     }
 
     /// Returns the most recently active tab ID, excluding a given ID.

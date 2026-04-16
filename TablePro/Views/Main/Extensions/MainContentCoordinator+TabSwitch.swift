@@ -10,10 +10,10 @@ import Foundation
 import os
 
 extension MainContentCoordinator {
-    /// Schedule a tab switch with zero synchronous @Observable mutations.
-    /// The ZStack opacity flip happens from selectedTabId binding alone.
-    /// All state work (save outgoing, MRU, title, sidebar, persist) is
-    /// deferred to Phase 2 Task which coalesces rapid Cmd+1/2/3 spam.
+    /// Schedule a tab switch. Phase 1 (synchronous): MRU tracking only.
+    /// Phase 2 (deferred Task): save outgoing state, restore incoming
+    /// shared managers, lazy query, sidebar/title/persist settlement.
+    /// Rapid Cmd+1/2/3 coalesces — only the LAST switch's Phase 2 runs.
     func scheduleTabSwitch(
         from oldTabId: UUID?,
         to newTabId: UUID?
@@ -27,46 +27,78 @@ extension MainContentCoordinator {
             tabManager.trackActivation(newId)
         }
 
-        // Phase 2: Deferred — all state work coalesced via task cancellation.
+        // Save outgoing tab state synchronously (Phase 1) so it's never lost
+        // during rapid Cmd+1/2/3 coalescing where Phase 2 Tasks get cancelled.
+        if let oldId = oldTabId,
+           let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
+        {
+            var tab = tabManager.tabs[oldIndex]
+            if changeManager.hasChanges {
+                tab.pendingChanges = changeManager.saveState()
+            }
+            tab.filterState = filterStateManager.saveToTabState()
+            tabManager.tabs[oldIndex] = tab
+            if let tableName = tab.tableName {
+                filterStateManager.saveLastFilters(for: tableName)
+            }
+            saveColumnVisibilityToTab()
+            saveColumnLayoutForTable()
+        }
+
+        // Phase 2: Deferred — restore incoming state + lazy query.
         // During rapid Cmd+1/2/3, only the LAST switch's Phase 2 executes.
         tabSwitchTask?.cancel()
-        let capturedOldId = oldTabId
         let capturedNewId = newTabId
         tabSwitchTask = Task { @MainActor [weak self] in
             guard let self, !Task.isCancelled else { return }
-
-            // Update toolbar and selection for the settled tab
-            if let newId = capturedNewId,
-               let newIndex = self.tabManager.tabs.firstIndex(where: { $0.id == newId }) {
-                self.toolbarState.isTableTab = self.tabManager.tabs[newIndex].tabType == .table
-            } else {
-                self.toolbarState.isTableTab = false
-                self.toolbarState.isResultsCollapsed = false
-            }
-
-            if let oldId = capturedOldId,
-               let oldIndex = self.tabManager.tabs.firstIndex(where: { $0.id == oldId }) {
-                var tab = self.tabManager.tabs[oldIndex]
-                if self.changeManager.hasChanges {
-                    tab.pendingChanges = self.changeManager.saveState()
-                }
-                tab.filterState = self.filterStateManager.saveToTabState()
-                self.tabManager.tabs[oldIndex] = tab
-                if let tableName = tab.tableName {
-                    self.filterStateManager.saveLastFilters(for: tableName)
-                }
-                self.saveColumnVisibilityToTab()
-                self.saveColumnLayoutForTable()
-            }
-
             guard !Task.isCancelled else { return }
 
-            // Lazy query check for evicted/empty tabs
+            // Restore incoming tab shared state.
             guard let newId = capturedNewId,
                   let newIndex = self.tabManager.tabs.firstIndex(where: { $0.id == newId })
-            else { return }
+            else {
+                self.toolbarState.isTableTab = false
+                self.toolbarState.isResultsCollapsed = false
+                self.filterStateManager.clearAll()
+                return
+            }
             let newTab = self.tabManager.tabs[newIndex]
 
+            // Guard each mutation — skip when the value is already correct.
+            // Avoids unnecessary @Observable notifications that would cause
+            // ALL NSHostingViews to re-evaluate (expensive for tabs with many rows).
+            let isTable = newTab.tabType == .table
+            if self.toolbarState.isTableTab != isTable {
+                self.toolbarState.isTableTab = isTable
+            }
+            if self.toolbarState.isResultsCollapsed != newTab.isResultsCollapsed {
+                self.toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
+            }
+            self.filterStateManager.restoreFromTabState(newTab.filterState)
+            self.restoreColumnVisibilityFromTab(newTab)
+
+            // Reconfigure change manager only when the table actually changed
+            let newTableName = newTab.tableName ?? ""
+            let pendingState = newTab.pendingChanges
+            if pendingState.hasChanges {
+                self.changeManager.restoreState(
+                    from: pendingState,
+                    tableName: newTableName,
+                    databaseType: self.connection.type
+                )
+            } else if self.changeManager.tableName != newTableName
+                || self.changeManager.columns != newTab.resultColumns
+            {
+                self.changeManager.configureForTable(
+                    tableName: newTableName,
+                    columns: newTab.resultColumns,
+                    primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
+                        ? Array(newTab.resultColumns.prefix(1))
+                        : newTab.primaryKeyColumns,
+                    databaseType: self.connection.type,
+                    triggerReload: false
+                )
+            }
             // Database switch check
             if !newTab.databaseName.isEmpty {
                 let currentDatabase = DatabaseManager.shared.session(for: self.connectionId)?.activeDatabase
@@ -108,39 +140,6 @@ extension MainContentCoordinator {
             // tab causes cascading onChange(selectedTables) body re-evals.
             guard self.tabManager.selectedTabId == capturedNewId else { return }
             self.onTabSwitchSettled?()
-        }
-    }
-
-    private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
-        let candidates = tabManager.tabs.filter {
-            !activeTabIds.contains($0.id)
-                && !$0.rowBuffer.isEvicted
-                && !$0.resultRows.isEmpty
-                && $0.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
-        }
-
-        let sorted = candidates.sorted {
-            let t0 = $0.lastExecutedAt ?? .distantFuture
-            let t1 = $1.lastExecutedAt ?? .distantFuture
-            if t0 != t1 { return t0 < t1 }
-            let size0 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $0.rowBuffer.rows.count,
-                columnCount: $0.rowBuffer.columns.count
-            )
-            let size1 = MemoryPressureAdvisor.estimatedFootprint(
-                rowCount: $1.rowBuffer.rows.count,
-                columnCount: $1.rowBuffer.columns.count
-            )
-            return size0 > size1
-        }
-
-        let maxInactiveLoaded = MemoryPressureAdvisor.budgetForInactiveTabs()
-        guard sorted.count > maxInactiveLoaded else { return }
-        let toEvict = sorted.dropLast(maxInactiveLoaded)
-
-        for tab in toEvict {
-            tab.rowBuffer.evict()
         }
     }
 }

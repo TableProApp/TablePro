@@ -240,12 +240,12 @@ final class FilterStateManager {
         )
     }
 
-    /// Restore filter state from tab
+    /// Restore filter state from tab — skips mutations when values unchanged
     func restoreFromTabState(_ state: TabFilterState) {
-        filters = state.filters
-        appliedFilters = state.appliedFilters
-        isVisible = state.isVisible
-        filterLogicMode = state.filterLogicMode
+        if filters != state.filters { filters = state.filters }
+        if appliedFilters != state.appliedFilters { appliedFilters = state.appliedFilters }
+        if isVisible != state.isVisible { isVisible = state.isVisible }
+        if filterLogicMode != state.filterLogicMode { filterLogicMode = state.filterLogicMode }
     }
 
     /// Save filters for a table (for "Restore Last Filter" setting)

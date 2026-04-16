@@ -49,7 +49,7 @@ internal final class ColumnVisibilityManager {
     }
 
     func restoreFromColumnLayout(_ columns: Set<String>) {
-        hiddenColumns = columns
+        if hiddenColumns != columns { hiddenColumns = columns }
     }
 
     // MARK: - Per-Table UserDefaults Persistence
