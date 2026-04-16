@@ -8,10 +8,7 @@
 //  observation tracking; isHidden only suppresses rendering.
 //
 
-import os
 import SwiftUI
-
-private let containerLogger = Logger(subsystem: "com.TablePro", category: "TabContentContainer")
 
 /// NSViewRepresentable that manages tab content views in AppKit.
 /// Only the active tab's NSHostingView is visible (isHidden = false).
@@ -64,7 +61,6 @@ struct TabContentContainerView: NSViewRepresentable {
         {
             let builtVersion = coordinator.builtVersions[activeId] ?? -1
             if builtVersion != tab.contentVersion {
-                containerLogger.info("[CONTAINER] updateNSView: rebuilding \"\(tab.title, privacy: .public)\" builtVersion=\(builtVersion) → contentVersion=\(tab.contentVersion) resultCols=\(tab.resultColumns.count) rows=\(tab.resultRows.count)")
                 hosting.rootView = contentBuilder(tab)
                 coordinator.builtVersions[activeId] = tab.contentVersion
             }

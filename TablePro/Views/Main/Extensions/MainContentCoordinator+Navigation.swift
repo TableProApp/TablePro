@@ -169,7 +169,6 @@ extension MainContentCoordinator {
         isView: Bool = false,
         showStructure: Bool = false
     ) {
-        navigationLogger.info("[TAB-NAV] addTableTabInApp: \"\(tableName, privacy: .public)\" — creating new tab (query deferred to tab switch Phase 2)")
         tabManager.addTableTab(
             tableName: tableName,
             databaseType: connection.type,

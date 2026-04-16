@@ -128,15 +128,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
                 if !connectionIds.isEmpty {
                     self.closeWelcomeWindowEagerly()
-                    self.attemptAutoReconnectAll(connectionIds: connectionIds)
+                    self.attemptAutoReconnect(connectionIds: connectionIds)
                 } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
                     self.closeWelcomeWindowEagerly()
-                    self.attemptAutoReconnect(connectionId: lastConnectionId)
+                    self.attemptAutoReconnect(connectionIds: [lastConnectionId])
                 } else {
                     let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
                     if !diskIds.isEmpty {
                         self.closeWelcomeWindowEagerly()
-                        self.attemptAutoReconnectAll(connectionIds: diskIds)
+                        self.attemptAutoReconnect(connectionIds: diskIds)
                     } else {
                         self.closeRestoredMainWindows()
                     }

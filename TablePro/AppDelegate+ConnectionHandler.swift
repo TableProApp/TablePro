@@ -92,9 +92,7 @@ extension AppDelegate {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 self.openNewConnectionWindow(for: connection)
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
                 self.handlePostConnectionActions(parsed, connectionId: connection.id)
             } catch {
                 connectionLogger.error("Database URL connect failed: \(error.localizedDescription)")
@@ -143,9 +141,7 @@ extension AppDelegate {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 self.openNewConnectionWindow(for: connection)
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
             } catch {
                 connectionLogger.error("SQLite file open failed for '\(filePath, privacy: .public)': \(error.localizedDescription)")
                 await self.handleConnectionFailure(error)
@@ -193,9 +189,7 @@ extension AppDelegate {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 self.openNewConnectionWindow(for: connection)
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
             } catch {
                 connectionLogger.error("DuckDB file open failed for '\(filePath, privacy: .public)': \(error.localizedDescription)")
                 await self.handleConnectionFailure(error)
@@ -243,9 +237,7 @@ extension AppDelegate {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 self.openNewConnectionWindow(for: connection)
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
             } catch {
                 connectionLogger.error("File open failed for '\(filePath, privacy: .public)' (\(dbType.rawValue)): \(error.localizedDescription)")
                 await self.handleConnectionFailure(error)
@@ -475,6 +467,12 @@ extension AppDelegate {
     static func paramKey(for parsed: ParsedConnectionURL) -> String {
         let rdb = parsed.redisDatabase.map { "/redis:\($0)" } ?? ""
         return "\(parsed.type.rawValue):\(parsed.username)@\(parsed.host):\(parsed.port ?? 0)/\(parsed.database)\(rdb)"
+    }
+
+    func closeAllWelcomeWindows() {
+        for window in NSApp.windows where isWelcomeWindow(window) {
+            window.close()
+        }
     }
 
     func bringConnectionWindowToFront(_ connectionId: UUID) {

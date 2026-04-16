@@ -59,9 +59,7 @@ extension AppDelegate {
         Task { @MainActor in
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
                 if let tableName {
                     let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
                     if !routeToExistingWindow(connectionId: connectionId, payload: payload) {
@@ -96,8 +94,9 @@ extension AppDelegate {
     // MARK: - Main Dispatch
 
     func handleOpenURLs(_ urls: [URL]) {
-        // Suppress auto-reconnect when the app is launched by a URL — the URL handler
-        // will create the appropriate window. This prevents duplicate windows on cold launch.
+        // application(_:open:) fires in the same run loop pass as applicationDidFinishLaunching
+        // on cold launch from URL. The deferred auto-reconnect Task yields to the next run loop,
+        // so this flag is guaranteed to be set before the Task checks it.
         suppressAutoReconnect = true
 
         let deeplinks = urls.filter { $0.scheme == "tablepro" }
@@ -157,9 +156,7 @@ extension AppDelegate {
                 for window in NSApp.windows where isMainWindow(window) {
                     window.makeKeyAndOrderFront(nil)
                 }
-                for window in NSApp.windows where isWelcomeWindow(window) {
-                    window.close()
-                }
+                closeAllWelcomeWindows()
                 NotificationCenter.default.post(name: .openSQLFiles, object: sqlFiles)
                 endFileOpenSuppression()
             } else {
@@ -260,7 +257,7 @@ extension AppDelegate {
         makePayload: (@Sendable (UUID) -> EditorTabPayload)? = nil
     ) {
         guard let connection = DeeplinkHandler.resolveConnection(named: connectionName) else {
-            fileOpenLogger.error("[DEEPLINK] no connection named '\(connectionName, privacy: .public)'")
+            fileOpenLogger.error("No connection named '\(connectionName, privacy: .public)'")
             AlertHelper.showErrorSheet(
                 title: String(localized: "Connection Not Found"),
                 message: String(format: String(localized: "No saved connection named \"%@\"."), connectionName),
@@ -269,28 +266,13 @@ extension AppDelegate {
             return
         }
 
-        let session = DatabaseManager.shared.activeSessions[connection.id]
-        let hasDriver = session?.driver != nil
-        let isConnected = session?.isConnected ?? false
+        let hasDriver = DatabaseManager.shared.activeSessions[connection.id]?.driver != nil
         let hasCoordinator = MainContentCoordinator.firstCoordinator(for: connection.id) != nil
-        let windowCount = WindowLifecycleMonitor.shared.windows(for: connection.id).count
-        fileOpenLogger.info("[DEEPLINK] connectViaDeeplink: name=\"\(connectionName, privacy: .public)\" connId=\(connection.id) hasSession=\(session != nil) hasDriver=\(hasDriver) isConnected=\(isConnected) hasCoordinator=\(hasCoordinator) windows=\(windowCount) hasPayload=\(makePayload != nil)")
-
-        // Prevent duplicate connections from rapid deeplink invocations
-        let hasPendingWindow = WindowOpener.shared.pendingPayloads.contains { $0.connectionId == connection.id }
-        let isAlreadyConnecting = connectingURLConnectionIds.contains(connection.id)
-        guard !isAlreadyConnecting, !hasPendingWindow else {
-            fileOpenLogger.info("[DEEPLINK] → skipping duplicate (connecting=\(isAlreadyConnecting) pending=\(hasPendingWindow))")
-            bringConnectionWindowToFront(connection.id)
-            return
-        }
 
         // Already connected — route to existing window's in-app tab bar
         if hasDriver {
-            fileOpenLogger.info("[DEEPLINK] → already connected, routing to existing window")
             if let payload = makePayload?(connection.id) {
                 if !routeToExistingWindow(connectionId: connection.id, payload: payload) {
-                    fileOpenLogger.info("[DEEPLINK] → no coordinator found, falling back to openNativeTab")
                     WindowOpener.shared.openNativeTab(payload)
                 }
             } else {
@@ -299,14 +281,20 @@ extension AppDelegate {
             return
         }
 
-        // Has coordinator but no driver — window exists, connection may be in progress
-        if hasCoordinator {
-            fileOpenLogger.info("[DEEPLINK] → coordinator exists but no driver, bringing window to front")
+        // Prevent duplicate connections from rapid deeplink invocations
+        let hasPendingWindow = WindowOpener.shared.pendingPayloads.contains { $0.connectionId == connection.id }
+        let isAlreadyConnecting = connectingURLConnectionIds.contains(connection.id)
+        guard !isAlreadyConnecting, !hasPendingWindow else {
             bringConnectionWindowToFront(connection.id)
             return
         }
 
-        fileOpenLogger.info("[DEEPLINK] → not connected, creating new window")
+        // Has coordinator but no driver — window exists, connection may be in progress
+        if hasCoordinator {
+            bringConnectionWindowToFront(connection.id)
+            return
+        }
+
         let hadExistingMain = NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
         if hadExistingMain && !AppSettingsManager.shared.tabs.groupAllConnectionTabs {
             NSWindow.allowsAutomaticWindowTabbing = false
@@ -334,20 +322,15 @@ extension AppDelegate {
                     guard confirmed else { return }
                 }
 
-                fileOpenLogger.info("[DEEPLINK] connecting to \"\(connectionName, privacy: .public)\"...")
                 try await DatabaseManager.shared.connectToSession(connection)
-                fileOpenLogger.info("[DEEPLINK] connected successfully to \"\(connectionName, privacy: .public)\"")
-                for window in NSApp.windows where self.isWelcomeWindow(window) {
-                    window.close()
-                }
+                self.closeAllWelcomeWindows()
                 if let payload = makePayload?(connection.id) {
                     if !self.routeToExistingWindow(connectionId: connection.id, payload: payload) {
-                        fileOpenLogger.info("[DEEPLINK] post-connect: no coordinator, falling back to openNativeTab")
                         WindowOpener.shared.openNativeTab(payload)
                     }
                 }
             } catch {
-                fileOpenLogger.error("[DEEPLINK] connect failed for \"\(connectionName, privacy: .public)\": \(error.localizedDescription, privacy: .public)")
+                fileOpenLogger.error("Deeplink connect failed for \"\(connectionName, privacy: .public)\": \(error.localizedDescription, privacy: .public)")
                 await self.handleConnectionFailure(error)
             }
         }

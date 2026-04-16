@@ -9,9 +9,6 @@
 import AppKit
 import Foundation
 import os
-
-private let queryHelpersLogger = Logger(subsystem: "com.TablePro", category: "QueryHelpers")
-import os
 import TableProPluginKit
 
 // MARK: - Query Execution Helpers
@@ -122,15 +119,7 @@ extension MainContentCoordinator {
         sql: String,
         connection conn: DatabaseConnection
     ) {
-        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
-            queryHelpersLogger.info("[APPLY] applyPhase1Result: tab not found for id=\(tabId)")
-            return
-        }
-
-        let isSelected = tabManager.selectedTabId == tabId
-        let tabTitle = tabManager.tabs[idx].title
-        let beforeVersion = tabManager.tabs[idx].contentVersion
-        queryHelpersLogger.info("[APPLY] applyPhase1Result START: \"\(tabTitle, privacy: .public)\" isSelected=\(isSelected) cols=\(columns.count) rows=\(rows.count) beforeContentVersion=\(beforeVersion)")
+        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
         var updatedTab = tabManager.tabs[idx]
         updatedTab.resultColumns = columns
@@ -196,7 +185,6 @@ extension MainContentCoordinator {
         toolbarState.isResultsCollapsed = false
 
         tabManager.tabs[idx] = updatedTab
-        queryHelpersLogger.info("[APPLY] applyPhase1Result WROTE: \"\(updatedTab.title, privacy: .public)\" resultVersion=\(updatedTab.resultVersion) contentVersion=\(updatedTab.contentVersion) resultCols=\(updatedTab.resultColumns.count) resultRows=\(updatedTab.resultRows.count)")
 
         // Cache column types for selective queries on subsequent page/filter/sort reloads.
         // Only cache from schema-backed table loads (not arbitrary SELECTs which may have partial columns).
@@ -221,17 +209,12 @@ extension MainContentCoordinator {
         }
 
         if tabManager.selectedTabId == tabId {
-            queryHelpersLogger.info("[APPLY] configureForTable: \"\(tableName ?? "?", privacy: .public)\" cols=\(columns.count) pks=\(resolvedPKs.count) → triggers reloadVersion bump")
             changeManager.configureForTable(
                 tableName: tableName ?? "",
                 columns: columns,
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type
             )
-        } else {
-            let selId = String(tabManager.selectedTabId?.uuidString.prefix(8) ?? "nil")
-            let tId = String(tabId.uuidString.prefix(8))
-            queryHelpersLogger.info("[APPLY] skipping configureForTable — tab \"\(updatedTab.title, privacy: .public)\" not selected (sel=\(selId, privacy: .public) tab=\(tId, privacy: .public))")
         }
 
         QueryHistoryManager.shared.recordQuery(

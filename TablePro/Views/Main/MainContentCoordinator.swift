@@ -714,22 +714,11 @@ final class MainContentCoordinator {
     /// Table tab queries are always app-generated SELECTs, so they skip dangerous-query
     /// checks but still respect safe mode levels that apply to all queries.
     func executeTableTabQueryDirectly() {
-        guard let index = tabManager.selectedTabIndex else {
-            Self.logger.info("[QUERY] executeTableTabQueryDirectly: no selectedTabIndex")
-            return
-        }
-        let directTab = tabManager.tabs[index]
-        guard !directTab.isExecuting else {
-            Self.logger.info("[QUERY] executeTableTabQueryDirectly: tab \"\(directTab.title, privacy: .public)\" already executing, skipping")
-            return
-        }
+        guard let index = tabManager.selectedTabIndex else { return }
+        guard !tabManager.tabs[index].isExecuting else { return }
 
-        let sql = directTab.query
-        guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            Self.logger.info("[QUERY] executeTableTabQueryDirectly: tab \"\(directTab.title, privacy: .public)\" empty query, skipping")
-            return
-        }
-        Self.logger.info("[QUERY] executeTableTabQueryDirectly: tab \"\(directTab.title, privacy: .public)\" rows=\(directTab.resultRows.count) lastExec=\(directTab.lastExecutedAt?.description ?? "nil", privacy: .public)")
+        let sql = tabManager.tabs[index].query
+        guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let level = safeModeLevel
         if level.appliesToAllQueries && level.requiresConfirmation,
@@ -891,21 +880,12 @@ final class MainContentCoordinator {
     private func executeQueryInternal(
         _ sql: String
     ) {
-        guard let index = tabManager.selectedTabIndex else {
-            Self.logger.info("[QUERY] executeQueryInternal: no selectedTabIndex, skipping")
-            return
-        }
-        let currentTab = tabManager.tabs[index]
-        guard !currentTab.isExecuting else {
-            Self.logger.info("[QUERY] executeQueryInternal: tab \"\(currentTab.title, privacy: .public)\" already executing, skipping")
-            return
-        }
+        guard let index = tabManager.selectedTabIndex else { return }
+        guard !tabManager.tabs[index].isExecuting else { return }
 
-        let hadPreviousTask = currentQueryTask != nil
         currentQueryTask?.cancel()
         queryGeneration += 1
         let capturedGeneration = queryGeneration
-        Self.logger.info("[QUERY] executeQueryInternal: tab \"\(currentTab.title, privacy: .public)\" gen=\(capturedGeneration) cancelledPrevious=\(hadPreviousTask) sql=\(String(sql.prefix(80)), privacy: .public)")
 
         // Batch mutations into a single array write to avoid multiple @Published
         // notifications — each notification triggers a full SwiftUI update cycle.
@@ -1033,15 +1013,12 @@ final class MainContentCoordinator {
 
                     // Always reset isExecuting even if generation is stale
                     if capturedGeneration != queryGeneration || Task.isCancelled {
-                        let tabTitle = tabManager.tabs.first(where: { $0.id == tabId })?.title ?? "?"
-                        Self.logger.info("[QUERY] generation stale or cancelled: tab \"\(tabTitle, privacy: .public)\" captured=\(capturedGeneration) current=\(queryGeneration) cancelled=\(Task.isCancelled) — clearing isExecuting, discarding results")
                         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                             tabManager.tabs[idx].isExecuting = false
                         }
                         return
                     }
 
-                    Self.logger.info("[QUERY] applyPhase1Result: tabId=\(tabId) gen=\(capturedGeneration) rows=\(safeRows.count) cols=\(safeColumns.count)")
                     applyPhase1Result(
                         tabId: tabId,
                         columns: safeColumns,
@@ -1087,8 +1064,6 @@ final class MainContentCoordinator {
                     }
                 }
             } catch {
-                let tabTitle = await MainActor.run { tabManager.tabs.first(where: { $0.id == tabId })?.title ?? "?" }
-                Self.logger.info("[QUERY] error for tab \"\(tabTitle, privacy: .public)\" gen=\(capturedGeneration): \(error.localizedDescription, privacy: .public)")
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
