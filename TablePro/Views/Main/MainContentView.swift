@@ -54,7 +54,7 @@ struct MainContentView: View {
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var lazyLoadTask: Task<Void, Never>?
-    @State var pendingTabSwitch: Task<Void, Never>?
+    // pendingTabSwitch removed — tab switch is synchronous (2ms), no debounce needed
     @State var evictionTask: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
@@ -285,13 +285,8 @@ struct MainContentView: View {
             .modifier(ToolbarTintModifier(connectionColor: connection.color))
             .task { await initializeAndRestoreTabs() }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
-                pendingTabSwitch?.cancel()
-                pendingTabSwitch = Task { @MainActor in
-                    await Task.yield()
-                    guard !Task.isCancelled else { return }
-                    handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
-                    previousSelectedTabId = newTabId
-                }
+                handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
+                previousSelectedTabId = newTabId
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
                 handleTabsChange(newTabs)

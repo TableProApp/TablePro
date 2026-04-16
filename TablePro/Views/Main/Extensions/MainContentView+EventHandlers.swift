@@ -20,13 +20,8 @@ extension MainContentView {
         )
 
         updateWindowTitleAndFileState()
-
-        // Sync sidebar selection to match the newly selected tab.
-        // Critical for new native windows: localSelectedTables starts empty,
-        // and this is the only place that can seed it from the restored tab.
         syncSidebarToCurrentTab()
 
-        // Persist tab selection explicitly (skip during teardown)
         guard !coordinator.isTearingDown else { return }
         coordinator.persistence.saveNow(
             tabs: tabManager.tabs,
