@@ -110,7 +110,8 @@ struct MainEditorContentView: View {
                     onReorder: { tabs in coordinator.reorderTabs(tabs) },
                     onRename: { id, name in coordinator.renameTab(id, to: name) },
                     onAddTab: { coordinator.addNewQueryTab() },
-                    onDuplicate: { id in coordinator.duplicateTab(id) }
+                    onDuplicate: { id in coordinator.duplicateTab(id) },
+                    onTogglePin: { id in coordinator.togglePinTab(id) }
                 )
                 Divider()
             }

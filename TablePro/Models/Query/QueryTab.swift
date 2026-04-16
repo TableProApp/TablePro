@@ -104,6 +104,9 @@ struct QueryTab: Identifiable, Equatable {
     // Whether this tab is a preview (temporary) tab that gets replaced on next navigation
     var isPreview: Bool
 
+    // Whether this tab is pinned (cannot be closed, always at left)
+    var isPinned: Bool
+
     // Multi-result-set support (Phase 0: added alongside existing single-result properties)
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
@@ -174,6 +177,7 @@ struct QueryTab: Identifiable, Equatable {
         self.filterState = TabFilterState()
         self.columnLayout = ColumnLayoutState()
         self.isPreview = false
+        self.isPinned = false
         self.sourceFileURL = nil
         self.resultVersion = 0
         self.metadataVersion = 0
@@ -211,6 +215,7 @@ struct QueryTab: Identifiable, Equatable {
         self.filterState = TabFilterState()
         self.columnLayout = ColumnLayoutState()
         self.isPreview = false
+        self.isPinned = persisted.isPinned
         self.sourceFileURL = persisted.sourceFileURL
         self.resultVersion = 0
         self.metadataVersion = 0

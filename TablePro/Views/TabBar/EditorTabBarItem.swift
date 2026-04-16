@@ -18,6 +18,7 @@ struct EditorTabBarItem: View {
     var onCloseAll: () -> Void
     var onDuplicate: () -> Void
     var onRename: (String) -> Void
+    var onTogglePin: () -> Void
 
     @State private var isEditing = false
     @State private var editingTitle = ""
@@ -75,7 +76,14 @@ struct EditorTabBarItem: View {
                     .frame(width: 6, height: 6)
             }
 
-            if isHovering || isSelected {
+            // Pinned tabs: show pin icon, no close button
+            // Unpinned tabs: show close button on hover/selected
+            if tab.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14, height: 14)
+            } else if isHovering || isSelected {
                 Button {
                     onClose()
                 } label: {
@@ -110,7 +118,13 @@ struct EditorTabBarItem: View {
             })
         )
         .contextMenu {
-            Button(String(localized: "Close")) { onClose() }
+            Button(tab.isPinned ? String(localized: "Unpin Tab") : String(localized: "Pin Tab")) {
+                onTogglePin()
+            }
+            Divider()
+            if !tab.isPinned {
+                Button(String(localized: "Close")) { onClose() }
+            }
             Button(String(localized: "Close Others")) { onCloseOthers() }
             Button(String(localized: "Close Tabs to the Right")) { onCloseTabsToRight() }
             Divider()

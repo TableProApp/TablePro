@@ -329,6 +329,14 @@ final class MainContentCommandActions {
 
     // MARK: - Tab Operations (Group A — Called Directly)
 
+    func reopenClosedTab() {
+        coordinator?.reopenClosedTab()
+    }
+
+    var canReopenClosedTab: Bool {
+        coordinator?.tabManager.hasClosedTabs ?? false
+    }
+
     func newTab(initialQuery: String? = nil) {
         if let initialQuery {
             coordinator?.tabManager.addTab(initialQuery: initialQuery, databaseName: connection.database)

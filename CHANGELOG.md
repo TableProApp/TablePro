@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reopen closed tab with Cmd+Shift+T (up to 20 tabs in history)
+- Pinned tabs — pin important tabs to prevent accidental close, always at left side
+- MRU tab selection — closing a tab now selects the most recently active tab, not just adjacent
+
 ### Changed
 
 - Replace native macOS window tabs with in-app tab bar for instant tab switching (was 600ms+ per tab)

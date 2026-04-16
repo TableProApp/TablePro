@@ -20,38 +20,28 @@ struct EditorTabBar: View {
     var onRename: (UUID, String) -> Void
     var onAddTab: () -> Void
     var onDuplicate: (UUID) -> Void
+    var onTogglePin: (UUID) -> Void
 
     @State private var draggedTabId: UUID?
+
+    private var pinnedTabs: [QueryTab] { tabs.filter(\.isPinned) }
+    private var unpinnedTabs: [QueryTab] { tabs.filter { !$0.isPinned } }
 
     var body: some View {
         HStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 1) {
-                        ForEach(tabs) { tab in
-                            EditorTabBarItem(
-                                tab: tab,
-                                isSelected: tab.id == selectedTabId,
-                                databaseType: databaseType,
-                                onSelect: { selectedTabId = tab.id },
-                                onClose: { onClose(tab.id) },
-                                onCloseOthers: { onCloseOthers(tab.id) },
-                                onCloseTabsToRight: { closeTabsToRight(of: tab.id) },
-                                onCloseAll: onCloseAll,
-                                onDuplicate: { onDuplicate(tab.id) },
-                                onRename: { name in onRename(tab.id, name) }
-                            )
-                            .id(tab.id)
-                            .onDrag {
-                                draggedTabId = tab.id
-                                return NSItemProvider(object: tab.id.uuidString as NSString)
-                            }
-                            .onDrop(of: [.text], delegate: TabDropDelegate(
-                                targetId: tab.id,
-                                tabs: tabs,
-                                draggedTabId: $draggedTabId,
-                                onReorder: onReorder
-                            ))
+                        ForEach(pinnedTabs) { tab in
+                            tabItem(for: tab)
+                        }
+                        if !pinnedTabs.isEmpty && !unpinnedTabs.isEmpty {
+                            Divider()
+                                .frame(height: 16)
+                                .padding(.horizontal, 2)
+                        }
+                        ForEach(unpinnedTabs) { tab in
+                            tabItem(for: tab)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -83,9 +73,37 @@ struct EditorTabBar: View {
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
+    @ViewBuilder
+    private func tabItem(for tab: QueryTab) -> some View {
+        EditorTabBarItem(
+            tab: tab,
+            isSelected: tab.id == selectedTabId,
+            databaseType: databaseType,
+            onSelect: { selectedTabId = tab.id },
+            onClose: { onClose(tab.id) },
+            onCloseOthers: { onCloseOthers(tab.id) },
+            onCloseTabsToRight: { closeTabsToRight(of: tab.id) },
+            onCloseAll: onCloseAll,
+            onDuplicate: { onDuplicate(tab.id) },
+            onRename: { name in onRename(tab.id, name) },
+            onTogglePin: { onTogglePin(tab.id) }
+        )
+        .id(tab.id)
+        .onDrag {
+            draggedTabId = tab.id
+            return NSItemProvider(object: tab.id.uuidString as NSString)
+        }
+        .onDrop(of: [.text], delegate: TabDropDelegate(
+            targetId: tab.id,
+            tabs: tabs,
+            draggedTabId: $draggedTabId,
+            onReorder: onReorder
+        ))
+    }
+
     private func closeTabsToRight(of id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
-        let idsToClose = tabs[(index + 1)...].map(\.id)
+        let idsToClose = tabs[(index + 1)...].filter { !$0.isPinned }.map(\.id)
         for tabId in idsToClose {
             onClose(tabId)
         }

@@ -18,6 +18,11 @@ extension MainContentCoordinator {
         isHandlingTabSwitch = true
         defer { isHandlingTabSwitch = false }
 
+        // Track MRU order for smart tab selection after close
+        if let newId = newTabId {
+            tabManager.trackActivation(newId)
+        }
+
         // Persist the outgoing tab's unsaved changes and filter state so they survive the switch
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })

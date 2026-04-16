@@ -2,7 +2,7 @@
 //  MainContentCoordinator+TabOperations.swift
 //  TablePro
 //
-//  In-app tab bar operations: close, reorder, rename, duplicate, add.
+//  In-app tab bar operations: close, reorder, rename, duplicate, pin, reopen.
 //
 
 import AppKit
@@ -15,6 +15,10 @@ extension MainContentCoordinator {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
 
         let tab = tabManager.tabs[index]
+
+        // Pinned tabs cannot be closed
+        guard !tab.isPinned else { return }
+
         let isSelected = tabManager.selectedTabId == id
 
         // Check for unsaved changes on this specific tab
@@ -66,18 +70,20 @@ extension MainContentCoordinator {
         guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
         let wasSelected = tabManager.selectedTabId == id
 
+        // Snapshot for Cmd+Shift+T reopen before eviction
+        tabManager.pushClosedTab(tabManager.tabs[index])
+
         tabManager.tabs[index].rowBuffer.evict()
         tabManager.tabs.remove(at: index)
 
         if wasSelected {
             if tabManager.tabs.isEmpty {
                 tabManager.selectedTabId = nil
-                // Close the window when last tab is closed
                 contentWindow?.close()
             } else {
-                // Select adjacent tab (prefer left, fall back to right)
-                let newIndex = min(index, tabManager.tabs.count - 1)
-                tabManager.selectedTabId = tabManager.tabs[newIndex].id
+                // MRU: select the most recently active tab, not just adjacent
+                tabManager.selectedTabId = tabManager.mruTabId(excluding: id)
+                    ?? tabManager.tabs[min(index, tabManager.tabs.count - 1)].id
             }
         }
 
@@ -98,8 +104,9 @@ extension MainContentCoordinator {
     }
 
     func closeOtherTabs(excluding id: UUID) {
-        let tabsToClose = tabManager.tabs.filter { $0.id != id }
-        let selectedIsBeingClosed = tabManager.selectedTabId != id
+        // Skip pinned tabs — they survive "Close Others"
+        let tabsToClose = tabManager.tabs.filter { $0.id != id && !$0.isPinned }
+        let selectedIsBeingClosed = tabsToClose.contains { $0.id == tabManager.selectedTabId }
         let hasUnsavedWork = tabsToClose.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
             || (selectedIsBeingClosed && changeManager.hasChanges)
 
@@ -126,16 +133,20 @@ extension MainContentCoordinator {
     }
 
     private func forceCloseOtherTabs(excluding id: UUID) {
-        for index in tabManager.tabs.indices where tabManager.tabs[index].id != id {
+        for index in tabManager.tabs.indices where tabManager.tabs[index].id != id && !tabManager.tabs[index].isPinned {
             tabManager.tabs[index].rowBuffer.evict()
         }
-        tabManager.tabs.removeAll { $0.id != id }
+        tabManager.tabs.removeAll { $0.id != id && !$0.isPinned }
         tabManager.selectedTabId = id
         persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
     }
 
     func closeAllTabs() {
-        let hasUnsavedWork = tabManager.tabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
+        // Skip pinned tabs — they survive "Close All"
+        let closableTabs = tabManager.tabs.filter { !$0.isPinned }
+        guard !closableTabs.isEmpty else { return }
+
+        let hasUnsavedWork = closableTabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
             || changeManager.hasChanges
 
         if hasUnsavedWork {
@@ -159,13 +170,48 @@ extension MainContentCoordinator {
     }
 
     private func forceCloseAllTabs() {
-        for tab in tabManager.tabs {
+        let closable = tabManager.tabs.filter { !$0.isPinned }
+        for tab in closable {
             tab.rowBuffer.evict()
         }
-        tabManager.tabs.removeAll()
-        tabManager.selectedTabId = nil
-        persistence.clearSavedState()
-        contentWindow?.close()
+        tabManager.tabs.removeAll { !$0.isPinned }
+
+        if tabManager.tabs.isEmpty {
+            tabManager.selectedTabId = nil
+            persistence.clearSavedState()
+            contentWindow?.close()
+        } else {
+            // Pinned tabs remain — select the first one
+            tabManager.selectedTabId = tabManager.tabs.first?.id
+            persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+        }
+    }
+
+    // MARK: - Reopen Closed Tab (Cmd+Shift+T)
+
+    func reopenClosedTab() {
+        guard var tab = tabManager.popClosedTab() else { return }
+        tab.rowBuffer = RowBuffer()
+        tabManager.tabs.append(tab)
+        tabManager.selectedTabId = tab.id
+        if tab.tabType == .table, !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            runQuery()
+        }
+        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+    }
+
+    // MARK: - Pin Tab
+
+    func togglePinTab(_ id: UUID) {
+        guard let index = tabManager.tabs.firstIndex(where: { $0.id == id }) else { return }
+        tabManager.tabs[index].isPinned.toggle()
+
+        // Stable sort: pinned tabs first, preserving relative order within each group
+        let pinned = tabManager.tabs.filter(\.isPinned)
+        let unpinned = tabManager.tabs.filter { !$0.isPinned }
+        tabManager.tabs = pinned + unpinned
+
+        persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
     }
 
     // MARK: - Tab Reorder

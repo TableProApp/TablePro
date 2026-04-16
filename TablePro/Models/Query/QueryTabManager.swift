@@ -19,6 +19,45 @@ final class QueryTabManager {
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
 
+    // MARK: - Closed Tab History (Cmd+Shift+T reopen)
+
+    /// Closed tab snapshots for reopen. Capped to limit memory.
+    @ObservationIgnored private var closedTabHistory: [QueryTab] = []
+    private static let maxClosedHistory = 20
+
+    func pushClosedTab(_ tab: QueryTab) {
+        closedTabHistory.append(tab)
+        if closedTabHistory.count > Self.maxClosedHistory {
+            closedTabHistory.removeFirst()
+        }
+    }
+
+    func popClosedTab() -> QueryTab? {
+        closedTabHistory.popLast()
+    }
+
+    var hasClosedTabs: Bool { !closedTabHistory.isEmpty }
+
+    // MARK: - MRU Tab Activation Order
+
+    /// Most-recently-used tab order for smart selection after close.
+    @ObservationIgnored private(set) var tabActivationOrder: [UUID] = []
+
+    func trackActivation(_ tabId: UUID) {
+        tabActivationOrder.removeAll { $0 == tabId }
+        tabActivationOrder.append(tabId)
+    }
+
+    /// Returns the most recently active tab ID, excluding a given ID.
+    func mruTabId(excluding id: UUID) -> UUID? {
+        for candidateId in tabActivationOrder.reversed() {
+            if candidateId != id, tabs.contains(where: { $0.id == candidateId }) {
+                return candidateId
+            }
+        }
+        return nil
+    }
+
     private func rebuildTabIndexMapIfNeeded() {
         guard _tabIndexMapDirty else { return }
         _tabIndexMap = Dictionary(uniqueKeysWithValues: tabs.enumerated().map { ($1.id, $0) })

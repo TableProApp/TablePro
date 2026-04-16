@@ -473,6 +473,14 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Reopen Closed Tab")) {
+                actions?.reopenClosedTab()
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(!(actions?.canReopenClosedTab ?? false))
+
+            Divider()
+
             Button("Bring All to Front") {
                 NSApp.arrangeInFront(nil)
             }

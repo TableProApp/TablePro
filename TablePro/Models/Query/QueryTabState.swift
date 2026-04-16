@@ -26,6 +26,7 @@ struct PersistedTab: Codable {
     var schemaName: String?
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
+    var isPinned: Bool = false
 }
 
 /// Stores pending changes for a tab (used to preserve state when switching tabs)
