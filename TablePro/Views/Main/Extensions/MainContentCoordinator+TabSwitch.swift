@@ -38,10 +38,9 @@ extension MainContentCoordinator {
             saveColumnLayoutForTable()
         }
 
-        if tabManager.tabs.count > 2 {
-            let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
-            evictInactiveTabs(excluding: activeIds)
-        }
+        // Row data eviction is handled by didResignKeyNotification (window loses focus)
+        // and by MemoryPressureAdvisor (system memory pressure) — NOT on tab switch.
+        // Evicting on every switch causes re-fetch delays that block the UI.
 
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
