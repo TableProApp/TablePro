@@ -21,6 +21,9 @@ internal final class WindowLifecycleMonitor {
         weak var window: NSWindow?
         var observer: NSObjectProtocol?
         var isPreview: Bool = false
+        /// Called on NSWindow.willCloseNotification — deterministic teardown
+        /// for coordinator and panel state that must not depend on SwiftUI onDisappear.
+        var onWindowClose: (@MainActor () -> Void)?
     }
 
     private var entries: [UUID: Entry] = [:]
@@ -40,7 +43,11 @@ internal final class WindowLifecycleMonitor {
     // MARK: - Registration
 
     /// Register a window and start observing its willCloseNotification.
-    internal func register(window: NSWindow, connectionId: UUID, windowId: UUID, isPreview: Bool = false) {
+    internal func register(
+        window: NSWindow, connectionId: UUID, windowId: UUID,
+        isPreview: Bool = false,
+        onWindowClose: (@MainActor () -> Void)? = nil
+    ) {
         // Remove any existing entry for this windowId to avoid duplicate observers
         if let existing = entries[windowId] {
             if existing.window !== window {
@@ -66,7 +73,8 @@ internal final class WindowLifecycleMonitor {
             connectionId: connectionId,
             window: window,
             observer: observer,
-            isPreview: isPreview
+            isPreview: isPreview,
+            onWindowClose: onWindowClose
         )
     }
 
@@ -204,6 +212,11 @@ internal final class WindowLifecycleMonitor {
         }
 
         let closedConnectionId = entry.connectionId
+
+        // Deterministic teardown: coordinator and panel state are cleaned up here,
+        // triggered by NSWindow.willCloseNotification — not by SwiftUI onDisappear
+        // which fires transiently during view hierarchy reconstruction.
+        entry.onWindowClose?()
 
         if let observer = entry.observer {
             NotificationCenter.default.removeObserver(observer)

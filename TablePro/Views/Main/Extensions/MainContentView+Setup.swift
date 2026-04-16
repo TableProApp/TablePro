@@ -176,7 +176,11 @@ extension MainContentView {
             window: window,
             connectionId: connection.id,
             windowId: windowId,
-            isPreview: isPreview
+            isPreview: isPreview,
+            onWindowClose: { [coordinator, rightPanelState] in
+                coordinator.teardown()
+                rightPanelState.teardown()
+            }
         )
 
         viewWindow = window

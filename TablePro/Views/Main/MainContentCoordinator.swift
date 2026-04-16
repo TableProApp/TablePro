@@ -165,13 +165,8 @@ final class MainContentCoordinator {
     /// Tracks whether teardown() was called; used by deinit to log missed teardowns
     @ObservationIgnored private let _didTeardown = OSAllocatedUnfairLock(initialState: false)
 
-    /// Tracks whether teardown has been scheduled (but not yet executed)
-    /// so deinit doesn't warn if SwiftUI deallocates before the delayed Task fires
-    @ObservationIgnored private let _teardownScheduled = OSAllocatedUnfairLock(initialState: false)
-
-    /// Whether teardown is scheduled or already completed — used by views to skip
-    /// persistence during window close teardown
-    var isTearingDown: Bool { _teardownScheduled.withLock { $0 } || _didTeardown.withLock { $0 } }
+    /// Whether teardown has completed — used by views to skip persistence during teardown
+    var isTearingDown: Bool { _didTeardown.withLock { $0 } }
 
     /// Set when NSApplication is terminating — suppresses deinit warning since
     /// SwiftUI does not call onDisappear during app termination
@@ -363,14 +358,6 @@ final class MainContentCoordinator {
         }
     }
 
-    func markTeardownScheduled() {
-        _teardownScheduled.withLock { $0 = true }
-    }
-
-    func clearTeardownScheduled() {
-        _teardownScheduled.withLock { $0 = false }
-    }
-
     func refreshTables() async {
         lastSchemaRefreshDate = Date()
         sidebarLoadingState = .loading
@@ -486,7 +473,7 @@ final class MainContentCoordinator {
         saveCompletionContinuation = nil
 
         let connectionId = connection.id
-        let alreadyHandled = _didTeardown.withLock { $0 } || _teardownScheduled.withLock { $0 }
+        let alreadyHandled = _didTeardown.withLock { $0 }
 
         // Never-activated coordinators are throwaway instances created by SwiftUI
         // during body re-evaluation — @State only keeps the first, rest are discarded

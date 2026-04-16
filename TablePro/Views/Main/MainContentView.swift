@@ -250,30 +250,10 @@ struct MainContentView: View {
                 // Window registration is handled by WindowAccessor in .background
             }
             .onDisappear {
-                MainContentCoordinator.logger.info("[RESTORE] MainContentView.onDisappear: windowId=\(self.windowId), connection=\(self.connection.name)")
-                coordinator.markTeardownScheduled()
-
-                let capturedWindowId = windowId
-                Task { @MainActor in
-                    // Grace period: SwiftUI fires onDisappear transiently when the
-                    // view hierarchy is reconstructed (e.g., sessionState changing from
-                    // nil → value causes if-let branches to rebuild). Wait briefly to
-                    // let onAppear re-register if this is a transient removal.
-                    try? await Task.sleep(for: .milliseconds(200))
-
-                    if WindowLifecycleMonitor.shared.isRegistered(windowId: capturedWindowId) {
-                        coordinator.clearTeardownScheduled()
-                        return
-                    }
-
-                    // View truly removed — teardown coordinator.
-                    // Database disconnect is NOT done here — it's handled by
-                    // WindowLifecycleMonitor.handleWindowClose when the NSWindow
-                    // actually closes (a deterministic AppKit signal, not a
-                    // SwiftUI lifecycle heuristic).
-                    coordinator.teardown()
-                    rightPanelState.teardown()
-                }
+                // No teardown here. Coordinator and panel cleanup is handled by
+                // WindowLifecycleMonitor.handleWindowClose (NSWindow.willCloseNotification)
+                // — a deterministic AppKit signal. SwiftUI's onDisappear fires transiently
+                // during view hierarchy reconstruction and is not reliable for resource cleanup.
             }
             .onChange(of: pendingChangeTrigger) {
                 updateToolbarPendingState()

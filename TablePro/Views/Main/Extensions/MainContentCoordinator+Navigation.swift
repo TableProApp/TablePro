@@ -36,25 +36,11 @@ extension MainContentCoordinator {
 
         let currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
 
-        // DEBUG: Log full tab state for diagnosing replacement issues
-        let selTab = tabManager.selectedTab
-        let selName = selTab?.tableName ?? "nil"
-        let selPreview = selTab?.isPreview == true
-        let cmHasChanges = changeManager.hasChanges
-        let previewEnabled = AppSettingsManager.shared.tabs.enablePreviewTabs
-        navigationLogger.info("[TAB-NAV] openTableTab(\"\(tableName, privacy: .public)\") tabCount=\(self.tabManager.tabs.count) selected=\(selName, privacy: .public) selPreview=\(selPreview) changes=\(cmHasChanges) previewEnabled=\(previewEnabled)")
-        for (i, tab) in tabManager.tabs.enumerated() {
-            let tName = tab.tableName ?? "nil"
-            let isSel = tab.id == tabManager.selectedTabId
-            navigationLogger.info("[TAB-NAV]   tab[\(i)] \"\(tab.title, privacy: .public)\" table=\(tName, privacy: .public) isPreview=\(tab.isPreview) pending=\(tab.pendingChanges.hasChanges) dirty=\(tab.isFileDirty) sel=\(isSel)")
-        }
-
         // Fast path: if this table is already the active tab in the same database, skip all work
         if let current = tabManager.selectedTab,
            current.tabType == .table,
            current.tableName == tableName,
            current.databaseName == currentDatabase {
-            navigationLogger.info("[TAB-NAV] → FAST PATH: same table already active")
             if showStructure, let idx = tabManager.selectedTabIndex {
                 tabManager.tabs[idx].showStructure = true
             }
@@ -78,7 +64,6 @@ extension MainContentCoordinator {
         if let existingTab = tabManager.tabs.first(where: {
             $0.tabType == .table && $0.tableName == tableName && $0.databaseName == currentDatabase
         }) {
-            navigationLogger.info("[TAB-NAV] → EXISTING TAB: switching to \(existingTab.id)")
             tabManager.selectedTabId = existingTab.id
             return
         }
@@ -150,9 +135,6 @@ extension MainContentCoordinator {
             || filterStateManager.hasAppliedFilters
             || (tabManager.selectedTab?.sortState.isSorting ?? false)
         if hasActiveWork {
-            let hasFilters = filterStateManager.hasAppliedFilters
-            let hasSorting = tabManager.selectedTab?.sortState.isSorting ?? false
-            navigationLogger.info("[TAB-NAV] → ACTIVE WORK: addTableTabInApp (changes=\(cmHasChanges) filters=\(hasFilters) sorting=\(hasSorting))")
             addTableTabInApp(
                 tableName: tableName,
                 databaseName: currentDatabase,
@@ -165,13 +147,11 @@ extension MainContentCoordinator {
 
         // Preview tab mode: reuse or create a preview tab instead of a new native window
         if AppSettingsManager.shared.tabs.enablePreviewTabs {
-            navigationLogger.info("[TAB-NAV] → PREVIEW MODE: calling openPreviewTab")
             openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
             return
         }
 
         // Default: open table in a new in-app tab
-        navigationLogger.info("[TAB-NAV] → DEFAULT: addTableTabInApp (preview disabled)")
         addTableTabInApp(
             tableName: tableName,
             databaseName: currentDatabase,
@@ -219,18 +199,13 @@ extension MainContentCoordinator {
         // Check if a preview tab already exists in this window's tab manager
         if let previewIndex = tabManager.tabs.firstIndex(where: { $0.isPreview }) {
             let previewTab = tabManager.tabs[previewIndex]
-            let pName = previewTab.tableName ?? "nil"
-            let pSel = previewTab.id == tabManager.selectedTabId
-            navigationLogger.info("[TAB-NAV] openPreviewTab(\"\(tableName, privacy: .public)\"): found preview[\(previewIndex)] \"\(previewTab.title, privacy: .public)\" table=\(pName, privacy: .public) pending=\(previewTab.pendingChanges.hasChanges) dirty=\(previewTab.isFileDirty) sel=\(pSel)")
             // Skip if preview tab already shows this table
             if previewTab.tableName == tableName, previewTab.databaseName == databaseName {
-                navigationLogger.info("[TAB-NAV] → PREVIEW SKIP: same table")
                 tabManager.selectedTabId = previewTab.id
                 return
             }
             // Preview tab has unsaved changes — promote it and open a new tab instead
             if previewTab.pendingChanges.hasChanges || previewTab.isFileDirty {
-                navigationLogger.info("[TAB-NAV] → PREVIEW PROMOTE: has unsaved changes, creating new tab")
                 tabManager.tabs[previewIndex].isPreview = false
                 contentWindow?.subtitle = connection.name
                 addTableTabInApp(
@@ -242,7 +217,6 @@ extension MainContentCoordinator {
                 )
                 return
             }
-            navigationLogger.info("[TAB-NAV] → PREVIEW REPLACE: replacing \"\(pName, privacy: .public)\" with \"\(tableName, privacy: .public)\"")
             if let oldTableName = previewTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
@@ -285,12 +259,9 @@ extension MainContentCoordinator {
             }
             return false
         }()
-        let reusableSelName = tabManager.selectedTab?.tableName ?? "nil"
-        navigationLogger.info("[TAB-NAV] openPreviewTab: no preview found, isReusableTab=\(isReusableTab) selectedTab=\(reusableSelName, privacy: .public)")
         if let selectedTab = tabManager.selectedTab, isReusableTab {
             // Skip if already showing this table
             if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
-                navigationLogger.info("[TAB-NAV] → REUSABLE SKIP: same table")
                 return
             }
             // If reusable tab has active work, promote it and open new tab instead
@@ -302,7 +273,6 @@ extension MainContentCoordinator {
                 || selectedTab.sortState.isSorting
                 || hasUnsavedQuery
             if previewHasWork {
-                navigationLogger.info("[TAB-NAV] → REUSABLE PROMOTE: has work, creating new tab")
                 promotePreviewTab()
                 addTableTabInApp(
                     tableName: tableName,
@@ -313,7 +283,6 @@ extension MainContentCoordinator {
                 )
                 return
             }
-            navigationLogger.info("[TAB-NAV] → REUSABLE REPLACE: replacing \"\(reusableSelName, privacy: .public)\" with \"\(tableName, privacy: .public)\"")
             if let oldTableName = selectedTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
@@ -338,7 +307,6 @@ extension MainContentCoordinator {
         }
 
         // No reusable tab: create a new in-app preview tab
-        navigationLogger.info("[TAB-NAV] → NEW PREVIEW TAB: creating for \"\(tableName, privacy: .public)\"")
         tabManager.addPreviewTableTab(
             tableName: tableName,
             databaseType: connection.type,
