@@ -92,10 +92,7 @@ extension MainContentCoordinator {
                     databaseType: connection.type,
                     databaseName: currentDatabase
                 )
-                if let wid = windowId {
-                    WindowLifecycleMonitor.shared.setPreview(true, for: wid)
-                    WindowLifecycleMonitor.shared.window(for: wid)?.subtitle = "\(connection.name) — Preview"
-                }
+                contentWindow?.subtitle = "\(connection.name) — Preview"
             } else {
                 tabManager.addTableTab(
                     tableName: tableName,
@@ -235,9 +232,7 @@ extension MainContentCoordinator {
             if previewTab.pendingChanges.hasChanges || previewTab.isFileDirty {
                 navigationLogger.info("[TAB-NAV] → PREVIEW PROMOTE: has unsaved changes, creating new tab")
                 tabManager.tabs[previewIndex].isPreview = false
-                if let wid = windowId {
-                    WindowLifecycleMonitor.shared.setPreview(false, for: wid)
-                }
+                contentWindow?.subtitle = connection.name
                 addTableTabInApp(
                     tableName: tableName,
                     databaseName: databaseName,
@@ -367,9 +362,7 @@ extension MainContentCoordinator {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabManager.tabs[tabIndex].isPreview else { return }
         tabManager.tabs[tabIndex].isPreview = false
-        if let wid = windowId {
-            WindowLifecycleMonitor.shared.setPreview(false, for: wid)
-        }
+        contentWindow?.subtitle = connection.name
     }
 
     func showAllTablesMetadata() {

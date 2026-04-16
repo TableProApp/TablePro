@@ -219,12 +219,6 @@ final class MainContentCoordinator {
             .flatMap { $0.tabManager.tabs }
     }
 
-    /// Check if this coordinator is the first registered for its connection.
-    private func isFirstCoordinatorForConnection() -> Bool {
-        Self.activeCoordinators.values
-            .first { $0.connectionId == self.connectionId } === self
-    }
-
     private static let registerTerminationObserver: Void = {
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
@@ -272,27 +266,22 @@ final class MainContentCoordinator {
         columnVisibilityManager: ColumnVisibilityManager,
         toolbarState: ConnectionToolbarState
     ) {
-        let coordInitStart = ContinuousClock.now
         self.connection = connection
         self.tabManager = tabManager
         self.changeManager = changeManager
         self.filterStateManager = filterStateManager
         self.columnVisibilityManager = columnVisibilityManager
         self.toolbarState = toolbarState
-        let dialectStart = ContinuousClock.now
         let dialect = PluginManager.shared.sqlDialect(for: connection.type)
         self.queryBuilder = TableQueryBuilder(
             databaseType: connection.type,
             dialect: dialect,
             dialectQuote: quoteIdentifierFromDialect(dialect)
         )
-        Self.logger.info("[PERF] MainContentCoordinator.init: dialect+queryBuilder=\(ContinuousClock.now - dialectStart)")
         self.persistence = TabPersistenceCoordinator(connectionId: connection.id)
 
-        let schemaStart = ContinuousClock.now
         self.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
         SchemaProviderRegistry.shared.retain(for: connection.id)
-        Self.logger.info("[PERF] MainContentCoordinator.init: schemaProvider=\(ContinuousClock.now - schemaStart)")
         urlFilterObservers = setupURLNotificationObservers()
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
@@ -315,11 +304,9 @@ final class MainContentCoordinator {
         }
 
         _ = Self.registerTerminationObserver
-        Self.logger.info("[PERF] MainContentCoordinator.init: TOTAL=\(ContinuousClock.now - coordInitStart)")
     }
 
     func markActivated() {
-        let activateStart = ContinuousClock.now
         _didActivate.withLock { $0 = true }
         registerForPersistence()
         setupPluginDriver()
@@ -334,7 +321,6 @@ final class MainContentCoordinator {
                 }
             }
         }
-        Self.logger.info("[PERF] markActivated: total=\(ContinuousClock.now - activateStart)")
     }
 
     /// Start watching the database file for external changes (SQLite, DuckDB).
@@ -431,11 +417,9 @@ final class MainContentCoordinator {
     /// Explicit cleanup called from `onDisappear`. Releases schema provider
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
-        let teardownStart = ContinuousClock.now
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
-        let observerStart = ContinuousClock.now
         for observer in urlFilterObservers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -448,7 +432,6 @@ final class MainContentCoordinator {
             NotificationCenter.default.removeObserver(observer)
             pluginDriverObserver = nil
         }
-        Self.logger.info("[PERF] teardown: observer cleanup=\(ContinuousClock.now - observerStart)")
 
         fileWatcher?.stopWatching(connectionId: connectionId)
         fileWatcher = nil
@@ -464,21 +447,16 @@ final class MainContentCoordinator {
         // Let the view layer release cached row providers before we drop RowBuffers.
         // Called synchronously here because SwiftUI onChange handlers don't fire
         // reliably on disappearing views.
-        let onTeardownStart = ContinuousClock.now
         onTeardown?()
         onTeardown = nil
-        Self.logger.info("[PERF] teardown: onTeardown callback=\(ContinuousClock.now - onTeardownStart)")
 
         // Notify DataGridView coordinators to release NSTableView cell views
-        let notifyStart = ContinuousClock.now
         NotificationCenter.default.post(
             name: Self.teardownNotification,
             object: connection.id
         )
-        Self.logger.info("[PERF] teardown: teardownNotification post=\(ContinuousClock.now - notifyStart)")
 
         // Release heavy data so memory drops even if SwiftUI delays deallocation
-        let evictStart = ContinuousClock.now
         for tab in tabManager.tabs {
             tab.rowBuffer.evict()
         }
@@ -488,7 +466,6 @@ final class MainContentCoordinator {
 
         tabManager.tabs.removeAll()
         tabManager.selectedTabId = nil
-        Self.logger.info("[PERF] teardown: data eviction=\(ContinuousClock.now - evictStart), tabCount=\(self.tabManager.tabs.count)")
 
         // Release change manager state — pluginDriver holds a strong reference
         // to the entire database driver which prevents deallocation
@@ -500,11 +477,8 @@ final class MainContentCoordinator {
         filterStateManager.filters.removeAll()
         filterStateManager.appliedFilters.removeAll()
 
-        let schemaStart = ContinuousClock.now
         SchemaProviderRegistry.shared.release(for: connection.id)
         SchemaProviderRegistry.shared.purgeUnused()
-        Self.logger.info("[PERF] teardown: schema release=\(ContinuousClock.now - schemaStart)")
-        Self.logger.info("[PERF] teardown: TOTAL=\(ContinuousClock.now - teardownStart)")
     }
 
     deinit {

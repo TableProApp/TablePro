@@ -14,11 +14,8 @@
 //
 
 import Combine
-import os
 import SwiftUI
 import TableProPluginKit
-
-private let mcvLogger = Logger(subsystem: "com.TablePro", category: "MainContentView")
 
 /// Main content view - thin presentation layer
 struct MainContentView: View {
@@ -66,8 +63,6 @@ struct MainContentView: View {
     @State var lastResignKeyDate = Date.distantPast
     /// Reference to this view's NSWindow for filtering notifications
     @State var viewWindow: NSWindow?
-
-    // Grace period removed — no longer needed with in-app tabs (no native tab group merges)
 
     // MARK: - Environment
 
@@ -254,24 +249,18 @@ struct MainContentView: View {
                 // Window registration is handled by WindowAccessor in .background
             }
             .onDisappear {
-                let disappearStart = ContinuousClock.now
-                mcvLogger.info("[PERF] onDisappear: START windowId=\(self.windowId)")
                 coordinator.markTeardownScheduled()
 
                 let connectionId = connection.id
                 Task { @MainActor in
                     // Direct teardown — no grace period needed with in-app tabs.
-                    let teardownStart = ContinuousClock.now
                     coordinator.teardown()
-                    mcvLogger.info("[PERF] onDisappear: coordinator.teardown took \(ContinuousClock.now - teardownStart)")
                     rightPanelState.teardown()
 
                     guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else {
-                        mcvLogger.info("[PERF] onDisappear: other windows exist, skipping disconnect (total=\(ContinuousClock.now - disappearStart))")
                         return
                     }
                     await DatabaseManager.shared.disconnectSession(connectionId)
-                    mcvLogger.info("[PERF] onDisappear: TOTAL=\(ContinuousClock.now - disappearStart)")
 
                     try? await Task.sleep(for: .seconds(2))
                     malloc_zone_pressure_relief(nil, 0)

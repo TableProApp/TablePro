@@ -6,24 +6,18 @@
 //  for MainContentView. Extracted to reduce main view complexity.
 //
 
-import os
 import SwiftUI
-
-private let setupLogger = Logger(subsystem: "com.TablePro", category: "MainContentSetup")
 
 extension MainContentView {
     // MARK: - Initialization
 
     func initializeAndRestoreTabs() async {
-        let start = ContinuousClock.now
         guard !hasInitialized else { return }
         hasInitialized = true
         Task { await coordinator.loadSchemaIfNeeded() }
 
         guard let payload else {
-            setupLogger.info("[PERF] initializeAndRestoreTabs: no payload, calling handleRestoreOrDefault")
             await handleRestoreOrDefault()
-            setupLogger.info("[PERF] initializeAndRestoreTabs: total=\(ContinuousClock.now - start) (restoreOrDefault path)")
             return
         }
 
@@ -71,17 +65,14 @@ extension MainContentView {
             }
 
         case .newEmptyTab:
-            setupLogger.info("[PERF] initializeAndRestoreTabs: newEmptyTab (total=\(ContinuousClock.now - start))")
             return
 
         case .restoreOrDefault:
             await handleRestoreOrDefault()
-            setupLogger.info("[PERF] initializeAndRestoreTabs: restoreOrDefault (total=\(ContinuousClock.now - start))")
         }
     }
 
     private func handleRestoreOrDefault() async {
-        let restoreStart = ContinuousClock.now
         if WindowLifecycleMonitor.shared.hasOtherWindows(for: connection.id, excluding: windowId) {
             if tabManager.tabs.isEmpty {
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
@@ -91,9 +82,7 @@ extension MainContentView {
             return
         }
 
-        let preRestore = ContinuousClock.now
         let result = await coordinator.persistence.restoreFromDisk()
-        setupLogger.info("[PERF] handleRestoreOrDefault: restoreFromDisk took \(ContinuousClock.now - preRestore), tabCount=\(result.tabs.count)")
         if !result.tabs.isEmpty {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
@@ -170,7 +159,6 @@ extension MainContentView {
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
     func configureWindow(_ window: NSWindow) {
-        let configStart = ContinuousClock.now
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
             window.subtitle = "\(connection.name) — Preview"
@@ -184,14 +172,12 @@ extension MainContentView {
         window.tabbingMode = .disallowed
         coordinator.windowId = windowId
 
-        let registerStart = ContinuousClock.now
         WindowLifecycleMonitor.shared.register(
             window: window,
             connectionId: connection.id,
             windowId: windowId,
             isPreview: isPreview
         )
-        setupLogger.info("[PERF] configureWindow: WindowLifecycleMonitor.register took \(ContinuousClock.now - registerStart)")
 
         viewWindow = window
         coordinator.contentWindow = window
@@ -207,7 +193,6 @@ extension MainContentView {
 
         // Update command actions window reference now that it's available
         commandActions?.window = window
-        setupLogger.info("[PERF] configureWindow: total=\(ContinuousClock.now - configStart)")
     }
 
     func setupCommandActions() {

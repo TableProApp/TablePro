@@ -199,9 +199,7 @@ internal final class WindowLifecycleMonitor {
     }
 
     private func handleWindowClose(_ closedWindow: NSWindow) {
-        let closeStart = ContinuousClock.now
         guard let (windowId, entry) = entries.first(where: { $0.value.window === closedWindow }) else {
-            Self.logger.info("[PERF] handleWindowClose: window not found in entries")
             return
         }
 
@@ -216,12 +214,9 @@ internal final class WindowLifecycleMonitor {
         let hasRemainingWindows = entries.values.contains {
             $0.connectionId == closedConnectionId && $0.window != nil
         }
-        Self.logger.info("[PERF] handleWindowClose: cleanup took \(ContinuousClock.now - closeStart), hasRemainingWindows=\(hasRemainingWindows), remainingEntries=\(self.entries.count)")
         if !hasRemainingWindows {
             Task {
-                let disconnectStart = ContinuousClock.now
                 await DatabaseManager.shared.disconnectSession(closedConnectionId)
-                Self.logger.info("[PERF] handleWindowClose: disconnectSession took \(ContinuousClock.now - disconnectStart)")
             }
         }
     }

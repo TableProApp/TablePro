@@ -328,17 +328,9 @@ struct ConnectionSwitcherPopover: View {
     /// merge as a tab with the current connection's window group
     /// (unless the user opted to group all connections in one window).
     private func openWindowForDifferentConnection(_ payload: EditorTabPayload) {
-        if AppSettingsManager.shared.tabs.groupAllConnectionTabs {
-            WindowOpener.shared.openNativeTab(payload)
-        } else {
-            // Temporarily disable tab merging so the new window opens independently
-            let currentWindow = NSApp.keyWindow
-            let previousMode = currentWindow?.tabbingMode ?? .preferred
-            currentWindow?.tabbingMode = .disallowed
-            WindowOpener.shared.openNativeTab(payload)
-            DispatchQueue.main.async {
-                currentWindow?.tabbingMode = previousMode
-            }
-        }
+        // Each connection opens its own window. With in-app tabs and
+        // tabbingMode = .disallowed, windows don't auto-merge.
+        // groupAllConnectionTabs merging is handled by windowDidBecomeKey.
+        WindowOpener.shared.openNativeTab(payload)
     }
 }

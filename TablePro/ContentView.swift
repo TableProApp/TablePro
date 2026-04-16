@@ -35,7 +35,6 @@ struct ContentView: View {
     private let storage = ConnectionStorage.shared
 
     init(payload: EditorTabPayload?) {
-        let initStart = ContinuousClock.now
         self.payload = payload
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
@@ -63,7 +62,6 @@ struct ContentView: View {
             resolvedSession = DatabaseManager.shared.activeSessions[currentId]
         }
         _currentSession = State(initialValue: resolvedSession)
-        let sessionResolved = ContinuousClock.now
 
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
@@ -79,7 +77,6 @@ struct ContentView: View {
             _rightPanelState = State(initialValue: nil)
             _sessionState = State(initialValue: nil)
         }
-        Self.logger.info("[PERF] ContentView.init: total=\(ContinuousClock.now - initStart), sessionResolve=\(sessionResolved - initStart), stateFactory=\(ContinuousClock.now - sessionResolved)")
     }
 
     var body: some View {
@@ -174,21 +171,9 @@ struct ContentView: View {
                         activeTableName: windowTitle,
                         onDoubleClick: { table in
                             let isView = table.type == .view
-                            if let preview = WindowLifecycleMonitor.shared.previewWindow(for: currentSession.connection.id),
-                               let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                                // If the preview tab shows this table, promote it
-                                if previewCoordinator.tabManager.selectedTab?.tableName == table.name {
-                                    previewCoordinator.promotePreviewTab()
-                                } else {
-                                    // Preview shows a different table — promote it first, then open this table permanently
-                                    previewCoordinator.promotePreviewTab()
-                                    sessionState.coordinator.openTableTab(table.name, isView: isView)
-                                }
-                            } else {
-                                // No preview tab — promote current if it's a preview, otherwise open permanently
-                                sessionState.coordinator.promotePreviewTab()
-                                sessionState.coordinator.openTableTab(table.name, isView: isView)
-                            }
+                            // Promote any in-app preview tab, then open the table permanently
+                            sessionState.coordinator.promotePreviewTab()
+                            sessionState.coordinator.openTableTab(table.name, isView: isView)
                         },
                         pendingTruncates: sessionPendingTruncatesBinding,
                         pendingDeletes: sessionPendingDeletesBinding,

@@ -55,7 +55,6 @@ internal final class WindowOpener {
     /// Falls back to .openMainWindow notification if openWindow is not yet available
     /// (cold launch from Dock menu before any SwiftUI view has appeared).
     internal func openNativeTab(_ payload: EditorTabPayload) {
-        let start = ContinuousClock.now
         pendingPayloads.append((id: payload.id, connectionId: payload.connectionId))
         if let openWindow {
             openWindow(id: "main", value: payload)
@@ -63,8 +62,6 @@ internal final class WindowOpener {
             Self.logger.info("openWindow not set — falling back to .openMainWindow notification")
             NotificationCenter.default.post(name: .openMainWindow, object: payload)
         }
-        let elapsed = ContinuousClock.now - start
-        Self.logger.info("[PERF] openNativeTab: \(elapsed) (intent=\(String(describing: payload.intent)), pendingCount=\(self.pendingPayloads.count))")
     }
 
     /// Called by MainContentView.configureWindow after the window is fully set up.

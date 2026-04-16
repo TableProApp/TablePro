@@ -10,7 +10,6 @@ import os
 import SwiftUI
 
 private let windowLogger = Logger(subsystem: "com.TablePro", category: "WindowConfig")
-private let windowPerfLog = OSSignposter(subsystem: "com.TablePro", category: "WindowPerf")
 
 extension AppDelegate {
     // MARK: - Dock Menu
@@ -64,7 +63,6 @@ extension AppDelegate {
     }
 
     @objc func newWindowForTab(_ sender: Any?) {
-        let start = ContinuousClock.now
         guard let keyWindow = NSApp.keyWindow,
               let connectionId = MainActor.assumeIsolated({
                   WindowLifecycleMonitor.shared.connectionId(fromWindow: keyWindow)
@@ -77,7 +75,6 @@ extension AppDelegate {
                 coordinator.addNewQueryTab()
             }
         }
-        windowLogger.info("[PERF] newWindowForTab: \(ContinuousClock.now - start)")
     }
 
     @objc func connectFromDock(_ sender: NSMenuItem) {
@@ -225,7 +222,6 @@ extension AppDelegate {
     // MARK: - Window Notifications
 
     @objc func windowDidBecomeKey(_ notification: Notification) {
-        let becomeKeyStart = ContinuousClock.now
         guard let window = notification.object as? NSWindow else { return }
         let windowId = ObjectIdentifier(window)
 
@@ -256,23 +252,21 @@ extension AppDelegate {
         }
 
         if isMainWindow(window) && !configuredWindows.contains(windowId) {
-            windowLogger.info("[PERF] windowDidBecomeKey: configuring new main window (elapsed so far: \(ContinuousClock.now - becomeKeyStart))")
-            window.tabbingMode = .preferred
+            // In-app tabs: disallow native window tabbing for editor tabs.
+            // Connection-level grouping (groupAllConnectionTabs) uses addTabbedWindow below.
+            window.tabbingMode = .disallowed
             window.isRestorable = false
             configuredWindows.insert(windowId)
 
             let pendingConnectionId = MainActor.assumeIsolated {
                 WindowOpener.shared.consumeOldestPendingConnectionId()
             }
-            windowLogger.info("[PERF] windowDidBecomeKey: consumeOldestPending=\(String(describing: pendingConnectionId)), isAutoReconnecting=\(self.isAutoReconnecting) (elapsed: \(ContinuousClock.now - becomeKeyStart))")
 
             if pendingConnectionId == nil && !isAutoReconnecting {
                 if let tabbedWindows = window.tabbedWindows, tabbedWindows.count > 1 {
-                    windowLogger.info("[PERF] windowDidBecomeKey: orphan window already tabbed, returning (total: \(ContinuousClock.now - becomeKeyStart))")
                     return
                 }
                 window.orderOut(nil)
-                windowLogger.info("[PERF] windowDidBecomeKey: orphan window hidden (total: \(ContinuousClock.now - becomeKeyStart))")
                 return
             }
 
@@ -285,7 +279,6 @@ extension AppDelegate {
                     NSWindow.allowsAutomaticWindowTabbing = true
                 }
 
-                let windowLookupStart = ContinuousClock.now
                 let matchingWindow: NSWindow?
                 if groupAll {
                     let existingMainWindows = NSApp.windows.filter {
@@ -301,24 +294,17 @@ extension AppDelegate {
                             && $0.tabbingIdentifier == resolvedIdentifier
                     }
                 }
-                windowLogger.info("[PERF] windowDidBecomeKey: window lookup took \(ContinuousClock.now - windowLookupStart), totalWindows=\(NSApp.windows.count), groupAll=\(groupAll)")
 
                 if let existingWindow = matchingWindow {
-                    let mergeStart = ContinuousClock.now
                     let targetWindow = existingWindow.tabbedWindows?.last ?? existingWindow
                     targetWindow.addTabbedWindow(window, ordered: .above)
                     window.makeKeyAndOrderFront(nil)
-                    windowLogger.info("[PERF] windowDidBecomeKey: addTabbedWindow took \(ContinuousClock.now - mergeStart)")
                 }
             }
-            windowLogger.info("[PERF] windowDidBecomeKey: main window config TOTAL=\(ContinuousClock.now - becomeKeyStart)")
-        } else {
-            windowLogger.info("[PERF] windowDidBecomeKey: non-main or already configured (total: \(ContinuousClock.now - becomeKeyStart))")
         }
     }
 
     @objc func windowWillClose(_ notification: Notification) {
-        let closeStart = ContinuousClock.now
         guard let window = notification.object as? NSWindow else { return }
 
         configuredWindows.remove(ObjectIdentifier(window))
@@ -327,14 +313,11 @@ extension AppDelegate {
             let remainingMainWindows = NSApp.windows.filter {
                 $0 !== window && isMainWindow($0) && $0.isVisible
             }.count
-            windowLogger.info("[PERF] windowWillClose: isMainWindow=true, remainingMainWindows=\(remainingMainWindows), totalWindows=\(NSApp.windows.count)")
-
             if remainingMainWindows == 0 {
                 NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
                 openWelcomeWindow()
             }
         }
-        windowLogger.info("[PERF] windowWillClose: total=\(ContinuousClock.now - closeStart)")
     }
 
     @objc func windowDidChangeOcclusionState(_ notification: Notification) {
