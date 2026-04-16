@@ -54,15 +54,17 @@ struct TabContentContainerView: NSViewRepresentable {
             coordinator.activeTabId = selectedId
         }
 
-        // Refresh active tab's rootView only when data version changed
+        // Refresh active tab's rootView when content version changed.
+        // activeTabContentVersion includes both per-tab state (resultVersion, metadataVersion)
+        // and shared manager state (filterStateManager.isVisible, history panel).
         if let activeId = selectedId,
            let tab = tabManager.tabs.first(where: { $0.id == activeId }),
            let hosting = coordinator.hostingViews[activeId]
         {
             let builtVersion = coordinator.builtVersions[activeId] ?? -1
-            if builtVersion != tab.contentVersion {
+            if builtVersion != activeTabContentVersion {
                 hosting.rootView = contentBuilder(tab)
-                coordinator.builtVersions[activeId] = tab.contentVersion
+                coordinator.builtVersions[activeId] = activeTabContentVersion
             }
         }
     }
@@ -88,7 +90,7 @@ struct TabContentContainerView: NSViewRepresentable {
                 hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             ])
             coordinator.hostingViews[tab.id] = hosting
-            coordinator.builtVersions[tab.id] = tab.contentVersion
+            coordinator.builtVersions[tab.id] = activeTabContentVersion
         }
     }
 

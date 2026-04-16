@@ -658,13 +658,13 @@ final class MainContentCoordinator {
         if level == .silent {
             if statements.count == 1 {
                 Task { @MainActor in
-                    let window = NSApp.keyWindow
+                    let window = self.contentWindow
                     guard await confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
                     executeQueryInternal(statements[0])
                 }
             } else {
                 Task { @MainActor in
-                    let window = NSApp.keyWindow
+                    let window = self.contentWindow
                     let dangerousStatements = statements.filter { isDangerousQuery($0) }
                     if !dangerousStatements.isEmpty {
                         guard await confirmDangerousQueries(dangerousStatements, window: window) else { return }
@@ -677,7 +677,7 @@ final class MainContentCoordinator {
             isShowingSafeModePrompt = true
             Task { @MainActor in
                 defer { isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
+                let window = self.contentWindow
                 let combinedSQL = statements.joined(separator: "\n")
                 let hasWrite = statements.contains { isWriteQuery($0) }
                 let permission = await SafeModeGuard.checkPermission(
@@ -728,13 +728,12 @@ final class MainContentCoordinator {
             isShowingSafeModePrompt = true
             Task { @MainActor in
                 defer { isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
                 let permission = await SafeModeGuard.checkPermission(
                     level: level,
                     isWriteOperation: false,
                     sql: sql,
                     operationDescription: String(localized: "Execute Query"),
-                    window: window,
+                    window: self.contentWindow,
                     databaseType: connection.type
                 )
                 switch permission {
@@ -827,13 +826,12 @@ final class MainContentCoordinator {
         if !explainVariants.isEmpty {
             if needsConfirmation {
                 Task { @MainActor in
-                    let window = NSApp.keyWindow
                     let permission = await SafeModeGuard.checkPermission(
                         level: level,
                         isWriteOperation: false,
                         sql: "EXPLAIN",
                         operationDescription: String(localized: "Execute Query"),
-                        window: window,
+                        window: self.contentWindow,
                         databaseType: connection.type
                     )
                     if case .allowed = permission {
@@ -856,13 +854,12 @@ final class MainContentCoordinator {
 
         if needsConfirmation {
             Task { @MainActor in
-                let window = NSApp.keyWindow
                 let permission = await SafeModeGuard.checkPermission(
                     level: level,
                     isWriteOperation: false,
                     sql: explainSQL,
                     operationDescription: String(localized: "Execute Query"),
-                    window: window,
+                    window: self.contentWindow,
                     databaseType: connection.type
                 )
                 if case .allowed = permission {

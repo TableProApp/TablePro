@@ -94,7 +94,17 @@ struct MainEditorContentView: View {
     /// when query results, metadata, or pagination change. Hidden tabs are
     /// not tracked; their rootView is refreshed when they become active.
     private var activeTabContentVersion: Int {
-        tabManager.selectedTab?.contentVersion ?? 0
+        var v = tabManager.selectedTab?.contentVersion ?? 0
+        // Include shared manager state that affects tab content rendering
+        // but isn't part of QueryTab's contentVersion (which only tracks per-tab data).
+        // Without this, NSHostingView rootView isn't rebuilt when these toggle.
+        if filterStateManager.isVisible { v = v &+ 17 }
+        if filterStateManager.hasAppliedFilters { v = v &+ 23 }
+        if coordinator.toolbarState.isHistoryPanelVisible { v = v &+ 19 }
+        if coordinator.safeModeLevel.blocksAllWrites { v = v &+ 29 }
+        v = v &+ columnVisibilityManager.hiddenColumns.hashValue &* 37
+        if AppSettingsManager.shared.dataGrid.showRowNumbers { v = v &+ 41 }
+        return v
     }
 
     // MARK: - Body

@@ -316,6 +316,7 @@ extension MainContentCoordinator {
             databaseType: connection.type,
             databaseName: databaseName
         )
+        contentWindow?.subtitle = "\(connection.name) — Preview"
         if let tabIndex = tabManager.selectedTabIndex {
             tabManager.tabs[tabIndex].isView = isView
             tabManager.tabs[tabIndex].isEditable = !isView

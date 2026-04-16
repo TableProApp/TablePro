@@ -245,6 +245,7 @@ struct MainContentView: View {
                 coordinator.onTabSwitchSettled = {
                     // Capture reference types explicitly — MainContentView is a struct,
                     // but @State/@Binding storage is reference-stable.
+                    self.selectedRowIndices = []
                     self.updateWindowTitleAndFileState()
                     self.syncSidebarToCurrentTab()
                     guard !self.coordinator.isTearingDown else { return }
