@@ -136,9 +136,12 @@ struct QueryTab: Identifiable, Equatable {
     /// Composite version for NSHostingView rootView rebuild decisions.
     /// Includes all state that affects visual content.
     var contentVersion: Int {
-        var v = resultVersion &+ metadataVersion &+ paginationVersion
-        if errorMessage != nil { v = v &+ 1 }
-        if isExecuting { v = v &+ 2 }
+        // Use prime multipliers to avoid hash collisions between states.
+        // Previous formula used simple addition, causing collisions like:
+        // isExecuting(+2) == resultVersion(1) + metadataVersion(1)
+        var v = resultVersion &* 97 &+ metadataVersion &* 31 &+ paginationVersion &* 13
+        if errorMessage != nil { v = v &+ 7 }
+        if isExecuting { v = v &+ 3 }
         return v
     }
 

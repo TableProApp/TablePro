@@ -169,6 +169,7 @@ extension MainContentCoordinator {
         isView: Bool = false,
         showStructure: Bool = false
     ) {
+        navigationLogger.info("[TAB-NAV] addTableTabInApp: \"\(tableName, privacy: .public)\" — creating new tab (query deferred to tab switch Phase 2)")
         tabManager.addTableTab(
             tableName: tableName,
             databaseType: connection.type,
@@ -186,7 +187,11 @@ extension MainContentCoordinator {
         }
         restoreColumnLayoutForTable(tableName)
         restoreFiltersForTable(tableName)
-        runQuery()
+        // Query execution is deferred to scheduleTabSwitch Phase 2, which detects
+        // needsLazyQuery (rows empty, never executed) and runs the query only when
+        // the user actually settles on this tab. This prevents the double-query
+        // pattern where addTableTabInApp starts a query that gets immediately
+        // cancelled by the next tab's creation bumping queryGeneration.
     }
 
     // MARK: - Preview Tabs

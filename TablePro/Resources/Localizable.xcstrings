@@ -7388,6 +7388,9 @@
         }
       }
     },
+    "Close tab" : {
+
+    },
     "Close Tab" : {
       "localizations" : {
         "tr" : {
@@ -25620,6 +25623,9 @@
         }
       }
     },
+    "Pin Tab" : {
+
+    },
     "Pink" : {
       "localizations" : {
         "tr" : {
@@ -28818,6 +28824,9 @@
           }
         }
       }
+    },
+    "Reopen Closed Tab" : {
+
     },
     "Reopen Last Session" : {
       "localizations" : {
@@ -32539,6 +32548,9 @@
 
     },
     "Some tabs have unsaved edits. Quitting will discard these changes." : {
+
+    },
+    "Some tabs to the right have unsaved changes that will be lost." : {
 
     },
     "Something went wrong (error %d). Try again in a moment." : {
@@ -37522,6 +37534,9 @@
           }
         }
       }
+    },
+    "Unpin Tab" : {
+
     },
     "Unset" : {
       "localizations" : {

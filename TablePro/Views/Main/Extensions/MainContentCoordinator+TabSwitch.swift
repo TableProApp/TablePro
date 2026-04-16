@@ -9,6 +9,8 @@
 import Foundation
 import os
 
+private let switchLogger = Logger(subsystem: "com.TablePro", category: "TabSwitch")
+
 extension MainContentCoordinator {
     /// Schedule a tab switch. Phase 1 (synchronous): MRU tracking only.
     /// Phase 2 (deferred Task): save outgoing state, restore incoming
@@ -47,11 +49,17 @@ extension MainContentCoordinator {
 
         // Phase 2: Deferred — restore incoming state + lazy query.
         // During rapid Cmd+1/2/3, only the LAST switch's Phase 2 executes.
+        let hadPreviousSwitchTask = tabSwitchTask != nil
         tabSwitchTask?.cancel()
         let capturedNewId = newTabId
+        let fromTitle = oldTabId.flatMap { id in tabManager.tabs.first { $0.id == id }?.title } ?? "nil"
+        let toTitle = newTabId.flatMap { id in tabManager.tabs.first { $0.id == id }?.title } ?? "nil"
+        switchLogger.info("[TAB-SWITCH] scheduleTabSwitch: \"\(fromTitle, privacy: .public)\" → \"\(toTitle, privacy: .public)\" cancelledPrevPhase2=\(hadPreviousSwitchTask)")
         tabSwitchTask = Task { @MainActor [weak self] in
-            guard let self, !Task.isCancelled else { return }
-            guard !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled else {
+                switchLogger.info("[TAB-SWITCH] Phase 2 cancelled before start for \"\(toTitle, privacy: .public)\"")
+                return
+            }
 
             // Restore incoming tab shared state.
             guard let newId = capturedNewId,
@@ -112,6 +120,7 @@ extension MainContentCoordinator {
 
             // Clear stale isExecuting flag
             if newTab.isExecuting && newTab.resultRows.isEmpty && newTab.lastExecutedAt == nil {
+                switchLogger.info("[TAB-SWITCH] clearing stale isExecuting for \"\(newTab.title, privacy: .public)\"")
                 if let idx = self.tabManager.tabs.firstIndex(where: { $0.id == newId }),
                    self.tabManager.tabs[idx].isExecuting {
                     self.tabManager.tabs[idx].isExecuting = false
@@ -125,10 +134,20 @@ extension MainContentCoordinator {
                 && newTab.errorMessage == nil
                 && !newTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+            switchLogger.info("[TAB-SWITCH] Phase 2 \"\(newTab.title, privacy: .public)\": isExecuting=\(newTab.isExecuting) rows=\(newTab.resultRows.count) evicted=\(isEvicted) lastExec=\(newTab.lastExecutedAt?.description ?? "nil", privacy: .public) error=\(newTab.errorMessage ?? "nil", privacy: .public) needsLazy=\(needsLazyQuery)")
+
             if needsLazyQuery {
+                // Only launch the query if this tab is still selected — during rapid switching
+                // the user may have already moved to another tab.
+                guard self.tabManager.selectedTabId == newId else {
+                    switchLogger.info("[TAB-SWITCH] → skipping lazy query for \"\(newTab.title, privacy: .public)\" (no longer selected)")
+                    return
+                }
                 if let session = DatabaseManager.shared.session(for: self.connectionId), session.isConnected {
+                    switchLogger.info("[TAB-SWITCH] → launching lazy query for \"\(newTab.title, privacy: .public)\"")
                     self.executeTableTabQueryDirectly()
                 } else {
+                    switchLogger.info("[TAB-SWITCH] → not connected, deferring lazy load for \"\(newTab.title, privacy: .public)\"")
                     self.changeManager.reloadVersion += 1
                     self.needsLazyLoad = true
                 }
