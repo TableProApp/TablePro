@@ -9,6 +9,9 @@
 import Foundation
 
 extension MainContentCoordinator {
+    /// Two-phase tab switch: synchronous visual update + deferred state reconfiguration.
+    /// Phase 1 (sync): Update only what's needed for immediate opacity flip (~1ms).
+    /// Phase 2 (deferred): Save/restore shared managers in the next frame (~5ms, invisible).
     func handleTabChange(
         from oldTabId: UUID?,
         to newTabId: UUID?,
@@ -16,86 +19,98 @@ extension MainContentCoordinator {
         tabs: [QueryTab]
     ) {
         isHandlingTabSwitch = true
-        defer { isHandlingTabSwitch = false }
 
+        // Phase 1: Synchronous — minimal mutations for immediate visual switch
         if let newId = newTabId {
             tabManager.trackActivation(newId)
         }
 
-        if let oldId = oldTabId,
-           let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
-        {
-            if changeManager.hasChanges {
-                tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
-            }
-            tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
-            if let tableName = tabManager.tabs[oldIndex].tableName {
-                filterStateManager.saveLastFilters(for: tableName)
-            }
-            saveColumnVisibilityToTab()
-            saveColumnLayoutForTable()
-        }
-
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
-            let newTab = tabManager.tabs[newIndex]
+            selectedRowIndices = tabManager.tabs[newIndex].selectedRowIndices
+            toolbarState.isTableTab = tabManager.tabs[newIndex].tabType == .table
+        }
 
-            filterStateManager.restoreFromTabState(newTab.filterState)
-            columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
-            selectedRowIndices = newTab.selectedRowIndices
-            toolbarState.isTableTab = newTab.tabType == .table
-            toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
+        // Phase 2: Deferred — save outgoing + restore incoming shared manager state.
+        // The ZStack opacity flip happens immediately in the current frame;
+        // shared managers (@Observable) update in the next frame to avoid
+        // cascading body re-evaluations that block the visual switch.
+        let capturedOldId = oldTabId
+        let capturedNewId = newTabId
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isHandlingTabSwitch = false }
+
+            // Save outgoing tab state (batch into single array write)
+            if let oldId = capturedOldId,
+               let oldIndex = self.tabManager.tabs.firstIndex(where: { $0.id == oldId }) {
+                var tab = self.tabManager.tabs[oldIndex]
+                if self.changeManager.hasChanges {
+                    tab.pendingChanges = self.changeManager.saveState()
+                }
+                tab.filterState = self.filterStateManager.saveToTabState()
+                self.tabManager.tabs[oldIndex] = tab
+                if let tableName = tab.tableName {
+                    self.filterStateManager.saveLastFilters(for: tableName)
+                }
+                self.saveColumnVisibilityToTab()
+                self.saveColumnLayoutForTable()
+            }
+
+            // Restore incoming tab state
+            guard let newId = capturedNewId,
+                  let newIndex = self.tabManager.tabs.firstIndex(where: { $0.id == newId })
+            else {
+                self.toolbarState.isTableTab = false
+                self.toolbarState.isResultsCollapsed = false
+                self.filterStateManager.clearAll()
+                return
+            }
+            let newTab = self.tabManager.tabs[newIndex]
+
+            self.filterStateManager.restoreFromTabState(newTab.filterState)
+            self.columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
+            self.toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
 
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableName ?? "", databaseType: connection.type)
+                self.changeManager.restoreState(
+                    from: pendingState,
+                    tableName: newTab.tableName ?? "",
+                    databaseType: self.connection.type
+                )
             } else {
-                changeManager.configureForTable(
+                self.changeManager.configureForTable(
                     tableName: newTab.tableName ?? "",
                     columns: newTab.resultColumns,
                     primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
                         ? newTab.resultColumns.prefix(1).map { $0 }
                         : newTab.primaryKeyColumns,
-                    databaseType: connection.type,
+                    databaseType: self.connection.type,
                     triggerReload: false
                 )
             }
 
-            // Defer reloadVersion bump — only needed when we won't run a query.
-            // When a query runs, executeQueryInternal Phase 1 sets new result data
-            // that triggers its own SwiftUI update; bumping beforehand causes a
-            // redundant re-evaluation that blocks the Task executor (15-40ms).
-
+            // Database switch check
             if !newTab.databaseName.isEmpty {
-                let currentDatabase: String
-                if let session = DatabaseManager.shared.session(for: connectionId) {
-                    currentDatabase = session.activeDatabase
-                } else {
-                    currentDatabase = connection.database
-                }
-
+                let currentDatabase = DatabaseManager.shared.session(for: self.connectionId)?.activeDatabase
+                    ?? self.connection.database
                 if newTab.databaseName != currentDatabase {
-                    changeManager.reloadVersion += 1
-                    Task { @MainActor in
-                        await switchDatabase(to: newTab.databaseName)
-                    }
-                    return  // switchDatabase will re-execute the query
+                    self.changeManager.reloadVersion += 1
+                    await self.switchDatabase(to: newTab.databaseName)
+                    return
                 }
             }
 
-            // If the tab shows isExecuting but has no results, the previous query was
-            // likely cancelled when the user rapidly switched away. Force-clear the stale
-            // flag so the lazy-load check below can re-execute the query.
+            // Clear stale isExecuting flag
             if newTab.isExecuting && newTab.resultRows.isEmpty && newTab.lastExecutedAt == nil {
-                let tabId = newId
-                Task { @MainActor [weak self] in
-                    guard let self,
-                          let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                          self.tabManager.tabs[idx].isExecuting else { return }
+                if let idx = self.tabManager.tabs.firstIndex(where: { $0.id == newId }),
+                   self.tabManager.tabs[idx].isExecuting {
                     self.tabManager.tabs[idx].isExecuting = false
                 }
             }
 
+            // Lazy query for evicted/empty tabs
             let isEvicted = newTab.rowBuffer.isEvicted
             let needsLazyQuery = newTab.tabType == .table
                 && (newTab.resultRows.isEmpty || isEvicted)
@@ -104,20 +119,13 @@ extension MainContentCoordinator {
                 && !newTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
             if needsLazyQuery {
-                if let session = DatabaseManager.shared.session(for: connectionId), session.isConnected {
-                    executeTableTabQueryDirectly()
+                if let session = DatabaseManager.shared.session(for: self.connectionId), session.isConnected {
+                    self.executeTableTabQueryDirectly()
                 } else {
-                    changeManager.reloadVersion += 1
-                    needsLazyLoad = true
+                    self.changeManager.reloadVersion += 1
+                    self.needsLazyLoad = true
                 }
             }
-            // No reloadVersion bump when data is already loaded.
-            // With ZStack keep-alive, each tab's DataGridView retains its data —
-            // a forced reload causes a redundant 200ms+ NSTableView.reloadData().
-        } else {
-            toolbarState.isTableTab = false
-            toolbarState.isResultsCollapsed = false
-            filterStateManager.clearAll()
         }
     }
 
