@@ -47,6 +47,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// True while auto-reconnect is in progress at startup
     var isAutoReconnecting = false
 
+    /// Set by deeplink/URL handlers in application(_:open:) to suppress auto-reconnect.
+    /// Checked by the deferred auto-reconnect in applicationDidFinishLaunching.
+    var suppressAutoReconnect = false
+
     /// ConnectionIds currently being connected from URL handlers.
     /// Prevents duplicate connections when the same URL is opened twice rapidly.
     var connectingURLConnectionIds = Set<UUID>()
@@ -113,25 +117,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settings = AppSettingsStorage.shared.loadGeneral()
         if settings.startupBehavior == .reopenLast {
-            let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
-            if !connectionIds.isEmpty {
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnectAll(connectionIds: connectionIds)
-            } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
-                // Backward compat: fall back to single lastConnectionId for upgrades
-                closeWelcomeWindowEagerly()
-                attemptAutoReconnect(connectionId: lastConnectionId)
-            } else {
-                // Crash recovery: if the app crashed before applicationWillTerminate
-                // could save the list, scan the TabState directory for connections
-                // that still have saved tab state on disk.
-                Task { @MainActor [weak self] in
+            // Defer auto-reconnect to next run loop so application(_:open:) can set
+            // suppressAutoReconnect when the app is launched by a deeplink/URL.
+            // Without this, both auto-reconnect and the deeplink create windows
+            // for the same connection, causing duplicates.
+            Task { @MainActor [weak self] in
+                guard let self, !self.suppressAutoReconnect else {
+                    return
+                }
+                let connectionIds = AppSettingsStorage.shared.loadLastOpenConnectionIds()
+                if !connectionIds.isEmpty {
+                    self.closeWelcomeWindowEagerly()
+                    self.attemptAutoReconnectAll(connectionIds: connectionIds)
+                } else if let lastConnectionId = AppSettingsStorage.shared.loadLastConnectionId() {
+                    self.closeWelcomeWindowEagerly()
+                    self.attemptAutoReconnect(connectionId: lastConnectionId)
+                } else {
                     let diskIds = await TabDiskActor.shared.connectionIdsWithSavedState()
                     if !diskIds.isEmpty {
-                        self?.closeWelcomeWindowEagerly()
-                        self?.attemptAutoReconnectAll(connectionIds: diskIds)
+                        self.closeWelcomeWindowEagerly()
+                        self.attemptAutoReconnectAll(connectionIds: diskIds)
                     } else {
-                        self?.closeRestoredMainWindows()
+                        self.closeRestoredMainWindows()
                     }
                 }
             }
