@@ -18,12 +18,10 @@ extension MainContentCoordinator {
         isHandlingTabSwitch = true
         defer { isHandlingTabSwitch = false }
 
-        // Track MRU order for smart tab selection after close
         if let newId = newTabId {
             tabManager.trackActivation(newId)
         }
 
-        // Persist the outgoing tab's unsaved changes and filter state so they survive the switch
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
@@ -38,26 +36,16 @@ extension MainContentCoordinator {
             saveColumnLayoutForTable()
         }
 
-        // Row data eviction is handled by didResignKeyNotification (window loses focus)
-        // and by MemoryPressureAdvisor (system memory pressure) — NOT on tab switch.
-        // Evicting on every switch causes re-fetch delays that block the UI.
-
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
 
-            // Restore filter state for new tab
             filterStateManager.restoreFromTabState(newTab.filterState)
-
-            // Restore column visibility for new tab
             columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
-
             selectedRowIndices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
 
-            // Configure change manager without triggering reload yet — we'll fire a single
-            // reloadVersion bump below after everything is set up.
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
                 changeManager.restoreState(from: pendingState, tableName: newTab.tableName ?? "", databaseType: connection.type)

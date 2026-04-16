@@ -55,7 +55,7 @@ struct MainContentView: View {
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var lazyLoadTask: Task<Void, Never>?
     // pendingTabSwitch removed — tab switch is synchronous (2ms), no debounce needed
-    @State var evictionTask: Task<Void, Never>?
+    // evictionTask removed — eviction only on memory pressure, not window resign
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -312,8 +312,6 @@ struct MainContentView: View {
                 notificationWindow === viewWindow
             else { return }
             isKeyWindow = true
-            evictionTask?.cancel()
-            evictionTask = nil
             Task { @MainActor in
                 syncSidebarToCurrentTab()
             }
@@ -353,16 +351,10 @@ struct MainContentView: View {
             isKeyWindow = false
             lastResignKeyDate = Date()
 
-            // Schedule row data eviction when the connection window becomes inactive.
-            // 5s delay avoids thrashing when quickly switching between tabs.
-            // Per-tab pendingChanges checks inside evictInactiveRowData() protect
-            // tabs with unsaved changes from eviction.
-            evictionTask?.cancel()
-            evictionTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
-                guard !Task.isCancelled else { return }
-                coordinator.evictInactiveRowData()
-            }
+            // Row data eviction only happens under system memory pressure
+            // (via MemoryPressureAdvisor), not on window resign. Other DB clients
+            // (Beekeeper, DataGrip, TablePlus) keep data in memory until close.
+            // Evicting on resign caused re-fetch delays when switching back.
             }
             .onChange(of: tables) { _, newTables in
                 let syncAction = SidebarSyncAction.resolveOnTablesLoad(
