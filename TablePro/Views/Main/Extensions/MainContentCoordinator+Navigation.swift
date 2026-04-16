@@ -36,11 +36,25 @@ extension MainContentCoordinator {
 
         let currentSchema = DatabaseManager.shared.session(for: connectionId)?.currentSchema
 
+        // DEBUG: Log full tab state for diagnosing replacement issues
+        let selTab = tabManager.selectedTab
+        let selName = selTab?.tableName ?? "nil"
+        let selPreview = selTab?.isPreview == true
+        let cmHasChanges = changeManager.hasChanges
+        let previewEnabled = AppSettingsManager.shared.tabs.enablePreviewTabs
+        navigationLogger.info("[TAB-NAV] openTableTab(\"\(tableName, privacy: .public)\") tabCount=\(self.tabManager.tabs.count) selected=\(selName, privacy: .public) selPreview=\(selPreview) changes=\(cmHasChanges) previewEnabled=\(previewEnabled)")
+        for (i, tab) in tabManager.tabs.enumerated() {
+            let tName = tab.tableName ?? "nil"
+            let isSel = tab.id == tabManager.selectedTabId
+            navigationLogger.info("[TAB-NAV]   tab[\(i)] \"\(tab.title, privacy: .public)\" table=\(tName, privacy: .public) isPreview=\(tab.isPreview) pending=\(tab.pendingChanges.hasChanges) dirty=\(tab.isFileDirty) sel=\(isSel)")
+        }
+
         // Fast path: if this table is already the active tab in the same database, skip all work
         if let current = tabManager.selectedTab,
            current.tabType == .table,
            current.tableName == tableName,
            current.databaseName == currentDatabase {
+            navigationLogger.info("[TAB-NAV] → FAST PATH: same table already active")
             if showStructure, let idx = tabManager.selectedTabIndex {
                 tabManager.tabs[idx].showStructure = true
             }
@@ -48,7 +62,7 @@ extension MainContentCoordinator {
         }
 
         // During database switch, update the existing tab in-place instead of
-        // opening a new native window tab.
+        // opening a new in-app tab.
         if sidebarLoadingState == .loading {
             if tabManager.tabs.isEmpty {
                 tabManager.addTableTab(
@@ -64,6 +78,7 @@ extension MainContentCoordinator {
         if let existingTab = tabManager.tabs.first(where: {
             $0.tabType == .table && $0.tableName == tableName && $0.databaseName == currentDatabase
         }) {
+            navigationLogger.info("[TAB-NAV] → EXISTING TAB: switching to \(existingTab.id)")
             tabManager.selectedTabId = existingTab.id
             return
         }
@@ -108,7 +123,7 @@ extension MainContentCoordinator {
         }
 
         // In-place navigation: replace current tab content rather than
-        // opening new native window tabs (e.g. Redis database switching).
+        // opening new in-app tabs (e.g. Redis database switching).
         if navigationModel == .inPlace {
             if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
@@ -138,6 +153,9 @@ extension MainContentCoordinator {
             || filterStateManager.hasAppliedFilters
             || (tabManager.selectedTab?.sortState.isSorting ?? false)
         if hasActiveWork {
+            let hasFilters = filterStateManager.hasAppliedFilters
+            let hasSorting = tabManager.selectedTab?.sortState.isSorting ?? false
+            navigationLogger.info("[TAB-NAV] → ACTIVE WORK: addTableTabInApp (changes=\(cmHasChanges) filters=\(hasFilters) sorting=\(hasSorting))")
             addTableTabInApp(
                 tableName: tableName,
                 databaseName: currentDatabase,
@@ -150,11 +168,13 @@ extension MainContentCoordinator {
 
         // Preview tab mode: reuse or create a preview tab instead of a new native window
         if AppSettingsManager.shared.tabs.enablePreviewTabs {
+            navigationLogger.info("[TAB-NAV] → PREVIEW MODE: calling openPreviewTab")
             openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
             return
         }
 
         // Default: open table in a new in-app tab
+        navigationLogger.info("[TAB-NAV] → DEFAULT: addTableTabInApp (preview disabled)")
         addTableTabInApp(
             tableName: tableName,
             databaseName: currentDatabase,
@@ -202,11 +222,32 @@ extension MainContentCoordinator {
         // Check if a preview tab already exists in this window's tab manager
         if let previewIndex = tabManager.tabs.firstIndex(where: { $0.isPreview }) {
             let previewTab = tabManager.tabs[previewIndex]
+            let pName = previewTab.tableName ?? "nil"
+            let pSel = previewTab.id == tabManager.selectedTabId
+            navigationLogger.info("[TAB-NAV] openPreviewTab(\"\(tableName, privacy: .public)\"): found preview[\(previewIndex)] \"\(previewTab.title, privacy: .public)\" table=\(pName, privacy: .public) pending=\(previewTab.pendingChanges.hasChanges) dirty=\(previewTab.isFileDirty) sel=\(pSel)")
             // Skip if preview tab already shows this table
             if previewTab.tableName == tableName, previewTab.databaseName == databaseName {
+                navigationLogger.info("[TAB-NAV] → PREVIEW SKIP: same table")
                 tabManager.selectedTabId = previewTab.id
                 return
             }
+            // Preview tab has unsaved changes — promote it and open a new tab instead
+            if previewTab.pendingChanges.hasChanges || previewTab.isFileDirty {
+                navigationLogger.info("[TAB-NAV] → PREVIEW PROMOTE: has unsaved changes, creating new tab")
+                tabManager.tabs[previewIndex].isPreview = false
+                if let wid = windowId {
+                    WindowLifecycleMonitor.shared.setPreview(false, for: wid)
+                }
+                addTableTabInApp(
+                    tableName: tableName,
+                    databaseName: databaseName,
+                    schemaName: schemaName,
+                    isView: isView,
+                    showStructure: showStructure
+                )
+                return
+            }
+            navigationLogger.info("[TAB-NAV] → PREVIEW REPLACE: replacing \"\(pName, privacy: .public)\" with \"\(tableName, privacy: .public)\"")
             if let oldTableName = previewTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
@@ -249,9 +290,12 @@ extension MainContentCoordinator {
             }
             return false
         }()
+        let reusableSelName = tabManager.selectedTab?.tableName ?? "nil"
+        navigationLogger.info("[TAB-NAV] openPreviewTab: no preview found, isReusableTab=\(isReusableTab) selectedTab=\(reusableSelName, privacy: .public)")
         if let selectedTab = tabManager.selectedTab, isReusableTab {
             // Skip if already showing this table
             if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
+                navigationLogger.info("[TAB-NAV] → REUSABLE SKIP: same table")
                 return
             }
             // If reusable tab has active work, promote it and open new tab instead
@@ -263,6 +307,7 @@ extension MainContentCoordinator {
                 || selectedTab.sortState.isSorting
                 || hasUnsavedQuery
             if previewHasWork {
+                navigationLogger.info("[TAB-NAV] → REUSABLE PROMOTE: has work, creating new tab")
                 promotePreviewTab()
                 addTableTabInApp(
                     tableName: tableName,
@@ -273,6 +318,7 @@ extension MainContentCoordinator {
                 )
                 return
             }
+            navigationLogger.info("[TAB-NAV] → REUSABLE REPLACE: replacing \"\(reusableSelName, privacy: .public)\" with \"\(tableName, privacy: .public)\"")
             if let oldTableName = selectedTab.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
@@ -297,6 +343,7 @@ extension MainContentCoordinator {
         }
 
         // No reusable tab: create a new in-app preview tab
+        navigationLogger.info("[TAB-NAV] → NEW PREVIEW TAB: creating for \"\(tableName, privacy: .public)\"")
         tabManager.addPreviewTableTab(
             tableName: tableName,
             databaseType: connection.type,
@@ -320,6 +367,9 @@ extension MainContentCoordinator {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabManager.tabs[tabIndex].isPreview else { return }
         tabManager.tabs[tabIndex].isPreview = false
+        if let wid = windowId {
+            WindowLifecycleMonitor.shared.setPreview(false, for: wid)
+        }
     }
 
     func showAllTablesMetadata() {
@@ -363,14 +413,6 @@ extension MainContentCoordinator {
 
     // MARK: - Database Switching
 
-    /// Close all sibling native window-tabs except the current key window.
-    /// Each table opened via WindowOpener creates a separate NSWindow in the same
-    /// tab group. Clearing `tabManager.tabs` only affects the in-app state of the
-    /// *current* window — other NSWindows remain open with stale content.
-    /// No-op: with in-app tabs, there are no sibling native windows per connection.
-    /// Kept as a placeholder to avoid changing callers in switchDatabase/switchSchema.
-    private func closeSiblingNativeWindows() {}
-
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
         sidebarLoadingState = .loading
@@ -385,7 +427,6 @@ extension MainContentCoordinator {
         let previousDatabase = toolbarState.databaseName
 
         toolbarState.databaseName = database
-        closeSiblingNativeWindows()
         persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
         tabManager.tabs = []
         tabManager.selectedTabId = nil
@@ -450,7 +491,7 @@ extension MainContentCoordinator {
         let previousSchema = toolbarState.databaseName
 
         toolbarState.databaseName = schema
-        closeSiblingNativeWindows()
+        persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
         tabManager.tabs = []
         tabManager.selectedTabId = nil
         DatabaseManager.shared.updateSession(connectionId) { session in

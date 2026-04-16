@@ -26,8 +26,7 @@ extension MainContentCoordinator {
                 )
                 switch result {
                 case .save:
-                    // Save then close — delegate to existing save flow
-                    break
+                    await self.saveDataChangesAndClose(tabId: id)
                 case .dontSave:
                     changeManager.clearChangesAndUndoHistory()
                     removeTab(id)
@@ -85,19 +84,81 @@ extension MainContentCoordinator {
         persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
     }
 
-    func closeOtherTabs(excluding id: UUID) {
-        let idsToClose = tabManager.tabs.filter { $0.id != id }.map(\.id)
-        for tabId in idsToClose {
-            if let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                tabManager.tabs[index].rowBuffer.evict()
-            }
-            tabManager.tabs.removeAll { $0.id == tabId }
+    private func saveDataChangesAndClose(tabId: UUID) async {
+        var truncates: Set<String> = []
+        var deletes: Set<String> = []
+        var options: [String: TableOperationOptions] = [:]
+        let saved = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            saveCompletionContinuation = continuation
+            saveChanges(pendingTruncates: &truncates, pendingDeletes: &deletes, tableOperationOptions: &options)
         }
+        if saved {
+            removeTab(tabId)
+        }
+    }
+
+    func closeOtherTabs(excluding id: UUID) {
+        let tabsToClose = tabManager.tabs.filter { $0.id != id }
+        let selectedIsBeingClosed = tabManager.selectedTabId != id
+        let hasUnsavedWork = tabsToClose.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
+            || (selectedIsBeingClosed && changeManager.hasChanges)
+
+        if hasUnsavedWork {
+            Task { @MainActor in
+                let result = await AlertHelper.confirmSaveChanges(
+                    message: String(localized: "Some tabs have unsaved changes that will be lost."),
+                    window: contentWindow
+                )
+                switch result {
+                case .save, .dontSave:
+                    if selectedIsBeingClosed {
+                        changeManager.clearChangesAndUndoHistory()
+                    }
+                    forceCloseOtherTabs(excluding: id)
+                case .cancel:
+                    return
+                }
+            }
+            return
+        }
+
+        forceCloseOtherTabs(excluding: id)
+    }
+
+    private func forceCloseOtherTabs(excluding id: UUID) {
+        for index in tabManager.tabs.indices where tabManager.tabs[index].id != id {
+            tabManager.tabs[index].rowBuffer.evict()
+        }
+        tabManager.tabs.removeAll { $0.id != id }
         tabManager.selectedTabId = id
         persistence.saveNow(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
     }
 
     func closeAllTabs() {
+        let hasUnsavedWork = tabManager.tabs.contains { $0.pendingChanges.hasChanges || $0.isFileDirty }
+            || changeManager.hasChanges
+
+        if hasUnsavedWork {
+            Task { @MainActor in
+                let result = await AlertHelper.confirmSaveChanges(
+                    message: String(localized: "You have unsaved changes that will be lost."),
+                    window: contentWindow
+                )
+                switch result {
+                case .save, .dontSave:
+                    changeManager.clearChangesAndUndoHistory()
+                    forceCloseAllTabs()
+                case .cancel:
+                    return
+                }
+            }
+            return
+        }
+
+        forceCloseAllTabs()
+    }
+
+    private func forceCloseAllTabs() {
         for tab in tabManager.tabs {
             tab.rowBuffer.evict()
         }

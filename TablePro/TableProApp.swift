@@ -441,7 +441,7 @@ struct AppMenuCommands: Commands {
             .keyboardShortcut("-", modifiers: .command)
         }
 
-        // Tab navigation shortcuts — native macOS window tabs
+        // Tab navigation shortcuts — in-app tab switching
         CommandGroup(after: .windowArrangement) {
             // Tab switching by number (Cmd+1 through Cmd+9)
             ForEach(1...9, id: \.self) { number in
@@ -533,7 +533,7 @@ struct TableProApp: App {
         .windowResizability(.contentSize)
 
         // Main Window - opens when connecting to database
-        // Each native window-tab gets its own ContentView with independent state.
+        // Each connection window gets its own ContentView with independent state.
         WindowGroup(id: "main", for: EditorTabPayload.self) { $payload in
             ContentView(payload: payload)
                 .background(OpenWindowHandler())

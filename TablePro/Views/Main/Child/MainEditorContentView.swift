@@ -75,7 +75,7 @@ struct MainEditorContentView: View {
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var favoriteDialogQuery: FavoriteDialogQuery?
 
-    // Native macOS window tabs — no LRU tracking needed (single tab per window)
+    // In-app tabs with LRU eviction for inactive tab RowBuffers
 
     // MARK: - Environment
 
@@ -96,7 +96,7 @@ struct MainEditorContentView: View {
         let isHistoryVisible = coordinator.toolbarState.isHistoryPanelVisible
 
         VStack(spacing: 0) {
-            if tabManager.tabs.count > 1 || !tabManager.tabs.isEmpty {
+            if !tabManager.tabs.isEmpty {
                 EditorTabBar(
                     tabs: tabManager.tabs,
                     selectedTabId: Binding(
@@ -272,7 +272,11 @@ struct MainEditorContentView: View {
                         connectionId: coordinator.connection.id,
                         connectionAIPolicy: coordinator.connection.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
                         onCloseTab: {
-                            NSApp.keyWindow?.close()
+                            if tabManager.tabs.count > 1, let selectedId = tabManager.selectedTabId {
+                                coordinator.closeInAppTab(selectedId)
+                            } else {
+                                NSApp.keyWindow?.close()
+                            }
                         },
                         onExecuteQuery: { coordinator.runQuery() },
                         onExplain: { variant in

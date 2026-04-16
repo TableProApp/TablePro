@@ -811,6 +811,9 @@ final class MainContentCommandActions {
                         databaseName: connection.database,
                         sourceFileURL: url
                     )
+                    if let windowId = coordinator?.windowId {
+                        WindowLifecycleMonitor.shared.registerSourceFile(url, windowId: windowId)
+                    }
                 }
             }
         }

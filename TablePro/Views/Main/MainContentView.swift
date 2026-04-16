@@ -260,8 +260,7 @@ struct MainContentView: View {
 
                 let connectionId = connection.id
                 Task { @MainActor in
-                    // Direct teardown — no grace period needed since we no longer
-                    // create native window tabs that trigger merge cascades.
+                    // Direct teardown — no grace period needed with in-app tabs.
                     let teardownStart = ContinuousClock.now
                     coordinator.teardown()
                     mcvLogger.info("[PERF] onDisappear: coordinator.teardown took \(ContinuousClock.now - teardownStart)")
@@ -381,7 +380,7 @@ struct MainContentView: View {
             isKeyWindow = false
             lastResignKeyDate = Date()
 
-            // Schedule row data eviction for inactive native window-tabs.
+            // Schedule row data eviction when the connection window becomes inactive.
             // 5s delay avoids thrashing when quickly switching between tabs.
             // Per-tab pendingChanges checks inside evictInactiveRowData() protect
             // tabs with unsaved changes from eviction.

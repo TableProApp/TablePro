@@ -13,7 +13,7 @@ import TableProPluginKit
 struct ContentView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ContentView")
 
-    /// Payload identifying what this native window-tab should display.
+    /// Payload identifying what this connection window should display.
     /// nil = default empty query tab (first window on connection).
     let payload: EditorTabPayload?
 
@@ -55,7 +55,7 @@ struct ContentView: View {
 
         // Resolve session synchronously to avoid "Connecting..." flash.
         // For payload with connectionId: look up that specific session.
-        // For nil payload (native tab bar "+"): fall back to current session.
+        // For nil payload: fall back to current session.
         var resolvedSession: ConnectionSession?
         if let connectionId = payload?.connectionId {
             resolvedSession = DatabaseManager.shared.activeSessions[connectionId]

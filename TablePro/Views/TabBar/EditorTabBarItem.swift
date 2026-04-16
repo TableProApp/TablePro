@@ -22,6 +22,7 @@ struct EditorTabBarItem: View {
     @State private var isEditing = false
     @State private var editingTitle = ""
     @State private var isHovering = false
+    @FocusState private var isEditingFocused: Bool
 
     private var icon: String {
         switch tab.tabType {
@@ -55,6 +56,12 @@ struct EditorTabBarItem: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                 .frame(minWidth: 40, maxWidth: 120)
+                .focused($isEditingFocused)
+                .onChange(of: isEditingFocused) { _, focused in
+                    if !focused && isEditing {
+                        isEditing = false
+                    }
+                }
             } else {
                 Text(tab.title)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
@@ -62,7 +69,7 @@ struct EditorTabBarItem: View {
                     .lineLimit(1)
             }
 
-            if tab.isFileDirty {
+            if tab.isFileDirty || tab.pendingChanges.hasChanges {
                 Circle()
                     .fill(Color.primary.opacity(0.5))
                     .frame(width: 6, height: 6)
@@ -91,15 +98,16 @@ struct EditorTabBarItem: View {
         )
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .onTapGesture {
-            onSelect()
-        }
         .gesture(
             TapGesture(count: 2).onEnded {
                 guard tab.tabType == .query else { return }
                 editingTitle = tab.title
                 isEditing = true
+                isEditingFocused = true
             }
+            .exclusively(before: TapGesture(count: 1).onEnded {
+                onSelect()
+            })
         )
         .contextMenu {
             Button(String(localized: "Close")) { onClose() }

@@ -121,4 +121,8 @@ private struct TabDropDelegate: DropDelegate {
     func dropUpdated(info: DropInfo) -> DropProposal? {
         DropProposal(operation: .move)
     }
+
+    func dropExited(info: DropInfo) {
+        draggedTabId = nil
+    }
 }

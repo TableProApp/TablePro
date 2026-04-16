@@ -51,7 +51,7 @@ internal final class WindowOpener {
     /// Whether any payloads are pending — used for orphan detection in windowDidBecomeKey.
     internal var hasPendingPayloads: Bool { !pendingPayloads.isEmpty }
 
-    /// Opens a new native window tab with the given payload.
+    /// Opens a new connection window with the given payload.
     /// Falls back to .openMainWindow notification if openWindow is not yet available
     /// (cold launch from Dock menu before any SwiftUI view has appeared).
     internal func openNativeTab(_ payload: EditorTabPayload) {

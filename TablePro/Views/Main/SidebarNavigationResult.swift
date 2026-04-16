@@ -15,7 +15,7 @@ enum SidebarNavigationResult: Equatable {
     /// No existing tabs: navigate in-place inside this window.
     case openInPlace
     /// Existing tabs present: revert sidebar to the current tab immediately,
-    /// then open the clicked table in a new native window tab.
+    /// then open the clicked table in a new in-app tab.
     /// Reverting synchronously prevents SwiftUI from rendering the [B] state
     /// before coalescing back to [A] — eliminating the visible flash.
     case revertAndOpenNewWindow
@@ -54,7 +54,7 @@ enum SidebarNavigationResult: Equatable {
             return .openNewPreviewTab
         }
 
-        // Default: revert sidebar synchronously (no flash), then open in a new native tab.
+        // Default: revert sidebar synchronously (no flash), then open in a new in-app tab.
         return .revertAndOpenNewWindow
     }
 }

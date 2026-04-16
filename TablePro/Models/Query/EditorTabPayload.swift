@@ -2,8 +2,8 @@
 //  EditorTabPayload.swift
 //  TablePro
 //
-//  Payload for identifying the content of a native window tab.
-//  Used with WindowGroup(for:) to create native macOS window tabs.
+//  Payload for identifying the content of a connection window.
+//  Used with WindowGroup(for:) to create connection windows.
 //
 
 import Foundation
@@ -18,7 +18,7 @@ internal enum TabIntent: String, Codable, Hashable {
     case restoreOrDefault
 }
 
-/// Payload passed to each native window tab to identify what content it should display.
+/// Payload passed to each connection window to identify what content it should display.
 /// Each window-tab receives this at creation time via `openWindow(id:value:)`.
 internal struct EditorTabPayload: Codable, Hashable {
     /// Unique identifier for this window-tab (ensures openWindow always creates a new window)

@@ -100,13 +100,13 @@ extension MainContentView {
         }
 
         // Only navigate when this is the focused window.
-        // Prevents feedback loops when shared sidebar state syncs across native tabs.
+        // Prevents feedback loops when shared sidebar state syncs across connection windows.
         guard isKeyWindow else {
             return
         }
 
         let isPreviewMode = AppSettingsManager.shared.tabs.enablePreviewTabs
-        let hasPreview = WindowLifecycleMonitor.shared.previewWindow(for: connection.id) != nil
+        let hasPreview = tabManager.tabs.contains { $0.isPreview }
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: tableName,

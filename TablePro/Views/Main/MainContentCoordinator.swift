@@ -219,39 +219,6 @@ final class MainContentCoordinator {
             .flatMap { $0.tabManager.tabs }
     }
 
-    /// Collect non-preview tabs for persistence.
-    private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
-        let coordinators = activeCoordinators.values
-            .filter { $0.connectionId == connectionId }
-
-        // Sort by native window tab order to preserve left-to-right position
-        let orderedCoordinators: [MainContentCoordinator]
-        if let firstWindow = coordinators.compactMap({ $0.contentWindow }).first,
-           let tabbedWindows = firstWindow.tabbedWindows {
-            let windowOrder = Dictionary(uniqueKeysWithValues:
-                tabbedWindows.enumerated().map { (ObjectIdentifier($0.element), $0.offset) }
-            )
-            orderedCoordinators = coordinators.sorted { a, b in
-                let aIdx = a.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                let bIdx = b.contentWindow.flatMap { windowOrder[ObjectIdentifier($0)] } ?? Int.max
-                return aIdx < bIdx
-            }
-        } else {
-            orderedCoordinators = Array(coordinators)
-        }
-
-        return orderedCoordinators
-            .flatMap { $0.tabManager.tabs }
-            .filter { !$0.isPreview }
-    }
-
-    /// Get selected tab ID from any coordinator for a given connectionId.
-    private static func aggregatedSelectedTabId(for connectionId: UUID) -> UUID? {
-        activeCoordinators.values
-            .first { $0.connectionId == connectionId && $0.tabManager.selectedTabId != nil }?
-            .tabManager.selectedTabId
-    }
-
     /// Check if this coordinator is the first registered for its connection.
     private func isFirstCoordinatorForConnection() -> Bool {
         Self.activeCoordinators.values
@@ -269,7 +236,7 @@ final class MainContentCoordinator {
     }()
 
     /// Evict row data for background tabs in this coordinator to free memory.
-    /// Called when the coordinator's native window-tab becomes inactive.
+    /// Called when the connection window becomes inactive.
     /// The currently selected tab is kept in memory so the user sees no
     /// refresh flicker when switching back — matching native macOS behavior.
     /// Background tabs are re-fetched automatically when selected.
