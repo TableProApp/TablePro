@@ -112,6 +112,10 @@ extension MainContentCoordinator {
                     self.needsLazyLoad = true
                 }
             }
+
+            // Notify view layer to update title, sidebar, and persistence
+            // after deferred state has settled.
+            self.onTabSwitchSettled?()
         }
     }
 

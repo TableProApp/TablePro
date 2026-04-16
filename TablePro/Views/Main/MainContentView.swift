@@ -227,6 +227,9 @@ struct MainContentView: View {
             }
             .task(id: currentTab?.tableName) {
                 MainContentCoordinator.logger.warning("[DBG] .task(tableName) fired: \(self.currentTab?.tableName ?? "nil", privacy: .public)")
+                // Skip during rapid tab switching — metadata will be loaded
+                // when the user settles on a tab (Phase 2 completion)
+                guard !coordinator.isHandlingTabSwitch else { return }
                 guard currentTab?.lastExecutedAt != nil else { return }
                 await loadTableMetadataIfNeeded()
             }
@@ -247,6 +250,15 @@ struct MainContentView: View {
                 rightPanelState.aiViewModel.schemaProvider = coordinator.schemaProvider
                 coordinator.aiViewModel = rightPanelState.aiViewModel
                 coordinator.rightPanelState = rightPanelState
+                coordinator.onTabSwitchSettled = { [self] in
+                    updateWindowTitleAndFileState()
+                    syncSidebarToCurrentTab()
+                    guard !coordinator.isTearingDown else { return }
+                    coordinator.persistence.saveNow(
+                        tabs: tabManager.tabs,
+                        selectedTabId: tabManager.selectedTabId
+                    )
+                }
 
                 // Window registration is handled by WindowAccessor in .background
             }

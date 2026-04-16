@@ -157,6 +157,9 @@ final class MainContentCoordinator {
 
     /// Called during teardown to let the view layer release cached row providers and sort data.
     @ObservationIgnored var onTeardown: (() -> Void)?
+    /// Called from Phase 2 of tab switch after deferred state is settled.
+    /// View layer uses this to update title, sidebar, and persistence.
+    @ObservationIgnored var onTabSwitchSettled: (() -> Void)?
 
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
