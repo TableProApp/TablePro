@@ -575,6 +575,16 @@ struct MainEditorContentView: View {
     }
 
     private func cacheRowProvider(for tab: QueryTab) {
+        // Skip if the cached entry is still valid — avoids redundant
+        // applyDisplayFormats() + UserDefaults I/O on every tab switch
+        if let entry = tabProviderCache[tab.id],
+           entry.resultVersion == tab.resultVersion,
+           entry.metadataVersion == tab.metadataVersion,
+           entry.sortState == tab.sortState,
+           !tab.rowBuffer.isEvicted
+        {
+            return
+        }
         let provider = makeRowProvider(for: tab)
         tabProviderCache[tab.id] = RowProviderCacheEntry(
             provider: provider,
