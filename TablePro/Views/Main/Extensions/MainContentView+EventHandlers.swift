@@ -6,27 +6,37 @@
 //  Extracted to reduce main view complexity.
 //
 
+import os
 import SwiftUI
 
 extension MainContentView {
     // MARK: - Event Handlers
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
+        var t = ContinuousClock.now
         coordinator.handleTabChange(
             from: oldTabId,
             to: newTabId,
             selectedRowIndices: &selectedRowIndices,
             tabs: tabManager.tabs
         )
+        MainContentCoordinator.logger.warning("[DBG] EH.handleTabChange=\(ContinuousClock.now - t)")
 
+        t = ContinuousClock.now
         updateWindowTitleAndFileState()
+        MainContentCoordinator.logger.warning("[DBG] EH.updateTitle=\(ContinuousClock.now - t)")
+
+        t = ContinuousClock.now
         syncSidebarToCurrentTab()
+        MainContentCoordinator.logger.warning("[DBG] EH.syncSidebar=\(ContinuousClock.now - t)")
 
         guard !coordinator.isTearingDown else { return }
+        t = ContinuousClock.now
         coordinator.persistence.saveNow(
             tabs: tabManager.tabs,
             selectedTabId: newTabId
         )
+        MainContentCoordinator.logger.warning("[DBG] EH.persist=\(ContinuousClock.now - t)")
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {

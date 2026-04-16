@@ -8,6 +8,7 @@
 
 import AppKit
 import CodeEditSourceEditor
+import os
 import SwiftUI
 
 /// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation
@@ -93,6 +94,7 @@ struct MainEditorContentView: View {
     // MARK: - Body
 
     var body: some View {
+        let _ = MainContentCoordinator.logger.warning("[DBG] EditorContent.body eval selected=\(tabManager.selectedTab?.title ?? "nil", privacy: .public)")
         let isHistoryVisible = coordinator.toolbarState.isHistoryPanelVisible
 
         VStack(spacing: 0) {
@@ -149,6 +151,7 @@ struct MainEditorContentView: View {
             )
         }
         .onChange(of: tabManager.tabIds) { _, newIds in
+            MainContentCoordinator.logger.warning("[DBG] EC.onChange(tabIds) count=\(newIds.count)")
             guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty
                 || !serverDashboardViewModels.isEmpty else {
                 coordinator.cleanupSortCache(openTabIds: Set(newIds))
@@ -162,6 +165,7 @@ struct MainEditorContentView: View {
             serverDashboardViewModels = serverDashboardViewModels.filter { openTabIds.contains($0.key) }
         }
         .onChange(of: tabManager.selectedTabId) { _, newId in
+            MainContentCoordinator.logger.warning("[DBG] EC.onChange(selectedTabId) → \(String(describing: newId))")
             updateHasQueryText()
 
             guard let newId, let tab = tabManager.selectedTab else { return }
@@ -169,6 +173,7 @@ struct MainEditorContentView: View {
             if cached?.resultVersion != tab.resultVersion
                 || cached?.metadataVersion != tab.metadataVersion
             {
+                MainContentCoordinator.logger.warning("[DBG] EC.cacheRowProvider called (cache miss)")
                 cacheRowProvider(for: tab)
             }
         }
@@ -185,14 +190,17 @@ struct MainEditorContentView: View {
             }
         }
         .onChange(of: tabManager.selectedTab?.resultVersion) { _, newVersion in
+            MainContentCoordinator.logger.warning("[DBG] EC.onChange(resultVersion) → \(String(describing: newVersion))")
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.metadataVersion) { _, newVersion in
+            MainContentCoordinator.logger.warning("[DBG] EC.onChange(metadataVersion) → \(String(describing: newVersion))")
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }
         .onChange(of: tabManager.selectedTab?.activeResultSetId) { _, _ in
+            MainContentCoordinator.logger.warning("[DBG] EC.onChange(activeResultSetId)")
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
         }

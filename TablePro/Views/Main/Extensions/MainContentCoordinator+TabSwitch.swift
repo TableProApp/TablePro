@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 
 extension MainContentCoordinator {
     /// Two-phase tab switch optimized for ZStack keep-alive.
@@ -20,9 +21,10 @@ extension MainContentCoordinator {
         selectedRowIndices: inout Set<Int>,
         tabs: [QueryTab]
     ) {
+        Self.logger.warning("[DBG] handleTabChange START old=\(String(describing: oldTabId)) new=\(String(describing: newTabId))")
         isHandlingTabSwitch = true
 
-        // Phase 1: Synchronous — minimal mutations for immediate visual switch
+        // Phase 1: Synchronous
         if let newId = newTabId {
             tabManager.trackActivation(newId)
         }
@@ -35,6 +37,7 @@ extension MainContentCoordinator {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false
         }
+        Self.logger.warning("[DBG] handleTabChange Phase1 done")
 
         // Phase 2: Deferred — save outgoing tab state for persistence.
         // No incoming state restoration needed: ZStack keeps each tab's view
@@ -45,10 +48,13 @@ extension MainContentCoordinator {
         let capturedOldId = oldTabId
         let capturedNewId = newTabId
         tabSwitchTask = Task { @MainActor [weak self] in
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled else {
+                Self.logger.warning("[DBG] Phase2 CANCELLED")
+                return
+            }
             defer { self.isHandlingTabSwitch = false }
+            Self.logger.warning("[DBG] Phase2 START")
 
-            // Save outgoing tab state (batch into single array write)
             if let oldId = capturedOldId,
                let oldIndex = self.tabManager.tabs.firstIndex(where: { $0.id == oldId }) {
                 var tab = self.tabManager.tabs[oldIndex]

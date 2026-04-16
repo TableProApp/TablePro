@@ -107,6 +107,7 @@ struct MainContentView: View {
     // MARK: - Body
 
     var body: some View {
+        let _ = MainContentCoordinator.logger.warning("[DBG] MCV.body eval")
         bodyContent
             .sheet(item: Bindable(coordinator).activeSheet) { sheet in
                 sheetContent(for: sheet)
@@ -225,12 +226,12 @@ struct MainContentView: View {
                 }
             }
             .task(id: currentTab?.tableName) {
-                // Only load metadata after the tab has executed at least once —
-                // avoids a redundant DB query racing with the initial data query
+                MainContentCoordinator.logger.warning("[DBG] .task(tableName) fired: \(self.currentTab?.tableName ?? "nil", privacy: .public)")
                 guard currentTab?.lastExecutedAt != nil else { return }
                 await loadTableMetadataIfNeeded()
             }
             .onChange(of: inspectorTrigger) {
+                MainContentCoordinator.logger.warning("[DBG] onChange(inspectorTrigger)")
                 scheduleInspectorUpdate()
             }
             .onAppear {
@@ -256,6 +257,7 @@ struct MainContentView: View {
                 // during view hierarchy reconstruction and is not reliable for resource cleanup.
             }
             .onChange(of: pendingChangeTrigger) {
+                MainContentCoordinator.logger.warning("[DBG] onChange(pendingChangeTrigger)")
                 updateToolbarPendingState()
             }
             .userActivity("com.TablePro.viewConnection") { activity in
@@ -285,13 +287,16 @@ struct MainContentView: View {
             .modifier(ToolbarTintModifier(connectionColor: connection.color))
             .task { await initializeAndRestoreTabs() }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
+                MainContentCoordinator.logger.warning("[DBG] onChange(selectedTabId) → \(String(describing: newTabId))")
                 handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
                 previousSelectedTabId = newTabId
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
+                MainContentCoordinator.logger.warning("[DBG] onChange(tabs) count=\(newTabs.count)")
                 handleTabsChange(newTabs)
             }
             .onChange(of: currentTab?.resultColumns) { _, newColumns in
+                MainContentCoordinator.logger.warning("[DBG] onChange(resultColumns) count=\(newColumns?.count ?? -1)")
                 handleColumnsChange(newColumns: newColumns)
             }
             .task { handleConnectionStatusChange() }
@@ -303,6 +308,7 @@ struct MainContentView: View {
             }
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
+                MainContentCoordinator.logger.warning("[DBG] onChange(selectedTables) count=\(newTables.count)")
                 handleTableSelectionChange(from: previousSelectedTables, to: newTables)
                 previousSelectedTables = newTables
             }
