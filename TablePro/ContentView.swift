@@ -63,20 +63,10 @@ struct ContentView: View {
         }
         _currentSession = State(initialValue: resolvedSession)
 
-        if let session = resolvedSession {
-            _rightPanelState = State(initialValue: RightPanelState())
-            let state = SessionStateFactory.create(
-                connection: session.connection, payload: payload
-            )
-            _sessionState = State(initialValue: state)
-            if payload?.intent == .newEmptyTab,
-               let tabTitle = state.coordinator.tabManager.selectedTab?.title {
-                _windowTitle = State(initialValue: tabTitle)
-            }
-        } else {
-            _rightPanelState = State(initialValue: nil)
-            _sessionState = State(initialValue: nil)
-        }
+        // SessionState is created lazily in ensureSessionState() on first
+        // connection event — not in init, which SwiftUI may call speculatively.
+        _rightPanelState = State(initialValue: nil)
+        _sessionState = State(initialValue: nil)
     }
 
     var body: some View {
@@ -113,15 +103,7 @@ struct ContentView: View {
                     currentSession = DatabaseManager.shared.activeSessions[connectionId]
                     columnVisibility = currentSession != nil ? .all : .detailOnly
                     if let session = currentSession {
-                        if rightPanelState == nil {
-                            rightPanelState = RightPanelState()
-                        }
-                        if sessionState == nil {
-                            sessionState = SessionStateFactory.create(
-                                connection: session.connection,
-                                payload: payload
-                            )
-                        }
+                        ensureSessionState(for: session)
                     }
                 } else {
                     currentSession = nil
@@ -333,18 +315,30 @@ struct ContentView: View {
             return
         }
         currentSession = newSession
-        // Update window title on first session connect (fixes cold-launch stale title)
-        if payload?.tableName == nil, windowTitle == "SQL Query" || windowTitle.hasSuffix(" Query") {
-            windowTitle = newSession.connection.name
-        }
+        ensureSessionState(for: newSession)
+    }
+
+    /// Create SessionState exactly once per connection. Called from reactive
+    /// handlers (onChange, handleConnectionStatusChange) — never from init,
+    /// because SwiftUI may call init speculatively during body evaluation.
+    private func ensureSessionState(for session: ConnectionSession) {
+        guard sessionState == nil else { return }
         if rightPanelState == nil {
             rightPanelState = RightPanelState()
         }
-        if sessionState == nil {
-            sessionState = SessionStateFactory.create(
-                connection: newSession.connection,
-                payload: payload
-            )
+        let state = SessionStateFactory.create(
+            connection: session.connection,
+            payload: payload
+        )
+        sessionState = state
+        columnVisibility = .all
+        // Update window title on first connect
+        if payload?.intent == .newEmptyTab,
+           let tabTitle = state.coordinator.tabManager.selectedTab?.title {
+            windowTitle = tabTitle
+        } else if payload?.tableName == nil,
+                  windowTitle == "SQL Query" || windowTitle.hasSuffix(" Query") {
+            windowTitle = session.connection.name
         }
     }
 
