@@ -9,24 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- In-app tab bar replacing native macOS window tabs — instant tab switching (was 600-900ms per tab)
-- Reopen closed tab with Cmd+Shift+T (up to 20 tabs in history, remappable in Settings)
-- Pinned tabs — pin important tabs to prevent accidental close, always at left side
-- MRU tab selection — closing a tab selects the most recently active tab (browser behavior)
-- Preview tab protection — tabs with unsaved changes are promoted instead of replaced
-- Dirty indicator shows immediately for active tab edits (not just after tab switch)
-- Drag-and-drop tab reorder with pinned/unpinned boundary enforcement
-- Accessibility labels on tab bar items for VoiceOver
-- Deeplinks and Handoff now route to in-app tabs instead of creating duplicate windows
+- In-app tab bar with instant switching, drag reorder, pinned tabs, and dirty indicators
+- Reopen closed tab (Cmd+Shift+T), MRU tab selection on close
+- Deeplinks and Handoff route to in-app tabs instead of creating duplicate windows
 
 ### Changed
 
-- Tab restoration loads all tabs in a single window instead of opening N separate windows
-- Tab content preserved across switches via AppKit NSHostingView container (no view destruction)
-- Query execution deferred to tab switch settlement — prevents wasted queries during rapid navigation
-- Coordinator teardown moved from SwiftUI onDisappear to NSWindow willCloseNotification (deterministic)
-- Open connection IDs persisted incrementally on connect/disconnect (survives SIGKILL)
-- Auto-reconnect deferred on cold launch to prevent race with deeplink URL handlers
+- Replace native macOS window tabs with in-app tab bar (600ms+ → instant)
+- Tab content preserved across switches (no view destruction/recreation)
+- Connection state persisted incrementally (survives force quit)
 
 ### Fixed
 
