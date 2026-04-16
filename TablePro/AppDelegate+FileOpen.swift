@@ -32,19 +32,20 @@ extension AppDelegate {
 
         let tableName = activity.userInfo?["tableName"] as? String
 
+        // Already connected — route to existing window's in-app tab bar
         if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil {
             if let tableName {
                 let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
-                WindowOpener.shared.openNativeTab(payload)
-            } else {
-                for window in NSApp.windows where isMainWindow(window) {
-                    window.makeKeyAndOrderFront(nil)
-                    return
+                if !routeToExistingWindow(connectionId: connectionId, payload: payload) {
+                    WindowOpener.shared.openNativeTab(payload)
                 }
+            } else {
+                bringConnectionWindowToFront(connectionId)
             }
             return
         }
 
+        // Not connected — create window, connect, then route content as in-app tab
         let initialPayload = EditorTabPayload(connectionId: connectionId)
         WindowOpener.shared.openNativeTab(initialPayload)
 
@@ -56,7 +57,9 @@ extension AppDelegate {
                 }
                 if let tableName {
                     let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
-                    WindowOpener.shared.openNativeTab(payload)
+                    if !routeToExistingWindow(connectionId: connectionId, payload: payload) {
+                        WindowOpener.shared.openNativeTab(payload)
+                    }
                 }
             } catch {
                 fileOpenLogger.error("Handoff connect failed: \(error.localizedDescription)")
@@ -155,6 +158,36 @@ extension AppDelegate {
         }
     }
 
+    // MARK: - In-App Tab Routing
+
+    /// Route content to an existing connection window's in-app tab bar when possible.
+    /// Returns true if the content was routed to an existing window.
+    /// Falls back gracefully (returns false) when no coordinator exists for the connection.
+    @discardableResult
+    func routeToExistingWindow(
+        connectionId: UUID,
+        payload: EditorTabPayload
+    ) -> Bool {
+        guard let coordinator = MainContentCoordinator.firstCoordinator(for: connectionId) else {
+            return false
+        }
+        switch payload.tabType {
+        case .table:
+            if let tableName = payload.tableName {
+                coordinator.openTableTab(tableName, showStructure: payload.showStructure, isView: payload.isView)
+            }
+        case .query:
+            coordinator.tabManager.addTab(
+                initialQuery: payload.initialQuery,
+                databaseName: payload.databaseName ?? coordinator.connection.database
+            )
+        default:
+            coordinator.addNewQueryTab()
+        }
+        coordinator.contentWindow?.makeKeyAndOrderFront(nil)
+        return true
+    }
+
     // MARK: - Welcome Window Suppression
 
     func suppressWelcomeWindow() {
@@ -225,14 +258,14 @@ extension AppDelegate {
             return
         }
 
+        // Already connected — route to existing window's in-app tab bar
         if DatabaseManager.shared.activeSessions[connection.id]?.driver != nil {
             if let payload = makePayload?(connection.id) {
-                WindowOpener.shared.openNativeTab(payload)
-            } else {
-                for window in NSApp.windows where isMainWindow(window) {
-                    window.makeKeyAndOrderFront(nil)
-                    return
+                if !routeToExistingWindow(connectionId: connection.id, payload: payload) {
+                    WindowOpener.shared.openNativeTab(payload)
                 }
+            } else {
+                bringConnectionWindowToFront(connection.id)
             }
             return
         }
@@ -266,7 +299,9 @@ extension AppDelegate {
                     window.close()
                 }
                 if let payload = makePayload?(connection.id) {
-                    WindowOpener.shared.openNativeTab(payload)
+                    if !self.routeToExistingWindow(connectionId: connection.id, payload: payload) {
+                        WindowOpener.shared.openNativeTab(payload)
+                    }
                 }
             } catch {
                 fileOpenLogger.error("Deep link connect failed: \(error.localizedDescription)")

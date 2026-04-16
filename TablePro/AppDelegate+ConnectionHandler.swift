@@ -350,7 +350,9 @@ extension AppDelegate {
                     tableName: tableName,
                     isView: parsed.isView
                 )
-                WindowOpener.shared.openNativeTab(payload)
+                if !routeToExistingWindow(connectionId: connectionId, payload: payload) {
+                    WindowOpener.shared.openNativeTab(payload)
+                }
 
                 if parsed.filterColumn != nil || parsed.filterCondition != nil {
                     await waitForNotification(.refreshData, timeout: .seconds(3))
