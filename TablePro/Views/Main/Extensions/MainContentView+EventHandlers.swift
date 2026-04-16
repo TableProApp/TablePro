@@ -13,15 +13,7 @@ extension MainContentView {
     // MARK: - Event Handlers
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
-        // Phase 1 only — minimal sync mutations for instant opacity flip.
-        // Title, sidebar sync, and persistence are deferred to Phase 2
-        // (inside handleTabChange's Task) to avoid cascading body re-evals.
-        coordinator.handleTabChange(
-            from: oldTabId,
-            to: newTabId,
-            selectedRowIndices: &selectedRowIndices,
-            tabs: tabManager.tabs
-        )
+        coordinator.scheduleTabSwitch(from: oldTabId, to: newTabId)
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {

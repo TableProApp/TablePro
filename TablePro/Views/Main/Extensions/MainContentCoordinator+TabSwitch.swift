@@ -10,50 +10,38 @@ import Foundation
 import os
 
 extension MainContentCoordinator {
-    /// Two-phase tab switch optimized for ZStack keep-alive.
-    ///
-    /// Phase 1 (synchronous, ~1ms): Update selection + toolbar for immediate opacity flip.
-    /// Phase 2 (deferred): Save outgoing tab state only. NO incoming state restoration —
-    /// with ZStack, each tab's view is kept alive with its correct state.
-    func handleTabChange(
+    /// Schedule a tab switch with zero synchronous @Observable mutations.
+    /// The ZStack opacity flip happens from selectedTabId binding alone.
+    /// All state work (save outgoing, MRU, title, sidebar, persist) is
+    /// deferred to Phase 2 Task which coalesces rapid Cmd+1/2/3 spam.
+    func scheduleTabSwitch(
         from oldTabId: UUID?,
-        to newTabId: UUID?,
-        selectedRowIndices: inout Set<Int>,
-        tabs: [QueryTab]
+        to newTabId: UUID?
     ) {
-        Self.logger.warning("[DBG] handleTabChange START old=\(String(describing: oldTabId)) new=\(String(describing: newTabId))")
         isHandlingTabSwitch = true
 
-        // Phase 1: Synchronous
+        // MRU tracking is lightweight (array append) — do synchronously
         if let newId = newTabId {
             tabManager.trackActivation(newId)
         }
 
-        if let newId = newTabId,
-           let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
-            selectedRowIndices = tabManager.tabs[newIndex].selectedRowIndices
-            toolbarState.isTableTab = tabManager.tabs[newIndex].tabType == .table
-        } else {
-            toolbarState.isTableTab = false
-            toolbarState.isResultsCollapsed = false
-        }
-        Self.logger.warning("[DBG] handleTabChange Phase1 done")
-
-        // Phase 2: Deferred — save outgoing tab state for persistence.
-        // No incoming state restoration needed: ZStack keeps each tab's view
-        // alive with its correct state. Restoring shared @Observable managers
-        // (filterStateManager, changeManager, etc.) causes 15+ body re-evaluations
-        // that block the main thread for ~1 second.
+        // Phase 2: Deferred — all state work coalesced via task cancellation.
+        // During rapid Cmd+1/2/3, only the LAST switch's Phase 2 executes.
         tabSwitchTask?.cancel()
         let capturedOldId = oldTabId
         let capturedNewId = newTabId
         tabSwitchTask = Task { @MainActor [weak self] in
-            guard let self, !Task.isCancelled else {
-                Self.logger.warning("[DBG] Phase2 CANCELLED")
-                return
-            }
+            guard let self, !Task.isCancelled else { return }
             defer { self.isHandlingTabSwitch = false }
-            Self.logger.warning("[DBG] Phase2 START")
+
+            // Update toolbar and selection for the settled tab
+            if let newId = capturedNewId,
+               let newIndex = self.tabManager.tabs.firstIndex(where: { $0.id == newId }) {
+                self.toolbarState.isTableTab = self.tabManager.tabs[newIndex].tabType == .table
+            } else {
+                self.toolbarState.isTableTab = false
+                self.toolbarState.isResultsCollapsed = false
+            }
 
             if let oldId = capturedOldId,
                let oldIndex = self.tabManager.tabs.firstIndex(where: { $0.id == oldId }) {

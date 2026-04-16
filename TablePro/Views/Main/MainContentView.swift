@@ -298,8 +298,12 @@ struct MainContentView: View {
             .modifier(ToolbarTintModifier(connectionColor: connection.color))
             .task { await initializeAndRestoreTabs() }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
-                MainContentCoordinator.logger.warning("[DBG] onChange(selectedTabId) → \(String(describing: newTabId))")
-                handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
+                // ZStack opacity flip happens automatically from selectedTabId binding.
+                // ALL work is deferred to Phase 2 (handleTabChange's Task) which
+                // coalesces rapid Cmd+1/2/3 switches via tabSwitchTask cancellation.
+                // No synchronous mutations here — avoids triggering body re-evals
+                // that block the main thread during keyboard repeat spam.
+                coordinator.scheduleTabSwitch(from: previousSelectedTabId, to: newTabId)
                 previousSelectedTabId = newTabId
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
