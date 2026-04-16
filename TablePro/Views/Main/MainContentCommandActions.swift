@@ -493,16 +493,15 @@ final class MainContentCommandActions {
     // MARK: - Tab Navigation (Group A — Called Directly)
 
     func selectTab(number: Int) {
-        // Throttle: skip if coordinator is still handling a previous tab switch.
-        // Prevents macOS keyboard repeat events from queuing 20+ switches.
-        guard coordinator?.isHandlingTabSwitch != true else { return }
         guard let tabs = coordinator?.tabManager.tabs,
               number > 0, number <= tabs.count else { return }
-        coordinator?.tabManager.selectedTabId = tabs[number - 1].id
+        let targetId = tabs[number - 1].id
+        // Skip if already on this tab (keyboard repeat of same Cmd+N)
+        guard coordinator?.tabManager.selectedTabId != targetId else { return }
+        coordinator?.tabManager.selectedTabId = targetId
     }
 
     func selectPreviousTab() {
-        guard coordinator?.isHandlingTabSwitch != true else { return }
         guard let tabs = coordinator?.tabManager.tabs, tabs.count > 1,
               let currentIndex = coordinator?.tabManager.selectedTabIndex else { return }
         let newIndex = (currentIndex - 1 + tabs.count) % tabs.count
@@ -510,7 +509,6 @@ final class MainContentCommandActions {
     }
 
     func selectNextTab() {
-        guard coordinator?.isHandlingTabSwitch != true else { return }
         guard let tabs = coordinator?.tabManager.tabs, tabs.count > 1,
               let currentIndex = coordinator?.tabManager.selectedTabIndex else { return }
         let newIndex = (currentIndex + 1) % tabs.count

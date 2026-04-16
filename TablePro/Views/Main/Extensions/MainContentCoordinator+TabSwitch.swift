@@ -18,9 +18,11 @@ extension MainContentCoordinator {
         from oldTabId: UUID?,
         to newTabId: UUID?
     ) {
+        // isHandlingTabSwitch is true only during this synchronous block.
+        // onChange handlers check it to skip cascading work.
         isHandlingTabSwitch = true
+        defer { isHandlingTabSwitch = false }
 
-        // MRU tracking is lightweight (array append) — do synchronously
         if let newId = newTabId {
             tabManager.trackActivation(newId)
         }
@@ -32,7 +34,6 @@ extension MainContentCoordinator {
         let capturedNewId = newTabId
         tabSwitchTask = Task { @MainActor [weak self] in
             guard let self, !Task.isCancelled else { return }
-            defer { self.isHandlingTabSwitch = false }
 
             // Update toolbar and selection for the settled tab
             if let newId = capturedNewId,
