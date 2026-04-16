@@ -110,9 +110,10 @@ extension MainContentCoordinator {
                     changeManager.reloadVersion += 1
                     needsLazyLoad = true
                 }
-            } else {
-                changeManager.reloadVersion += 1
             }
+            // No reloadVersion bump when data is already loaded.
+            // With ZStack keep-alive, each tab's DataGridView retains its data —
+            // a forced reload causes a redundant 200ms+ NSTableView.reloadData().
         } else {
             toolbarState.isTableTab = false
             toolbarState.isResultsCollapsed = false

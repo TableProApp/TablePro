@@ -20,6 +20,7 @@ extension MainContentView {
         )
 
         updateWindowTitleAndFileState()
+
         syncSidebarToCurrentTab()
 
         guard !coordinator.isTearingDown else { return }
@@ -30,10 +31,13 @@ extension MainContentView {
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
+        // Skip during tab switch — handleTabChange saves outgoing tab state which
+        // mutates tabs[], triggering this handler redundantly. The tab selection
+        // handler already persists at the end.
+        guard !coordinator.isHandlingTabSwitch else { return }
+
         updateWindowTitleAndFileState()
 
-        // Don't persist during teardown — SwiftUI may fire onChange with empty tabs
-        // as the view is being deallocated
         guard !coordinator.isTearingDown else { return }
         guard !coordinator.isUpdatingColumnLayout else { return }
 
