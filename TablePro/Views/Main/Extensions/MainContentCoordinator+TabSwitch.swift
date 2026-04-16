@@ -35,10 +35,13 @@ extension MainContentCoordinator {
         // The ZStack opacity flip happens immediately in the current frame;
         // shared managers (@Observable) update in the next frame to avoid
         // cascading body re-evaluations that block the visual switch.
+        // Cancel previous deferred task so rapid Cmd+1/Cmd+2 spam only
+        // commits the final tab — intermediate switches are discarded.
+        tabSwitchTask?.cancel()
         let capturedOldId = oldTabId
         let capturedNewId = newTabId
-        Task { @MainActor [weak self] in
-            guard let self else { return }
+        tabSwitchTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
             defer { self.isHandlingTabSwitch = false }
 
             // Save outgoing tab state (batch into single array write)
@@ -56,6 +59,8 @@ extension MainContentCoordinator {
                 self.saveColumnVisibilityToTab()
                 self.saveColumnLayoutForTable()
             }
+
+            guard !Task.isCancelled else { return }
 
             // Restore incoming tab state
             guard let newId = capturedNewId,

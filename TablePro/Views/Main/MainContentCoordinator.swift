@@ -133,6 +133,7 @@ final class MainContentCoordinator {
     @ObservationIgnored internal var currentQueryTask: Task<Void, Never>?
     @ObservationIgnored internal var redisDatabaseSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var changeManagerUpdateTask: Task<Void, Never>?
+    @ObservationIgnored internal var tabSwitchTask: Task<Void, Never>?
     @ObservationIgnored private var activeSortTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var terminationObserver: NSObjectProtocol?
     @ObservationIgnored private var urlFilterObservers: [NSObjectProtocol] = []
@@ -428,6 +429,8 @@ final class MainContentCoordinator {
         changeManagerUpdateTask = nil
         redisDatabaseSwitchTask?.cancel()
         redisDatabaseSwitchTask = nil
+        tabSwitchTask?.cancel()
+        tabSwitchTask = nil
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
