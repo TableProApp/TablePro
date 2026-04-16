@@ -225,14 +225,9 @@ struct MainContentView: View {
                     configureWindow(window)
                 }
             }
-            .task(id: currentTab?.tableName) {
-                MainContentCoordinator.logger.warning("[DBG] .task(tableName) fired: \(self.currentTab?.tableName ?? "nil", privacy: .public)")
-                // Skip during rapid tab switching — metadata will be loaded
-                // when the user settles on a tab (Phase 2 completion)
-                guard !coordinator.isHandlingTabSwitch else { return }
-                guard currentTab?.lastExecutedAt != nil else { return }
-                await loadTableMetadataIfNeeded()
-            }
+            // Metadata loading moved to query completion (executeQueryInternal)
+            // and Phase 2 tab switch settlement. Removed .task(id: currentTab?.tableName)
+            // which created N queued tasks during rapid Cmd+1/2/3 switching.
             .onChange(of: inspectorTrigger) {
                 MainContentCoordinator.logger.warning("[DBG] onChange(inspectorTrigger)")
                 scheduleInspectorUpdate()
@@ -258,6 +253,10 @@ struct MainContentView: View {
                         tabs: tabManager.tabs,
                         selectedTabId: tabManager.selectedTabId
                     )
+                    // Load table metadata for the settled tab
+                    if let tab = tabManager.selectedTab, tab.lastExecutedAt != nil {
+                        Task { await loadTableMetadataIfNeeded() }
+                    }
                 }
 
                 // Window registration is handled by WindowAccessor in .background
