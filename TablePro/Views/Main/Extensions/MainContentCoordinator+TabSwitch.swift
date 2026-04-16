@@ -9,9 +9,11 @@
 import Foundation
 
 extension MainContentCoordinator {
-    /// Two-phase tab switch: synchronous visual update + deferred state reconfiguration.
-    /// Phase 1 (sync): Update only what's needed for immediate opacity flip (~1ms).
-    /// Phase 2 (deferred): Save/restore shared managers in the next frame (~5ms, invisible).
+    /// Two-phase tab switch optimized for ZStack keep-alive.
+    ///
+    /// Phase 1 (synchronous, ~1ms): Update selection + toolbar for immediate opacity flip.
+    /// Phase 2 (deferred): Save outgoing tab state only. NO incoming state restoration —
+    /// with ZStack, each tab's view is kept alive with its correct state.
     func handleTabChange(
         from oldTabId: UUID?,
         to newTabId: UUID?,
@@ -29,14 +31,16 @@ extension MainContentCoordinator {
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             selectedRowIndices = tabManager.tabs[newIndex].selectedRowIndices
             toolbarState.isTableTab = tabManager.tabs[newIndex].tabType == .table
+        } else {
+            toolbarState.isTableTab = false
+            toolbarState.isResultsCollapsed = false
         }
 
-        // Phase 2: Deferred — save outgoing + restore incoming shared manager state.
-        // The ZStack opacity flip happens immediately in the current frame;
-        // shared managers (@Observable) update in the next frame to avoid
-        // cascading body re-evaluations that block the visual switch.
-        // Cancel previous deferred task so rapid Cmd+1/Cmd+2 spam only
-        // commits the final tab — intermediate switches are discarded.
+        // Phase 2: Deferred — save outgoing tab state for persistence.
+        // No incoming state restoration needed: ZStack keeps each tab's view
+        // alive with its correct state. Restoring shared @Observable managers
+        // (filterStateManager, changeManager, etc.) causes 15+ body re-evaluations
+        // that block the main thread for ~1 second.
         tabSwitchTask?.cancel()
         let capturedOldId = oldTabId
         let capturedNewId = newTabId
@@ -62,39 +66,11 @@ extension MainContentCoordinator {
 
             guard !Task.isCancelled else { return }
 
-            // Restore incoming tab state
+            // Lazy query check for evicted/empty tabs
             guard let newId = capturedNewId,
                   let newIndex = self.tabManager.tabs.firstIndex(where: { $0.id == newId })
-            else {
-                self.toolbarState.isTableTab = false
-                self.toolbarState.isResultsCollapsed = false
-                self.filterStateManager.clearAll()
-                return
-            }
+            else { return }
             let newTab = self.tabManager.tabs[newIndex]
-
-            self.filterStateManager.restoreFromTabState(newTab.filterState)
-            self.columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
-            self.toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
-
-            let pendingState = newTab.pendingChanges
-            if pendingState.hasChanges {
-                self.changeManager.restoreState(
-                    from: pendingState,
-                    tableName: newTab.tableName ?? "",
-                    databaseType: self.connection.type
-                )
-            } else {
-                self.changeManager.configureForTable(
-                    tableName: newTab.tableName ?? "",
-                    columns: newTab.resultColumns,
-                    primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
-                        ? newTab.resultColumns.prefix(1).map { $0 }
-                        : newTab.primaryKeyColumns,
-                    databaseType: self.connection.type,
-                    triggerReload: false
-                )
-            }
 
             // Database switch check
             if !newTab.databaseName.isEmpty {
@@ -115,7 +91,6 @@ extension MainContentCoordinator {
                 }
             }
 
-            // Lazy query for evicted/empty tabs
             let isEvicted = newTab.rowBuffer.isEvicted
             let needsLazyQuery = newTab.tabType == .table
                 && (newTab.resultRows.isEmpty || isEvicted)
@@ -143,7 +118,6 @@ extension MainContentCoordinator {
                 && !$0.pendingChanges.hasChanges
         }
 
-        // Sort by oldest first, breaking ties by largest estimated footprint first
         let sorted = candidates.sorted {
             let t0 = $0.lastExecutedAt ?? .distantFuture
             let t1 = $1.lastExecutedAt ?? .distantFuture

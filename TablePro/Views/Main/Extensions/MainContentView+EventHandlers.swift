@@ -20,7 +20,6 @@ extension MainContentView {
         )
 
         updateWindowTitleAndFileState()
-
         syncSidebarToCurrentTab()
 
         guard !coordinator.isTearingDown else { return }
