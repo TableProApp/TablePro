@@ -14,11 +14,14 @@
 //
 
 import Combine
+import os
 import SwiftUI
 import TableProPluginKit
 
 /// Main content view - thin presentation layer
 struct MainContentView: View {
+    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+
     // MARK: - Properties
 
     let connection: DatabaseConnection
@@ -237,6 +240,10 @@ struct MainContentView: View {
                 scheduleInspectorUpdate()
             }
             .onAppear {
+                let start = Date()
+                Self.lifecycleLogger.info(
+                    "[open] MainContentView.onAppear start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) tabs=\(tabManager.tabs.count)"
+                )
                 coordinator.markActivated()
 
                 // Set window title for empty state (no tabs restored)
@@ -251,8 +258,15 @@ struct MainContentView: View {
                 coordinator.rightPanelState = rightPanelState
 
                 // Window registration is handled by WindowAccessor in .background
+                Self.lifecycleLogger.info(
+                    "[open] MainContentView.onAppear done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+                )
             }
             .onDisappear {
+                let onDisappearStart = Date()
+                Self.lifecycleLogger.info(
+                    "[close] MainContentView.onDisappear windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) tabs=\(tabManager.tabs.count)"
+                )
                 // Mark teardown intent synchronously so deinit doesn't warn
                 // if SwiftUI deallocates the coordinator before the delayed Task fires
                 coordinator.markTeardownScheduled()
@@ -266,29 +280,49 @@ struct MainContentView: View {
                     // so this delay must exceed that dispatch latency to avoid tearing down
                     // a window that's about to reappear.
                     try? await Task.sleep(for: Self.tabGroupMergeGracePeriod)
+                    Self.lifecycleLogger.info(
+                        "[close] grace period done windowId=\(capturedWindowId, privacy: .public) sinceOnDisappearMs=\(Int(Date().timeIntervalSince(onDisappearStart) * 1000))"
+                    )
 
                     // If this window re-registered (temporary disappear during tab group merge), skip cleanup
                     if WindowLifecycleMonitor.shared.isRegistered(windowId: capturedWindowId) {
+                        Self.lifecycleLogger.info(
+                            "[close] skipped (tab-group merge, window re-registered) windowId=\(capturedWindowId, privacy: .public)"
+                        )
                         coordinator.clearTeardownScheduled()
                         return
                     }
 
                     // Window truly closed — teardown coordinator
+                    let teardownStart = Date()
                     coordinator.teardown()
+                    Self.lifecycleLogger.info(
+                        "[close] coordinator.teardown done windowId=\(capturedWindowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(teardownStart) * 1000))"
+                    )
                     rightPanelState.teardown()
 
                     // If no more windows for this connection, disconnect.
                     // Tab state is NOT cleared here — it's preserved for next reconnect.
                     // Only handleTabsChange(count=0) clears state (user explicitly closed all tabs).
                     guard !WindowLifecycleMonitor.shared.hasWindows(for: connectionId) else {
+                        Self.lifecycleLogger.info(
+                            "[close] sibling windows remain — skipping disconnect connId=\(connectionId, privacy: .public)"
+                        )
                         return
                     }
+                    let disconnectStart = Date()
                     await DatabaseManager.shared.disconnectSession(connectionId)
+                    Self.lifecycleLogger.info(
+                        "[close] DatabaseManager.disconnectSession done connId=\(connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(disconnectStart) * 1000))"
+                    )
 
                     // Give SwiftUI/AppKit time to deallocate view hierarchies,
                     // then hint malloc to return freed pages to the OS
                     try? await Task.sleep(for: .seconds(2))
                     malloc_zone_pressure_relief(nil, 0)
+                    Self.lifecycleLogger.info(
+                        "[close] full teardown done windowId=\(capturedWindowId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(onDisappearStart) * 1000))"
+                    )
                 }
             }
             .onChange(of: pendingChangeTrigger) {
@@ -319,14 +353,31 @@ struct MainContentView: View {
         mainContentView
             .openTableToolbar(state: toolbarState)
             .modifier(ToolbarTintModifier(connectionColor: connection.color))
-            .task { await initializeAndRestoreTabs() }
+            .task {
+                let start = Date()
+                Self.lifecycleLogger.info(
+                    "[open] bodyContentCore.task initializeAndRestoreTabs start windowId=\(windowId, privacy: .public)"
+                )
+                await initializeAndRestoreTabs()
+                Self.lifecycleLogger.info(
+                    "[open] bodyContentCore.task initializeAndRestoreTabs done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+                )
+            }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
+                let switchQueued = Date()
+                Self.lifecycleLogger.info(
+                    "[switch] tabManager.selectedTabId changed from=\(previousSelectedTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
+                )
                 pendingTabSwitch?.cancel()
                 pendingTabSwitch = Task { @MainActor in
                     await Task.yield()
                     guard !Task.isCancelled else { return }
+                    let handleStart = Date()
                     handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
                     previousSelectedTabId = newTabId
+                    Self.lifecycleLogger.info(
+                        "[switch] handleTabSelectionChange done windowId=\(windowId, privacy: .public) handleMs=\(Int(Date().timeIntervalSince(handleStart) * 1000)) queueToDoneMs=\(Int(Date().timeIntervalSince(switchQueued) * 1000))"
+                    )
                 }
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
@@ -352,6 +403,10 @@ struct MainContentView: View {
             guard let notificationWindow = notification.object as? NSWindow,
                 notificationWindow === viewWindow
             else { return }
+            let becomeKeyStart = Date()
+            Self.lifecycleLogger.info(
+                "[switch] MainContentView.didBecomeKey windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public) selectedTabId=\(tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
+            )
             isKeyWindow = true
             evictionTask?.cancel()
             evictionTask = nil
@@ -377,6 +432,9 @@ struct MainContentView: View {
             // Skip lazy-load if this is a menu-interaction bounce (resign+become within 200ms)
             let isMenuBounce = Date().timeIntervalSince(lastResignKeyDate) < 0.2
             if needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce {
+                Self.lifecycleLogger.info(
+                    "[switch] didBecomeKey triggering lazy runQuery windowId=\(windowId, privacy: .public)"
+                )
                 coordinator.runQuery()
             }
 
@@ -385,12 +443,18 @@ struct MainContentView: View {
             if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
                 Task { await coordinator.refreshTablesIfStale() }
             }
+            Self.lifecycleLogger.info(
+                "[switch] didBecomeKey handler done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(becomeKeyStart) * 1000)) lazyLoadQueued=\(needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce) menuBounce=\(isMenuBounce)"
+            )
             }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification))
         { notification in
             guard let notificationWindow = notification.object as? NSWindow,
                 notificationWindow === viewWindow
             else { return }
+            Self.lifecycleLogger.info(
+                "[switch] MainContentView.didResignKey windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public)"
+            )
             isKeyWindow = false
             lastResignKeyDate = Date()
 
@@ -402,6 +466,9 @@ struct MainContentView: View {
             evictionTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled else { return }
+                Self.lifecycleLogger.info(
+                    "[switch] evictInactiveRowData firing (5s after resignKey) windowId=\(windowId, privacy: .public)"
+                )
                 coordinator.evictInactiveRowData()
             }
             }

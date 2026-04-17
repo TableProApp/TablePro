@@ -12,6 +12,7 @@ import SwiftUI
 @MainActor
 internal final class WindowOpener {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowOpener")
+    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     internal static let shared = WindowOpener()
 
@@ -55,18 +56,32 @@ internal final class WindowOpener {
     /// Falls back to .openMainWindow notification if openWindow is not yet available
     /// (cold launch from Dock menu before any SwiftUI view has appeared).
     internal func openNativeTab(_ payload: EditorTabPayload) {
+        Self.lifecycleLogger.info(
+            "[open] t0 WindowOpener.openNativeTab payloadId=\(payload.id, privacy: .public) connId=\(payload.connectionId, privacy: .public) intent=\(String(describing: payload.intent), privacy: .public) skipAutoExecute=\(payload.skipAutoExecute) pendingBefore=\(self.pendingPayloads.count)"
+        )
         pendingPayloads.append((id: payload.id, connectionId: payload.connectionId))
         if let openWindow {
+            let t0 = Date()
             openWindow(id: "main", value: payload)
+            Self.lifecycleLogger.info(
+                "[open] WindowOpener.openWindow() returned payloadId=\(payload.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1000))"
+            )
         } else {
             Self.logger.info("openWindow not set — falling back to .openMainWindow notification")
+            Self.lifecycleLogger.info(
+                "[open] fallback to .openMainWindow notification payloadId=\(payload.id, privacy: .public)"
+            )
             NotificationCenter.default.post(name: .openMainWindow, object: payload)
         }
     }
 
     /// Called by MainContentView.configureWindow after the window is fully set up.
     internal func acknowledgePayload(_ id: UUID) {
+        let before = pendingPayloads.count
         pendingPayloads.removeAll { $0.id == id }
+        Self.lifecycleLogger.info(
+            "[open] WindowOpener.acknowledgePayload payloadId=\(id, privacy: .public) pending=\(before)->\(self.pendingPayloads.count)"
+        )
     }
 
     /// Consumes and returns the connectionId for the oldest pending payload.

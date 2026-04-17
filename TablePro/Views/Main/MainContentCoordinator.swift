@@ -63,6 +63,7 @@ enum ActiveSheet: Identifiable {
 @MainActor @Observable
 final class MainContentCoordinator {
     static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
+    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Posted during teardown so DataGridView coordinators can release cell views.
     /// Object is the connection UUID.
@@ -107,6 +108,10 @@ final class MainContentCoordinator {
     /// Direct reference to this coordinator's content window, used for presenting alerts.
     /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
     @ObservationIgnored weak var contentWindow: NSWindow?
+
+    /// Back-reference to this coordinator's command actions, enabling window → coordinator → actions
+    /// lookup when `@FocusedValue(\.commandActions)` has not resolved (e.g. focus in an AppKit subview).
+    @ObservationIgnored weak var commandActions: MainContentCommandActions?
 
     // MARK: - Published State
 
@@ -300,6 +305,7 @@ final class MainContentCoordinator {
         columnVisibilityManager: ColumnVisibilityManager,
         toolbarState: ConnectionToolbarState
     ) {
+        let initStart = Date()
         self.connection = connection
         self.tabManager = tabManager
         self.changeManager = changeManager
@@ -345,9 +351,13 @@ final class MainContentCoordinator {
         }
 
         _ = Self.registerTerminationObserver
+        Self.lifecycleLogger.info(
+            "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1000))"
+        )
     }
 
     func markActivated() {
+        let start = Date()
         _didActivate.withLock { $0 = true }
         registerForPersistence()
         setupPluginDriver()
@@ -362,6 +372,9 @@ final class MainContentCoordinator {
                 }
             }
         }
+        Self.lifecycleLogger.info(
+            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+        )
     }
 
     /// Start watching the database file for external changes (SQLite, DuckDB).
@@ -458,6 +471,10 @@ final class MainContentCoordinator {
     /// Explicit cleanup called from `onDisappear`. Releases schema provider
     /// synchronously on MainActor so we don't depend on deinit + Task scheduling.
     func teardown() {
+        let start = Date()
+        Self.lifecycleLogger.info(
+            "[close] MainContentCoordinator.teardown start connId=\(self.connection.id, privacy: .public) tabs=\(self.tabManager.tabs.count) windowId=\(self.windowId?.uuidString ?? "nil", privacy: .public)"
+        )
         _didTeardown.withLock { $0 = true }
 
         unregisterFromPersistence()
@@ -519,6 +536,9 @@ final class MainContentCoordinator {
 
         SchemaProviderRegistry.shared.release(for: connection.id)
         SchemaProviderRegistry.shared.purgeUnused()
+        Self.lifecycleLogger.info(
+            "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+        )
     }
 
     deinit {

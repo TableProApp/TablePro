@@ -369,13 +369,13 @@ final class MainContentCommandActions {
     }
 
     private func performClose() {
-        guard let keyWindow = NSApp.keyWindow else { return }
-        let tabbedWindows = keyWindow.tabbedWindows ?? [keyWindow]
+        guard let window = coordinator?.contentWindow ?? NSApp.keyWindow else { return }
+        let visibleTabbedWindows = (window.tabbedWindows ?? [window]).filter(\.isVisible)
 
-        if tabbedWindows.count > 1 {
-            keyWindow.close()
+        if visibleTabbedWindows.count > 1 {
+            window.close()
         } else if coordinator?.tabManager.tabs.isEmpty == true {
-            keyWindow.close()
+            window.close()
         } else {
             for tab in coordinator?.tabManager.tabs ?? [] {
                 tab.rowBuffer.evict()

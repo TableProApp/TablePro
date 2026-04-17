@@ -12,6 +12,7 @@ import TableProPluginKit
 
 struct ContentView: View {
     private static let logger = Logger(subsystem: "com.TablePro", category: "ContentView")
+    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Payload identifying what this native window-tab should display.
     /// nil = default empty query tab (first window on connection).
@@ -35,6 +36,10 @@ struct ContentView: View {
     private let storage = ConnectionStorage.shared
 
     init(payload: EditorTabPayload?) {
+        let initStart = Date()
+        Self.lifecycleLogger.info(
+            "[open] ContentView.init start payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) connId=\(payload?.connectionId.uuidString ?? "nil", privacy: .public) tabType=\(String(describing: payload?.tabType), privacy: .public)"
+        )
         self.payload = payload
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
@@ -65,8 +70,12 @@ struct ContentView: View {
 
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
+            let factoryStart = Date()
             let state = SessionStateFactory.create(
                 connection: session.connection, payload: payload
+            )
+            Self.lifecycleLogger.info(
+                "[open] ContentView.init SessionStateFactory.create elapsedMs=\(Int(Date().timeIntervalSince(factoryStart) * 1000)) connId=\(session.connection.id, privacy: .public)"
             )
             _sessionState = State(initialValue: state)
             if payload?.intent == .newEmptyTab,
@@ -77,6 +86,9 @@ struct ContentView: View {
             _rightPanelState = State(initialValue: nil)
             _sessionState = State(initialValue: nil)
         }
+        Self.lifecycleLogger.info(
+            "[open] ContentView.init done payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) hasSession=\(resolvedSession != nil) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1000))"
+        )
     }
 
     var body: some View {
@@ -154,6 +166,9 @@ struct ContentView: View {
                             || notificationWindow.subtitle == "\(name) — Preview"
                     }()
                 guard isOurWindow else { return }
+                Self.lifecycleLogger.info(
+                    "[switch] ContentView.didBecomeKey connId=\(connectionId, privacy: .public) subtitle=\(notificationWindow.subtitle, privacy: .public)"
+                )
             }
     }
 

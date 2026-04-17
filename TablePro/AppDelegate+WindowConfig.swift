@@ -65,7 +65,7 @@ extension AppDelegate {
     @objc func newWindowForTab(_ sender: Any?) {
         guard let keyWindow = NSApp.keyWindow,
               let connectionId = MainActor.assumeIsolated({
-                  WindowLifecycleMonitor.shared.connectionId(fromWindow: keyWindow)
+                  WindowLifecycleMonitor.shared.connectionId(forWindow: keyWindow)
               })
         else { return }
 

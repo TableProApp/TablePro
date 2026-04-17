@@ -12,14 +12,29 @@ extension MainContentView {
     // MARK: - Initialization
 
     func initializeAndRestoreTabs() async {
-        guard !hasInitialized else { return }
+        guard !hasInitialized else {
+            MainContentView.lifecycleLogger.info(
+                "[open] initializeAndRestoreTabs skipped (already initialized) windowId=\(windowId, privacy: .public)"
+            )
+            return
+        }
         hasInitialized = true
-        Task { await coordinator.loadSchemaIfNeeded() }
+        let schemaTaskStart = Date()
+        Task {
+            await coordinator.loadSchemaIfNeeded()
+            MainContentView.lifecycleLogger.info(
+                "[open] loadSchemaIfNeeded done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(schemaTaskStart) * 1000))"
+            )
+        }
 
         guard let payload else {
             await handleRestoreOrDefault()
             return
         }
+
+        MainContentView.lifecycleLogger.info(
+            "[open] initializeAndRestoreTabs intent=\(String(describing: payload.intent), privacy: .public) windowId=\(windowId, privacy: .public) skipAutoExecute=\(payload.skipAutoExecute)"
+        )
 
         switch payload.intent {
         case .openContent:
@@ -79,10 +94,17 @@ extension MainContentView {
                 let title = QueryTabManager.nextQueryTitle(existingTabs: allTabs)
                 tabManager.addTab(title: title, databaseName: connection.database)
             }
+            MainContentView.lifecycleLogger.info(
+                "[open] handleRestoreOrDefault short-circuit (other windows exist) windowId=\(windowId, privacy: .public)"
+            )
             return
         }
 
+        let restoreStart = Date()
         let result = await coordinator.persistence.restoreFromDisk()
+        MainContentView.lifecycleLogger.info(
+            "[open] restoreFromDisk done windowId=\(windowId, privacy: .public) tabsRestored=\(result.tabs.count) source=\(String(describing: result.source), privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(restoreStart) * 1000))"
+        )
         if !result.tabs.isEmpty {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
@@ -179,6 +201,10 @@ extension MainContentView {
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
     func configureWindow(_ window: NSWindow) {
+        let start = Date()
+        MainContentView.lifecycleLogger.info(
+            "[open] configureWindow start windowId=\(windowId, privacy: .public) connId=\(connection.id, privacy: .public)"
+        )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
             window.subtitle = "\(connection.name) — Preview"
@@ -211,6 +237,9 @@ extension MainContentView {
 
         // Update command actions window reference now that it's available
         commandActions?.window = window
+        MainContentView.lifecycleLogger.info(
+            "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+        )
     }
 
     func setupCommandActions() {
@@ -230,6 +259,7 @@ extension MainContentView {
             editingCell: $editingCell
         )
         actions.window = viewWindow
+        coordinator.commandActions = actions
         commandActions = actions
     }
 

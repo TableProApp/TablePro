@@ -108,6 +108,19 @@ struct AppMenuCommands: Commands {
         settingsManager.keyboard.keyboardShortcut(for: action)
     }
 
+    /// Prefers the focused scene value; falls back to the coordinator back-reference
+    /// so Cmd+W still routes through `closeTab()` (with its unsaved-changes dialog)
+    /// when focus is inside an AppKit subview and `@FocusedValue` has not resolved.
+    private var resolvedCloseTabActions: MainContentCommandActions? {
+        if let actions { return actions }
+        guard let window = NSApp.keyWindow,
+              window.identifier?.rawValue.hasPrefix("main") == true,
+              let windowId = WindowLifecycleMonitor.shared.windowId(forWindow: window),
+              let coordinator = MainContentCoordinator.coordinator(for: windowId)
+        else { return nil }
+        return coordinator.commandActions
+    }
+
     var body: some Commands {
         // Custom About window + Check for Updates
         CommandGroup(replacing: .appInfo) {
@@ -180,17 +193,11 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
 
             Button(actions != nil ? "Close Tab" : "Close") {
-                if let actions {
-                    actions.closeTab()
-                } else if let window = NSApp.keyWindow {
-                    // Only performClose for non-main windows (Settings, Welcome, Connection Form).
-                    // For main windows where @FocusedValue hasn't resolved yet, do nothing —
-                    // prevents accidentally closing the connection window when user intended
-                    // to close a tab.
-                    let isMainWindow = window.identifier?.rawValue.hasPrefix("main") == true
-                    if !isMainWindow {
-                        window.performClose(nil)
-                    }
+                if let resolved = resolvedCloseTabActions {
+                    resolved.closeTab()
+                } else if let window = NSApp.keyWindow,
+                          window.identifier?.rawValue.hasPrefix("main") != true {
+                    window.performClose(nil)
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
