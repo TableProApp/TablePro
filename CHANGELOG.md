@@ -9,24 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Replaced SwiftUI `WindowGroup(for: EditorTabPayload)` with imperative `NSWindowController` (`TabWindowController` + `WindowManager`) for the main editor window — eliminates phantom `ContentView.init` (5–7×) per tab open, removes 200–7000 ms close grace-period delay, and reduces per-focus `windowDidBecomeKey` fan-out from 10–14 handlers to 1
-- Toolbar moved from SwiftUI `.toolbar { ... }` modifier to AppKit `NSToolbar` (`MainWindowToolbar`) so it renders correctly in `NSHostingView`-hosted content; eliminates `Cannot use Scene methods for URL, NSUserActivity...` console warnings
-- Toolbar layout matches Apple HIG (Mail / Notes / Music): native `.toggleSidebar` + `sidebarTrackingSeparator` on the left, principal centered via balanced flexible spaces, view actions packed to the right, dedicated Inspector toggle at far right
-- Toolbar density reduced to 5 right-side actions (Quick Switcher, New Tab, Filters, Preview SQL, Inspector); Results, Dashboard, History, Export, Import remain accessible via menus and keyboard shortcuts
+- Rewrote main editor window on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and deterministic lifecycle
+- Toolbar layout reorganized to match Apple HIG (Mail / Notes / Music) with sidebar toggle on the left, connection in the center, and view actions on the right
 
 ### Fixed
 
-- Cmd+W closing the entire connection window instead of clearing the current tab to the empty state when only one tab was open
-- Welcome window stealing focus during connect, leaving the new editor window with no key window and disabling all menu shortcuts (Cmd+T, Cmd+1...9) until the user clicked back into the content
-- Toolbar appearing empty on tabs 2+ in a tab group due to mid-merge `NSToolbar` discard; now re-claimed via KVO and re-keyed if AppKit drops key state during the swap
-- Menu shortcuts (Cmd+T, Cmd+1...9) becoming disabled after clicking a toolbar button due to `@FocusedValue(\.commandActions)` resolving nil from the toolbar's NSHostingController scene; new `CommandActionsRegistry` provides a fallback published from `windowDidBecomeKey`
-- Inconsistent disabled state between menu shortcuts and toolbar buttons: Cmd+Shift+P now also requires pending data changes; Cmd+S now also requires pending changes; toolbar New Tab / Inspector / Save Changes now check the same conditions as their menu counterparts
+- Cmd+W closed the entire connection window instead of clearing the last tab to empty state
+- Welcome window stealing focus during connect, disabling menu shortcuts until the user clicked into the new window
+- Toolbar appearing empty on tabs 2+ in a tab group
+- Menu shortcuts (Cmd+T, Cmd+1...9) becoming disabled after clicking a toolbar button
+- Inconsistent disabled state between menu shortcuts and toolbar buttons (Save Changes, Preview SQL, New Tab, Inspector)
 - View → ER Diagram and Server Dashboard silently replacing the current tab; now opens in a new window tab or focuses an existing one
 
 ### Added
 
-- NSUserActivity (`com.TablePro.viewConnection` / `com.TablePro.viewTable`) published from `TabWindowController` for Handoff and Continuity, refreshed on tab-selection change
-- Sidebar toggle, principal connection status, and inspector toggle laid out in the unified toolbar following the same patterns as Mail and Apple Music
+- Handoff / Continuity support via NSUserActivity, refreshed on tab-selection change
 
 ## [0.32.1] - 2026-04-17
 
