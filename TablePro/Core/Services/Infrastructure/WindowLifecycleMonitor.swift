@@ -14,6 +14,7 @@ import OSLog
 @MainActor
 internal final class WindowLifecycleMonitor {
     private static let logger = Logger(subsystem: "com.TablePro", category: "WindowLifecycleMonitor")
+    private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
     internal static let shared = WindowLifecycleMonitor()
 
     private struct Entry {
@@ -41,6 +42,9 @@ internal final class WindowLifecycleMonitor {
 
     /// Register a window and start observing its willCloseNotification.
     internal func register(window: NSWindow, connectionId: UUID, windowId: UUID, isPreview: Bool = false) {
+        Self.lifecycleLogger.info(
+            "[open] WindowLifecycleMonitor.register windowId=\(windowId, privacy: .public) connId=\(connectionId, privacy: .public) isPreview=\(isPreview) registeredBefore=\(self.entries.count)"
+        )
         // Remove any existing entry for this windowId to avoid duplicate observers
         if let existing = entries[windowId] {
             if existing.window !== window {
@@ -206,10 +210,16 @@ internal final class WindowLifecycleMonitor {
 
     private func handleWindowClose(_ closedWindow: NSWindow) {
         guard let (windowId, entry) = entries.first(where: { $0.value.window === closedWindow }) else {
+            Self.lifecycleLogger.info(
+                "[close] handleWindowClose: unknown window (not in registry)"
+            )
             return
         }
 
         let closedConnectionId = entry.connectionId
+        Self.lifecycleLogger.info(
+            "[close] willCloseNotification -> handleWindowClose windowId=\(windowId, privacy: .public) connId=\(closedConnectionId, privacy: .public)"
+        )
 
         if let observer = entry.observer {
             NotificationCenter.default.removeObserver(observer)
@@ -220,9 +230,16 @@ internal final class WindowLifecycleMonitor {
         let hasRemainingWindows = entries.values.contains {
             $0.connectionId == closedConnectionId && $0.window != nil
         }
+        Self.lifecycleLogger.info(
+            "[close] handleWindowClose post-remove windowId=\(windowId, privacy: .public) remainingForConn=\(hasRemainingWindows) totalEntries=\(self.entries.count)"
+        )
         if !hasRemainingWindows {
             Task {
+                let t0 = Date()
                 await DatabaseManager.shared.disconnectSession(closedConnectionId)
+                Self.lifecycleLogger.info(
+                    "[close] (from handleWindowClose) disconnectSession done connId=\(closedConnectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1000))"
+                )
             }
         }
     }
