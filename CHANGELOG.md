@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Toolbar appearing empty on tabs 2+ in a tab group due to mid-merge `NSToolbar` discard; now re-claimed via KVO and re-keyed if AppKit drops key state during the swap
 - Menu shortcuts (Cmd+T, Cmd+1...9) becoming disabled after clicking a toolbar button due to `@FocusedValue(\.commandActions)` resolving nil from the toolbar's NSHostingController scene; new `CommandActionsRegistry` provides a fallback published from `windowDidBecomeKey`
 - Inconsistent disabled state between menu shortcuts and toolbar buttons: Cmd+Shift+P now also requires pending data changes; Cmd+S now also requires pending changes; toolbar New Tab / Inspector / Save Changes now check the same conditions as their menu counterparts
+- View → ER Diagram and View → Server Dashboard silently replacing the current tab's content instead of opening in a new window tab; now focus an existing matching window if present, otherwise open a new native window tab (Server Dashboard is deduped per connection; ER Diagram per connection/schema)
 
 ### Added
 

@@ -492,7 +492,7 @@ final class MainContentCommandActions {
     }
 
     func showServerDashboard() {
-        coordinator?.openServerDashboardTab()
+        coordinator?.showServerDashboard()
     }
 
     var supportsServerDashboard: Bool {

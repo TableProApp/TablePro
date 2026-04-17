@@ -52,10 +52,6 @@ extension MainContentCoordinator {
         }
     }
 
-    func showERDiagram() {
-        openERDiagramTab()
-    }
-
     // MARK: - View Operations
 
     func createView() {

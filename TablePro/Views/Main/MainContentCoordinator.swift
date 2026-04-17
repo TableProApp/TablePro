@@ -250,6 +250,18 @@ final class MainContentCoordinator {
             .flatMap { $0.tabManager.tabs }
     }
 
+    /// Find the first coordinator for `connectionId` that owns a tab matching `predicate`.
+    /// Used to dedup cross-window tabs (Server Dashboard singleton, ER Diagram reuse).
+    static func coordinator(
+        forConnection connectionId: UUID,
+        tabMatching predicate: (QueryTab) -> Bool
+    ) -> MainContentCoordinator? {
+        activeCoordinators.values.first { coordinator in
+            coordinator.connectionId == connectionId
+                && coordinator.tabManager.tabs.contains(where: predicate)
+        }
+    }
+
     /// Collect non-preview tabs for persistence.
     private static func aggregatedTabs(for connectionId: UUID) -> [QueryTab] {
         let coordinators = activeCoordinators.values
