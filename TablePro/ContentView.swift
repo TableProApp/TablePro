@@ -71,12 +71,26 @@ struct ContentView: View {
         if let session = resolvedSession {
             _rightPanelState = State(initialValue: RightPanelState())
             let factoryStart = Date()
-            let state = SessionStateFactory.create(
-                connection: session.connection, payload: payload
-            )
-            Self.lifecycleLogger.info(
-                "[open] ContentView.init SessionStateFactory.create elapsedMs=\(Int(Date().timeIntervalSince(factoryStart) * 1000)) connId=\(session.connection.id, privacy: .public)"
-            )
+            // Prefer the SessionState that `WindowManager.openTab` created
+            // eagerly (so the NSToolbar could be installed in
+            // `TabWindowController.init` without a flash). Fall back to
+            // creating one here for code paths that bypass WindowManager
+            // (currently none in production — kept defensively).
+            let state: SessionStateFactory.SessionState
+            if let payloadId = payload?.id,
+               let pending = SessionStateFactory.consumePending(for: payloadId) {
+                state = pending
+                Self.lifecycleLogger.info(
+                    "[open] ContentView.init SessionStateFactory consumed pending payloadId=\(payloadId, privacy: .public) connId=\(session.connection.id, privacy: .public)"
+                )
+            } else {
+                state = SessionStateFactory.create(
+                    connection: session.connection, payload: payload
+                )
+                Self.lifecycleLogger.info(
+                    "[open] ContentView.init SessionStateFactory.create elapsedMs=\(Int(Date().timeIntervalSince(factoryStart) * 1_000)) connId=\(session.connection.id, privacy: .public)"
+                )
+            }
             _sessionState = State(initialValue: state)
             if payload?.intent == .newEmptyTab,
                let tabTitle = state.coordinator.tabManager.selectedTab?.title {
@@ -87,7 +101,7 @@ struct ContentView: View {
             _sessionState = State(initialValue: nil)
         }
         Self.lifecycleLogger.info(
-            "[open] ContentView.init done payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) hasSession=\(resolvedSession != nil) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1000))"
+            "[open] ContentView.init done payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) hasSession=\(resolvedSession != nil) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
         )
     }
 
@@ -144,32 +158,10 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .connectionStatusDidChange)) { _ in
                 handleConnectionStatusChange()
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
-                // Only process notifications for our own window to avoid every
-                // ContentView instance re-rendering on every window focus change.
-                // Match by checking if the window is registered for our connectionId
-                // in WindowLifecycleMonitor (subtitle may not be set yet on first appear).
-                guard let notificationWindow = notification.object as? NSWindow,
-                      let windowId = notificationWindow.identifier?.rawValue,
-                      windowId == "main" || windowId.hasPrefix("main-"),
-                      let connectionId = payload?.connectionId
-                else { return }
-
-                // Verify this notification is for our window. Check WindowLifecycleMonitor
-                // first (reliable after onAppear registers), fall back to subtitle match
-                // for the brief window before registration completes.
-                let isOurWindow = WindowLifecycleMonitor.shared.windows(for: connectionId)
-                    .contains(where: { $0 === notificationWindow })
-                    || {
-                        guard let name = currentSession?.connection.name, !name.isEmpty else { return false }
-                        return notificationWindow.subtitle == name
-                            || notificationWindow.subtitle == "\(name) — Preview"
-                    }()
-                guard isOurWindow else { return }
-                Self.lifecycleLogger.info(
-                    "[switch] ContentView.didBecomeKey connId=\(connectionId, privacy: .public) subtitle=\(notificationWindow.subtitle, privacy: .public)"
-                )
-            }
+            // Phase 2: removed global `NSWindow.didBecomeKeyNotification` observer.
+            // Window focus is now routed via `TabWindowController` NSWindowDelegate
+            // directly into `MainContentCoordinator.handleWindowDidBecomeKey`,
+            // eliminating the per-ContentView-instance fan-out.
     }
 
     // MARK: - View Components

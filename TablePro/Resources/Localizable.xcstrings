@@ -14223,6 +14223,9 @@
         }
       }
     },
+    "Export & Import" : {
+
+    },
     "Export %d Connections..." : {
       "localizations" : {
         "tr" : {
@@ -28328,6 +28331,9 @@
           }
         }
       }
+    },
+    "Refresh & Save" : {
+
     },
     "Refresh data" : {
       "extractionState" : "stale",

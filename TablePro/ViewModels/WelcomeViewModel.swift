@@ -212,8 +212,14 @@ final class WelcomeViewModel {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        WindowOpener.shared.openNativeTab(EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
+        // Close welcome BEFORE opening the new editor window. Otherwise the
+        // welcome window (still key + visible) reasserts itself during the
+        // new window's `makeKeyAndOrderFront` — the new window briefly
+        // becomes key, immediately resigns, welcome retakes key, and the
+        // app is left with no key window after welcome closes → menu
+        // @FocusedValue nil → Cmd+T/1...9 disabled.
         NSApplication.shared.closeWindows(withId: "welcome")
+        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
             do {
@@ -240,8 +246,10 @@ final class WelcomeViewModel {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        WindowOpener.shared.openNativeTab(EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
+        // Close welcome before opening editor — see connectToDatabase above
+        // for the welcome-reasserts-key race that disabled menu shortcuts.
         NSApplication.shared.closeWindows(withId: "welcome")
+        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
             do {

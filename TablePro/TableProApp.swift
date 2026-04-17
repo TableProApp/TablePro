@@ -7,6 +7,7 @@
 
 import CodeEditTextView
 import Observation
+import os
 import Sparkle
 import SwiftUI
 import TableProPluginKit
@@ -102,7 +103,20 @@ struct PasteboardCommands: Commands {
 struct AppMenuCommands: Commands {
     var settingsManager: AppSettingsManager
     var updaterBridge: UpdaterBridge
-    @FocusedValue(\.commandActions) var actions: MainContentCommandActions?
+    @FocusedValue(\.commandActions) var focusedActions: MainContentCommandActions?
+    /// @Observable singleton — passed in from TableProApp via @Bindable so
+    /// SwiftUI re-evaluates the menu when the current key window's actions
+    /// change. Fallback for when `@FocusedValue` returns nil (e.g. after
+    /// clicking a toolbar Button whose NSHostingController claims SwiftUI
+    /// scene focus instead of MainContentView's).
+    @Bindable var commandRegistry: CommandActionsRegistry
+
+    /// Effective actions used by every menu item. Prefers @FocusedValue when
+    /// it resolves (correct for in-content focus); falls back to the registry
+    /// otherwise (covers toolbar-click + welcome→connect race scenarios).
+    private var actions: MainContentCommandActions? {
+        focusedActions ?? commandRegistry.current
+    }
 
     private func shortcut(for action: ShortcutAction) -> KeyboardShortcut? {
         settingsManager.keyboard.keyboardShortcut(for: action)
@@ -184,7 +198,13 @@ struct AppMenuCommands: Commands {
                 actions?.saveChanges()
             }
             .optionalKeyboardShortcut(shortcut(for: .saveChanges))
-            .disabled(!(actions?.isConnected ?? false) || actions?.isReadOnly ?? false)
+            // Match toolbar: also disable when no pending changes — avoids
+            // a no-op Cmd+S when nothing has been edited.
+            .disabled(
+                !(actions?.isConnected ?? false)
+                    || actions?.isReadOnly ?? false
+                    || !(actions?.hasPendingChanges ?? false)
+            )
 
             Button(String(localized: "Save As...")) {
                 actions?.saveFileAs()
@@ -266,7 +286,10 @@ struct AppMenuCommands: Commands {
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .previewSQL))
-            .disabled(!(actions?.isConnected ?? false))
+            // Same disabled condition as the toolbar button so Cmd+Shift+P
+            // doesn't open an empty preview popover when there are no
+            // pending data changes to preview.
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasDataPendingChanges ?? false))
 
             Divider()
 
@@ -514,6 +537,7 @@ struct TableProApp: App {
 
     @State private var settingsManager = AppSettingsManager.shared
     @State private var updaterBridge = UpdaterBridge()
+    @State private var commandRegistry = CommandActionsRegistry.shared
 
     init() {
         // Perform startup cleanup of query history if auto-cleanup is enabled
@@ -539,15 +563,12 @@ struct TableProApp: App {
         }
         .windowResizability(.contentSize)
 
-        // Main Window - opens when connecting to database
-        // Each native window-tab gets its own ContentView with independent state.
-        WindowGroup(id: "main", for: EditorTabPayload.self) { $payload in
-            ContentView(payload: payload)
-                .background(OpenWindowHandler())
-        }
-        .windowStyle(.automatic)
-        .windowToolbarStyle(.unified)
-        .defaultSize(width: 1_200, height: 800)
+        // NOTE (prototype): main windows are now created imperatively via
+        // MainWindowFactory → NSWindow + NSHostingController. The retired
+        // `WindowGroup(id:"main", for: EditorTabPayload.self)` caused SwiftUI to
+        // re-instantiate ContentView for every historical payload on every scene
+        // phase diff (5-7 phantom inits per open). AppKit-native windows avoid
+        // that and eliminate the 68-437ms openWindow() latency.
 
         // Settings Window - opens with Cmd+,
         Settings {
@@ -558,7 +579,8 @@ struct TableProApp: App {
         .commands {
             AppMenuCommands(
                 settingsManager: AppSettingsManager.shared,
-                updaterBridge: updaterBridge
+                updaterBridge: updaterBridge,
+                commandRegistry: commandRegistry
             )
         }
     }
@@ -632,9 +654,9 @@ private struct OpenWindowHandler: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: .openMainWindow)) { notification in
                 if let payload = notification.object as? EditorTabPayload {
-                    WindowOpener.shared.openNativeTab(payload)
+                    WindowManager.shared.openTab(payload: payload)
                 } else if let connectionId = notification.object as? UUID {
-                    WindowOpener.shared.openNativeTab(EditorTabPayload(connectionId: connectionId))
+                    WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connectionId))
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsWindow)) { _ in

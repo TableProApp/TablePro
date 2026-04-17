@@ -48,6 +48,6 @@ extension MainContentCoordinator {
             databaseName: connection.database,
             initialQuery: favorite.query
         )
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 }

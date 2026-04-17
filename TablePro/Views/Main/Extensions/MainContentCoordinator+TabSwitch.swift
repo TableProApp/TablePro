@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 
 extension MainContentCoordinator {
     func handleTabChange(
@@ -15,8 +16,17 @@ extension MainContentCoordinator {
         selectedRowIndices: inout Set<Int>,
         tabs: [QueryTab]
     ) {
+        let start = Date()
+        Self.lifecycleLogger.info(
+            "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"
+        )
         isHandlingTabSwitch = true
-        defer { isHandlingTabSwitch = false }
+        defer {
+            isHandlingTabSwitch = false
+            Self.lifecycleLogger.info(
+                "[switch] handleTabChange done to=\(newTabId?.uuidString ?? "nil", privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            )
+        }
 
         // Persist the outgoing tab's unsaved changes and filter state so they survive the switch
         if let oldId = oldTabId,
@@ -83,6 +93,9 @@ extension MainContentCoordinator {
                 }
 
                 if newTab.databaseName != currentDatabase {
+                    Self.lifecycleLogger.info(
+                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.databaseName, privacy: .public)"
+                    )
                     changeManager.reloadVersion += 1
                     Task { @MainActor in
                         await switchDatabase(to: newTab.databaseName)
@@ -113,8 +126,14 @@ extension MainContentCoordinator {
 
             if needsLazyQuery {
                 if let session = DatabaseManager.shared.session(for: connectionId), session.isConnected {
+                    Self.lifecycleLogger.info(
+                        "[switch] handleTabChange lazy query executing (eviction=\(isEvicted)) tabId=\(newId, privacy: .public)"
+                    )
                     executeTableTabQueryDirectly()
                 } else {
+                    Self.lifecycleLogger.info(
+                        "[switch] handleTabChange lazy query deferred (not connected) tabId=\(newId, privacy: .public)"
+                    )
                     changeManager.reloadVersion += 1
                     needsLazyLoad = true
                 }
@@ -129,6 +148,7 @@ extension MainContentCoordinator {
     }
 
     private func evictInactiveTabs(excluding activeTabIds: Set<UUID>) {
+        let start = Date()
         let candidates = tabManager.tabs.filter {
             !activeTabIds.contains($0.id)
                 && !$0.rowBuffer.isEvicted
@@ -154,11 +174,19 @@ extension MainContentCoordinator {
         }
 
         let maxInactiveLoaded = MemoryPressureAdvisor.budgetForInactiveTabs()
-        guard sorted.count > maxInactiveLoaded else { return }
+        guard sorted.count > maxInactiveLoaded else {
+            Self.lifecycleLogger.info(
+                "[switch] evictInactiveTabs no-op candidates=\(sorted.count) budget=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+            )
+            return
+        }
         let toEvict = sorted.dropLast(maxInactiveLoaded)
 
         for tab in toEvict {
             tab.rowBuffer.evict()
         }
+        Self.lifecycleLogger.info(
+            "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
+        )
     }
 }

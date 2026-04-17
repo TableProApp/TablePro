@@ -19,6 +19,22 @@ enum SessionStateFactory {
         let coordinator: MainContentCoordinator
     }
 
+    /// Hand-off registry for SessionState created eagerly by `WindowManager.openTab`.
+    /// `WindowManager` creates the coordinator BEFORE `TabWindowController.init` so the
+    /// NSToolbar can be installed synchronously in init (eliminating the toolbar flash
+    /// caused by lazy install via `WindowAccessor → configureWindow` after the window
+    /// is already on-screen). `ContentView.init` consumes the same SessionState here so
+    /// only one coordinator exists per window — no duplicate-tab side effects.
+    private static var pendingSessionStates: [UUID: SessionState] = [:]
+
+    static func registerPending(_ state: SessionState, for payloadId: UUID) {
+        pendingSessionStates[payloadId] = state
+    }
+
+    static func consumePending(for payloadId: UUID) -> SessionState? {
+        pendingSessionStates.removeValue(forKey: payloadId)
+    }
+
     static func create(
         connection: DatabaseConnection,
         payload: EditorTabPayload?

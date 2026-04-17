@@ -241,21 +241,43 @@ extension DatabaseManager {
 
     /// Disconnect a specific session
     func disconnectSession(_ sessionId: UUID) async {
-        guard let session = activeSessions[sessionId] else { return }
+        let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
+        guard let session = activeSessions[sessionId] else {
+            lifecycleLogger.info(
+                "[close] disconnectSession: no session found connId=\(sessionId, privacy: .public)"
+            )
+            return
+        }
+        let totalStart = Date()
+        lifecycleLogger.info(
+            "[close] disconnectSession start connId=\(sessionId, privacy: .public) name=\(session.connection.name, privacy: .public) hasSSH=\(session.connection.resolvedSSHConfig.enabled)"
+        )
 
         // Close SSH tunnel if exists
         if session.connection.resolvedSSHConfig.enabled {
+            let sshStart = Date()
             do {
                 try await SSHTunnelManager.shared.closeTunnel(connectionId: session.connection.id)
             } catch {
                 Self.logger.warning("SSH tunnel cleanup failed for \(session.connection.name): \(error.localizedDescription)")
             }
+            lifecycleLogger.info(
+                "[close] disconnectSession SSH tunnel close done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(sshStart) * 1_000))"
+            )
         }
 
         // Stop health monitoring
+        let hmStart = Date()
         await stopHealthMonitor(for: sessionId)
+        lifecycleLogger.info(
+            "[close] disconnectSession stopHealthMonitor done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(hmStart) * 1_000))"
+        )
 
+        let driverStart = Date()
         session.driver?.disconnect()
+        lifecycleLogger.info(
+            "[close] disconnectSession driver.disconnect done connId=\(sessionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(driverStart) * 1_000))"
+        )
         removeSessionEntry(for: sessionId)
 
         // Clean up shared schema cache for this connection
@@ -274,6 +296,9 @@ extension DatabaseManager {
                 AppSettingsStorage.shared.saveLastConnectionId(nil)
             }
         }
+        lifecycleLogger.info(
+            "[close] disconnectSession done connId=\(sessionId, privacy: .public) totalMs=\(Int(Date().timeIntervalSince(totalStart) * 1_000))"
+        )
     }
 
     /// Disconnect all sessions

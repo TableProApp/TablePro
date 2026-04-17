@@ -25,6 +25,7 @@ internal extension URL {
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
+    static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Track windows that have been configured to avoid re-applying styles
     var configuredWindows = Set<ObjectIdentifier>()

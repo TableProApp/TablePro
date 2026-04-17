@@ -325,7 +325,7 @@ extension AppDelegate {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
         let payload = EditorTabPayload(connectionId: connection.id)
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 
     // MARK: - Post-Connect Actions
@@ -350,7 +350,7 @@ extension AppDelegate {
                     tableName: tableName,
                     isView: parsed.isView
                 )
-                WindowOpener.shared.openNativeTab(payload)
+                WindowManager.shared.openTab(payload: payload)
 
                 if parsed.filterColumn != nil || parsed.filterCondition != nil {
                     await waitForNotification(.refreshData, timeout: .seconds(3))

@@ -101,7 +101,7 @@ extension MainContentView {
 
         // Only navigate when this is the focused window.
         // Prevents feedback loops when shared sidebar state syncs across native tabs.
-        guard isKeyWindow else {
+        guard coordinator.isKeyWindow else {
             return
         }
 

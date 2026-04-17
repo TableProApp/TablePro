@@ -35,7 +35,7 @@ extension AppDelegate {
         if DatabaseManager.shared.activeSessions[connectionId]?.driver != nil {
             if let tableName {
                 let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
-                WindowOpener.shared.openNativeTab(payload)
+                WindowManager.shared.openTab(payload: payload)
             } else {
                 for window in NSApp.windows where isMainWindow(window) {
                     window.makeKeyAndOrderFront(nil)
@@ -46,7 +46,7 @@ extension AppDelegate {
         }
 
         let initialPayload = EditorTabPayload(connectionId: connectionId)
-        WindowOpener.shared.openNativeTab(initialPayload)
+        WindowManager.shared.openTab(payload: initialPayload)
 
         Task { @MainActor in
             do {
@@ -56,7 +56,7 @@ extension AppDelegate {
                 }
                 if let tableName {
                     let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: tableName)
-                    WindowOpener.shared.openNativeTab(payload)
+                    WindowManager.shared.openTab(payload: payload)
                 }
             } catch {
                 fileOpenLogger.error("Handoff connect failed: \(error.localizedDescription)")
@@ -227,7 +227,7 @@ extension AppDelegate {
 
         if DatabaseManager.shared.activeSessions[connection.id]?.driver != nil {
             if let payload = makePayload?(connection.id) {
-                WindowOpener.shared.openNativeTab(payload)
+                WindowManager.shared.openTab(payload: payload)
             } else {
                 for window in NSApp.windows where isMainWindow(window) {
                     window.makeKeyAndOrderFront(nil)
@@ -243,7 +243,7 @@ extension AppDelegate {
         }
 
         let deeplinkPayload = EditorTabPayload(connectionId: connection.id)
-        WindowOpener.shared.openNativeTab(deeplinkPayload)
+        WindowManager.shared.openTab(payload: deeplinkPayload)
 
         Task { @MainActor in
             do {
@@ -266,7 +266,7 @@ extension AppDelegate {
                     window.close()
                 }
                 if let payload = makePayload?(connection.id) {
-                    WindowOpener.shared.openNativeTab(payload)
+                    WindowManager.shared.openTab(payload: payload)
                 }
             } catch {
                 fileOpenLogger.error("Deep link connect failed: \(error.localizedDescription)")

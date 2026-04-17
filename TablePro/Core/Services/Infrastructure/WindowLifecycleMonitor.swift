@@ -238,7 +238,7 @@ internal final class WindowLifecycleMonitor {
                 let t0 = Date()
                 await DatabaseManager.shared.disconnectSession(closedConnectionId)
                 Self.lifecycleLogger.info(
-                    "[close] (from handleWindowClose) disconnectSession done connId=\(closedConnectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1000))"
+                    "[close] (from handleWindowClose) disconnectSession done connId=\(closedConnectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
                 )
             }
         }

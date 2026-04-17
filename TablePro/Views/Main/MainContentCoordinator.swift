@@ -162,6 +162,30 @@ final class MainContentCoordinator {
     /// Called during teardown to let the view layer release cached row providers and sort data.
     @ObservationIgnored var onTeardown: (() -> Void)?
 
+    // MARK: - Window Lifecycle (Phase 2: driven by TabWindowController NSWindowDelegate)
+
+    /// Whether this coordinator's window is the key (focused) window.
+    /// Updated by TabWindowController delegate methods; consumed by
+    /// event handlers (e.g. sidebar table-selection navigation filter).
+    @ObservationIgnored var isKeyWindow = false
+
+    /// Timestamp of the most recent resignKey. Used by `handleWindowDidBecomeKey`
+    /// to detect menu-interaction bounces (resign + become within 200ms).
+    @ObservationIgnored var lastResignKeyDate = Date.distantPast
+
+    /// Eviction task scheduled in `handleWindowDidResignKey` (fires 5s later).
+    @ObservationIgnored var evictionTask: Task<Void, Never>?
+
+    /// View-layer callback invoked from `handleWindowDidBecomeKey` (e.g. sync
+    /// SwiftUI-scoped sidebar selection to the current tab). Set by MainContentView
+    /// in `.onAppear`. The callback closes over view state (@Binding tables,
+    /// SharedSidebarState) that isn't available to the coordinator.
+    @ObservationIgnored var onWindowBecameKey: (() -> Void)?
+
+    /// View-layer callback invoked from `handleWindowWillClose` before teardown
+    /// (e.g. `rightPanelState.teardown()` releases SwiftUI-scoped subviewmodels).
+    @ObservationIgnored var onWindowWillClose: (() -> Void)?
+
     /// True once the coordinator's view has appeared (onAppear fired).
     /// Coordinators that SwiftUI creates during body re-evaluation but never
     /// adopts into @State are silently discarded — no teardown warning needed.
@@ -203,6 +227,13 @@ final class MainContentCoordinator {
     /// Find a coordinator by its window identifier.
     static func coordinator(for windowId: UUID) -> MainContentCoordinator? {
         activeCoordinators.values.first { $0.windowId == windowId }
+    }
+
+    /// Find the coordinator whose `contentWindow` matches the given NSWindow.
+    /// Used by `TabWindowController` to dispatch NSWindowDelegate callbacks
+    /// to the correct coordinator without needing a shared registry key.
+    static func coordinator(forWindow window: NSWindow) -> MainContentCoordinator? {
+        activeCoordinators.values.first { $0.contentWindow === window }
     }
 
     /// Check whether any active coordinator has unsaved edits.
@@ -352,7 +383,7 @@ final class MainContentCoordinator {
 
         _ = Self.registerTerminationObserver
         Self.lifecycleLogger.info(
-            "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1000))"
+            "[open] MainContentCoordinator.init done connId=\(connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(initStart) * 1_000))"
         )
     }
 
@@ -373,7 +404,7 @@ final class MainContentCoordinator {
             }
         }
         Self.lifecycleLogger.info(
-            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+            "[open] MainContentCoordinator.markActivated done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 
@@ -537,7 +568,7 @@ final class MainContentCoordinator {
         SchemaProviderRegistry.shared.release(for: connection.id)
         SchemaProviderRegistry.shared.purgeUnused()
         Self.lifecycleLogger.info(
-            "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1000))"
+            "[close] MainContentCoordinator.teardown done connId=\(self.connection.id, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }
 
@@ -817,7 +848,7 @@ final class MainContentCoordinator {
                 tabType: .query,
                 initialQuery: query
             )
-            WindowOpener.shared.openNativeTab(payload)
+            WindowManager.shared.openTab(payload: payload)
         }
     }
 
@@ -840,7 +871,7 @@ final class MainContentCoordinator {
                 tabType: .query,
                 initialQuery: query
             )
-            WindowOpener.shared.openNativeTab(payload)
+            WindowManager.shared.openTab(payload: payload)
         }
     }
 

@@ -150,7 +150,7 @@ extension MainContentCoordinator {
                 isView: isView,
                 showStructure: showStructure
             )
-            WindowOpener.shared.openNativeTab(payload)
+            WindowManager.shared.openTab(payload: payload)
             return
         }
 
@@ -170,7 +170,7 @@ extension MainContentCoordinator {
             isView: isView,
             showStructure: showStructure
         )
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 
     // MARK: - Preview Tabs
@@ -258,7 +258,7 @@ extension MainContentCoordinator {
                     isView: isView,
                     showStructure: showStructure
                 )
-                WindowOpener.shared.openNativeTab(payload)
+                WindowManager.shared.openTab(payload: payload)
                 return
             }
             if let oldTableName = selectedTab.tableName {
@@ -295,7 +295,7 @@ extension MainContentCoordinator {
             showStructure: showStructure,
             isPreview: true
         )
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 
     func promotePreviewTab() {
@@ -317,7 +317,7 @@ extension MainContentCoordinator {
             tabType: .query,
             initialQuery: sql
         )
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 
     private func currentSchemaName(fallback: String) -> String {

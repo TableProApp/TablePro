@@ -302,6 +302,19 @@ final class MainContentCommandActions {
         !(coordinator?.tabManager.selectedTab?.query.isEmpty ?? true)
     }
 
+    /// Whether there are pending data changes that the SQL preview can show.
+    /// Mirrors the toolbar Preview SQL button's enabled condition so the
+    /// menu shortcut (Cmd+Shift+P) doesn't open an empty preview popover.
+    var hasDataPendingChanges: Bool {
+        coordinator?.toolbarState.hasDataPendingChanges ?? false
+    }
+
+    /// Any pending changes (data edits OR file edits). Mirrors the toolbar
+    /// Save Changes button's enabled condition.
+    var hasPendingChanges: Bool {
+        coordinator?.toolbarState.hasPendingChanges ?? false
+    }
+
     var hasStructureChanges: Bool {
         coordinator?.toolbarState.hasStructureChanges ?? false
     }
@@ -342,7 +355,7 @@ final class MainContentCommandActions {
             initialQuery: initialQuery,
             intent: .newEmptyTab
         )
-        WindowOpener.shared.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
     }
 
     func closeTab() {
@@ -805,7 +818,7 @@ final class MainContentCommandActions {
                         initialQuery: content,
                         sourceFileURL: url
                     )
-                    WindowOpener.shared.openNativeTab(payload)
+                    WindowManager.shared.openTab(payload: payload)
                 }
             }
         }

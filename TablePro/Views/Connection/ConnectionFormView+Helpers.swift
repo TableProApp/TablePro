@@ -279,8 +279,11 @@ extension ConnectionFormView {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        WindowOpener.shared.openNativeTab(EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
+        // Close welcome BEFORE opening the editor window so it can't reassert
+        // key status during the new window's `makeKeyAndOrderFront`. See
+        // WelcomeViewModel.connectToDatabase for the diagnosed race.
         NSApplication.shared.closeWindows(withId: "welcome")
+        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
             do {
@@ -322,8 +325,10 @@ extension ConnectionFormView {
         if WindowOpener.shared.openWindow == nil {
             WindowOpener.shared.openWindow = openWindow
         }
-        WindowOpener.shared.openNativeTab(EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
+        // Close welcome before opening editor — see connectToDatabase above
+        // for the welcome-reasserts-key race that disabled menu shortcuts.
         NSApplication.shared.closeWindows(withId: "welcome")
+        WindowManager.shared.openTab(payload: EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault))
 
         Task {
             do {

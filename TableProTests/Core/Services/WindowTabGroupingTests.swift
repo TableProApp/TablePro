@@ -25,7 +25,7 @@ struct WindowTabGroupingTests {
 
         opener.openWindow = nil
         let payload = EditorTabPayload(connectionId: connectionId, tabType: .table, tableName: "users")
-        opener.openNativeTab(payload)
+        WindowManager.shared.openTab(payload: payload)
 
         // Payload stays pending (notification handler will create the window)
         #expect(opener.pendingPayloads.contains { $0.id == payload.id })
@@ -64,8 +64,8 @@ struct WindowTabGroupingTests {
         let payloadB = EditorTabPayload(connectionId: idB, tabType: .query)
 
         opener.openWindow = nil
-        opener.openNativeTab(payloadA)
-        opener.openNativeTab(payloadB)
+        WindowManager.shared.openTab(payload: payloadA)
+        WindowManager.shared.openTab(payload: payloadB)
 
         let first = opener.consumeOldestPendingConnectionId()
         let second = opener.consumeOldestPendingConnectionId()

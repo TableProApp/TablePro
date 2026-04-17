@@ -70,7 +70,7 @@ extension MainContentCoordinator {
                 isView: false,
                 initialFilterState: fkFilterState
             )
-            WindowOpener.shared.openNativeTab(payload)
+            WindowManager.shared.openTab(payload: payload)
             return
         }
 
