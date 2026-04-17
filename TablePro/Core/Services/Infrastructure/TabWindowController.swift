@@ -204,7 +204,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         // toolbar Button's NSHostingController holds scene focus instead of
         // MainContentView's.
         CommandActionsRegistry.shared.current = coordinator.commandActions
-        updateUserActivity(coordinator: coordinator, becomeCurrent: true)
+        updateUserActivity(coordinator: coordinator)
         coordinator.handleWindowDidBecomeKey()
     }
 
@@ -241,10 +241,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window, window.isKeyWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        updateUserActivity(coordinator: coordinator, becomeCurrent: false)
+        updateUserActivity(coordinator: coordinator)
     }
 
-    private func updateUserActivity(coordinator: MainContentCoordinator, becomeCurrent: Bool) {
+    private func updateUserActivity(coordinator: MainContentCoordinator) {
         let connection = coordinator.connection
         let selectedTab = coordinator.tabManager.selectedTab
         let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableName : nil
@@ -267,8 +267,13 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         }
         activity.userInfo = info
 
-        if becomeCurrent {
-            activity.becomeCurrent()
-        }
+        // Always promote to current. Both call sites (`windowDidBecomeKey` and
+        // `refreshUserActivity` which guards on `window.isKeyWindow`) only
+        // invoke this method when the window owns Handoff. The previous
+        // `becomeCurrent: Bool` parameter dropped Continuity mid-session
+        // whenever the user switched between table and query tabs in the
+        // same window — the type-flip branch above invalidated the old
+        // activity but never promoted the replacement.
+        activity.becomeCurrent()
     }
 }

@@ -258,10 +258,18 @@ struct MainContentView: View {
                 // NSWindowDelegate → coordinator lifecycle methods. The closures
                 // capture SwiftUI-scoped state (tables binding, sidebarState,
                 // rightPanelState) that the coordinator can't reach directly.
-                coordinator.onWindowBecameKey = { [tabManager, sidebarState, tables] in
+                let connectionId = connection.id
+                coordinator.onWindowBecameKey = { [tabManager, sidebarState] in
+                    // Read tables fresh from DatabaseManager every invocation —
+                    // capturing the @Binding's wrappedValue (or `tables`
+                    // shorthand) snapshots an empty array at onAppear time
+                    // because the schema load is async, and the closure is
+                    // installed once but invoked on every windowDidBecomeKey.
+                    let liveTables = DatabaseManager.shared
+                        .session(for: connectionId)?.tables ?? []
                     let target: Set<TableInfo>
                     if let currentTableName = tabManager.selectedTab?.tableName,
-                       let match = tables.first(where: { $0.name == currentTableName }) {
+                       let match = liveTables.first(where: { $0.name == currentTableName }) {
                         target = [match]
                     } else {
                         target = []
@@ -269,7 +277,7 @@ struct MainContentView: View {
                     if sidebarState.selectedTables != target {
                         // Don't clear sidebar selection while tables still loading —
                         // avoids double-navigation race against SidebarSyncAction.
-                        if target.isEmpty && tables.isEmpty { return }
+                        if target.isEmpty && liveTables.isEmpty { return }
                         sidebarState.selectedTables = target
                     }
                 }
