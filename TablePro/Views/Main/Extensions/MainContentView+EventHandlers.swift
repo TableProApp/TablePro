@@ -14,7 +14,7 @@ extension MainContentView {
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
         guard !coordinator.isTearingDown else {
-            MainContentView.lifecycleLogger.info("[switch] handleTabSelectionChange SKIPPED (tearingDown) connId=\(coordinator.connectionId, privacy: .public)")
+            MainContentView.lifecycleLogger.debug("[switch] handleTabSelectionChange SKIPPED (tearingDown) connId=\(coordinator.connectionId, privacy: .public)")
             return
         }
         let t0 = Date()
@@ -37,14 +37,14 @@ extension MainContentView {
             tabs: tabManager.tabs,
             selectedTabId: newTabId
         )
-        MainContentView.lifecycleLogger.info(
+        MainContentView.lifecycleLogger.debug(
             "[switch] handleTabSelectionChange breakdown: tabChange=\(Int(t1.timeIntervalSince(t0) * 1_000))ms windowTitle=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms persistSave=\(Int(Date().timeIntervalSince(t3) * 1_000))ms"
         )
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
         guard !coordinator.isTearingDown else {
-            MainContentView.lifecycleLogger.info("[switch] handleTabsChange SKIPPED (tearingDown) tabCount=\(newTabs.count) connId=\(coordinator.connectionId, privacy: .public)")
+            MainContentView.lifecycleLogger.debug("[switch] handleTabsChange SKIPPED (tearingDown) tabCount=\(newTabs.count) connId=\(coordinator.connectionId, privacy: .public)")
             return
         }
         let t0 = Date()
@@ -68,7 +68,7 @@ extension MainContentView {
                 selectedTabId: normalizedSelectedId
             )
         }
-        MainContentView.lifecycleLogger.info(
+        MainContentView.lifecycleLogger.debug(
             "[switch] handleTabsChange tabCount=\(newTabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
     }

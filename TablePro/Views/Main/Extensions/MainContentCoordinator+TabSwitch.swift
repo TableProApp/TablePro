@@ -17,13 +17,13 @@ extension MainContentCoordinator {
         tabs: [QueryTab]
     ) {
         let start = Date()
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] handleTabChange start from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) connId=\(self.connectionId, privacy: .public) tabsCount=\(self.tabManager.tabs.count)"
         )
         isHandlingTabSwitch = true
         defer {
             isHandlingTabSwitch = false
-            Self.lifecycleLogger.info(
+            Self.lifecycleLogger.debug(
                 "[switch] handleTabChange done to=\(newTabId?.uuidString ?? "nil", privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
             )
         }
@@ -87,7 +87,7 @@ extension MainContentCoordinator {
             }
 
             let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
-            Self.lifecycleLogger.info(
+            Self.lifecycleLogger.debug(
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms evict=\(evictMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
@@ -100,7 +100,7 @@ extension MainContentCoordinator {
                 }
 
                 if newTab.databaseName != currentDatabase {
-                    Self.lifecycleLogger.info(
+                    Self.lifecycleLogger.debug(
                         "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.databaseName, privacy: .public)"
                     )
                     changeManager.reloadVersion += 1
@@ -133,12 +133,12 @@ extension MainContentCoordinator {
 
             if needsLazyQuery {
                 if let session = DatabaseManager.shared.session(for: connectionId), session.isConnected {
-                    Self.lifecycleLogger.info(
+                    Self.lifecycleLogger.debug(
                         "[switch] handleTabChange lazy query executing (eviction=\(isEvicted)) tabId=\(newId, privacy: .public)"
                     )
                     executeTableTabQueryDirectly()
                 } else {
-                    Self.lifecycleLogger.info(
+                    Self.lifecycleLogger.debug(
                         "[switch] handleTabChange lazy query deferred (not connected) tabId=\(newId, privacy: .public)"
                     )
                     changeManager.reloadVersion += 1
@@ -182,7 +182,7 @@ extension MainContentCoordinator {
 
         let maxInactiveLoaded = MemoryPressureAdvisor.budgetForInactiveTabs()
         guard sorted.count > maxInactiveLoaded else {
-            Self.lifecycleLogger.info(
+            Self.lifecycleLogger.debug(
                 "[switch] evictInactiveTabs no-op candidates=\(sorted.count) budget=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
             )
             return
@@ -192,7 +192,7 @@ extension MainContentCoordinator {
         for tab in toEvict {
             tab.rowBuffer.evict()
         }
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
         )
     }

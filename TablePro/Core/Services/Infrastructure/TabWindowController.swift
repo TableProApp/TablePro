@@ -172,7 +172,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
                       window.toolbar !== owner.managedToolbar
                 else { return }
                 let wasKey = window.isKeyWindow
-                Self.lifecycleLogger.info(
+                Self.lifecycleLogger.debug(
                     "[switch] KVO toolbar replaced — re-claiming controllerId=\(self.controllerId, privacy: .public) wasKey=\(wasKey)"
                 )
                 window.toolbar = owner.managedToolbar
@@ -200,16 +200,16 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
         )
         installToolbar(coordinator: coordinator)
-        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         CommandActionsRegistry.shared.current = coordinator.commandActions
         updateUserActivity(coordinator: coordinator)
-        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         coordinator.handleWindowDidBecomeKey()
-        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.lifecycleLogger.debug("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowDidResignKey(_ notification: Notification) {
@@ -218,12 +218,12 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )
         activity?.resignCurrent()
         coordinator.handleWindowDidResignKey()
-        Self.lifecycleLogger.info("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+        Self.lifecycleLogger.debug("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowWillClose(_ notification: Notification) {

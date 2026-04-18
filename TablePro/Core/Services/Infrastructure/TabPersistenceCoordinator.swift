@@ -48,13 +48,13 @@ internal final class TabPersistenceCoordinator {
         let connId = connectionId
         let normalizedSelectedId = nonPreviewTabs.contains(where: { $0.id == selectedTabId })
             ? selectedTabId : nonPreviewTabs.first?.id
-        Self.logger.info("[persist] saveNow queued tabCount=\(nonPreviewTabs.count) connId=\(connId, privacy: .public)")
+        Self.logger.debug("[persist] saveNow queued tabCount=\(nonPreviewTabs.count) connId=\(connId, privacy: .public)")
 
         Task {
             let t0 = Date()
             do {
                 try await TabDiskActor.shared.save(connectionId: connId, tabs: persisted, selectedTabId: normalizedSelectedId)
-                Self.logger.info("[persist] saveNow written tabCount=\(persisted.count) connId=\(connId, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
+                Self.logger.debug("[persist] saveNow written tabCount=\(persisted.count) connId=\(connId, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
             } catch {
                 TabDiskActor.logSaveError(connectionId: connId, error: error)
             }

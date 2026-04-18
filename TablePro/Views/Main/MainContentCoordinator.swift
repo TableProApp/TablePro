@@ -66,7 +66,7 @@ final class MainContentCoordinator {
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     /// Monotonic counter for correlating rapid tab-switch/close log entries.
-    @ObservationIgnored private(set) static var switchSeq: Int = 0
+    static var switchSeq: Int = 0
     static func nextSwitchSeq() -> Int {
         switchSeq += 1
         return switchSeq

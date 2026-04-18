@@ -20,6 +20,7 @@ import Testing
 @MainActor
 struct WindowTabGroupingTests {
     init() {
+        // Tests assume per-connection grouping; reset in case a prior suite changed it.
         AppSettingsManager.shared.tabs.groupAllConnectionTabs = false
     }
 

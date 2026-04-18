@@ -315,34 +315,34 @@ struct MainContentView: View {
             }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
                 guard !coordinator.isTearingDown else {
-                    Self.lifecycleLogger.info("[switch] selectedTabId SKIPPED (tearingDown) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)")
+                    Self.lifecycleLogger.debug("[switch] selectedTabId SKIPPED (tearingDown) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 guard previousSelectedTabId != nil || newTabId != nil else {
-                    Self.lifecycleLogger.info("[switch] selectedTabId SKIPPED (nil→nil) windowId=\(windowId, privacy: .public)")
+                    Self.lifecycleLogger.debug("[switch] selectedTabId SKIPPED (nil→nil) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 let seq = MainContentCoordinator.nextSwitchSeq()
                 let switchQueued = Date()
-                Self.lifecycleLogger.info(
+                Self.lifecycleLogger.debug(
                     "[switch] selectedTabId changed seq=\(seq) from=\(previousSelectedTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
                 (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
                 if pendingTabSwitch != nil {
-                    Self.lifecycleLogger.info("[switch] cancelling previous pendingTabSwitch seq=\(seq)")
+                    Self.lifecycleLogger.debug("[switch] cancelling previous pendingTabSwitch seq=\(seq)")
                 }
                 pendingTabSwitch?.cancel()
                 pendingTabSwitch = Task { @MainActor in
                     await Task.yield()
                     guard !Task.isCancelled else {
-                        Self.lifecycleLogger.info("[switch] pendingTabSwitch CANCELLED seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
+                        Self.lifecycleLogger.debug("[switch] pendingTabSwitch CANCELLED seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
                         return
                     }
                     let handleStart = Date()
-                    Self.lifecycleLogger.info("[switch] pendingTabSwitch executing seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
+                    Self.lifecycleLogger.debug("[switch] pendingTabSwitch executing seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
                     handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
                     previousSelectedTabId = newTabId
-                    Self.lifecycleLogger.info(
+                    Self.lifecycleLogger.debug(
                         "[switch] handleTabSelectionChange done seq=\(seq) handleMs=\(Int(Date().timeIntervalSince(handleStart) * 1_000)) totalMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))"
                     )
                 }
@@ -363,7 +363,7 @@ struct MainContentView: View {
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
                 guard !coordinator.isTearingDown else {
-                    Self.lifecycleLogger.info("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
+                    Self.lifecycleLogger.debug("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 handleTableSelectionChange(from: previousSelectedTables, to: newTables)

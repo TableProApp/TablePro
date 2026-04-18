@@ -23,7 +23,7 @@ extension MainContentCoordinator {
     /// sidebar-sync callback set by MainContentView.
     func handleWindowDidBecomeKey() {
         let t0 = Date()
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey connId=\(self.connectionId, privacy: .public) selectedTabId=\(self.tabManager.selectedTabId?.uuidString ?? "nil", privacy: .public)"
         )
         isKeyWindow = true
@@ -49,7 +49,7 @@ extension MainContentCoordinator {
         // Skip lazy-load if this is a menu-interaction bounce (resign+become within 200ms).
         let isMenuBounce = Date().timeIntervalSince(lastResignKeyDate) < 0.2
         if needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce {
-            Self.lifecycleLogger.info(
+            Self.lifecycleLogger.debug(
                 "[switch] coordinator triggering lazy runQuery connId=\(self.connectionId, privacy: .public)"
             )
             runQuery()
@@ -64,7 +64,7 @@ extension MainContentCoordinator {
         onWindowBecameKey?()
         let t3 = Date()
 
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) lazyQuery=\(Int(t1.timeIntervalSince(t0) * 1_000))ms schemaRefresh=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000)) lazyLoad=\(needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce) menuBounce=\(isMenuBounce)"
         )
     }
@@ -73,7 +73,7 @@ extension MainContentCoordinator {
     /// Schedules a 5s-delayed eviction of row data in inactive tabs; a fresh
     /// `windowDidBecomeKey` cancels the eviction before it fires.
     func handleWindowDidResignKey() {
-        Self.lifecycleLogger.info(
+        Self.lifecycleLogger.debug(
             "[switch] coordinator.handleWindowDidResignKey connId=\(self.connectionId, privacy: .public)"
         )
         isKeyWindow = false
@@ -83,7 +83,7 @@ extension MainContentCoordinator {
         evictionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard let self, !Task.isCancelled else { return }
-            Self.lifecycleLogger.info(
+            Self.lifecycleLogger.debug(
                 "[switch] coordinator evictInactiveRowData firing (5s after resignKey) connId=\(self.connectionId, privacy: .public)"
             )
             self.evictInactiveRowData()
