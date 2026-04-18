@@ -20,6 +20,21 @@ import AppKit
 import os
 import SwiftUI
 
+/// NSWindow subclass that routes Cmd+W (performClose:) through the coordinator's
+/// closeTab() instead of AppKit's default close. This ensures the last tab clears
+/// to the empty "No tabs open" state instead of closing the entire window.
+@MainActor
+private final class EditorWindow: NSWindow {
+    override func performClose(_ sender: Any?) {
+        if let coordinator = MainContentCoordinator.coordinator(forWindow: self),
+           let actions = coordinator.commandActions {
+            actions.closeTab()
+        } else {
+            super.performClose(sender)
+        }
+    }
+}
+
 @MainActor
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
@@ -56,7 +71,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         self.payload = payload
         self.controllerId = UUID()
 
-        let window = NSWindow(
+        let window = EditorWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
