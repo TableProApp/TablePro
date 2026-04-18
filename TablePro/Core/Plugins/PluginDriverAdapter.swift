@@ -111,6 +111,18 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return mapQueryResult(pluginResult)
     }
 
+    // MARK: - Progressive Loading
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
+        let pluginResult = try await pluginDriver.fetchFirstPage(query: query, limit: limit)
+        return mapPagedResult(pluginResult)
+    }
+
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
+        let pluginResult = try await pluginDriver.fetchNextPage(query: query, offset: offset, limit: limit)
+        return mapPagedResult(pluginResult)
+    }
+
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {
@@ -461,6 +473,17 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     }
 
     // MARK: - Result Mapping
+
+    private func mapPagedResult(_ pluginResult: PluginPagedResult) -> PagedQueryResult {
+        PagedQueryResult(
+            columns: pluginResult.columns,
+            columnTypes: pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) },
+            rows: pluginResult.rows,
+            executionTime: pluginResult.executionTime,
+            hasMore: pluginResult.hasMore,
+            nextOffset: pluginResult.nextOffset
+        )
+    }
 
     private func mapQueryResult(_ pluginResult: PluginQueryResult) -> QueryResult {
         let columnTypes = pluginResult.columnTypeNames.map { mapColumnType(rawTypeName: $0) }

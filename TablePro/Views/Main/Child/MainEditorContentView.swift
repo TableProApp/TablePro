@@ -779,7 +779,9 @@ struct MainEditorContentView: View {
             onLastPage: onLastPage,
             onLimitChange: onLimitChange,
             onOffsetChange: onOffsetChange,
-            onPaginationGo: onPaginationGo
+            onPaginationGo: onPaginationGo,
+            onLoadMore: { coordinator.loadMoreRows() },
+            onFetchAll: { coordinator.fetchAllRows() }
         )
     }
 

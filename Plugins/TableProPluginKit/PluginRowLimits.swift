@@ -1,5 +1,5 @@
 import Foundation
 
 public enum PluginRowLimits {
-    public static let defaultMax = 100_000
+    public static let emergencyMax = 5_000_000
 }

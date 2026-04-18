@@ -169,7 +169,7 @@ private actor SQLiteConnectionActor {
         var truncated = false
 
         while sqlite3_step(statement) == SQLITE_ROW {
-            if rows.count >= PluginRowLimits.defaultMax {
+            if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
             }
@@ -370,7 +370,7 @@ private actor SQLiteConnectionActor {
         var truncated = false
 
         while sqlite3_step(statement) == SQLITE_ROW {
-            if rows.count >= PluginRowLimits.defaultMax {
+            if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
             }

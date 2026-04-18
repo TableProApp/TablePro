@@ -66,6 +66,33 @@ struct DataGridSettingsView: View {
                 }
                 .help(String(localized: "Tables with more estimated rows use approximate counts to avoid slow COUNT(*) queries"))
             }
+
+            Section("Query Result Limit") {
+                Toggle("Enforce query result limit", isOn: $settings.enforceQueryResultLimit)
+                    .help(String(localized: "Limit initial query results and load more on demand"))
+
+                if settings.enforceQueryResultLimit {
+                    Picker("Row limit:", selection: $settings.queryResultLimit) {
+                        Text("100").tag(100)
+                        Text("1,000").tag(1_000)
+                        Text("5,000").tag(5_000)
+                        Text("10,000").tag(10_000)
+                        Text("50,000").tag(50_000)
+                        Text("100,000").tag(100_000)
+                        Text("500,000").tag(500_000)
+                    }
+
+                    if let error = settings.queryResultLimitValidationError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Color(nsColor: .systemRed))
+                    } else {
+                        Text("Query results exceeding this limit show Load More / Fetch All buttons")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

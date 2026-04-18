@@ -160,7 +160,10 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                                content: SaveChangesToolbarButton(coordinator: coordinator))
         case Self.principal:
             return hostingItem(id: itemIdentifier, label: "",
-                               content: ToolbarPrincipalContent(state: coordinator.toolbarState))
+                               content: ToolbarPrincipalContent(
+                                   state: coordinator.toolbarState,
+                                   onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
+                               ))
         case Self.quickSwitcher:
             return hostingItem(id: itemIdentifier, label: String(localized: "Quick Switcher"),
                                content: QuickSwitcherToolbarButton(coordinator: coordinator))

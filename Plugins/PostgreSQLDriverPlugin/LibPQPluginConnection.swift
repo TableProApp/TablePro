@@ -651,7 +651,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
             columnTypeNames.append(pgOidToTypeName(UInt32(oid)))
         }
 
-        let maxRows = PluginRowLimits.defaultMax
+        let maxRows = PluginRowLimits.emergencyMax
         let effectiveRowCount = min(numRows, maxRows)
         let truncated = numRows > maxRows
 

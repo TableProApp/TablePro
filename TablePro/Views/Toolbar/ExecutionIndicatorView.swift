@@ -14,6 +14,7 @@ struct ExecutionIndicatorView: View {
     let lastDuration: TimeInterval?
     let clickHouseProgress: ClickHouseQueryProgress?
     let lastClickHouseProgress: ClickHouseQueryProgress?
+    var onCancel: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -30,6 +31,15 @@ struct ExecutionIndicatorView: View {
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
                         .foregroundStyle(ThemeEngine.shared.colors.toolbar.tertiaryTextSwiftUI)
                 }
+                Button {
+                    onCancel?()
+                } label: {
+                    Image(systemName: "stop.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .controlSize(.small)
+                .help(String(localized: "Cancel Query (⌘.)"))
             } else if let chProgress = lastClickHouseProgress {
                 Text(chProgress.formattedSummary)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))

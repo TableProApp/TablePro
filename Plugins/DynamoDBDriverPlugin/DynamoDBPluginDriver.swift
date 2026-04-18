@@ -27,7 +27,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "DynamoDBPluginDriver")
-    private static let maxItems = PluginRowLimits.defaultMax
+    private static let maxItems = PluginRowLimits.emergencyMax
 
     var serverVersion: String? {
         lock.withLock { _serverVersion }

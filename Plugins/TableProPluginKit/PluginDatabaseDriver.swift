@@ -137,6 +137,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
+
+    // Progressive loading
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult
 }
 
 public extension PluginDatabaseDriver {
@@ -450,6 +454,39 @@ public extension PluginDatabaseDriver {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
+    }
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
+        let result = try await execute(query: query)
+        let hasMore: Bool
+        let slicedRows: [[String?]]
+        if limit > 0, result.rows.count > limit {
+            slicedRows = Array(result.rows.prefix(limit))
+            hasMore = true
+        } else {
+            slicedRows = result.rows
+            hasMore = false
+        }
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: slicedRows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: slicedRows.count
+        )
+    }
+
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult {
+        let result = try await fetchRows(query: query, offset: offset, limit: limit)
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: result.rows,
+            executionTime: result.executionTime,
+            hasMore: result.rows.count >= limit,
+            nextOffset: offset + result.rows.count
+        )
     }
 
     func fetchRowCount(query: String) async throws -> Int {

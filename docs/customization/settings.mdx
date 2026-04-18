@@ -224,6 +224,26 @@ Tables above this threshold show an estimated count (`~3,000,000 rows`) from dat
 - **NULL Display**: Maximum 20 characters, no newlines or tabs
 </Note>
 
+### Query Result Limit
+
+Controls how many rows are loaded initially when running a query in a query tab (not table tabs, which use pagination).
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| **Enforce query result limit** | On | -- | When enabled, SELECT queries load a limited number of rows with Load More / Fetch All buttons |
+| **Row limit** | 10,000 | 100 -- 500,000 | Maximum rows to load on first execution |
+
+When a query returns more rows than the limit, the status bar shows "10,000 rows (more available)" with two buttons:
+
+- **Load More**: fetches the next batch (same size as the limit)
+- **Fetch All**: fetches all remaining rows (shows a memory warning first)
+
+Disable the limit to load all rows at once (the old behavior with a 100K cap).
+
+<Tip>
+Start with 10,000 rows and use Load More to fetch incrementally. This keeps the app responsive even for million-row tables.
+</Tip>
+
 ### Alternate Row Colors
 
 | Option | Description |

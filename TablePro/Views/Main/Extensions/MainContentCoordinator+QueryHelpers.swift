@@ -11,9 +11,76 @@ import Foundation
 import os
 import TableProPluginKit
 
+/// Context for progressive query result loading
+struct QueryPageContext {
+    let hasMore: Bool
+    let nextOffset: Int
+    let baseQuery: String
+}
+
+/// Result of the data fetch phase (either progressive or full)
+struct QueryFetchResult {
+    let columns: [String]
+    let columnTypes: [ColumnType]
+    let rows: [[String?]]
+    let executionTime: TimeInterval
+    let rowsAffected: Int
+    let statusMessage: String?
+    let pageContext: QueryPageContext?
+}
+
 // MARK: - Query Execution Helpers
 
 extension MainContentCoordinator {
+    /// Execute a query using either progressive loading or standard execution
+    nonisolated static func fetchQueryData(
+        driver: DatabaseDriver,
+        sql: String,
+        useProgressiveLoading: Bool,
+        progressiveLimit: Int
+    ) async throws -> QueryFetchResult {
+        if useProgressiveLoading && progressiveLimit > 0 {
+            let pagedResult = try await driver.fetchFirstPage(query: sql, limit: progressiveLimit)
+            let pageContext: QueryPageContext? = pagedResult.hasMore
+                ? QueryPageContext(hasMore: true, nextOffset: pagedResult.nextOffset, baseQuery: sql)
+                : nil
+            return QueryFetchResult(
+                columns: pagedResult.columns,
+                columnTypes: pagedResult.columnTypes,
+                rows: pagedResult.rows,
+                executionTime: pagedResult.executionTime,
+                rowsAffected: 0,
+                statusMessage: nil,
+                pageContext: pageContext
+            )
+        } else {
+            let result = try await driver.execute(query: sql)
+            return QueryFetchResult(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                rowsAffected: result.rowsAffected,
+                statusMessage: result.statusMessage,
+                pageContext: nil
+            )
+        }
+    }
+
+    /// Determine whether progressive loading should be used for this query
+    func resolveProgressiveLoading(sql: String, tabType: TabType) -> (useProgressive: Bool, limit: Int) {
+        let dataGridSettings = AppSettingsManager.shared.dataGrid
+        let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ")
+
+        if tabType == .query && isSelectQuery && !isWriteQuery(sql) && !isDDLQuery(sql)
+            && dataGridSettings.enforceQueryResultLimit
+        {
+            return (true, dataGridSettings.validatedQueryResultLimit)
+        }
+        return (false, 0)
+    }
+
     /// Parsed schema metadata ready to apply to a tab
     struct ParsedSchemaMetadata {
         let columnDefaults: [String: String?]
@@ -117,7 +184,8 @@ extension MainContentCoordinator {
         metadata: ParsedSchemaMetadata?,
         hasSchema: Bool,
         sql: String,
-        connection conn: DatabaseConnection
+        connection conn: DatabaseConnection,
+        queryPageContext: QueryPageContext? = nil
     ) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -177,6 +245,16 @@ extension MainContentCoordinator {
         let pinned = updatedTab.resultSets.filter(\.isPinned)
         updatedTab.resultSets = pinned + [rs]
         updatedTab.activeResultSetId = rs.id
+
+        // Update progressive loading state
+        if let context = queryPageContext {
+            updatedTab.pagination.hasMoreRows = context.hasMore
+            updatedTab.pagination.loadMoreOffset = context.nextOffset
+            updatedTab.pagination.baseQueryForMore = context.hasMore ? context.baseQuery : nil
+            updatedTab.pagination.isLoadingMore = false
+        } else {
+            updatedTab.pagination.resetLoadMore()
+        }
 
         // Auto-expand results panel when new data arrives
         if updatedTab.isResultsCollapsed {

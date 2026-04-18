@@ -476,6 +476,54 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // MARK: - Progressive Loading
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        // If query already has a LIMIT clause, run as-is
+        if let regex = Self.limitRegex,
+           regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)) != nil
+        {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        // Inject LIMIT (limit+1) to detect if more rows exist
+        let baseQuery = stripLimitOffset(from: query)
+        let probeQuery = "\(baseQuery) LIMIT \(limit + 1)"
+        let result = try await execute(query: probeQuery)
+
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -570,9 +618,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
 
-        let validCharsets = ["utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
-                              "binary", "utf16", "utf32", "cp1251", "big5",
-                              "euckr", "gb2312", "gbk", "sjis"]
+        let validCharsets = [
+            "utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
+            "binary", "utf16", "utf32", "cp1251", "big5",
+            "euckr", "gb2312", "gbk", "sjis"
+        ]
         guard validCharsets.contains(charset) else {
             throw MariaDBPluginError(code: 0, message: "Invalid character set: \(charset)", sqlState: nil)
         }

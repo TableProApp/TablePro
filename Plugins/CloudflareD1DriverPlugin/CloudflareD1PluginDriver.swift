@@ -764,7 +764,7 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         var truncated = false
 
         for rawRow in rawRows {
-            if rows.count >= PluginRowLimits.defaultMax {
+            if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
             }

@@ -683,15 +683,6 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Default row limit for query tabs to prevent unbounded result sets
-    private static let defaultQueryLimit = 10_000
-
-    /// Pre-compiled regex for detecting existing LIMIT/FETCH/TOP clause in SELECT queries
-    private static let limitClauseRegex = try? NSRegularExpression(
-        pattern: "\\b(?:LIMIT\\s+\\d+|FETCH\\s+(?:FIRST|NEXT)\\s+\\d+\\s+ROWS?\\s+ONLY|TOP\\s+\\d+)",
-        options: .caseInsensitive
-    )
-
     /// Pre-compiled regex for extracting table name from SELECT queries
     private static let tableNameRegex = try? NSRegularExpression(
         pattern: #"(?i)^\s*SELECT\s+.+?\s+FROM\s+(?:\[([^\]]+)\]|[`"]([^`"]+)[`"]|([\w$]+))\s*(?:WHERE|ORDER|LIMIT|GROUP|HAVING|OFFSET|FETCH|$|;)"#,
@@ -996,6 +987,7 @@ final class MainContentCoordinator {
         guard !tabManager.tabs[index].isExecuting else { return }
 
         currentQueryTask?.cancel()
+        try? DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
@@ -1017,13 +1009,8 @@ final class MainContentCoordinator {
         let conn = connection
         let tabId = tabManager.tabs[index].id
 
-        // DAT-1: For query tabs, auto-append LIMIT if the SQL is a SELECT without one
-        let effectiveSQL: String
-        if tab.tabType == .query {
-            effectiveSQL = Self.addLimitIfNeeded(to: sql, limit: Self.defaultQueryLimit, dbType: connection.type)
-        } else {
-            effectiveSQL = sql
-        }
+        let (useProgressiveLoading, progressiveLimit) = resolveProgressiveLoading(sql: sql, tabType: tab.tabType)
+        let effectiveSQL = sql
 
         let tableName: String?
         let isEditable: Bool
@@ -1079,21 +1066,22 @@ final class MainContentCoordinator {
                 guard let queryDriver = DatabaseManager.shared.driver(for: connectionId) else {
                     throw DatabaseError.notConnected
                 }
-                let safeColumns: [String]
-                let safeColumnTypes: [ColumnType]
-                let safeRows: [[String?]]
-                let safeExecutionTime: TimeInterval
-                let safeRowsAffected: Int
-                let safeStatusMessage: String?
+                let fetchResult: QueryFetchResult
                 do {
-                    let result = try await queryDriver.execute(query: effectiveSQL)
-                    safeColumns = result.columns
-                    safeColumnTypes = result.columnTypes
-                    safeRows = result.rows
-                    safeExecutionTime = result.executionTime
-                    safeRowsAffected = result.rowsAffected
-                    safeStatusMessage = result.statusMessage
+                    fetchResult = try await Self.fetchQueryData(
+                        driver: queryDriver,
+                        sql: effectiveSQL,
+                        useProgressiveLoading: useProgressiveLoading,
+                        progressiveLimit: progressiveLimit
+                    )
                 }
+                let safeColumns = fetchResult.columns
+                let safeColumnTypes = fetchResult.columnTypes
+                let safeRows = fetchResult.rows
+                let safeExecutionTime = fetchResult.executionTime
+                let safeRowsAffected = fetchResult.rowsAffected
+                let safeStatusMessage = fetchResult.statusMessage
+                let pageContext = fetchResult.pageContext
 
                 guard !Task.isCancelled else {
                     parallelSchemaTask?.cancel()
@@ -1144,7 +1132,8 @@ final class MainContentCoordinator {
                         metadata: metadata,
                         hasSchema: schemaResult != nil,
                         sql: sql,
-                        connection: conn
+                        connection: conn,
+                        queryPageContext: pageContext
                     )
                 }
 
@@ -1272,46 +1261,6 @@ final class MainContentCoordinator {
         return ColumnType.parseEnumValues(from: "ENUM(\(valuesString))")
     }
 
-    // MARK: - Query Limit Protection
-
-    /// Appends a row-limiting clause to SELECT queries that don't already have one.
-    /// Uses database-appropriate syntax (LIMIT, FETCH FIRST, TOP).
-    private static func addLimitIfNeeded(to sql: String, limit: Int, dbType: DatabaseType) -> String {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        let uppercased = trimmed.uppercased()
-
-        // Only apply to SELECT statements
-        guard uppercased.hasPrefix("SELECT ") else { return sql }
-
-        let autoLimit = PluginManager.shared.autoLimitStyle(for: dbType)
-
-        // Skip for databases that don't support row limiting
-        guard autoLimit != .none else { return sql }
-
-        // Check if query already has a LIMIT/FETCH/TOP clause
-        let range = NSRange(trimmed.startIndex..., in: trimmed)
-        if limitClauseRegex?.firstMatch(in: trimmed, options: [], range: range) != nil {
-            return sql
-        }
-
-        // Strip trailing semicolon
-        let withoutSemicolon = trimmed.hasSuffix(";")
-            ? String(trimmed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-            : trimmed
-
-        switch autoLimit {
-        case .fetchFirst:
-            return "\(withoutSemicolon) FETCH FIRST \(limit) ROWS ONLY"
-        case .top:
-            let afterSelect = withoutSemicolon.dropFirst(7) // drop "SELECT "
-            return "SELECT TOP \(limit) \(afterSelect)"
-        case .limit:
-            return "\(withoutSemicolon) LIMIT \(limit)"
-        case .none:
-            return sql
-        }
-    }
-
     // MARK: - SQL Parsing
 
     func extractTableName(from sql: String) -> String? {
@@ -1377,6 +1326,21 @@ final class MainContentCoordinator {
             currentSort.columns = [SortColumn(columnIndex: columnIndex, direction: newDirection)]
         }
         if tab.tabType == .query {
+            // When more rows are available server-side, re-execute with ORDER BY
+            // instead of sorting locally (we only have a partial result set)
+            if tab.pagination.hasMoreRows {
+                let columnName = tab.resultColumns[columnIndex]
+                let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
+                let baseQuery = tab.pagination.baseQueryForMore ?? tab.query
+                let orderQuery = "\(baseQuery) ORDER BY \(columnName) \(direction)"
+                tabManager.tabs[tabIndex].sortState = currentSort
+                tabManager.tabs[tabIndex].hasUserInteraction = true
+                tabManager.tabs[tabIndex].pagination.resetLoadMore()
+                tabManager.tabs[tabIndex].query = orderQuery
+                runQuery()
+                return
+            }
+
             tabManager.tabs[tabIndex].sortState = currentSort
             tabManager.tabs[tabIndex].hasUserInteraction = true
             tabManager.tabs[tabIndex].pagination.reset()

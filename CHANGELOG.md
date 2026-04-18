@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Query results now load progressively with configurable row limit instead of fixed 100K truncation
 - Main editor window rewritten on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and correct lifecycle
 - Toolbar layout follows Apple HIG (sidebar left, connection center, view actions right)
 - Export engine rewritten to use streaming row fetch instead of offset/limit pagination
@@ -30,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Load More" and "Fetch All" buttons for query results exceeding the configured limit
+- Cancel button in toolbar to stop running queries (Cmd+.)
+- Query result limit setting in Preferences > Data Grid (default: 10,000 rows)
 - Handoff via NSUserActivity
 
 ## [0.32.1] - 2026-04-17

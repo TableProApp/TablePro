@@ -22,7 +22,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "EtcdPluginDriver")
-    private static let maxKeys = PluginRowLimits.defaultMax
+    private static let maxKeys = PluginRowLimits.emergencyMax
 
 
     private static let columns = ["Key", "Value", "Version", "ModRevision", "CreateRevision", "Lease"]

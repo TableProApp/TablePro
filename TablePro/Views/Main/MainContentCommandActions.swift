@@ -634,6 +634,10 @@ final class MainContentCommandActions {
         coordinator?.runQuery()
     }
 
+    func cancelCurrentQuery() {
+        coordinator?.cancelCurrentQuery()
+    }
+
     func formatQuery() {
         guard let coordinator,
               let tabIndex = coordinator.tabManager.selectedTabIndex else { return }

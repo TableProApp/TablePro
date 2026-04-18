@@ -98,6 +98,12 @@ struct PaginationState: Equatable {
     var isLoading: Bool = false      // Loading indicator
     var isApproximateRowCount: Bool = false  // True when totalRowCount is from fast estimate
 
+    // Progressive loading state (query tabs)
+    var hasMoreRows: Bool = false
+    var loadMoreOffset: Int = 0
+    var isLoadingMore: Bool = false
+    var baseQueryForMore: String?
+
     /// Default page size constant (used when no explicit value is provided)
     /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
     static let defaultPageSize = 1_000
@@ -187,6 +193,14 @@ struct PaginationState: Equatable {
         currentPage = 1
         currentOffset = 0
         isLoading = false
+    }
+
+    /// Reset progressive loading state
+    mutating func resetLoadMore() {
+        hasMoreRows = false
+        loadMoreOffset = 0
+        isLoadingMore = false
+        baseQueryForMore = nil
     }
 
     /// Update page size (limit)
