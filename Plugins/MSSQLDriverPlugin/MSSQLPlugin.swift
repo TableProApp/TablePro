@@ -398,6 +398,114 @@ private final class FreeTDSConnection: @unchecked Sendable {
         )
     }
 
+    func streamQuery(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let queryToRun = String(query)
+        try await pluginDispatchAsync(on: queue) { [self] in
+            try self.streamQuerySync(queryToRun, continuation: continuation)
+        }
+    }
+
+    private func streamQuerySync(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        guard let proc = dbproc else {
+            throw MSSQLPluginError.notConnected
+        }
+
+        _ = dbcanquery(proc)
+
+        lock.lock()
+        _isCancelled = false
+        lock.unlock()
+
+        freetdsClearError(for: proc)
+        if dbcmd(proc, query) == FAIL {
+            throw MSSQLPluginError.queryFailed("Failed to prepare query")
+        }
+        if dbsqlexec(proc) == FAIL {
+            let detail = freetdsGetError(for: proc)
+            let msg = detail.isEmpty ? "Query execution failed" : detail
+            throw MSSQLPluginError.queryFailed(msg)
+        }
+
+        var headerSent = false
+
+        while true {
+            lock.lock()
+            let cancelledBetweenResults = _isCancelled
+            if cancelledBetweenResults { _isCancelled = false }
+            lock.unlock()
+            if cancelledBetweenResults {
+                continuation.finish(throwing: CancellationError())
+                return
+            }
+
+            let resCode = dbresults(proc)
+            if resCode == FAIL {
+                continuation.finish(throwing: MSSQLPluginError.queryFailed("Query execution failed"))
+                return
+            }
+            if resCode == Int32(NO_MORE_RESULTS) {
+                break
+            }
+
+            let numCols = dbnumcols(proc)
+            if numCols <= 0 { continue }
+
+            if !headerSent {
+                var cols: [String] = []
+                var typeNames: [String] = []
+                for i in 1...numCols {
+                    let name = dbcolname(proc, Int32(i)).map { String(cString: $0) } ?? "col\(i)"
+                    cols.append(name)
+                    typeNames.append(Self.freetdsTypeName(dbcoltype(proc, Int32(i))))
+                }
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: cols,
+                    columnTypeNames: typeNames,
+                    estimatedRowCount: nil
+                )))
+                headerSent = true
+            }
+
+            while true {
+                let rowCode = dbnextrow(proc)
+                if rowCode == Int32(NO_MORE_ROWS) { break }
+                if rowCode == FAIL { break }
+
+                lock.lock()
+                let cancelled = _isCancelled
+                if cancelled { _isCancelled = false }
+                lock.unlock()
+                if cancelled {
+                    continuation.finish(throwing: CancellationError())
+                    return
+                }
+
+                var row: [String?] = []
+                for i in 1...numCols {
+                    let len = dbdatlen(proc, Int32(i))
+                    let colType = dbcoltype(proc, Int32(i))
+                    if len <= 0 && colType != Int32(SYBBIT) {
+                        row.append(nil)
+                    } else if let ptr = dbdata(proc, Int32(i)) {
+                        let str = Self.columnValueAsString(proc: proc, ptr: ptr, srcType: colType, srcLen: len)
+                        row.append(str)
+                    } else {
+                        row.append(nil)
+                    }
+                }
+                continuation.yield(.row(row))
+            }
+        }
+
+        continuation.finish()
+    }
+
     private static func columnValueAsString(proc: UnsafeMutablePointer<DBPROCESS>, ptr: UnsafePointer<BYTE>, srcType: Int32, srcLen: DBINT) -> String? {
         switch srcType {
         case Int32(SYBCHAR), Int32(SYBVARCHAR), Int32(SYBTEXT):
@@ -679,6 +787,29 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let whereClause = conditions.joined(separator: " AND ")
         let sql = "DELETE TOP (1) FROM \(escapedTable) WHERE \(whereClause)"
         return (statement: sql, parameters: parameters)
+    }
+
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let conn = freeTDSConn else {
+            return AsyncThrowingStream { $0.finish(throwing: MSSQLPluginError.notConnected) }
+        }
+        var baseQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while baseQuery.hasSuffix(";") {
+            baseQuery = String(baseQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        baseQuery = stripMSSQLOffsetFetch(from: baseQuery)
+        let queryToRun = baseQuery
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            Task {
+                do {
+                    try await conn.streamQuery(queryToRun, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     func cancelQuery() throws {

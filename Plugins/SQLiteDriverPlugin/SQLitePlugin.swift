@@ -214,6 +214,78 @@ private actor SQLiteConnectionActor {
         )
     }
 
+    func streamQuery(_ query: String, continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation) throws {
+        guard let db else {
+            throw SQLitePluginError.notConnected
+        }
+
+        var statement: OpaquePointer?
+
+        let prepareResult = sqlite3_prepare_v2(db, query, -1, &statement, nil)
+        if prepareResult != SQLITE_OK {
+            let errorMessage = String(cString: sqlite3_errmsg(db))
+            throw SQLitePluginError.queryFailed(errorMessage)
+        }
+
+        let columnCount = sqlite3_column_count(statement)
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+
+        for i in 0..<columnCount {
+            if let name = sqlite3_column_name(statement, i) {
+                columns.append(String(cString: name))
+            } else {
+                columns.append("column_\(i)")
+            }
+
+            if let typePtr = sqlite3_column_decltype(statement, i) {
+                columnTypeNames.append(String(cString: typePtr))
+            } else {
+                columnTypeNames.append("")
+            }
+        }
+
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            estimatedRowCount: nil
+        )))
+
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if Task.isCancelled {
+                sqlite3_finalize(statement)
+                continuation.finish(throwing: CancellationError())
+                return
+            }
+
+            var row: [String?] = []
+
+            for i in 0..<columnCount {
+                let colType = sqlite3_column_type(statement, i)
+                if colType == SQLITE_NULL {
+                    row.append(nil)
+                } else if colType == SQLITE_BLOB {
+                    let byteCount = Int(sqlite3_column_bytes(statement, i))
+                    if byteCount > 0, let blobPtr = sqlite3_column_blob(statement, i) {
+                        let data = Data(bytes: blobPtr, count: byteCount)
+                        row.append(String(data: data, encoding: .isoLatin1) ?? "")
+                    } else {
+                        row.append("")
+                    }
+                } else if let text = sqlite3_column_text(statement, i) {
+                    row.append(String(cString: text))
+                } else {
+                    row.append(nil)
+                }
+            }
+
+            continuation.yield(.row(row))
+        }
+
+        sqlite3_finalize(statement)
+        continuation.finish()
+    }
+
     func executeParameterizedQuery(_ query: String, stringParams: [String?]) throws -> SQLiteRawResult {
         guard let db else {
             throw SQLitePluginError.notConnected
@@ -777,6 +849,21 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         interruptLock.lock()
         _dbHandleForInterrupt = handle
         interruptLock.unlock()
+    }
+
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let queryToRun = String(query)
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            Task {
+                do {
+                    try await self.connectionActor.streamQuery(queryToRun, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     private func expandPath(_ path: String) -> String {

@@ -118,6 +118,16 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let pqConn = libpqConnection else {
+            return AsyncThrowingStream { $0.finish(throwing: LibPQPluginError.notConnected) }
+        }
+        let baseQuery = stripLimitOffset(from: query)
+        return pqConn.streamQuery(baseQuery)
+    }
+
     func fetchRowCount(query: String) async throws -> Int {
         let baseQuery = stripLimitOffset(from: query)
         let countQuery = "SELECT COUNT(*) FROM (\(baseQuery)) AS __count_subquery__"

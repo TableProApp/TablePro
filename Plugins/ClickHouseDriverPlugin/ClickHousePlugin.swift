@@ -1112,6 +1112,138 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return (converted, paramMap)
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        lock.lock()
+        guard let session = self.session else {
+            lock.unlock()
+            throw ClickHouseError.notConnected
+        }
+        let database = _currentDatabase
+        lock.unlock()
+
+        var trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while trimmedQuery.hasSuffix(";") {
+            trimmedQuery = String(trimmedQuery.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let headerResult = try await executeRaw("\(trimmedQuery) LIMIT 0")
+        continuation.yield(.header(PluginStreamHeader(
+            columns: headerResult.columns,
+            columnTypeNames: headerResult.columnTypeNames,
+            estimatedRowCount: nil
+        )))
+
+        let columnOrder = headerResult.columns
+
+        guard !columnOrder.isEmpty else {
+            continuation.finish()
+            return
+        }
+
+        let streamRequest = try buildStreamRequest(
+            query: trimmedQuery, database: database
+        )
+
+        let (bytes, response) = try await session.bytes(for: streamRequest)
+
+        if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode >= 400 {
+            var body = ""
+            for try await line in bytes.lines {
+                body += line
+            }
+            throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedLine.isEmpty { continue }
+
+            guard let lineData = trimmedLine.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
+                continue
+            }
+
+            var row: [String?] = []
+            for colName in columnOrder {
+                if let value = json[colName] {
+                    if value is NSNull {
+                        row.append(nil)
+                    } else if let str = value as? String {
+                        row.append(str)
+                    } else if let num = value as? NSNumber {
+                        row.append(num.stringValue)
+                    } else {
+                        if let jsonData = try? JSONSerialization.data(withJSONObject: value),
+                           let jsonStr = String(data: jsonData, encoding: .utf8) {
+                            row.append(jsonStr)
+                        } else {
+                            row.append(String(describing: value))
+                        }
+                    }
+                } else {
+                    row.append(nil)
+                }
+            }
+
+            continuation.yield(.row(row))
+        }
+
+        continuation.finish()
+    }
+
+    private func buildStreamRequest(query: String, database: String) throws -> URLRequest {
+        let useTLS = config.additionalFields["sslMode"] != nil
+            && config.additionalFields["sslMode"] != "Disabled"
+
+        var components = URLComponents()
+        components.scheme = useTLS ? "https" : "http"
+        components.host = config.host
+        components.port = config.port
+        components.path = "/"
+
+        var queryItems = [URLQueryItem]()
+        if !database.isEmpty {
+            queryItems.append(URLQueryItem(name: "database", value: database))
+        }
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+
+        guard let url = components.url else {
+            throw ClickHouseError(message: "Failed to construct request URL")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+
+        let credentials = "\(config.username):\(config.password)"
+        if let credData = credentials.data(using: .utf8) {
+            request.setValue("Basic \(credData.base64EncodedString())", forHTTPHeaderField: "Authorization")
+        }
+
+        request.httpBody = (query + " FORMAT JSONEachRow").data(using: .utf8)
+        return request
+    }
+
     // MARK: - Create Table DDL
 
     func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {

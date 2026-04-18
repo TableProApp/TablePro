@@ -476,6 +476,16 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        guard let conn = mariadbConnection else {
+            return AsyncThrowingStream { $0.finish(throwing: MariaDBPluginError.notConnected) }
+        }
+        let baseQuery = stripLimitOffset(from: query)
+        return conn.streamQuery(baseQuery)
+    }
+
     // MARK: - Paginated Query Support
 
     func fetchRowCount(query: String) async throws -> Int {

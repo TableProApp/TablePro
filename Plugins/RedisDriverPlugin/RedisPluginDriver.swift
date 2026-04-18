@@ -454,6 +454,164 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         "-- Redis does not support views"
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        redisConnection?.resetCancellation()
+        guard let conn = redisConnection else {
+            throw RedisPluginError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let operation = try RedisCommandParser.parse(trimmed)
+
+        switch operation {
+        case .scan(_, let pattern, _):
+            try await streamScanRows(connection: conn, pattern: pattern, continuation: continuation)
+        default:
+            let startTime = Date()
+            let result = try await executeOperation(operation, connection: conn, startTime: startTime)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                estimatedRowCount: nil
+            )))
+            for row in result.rows {
+                try Task.checkCancellation()
+                continuation.yield(.row(row))
+            }
+            continuation.finish()
+        }
+    }
+
+    private func streamScanRows(
+        connection conn: RedisPluginConnection,
+        pattern: String?,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        continuation.yield(.header(PluginStreamHeader(
+            columns: ["Key", "Type", "TTL", "Value"],
+            columnTypeNames: ["String", "RedisType", "RedisInt", "RedisRaw"],
+            estimatedRowCount: nil
+        )))
+
+        var cursor = "0"
+        let batchSize = 200
+
+        repeat {
+            try Task.checkCancellation()
+
+            var args = ["SCAN", cursor]
+            if let p = pattern { args += ["MATCH", p] }
+            args += ["COUNT", "1000"]
+
+            let result = try await conn.executeCommand(args)
+
+            guard case .array(let scanResult) = result,
+                  scanResult.count == 2 else {
+                break
+            }
+
+            let nextCursor: String
+            switch scanResult[0] {
+            case .string(let s): nextCursor = s
+            case .status(let s): nextCursor = s
+            case .data(let d): nextCursor = String(data: d, encoding: .utf8) ?? "0"
+            default: nextCursor = "0"
+            }
+            cursor = nextCursor
+
+            guard case .array(let keyReplies) = scanResult[1] else { continue }
+
+            var keys: [String] = []
+            for reply in keyReplies {
+                switch reply {
+                case .string(let k): keys.append(k)
+                case .data(let d):
+                    if let k = String(data: d, encoding: .utf8) { keys.append(k) }
+                default: break
+                }
+            }
+
+            guard !keys.isEmpty else { continue }
+
+            var batchStart = 0
+            while batchStart < keys.count {
+                try Task.checkCancellation()
+
+                let batchEnd = min(batchStart + batchSize, keys.count)
+                let batchKeys = Array(keys[batchStart..<batchEnd])
+
+                var typeAndTtlCommands: [[String]] = []
+                typeAndTtlCommands.reserveCapacity(batchKeys.count * 2)
+                for key in batchKeys {
+                    typeAndTtlCommands.append(["TYPE", key])
+                    typeAndTtlCommands.append(["TTL", key])
+                }
+                let typeAndTtlReplies = try await conn.executePipeline(typeAndTtlCommands)
+
+                var typeNames: [String] = []
+                typeNames.reserveCapacity(batchKeys.count)
+                var ttlValues: [Int] = []
+                ttlValues.reserveCapacity(batchKeys.count)
+                for i in 0..<batchKeys.count {
+                    typeNames.append((typeAndTtlReplies[i * 2].stringValue ?? "unknown").uppercased())
+                    ttlValues.append(typeAndTtlReplies[i * 2 + 1].intValue ?? -1)
+                }
+
+                var previewCommands: [[String]] = []
+                var previewCommandIndices: [Int] = []
+                previewCommandIndices.reserveCapacity(batchKeys.count)
+
+                for (i, key) in batchKeys.enumerated() {
+                    if let command = previewCommandForType(typeNames[i], key: key) {
+                        previewCommandIndices.append(previewCommands.count)
+                        previewCommands.append(command)
+                    } else {
+                        previewCommandIndices.append(-1)
+                    }
+                }
+
+                var previewReplies: [RedisReply] = []
+                if !previewCommands.isEmpty {
+                    previewReplies = try await conn.executePipeline(previewCommands)
+                }
+
+                for (i, key) in batchKeys.enumerated() {
+                    let ttlStr = String(ttlValues[i])
+                    let pipelineIndex = previewCommandIndices[i]
+                    let preview: String?
+                    if pipelineIndex >= 0, pipelineIndex < previewReplies.count {
+                        preview = formatPreviewReply(previewReplies[pipelineIndex], type: typeNames[i])
+                    } else {
+                        preview = nil
+                    }
+                    continuation.yield(.row([key, typeNames[i], ttlStr, preview]))
+                }
+
+                batchStart = batchEnd
+            }
+
+        } while cursor != "0"
+
+        continuation.finish()
+    }
+
     // MARK: - Query Building
 
     func buildBrowseQuery(

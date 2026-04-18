@@ -804,6 +804,117 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         )
     }
 
+    // MARK: - Streaming Query
+
+    func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let queryToRun = String(query)
+
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            queue.async { [self] in
+                guard !isShuttingDown, let mysql = self.mysql else {
+                    continuation.finish(throwing: MariaDBPluginError.notConnected)
+                    return
+                }
+
+                let queryStatus = queryToRun.withCString { queryPtr in
+                    mysql_real_query(mysql, queryPtr, UInt(queryToRun.utf8.count))
+                }
+
+                if queryStatus != 0 {
+                    continuation.finish(throwing: self.getError())
+                    return
+                }
+
+                let resultPtr = mysql_use_result(mysql)
+
+                if resultPtr == nil {
+                    let fieldCount = mysql_field_count(mysql)
+                    if fieldCount == 0 {
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: self.getError())
+                    }
+                    return
+                }
+
+                let numFields = Int(mysql_num_fields(resultPtr))
+                var columns: [String] = []
+                var columnTypes: [UInt32] = []
+                var columnTypeNames: [String] = []
+                columns.reserveCapacity(numFields)
+                columnTypes.reserveCapacity(numFields)
+                columnTypeNames.reserveCapacity(numFields)
+
+                if let fields = mysql_fetch_fields(resultPtr) {
+                    for i in 0..<numFields {
+                        let field = fields[i]
+                        if let namePtr = field.name {
+                            columns.append(String(cString: namePtr))
+                        } else {
+                            columns.append("column_\(i)")
+                        }
+                        let fieldFlags = UInt(field.flags)
+                        var fieldType = field.type.rawValue
+                        if (fieldFlags & mysqlEnumFlag) != 0 { fieldType = 247 }
+                        if (fieldFlags & mysqlSetFlag) != 0 { fieldType = 248 }
+                        columnTypes.append(fieldType)
+                        columnTypeNames.append(mysqlTypeToString(fields + i))
+                    }
+                }
+
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames,
+                    estimatedRowCount: nil
+                )))
+
+                while let rowPtr = mysql_fetch_row(resultPtr) {
+                    if Task.isCancelled {
+                        while mysql_fetch_row(resultPtr) != nil {}
+                        mysql_free_result(resultPtr)
+                        continuation.finish(throwing: CancellationError())
+                        return
+                    }
+
+                    let lengths = mysql_fetch_lengths(resultPtr)
+
+                    var row: [String?] = []
+                    row.reserveCapacity(numFields)
+
+                    for i in 0..<numFields {
+                        if let fieldPtr = rowPtr[i] {
+                            let lengthValue: UInt = lengths?[i] ?? 0
+                            let length = Int(lengthValue)
+                            let bufferPtr = UnsafeRawBufferPointer(start: fieldPtr, count: length)
+
+                            if columnTypes[i] == 255 {
+                                row.append(GeometryWKBParser.parse(bufferPtr))
+                            } else if let str = String(bytes: bufferPtr, encoding: .utf8) {
+                                row.append(str)
+                            } else {
+                                row.append(String(bytes: bufferPtr, encoding: .isoLatin1) ?? "")
+                            }
+                        } else {
+                            row.append(nil)
+                        }
+                    }
+
+                    continuation.yield(.row(row))
+                }
+
+                if mysql_errno(mysql) != 0 {
+                    let error = self.getError()
+                    mysql_free_result(resultPtr)
+                    continuation.finish(throwing: error)
+                    return
+                }
+
+                mysql_free_result(resultPtr)
+                continuation.finish()
+            }
+        }
+    }
+
     // MARK: - Server Information
 
     func serverVersion() -> String? {
