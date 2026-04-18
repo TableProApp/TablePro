@@ -174,6 +174,8 @@ final class ExportService {
             throw error
         }
 
+        state.processedRows = progress.processedRows
+
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
         }
@@ -253,6 +255,8 @@ final class ExportService {
             state.errorMessage = error.localizedDescription
             throw error
         }
+
+        state.processedRows = progress.processedRows
 
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
