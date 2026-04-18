@@ -314,8 +314,14 @@ struct MainContentView: View {
                 )
             }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
-                guard !coordinator.isTearingDown else { return }
-                guard previousSelectedTabId != nil || newTabId != nil else { return }
+                guard !coordinator.isTearingDown else {
+                    Self.lifecycleLogger.info("[switch] selectedTabId SKIPPED (tearingDown) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)")
+                    return
+                }
+                guard previousSelectedTabId != nil || newTabId != nil else {
+                    Self.lifecycleLogger.info("[switch] selectedTabId SKIPPED (nil→nil) windowId=\(windowId, privacy: .public)")
+                    return
+                }
                 let seq = MainContentCoordinator.nextSwitchSeq()
                 let switchQueued = Date()
                 Self.lifecycleLogger.info(
@@ -356,7 +362,10 @@ struct MainContentView: View {
             }
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
-                guard !coordinator.isTearingDown else { return }
+                guard !coordinator.isTearingDown else {
+                    Self.lifecycleLogger.info("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
+                    return
+                }
                 handleTableSelectionChange(from: previousSelectedTables, to: newTables)
                 previousSelectedTables = newTables
             }

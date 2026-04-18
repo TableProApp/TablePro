@@ -13,7 +13,10 @@ extension MainContentView {
     // MARK: - Event Handlers
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
-        guard !coordinator.isTearingDown else { return }
+        guard !coordinator.isTearingDown else {
+            MainContentView.lifecycleLogger.info("[switch] handleTabSelectionChange SKIPPED (tearingDown) connId=\(coordinator.connectionId, privacy: .public)")
+            return
+        }
         let t0 = Date()
         coordinator.handleTabChange(
             from: oldTabId,
@@ -40,7 +43,10 @@ extension MainContentView {
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
-        guard !coordinator.isTearingDown else { return }
+        guard !coordinator.isTearingDown else {
+            MainContentView.lifecycleLogger.info("[switch] handleTabsChange SKIPPED (tearingDown) tabCount=\(newTabs.count) connId=\(coordinator.connectionId, privacy: .public)")
+            return
+        }
         let t0 = Date()
         updateWindowTitleAndFileState()
 

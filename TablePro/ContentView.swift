@@ -144,10 +144,12 @@ struct ContentView: View {
                             rightPanelState = RightPanelState()
                         }
                         if sessionState == nil {
+                            let t0 = Date()
                             sessionState = SessionStateFactory.create(
                                 connection: session.connection,
                                 payload: payload
                             )
+                            Self.lifecycleLogger.info("[open] ContentView.onChange(currentSessionId) created SessionState connId=\(session.connection.id, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
                         }
                     }
                 } else {
@@ -260,7 +262,10 @@ struct ContentView: View {
         }
         .navigationTitle(windowTitle)
         .navigationSubtitle(currentSession?.connection.name ?? "")
-        .task { isContentReady = true }
+        .task {
+            Self.lifecycleLogger.info("[open] ContentView.task isContentReady=true payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) hasSession=\(sessionState != nil)")
+            isContentReady = true
+        }
     }
 
     // MARK: - Session State Bindings
@@ -335,6 +340,7 @@ struct ContentView: View {
         }
         guard let newSession = sessions[sid] else {
             if currentSession?.id == sid {
+                Self.lifecycleLogger.info("[close] ContentView.handleConnectionStatusChange session removed connId=\(sid, privacy: .public)")
                 closingSessionId = sid
                 rightPanelState?.teardown()
                 rightPanelState = nil
@@ -362,10 +368,12 @@ struct ContentView: View {
             rightPanelState = RightPanelState()
         }
         if sessionState == nil {
+            let t0 = Date()
             sessionState = SessionStateFactory.create(
                 connection: newSession.connection,
                 payload: payload
             )
+            Self.lifecycleLogger.info("[open] ContentView.handleConnectionStatusChange created SessionState connId=\(newSession.connection.id, privacy: .public) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         }
     }
 

@@ -36,10 +36,15 @@ actor SQLSchemaProvider {
     /// Concurrent callers await the same in-flight Task instead of firing duplicate queries.
     func loadSchema(using driver: DatabaseDriver, connection: DatabaseConnection? = nil) async {
         if let existing = loadTask {
+            Self.logger.info("[schema] loadSchema awaiting existing in-flight task")
+            let t0 = Date()
             await existing.value
+            Self.logger.info("[schema] loadSchema coalesced — awaited existing task ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
             return
         }
 
+        Self.logger.info("[schema] loadSchema starting new fetch")
+        let t0 = Date()
         self.cachedDriver = driver
         self.connectionInfo = connection
         isLoading = true
@@ -56,6 +61,7 @@ actor SQLSchemaProvider {
         loadTask = task
         await task.value
         loadTask = nil
+        Self.logger.info("[schema] loadSchema done ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count) error=\(self.lastLoadError != nil)")
     }
 
     private func setLoadedTables(_ newTables: [TableInfo]) {
