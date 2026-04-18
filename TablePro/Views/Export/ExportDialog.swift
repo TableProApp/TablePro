@@ -26,7 +26,6 @@ struct ExportDialog: View {
     @State private var showProgressDialog = false
     @State private var showSuccessDialog = false
     @State private var exportedFileURL: URL?
-    @State private var currentExportTable = ""
     @State private var showActivationSheet = false
 
     // MARK: - User Preferences
@@ -380,7 +379,7 @@ struct ExportDialog: View {
                     ProgressView()
                         .scaleEffect(0.7)
 
-                    Text(currentExportTable)
+                    Text(exportService?.state.currentTable ?? "")
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -805,16 +804,17 @@ struct ExportDialog: View {
                 to: url
             )
 
-            // Export completed successfully
             showProgressDialog = false
             isExporting = false
 
-            // Show success dialog or close directly based on preference
             if hideSuccessDialog {
                 isPresented = false
             } else {
                 showSuccessDialog = true
             }
+        } catch is PluginExportCancellationError {
+            showProgressDialog = false
+            isExporting = false
         } catch {
             showProgressDialog = false
             isExporting = false
@@ -852,6 +852,9 @@ struct ExportDialog: View {
             } else {
                 showSuccessDialog = true
             }
+        } catch is PluginExportCancellationError {
+            showProgressDialog = false
+            isExporting = false
         } catch {
             showProgressDialog = false
             isExporting = false

@@ -42,10 +42,6 @@ public final class PluginExportProgress: @unchecked Sendable {
         progress.completedUnitCount = Int64(count)
     }
 
-    public func setTotalRows(_ count: Int) {
-        progress.totalUnitCount = Int64(count)
-    }
-
     public func setStatus(_ message: String) {
         progress.localizedAdditionalDescription = message
     }
@@ -74,10 +70,4 @@ public final class PluginExportProgress: @unchecked Sendable {
         Int(progress.totalUnitCount)
     }
 
-    public func resetForNextTable() {
-        lock.lock()
-        internalRowCount = 0
-        lock.unlock()
-        progress.completedUnitCount = 0
-    }
 }

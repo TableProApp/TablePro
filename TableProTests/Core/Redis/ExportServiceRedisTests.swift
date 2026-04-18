@@ -14,7 +14,6 @@ struct ExportServiceRedisTests {
     func exportStateDefaults() {
         let state = ExportState()
         #expect(state.isExporting == false)
-        #expect(state.progress == 0.0)
         #expect(state.currentTable == "")
         #expect(state.totalTables == 0)
         #expect(state.processedRows == 0)

@@ -43,7 +43,6 @@ enum ExportError: LocalizedError {
 
 struct ExportState {
     var isExporting: Bool = false
-    var progress: Double = 0.0
     var currentTable: String = ""
     var currentTableIndex: Int = 0
     var totalTables: Int = 0
@@ -132,12 +131,7 @@ final class ExportService {
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let rows = Int(observed.completedUnitCount)
-                let total = Int(observed.totalUnitCount)
-                self.state.processedRows = rows
-                if total > 0 {
-                    self.state.progress = Double(rows) / Double(total)
-                }
+                self.state.processedRows = Int(observed.completedUnitCount)
             }
         }
         defer { observation.invalidate() }
@@ -183,8 +177,6 @@ final class ExportService {
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
         }
-
-        state.progress = 1.0
     }
 
     // MARK: - Query Results Export
@@ -222,15 +214,20 @@ final class ExportService {
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let rows = Int(observed.completedUnitCount)
-                let total = Int(observed.totalUnitCount)
-                self.state.processedRows = rows
-                if total > 0 {
-                    self.state.progress = Double(rows) / Double(total)
-                }
+                self.state.processedRows = Int(observed.completedUnitCount)
             }
         }
         defer { observation.invalidate() }
+
+        let descObservation = nsProgress.observe(\.localizedDescription) { [weak self] observed, _ in
+            let tableIndex = progress.currentTableIndex
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.state.currentTable = observed.localizedDescription ?? ""
+                self.state.currentTableIndex = tableIndex
+            }
+        }
+        defer { descObservation.invalidate() }
 
         let exportTable = PluginExportTable(
             name: config.fileName,
@@ -260,8 +257,6 @@ final class ExportService {
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
         }
-
-        state.progress = 1.0
     }
 
     // MARK: - Row Count Fetching

@@ -15,7 +15,6 @@ struct ExportStateTests {
     func defaultInitHasCorrectDefaults() {
         let state = ExportState()
         #expect(state.isExporting == false)
-        #expect(state.progress == 0.0)
         #expect(state.currentTable == "")
         #expect(state.currentTableIndex == 0)
         #expect(state.totalTables == 0)
@@ -30,19 +29,15 @@ struct ExportStateTests {
     func valueSemanticsAreIndependent() {
         var original = ExportState()
         original.isExporting = true
-        original.progress = 0.5
         original.currentTable = "users"
 
         var copy = original
         copy.isExporting = false
-        copy.progress = 1.0
         copy.currentTable = "orders"
 
         #expect(original.isExporting == true)
-        #expect(original.progress == 0.5)
         #expect(original.currentTable == "users")
         #expect(copy.isExporting == false)
-        #expect(copy.progress == 1.0)
         #expect(copy.currentTable == "orders")
     }
 
@@ -56,7 +51,6 @@ struct ExportStateTests {
         #expect(state.isExporting == true)
         #expect(state.totalTables == 5)
         #expect(state.statusMessage == "Exporting...")
-        #expect(state.progress == 0.0)
         #expect(state.errorMessage == nil)
     }
 
@@ -66,9 +60,6 @@ struct ExportStateTests {
 
         state.isExporting = true
         #expect(state.isExporting == true)
-
-        state.progress = 0.75
-        #expect(state.progress == 0.75)
 
         state.currentTable = "products"
         #expect(state.currentTable == "products")
