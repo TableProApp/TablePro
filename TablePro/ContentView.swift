@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var rightPanelState: RightPanelState?
     @State private var sessionState: SessionStateFactory.SessionState?
     @State private var inspectorContext = InspectorContext.empty
+    @State private var isContentReady = false
     @State private var windowTitle: String
     @Environment(\.openWindow)
     private var openWindow
@@ -170,7 +171,7 @@ struct ContentView: View {
     private var mainContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // MARK: - Sidebar (Left) - Table Browser
-            if let currentSession = currentSession, let sessionState {
+            if isContentReady, let currentSession = currentSession, let sessionState {
                 VStack(spacing: 0) {
                     SidebarView(
                         tables: sessionTablesBinding,
@@ -209,7 +210,7 @@ struct ContentView: View {
             }
         } detail: {
             // MARK: - Detail (Main workspace with optional right sidebar)
-            if let currentSession = currentSession, let rightPanelState, let sessionState {
+            if isContentReady, let currentSession = currentSession, let rightPanelState, let sessionState {
                 HStack(spacing: 0) {
                     MainContentView(
                         connection: currentSession.connection,
@@ -259,6 +260,7 @@ struct ContentView: View {
         }
         .navigationTitle(windowTitle)
         .navigationSubtitle(currentSession?.connection.name ?? "")
+        .task { isContentReady = true }
     }
 
     // MARK: - Session State Bindings

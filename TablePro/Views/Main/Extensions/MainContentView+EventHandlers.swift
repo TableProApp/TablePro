@@ -13,6 +13,7 @@ extension MainContentView {
     // MARK: - Event Handlers
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
+        guard !coordinator.isTearingDown else { return }
         let t0 = Date()
         coordinator.handleTabChange(
             from: oldTabId,
@@ -39,10 +40,10 @@ extension MainContentView {
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
+        guard !coordinator.isTearingDown else { return }
         let t0 = Date()
         updateWindowTitleAndFileState()
 
-        guard !coordinator.isTearingDown else { return }
         guard !coordinator.isUpdatingColumnLayout else { return }
 
         if let tab = tabManager.selectedTab, tab.isPreview, tab.hasUserInteraction {

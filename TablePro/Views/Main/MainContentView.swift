@@ -314,6 +314,8 @@ struct MainContentView: View {
                 )
             }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
+                guard !coordinator.isTearingDown else { return }
+                guard previousSelectedTabId != nil || newTabId != nil else { return }
                 let seq = MainContentCoordinator.nextSwitchSeq()
                 let switchQueued = Date()
                 Self.lifecycleLogger.info(
@@ -354,6 +356,7 @@ struct MainContentView: View {
             }
 
             .onChange(of: sidebarState.selectedTables) { _, newTables in
+                guard !coordinator.isTearingDown else { return }
                 handleTableSelectionChange(from: previousSelectedTables, to: newTables)
                 previousSelectedTables = newTables
             }
