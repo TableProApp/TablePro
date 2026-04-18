@@ -258,6 +258,77 @@ private actor DuckDBConnectionActor {
         return raw
     }
 
+    func streamQuery(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        guard let conn = connection else {
+            throw DuckDBPluginError.notConnected
+        }
+
+        var result = duckdb_result()
+        let state = duckdb_query(conn, query, &result)
+
+        if state == DuckDBError {
+            let errorMsg: String
+            if let errPtr = duckdb_result_error(&result) {
+                errorMsg = String(cString: errPtr)
+            } else {
+                errorMsg = "Unknown DuckDB error"
+            }
+            duckdb_destroy_result(&result)
+            throw DuckDBPluginError.queryFailed(errorMsg)
+        }
+
+        let colCount = duckdb_column_count(&result)
+        let rowCount = duckdb_row_count(&result)
+
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+
+        for i in 0..<colCount {
+            if let namePtr = duckdb_column_name(&result, i) {
+                columns.append(String(cString: namePtr))
+            } else {
+                columns.append("column_\(i)")
+            }
+            let colType = duckdb_column_type(&result, i)
+            columnTypeNames.append(Self.typeName(for: colType))
+        }
+
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: columnTypeNames,
+            estimatedRowCount: Int(rowCount)
+        )))
+
+        for row in 0..<rowCount {
+            if Task.isCancelled {
+                duckdb_destroy_result(&result)
+                continuation.finish(throwing: CancellationError())
+                return
+            }
+
+            var rowData: [String?] = []
+            for col in 0..<colCount {
+                if duckdb_value_is_null(&result, col, row) {
+                    rowData.append(nil)
+                } else if let valPtr = duckdb_value_varchar(&result, col, row) {
+                    rowData.append(String(cString: valPtr))
+                    duckdb_free(valPtr)
+                } else {
+                    let colType = duckdb_column_type(&result, col)
+                    rowData.append(Self.extractFallbackValue(&result, col: col, row: row, type: colType))
+                }
+            }
+
+            continuation.yield(.row(rowData))
+        }
+
+        duckdb_destroy_result(&result)
+        continuation.finish()
+    }
+
     private static func extractResult(
         from result: inout duckdb_result,
         startTime: Date
@@ -626,6 +697,23 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         stateLock.unlock()
         guard let conn else { return }
         duckdb_interrupt(conn)
+    }
+
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let baseQuery = stripLimitOffset(from: query)
+        let actor = connectionActor
+
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            Task {
+                do {
+                    try await actor.streamQuery(baseQuery, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     // MARK: - Pagination

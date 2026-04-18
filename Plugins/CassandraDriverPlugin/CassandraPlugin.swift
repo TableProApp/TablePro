@@ -706,6 +706,114 @@ private actor CassandraConnectionActor {
         return "Unknown error"
     }
 
+    func streamQuery(
+        _ cql: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) throws {
+        guard let session else {
+            throw CassandraPluginError.notConnected
+        }
+
+        let pageSize: Int32 = 5_000
+        let statement = cass_statement_new(cql, 0)
+        guard let statement else {
+            throw CassandraPluginError.queryFailed("Failed to create statement")
+        }
+
+        cass_statement_set_paging_size(statement, pageSize)
+
+        var headerSent = false
+
+        defer { cass_statement_free(statement) }
+
+        while true {
+            let future = cass_session_execute(session, statement)
+            guard let future else {
+                throw CassandraPluginError.queryFailed("Failed to execute query")
+            }
+
+            cass_future_wait(future)
+            let rc = cass_future_error_code(future)
+
+            if rc != CASS_OK {
+                let errorMessage = extractFutureError(future)
+                cass_future_free(future)
+                throw CassandraPluginError.queryFailed(errorMessage)
+            }
+
+            let result = cass_future_get_result(future)
+            cass_future_free(future)
+
+            guard let result else { break }
+
+            if !headerSent {
+                let colCount = cass_result_column_count(result)
+                var columns: [String] = []
+                var columnTypeNames: [String] = []
+
+                for i in 0..<colCount {
+                    var namePtr: UnsafePointer<CChar>?
+                    var nameLength: Int = 0
+                    cass_result_column_name(result, i, &namePtr, &nameLength)
+                    if let namePtr {
+                        columns.append(String(cString: namePtr))
+                    } else {
+                        columns.append("column_\(i)")
+                    }
+                    let colType = cass_result_column_type(result, i)
+                    columnTypeNames.append(Self.cassTypeName(colType))
+                }
+
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames,
+                    estimatedRowCount: nil
+                )))
+                headerSent = true
+            }
+
+            let colCount = cass_result_column_count(result)
+            let iterator = cass_iterator_from_result(result)
+
+            if let iterator {
+                while cass_iterator_next(iterator) == cass_true {
+                    let row = cass_iterator_get_row(iterator)
+                    guard let row else { continue }
+
+                    var rowData: [String?] = []
+                    for col in 0..<colCount {
+                        let value = cass_row_get_column(row, col)
+                        if let value, cass_value_is_null(value) == cass_false {
+                            rowData.append(Self.extractStringValue(value))
+                        } else {
+                            rowData.append(nil)
+                        }
+                    }
+                    continuation.yield(.row(rowData))
+                }
+                cass_iterator_free(iterator)
+            }
+
+            let hasMore = cass_result_has_more_pages(result) == cass_true
+
+            if hasMore {
+                cass_statement_set_paging_state(statement, result)
+            }
+
+            cass_result_free(result)
+
+            if !hasMore { break }
+        }
+
+        if !headerSent {
+            continuation.yield(.header(PluginStreamHeader(
+                columns: [],
+                columnTypeNames: [],
+                estimatedRowCount: nil
+            )))
+        }
+    }
+
     private func escapeIdentifier(_ value: String) -> String {
         value.replacingOccurrences(of: "\"", with: "\"\"")
     }
@@ -830,6 +938,26 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             rowsAffected: rawResult.rowsAffected,
             executionTime: rawResult.executionTime
         )
+    }
+
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let cql = stripTrailingSemicolon(query)
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            let streamTask = Task {
+                do {
+                    try await self.connectionActor.streamQuery(cql, continuation: continuation)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
+            }
+        }
     }
 
     // MARK: - Pagination

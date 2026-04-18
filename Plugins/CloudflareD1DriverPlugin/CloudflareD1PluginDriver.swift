@@ -166,6 +166,53 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         lock.unlock()
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            let streamTask = Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let client = getClient() else {
+            throw CloudflareD1Error.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseQuery = stripLimitOffset(from: trimmed)
+        let payload = try await client.executeRaw(sql: baseQuery)
+
+        let columns = payload.results.columns ?? []
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: columns.map { _ in "" },
+            estimatedRowCount: nil
+        )))
+
+        let rawRows = payload.results.rows ?? []
+        for rawRow in rawRows {
+            try Task.checkCancellation()
+            let row = rawRow.map(\.stringValue)
+            continuation.yield(.row(row))
+        }
+
+        continuation.finish()
+    }
+
     // MARK: - Pagination
 
     func fetchRowCount(query: String) async throws -> Int {

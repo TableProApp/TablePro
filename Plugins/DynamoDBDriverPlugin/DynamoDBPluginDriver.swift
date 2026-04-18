@@ -596,6 +596,266 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
         nil
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            let streamTask = Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let conn = connection else {
+            throw DynamoDBError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let parsed = DynamoDBQueryBuilder.parseScanQuery(trimmed) {
+            try await streamScan(parsed, conn: conn, continuation: continuation)
+        } else if let parsed = DynamoDBQueryBuilder.parseQueryQuery(trimmed) {
+            try await streamQuery(parsed, conn: conn, continuation: continuation)
+        } else {
+            try await streamPartiQL(trimmed, conn: conn, continuation: continuation)
+        }
+
+        continuation.finish()
+    }
+
+    private func streamScan(
+        _ parsed: DynamoDBParsedScanQuery,
+        conn: DynamoDBConnection,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let keySchema = try await cachedKeySchema(parsed.tableName, conn: conn)
+        let hasFilters = !parsed.filters.isEmpty
+        var headerSent = false
+        var columns: [String] = []
+        var lastEvaluatedKey: [String: DynamoDBAttributeValue]?
+
+        repeat {
+            try Task.checkCancellation()
+
+            let response = try await conn.scan(
+                tableName: parsed.tableName,
+                limit: 1000,
+                exclusiveStartKey: lastEvaluatedKey
+            )
+
+            var items = response.Items ?? []
+
+            if hasFilters {
+                items = applyClientFilters(
+                    items: items, filters: parsed.filters, logicMode: parsed.logicMode
+                )
+            }
+
+            if !items.isEmpty {
+                if !headerSent {
+                    columns = DynamoDBItemFlattener.unionColumns(from: items, keySchema: keySchema)
+                    let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: items)
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: columns,
+                        columnTypeNames: typeNames,
+                        estimatedRowCount: nil
+                    )))
+                    headerSent = true
+                }
+
+                let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
+                for row in rows {
+                    continuation.yield(.row(row))
+                }
+            }
+
+            lastEvaluatedKey = response.LastEvaluatedKey
+        } while lastEvaluatedKey != nil
+
+        if !headerSent {
+            let sampleResponse = try await conn.scan(tableName: parsed.tableName, limit: 1)
+            let sampleItems = sampleResponse.Items ?? []
+            columns = DynamoDBItemFlattener.unionColumns(from: sampleItems, keySchema: keySchema)
+            let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: sampleItems)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns.isEmpty ? ["Result"] : columns,
+                columnTypeNames: typeNames.isEmpty ? ["String"] : typeNames,
+                estimatedRowCount: nil
+            )))
+        }
+    }
+
+    private func streamQuery(
+        _ parsed: DynamoDBParsedQueryQuery,
+        conn: DynamoDBConnection,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let keySchema = try await cachedKeySchema(parsed.tableName, conn: conn)
+
+        var expressionValues: [String: DynamoDBAttributeValue] = [:]
+        switch parsed.partitionKeyType {
+        case "N":
+            expressionValues[":pkval"] = .number(parsed.partitionKeyValue)
+        default:
+            expressionValues[":pkval"] = .string(parsed.partitionKeyValue)
+        }
+        let keyCondition = "\(parsed.partitionKeyName) = :pkval"
+
+        var headerSent = false
+        var columns: [String] = []
+        var lastEvaluatedKey: [String: DynamoDBAttributeValue]?
+
+        repeat {
+            try Task.checkCancellation()
+
+            let response = try await conn.query(
+                tableName: parsed.tableName,
+                keyConditionExpression: keyCondition,
+                expressionAttributeValues: expressionValues,
+                limit: 1000,
+                exclusiveStartKey: lastEvaluatedKey
+            )
+
+            var items = response.Items ?? []
+
+            if !parsed.filters.isEmpty {
+                items = applyClientFilters(
+                    items: items, filters: parsed.filters, logicMode: parsed.logicMode
+                )
+            }
+
+            if !headerSent && !items.isEmpty {
+                columns = DynamoDBItemFlattener.unionColumns(from: items, keySchema: keySchema)
+                let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: items)
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: typeNames,
+                    estimatedRowCount: nil
+                )))
+                headerSent = true
+            }
+
+            if !items.isEmpty {
+                let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
+                for row in rows {
+                    continuation.yield(.row(row))
+                }
+            }
+
+            lastEvaluatedKey = response.LastEvaluatedKey
+        } while lastEvaluatedKey != nil
+
+        if !headerSent {
+            columns = DynamoDBItemFlattener.unionColumns(from: [], keySchema: keySchema)
+            let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: [])
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns.isEmpty ? ["Result"] : columns,
+                columnTypeNames: typeNames.isEmpty ? ["String"] : typeNames,
+                estimatedRowCount: nil
+            )))
+        }
+    }
+
+    private func streamPartiQL(
+        _ statement: String,
+        conn: DynamoDBConnection,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        let tableName = DynamoDBPartiQLParser.extractTableName(statement)
+        let keySchema: [(name: String, keyType: String)]
+        if let name = tableName {
+            keySchema = try await cachedKeySchema(name, conn: conn)
+        } else {
+            keySchema = []
+        }
+
+        var headerSent = false
+        var columns: [String] = []
+        var nextToken: String?
+
+        let firstResponse = try await conn.executeStatement(statement: statement)
+        var items = firstResponse.Items ?? []
+
+        if !items.isEmpty {
+            columns = DynamoDBItemFlattener.unionColumns(from: items, keySchema: keySchema)
+            let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: items)
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns,
+                columnTypeNames: typeNames,
+                estimatedRowCount: nil
+            )))
+            headerSent = true
+
+            let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
+            for row in rows {
+                continuation.yield(.row(row))
+            }
+        }
+
+        nextToken = firstResponse.NextToken
+
+        while let token = nextToken {
+            try Task.checkCancellation()
+
+            let response = try await conn.executeStatement(
+                statement: statement, nextToken: token
+            )
+            items = response.Items ?? []
+
+            if !headerSent && !items.isEmpty {
+                columns = DynamoDBItemFlattener.unionColumns(from: items, keySchema: keySchema)
+                let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: items)
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: typeNames,
+                    estimatedRowCount: nil
+                )))
+                headerSent = true
+            }
+
+            if !items.isEmpty {
+                let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
+                for row in rows {
+                    continuation.yield(.row(row))
+                }
+            }
+
+            nextToken = response.NextToken
+        }
+
+        if !headerSent {
+            if let name = tableName {
+                let sampleResponse = try await conn.scan(tableName: name, limit: 1)
+                let sampleItems = sampleResponse.Items ?? []
+                columns = DynamoDBItemFlattener.unionColumns(from: sampleItems, keySchema: keySchema)
+                let typeNames = DynamoDBItemFlattener.columnTypeNames(for: columns, items: sampleItems)
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns.isEmpty ? ["Result"] : columns,
+                    columnTypeNames: typeNames.isEmpty ? ["String"] : typeNames,
+                    estimatedRowCount: nil
+                )))
+            } else {
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: ["Result"],
+                    columnTypeNames: ["String"],
+                    estimatedRowCount: nil
+                )))
+            }
+        }
+    }
+
     // MARK: - Tagged Query Execution
 
     private func executeTaggedQuery(

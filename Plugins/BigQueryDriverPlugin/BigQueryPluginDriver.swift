@@ -685,6 +685,114 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         )
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            let streamTask = Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { _ in
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let conn = connection else {
+            throw BigQueryError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dataset = lock.withLock { _currentDataset }
+
+        let sql: String
+        if BigQueryQueryBuilder.isTaggedQuery(trimmed) {
+            guard let params = BigQueryQueryBuilder.decode(trimmed) else {
+                throw BigQueryError.invalidResponse("Failed to decode tagged query")
+            }
+            let resolvedDataset = resolveDataset(from: params)
+            let columns = lock.withLock { _columnCache["\(resolvedDataset).\(params.table)"] } ?? []
+            let resolvedParams = BigQueryQueryParams(
+                table: params.table, dataset: resolvedDataset, sortColumns: params.sortColumns,
+                limit: params.limit, offset: params.offset, filters: params.filters,
+                logicMode: params.logicMode, searchText: params.searchText, searchColumns: params.searchColumns
+            )
+            sql = BigQueryQueryBuilder.buildSQL(
+                from: resolvedParams, projectId: conn.projectId, columns: columns
+            )
+        } else {
+            var cleaned = trimmed.replacingOccurrences(
+                of: ";\\s*\\z", with: "", options: .regularExpression
+            )
+            cleaned = cleaned.replacingOccurrences(
+                of: "\\s+LIMIT\\s+\\d+(\\s+OFFSET\\s+\\d+)?\\s*\\z",
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            sql = cleaned
+        }
+
+        let jobInfo = try await conn.executeJobAndWait(sql, defaultDataset: dataset)
+        defer { conn.clearCurrentJob() }
+
+        let firstPage = try await conn.getQueryResults(
+            jobId: jobInfo.jobId, location: jobInfo.location
+        )
+
+        guard let schema = firstPage.schema, let fields = schema.fields, !fields.isEmpty else {
+            continuation.yield(.header(PluginStreamHeader(
+                columns: ["Result"],
+                columnTypeNames: ["STRING"],
+                estimatedRowCount: nil
+            )))
+            continuation.finish()
+            return
+        }
+
+        let columns = fields.map(\.name)
+        let typeNames = BigQueryTypeMapper.columnTypeNames(from: schema)
+        let estimatedCount = firstPage.totalRows.flatMap { Int($0) }
+
+        continuation.yield(.header(PluginStreamHeader(
+            columns: columns,
+            columnTypeNames: typeNames,
+            estimatedRowCount: estimatedCount
+        )))
+
+        let flatRows = BigQueryTypeMapper.flattenRows(from: firstPage, schema: schema)
+        for row in flatRows {
+            continuation.yield(.row(row))
+        }
+
+        var pageToken = firstPage.pageToken
+
+        while let token = pageToken {
+            try Task.checkCancellation()
+
+            let nextPage = try await conn.getQueryResults(
+                jobId: jobInfo.jobId, location: jobInfo.location, pageToken: token
+            )
+
+            let nextRows = BigQueryTypeMapper.flattenRows(from: nextPage, schema: schema)
+            for row in nextRows {
+                continuation.yield(.row(row))
+            }
+
+            pageToken = nextPage.pageToken
+        }
+
+        continuation.finish()
+    }
+
     func buildExplainQuery(_ sql: String) -> String? {
         "EXPLAIN \(sql)"
     }

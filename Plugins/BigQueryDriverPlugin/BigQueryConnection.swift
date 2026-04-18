@@ -236,6 +236,11 @@ internal enum BQCellValue: Codable, Sendable {
     }
 }
 
+internal struct BQJobInfo: Sendable {
+    let jobId: String
+    let location: String?
+}
+
 internal struct BQExecuteResult: Sendable {
     let queryResponse: BQQueryResponse
     let dmlAffectedRows: Int
@@ -502,6 +507,81 @@ internal final class BigQueryConnection: @unchecked Sendable {
             jobId: jobId, location: location, pageToken: pageToken,
             auth: auth, session: session
         )
+    }
+
+    func clearCurrentJob() {
+        lock.withLock {
+            _currentJobId = nil
+            _currentJobLocation = nil
+        }
+    }
+
+    func executeJobAndWait(_ sql: String, defaultDataset: String? = nil) async throws -> BQJobInfo {
+        let (session, auth) = try getSessionAndAuth()
+
+        let maxBytes = config.additionalFields["bqMaxBytesBilled"]
+        let maxBytesBilled = (maxBytes?.isEmpty == false) ? maxBytes : nil
+
+        let queryConfig = BQJobRequest.BQQueryConfig(
+            query: sql,
+            useLegacySql: false,
+            maxResults: 10000,
+            defaultDataset: defaultDataset.map {
+                BQJobRequest.BQDatasetReference(projectId: auth.projectId, datasetId: $0)
+            },
+            timeoutMs: 120_000,
+            maximumBytesBilled: maxBytesBilled
+        )
+
+        let jobRequest = BQJobRequest(
+            configuration: BQJobRequest.BQJobConfiguration(query: queryConfig, dryRun: nil)
+        )
+
+        let token = try await auth.accessToken()
+        var components = URLComponents(string: "\(Self.baseUrl)/projects/\(auth.projectId)/jobs")
+        if let loc = location {
+            components?.queryItems = [URLQueryItem(name: "location", value: loc)]
+        }
+        guard let url = components?.url else {
+            throw BigQueryError.invalidResponse("Invalid URL for executeJobAndWait")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(jobRequest)
+
+        let (data, response) = try await performRequestWithRetry(request, session: session)
+        try checkHTTPResponse(response, data: data)
+
+        let jobResponse = try JSONDecoder().decode(BQJobResponse.self, from: data)
+
+        guard let jobRef = jobResponse.jobReference,
+              let jobId = jobRef.jobId
+        else {
+            throw BigQueryError.invalidResponse("Missing job reference in response")
+        }
+
+        lock.withLock {
+            _currentJobId = jobId
+            _currentJobLocation = jobRef.location
+        }
+
+        if let state = jobResponse.status?.state, state != "DONE" {
+            let finalJob = try await pollJobCompletion(
+                jobId: jobId, location: jobRef.location, auth: auth, session: session
+            )
+            if let errorResult = finalJob.status?.errorResult {
+                let reason = errorResult.reason.map { " [\($0)]" } ?? ""
+                throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
+            }
+        } else if let errorResult = jobResponse.status?.errorResult {
+            let reason = errorResult.reason.map { " [\($0)]" } ?? ""
+            throw BigQueryError.jobFailed("\(errorResult.message ?? "Unknown job error")\(reason)")
+        }
+
+        return BQJobInfo(jobId: jobId, location: jobRef.location)
     }
 
     // MARK: - Dry Run

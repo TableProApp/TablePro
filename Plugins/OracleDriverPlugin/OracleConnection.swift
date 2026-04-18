@@ -238,6 +238,86 @@ final class OracleConnectionWrapper: @unchecked Sendable {
         }
     }
 
+    // MARK: - Streaming Query
+
+    func streamQuery(
+        _ query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        lock.lock()
+        guard let connection = nioConnection, _isConnected else {
+            lock.unlock()
+            throw OracleError.notConnected
+        }
+        lock.unlock()
+
+        await queryGate.acquire()
+
+        do {
+            let statement = OracleStatement(stringLiteral: query)
+            let stream = try await connection.execute(statement, logger: nioLogger)
+
+            var columns: [String] = []
+            for col in stream.columns {
+                columns.append(col.name)
+            }
+
+            var columnTypeNames: [String] = []
+            var headerSent = false
+
+            for try await row in stream {
+                if Task.isCancelled {
+                    await queryGate.release()
+                    continuation.finish(throwing: CancellationError())
+                    return
+                }
+
+                var rowValues: [String?] = []
+                for cell in row {
+                    if !headerSent {
+                        columnTypeNames.append(oracleTypeName(cell.dataType))
+                    }
+                    if cell.bytes == nil {
+                        rowValues.append(nil)
+                    } else {
+                        rowValues.append(decodeCell(cell))
+                    }
+                }
+
+                if !headerSent {
+                    continuation.yield(.header(PluginStreamHeader(
+                        columns: columns,
+                        columnTypeNames: columnTypeNames
+                    )))
+                    headerSent = true
+                }
+
+                continuation.yield(.row(rowValues))
+            }
+
+            if !headerSent {
+                columnTypeNames = Array(repeating: "unknown", count: columns.count)
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames
+                )))
+            }
+
+            await queryGate.release()
+            continuation.finish()
+        } catch let sqlError as OracleSQLError {
+            let detail = sqlError.serverInfo?.message ?? sqlError.description
+            await queryGate.release()
+            throw OracleError(message: detail)
+        } catch is CancellationError {
+            await queryGate.release()
+            throw CancellationError()
+        } catch {
+            await queryGate.release()
+            throw OracleError(message: "Query execution failed: \(String(describing: error))")
+        }
+    }
+
     // MARK: - Private Helpers
 
     /// Decode an OracleCell to String, trying multiple type strategies.

@@ -603,6 +603,162 @@ final class MongoDBConnection: @unchecked Sendable {
         throw MongoDBError.libmongocUnavailable
         #endif
     }
+    // MARK: - Streaming Queries
+
+    func streamFind(
+        database: String,
+        collection: String,
+        filter: String,
+        sort: String?,
+        projection: String?
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        #if canImport(CLibMongoc)
+        let queue = self.queue
+        let streamState = MongoStreamState()
+
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            continuation.onTermination = { @Sendable _ in
+                queue.async {
+                    streamState.lock.lock()
+                    let cur = streamState.cursor
+                    let col = streamState.collection
+                    let alreadyDrained = streamState.drained
+                    streamState.drained = true
+                    streamState.cursor = nil
+                    streamState.collection = nil
+                    streamState.lock.unlock()
+                    guard !alreadyDrained else { return }
+                    if let cur { mongoc_cursor_destroy(cur) }
+                    if let col { mongoc_collection_destroy(col) }
+                }
+            }
+
+            queue.async { [self] in
+                guard !isShuttingDown, let client = self.client else {
+                    continuation.finish(throwing: MongoDBError.notConnected)
+                    return
+                }
+
+                do {
+                    guard let filterBson = jsonToBson(filter) else {
+                        throw MongoDBError(code: 0, message: "Invalid JSON filter: \(filter)")
+                    }
+                    defer { bson_destroy(filterBson) }
+
+                    var optsJson: [String: Any] = [:]
+                    if let sort = sort, let data = sort.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data) {
+                        optsJson["sort"] = obj
+                    }
+                    if let projection = projection, let data = projection.data(using: .utf8),
+                       let obj = try? JSONSerialization.jsonObject(with: data) {
+                        optsJson["projection"] = obj
+                    }
+                    let timeoutMS = queryTimeoutMS
+                    if timeoutMS > 0 {
+                        optsJson["maxTimeMS"] = timeoutMS
+                    }
+
+                    var optsBson: OpaquePointer?
+                    if !optsJson.isEmpty {
+                        let optsData = try JSONSerialization.data(withJSONObject: optsJson)
+                        if let optsStr = String(data: optsData, encoding: .utf8) {
+                            optsBson = jsonToBson(optsStr)
+                        }
+                    }
+                    defer { if let opts = optsBson { bson_destroy(opts) } }
+
+                    let col = try getCollection(client, database: database, collection: collection)
+                    guard let cursor = mongoc_collection_find_with_opts(col, filterBson, optsBson, nil) else {
+                        mongoc_collection_destroy(col)
+                        throw MongoDBError(code: 0, message: "Failed to create find cursor")
+                    }
+
+                    streamState.lock.lock()
+                    streamState.cursor = cursor
+                    streamState.collection = col
+                    streamState.lock.unlock()
+
+                    iterateCursorStreaming(cursor: cursor, continuation: continuation, streamState: streamState)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+        #else
+        return AsyncThrowingStream { $0.finish(throwing: MongoDBError.libmongocUnavailable) }
+        #endif
+    }
+
+    func streamAggregate(
+        database: String,
+        collection: String,
+        pipeline: String
+    ) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        #if canImport(CLibMongoc)
+        let queue = self.queue
+        let streamState = MongoStreamState()
+
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            continuation.onTermination = { @Sendable _ in
+                queue.async {
+                    streamState.lock.lock()
+                    let cur = streamState.cursor
+                    let col = streamState.collection
+                    let alreadyDrained = streamState.drained
+                    streamState.drained = true
+                    streamState.cursor = nil
+                    streamState.collection = nil
+                    streamState.lock.unlock()
+                    guard !alreadyDrained else { return }
+                    if let cur { mongoc_cursor_destroy(cur) }
+                    if let col { mongoc_collection_destroy(col) }
+                }
+            }
+
+            queue.async { [self] in
+                guard !isShuttingDown, let client = self.client else {
+                    continuation.finish(throwing: MongoDBError.notConnected)
+                    return
+                }
+
+                do {
+                    guard let pipelineBson = jsonToBson(pipeline) else {
+                        throw MongoDBError(code: 0, message: "Invalid JSON pipeline: \(pipeline)")
+                    }
+                    defer { bson_destroy(pipelineBson) }
+
+                    let col = try getCollection(client, database: database, collection: collection)
+
+                    let timeoutMS = queryTimeoutMS
+                    var optsBson: OpaquePointer?
+                    if timeoutMS > 0 {
+                        optsBson = jsonToBson("{\"maxTimeMS\": \(timeoutMS)}")
+                    }
+                    defer { if let opts = optsBson { bson_destroy(opts) } }
+
+                    guard let cursor = mongoc_collection_aggregate(
+                        col, MONGOC_QUERY_NONE, pipelineBson, optsBson, nil
+                    ) else {
+                        mongoc_collection_destroy(col)
+                        throw MongoDBError(code: 0, message: "Failed to create aggregation cursor")
+                    }
+
+                    streamState.lock.lock()
+                    streamState.cursor = cursor
+                    streamState.collection = col
+                    streamState.lock.unlock()
+
+                    iterateCursorStreaming(cursor: cursor, continuation: continuation, streamState: streamState)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+        #else
+        return AsyncThrowingStream { $0.finish(throwing: MongoDBError.libmongocUnavailable) }
+        #endif
+    }
 }
 
 // MARK: - Synchronous Helpers (must be called on the serial queue)
@@ -946,8 +1102,108 @@ private extension MongoDBConnection {
         }
         return (docs: results, isTruncated: truncated)
     }
+
+    func iterateCursorStreaming(
+        cursor: OpaquePointer,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation,
+        streamState: MongoStreamState
+    ) {
+        var docPtr: OpaquePointer?
+        var headerSent = false
+        var columns: [String] = []
+        var columnTypeNames: [String] = []
+
+        while mongoc_cursor_next(cursor, &docPtr) {
+            if Task.isCancelled {
+                cleanup(streamState)
+                continuation.finish(throwing: CancellationError())
+                return
+            }
+
+            guard let doc = docPtr else { continue }
+            let dict = bsonToDict(doc)
+
+            if !headerSent {
+                columns = BsonDocumentFlattener.unionColumns(from: [dict])
+                let bsonTypes = BsonDocumentFlattener.columnTypes(for: columns, documents: [dict])
+                columnTypeNames = bsonTypes.map { bsonTypeToStreamString($0) }
+                continuation.yield(.header(PluginStreamHeader(
+                    columns: columns,
+                    columnTypeNames: columnTypeNames
+                )))
+                headerSent = true
+            } else {
+                for key in dict.keys.sorted() where !columns.contains(key) {
+                    columns.append(key)
+                    let type = BsonDocumentFlattener.columnTypes(for: [key], documents: [dict])
+                    columnTypeNames.append(bsonTypeToStreamString(type.first ?? 2))
+                }
+            }
+
+            let row: [String?] = columns.map { column in
+                guard let value = dict[column] else { return nil }
+                return BsonDocumentFlattener.stringValue(for: value)
+            }
+            continuation.yield(.row(row))
+        }
+
+        var error = bson_error_t()
+        if mongoc_cursor_error(cursor, &error) {
+            cleanup(streamState)
+            continuation.finish(throwing: makeError(error))
+            return
+        }
+
+        if !headerSent {
+            continuation.yield(.header(PluginStreamHeader(
+                columns: ["_id"],
+                columnTypeNames: ["VARCHAR"]
+            )))
+        }
+
+        cleanup(streamState)
+        continuation.finish()
+    }
+
+    private func cleanup(_ state: MongoStreamState) {
+        state.lock.lock()
+        let cur = state.cursor
+        let col = state.collection
+        let alreadyDrained = state.drained
+        state.drained = true
+        state.cursor = nil
+        state.collection = nil
+        state.lock.unlock()
+        guard !alreadyDrained else { return }
+        if let cur { mongoc_cursor_destroy(cur) }
+        if let col { mongoc_collection_destroy(col) }
+    }
+
+    private func bsonTypeToStreamString(_ type: Int32) -> String {
+        switch type {
+        case 1: return "FLOAT"
+        case 2: return "VARCHAR"
+        case 3: return "JSON"
+        case 4: return "JSON"
+        case 5: return "BLOB"
+        case 7: return "VARCHAR"
+        case 8: return "BOOLEAN"
+        case 9: return "TIMESTAMP"
+        case 10: return "VARCHAR"
+        case 16: return "INTEGER"
+        case 18: return "BIGINT"
+        default: return "VARCHAR"
+        }
+    }
 }
 #endif
+
+final class MongoStreamState: @unchecked Sendable {
+    var cursor: OpaquePointer?
+    var collection: OpaquePointer?
+    var drained = false
+    let lock = NSLock()
+}
 
 // MARK: - BSON Helpers
 

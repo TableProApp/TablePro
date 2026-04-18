@@ -175,6 +175,109 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return try await execute(query: query)
     }
 
+    // MARK: - Streaming
+
+    func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            let streamTask = Task {
+                do {
+                    try await self.performStreamRows(query: query, continuation: continuation)
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
+            }
+        }
+    }
+
+    private func performStreamRows(
+        query: String,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        guard let client = httpClient else {
+            throw EtcdError.notConnected
+        }
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let parsed = EtcdQueryBuilder.parseRangeQuery(trimmed) {
+            try await streamRangeRows(
+                prefix: parsed.prefix,
+                sortAscending: parsed.sortAscending,
+                filterType: parsed.filterType,
+                filterValue: parsed.filterValue,
+                client: client,
+                continuation: continuation
+            )
+            return
+        }
+
+        let result = try await execute(query: query)
+        continuation.yield(.header(PluginStreamHeader(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            estimatedRowCount: nil
+        )))
+        for row in result.rows {
+            try Task.checkCancellation()
+            continuation.yield(.row(row))
+        }
+        continuation.finish()
+    }
+
+    private func streamRangeRows(
+        prefix: String,
+        sortAscending: Bool,
+        filterType: EtcdFilterType,
+        filterValue: String,
+        client: EtcdHttpClient,
+        continuation: AsyncThrowingStream<PluginStreamElement, Error>.Continuation
+    ) async throws {
+        continuation.yield(.header(PluginStreamHeader(
+            columns: Self.columns,
+            columnTypeNames: Self.columnTypeNames,
+            estimatedRowCount: nil
+        )))
+
+        let (b64Key, b64RangeEnd) = Self.allKeysRange(for: prefix)
+        let needsClientFilter = filterType != .none
+        let fetchLimit = Int64(Self.maxKeys)
+
+        var req = EtcdRangeRequest(key: b64Key, rangeEnd: b64RangeEnd, limit: fetchLimit)
+        req.sortOrder = sortAscending ? "ASCEND" : "DESCEND"
+        req.sortTarget = "KEY"
+
+        let response = try await client.rangeRequest(req)
+        let kvs = response.kvs ?? []
+
+        for kv in kvs {
+            try Task.checkCancellation()
+
+            if needsClientFilter {
+                let key = EtcdHttpClient.base64Decode(kv.key)
+                let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
+                if !matchesFilter(key: key, value: value, filterType: filterType, filterValue: filterValue) {
+                    continue
+                }
+            }
+
+            let key = EtcdHttpClient.base64Decode(kv.key)
+            let value = kv.value.map { EtcdHttpClient.base64Decode($0) }
+            let version = kv.version ?? "0"
+            let modRevision = kv.modRevision ?? "0"
+            let createRevision = kv.createRevision ?? "0"
+            let lease = kv.lease ?? "0"
+            let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
+
+            continuation.yield(.row([key, value, version, modRevision, createRevision, leaseDisplay]))
+        }
+
+        continuation.finish()
+    }
+
     // MARK: - Query Cancellation
 
     func cancelQuery() throws {
