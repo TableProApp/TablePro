@@ -9,21 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Rewrote main editor window on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and deterministic lifecycle
-- Toolbar layout reorganized to match Apple HIG (Mail / Notes / Music) with sidebar toggle on the left, connection in the center, and view actions on the right
+- Main editor window rewritten on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and correct lifecycle
+- Toolbar layout follows Apple HIG (sidebar left, connection center, view actions right)
 
 ### Fixed
 
-- Cmd+W closed the entire connection window instead of clearing the last tab to empty state
-- Welcome window stealing focus during connect, disabling menu shortcuts until the user clicked into the new window
-- Toolbar appearing empty on tabs 2+ in a tab group
-- Menu shortcuts (Cmd+T, Cmd+1...9) becoming disabled after clicking a toolbar button
-- Inconsistent disabled state between menu shortcuts and toolbar buttons (Save Changes, Preview SQL, New Tab, Inspector)
-- View → ER Diagram and Server Dashboard silently replacing the current tab; now opens in a new window tab or focuses an existing one
+- Cmd+W closing the connection window instead of clearing to empty state
+- ER Diagram and Server Dashboard replacing the current tab instead of opening a new one
+- Welcome window stealing focus on connect, disabling Cmd+T until manual click
+- Toolbar empty on second tab, menu shortcuts disabled after toolbar click
 
 ### Added
 
-- Handoff / Continuity support via NSUserActivity, refreshed on tab-selection change
+- Handoff via NSUserActivity
 
 ## [0.32.1] - 2026-04-17
 
