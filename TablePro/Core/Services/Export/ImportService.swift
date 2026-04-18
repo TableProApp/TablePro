@@ -71,28 +71,34 @@ final class ImportService {
         defer { source.cleanup() }
 
         // Create progress tracker
-        let progress = PluginImportProgress()
+        let nsProgress = Progress(totalUnitCount: 0)
+        let progress = PluginImportProgress(progress: nsProgress)
         currentProgress = progress
 
-        // Wire progress to UI state via coalescer
-        let pendingUpdate = ProgressUpdateCoalescer()
-        progress.onUpdate = { [weak self] processed, total, status in
-            let shouldDispatch = pendingUpdate.markPending()
-            if shouldDispatch {
-                Task { @MainActor [weak self] in
-                    pendingUpdate.clearPending()
-                    guard let self else { return }
-                    self.state.processedStatements = processed
-                    self.state.estimatedTotalStatements = total
-                    if total > 0 {
-                        self.state.progress = min(1.0, Double(processed) / Double(total))
-                    }
-                    if !status.isEmpty {
-                        self.state.statusMessage = status
-                    }
+        let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let processed = Int(observed.completedUnitCount)
+                let total = Int(observed.totalUnitCount)
+                self.state.processedStatements = processed
+                self.state.estimatedTotalStatements = total
+                if total > 0 {
+                    self.state.progress = min(1.0, Double(processed) / Double(total))
                 }
             }
         }
+        defer { observation.invalidate() }
+
+        let statusObservation = nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let status = observed.localizedAdditionalDescription ?? ""
+                if !status.isEmpty {
+                    self.state.statusMessage = status
+                }
+            }
+        }
+        defer { statusObservation.invalidate() }
 
         let result: PluginImportResult
         do {

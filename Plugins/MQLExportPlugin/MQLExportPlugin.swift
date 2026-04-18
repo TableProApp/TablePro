@@ -50,7 +50,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         dataSource: any PluginExportDataSource,
         destination: URL,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> ExportFormatResult {
         let fileHandle = try PluginExportUtilities.createFileHandle(at: destination)
         defer { try? fileHandle.close() }
 
@@ -84,30 +84,17 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
             }
 
             if includeData {
-                let fetchBatchSize = 5_000
-                var offset = 0
                 var columns: [String] = []
                 var documentBatch: [String] = []
 
-                while true {
+                let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+                for try await element in stream {
                     try progress.checkCancellation()
 
-                    let result = try await dataSource.fetchRows(
-                        table: table.name,
-                        databaseName: table.databaseName,
-                        offset: offset,
-                        limit: fetchBatchSize
-                    )
-
-                    if result.rows.isEmpty { break }
-
-                    if columns.isEmpty {
-                        columns = result.columns
-                    }
-
-                    for row in result.rows {
-                        try progress.checkCancellation()
-
+                    switch element {
+                    case .header(let header):
+                        columns = header.columns
+                    case .row(let row):
                         var fields: [String] = []
                         for (colIndex, column) in columns.enumerated() {
                             guard colIndex < row.count else { continue }
@@ -128,8 +115,6 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
 
                         progress.incrementRow()
                     }
-
-                    offset += fetchBatchSize
                 }
 
                 if !documentBatch.isEmpty {
@@ -158,6 +143,7 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
 
         try progress.checkCancellation()
         progress.finalizeTable()
+        return ExportFormatResult()
     }
 
     // MARK: - Private

@@ -35,7 +35,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         dataSource: any PluginExportDataSource,
         destination: URL,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> ExportFormatResult {
         let writer = XLSXWriter()
 
         for (index, table) in tables.enumerated() {
@@ -43,43 +43,43 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             progress.setCurrentTable(table.qualifiedName, index: index + 1)
 
-            let batchSize = 5_000
-            var offset = 0
-            var columns: [String] = []
             var isFirstBatch = true
+            var rowBatch: [[String?]] = []
 
-            while true {
+            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            for try await element in stream {
                 try progress.checkCancellation()
 
-                let result = try await dataSource.fetchRows(
-                    table: table.name,
-                    databaseName: table.databaseName,
-                    offset: offset,
-                    limit: batchSize
-                )
-
-                if result.rows.isEmpty { break }
-
-                if isFirstBatch {
-                    columns = result.columns
+                switch element {
+                case .header(let header):
                     writer.beginSheet(
                         name: table.name,
-                        columns: columns,
+                        columns: header.columns,
                         includeHeader: settings.includeHeaderRow,
                         convertNullToEmpty: settings.convertNullToEmpty
                     )
                     isFirstBatch = false
+                case .row(let row):
+                    rowBatch.append(row)
+                    if rowBatch.count >= 5_000 {
+                        autoreleasepool {
+                            writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                        }
+                        for _ in rowBatch {
+                            progress.incrementRow()
+                        }
+                        rowBatch.removeAll(keepingCapacity: true)
+                    }
                 }
+            }
 
+            if !rowBatch.isEmpty {
                 autoreleasepool {
-                    writer.addRows(result.rows, convertNullToEmpty: settings.convertNullToEmpty)
+                    writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
                 }
-
-                for _ in result.rows {
+                for _ in rowBatch {
                     progress.incrementRow()
                 }
-
-                offset += batchSize
             }
 
             if !isFirstBatch {
@@ -100,5 +100,6 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         try await Task.detached(priority: .userInitiated) {
             try writer.write(to: destination)
         }.value
+        return ExportFormatResult()
     }
 }

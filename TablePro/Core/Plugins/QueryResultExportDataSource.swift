@@ -30,18 +30,21 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
         self.rows = rowBuffer.rows
     }
 
-    func fetchRows(table: String, databaseName: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        let start = min(offset, rows.count)
-        let end = min(start + limit, rows.count)
-        let slice = Array(rows[start ..< end])
-
-        return PluginQueryResult(
-            columns: columns,
-            columnTypeNames: columnTypeNames,
-            rows: slice,
-            rowsAffected: 0,
-            executionTime: 0
-        )
+    func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
+        let columns = self.columns
+        let columnTypeNames = self.columnTypeNames
+        let rows = self.rows
+        return AsyncThrowingStream { continuation in
+            continuation.yield(.header(PluginStreamHeader(
+                columns: columns,
+                columnTypeNames: columnTypeNames,
+                estimatedRowCount: rows.count
+            )))
+            for row in rows {
+                continuation.yield(.row(row))
+            }
+            continuation.finish()
+        }
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {

@@ -20,7 +20,7 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
         self.databaseTypeId = databaseType.rawValue
     }
 
-    func fetchRows(table: String, databaseName: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
+    func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let query: String
         if let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver,
            let customQuery = pluginDriver.defaultExportQuery(table: table) {
@@ -29,8 +29,10 @@ final class ExportDataSourceAdapter: PluginExportDataSource, @unchecked Sendable
             let tableRef = qualifiedTableRef(table: table, databaseName: databaseName)
             query = "SELECT * FROM \(tableRef)"
         }
-        let result = try await driver.fetchRows(query: query, offset: offset, limit: limit)
-        return mapToPluginResult(result)
+        guard let pluginDriver = (driver as? PluginDriverAdapter)?.schemaPluginDriver else {
+            return AsyncThrowingStream { $0.finish(throwing: PluginExportError.exportFailed("No plugin driver available")) }
+        }
+        return pluginDriver.streamRows(query: query)
     }
 
     func fetchTableDDL(table: String, databaseName: String) async throws -> String {

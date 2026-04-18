@@ -35,7 +35,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
         dataSource: any PluginExportDataSource,
         destination: URL,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> ExportFormatResult {
         let fileHandle = try PluginExportUtilities.createFileHandle(at: destination)
         defer { try? fileHandle.close() }
 
@@ -53,30 +53,17 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
             let escapedTableName = PluginExportUtilities.escapeJSONString(table.qualifiedName)
             try fileHandle.write(contentsOf: "\(indent)\"\(escapedTableName)\": [\(newline)".toUTF8Data())
 
-            let batchSize = 1_000
-            var offset = 0
             var hasWrittenRow = false
             var columns: [String]?
 
-            batchLoop: while true {
+            let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
+            for try await element in stream {
                 try progress.checkCancellation()
 
-                let result = try await dataSource.fetchRows(
-                    table: table.name,
-                    databaseName: table.databaseName,
-                    offset: offset,
-                    limit: batchSize
-                )
-
-                if result.rows.isEmpty { break batchLoop }
-
-                if columns == nil {
-                    columns = result.columns
-                }
-
-                for row in result.rows {
-                    try progress.checkCancellation()
-
+                switch element {
+                case .header(let header):
+                    columns = header.columns
+                case .row(let row):
                     let rowPrefix = prettyPrint ? "\(indent)\(indent)" : ""
                     var rowString = ""
 
@@ -115,8 +102,6 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
                     hasWrittenRow = true
                     progress.incrementRow()
                 }
-
-                offset += result.rows.count
             }
 
             if hasWrittenRow {
@@ -130,6 +115,7 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
         try progress.checkCancellation()
         progress.finalizeTable()
+        return ExportFormatResult()
     }
 
     // MARK: - Private

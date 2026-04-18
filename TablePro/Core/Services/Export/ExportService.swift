@@ -137,30 +137,31 @@ final class ExportService {
         let dataSource = ExportDataSourceAdapter(driver: driver, databaseType: databaseType)
 
         // Create progress tracker
-        let progress = PluginExportProgress()
+        let nsProgress = Progress(totalUnitCount: Int64(state.totalRows))
+        let progress = PluginExportProgress(progress: nsProgress)
         currentProgress = progress
-        progress.setTotalRows(state.totalRows)
 
-        // Wire progress updates to UI state (coalesced to avoid main actor flooding)
-        let pendingUpdate = ProgressUpdateCoalescer()
-        progress.onUpdate = { [weak self] table, index, rows, total, status in
-            let shouldDispatch = pendingUpdate.markPending()
-            if shouldDispatch {
-                Task { @MainActor [weak self] in
-                    pendingUpdate.clearPending()
-                    guard let self else { return }
-                    self.state.currentTable = table
-                    self.state.currentTableIndex = index
-                    self.state.processedRows = rows
-                    if total > 0 {
-                        self.state.progress = Double(rows) / Double(total)
-                    }
-                    if !status.isEmpty {
-                        self.state.statusMessage = status
-                    }
+        // Observe NSProgress for UI updates
+        let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let rows = Int(observed.completedUnitCount)
+                let total = Int(observed.totalUnitCount)
+                self.state.processedRows = rows
+                if total > 0 {
+                    self.state.progress = Double(rows) / Double(total)
                 }
             }
         }
+        defer { observation.invalidate() }
+
+        let descObservation = nsProgress.observe(\.localizedDescription) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.state.currentTable = observed.localizedDescription ?? ""
+            }
+        }
+        defer { descObservation.invalidate() }
 
         // Convert ExportTableItems to PluginExportTables
         let pluginTables = tables.map { table in
@@ -172,8 +173,9 @@ final class ExportService {
             )
         }
 
+        let result: ExportFormatResult
         do {
-            try await plugin.export(
+            result = try await plugin.export(
                 tables: pluginTables,
                 dataSource: dataSource,
                 destination: url,
@@ -189,9 +191,8 @@ final class ExportService {
             throw error
         }
 
-        let pluginWarnings = plugin.warnings
-        if !pluginWarnings.isEmpty {
-            state.warningMessage = pluginWarnings.joined(separator: "\n")
+        if !result.warnings.isEmpty {
+            state.warningMessage = result.warnings.joined(separator: "\n")
         }
 
         state.progress = 1.0
@@ -225,29 +226,22 @@ final class ExportService {
             driver: driver
         )
 
-        let progress = PluginExportProgress()
+        let nsProgress = Progress(totalUnitCount: Int64(totalRows))
+        let progress = PluginExportProgress(progress: nsProgress)
         currentProgress = progress
-        progress.setTotalRows(totalRows)
 
-        let pendingUpdate = ProgressUpdateCoalescer()
-        progress.onUpdate = { [weak self] table, index, rows, total, status in
-            let shouldDispatch = pendingUpdate.markPending()
-            if shouldDispatch {
-                Task { @MainActor [weak self] in
-                    pendingUpdate.clearPending()
-                    guard let self else { return }
-                    self.state.currentTable = table
-                    self.state.currentTableIndex = index
-                    self.state.processedRows = rows
-                    if total > 0 {
-                        self.state.progress = Double(rows) / Double(total)
-                    }
-                    if !status.isEmpty {
-                        self.state.statusMessage = status
-                    }
+        let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let rows = Int(observed.completedUnitCount)
+                let total = Int(observed.totalUnitCount)
+                self.state.processedRows = rows
+                if total > 0 {
+                    self.state.progress = Double(rows) / Double(total)
                 }
             }
         }
+        defer { observation.invalidate() }
 
         let exportTable = PluginExportTable(
             name: config.fileName,
@@ -256,8 +250,9 @@ final class ExportService {
             optionValues: plugin.defaultTableOptionValues()
         )
 
+        let result: ExportFormatResult
         do {
-            try await plugin.export(
+            result = try await plugin.export(
                 tables: [exportTable],
                 dataSource: dataSource,
                 destination: url,
@@ -273,9 +268,8 @@ final class ExportService {
             throw error
         }
 
-        let pluginWarnings = plugin.warnings
-        if !pluginWarnings.isEmpty {
-            state.warningMessage = pluginWarnings.joined(separator: "\n")
+        if !result.warnings.isEmpty {
+            state.warningMessage = result.warnings.joined(separator: "\n")
         }
 
         state.progress = 1.0

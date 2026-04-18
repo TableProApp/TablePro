@@ -19,7 +19,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>TableProPluginKitVersion</key>
-	<integer>3</integer>
+	<integer>4</integer>
 	<key>NSPrincipalClass</key>
 	<string>$(PRODUCT_MODULE_NAME).CassandraPlugin</string>
 </dict>

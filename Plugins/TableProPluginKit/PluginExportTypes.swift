@@ -81,3 +81,10 @@ public struct PluginEnumTypeInfo: Sendable {
         self.labels = labels
     }
 }
+
+public struct ExportFormatResult: Sendable {
+    public let warnings: [String]
+    public init(warnings: [String] = []) {
+        self.warnings = warnings
+    }
+}

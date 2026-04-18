@@ -50,12 +50,6 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         settings.compressWithGzip ? "sql.gz" : "sql"
     }
 
-    var warnings: [String] {
-        guard !ddlFailures.isEmpty else { return [] }
-        let failedTables = ddlFailures.joined(separator: ", ")
-        return ["Could not fetch table structure for: \(failedTables)"]
-    }
-
     func settingsView() -> AnyView? {
         AnyView(SQLExportOptionsView(plugin: self))
     }
@@ -65,7 +59,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         dataSource: any PluginExportDataSource,
         destination: URL,
         progress: PluginExportProgress
-    ) async throws {
+    ) async throws -> ExportFormatResult {
         ddlFailures = []
 
         // For gzip, write to temp file first then compress
@@ -231,6 +225,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         }
 
         progress.finalizeTable()
+
+        var warnings: [String] = []
+        if !ddlFailures.isEmpty {
+            let failedTables = ddlFailures.joined(separator: ", ")
+            warnings.append("Could not fetch table structure for: \(failedTables)")
+        }
+        return ExportFormatResult(warnings: warnings)
     }
 
     // MARK: - Private

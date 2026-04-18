@@ -1,8 +1,3 @@
-//
-//  ExportFormatPlugin.swift
-//  TableProPluginKit
-//
-
 import Foundation
 import SwiftUI
 
@@ -19,14 +14,13 @@ public protocol ExportFormatPlugin: TableProPlugin {
     func isTableExportable(optionValues: [Bool]) -> Bool
 
     var currentFileExtension: String { get }
-    var warnings: [String] { get }
 
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
         destination: URL,
         progress: PluginExportProgress
-    ) async throws
+    ) async throws -> ExportFormatResult
 }
 
 public extension ExportFormatPlugin {
@@ -37,5 +31,4 @@ public extension ExportFormatPlugin {
     func defaultTableOptionValues() -> [Bool] { [] }
     func isTableExportable(optionValues: [Bool]) -> Bool { true }
     var currentFileExtension: String { Self.defaultFileExtension }
-    var warnings: [String] { [] }
 }

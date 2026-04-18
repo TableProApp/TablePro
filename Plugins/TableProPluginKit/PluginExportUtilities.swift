@@ -44,11 +44,31 @@ public enum PluginExportUtilities {
         return String(bytes: utf8Result, encoding: .utf8) ?? string
     }
 
+    @available(*, deprecated, message: "Use beginAtomicWrite(for:) for crash-safe writes")
     public static func createFileHandle(at url: URL) throws -> FileHandle {
         guard FileManager.default.createFile(atPath: url.path(percentEncoded: false), contents: nil) else {
             throw PluginExportError.fileWriteFailed(url.path(percentEncoded: false))
         }
         return try FileHandle(forWritingTo: url)
+    }
+
+    public static func beginAtomicWrite(for destination: URL) throws -> (FileHandle, URL) {
+        let tempURL = destination
+            .deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).tmp")
+        guard FileManager.default.createFile(atPath: tempURL.path(percentEncoded: false), contents: nil) else {
+            throw PluginExportError.fileWriteFailed(destination.path(percentEncoded: false))
+        }
+        let handle = try FileHandle(forWritingTo: tempURL)
+        return (handle, tempURL)
+    }
+
+    public static func commitAtomicWrite(from tempURL: URL, to destination: URL) throws {
+        _ = try FileManager.default.replaceItemAt(destination, withItemAt: tempURL)
+    }
+
+    public static func rollbackAtomicWrite(at tempURL: URL) {
+        try? FileManager.default.removeItem(at: tempURL)
     }
 
     public static func sanitizeForSQLComment(_ name: String) -> String {
