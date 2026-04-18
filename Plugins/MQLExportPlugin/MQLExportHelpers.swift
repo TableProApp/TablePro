@@ -39,11 +39,11 @@ enum MQLExportHelpers {
         }
         if (value.hasPrefix("{") && value.hasSuffix("}")) ||
             (value.hasPrefix("[") && value.hasSuffix("]")) {
-            let hasControlChars = value.utf8.contains(where: { $0 < 0x20 })
-            if hasControlChars {
-                return "\"\(PluginExportUtilities.escapeJSONString(value))\""
+            if let data = value.data(using: .utf8),
+               (try? JSONSerialization.jsonObject(with: data)) != nil {
+                return value
             }
-            return value
+            return "\"\(PluginExportUtilities.escapeJSONString(value))\""
         }
         return "\"\(PluginExportUtilities.escapeJSONString(value))\""
     }

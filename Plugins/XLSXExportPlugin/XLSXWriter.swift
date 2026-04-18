@@ -35,13 +35,6 @@ final class XLSXWriter {
     /// Whether the current sheet has a header row (used for bold styling)
     private var currentSheetHasHeader: Bool = false
 
-    /// Excel maximum rows per sheet (1,048,576 total including header).
-    /// Data rows beyond this limit are silently dropped with a log warning.
-    private static let maxRowsPerSheet = 1_048_576
-
-    /// Set to true if any rows were dropped due to the Excel row limit
-    private(set) var didTruncateRows = false
-
     enum CellValue {
         case string(String)
         case number(String)
@@ -87,19 +80,6 @@ final class XLSXWriter {
         var sheetData = sheets[sheets.count - 1].data
 
         for row in rows {
-            // Enforce Excel row limit (1,048,576 rows including header)
-            if currentRowNumber >= Self.maxRowsPerSheet {
-                if !didTruncateRows {
-                    didTruncateRows = true
-                    Self.logger.warning(
-                        "Sheet row limit reached (\(Self.maxRowsPerSheet)). Remaining rows will be dropped."
-                    )
-                }
-                break
-            }
-
-            // autoreleasepool frees intermediate strings (cell value conversions)
-            // each iteration, preventing peak memory growth during large exports.
             autoreleasepool {
                 let cellRow: [CellValue] = row.map { value in
                     guard let val = value else {
@@ -108,7 +88,6 @@ final class XLSXWriter {
                     if val.isEmpty {
                         return .empty
                     }
-                    // Try to detect numeric values
                     if Double(val) != nil, !val.hasPrefix("0") || val == "0" || val.contains(".") {
                         return .number(val)
                     }
@@ -127,6 +106,27 @@ final class XLSXWriter {
         sheets[sheets.count - 1].data.appendUTF8("</sheetData></worksheet>")
     }
 
+    /// Finish the current sheet and start a continuation sheet with the same columns.
+    /// The new sheet is named "BaseName (N)" where N increments.
+    func continueSheet(
+        baseName: String,
+        columns: [String],
+        includeHeader: Bool,
+        convertNullToEmpty: Bool
+    ) {
+        finishSheet()
+        let continuationIndex = sheets.filter {
+            $0.name == sanitizeSheetName(baseName) || $0.name.hasPrefix(sanitizeSheetName(baseName) + " (")
+        }.count + 1
+        let newName = "\(baseName) (\(continuationIndex))"
+        beginSheet(
+            name: newName,
+            columns: columns,
+            includeHeader: includeHeader,
+            convertNullToEmpty: convertNullToEmpty
+        )
+    }
+
     // MARK: - Legacy Convenience API
 
     /// Add a complete worksheet with all rows at once (legacy compatibility).
@@ -139,7 +139,6 @@ final class XLSXWriter {
 
     /// Write the XLSX file to the given URL
     func write(to url: URL) throws {
-        // Create ZIP entries
         var entries: [ZipFileEntry] = []
 
         entries.append(ZipFileEntry(path: "[Content_Types].xml", data: contentTypesXML()))
@@ -155,8 +154,8 @@ final class XLSXWriter {
             ))
         }
 
-        let zipData = ZipBuilder.build(entries: entries)
-        try zipData.write(to: url)
+        let zipData = try ZipBuilder.build(entries: entries)
+        try zipData.write(to: url, options: .atomic)
     }
 
     // MARK: - Row XML Generation
@@ -347,44 +346,56 @@ private struct ZipFileEntry {
 }
 
 private enum ZipBuilder {
-    static func build(entries: [ZipFileEntry]) -> Data {
-        // Pre-calculate total size for single allocation
-        var totalSize = 22 // End of central directory
+    enum ZipError: LocalizedError {
+        case fileTooLarge
+
+        var errorDescription: String? {
+            switch self {
+            case .fileTooLarge:
+                return "XLSX file exceeds 4 GB ZIP limit"
+            }
+        }
+    }
+
+    static func build(entries: [ZipFileEntry]) throws -> Data {
+        var totalSize = 22
         for entry in entries {
             let pathLen = entry.path.utf8.count
-            totalSize += 30 + pathLen + entry.data.count  // Local file header + data
-            totalSize += 46 + pathLen                       // Central directory entry
+            totalSize += 30 + pathLen + entry.data.count
+            totalSize += 46 + pathLen
         }
 
         var output = Data(capacity: totalSize)
         var centralDirectory = Data()
-        var offsets: [UInt32] = []
+        var offsets: [Int] = []
 
         for entry in entries {
-            offsets.append(UInt32(output.count))
+            let currentOffset = output.count
+            guard currentOffset <= UInt32.max, entry.data.count <= UInt32.max else {
+                throw ZipError.fileTooLarge
+            }
+            offsets.append(currentOffset)
 
             let pathData = Data(entry.path.utf8)
             let crc = zlibCRC32(entry.data)
 
-            // Local file header
-            output.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])  // Signature
-            output.appendUInt16(10)                                 // Version needed (1.0 for store)
-            output.appendUInt16(0)                                  // Flags
-            output.appendUInt16(0)                                  // Compression: stored
-            output.appendUInt16(0)                                  // Mod time
-            output.appendUInt16(0)                                  // Mod date
-            output.appendUInt32(crc)                                // CRC-32
-            output.appendUInt32(UInt32(entry.data.count))           // Compressed size
-            output.appendUInt32(UInt32(entry.data.count))           // Uncompressed size
-            output.appendUInt16(UInt16(pathData.count))             // File name length
-            output.appendUInt16(0)                                  // Extra field length
+            output.append(contentsOf: [0x50, 0x4B, 0x03, 0x04])
+            output.appendUInt16(10)
+            output.appendUInt16(0)
+            output.appendUInt16(0)
+            output.appendUInt16(0)
+            output.appendUInt16(0)
+            output.appendUInt32(crc)
+            output.appendUInt32(UInt32(entry.data.count))
+            output.appendUInt32(UInt32(entry.data.count))
+            output.appendUInt16(UInt16(pathData.count))
+            output.appendUInt16(0)
             output.append(pathData)
             output.append(entry.data)
 
-            // Central directory entry
             centralDirectory.append(contentsOf: [0x50, 0x4B, 0x01, 0x02])
-            centralDirectory.appendUInt16(20)                           // Version made by (2.0)
-            centralDirectory.appendUInt16(10)                           // Version needed (1.0 for store)
+            centralDirectory.appendUInt16(20)
+            centralDirectory.appendUInt16(10)
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt16(0)
@@ -398,21 +409,23 @@ private enum ZipBuilder {
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt16(0)
             centralDirectory.appendUInt32(0)
-            centralDirectory.appendUInt32(offsets.last ?? 0)
+            centralDirectory.appendUInt32(UInt32(currentOffset))
             centralDirectory.append(pathData)
         }
 
-        let centralDirOffset = UInt32(output.count)
+        let centralDirOffset = output.count
+        guard centralDirOffset <= UInt32.max else {
+            throw ZipError.fileTooLarge
+        }
         output.append(centralDirectory)
 
-        // End of central directory
         output.append(contentsOf: [0x50, 0x4B, 0x05, 0x06])
         output.appendUInt16(0)
         output.appendUInt16(0)
         output.appendUInt16(UInt16(entries.count))
         output.appendUInt16(UInt16(entries.count))
         output.appendUInt32(UInt32(centralDirectory.count))
-        output.appendUInt32(centralDirOffset)
+        output.appendUInt32(UInt32(centralDirOffset))
         output.appendUInt16(0)
 
         return output

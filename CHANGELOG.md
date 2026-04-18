@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Main editor window rewritten on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and correct lifecycle
 - Toolbar layout follows Apple HIG (sidebar left, connection center, view actions right)
+- Export engine rewritten to use streaming row fetch instead of offset/limit pagination
+- Export progress integrates with macOS system progress
+- All export file writes use atomic operations for crash safety
 
 ### Fixed
 
@@ -18,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ER Diagram and Server Dashboard replacing the current tab instead of opening a new one
 - Welcome window stealing focus on connect, disabling Cmd+T until manual click
 - Toolbar empty on second tab, menu shortcuts disabled after toolbar click
+- JSON export no longer coerces leading-zero strings to integers
+- XLSX export auto-splits tables exceeding 1,048,576 rows into multiple sheets
+- CSV formula injection guard corrected to OWASP-standard prefixes only
+- MQL export validates JSON values before passthrough
+- SQL export gzip compression is now async and cancellable
+- Export progress bar reliably reaches 100%
 
 ### Added
 

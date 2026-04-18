@@ -39,8 +39,13 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
         destination: URL,
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
-        let fileHandle = try PluginExportUtilities.createFileHandle(at: destination)
-        defer { try? fileHandle.close() }
+        let (fileHandle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
+        var committed = false
+        defer {
+            if !committed {
+                PluginExportUtilities.rollbackAtomicWrite(at: tempURL)
+            }
+        }
 
         let lineBreak = settings.lineBreak.value
 
@@ -83,6 +88,9 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
         }
 
         try progress.checkCancellation()
+        try fileHandle.close()
+        try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
+        committed = true
         progress.finalizeTable()
         return ExportFormatResult()
     }
@@ -129,7 +137,7 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
         var processed = field
 
         if options.sanitizeFormulas {
-            let dangerousPrefixes: [Character] = ["=", "+", "-", "@", "\t", "\r"]
+            let dangerousPrefixes: [Character] = ["=", "+", "-", "@"]
             if let first = processed.first, dangerousPrefixes.contains(first) {
                 processed = "'" + processed
             }

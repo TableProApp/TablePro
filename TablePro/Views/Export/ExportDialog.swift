@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import Observation
 import SwiftUI
 import TableProPluginKit
 import UniformTypeIdentifiers
@@ -36,7 +35,7 @@ struct ExportDialog: View {
 
     // MARK: - Export Service
 
-    @State private var exportServiceState = ExportServiceState()
+    @State private var exportService: ExportService?
 
     // MARK: - Mode Helpers
 
@@ -125,14 +124,14 @@ struct ExportDialog: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             ExportProgressView(
-                tableName: exportServiceState.currentTable,
-                tableIndex: exportServiceState.currentTableIndex,
-                totalTables: exportServiceState.totalTables,
-                processedRows: exportServiceState.processedRows,
-                totalRows: exportServiceState.totalRows,
-                statusMessage: exportServiceState.statusMessage
+                tableName: exportService?.state.currentTable ?? "",
+                tableIndex: exportService?.state.currentTableIndex ?? 0,
+                totalTables: exportService?.state.totalTables ?? 0,
+                processedRows: exportService?.state.processedRows ?? 0,
+                totalRows: exportService?.state.totalRows ?? 0,
+                statusMessage: exportService?.state.statusMessage ?? ""
             ) {
-                exportServiceState.service?.cancelExport()
+                exportService?.cancelExport()
             }
             .interactiveDismissDisabled()
         }
@@ -391,7 +390,9 @@ struct ExportDialog: View {
             }
 
             Button("Export...") {
-                performExport()
+                Task {
+                    await performExport()
+                }
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.return, modifiers: [])
@@ -738,14 +739,16 @@ struct ExportDialog: View {
         }
     }
 
-    private func performExport() {
+    @MainActor
+    private func performExport() async {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
         let savePanel = NSSavePanel()
         savePanel.canCreateDirectories = true
         savePanel.showsTagField = false
 
         let ext = fileExtension
         if ext.contains(".") {
-            // Compound extension like "sql.gz"
             let lastComponent = ext.components(separatedBy: ".").last ?? ext
             savePanel.allowedContentTypes = [UTType(filenameExtension: lastComponent) ?? .data]
             savePanel.nameFieldStringValue = "\(config.fileName).\(ext)"
@@ -762,15 +765,13 @@ struct ExportDialog: View {
             savePanel.message = String(format: String(localized: "Export %d table(s) to %@"), exportableCount, formatName)
         }
 
-        let response = savePanel.runModal()
+        let response = await savePanel.presentAsSheet(for: window)
         guard response == .OK, let url = savePanel.url else { return }
 
-        Task {
-            if self.isQueryResultsMode {
-                await self.startQueryResultsExport(to: url)
-            } else {
-                await self.startExport(to: url)
-            }
+        if isQueryResultsMode {
+            await startQueryResultsExport(to: url)
+        } else {
+            await startExport(to: url)
         }
     }
 
@@ -792,7 +793,7 @@ struct ExportDialog: View {
             driver: driver,
             databaseType: connection.type
         )
-        exportServiceState.setService(service)
+        exportService = service
 
         // Show progress dialog
         showProgressDialog = true
@@ -833,7 +834,7 @@ struct ExportDialog: View {
         exportedFileURL = url
 
         let service = ExportService(databaseType: connection.type)
-        exportServiceState.setService(service)
+        exportService = service
         showProgressDialog = true
 
         do {
@@ -866,27 +867,6 @@ struct ExportDialog: View {
         guard let url = exportedFileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
-}
-
-// MARK: - Export Service State
-
-/// Observable wrapper that forwards ExportService updates to SwiftUI.
-/// Since ExportService is @Observable, computed properties track through to service.state automatically.
-@Observable
-@MainActor
-final class ExportServiceState {
-    private(set) var service: ExportService?
-
-    func setService(_ service: ExportService) {
-        self.service = service
-    }
-
-    var currentTable: String { service?.state.currentTable ?? "" }
-    var currentTableIndex: Int { service?.state.currentTableIndex ?? 0 }
-    var totalTables: Int { service?.state.totalTables ?? 0 }
-    var processedRows: Int { service?.state.processedRows ?? 0 }
-    var totalRows: Int { service?.state.totalRows ?? 0 }
-    var statusMessage: String { service?.state.statusMessage ?? "" }
 }
 
 // MARK: - Preview

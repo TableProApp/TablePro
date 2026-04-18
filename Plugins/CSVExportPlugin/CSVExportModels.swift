@@ -36,9 +36,9 @@ public enum CSVQuoteHandling: String, CaseIterable, Identifiable, Codable {
 
     public var displayName: String {
         switch self {
-        case .always: return String(localized: "Always", bundle: .main)
-        case .asNeeded: return String(localized: "Quote if needed", bundle: .main)
-        case .never: return String(localized: "Never", bundle: .main)
+        case .always: return String(localized: "Always", bundle: Bundle(for: CSVExportPlugin.self))
+        case .asNeeded: return String(localized: "Quote if needed", bundle: Bundle(for: CSVExportPlugin.self))
+        case .never: return String(localized: "Never", bundle: Bundle(for: CSVExportPlugin.self))
         }
     }
 }

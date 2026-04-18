@@ -30,6 +30,8 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         AnyView(XLSXExportOptionsView(plugin: self))
     }
 
+    private static let maxRowsPerSheet = 1_048_576
+
     func export(
         tables: [PluginExportTable],
         dataSource: any PluginExportDataSource,
@@ -37,6 +39,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
         let writer = XLSXWriter()
+        var didSplitSheets = false
 
         for (index, table) in tables.enumerated() {
             try progress.checkCancellation()
@@ -45,6 +48,9 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             var isFirstBatch = true
             var rowBatch: [[String?]] = []
+            var currentSheetRowCount = 0
+            var columns: [String] = []
+            let headerRowCount = settings.includeHeaderRow ? 1 : 0
 
             let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
             for try await element in stream {
@@ -52,18 +58,47 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
 
                 switch element {
                 case .header(let header):
+                    columns = header.columns
                     writer.beginSheet(
                         name: table.name,
-                        columns: header.columns,
+                        columns: columns,
                         includeHeader: settings.includeHeaderRow,
                         convertNullToEmpty: settings.convertNullToEmpty
                     )
+                    currentSheetRowCount = headerRowCount
                     isFirstBatch = false
                 case .row(let row):
                     rowBatch.append(row)
                     if rowBatch.count >= 5_000 {
-                        autoreleasepool {
-                            writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                        let remaining = Self.maxRowsPerSheet - currentSheetRowCount
+                        if rowBatch.count <= remaining {
+                            autoreleasepool {
+                                writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                            }
+                            currentSheetRowCount += rowBatch.count
+                        } else {
+                            let fitting = Array(rowBatch.prefix(remaining))
+                            let overflow = Array(rowBatch.dropFirst(remaining))
+                            if !fitting.isEmpty {
+                                autoreleasepool {
+                                    writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
+                                }
+                                currentSheetRowCount += fitting.count
+                            }
+                            writer.continueSheet(
+                                baseName: table.name,
+                                columns: columns,
+                                includeHeader: settings.includeHeaderRow,
+                                convertNullToEmpty: settings.convertNullToEmpty
+                            )
+                            didSplitSheets = true
+                            currentSheetRowCount = headerRowCount
+                            if !overflow.isEmpty {
+                                autoreleasepool {
+                                    writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
+                                }
+                                currentSheetRowCount += overflow.count
+                            }
                         }
                         for _ in rowBatch {
                             progress.incrementRow()
@@ -74,8 +109,32 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
             }
 
             if !rowBatch.isEmpty {
-                autoreleasepool {
-                    writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                let remaining = Self.maxRowsPerSheet - currentSheetRowCount
+                if rowBatch.count <= remaining {
+                    autoreleasepool {
+                        writer.addRows(rowBatch, convertNullToEmpty: settings.convertNullToEmpty)
+                    }
+                    currentSheetRowCount += rowBatch.count
+                } else {
+                    let fitting = Array(rowBatch.prefix(remaining))
+                    let overflow = Array(rowBatch.dropFirst(remaining))
+                    if !fitting.isEmpty {
+                        autoreleasepool {
+                            writer.addRows(fitting, convertNullToEmpty: settings.convertNullToEmpty)
+                        }
+                    }
+                    writer.continueSheet(
+                        baseName: table.name,
+                        columns: columns,
+                        includeHeader: settings.includeHeaderRow,
+                        convertNullToEmpty: settings.convertNullToEmpty
+                    )
+                    didSplitSheets = true
+                    if !overflow.isEmpty {
+                        autoreleasepool {
+                            writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
+                        }
+                    }
                 }
                 for _ in rowBatch {
                     progress.incrementRow()
@@ -100,6 +159,11 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
         try await Task.detached(priority: .userInitiated) {
             try writer.write(to: destination)
         }.value
-        return ExportFormatResult()
+
+        var warnings: [String] = []
+        if didSplitSheets {
+            warnings.append("Data exceeded Excel's row limit (1,048,576) and was split across multiple sheets.")
+        }
+        return ExportFormatResult(warnings: warnings)
     }
 }

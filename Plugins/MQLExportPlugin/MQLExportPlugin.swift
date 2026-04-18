@@ -51,8 +51,13 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         destination: URL,
         progress: PluginExportProgress
     ) async throws -> ExportFormatResult {
-        let fileHandle = try PluginExportUtilities.createFileHandle(at: destination)
-        defer { try? fileHandle.close() }
+        let (fileHandle, tempURL) = try PluginExportUtilities.beginAtomicWrite(for: destination)
+        var committed = false
+        defer {
+            if !committed {
+                PluginExportUtilities.rollbackAtomicWrite(at: tempURL)
+            }
+        }
 
         let dateFormatter = ISO8601DateFormatter()
         try fileHandle.write(contentsOf: "// TablePro MQL Export\n".toUTF8Data())
@@ -142,6 +147,9 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         }
 
         try progress.checkCancellation()
+        try fileHandle.close()
+        try PluginExportUtilities.commitAtomicWrite(from: tempURL, to: destination)
+        committed = true
         progress.finalizeTable()
         return ExportFormatResult()
     }

@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import Observation
 import os
 import SwiftUI
 import TableProPluginKit
@@ -39,7 +38,7 @@ struct ImportDialog: View {
 
     // MARK: - Import Service
 
-    @State private var importServiceState = ImportServiceState()
+    @State private var importService: ImportService?
 
     // MARK: - Body
 
@@ -76,7 +75,7 @@ struct ImportDialog: View {
             }
         }
         .onExitCommand {
-            if !importServiceState.isImporting {
+            if !(importService?.state.isImporting ?? false) {
                 isPresented = false
             }
         }
@@ -91,11 +90,11 @@ struct ImportDialog: View {
         }
         .sheet(isPresented: $showProgressDialog) {
             ImportProgressView(
-                processedStatements: importServiceState.processedStatements,
-                estimatedTotalStatements: importServiceState.estimatedTotalStatements,
-                statusMessage: importServiceState.statusMessage
+                processedStatements: importService?.state.processedStatements ?? 0,
+                estimatedTotalStatements: importService?.state.estimatedTotalStatements ?? 0,
+                statusMessage: importService?.state.statusMessage ?? ""
             ) {
-                importServiceState.service?.cancelImport()
+                importService?.cancelImport()
             }
             .interactiveDismissDisabled()
         }
@@ -156,7 +155,9 @@ struct ImportDialog: View {
                     Spacer()
 
                     Button("Change File...") {
-                        selectFile()
+                        Task {
+                            await selectFile()
+                        }
                     }
                     .buttonStyle(.link)
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
@@ -277,7 +278,7 @@ struct ImportDialog: View {
                 performImport()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(fileURL == nil || importServiceState.isImporting || availableFormats.isEmpty || hasPreviewError)
+            .disabled(fileURL == nil || (importService?.state.isImporting ?? false) || availableFormats.isEmpty || hasPreviewError)
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(16)
@@ -285,7 +286,10 @@ struct ImportDialog: View {
 
     // MARK: - Actions
 
-    private func selectFile() {
+    @MainActor
+    private func selectFile() async {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
         let panel = NSOpenPanel()
 
         let extensions = currentPlugin.map { type(of: $0).acceptedFileExtensions } ?? ["sql", "gz"]
@@ -294,7 +298,7 @@ struct ImportDialog: View {
         panel.allowsMultipleSelection = false
         panel.message = "Select file to import"
 
-        let response = panel.runModal()
+        let response = await panel.presentAsSheet(for: window)
         guard response == .OK, let url = panel.url else { return }
 
         self.loadFileTask = Task {
@@ -392,7 +396,7 @@ struct ImportDialog: View {
         guard let url = fileURL else { return }
 
         let service = ImportService(connection: connection)
-        importServiceState.setService(service)
+        importService = service
 
         showProgressDialog = true
 
@@ -441,19 +445,3 @@ struct ImportDialog: View {
     }
 }
 
-// MARK: - Import Service State
-
-@Observable
-@MainActor
-final class ImportServiceState {
-    private(set) var service: ImportService?
-
-    func setService(_ service: ImportService) {
-        self.service = service
-    }
-
-    var isImporting: Bool { service?.state.isImporting ?? false }
-    var processedStatements: Int { service?.state.processedStatements ?? 0 }
-    var estimatedTotalStatements: Int { service?.state.estimatedTotalStatements ?? 0 }
-    var statusMessage: String { service?.state.statusMessage ?? "" }
-}
