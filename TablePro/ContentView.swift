@@ -45,6 +45,8 @@ struct ContentView: View {
         let defaultTitle: String
         if payload?.tabType == .serverDashboard {
             defaultTitle = String(localized: "Server Dashboard")
+        } else if payload?.tabType == .erDiagram {
+            defaultTitle = String(localized: "ER Diagram")
         } else if let tabTitle = payload?.tabTitle {
             defaultTitle = tabTitle
         } else if let tableName = payload?.tableName {
