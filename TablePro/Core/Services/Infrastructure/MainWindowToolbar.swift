@@ -62,6 +62,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     }
 
+    /// Release all hosted toolbar views and sever the coordinator reference.
+    /// Called by TabWindowController.windowWillClose before coordinator teardown.
+    func invalidate() {
+        hostingControllers.removeAll()
+        coordinator = nil
+    }
+
     // MARK: - Identifiers
 
     private static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
@@ -386,7 +393,7 @@ private struct PreviewSQLToolbarButton: View {
             coordinator.commandActions?.previewSQL()
         } label: {
             let langName = PluginManager.shared.queryLanguageName(for: state.databaseType)
-            Label("Preview \(langName)", systemImage: "eye")
+            Label(String(format: String(localized: "Preview %@"), langName), systemImage: "eye")
         }
         .help(String(format: String(localized: "Preview %@ (⌘⇧P)"), PluginManager.shared.queryLanguageName(for: state.databaseType)))
         .disabled(!state.hasDataPendingChanges || state.connectionState != .connected)

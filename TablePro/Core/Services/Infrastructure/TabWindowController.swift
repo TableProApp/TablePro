@@ -231,6 +231,12 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
+
+        toolbarOwner?.invalidate()
+        toolbarOwner = nil
+        toolbarKVO?.invalidate()
+        toolbarKVO = nil
+
         let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         coordinator?.handleWindowWillClose()
         Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")

@@ -29,7 +29,6 @@ struct ContentView: View {
     @State private var rightPanelState: RightPanelState?
     @State private var sessionState: SessionStateFactory.SessionState?
     @State private var inspectorContext = InspectorContext.empty
-    @State private var isContentReady = false
     @State private var windowTitle: String
     @Environment(\.openWindow)
     private var openWindow
@@ -47,6 +46,8 @@ struct ContentView: View {
             defaultTitle = String(localized: "Server Dashboard")
         } else if payload?.tabType == .erDiagram {
             defaultTitle = String(localized: "ER Diagram")
+        } else if payload?.tabType == .createTable {
+            defaultTitle = String(localized: "Create Table")
         } else if let tabTitle = payload?.tabTitle {
             defaultTitle = tabTitle
         } else if let tableName = payload?.tableName {
@@ -175,7 +176,7 @@ struct ContentView: View {
     private var mainContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // MARK: - Sidebar (Left) - Table Browser
-            if isContentReady, let currentSession = currentSession, let sessionState {
+            if let currentSession = currentSession, let sessionState {
                 VStack(spacing: 0) {
                     SidebarView(
                         tables: sessionTablesBinding,
@@ -214,7 +215,7 @@ struct ContentView: View {
             }
         } detail: {
             // MARK: - Detail (Main workspace with optional right sidebar)
-            if isContentReady, let currentSession = currentSession, let rightPanelState, let sessionState {
+            if let currentSession = currentSession, let rightPanelState, let sessionState {
                 HStack(spacing: 0) {
                     MainContentView(
                         connection: currentSession.connection,
@@ -264,10 +265,6 @@ struct ContentView: View {
         }
         .navigationTitle(windowTitle)
         .navigationSubtitle(currentSession?.connection.name ?? "")
-        .task {
-            Self.lifecycleLogger.info("[open] ContentView.task isContentReady=true payloadId=\(payload?.id.uuidString ?? "nil", privacy: .public) hasSession=\(sessionState != nil)")
-            isContentReady = true
-        }
     }
 
     // MARK: - Session State Bindings

@@ -187,6 +187,8 @@ extension MainContentView {
             windowTitle = String(localized: "Server Dashboard")
         } else if selectedTab?.tabType == .createTable {
             windowTitle = String(localized: "Create Table")
+        } else if selectedTab?.tabType == .erDiagram {
+            windowTitle = String(localized: "ER Diagram")
         } else if let fileURL = selectedTab?.sourceFileURL {
             windowTitle = fileURL.deletingPathExtension().lastPathComponent
         } else {

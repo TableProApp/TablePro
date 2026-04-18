@@ -124,17 +124,9 @@ extension MainContentCoordinator {
 
         teardown()
 
-        let closedConnectionId = connectionId
-        // Disconnect the session if no other windows remain for this connection.
-        if !WindowLifecycleMonitor.shared.hasWindows(for: closedConnectionId) {
-            Task {
-                let t1 = Date()
-                await DatabaseManager.shared.disconnectSession(closedConnectionId)
-                Self.lifecycleLogger.info(
-                    "[close] coordinator disconnected last session connId=\(closedConnectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t1) * 1_000))"
-                )
-            }
-        }
+        // Disconnect is handled by WindowLifecycleMonitor.handleWindowClose,
+        // which fires after this delegate method. It removes the window entry
+        // first, then checks if any remain for the connection, then disconnects.
 
         Self.lifecycleLogger.info(
             "[close] coordinator.handleWindowWillClose done connId=\(self.connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000))"
