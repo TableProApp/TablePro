@@ -128,11 +128,16 @@ struct AppMenuCommands: Commands {
     private var resolvedCloseTabActions: MainContentCommandActions? {
         if let actions { return actions }
         guard let window = NSApp.keyWindow,
-              window.identifier?.rawValue.hasPrefix("main") == true,
-              let windowId = WindowLifecycleMonitor.shared.windowId(forWindow: window),
-              let coordinator = MainContentCoordinator.coordinator(for: windowId)
+              window.identifier?.rawValue.hasPrefix("main") == true
         else { return nil }
-        return coordinator.commandActions
+        if let coordinator = MainContentCoordinator.coordinator(forWindow: window) {
+            return coordinator.commandActions
+        }
+        if let windowId = WindowLifecycleMonitor.shared.windowId(forWindow: window),
+           let coordinator = MainContentCoordinator.coordinator(for: windowId) {
+            return coordinator.commandActions
+        }
+        return nil
     }
 
     var body: some Commands {
@@ -215,9 +220,13 @@ struct AppMenuCommands: Commands {
             Button(actions != nil ? "Close Tab" : "Close") {
                 if let resolved = resolvedCloseTabActions {
                     resolved.closeTab()
-                } else if let window = NSApp.keyWindow,
-                          window.identifier?.rawValue.hasPrefix("main") != true {
-                    window.performClose(nil)
+                } else if let window = NSApp.keyWindow {
+                    if window.identifier?.rawValue.hasPrefix("main") == true,
+                       let coordinator = MainContentCoordinator.coordinator(forWindow: window) {
+                        coordinator.commandActions?.closeTab()
+                    } else {
+                        window.performClose(nil)
+                    }
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
