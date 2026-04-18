@@ -179,20 +179,22 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                         switch element {
                         case .header(let header):
                             columns = header.columns
-                        case .row(let row):
-                            rowBatch.append(row)
-                            if rowBatch.count >= batchSize {
-                                try writeInsertStatements(
-                                    tableName: table.name,
-                                    columns: columns,
-                                    rows: rowBatch,
-                                    batchSize: batchSize,
-                                    dataSource: dataSource,
-                                    to: fileHandle,
-                                    progress: progress
-                                )
-                                wroteAnyRows = true
-                                rowBatch.removeAll(keepingCapacity: true)
+                        case .rows(let rows):
+                            for row in rows {
+                                rowBatch.append(row)
+                                if rowBatch.count >= batchSize {
+                                    try writeInsertStatements(
+                                        tableName: table.name,
+                                        columns: columns,
+                                        rows: rowBatch,
+                                        batchSize: batchSize,
+                                        dataSource: dataSource,
+                                        to: fileHandle,
+                                        progress: progress
+                                    )
+                                    wroteAnyRows = true
+                                    rowBatch.removeAll(keepingCapacity: true)
+                                }
                             }
                         }
                     }
@@ -316,7 +318,13 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
             throw PluginExportError.fileWriteFailed(destination.path(percentEncoded: false))
         }
 
-        let outputHandle = try FileHandle(forWritingTo: destination)
+        let outputHandle: FileHandle
+        do {
+            outputHandle = try FileHandle(forWritingTo: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
         let errorPipe = Pipe()
 
         let process = Process()
@@ -325,32 +333,37 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         process.standardOutput = outputHandle
         process.standardError = errorPipe
 
-        try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-                process.terminationHandler = { proc in
-                    try? outputHandle.close()
-                    let status = proc.terminationStatus
-                    if status == 0 {
-                        continuation.resume()
-                    } else {
-                        let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                        let errMsg = String(data: errData, encoding: .utf8)?
-                            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        let message = errMsg.isEmpty
-                            ? "Compression failed with exit status \(status)"
-                            : "Compression failed with exit status \(status): \(errMsg)"
-                        continuation.resume(throwing: PluginExportError.exportFailed(message))
+        do {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                    process.terminationHandler = { proc in
+                        try? outputHandle.close()
+                        let status = proc.terminationStatus
+                        if status == 0 {
+                            continuation.resume()
+                        } else {
+                            let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                            let errMsg = String(data: errData, encoding: .utf8)?
+                                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                            let message = errMsg.isEmpty
+                                ? "Compression failed with exit status \(status)"
+                                : "Compression failed with exit status \(status): \(errMsg)"
+                            continuation.resume(throwing: PluginExportError.exportFailed(message))
+                        }
+                    }
+                    do {
+                        try process.run()
+                    } catch {
+                        try? outputHandle.close()
+                        continuation.resume(throwing: error)
                     }
                 }
-                do {
-                    try process.run()
-                } catch {
-                    try? outputHandle.close()
-                    continuation.resume(throwing: error)
-                }
+            } onCancel: {
+                process.terminate()
             }
-        } onCancel: {
-            process.terminate()
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
         }
     }
 }

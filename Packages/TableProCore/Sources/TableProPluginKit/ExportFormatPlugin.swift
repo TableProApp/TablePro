@@ -93,7 +93,7 @@ public struct PluginStreamHeader: Sendable {
 
 public enum PluginStreamElement: Sendable {
     case header(PluginStreamHeader)
-    case row(PluginRow)
+    case rows([PluginRow])
 }
 
 public struct ExportFormatResult: Sendable {

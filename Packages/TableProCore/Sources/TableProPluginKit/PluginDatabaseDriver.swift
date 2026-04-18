@@ -545,25 +545,23 @@ public extension PluginDatabaseDriver {
                         columnTypeNames: firstPage.columnTypeNames,
                         estimatedRowCount: nil
                     )))
-                    for row in firstPage.rows {
-                        try Task.checkCancellation()
-                        continuation.yield(.row(row))
+                    if !firstPage.rows.isEmpty {
+                        continuation.yield(.rows(firstPage.rows))
                     }
                     if firstPage.rows.count < batchSize {
                         continuation.finish()
                         return
                     }
+                    await Task.yield()
                     var offset = firstPage.rows.count
                     while true {
                         try Task.checkCancellation()
                         let page = try await fetchRows(query: query, offset: offset, limit: batchSize)
                         if page.rows.isEmpty { break }
-                        for row in page.rows {
-                            try Task.checkCancellation()
-                            continuation.yield(.row(row))
-                        }
+                        continuation.yield(.rows(page.rows))
                         offset += page.rows.count
                         if page.rows.count < batchSize { break }
+                        await Task.yield()
                     }
                     continuation.finish()
                 } catch {

@@ -64,7 +64,11 @@ public enum PluginExportUtilities {
     }
 
     public static func commitAtomicWrite(from tempURL: URL, to destination: URL) throws {
-        _ = try FileManager.default.replaceItemAt(destination, withItemAt: tempURL)
+        if FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) {
+            _ = try FileManager.default.replaceItemAt(destination, withItemAt: tempURL)
+        } else {
+            try FileManager.default.moveItem(at: tempURL, to: destination)
+        }
     }
 
     public static func rollbackAtomicWrite(at tempURL: URL) {

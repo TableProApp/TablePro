@@ -436,7 +436,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
 
         while true {
             lock.lock()
-            let cancelledBetweenResults = _isCancelled
+            let cancelledBetweenResults = _isCancelled || Task.isCancelled
             if cancelledBetweenResults { _isCancelled = false }
             lock.unlock()
             if cancelledBetweenResults {
@@ -472,16 +472,23 @@ private final class FreeTDSConnection: @unchecked Sendable {
                 headerSent = true
             }
 
+            let batchSize = 5_000
+            var batch: [PluginRow] = []
+            batch.reserveCapacity(batchSize)
+
             while true {
                 let rowCode = dbnextrow(proc)
                 if rowCode == Int32(NO_MORE_ROWS) { break }
                 if rowCode == FAIL { break }
 
                 lock.lock()
-                let cancelled = _isCancelled
+                let cancelled = _isCancelled || Task.isCancelled
                 if cancelled { _isCancelled = false }
                 lock.unlock()
                 if cancelled {
+                    if !batch.isEmpty {
+                        continuation.yield(.rows(batch))
+                    }
                     continuation.finish(throwing: CancellationError())
                     return
                 }
@@ -499,7 +506,15 @@ private final class FreeTDSConnection: @unchecked Sendable {
                         row.append(nil)
                     }
                 }
-                continuation.yield(.row(row))
+                batch.append(row)
+                if batch.count >= batchSize {
+                    continuation.yield(.rows(batch))
+                    batch.removeAll(keepingCapacity: true)
+                }
+            }
+
+            if !batch.isEmpty {
+                continuation.yield(.rows(batch))
             }
         }
 
@@ -802,12 +817,15 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         baseQuery = stripMSSQLOffsetFetch(from: baseQuery)
         let queryToRun = baseQuery
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            Task {
+            let streamTask = Task {
                 do {
                     try await conn.streamQuery(queryToRun, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }

@@ -67,8 +67,10 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
                     )
                     currentSheetRowCount = headerRowCount
                     isFirstBatch = false
-                case .row(let row):
-                    rowBatch.append(row)
+                case .rows(let rows):
+                    for row in rows {
+                        rowBatch.append(row)
+                    }
                     if rowBatch.count >= 5_000 {
                         let remaining = Self.maxRowsPerSheet - currentSheetRowCount
                         if rowBatch.count <= remaining {
@@ -155,12 +157,13 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
                 writer.finishSheet()
             }
 
-            progress.finalizeTable()
         }
 
         try await Task.detached(priority: .userInitiated) {
             try writer.write(to: destination)
         }.value
+
+        progress.finalizeTable()
 
         var warnings: [String] = []
         if didSplitSheets {

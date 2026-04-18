@@ -322,7 +322,7 @@ private actor DuckDBConnectionActor {
                 }
             }
 
-            continuation.yield(.row(rowData))
+            continuation.yield(.rows([rowData]))
         }
 
         duckdb_destroy_result(&result)

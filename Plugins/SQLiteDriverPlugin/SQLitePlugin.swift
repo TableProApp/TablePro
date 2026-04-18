@@ -251,8 +251,15 @@ private actor SQLiteConnectionActor {
             estimatedRowCount: nil
         )))
 
+        let batchSize = 5_000
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+
         while sqlite3_step(statement) == SQLITE_ROW {
             if Task.isCancelled {
+                if !batch.isEmpty {
+                    continuation.yield(.rows(batch))
+                }
                 sqlite3_finalize(statement)
                 continuation.finish(throwing: CancellationError())
                 return
@@ -279,7 +286,15 @@ private actor SQLiteConnectionActor {
                 }
             }
 
-            continuation.yield(.row(row))
+            batch.append(row)
+            if batch.count >= batchSize {
+                continuation.yield(.rows(batch))
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
         }
 
         sqlite3_finalize(statement)
@@ -856,12 +871,15 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            Task {
+            let streamTask = Task {
                 do {
                     try await self.connectionActor.streamQuery(queryToRun, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }

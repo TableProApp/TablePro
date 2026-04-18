@@ -809,7 +809,6 @@ final class MariaDBPluginConnection: @unchecked Sendable {
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
         let queue = self.queue
-        let mysql = self.mysql
 
         final class StreamState: @unchecked Sendable {
             var resultPtr: UnsafeMutablePointer<MYSQL_RES>?
@@ -894,7 +893,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     estimatedRowCount: nil
                 )))
 
-                var streamedRowCount = 0
+                let batchSize = 5_000
+                var batch: [PluginRow] = []
+                batch.reserveCapacity(batchSize)
                 while let rowPtr = mysql_fetch_row(resultPtr) {
                     if Task.isCancelled {
                         while mysql_fetch_row(resultPtr) != nil {}
@@ -929,14 +930,15 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         }
                     }
 
-                    let yieldResult = continuation.yield(.row(row))
-                    streamedRowCount += 1
-                    if streamedRowCount % 100_000 == 0 {
-                        logger.debug("[mysql-stream] yielded \(streamedRowCount) rows, yieldResult=\(String(describing: yieldResult))")
+                    batch.append(row)
+                    if batch.count >= batchSize {
+                        continuation.yield(.rows(batch))
+                        batch.removeAll(keepingCapacity: true)
                     }
                 }
-
-                logger.info("[mysql-stream] stream complete. total rows yielded: \(streamedRowCount)")
+                if !batch.isEmpty {
+                    continuation.yield(.rows(batch))
+                }
 
                 if mysql_errno(mysql) != 0 {
                     let error = self.getError()

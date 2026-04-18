@@ -697,7 +697,7 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
                 }
             }
 
-            continuation.onTermination = { _ in
+            continuation.onTermination = { @Sendable _ in
                 streamTask.cancel()
             }
         }
@@ -769,8 +769,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         )))
 
         let flatRows = BigQueryTypeMapper.flattenRows(from: firstPage, schema: schema)
-        for row in flatRows {
-            continuation.yield(.row(row))
+        if !flatRows.isEmpty {
+            continuation.yield(.rows(flatRows))
         }
 
         var pageToken = firstPage.pageToken
@@ -783,8 +783,8 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
             )
 
             let nextRows = BigQueryTypeMapper.flattenRows(from: nextPage, schema: schema)
-            for row in nextRows {
-                continuation.yield(.row(row))
+            if !nextRows.isEmpty {
+                continuation.yield(.rows(nextRows))
             }
 
             pageToken = nextPage.pageToken

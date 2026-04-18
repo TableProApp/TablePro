@@ -292,7 +292,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                     headerSent = true
                 }
 
-                continuation.yield(.row(rowValues))
+                continuation.yield(.rows([rowValues]))
             }
 
             if !headerSent {

@@ -204,10 +204,9 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         )))
 
         let rawRows = payload.results.rows ?? []
-        for rawRow in rawRows {
-            try Task.checkCancellation()
-            let row = rawRow.map(\.stringValue)
-            continuation.yield(.row(row))
+        if !rawRows.isEmpty {
+            let rows = rawRows.map { rawRow in rawRow.map(\.stringValue) }
+            continuation.yield(.rows(rows))
         }
 
         continuation.finish()

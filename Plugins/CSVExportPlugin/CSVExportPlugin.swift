@@ -4,11 +4,8 @@
 //
 
 import Foundation
-import os
 import SwiftUI
 import TableProPluginKit
-
-private let logger = Logger(subsystem: "com.TablePro", category: "CSVExportPlugin")
 
 @Observable
 final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
@@ -64,7 +61,6 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
 
             var isFirstBatch = true
             var columns: [String] = []
-            var consumedRows = 0
 
             let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
             for try await element in stream {
@@ -73,7 +69,6 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
                 switch element {
                 case .header(let header):
                     columns = header.columns
-                    logger.debug("[csv-export] header received: \(columns.count) columns")
                     if isFirstBatch && settings.includeFieldNames {
                         let headerLine = columns
                             .map { escapeCSVField($0, options: settings) }
@@ -81,13 +76,13 @@ final class CSVExportPlugin: ExportFormatPlugin, SettablePlugin {
                         try fileHandle.write(contentsOf: (headerLine + lineBreak).toUTF8Data())
                     }
                     isFirstBatch = false
-                case .row(let row):
-                    try writeCSVRow(row, options: settings, to: fileHandle)
-                    consumedRows += 1
-                    progress.incrementRow()
+                case .rows(let rows):
+                    for row in rows {
+                        try writeCSVRow(row, options: settings, to: fileHandle)
+                        progress.incrementRow()
+                    }
                 }
             }
-            logger.info("[csv-export] table \(table.qualifiedName) done. consumed \(consumedRows) rows")
 
             if index < tables.count - 1 {
                 try fileHandle.write(contentsOf: "\(lineBreak)\(lineBreak)".toUTF8Data())

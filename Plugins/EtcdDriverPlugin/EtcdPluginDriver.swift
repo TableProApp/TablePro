@@ -221,9 +221,8 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             columnTypeNames: result.columnTypeNames,
             estimatedRowCount: nil
         )))
-        for row in result.rows {
-            try Task.checkCancellation()
-            continuation.yield(.row(row))
+        if !result.rows.isEmpty {
+            continuation.yield(.rows(result.rows))
         }
         continuation.finish()
     }
@@ -252,6 +251,7 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         let response = try await client.rangeRequest(req)
         let kvs = response.kvs ?? []
+        var rows: [PluginRow] = []
 
         for kv in kvs {
             try Task.checkCancellation()
@@ -272,7 +272,11 @@ final class EtcdPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let lease = kv.lease ?? "0"
             let leaseDisplay = lease == "0" ? "" : formatLeaseHex(lease)
 
-            continuation.yield(.row([key, value, version, modRevision, createRevision, leaseDisplay]))
+            rows.append([key, value, version, modRevision, createRevision, leaseDisplay])
+        }
+
+        if !rows.isEmpty {
+            continuation.yield(.rows(rows))
         }
 
         continuation.finish()

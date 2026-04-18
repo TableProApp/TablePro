@@ -130,21 +130,19 @@ final class ExportService {
         // Observe NSProgress for UI updates
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
             let count = Int(observed.completedUnitCount)
-            let total = Int(observed.totalUnitCount)
-            Self.logger.debug("[export-progress] KVO completedUnitCount=\(count)/\(total)")
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                Self.logger.debug("[export-progress] MainActor processedRows=\(count)")
                 self.state.processedRows = count
             }
         }
         defer { observation.invalidate() }
 
         let descObservation = nsProgress.observe(\.localizedDescription) { [weak self] observed, _ in
+            let tableName = observed.localizedDescription ?? ""
             let tableIndex = progress.currentTableIndex
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.state.currentTable = observed.localizedDescription ?? ""
+                self.state.currentTable = tableName
                 self.state.currentTableIndex = tableIndex
             }
         }
@@ -178,9 +176,7 @@ final class ExportService {
             throw error
         }
 
-        let finalRows = progress.processedRows
-        Self.logger.info("[export-progress] Export done. finalRows=\(finalRows) totalRows=\(self.state.totalRows) nsProgress.completed=\(nsProgress.completedUnitCount) nsProgress.total=\(nsProgress.totalUnitCount)")
-        state.processedRows = finalRows
+        state.processedRows = progress.processedRows
 
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")
@@ -228,10 +224,11 @@ final class ExportService {
         defer { observation.invalidate() }
 
         let descObservation = nsProgress.observe(\.localizedDescription) { [weak self] observed, _ in
+            let tableName = observed.localizedDescription ?? ""
             let tableIndex = progress.currentTableIndex
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.state.currentTable = observed.localizedDescription ?? ""
+                self.state.currentTable = tableName
                 self.state.currentTableIndex = tableIndex
             }
         }

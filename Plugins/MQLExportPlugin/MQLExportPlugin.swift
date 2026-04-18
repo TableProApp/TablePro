@@ -99,26 +99,28 @@ final class MQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                     switch element {
                     case .header(let header):
                         columns = header.columns
-                    case .row(let row):
-                        var fields: [String] = []
-                        for (colIndex, column) in columns.enumerated() {
-                            guard colIndex < row.count else { continue }
-                            guard let value = row[colIndex] else { continue }
-                            let jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
-                            fields.append("\"\(PluginExportUtilities.escapeJSONString(column))\": \(jsonValue)")
-                        }
-                        documentBatch.append("  {\(fields.joined(separator: ", "))}")
+                    case .rows(let rows):
+                        for row in rows {
+                            var fields: [String] = []
+                            for (colIndex, column) in columns.enumerated() {
+                                guard colIndex < row.count else { continue }
+                                guard let value = row[colIndex] else { continue }
+                                let jsonValue = MQLExportHelpers.mqlJsonValue(for: value)
+                                fields.append("\"\(PluginExportUtilities.escapeJSONString(column))\": \(jsonValue)")
+                            }
+                            documentBatch.append("  {\(fields.joined(separator: ", "))}")
 
-                        if documentBatch.count >= batchSize {
-                            try writeMQLInsertMany(
-                                collection: table.name,
-                                documents: documentBatch,
-                                to: fileHandle
-                            )
-                            documentBatch.removeAll(keepingCapacity: true)
-                        }
+                            if documentBatch.count >= batchSize {
+                                try writeMQLInsertMany(
+                                    collection: table.name,
+                                    documents: documentBatch,
+                                    to: fileHandle
+                                )
+                                documentBatch.removeAll(keepingCapacity: true)
+                            }
 
-                        progress.incrementRow()
+                            progress.incrementRow()
+                        }
                     }
                 }
 

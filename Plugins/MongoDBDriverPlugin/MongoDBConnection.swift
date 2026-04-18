@@ -1144,7 +1144,7 @@ private extension MongoDBConnection {
                 guard let value = dict[column] else { return nil }
                 return BsonDocumentFlattener.stringValue(for: value)
             }
-            continuation.yield(.row(row))
+            continuation.yield(.rows([row]))
         }
 
         var error = bson_error_t()

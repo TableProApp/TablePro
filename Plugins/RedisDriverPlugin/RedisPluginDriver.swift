@@ -458,12 +458,15 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            Task {
+            let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }
@@ -491,9 +494,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 columnTypeNames: result.columnTypeNames,
                 estimatedRowCount: nil
             )))
-            for row in result.rows {
-                try Task.checkCancellation()
-                continuation.yield(.row(row))
+            if !result.rows.isEmpty {
+                continuation.yield(.rows(result.rows))
             }
             continuation.finish()
         }
@@ -592,6 +594,8 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     previewReplies = try await conn.executePipeline(previewCommands)
                 }
 
+                var rowBatch: [PluginRow] = []
+                rowBatch.reserveCapacity(batchKeys.count)
                 for (i, key) in batchKeys.enumerated() {
                     let ttlStr = String(ttlValues[i])
                     let pipelineIndex = previewCommandIndices[i]
@@ -601,7 +605,10 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                     } else {
                         preview = nil
                     }
-                    continuation.yield(.row([key, typeNames[i], ttlStr, preview]))
+                    rowBatch.append([key, typeNames[i], ttlStr, preview])
+                }
+                if !rowBatch.isEmpty {
+                    continuation.yield(.rows(rowBatch))
                 }
 
                 batchStart = batchEnd

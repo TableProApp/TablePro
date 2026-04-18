@@ -621,9 +621,8 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                                 columnTypeNames: result.columnTypeNames
                             )))
                         }
-                        for row in result.rows {
-                            if Task.isCancelled { break }
-                            continuation.yield(.row(row))
+                        if !result.rows.isEmpty {
+                            continuation.yield(.rows(result.rows))
                         }
                         continuation.finish()
                     } catch {

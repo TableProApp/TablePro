@@ -466,13 +466,13 @@ struct ExportDialog: View {
         let name = config.fileName.trimmingCharacters(in: .whitespaces)
 
         if name.isEmpty {
-            return "Filename cannot be empty"
+            return String(localized: "Filename cannot be empty")
         }
 
         // Invalid filesystem characters (covers macOS, Windows, and Linux)
         let invalidChars = CharacterSet(charactersIn: "/\\:*?\"<>|")
         if name.rangeOfCharacter(from: invalidChars) != nil {
-            return "Filename contains invalid characters: / \\ : * ? \" < > |"
+            return String(localized: "Filename contains invalid characters: / \\ : * ? \" < > |")
         }
 
         // Prevent path traversal attempts and special directory names
@@ -480,18 +480,18 @@ struct ExportDialog: View {
             name.hasPrefix("../") || name.hasPrefix("..\\") ||
             name.hasSuffix("/..") || name.hasSuffix("\\..") ||
             name.contains("/../") || name.contains("\\..\\") {
-            return "Filename cannot be '.' or '..' or contain path traversal"
+            return String(localized: "Filename cannot be '.' or '..' or contain path traversal")
         }
 
         // Check for Windows reserved device names (case-insensitive)
         let baseName = name.components(separatedBy: ".").first ?? name
         if Self.windowsReservedNames.contains(baseName.uppercased()) {
-            return "'\(baseName)' is a reserved Windows device name"
+            return String(format: String(localized: "'%@' is a reserved Windows device name"), baseName)
         }
 
         // Check filename length (255 bytes is common limit on most filesystems)
         if name.utf8.count > 255 {
-            return "Filename is too long (max 255 bytes)"
+            return String(localized: "Filename is too long (max 255 bytes)")
         }
 
         return nil

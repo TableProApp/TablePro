@@ -789,7 +789,7 @@ private actor CassandraConnectionActor {
                             rowData.append(nil)
                         }
                     }
-                    continuation.yield(.row(rowData))
+                    continuation.yield(.rows([rowData]))
                 }
                 cass_iterator_free(iterator)
             }

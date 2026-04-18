@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 public final class PluginExportProgress: @unchecked Sendable {
     private let progress: Progress
@@ -7,7 +6,6 @@ public final class PluginExportProgress: @unchecked Sendable {
     private var internalRowCount: Int = 0
     private var _currentTableIndex: Int = 0
     private let lock = NSLock()
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportProgress")
 
     public init(progress: Progress) {
         self.progress = progress
@@ -34,9 +32,6 @@ public final class PluginExportProgress: @unchecked Sendable {
         lock.unlock()
         if shouldNotify {
             progress.completedUnitCount = Int64(count)
-            if count % 100_000 == 0 {
-                Self.logger.debug("[export-progress] incrementRow milestone: \(count)")
-            }
         }
     }
 
@@ -44,7 +39,6 @@ public final class PluginExportProgress: @unchecked Sendable {
         lock.lock()
         let count = internalRowCount
         lock.unlock()
-        Self.logger.info("[export-progress] finalizeTable: internalRowCount=\(count)")
         progress.completedUnitCount = Int64(count)
     }
 

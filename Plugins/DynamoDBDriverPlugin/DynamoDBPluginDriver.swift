@@ -608,7 +608,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
                 }
             }
 
-            continuation.onTermination = { _ in
+            continuation.onTermination = { @Sendable _ in
                 streamTask.cancel()
             }
         }
@@ -676,8 +676,8 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
                 }
 
                 let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
-                for row in rows {
-                    continuation.yield(.row(row))
+                if !rows.isEmpty {
+                    continuation.yield(.rows(rows))
                 }
             }
 
@@ -749,8 +749,8 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
             if !items.isEmpty {
                 let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
-                for row in rows {
-                    continuation.yield(.row(row))
+                if !rows.isEmpty {
+                    continuation.yield(.rows(rows))
                 }
             }
 
@@ -800,7 +800,7 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
             let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
             for row in rows {
-                continuation.yield(.row(row))
+                continuation.yield(.rows([row]))
             }
         }
 
@@ -827,8 +827,8 @@ internal final class DynamoDBPluginDriver: PluginDatabaseDriver, @unchecked Send
 
             if !items.isEmpty {
                 let rows = DynamoDBItemFlattener.flatten(items: items, columns: columns)
-                for row in rows {
-                    continuation.yield(.row(row))
+                if !rows.isEmpty {
+                    continuation.yield(.rows(rows))
                 }
             }
 

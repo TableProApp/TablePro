@@ -239,12 +239,15 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let queryToRun = effectiveQuery
-            Task {
+            let streamTask = Task {
                 do {
                     try await conn.streamQuery(queryToRun, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }

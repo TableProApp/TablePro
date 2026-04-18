@@ -452,6 +452,14 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
         let streamState = StreamState()
 
+        stateLock.lock()
+        let connForStream = self.conn
+        stateLock.unlock()
+
+        streamState.lock.lock()
+        streamState.conn = connForStream
+        streamState.lock.unlock()
+
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
                 queue.async {
@@ -472,18 +480,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
             }
 
             queue.async { [self] in
-                stateLock.lock()
-                let conn = self.conn
-                stateLock.unlock()
-
-                guard !isShuttingDown, let conn else {
+                guard !isShuttingDown, let conn = connForStream else {
                     continuation.finish(throwing: LibPQPluginError.notConnected)
                     return
                 }
-
-                streamState.lock.lock()
-                streamState.conn = conn
-                streamState.lock.unlock()
 
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
@@ -509,6 +509,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
                 var headerSent = false
                 var columnOids: [UInt32] = []
+                let batchSize = 5_000
+                var batch: [PluginRow] = []
+                batch.reserveCapacity(batchSize)
 
                 while let result = PQgetResult(conn) {
                     let status = PQresultStatus(result)
@@ -567,9 +570,16 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         }
 
                         PQclear(result)
-                        continuation.yield(.row(row))
+                        batch.append(row)
+                        if batch.count >= batchSize {
+                            continuation.yield(.rows(batch))
+                            batch.removeAll(keepingCapacity: true)
+                        }
 
                         if Task.isCancelled {
+                            if !batch.isEmpty {
+                                continuation.yield(.rows(batch))
+                            }
                             let cancelObj = PQgetCancel(conn)
                             if let cancelObj {
                                 var errbuf = [CChar](repeating: 0, count: 256)
@@ -602,6 +612,10 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         continuation.finish(throwing: error)
                         return
                     }
+                }
+
+                if !batch.isEmpty {
+                    continuation.yield(.rows(batch))
                 }
 
                 streamState.lock.lock()

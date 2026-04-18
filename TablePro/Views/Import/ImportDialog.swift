@@ -413,6 +413,10 @@ struct ImportDialog: View {
                     importResult = result
                     showSuccessDialog = true
                 }
+            } catch is PluginImportCancellationError {
+                await MainActor.run {
+                    showProgressDialog = false
+                }
             } catch {
                 await MainActor.run {
                     showProgressDialog = false

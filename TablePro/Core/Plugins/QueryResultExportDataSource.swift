@@ -33,15 +33,15 @@ final class QueryResultExportDataSource: PluginExportDataSource, @unchecked Send
     func streamRows(table: String, databaseName: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let columns = self.columns
         let columnTypeNames = self.columnTypeNames
-        let rows = self.rows
+        let snapshot = self.rows
         return AsyncThrowingStream { continuation in
             continuation.yield(.header(PluginStreamHeader(
                 columns: columns,
                 columnTypeNames: columnTypeNames,
-                estimatedRowCount: rows.count
+                estimatedRowCount: snapshot.count
             )))
-            for row in rows {
-                continuation.yield(.row(row))
+            if !snapshot.isEmpty {
+                continuation.yield(.rows(snapshot))
             }
             continuation.finish()
         }

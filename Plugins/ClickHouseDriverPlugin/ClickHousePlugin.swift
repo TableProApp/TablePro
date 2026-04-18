@@ -1116,12 +1116,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            Task {
+            let streamTask = Task {
                 do {
                     try await self.performStreamRows(query: query, continuation: continuation)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                streamTask.cancel()
             }
         }
     }
@@ -1171,6 +1174,10 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             throw ClickHouseError(message: body.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
+        let batchSize = 5_000
+        var batch: [PluginRow] = []
+        batch.reserveCapacity(batchSize)
+
         for try await line in bytes.lines {
             try Task.checkCancellation()
 
@@ -1204,7 +1211,15 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 }
             }
 
-            continuation.yield(.row(row))
+            batch.append(row)
+            if batch.count >= batchSize {
+                continuation.yield(.rows(batch))
+                batch.removeAll(keepingCapacity: true)
+            }
+        }
+
+        if !batch.isEmpty {
+            continuation.yield(.rows(batch))
         }
 
         continuation.finish()

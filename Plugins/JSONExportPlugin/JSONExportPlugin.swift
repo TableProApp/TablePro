@@ -70,48 +70,50 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
                 case .header(let header):
                     columns = header.columns
                     columnTypeNames = header.columnTypeNames
-                case .row(let row):
-                    let rowPrefix = prettyPrint ? "\(indent)\(indent)" : ""
-                    var rowString = ""
+                case .rows(let rows):
+                    for row in rows {
+                        let rowPrefix = prettyPrint ? "\(indent)\(indent)" : ""
+                        var rowString = ""
 
-                    if hasWrittenRow {
-                        rowString += ",\(newline)"
-                    }
+                        if hasWrittenRow {
+                            rowString += ",\(newline)"
+                        }
 
-                    rowString += rowPrefix
-                    rowString += "{"
+                        rowString += rowPrefix
+                        rowString += "{"
 
-                    if let columns {
-                        var isFirstField = true
-                        for (colIndex, column) in columns.enumerated() {
-                            if colIndex < row.count {
-                                let value = row[colIndex]
-                                if settings.includeNullValues || value != nil {
-                                    if !isFirstField {
-                                        rowString += ", "
+                        if let columns {
+                            var isFirstField = true
+                            for (colIndex, column) in columns.enumerated() {
+                                if colIndex < row.count {
+                                    let value = row[colIndex]
+                                    if settings.includeNullValues || value != nil {
+                                        if !isFirstField {
+                                            rowString += ", "
+                                        }
+                                        isFirstField = false
+
+                                        let escapedKey = PluginExportUtilities.escapeJSONString(column)
+                                        let colTypeName = colIndex < (columnTypeNames ?? []).count
+                                            ? (columnTypeNames ?? [])[colIndex]
+                                            : ""
+                                        let jsonValue = formatJSONValue(
+                                            value,
+                                            columnTypeName: colTypeName,
+                                            preserveAsString: settings.preserveAllAsStrings
+                                        )
+                                        rowString += "\"\(escapedKey)\": \(jsonValue)"
                                     }
-                                    isFirstField = false
-
-                                    let escapedKey = PluginExportUtilities.escapeJSONString(column)
-                                    let colTypeName = colIndex < (columnTypeNames ?? []).count
-                                        ? (columnTypeNames ?? [])[colIndex]
-                                        : ""
-                                    let jsonValue = formatJSONValue(
-                                        value,
-                                        columnTypeName: colTypeName,
-                                        preserveAsString: settings.preserveAllAsStrings
-                                    )
-                                    rowString += "\"\(escapedKey)\": \(jsonValue)"
                                 }
                             }
                         }
+
+                        rowString += "}"
+
+                        try fileHandle.write(contentsOf: rowString.toUTF8Data())
+                        hasWrittenRow = true
+                        progress.incrementRow()
                     }
-
-                    rowString += "}"
-
-                    try fileHandle.write(contentsOf: rowString.toUTF8Data())
-                    hasWrittenRow = true
-                    progress.incrementRow()
                 }
             }
 
