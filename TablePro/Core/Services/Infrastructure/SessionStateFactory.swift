@@ -35,6 +35,10 @@ enum SessionStateFactory {
         pendingSessionStates.removeValue(forKey: payloadId)
     }
 
+    static func removePending(for payloadId: UUID) {
+        pendingSessionStates.removeValue(forKey: payloadId)
+    }
+
     static func create(
         connection: DatabaseConnection,
         payload: EditorTabPayload?

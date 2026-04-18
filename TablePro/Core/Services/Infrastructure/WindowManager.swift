@@ -72,7 +72,7 @@ internal final class WindowManager {
                 "[open] WindowManager.openTab failed: controller has no window payloadId=\(payload.id, privacy: .public)"
             )
             // Clean up the pending state we registered above so it doesn't leak.
-            _ = SessionStateFactory.consumePending(for: payload.id)
+            SessionStateFactory.removePending(for: payload.id)
             return
         }
 

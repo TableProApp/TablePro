@@ -160,7 +160,8 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     /// toolbar from connect until they cmd-tab away and back (which fires
     /// `windowDidBecomeKey` and re-attaches via the `!==` check there).
     private func startObservingToolbar(window: NSWindow, owner: MainWindowToolbar) {
-        guard toolbarKVO == nil else { return }
+        toolbarKVO?.invalidate()
+        toolbarKVO = nil
         toolbarKVO = window.observe(\.toolbar, options: [.new]) { [weak self] window, _ in
             // KVO callbacks for AppKit properties run on the main thread; safe
             // to assume isolation. Guard re-checks owner since reassigning

@@ -19,6 +19,10 @@ import Testing
 @Suite("WindowTabGrouping")
 @MainActor
 struct WindowTabGroupingTests {
+    init() {
+        AppSettingsManager.shared.tabs.groupAllConnectionTabs = false
+    }
+
     @Test("tabbingIdentifier produces a connection-specific identifier")
     func tabbingIdentifierUsesConnectionId() {
         let connectionId = UUID()

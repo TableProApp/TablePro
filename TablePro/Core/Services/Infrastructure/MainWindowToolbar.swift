@@ -82,13 +82,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
     private static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
 
-    // MARK: - Factory
-
-    internal func makeToolbar() -> NSToolbar {
-        Self.lifecycleLogger.info("[open] MainWindowToolbar.makeToolbar returning managed instance")
-        return managedToolbar
-    }
-
     // MARK: - NSToolbarDelegate
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
