@@ -58,7 +58,7 @@ struct ExportState {
 
 @MainActor @Observable
 final class ExportService {
-    static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
+    private static let logger = Logger(subsystem: "com.TablePro", category: "ExportService")
 
     var state = ExportState()
 
@@ -78,20 +78,7 @@ final class ExportService {
 
     // MARK: - Cancellation
 
-    private let isCancelledLock = NSLock()
-    private var _isCancelled: Bool = false
-    var isCancelled: Bool {
-        get {
-            isCancelledLock.lock()
-            defer { isCancelledLock.unlock() }
-            return _isCancelled
-        }
-        set {
-            isCancelledLock.lock()
-            _isCancelled = newValue
-            isCancelledLock.unlock()
-        }
-    }
+    var isCancelled: Bool = false
 
     func cancelExport() {
         isCancelled = true
@@ -156,9 +143,11 @@ final class ExportService {
         defer { observation.invalidate() }
 
         let descObservation = nsProgress.observe(\.localizedDescription) { [weak self] observed, _ in
+            let tableIndex = progress.currentTableIndex
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.state.currentTable = observed.localizedDescription ?? ""
+                self.state.currentTableIndex = tableIndex
             }
         }
         defer { descObservation.invalidate() }
@@ -277,6 +266,15 @@ final class ExportService {
 
     // MARK: - Row Count Fetching
 
+    private func qualifiedTableRef(for table: ExportTableItem, driver: DatabaseDriver) -> String {
+        if table.databaseName.isEmpty {
+            return driver.quoteIdentifier(table.name)
+        }
+        let quotedDb = driver.quoteIdentifier(table.databaseName)
+        let quotedTable = driver.quoteIdentifier(table.name)
+        return "\(quotedDb).\(quotedTable)"
+    }
+
     private func fetchTotalRowCount(for tables: [ExportTableItem], driver: DatabaseDriver) async -> Int {
         guard !tables.isEmpty else { return 0 }
 
@@ -296,7 +294,7 @@ final class ExportService {
             }
             if failedCount > 0 {
                 Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-                state.statusMessage = "Progress estimated (\(failedCount) table\(failedCount > 1 ? "s" : "") could not be counted)"
+                state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
             }
             return total
         }
@@ -308,14 +306,7 @@ final class ExportService {
             let batch = tables[chunkStart ..< end]
 
             let unionParts = batch.map { table -> String in
-                let tableRef: String
-                if table.databaseName.isEmpty {
-                    tableRef = driver.quoteIdentifier(table.name)
-                } else {
-                    let quotedDb = driver.quoteIdentifier(table.databaseName)
-                    let quotedTable = driver.quoteIdentifier(table.name)
-                    tableRef = "\(quotedDb).\(quotedTable)"
-                }
+                let tableRef = qualifiedTableRef(for: table, driver: driver)
                 return "SELECT COUNT(*) AS c FROM \(tableRef)"
             }
             let batchQuery = unionParts.joined(separator: " UNION ALL ")
@@ -330,14 +321,7 @@ final class ExportService {
             } catch {
                 for table in batch {
                     do {
-                        let tableRef: String
-                        if table.databaseName.isEmpty {
-                            tableRef = driver.quoteIdentifier(table.name)
-                        } else {
-                            let quotedDb = driver.quoteIdentifier(table.databaseName)
-                            let quotedTable = driver.quoteIdentifier(table.name)
-                            tableRef = "\(quotedDb).\(quotedTable)"
-                        }
+                        let tableRef = qualifiedTableRef(for: table, driver: driver)
                         let result = try await driver.execute(query: "SELECT COUNT(*) FROM \(tableRef)")
                         if let countStr = result.rows.first?.first, let count = Int(countStr ?? "0") {
                             total += count
@@ -352,7 +336,7 @@ final class ExportService {
 
         if failedCount > 0 {
             Self.logger.warning("\(failedCount) table(s) failed row count - progress indicator may be inaccurate")
-            state.statusMessage = "Progress estimated (\(failedCount) table\(failedCount > 1 ? "s" : "") could not be counted)"
+            state.statusMessage = String(format: String(localized: "Progress estimated (%d table(s) could not be counted)"), failedCount)
         }
         return total
     }

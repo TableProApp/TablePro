@@ -130,10 +130,12 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
                         convertNullToEmpty: settings.convertNullToEmpty
                     )
                     didSplitSheets = true
+                    currentSheetRowCount = headerRowCount
                     if !overflow.isEmpty {
                         autoreleasepool {
                             writer.addRows(overflow, convertNullToEmpty: settings.convertNullToEmpty)
                         }
+                        currentSheetRowCount += overflow.count
                     }
                 }
                 for _ in rowBatch {

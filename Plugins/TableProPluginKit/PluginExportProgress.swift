@@ -4,6 +4,7 @@ public final class PluginExportProgress: @unchecked Sendable {
     private let progress: Progress
     private let updateInterval: Int = 1_000
     private var internalRowCount: Int = 0
+    private var _currentTableIndex: Int = 0
     private let lock = NSLock()
 
     public init(progress: Progress) {
@@ -12,6 +13,15 @@ public final class PluginExportProgress: @unchecked Sendable {
 
     public func setCurrentTable(_ name: String, index: Int) {
         progress.localizedDescription = name
+        lock.lock()
+        _currentTableIndex = index
+        lock.unlock()
+    }
+
+    public var currentTableIndex: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _currentTableIndex
     }
 
     public func incrementRow() {

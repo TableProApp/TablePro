@@ -443,8 +443,34 @@ final class LibPQPluginConnection: @unchecked Sendable {
 
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
+        let queue = self.queue
+
+        final class StreamState: @unchecked Sendable {
+            var conn: OpaquePointer?
+            var drained = false
+            let lock = NSLock()
+        }
+        let streamState = StreamState()
 
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            continuation.onTermination = { @Sendable _ in
+                queue.async {
+                    streamState.lock.lock()
+                    let conn = streamState.conn
+                    let alreadyDrained = streamState.drained
+                    streamState.drained = true
+                    streamState.lock.unlock()
+                    guard let conn, !alreadyDrained else { return }
+                    let cancelObj = PQgetCancel(conn)
+                    if let cancelObj {
+                        var errbuf = [CChar](repeating: 0, count: 256)
+                        PQcancel(cancelObj, &errbuf, Int32(errbuf.count))
+                        PQfreeCancel(cancelObj)
+                    }
+                    while let res = PQgetResult(conn) { PQclear(res) }
+                }
+            }
+
             queue.async { [self] in
                 stateLock.lock()
                 let conn = self.conn
@@ -455,18 +481,27 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     return
                 }
 
+                streamState.lock.lock()
+                streamState.conn = conn
+                streamState.lock.unlock()
+
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
                 }
 
                 if sendOk == 0 {
+                    streamState.lock.lock()
+                    streamState.drained = true
+                    streamState.lock.unlock()
                     continuation.finish(throwing: getError(from: conn))
                     return
                 }
 
                 if PQsetSingleRowMode(conn) == 0 {
-                    // Drain any pending results before finishing
                     while let res = PQgetResult(conn) { PQclear(res) }
+                    streamState.lock.lock()
+                    streamState.drained = true
+                    streamState.lock.unlock()
                     continuation.finish(throwing: LibPQPluginError(
                         message: "Failed to enter single-row mode", sqlState: nil, detail: nil))
                     return
@@ -542,6 +577,9 @@ final class LibPQPluginConnection: @unchecked Sendable {
                                 PQfreeCancel(cancelObj)
                             }
                             while let res = PQgetResult(conn) { PQclear(res) }
+                            streamState.lock.lock()
+                            streamState.drained = true
+                            streamState.lock.unlock()
                             continuation.finish(throwing: CancellationError())
                             return
                         }
@@ -558,11 +596,17 @@ final class LibPQPluginConnection: @unchecked Sendable {
                         let error = getResultError(from: result)
                         PQclear(result)
                         while let res = PQgetResult(conn) { PQclear(res) }
+                        streamState.lock.lock()
+                        streamState.drained = true
+                        streamState.lock.unlock()
                         continuation.finish(throwing: error)
                         return
                     }
                 }
 
+                streamState.lock.lock()
+                streamState.drained = true
+                streamState.lock.unlock()
                 continuation.finish()
             }
         }

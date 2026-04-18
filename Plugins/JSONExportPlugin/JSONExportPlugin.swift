@@ -147,8 +147,11 @@ final class JSONExportPlugin: ExportFormatPlugin, SettablePlugin {
 
         let isNumericCol = isNumericColumnType(columnTypeName)
 
-        if isNumericCol && isValidIntegerLiteral(val), let intVal = Int(val) {
-            return String(intVal)
+        if isNumericCol && isValidIntegerLiteral(val) {
+            if let intVal = Int(val) {
+                return String(intVal)
+            }
+            return val
         }
         if isNumericCol, let doubleVal = Double(val), !val.contains("e"), !val.contains("E") {
             let jsMaxSafeInteger = 9_007_199_254_740_991.0

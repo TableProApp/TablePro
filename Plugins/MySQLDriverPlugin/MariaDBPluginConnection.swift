@@ -808,8 +808,30 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
     func streamQuery(_ query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
+        let queue = self.queue
+        let mysql = self.mysql
+
+        final class StreamState: @unchecked Sendable {
+            var resultPtr: UnsafeMutablePointer<MYSQL_RES>?
+            var drained = false
+            let lock = NSLock()
+        }
+        let streamState = StreamState()
 
         return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            continuation.onTermination = { @Sendable _ in
+                queue.async {
+                    streamState.lock.lock()
+                    let ptr = streamState.resultPtr
+                    let alreadyDrained = streamState.drained
+                    streamState.drained = true
+                    streamState.lock.unlock()
+                    guard let resultPtr = ptr, !alreadyDrained else { return }
+                    while mysql_fetch_row(resultPtr) != nil {}
+                    mysql_free_result(resultPtr)
+                }
+            }
+
             queue.async { [self] in
                 guard !isShuttingDown, let mysql = self.mysql else {
                     continuation.finish(throwing: MariaDBPluginError.notConnected)
@@ -836,6 +858,10 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     }
                     return
                 }
+
+                streamState.lock.lock()
+                streamState.resultPtr = resultPtr
+                streamState.lock.unlock()
 
                 let numFields = Int(mysql_num_fields(resultPtr))
                 var columns: [String] = []
@@ -871,6 +897,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                 while let rowPtr = mysql_fetch_row(resultPtr) {
                     if Task.isCancelled {
                         while mysql_fetch_row(resultPtr) != nil {}
+                        streamState.lock.lock()
+                        streamState.drained = true
+                        streamState.lock.unlock()
                         mysql_free_result(resultPtr)
                         continuation.finish(throwing: CancellationError())
                         return
@@ -904,11 +933,17 @@ final class MariaDBPluginConnection: @unchecked Sendable {
 
                 if mysql_errno(mysql) != 0 {
                     let error = self.getError()
+                    streamState.lock.lock()
+                    streamState.drained = true
+                    streamState.lock.unlock()
                     mysql_free_result(resultPtr)
                     continuation.finish(throwing: error)
                     return
                 }
 
+                streamState.lock.lock()
+                streamState.drained = true
+                streamState.lock.unlock()
                 mysql_free_result(resultPtr)
                 continuation.finish()
             }
