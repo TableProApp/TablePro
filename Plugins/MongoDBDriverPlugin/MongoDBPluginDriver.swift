@@ -611,7 +611,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
                 database: db, collection: collection, pipeline: pipeline
             )
         default:
-            return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+            return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
                 Task {
                     do {
                         let result = try await self.execute(query: query)

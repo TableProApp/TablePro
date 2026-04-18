@@ -801,7 +801,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         baseQuery = stripMSSQLOffsetFetch(from: baseQuery)
         let queryToRun = baseQuery
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             Task {
                 do {
                     try await conn.streamQuery(queryToRun, continuation: continuation)

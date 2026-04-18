@@ -8023,6 +8023,9 @@
         }
       }
     },
+    "Compression failed with exit status %d" : {
+
+    },
     "Config Host" : {
       "localizations" : {
         "tr" : {
@@ -9321,6 +9324,9 @@
           }
         }
       }
+    },
+    "Could not create destination file" : {
+
     },
     "Could not fetch plugin registry" : {
       "localizations" : {
@@ -10930,6 +10936,9 @@
           }
         }
       }
+    },
+    "Decompression failed with exit status %d" : {
+
     },
     "Decrease font size" : {
       "localizations" : {
@@ -17139,6 +17148,9 @@
           }
         }
       }
+    },
+    "gzip executable not found" : {
+
     },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
       "localizations" : {
@@ -27198,6 +27210,9 @@
           }
         }
       }
+    },
+    "Progress estimated (%d table(s) could not be counted)" : {
+
     },
     "Project ID" : {
       "localizations" : {

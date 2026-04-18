@@ -237,7 +237,7 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         effectiveQuery = stripOracleOffsetFetch(from: effectiveQuery)
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let queryToRun = effectiveQuery
             Task {
                 do {

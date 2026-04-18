@@ -129,9 +129,13 @@ final class ExportService {
 
         // Observe NSProgress for UI updates
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            let count = Int(observed.completedUnitCount)
+            let total = Int(observed.totalUnitCount)
+            Self.logger.debug("[export-progress] KVO completedUnitCount=\(count)/\(total)")
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.state.processedRows = Int(observed.completedUnitCount)
+                Self.logger.debug("[export-progress] MainActor processedRows=\(count)")
+                self.state.processedRows = count
             }
         }
         defer { observation.invalidate() }
@@ -174,7 +178,9 @@ final class ExportService {
             throw error
         }
 
-        state.processedRows = progress.processedRows
+        let finalRows = progress.processedRows
+        Self.logger.info("[export-progress] Export done. finalRows=\(finalRows) totalRows=\(self.state.totalRows) nsProgress.completed=\(nsProgress.completedUnitCount) nsProgress.total=\(nsProgress.totalUnitCount)")
+        state.processedRows = finalRows
 
         if !result.warnings.isEmpty {
             state.warningMessage = result.warnings.joined(separator: "\n")

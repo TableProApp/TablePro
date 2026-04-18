@@ -616,7 +616,7 @@ final class MongoDBConnection: @unchecked Sendable {
         let queue = self.queue
         let streamState = MongoStreamState()
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
                 queue.async {
                     streamState.lock.lock()
@@ -699,7 +699,7 @@ final class MongoDBConnection: @unchecked Sendable {
         let queue = self.queue
         let streamState = MongoStreamState()
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
                 queue.async {
                     streamState.lock.lock()

@@ -452,7 +452,7 @@ final class LibPQPluginConnection: @unchecked Sendable {
         }
         let streamState = StreamState()
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
                 queue.async {
                     streamState.lock.lock()

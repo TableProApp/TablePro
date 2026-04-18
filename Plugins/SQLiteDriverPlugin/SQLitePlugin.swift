@@ -855,7 +855,7 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let queryToRun = String(query)
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             Task {
                 do {
                     try await self.connectionActor.streamQuery(queryToRun, continuation: continuation)

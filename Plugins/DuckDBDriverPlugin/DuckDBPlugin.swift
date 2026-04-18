@@ -705,7 +705,7 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let baseQuery = stripLimitOffset(from: query)
         let actor = connectionActor
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             Task {
                 do {
                     try await actor.streamQuery(baseQuery, continuation: continuation)

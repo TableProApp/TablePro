@@ -944,7 +944,7 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         let cql = stripTrailingSemicolon(query)
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             let streamTask = Task {
                 do {
                     try await self.connectionActor.streamQuery(cql, continuation: continuation)

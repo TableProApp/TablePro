@@ -465,7 +465,7 @@ public extension PluginDatabaseDriver {
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
-        AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             Task {
                 do {
                     let batchSize = 1_000

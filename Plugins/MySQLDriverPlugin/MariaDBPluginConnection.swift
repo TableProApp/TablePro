@@ -818,7 +818,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
         let streamState = StreamState()
 
-        return AsyncThrowingStream(bufferingPolicy: .bufferingOldest(512)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
             continuation.onTermination = { @Sendable _ in
                 queue.async {
                     streamState.lock.lock()
@@ -894,6 +894,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                     estimatedRowCount: nil
                 )))
 
+                var streamedRowCount = 0
                 while let rowPtr = mysql_fetch_row(resultPtr) {
                     if Task.isCancelled {
                         while mysql_fetch_row(resultPtr) != nil {}
@@ -928,8 +929,14 @@ final class MariaDBPluginConnection: @unchecked Sendable {
                         }
                     }
 
-                    continuation.yield(.row(row))
+                    let yieldResult = continuation.yield(.row(row))
+                    streamedRowCount += 1
+                    if streamedRowCount % 100_000 == 0 {
+                        logger.debug("[mysql-stream] yielded \(streamedRowCount) rows, yieldResult=\(String(describing: yieldResult))")
+                    }
                 }
+
+                logger.info("[mysql-stream] stream complete. total rows yielded: \(streamedRowCount)")
 
                 if mysql_errno(mysql) != 0 {
                     let error = self.getError()
