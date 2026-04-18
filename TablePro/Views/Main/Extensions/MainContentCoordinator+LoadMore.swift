@@ -19,11 +19,14 @@ extension MainContentCoordinator {
             try? driver.cancelQuery()
         }
         toolbarState.setExecuting(false)
-        guard let idx = tabManager.selectedTabIndex else { return }
-        var tab = tabManager.tabs[idx]
-        tab.isExecuting = false
-        tab.pagination.isLoadingMore = false
-        tabManager.tabs[idx] = tab
+        for idx in tabManager.tabs.indices {
+            if tabManager.tabs[idx].isExecuting || tabManager.tabs[idx].pagination.isLoadingMore {
+                var tab = tabManager.tabs[idx]
+                tab.isExecuting = false
+                tab.pagination.isLoadingMore = false
+                tabManager.tabs[idx] = tab
+            }
+        }
     }
 
     // MARK: - Load More Rows
@@ -59,7 +62,12 @@ extension MainContentCoordinator {
 
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    guard capturedGeneration == queryGeneration else { return }
+                    guard capturedGeneration == queryGeneration else {
+                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                            tabManager.tabs[idx].pagination.isLoadingMore = false
+                        }
+                        return
+                    }
                     guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
                     var tab = tabManager.tabs[idx]
@@ -72,7 +80,9 @@ extension MainContentCoordinator {
                         tab.pagination.baseQueryForMore = nil
                     }
                     tabManager.tabs[idx] = tab
-                    currentQueryTask = nil
+                    if capturedGeneration == queryGeneration {
+                        currentQueryTask = nil
+                    }
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -191,7 +201,9 @@ extension MainContentCoordinator {
                         tabManager.tabs[idx].pagination.isLoadingMore = false
                     }
                     toolbarState.setExecuting(false)
-                    currentQueryTask = nil
+                    if capturedGeneration == queryGeneration {
+                        currentQueryTask = nil
+                    }
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -200,7 +212,9 @@ extension MainContentCoordinator {
                         tabManager.tabs[idx].pagination.isLoadingMore = false
                     }
                     toolbarState.setExecuting(false)
-                    currentQueryTask = nil
+                    if capturedGeneration == queryGeneration {
+                        currentQueryTask = nil
+                    }
                     Self.logger.error("Fetch all failed: \(error.localizedDescription, privacy: .public)")
                 }
             }

@@ -1171,7 +1171,10 @@ final class MainContentCoordinator {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].isExecuting = false
+                        var tab = tabManager.tabs[idx]
+                        tab.isExecuting = false
+                        tab.pagination.isLoadingMore = false
+                        tabManager.tabs[idx] = tab
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
@@ -1261,6 +1264,20 @@ final class MainContentCoordinator {
         return ColumnType.parseEnumValues(from: "ENUM(\(valuesString))")
     }
 
+    // MARK: - SQL Helpers
+
+    static func stripTrailingOrderBy(from sql: String) -> String {
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nsString = trimmed as NSString
+        let pattern = "\\s+ORDER\\s+BY\\s+(?![^(]*\\))[^)]*$"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return trimmed
+        }
+        let range = NSRange(location: 0, length: nsString.length)
+        return regex.stringByReplacingMatches(in: trimmed, range: range, withTemplate: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     // MARK: - SQL Parsing
 
     func extractTableName(from sql: String) -> String? {
@@ -1332,7 +1349,9 @@ final class MainContentCoordinator {
                 let columnName = tab.resultColumns[columnIndex]
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.query
-                let orderQuery = "\(baseQuery) ORDER BY \(columnName) \(direction)"
+                let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
+                let quotedColumn = "`\(columnName.replacingOccurrences(of: "`", with: "``"))`"
+                let orderQuery = "\(strippedQuery) ORDER BY \(quotedColumn) \(direction)"
                 tabManager.tabs[tabIndex].sortState = currentSort
                 tabManager.tabs[tabIndex].hasUserInteraction = true
                 tabManager.tabs[tabIndex].pagination.resetLoadMore()

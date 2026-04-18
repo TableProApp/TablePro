@@ -527,23 +527,27 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
-        let result = try await execute(query: query)
-        let hasMore: Bool
-        let slicedRows: [[String?]]
-        if limit > 0, result.rows.count > limit {
-            slicedRows = Array(result.rows.prefix(limit))
-            hasMore = true
-        } else {
-            slicedRows = result.rows
-            hasMore = false
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
         }
+        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
         return PluginPagedResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
-            rows: slicedRows,
+            rows: rows,
             executionTime: result.executionTime,
             hasMore: hasMore,
-            nextOffset: slicedRows.count
+            nextOffset: rows.count
         )
     }
 

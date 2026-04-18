@@ -340,8 +340,19 @@ extension DatabaseDriver {
     var supportsTransactions: Bool { true }
 
     func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
-        let result = try await execute(query: query)
-        let hasMore = limit > 0 && result.rows.count > limit
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PagedQueryResult(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
+        let hasMore = result.rows.count > limit
         let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
         return PagedQueryResult(
             columns: result.columns,

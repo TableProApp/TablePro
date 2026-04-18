@@ -356,6 +356,21 @@ Right-click a column header > **Display As** to override per column. Overrides p
 NULL values show as styled "NULL" text (customizable in **Settings** > **Data Grid**). Configure date format, row height, and alternate row colors in the same settings panel.
 
 
+## Progressive Loading
+
+When a query in a query tab returns more rows than the configured limit (default: 10,000), TablePro loads the first batch immediately and shows **Load More** and **Fetch All** buttons in the status bar.
+
+- **Load More** fetches the next batch and appends it to the current results
+- **Fetch All** loads all remaining rows (shows a confirmation dialog for large result sets)
+
+The status bar shows the loaded row count and indicates when more rows are available. Configure the limit in **Settings > Data Grid > Query Result Limit**.
+
+Table tabs are unaffected - they use page-based navigation with the configured page size.
+
+If you sort a column while more rows are available, TablePro re-executes the query with `ORDER BY` to ensure correct sort order across the full result set.
+
+You can cancel a running query or progressive load with the stop button in the toolbar or `Cmd+.`.
+
 ## MongoDB Collections
 
 ### Schema and Display
