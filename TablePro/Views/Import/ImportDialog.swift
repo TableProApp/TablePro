@@ -35,6 +35,7 @@ struct ImportDialog: View {
     @State private var hasPreviewError = false
     @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
+    @State private var countStatementsTask: Task<Void, Never>?
 
     // MARK: - Import Service
 
@@ -86,6 +87,7 @@ struct ImportDialog: View {
         }
         .onDisappear {
             loadFileTask?.cancel()
+            countStatementsTask?.cancel()
             cleanupTempFiles()
         }
         .sheet(isPresented: $showProgressDialog) {
@@ -367,7 +369,8 @@ struct ImportDialog: View {
             hasPreviewError = true
         }
 
-        Task {
+        countStatementsTask?.cancel()
+        countStatementsTask = Task {
             await countStatements(url: urlToRead)
         }
     }
@@ -405,7 +408,8 @@ struct ImportDialog: View {
                 let result = try await service.importFile(
                     from: url,
                     formatId: selectedFormatId,
-                    encoding: selectedEncoding.encoding
+                    encoding: selectedEncoding.encoding,
+                    decompressedURL: tempPreviewURL
                 )
 
                 await MainActor.run {

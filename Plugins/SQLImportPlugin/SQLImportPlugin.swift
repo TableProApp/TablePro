@@ -4,11 +4,14 @@
 //
 
 import Foundation
+import os
 import SwiftUI
 import TableProPluginKit
 
 @Observable
 final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
+
     static let pluginName = "SQL Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from SQL files"
@@ -89,14 +92,19 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
             if settings.wrapInTransaction {
                 do {
                     try await sink.rollbackTransaction()
-                } catch {
-                    throw PluginImportError.rollbackFailed(underlyingError: importError)
+                } catch let rollbackError {
+                    Self.logger.error("Import failed: \(importError.localizedDescription). Rollback also failed.")
+                    throw PluginImportError.rollbackFailed(underlyingError: rollbackError)
                 }
             }
 
-            // Re-enable FK checks (best-effort)
+            // Re-enable FK checks
             if settings.disableForeignKeyChecks {
-                try? await sink.enableForeignKeyChecks()
+                do {
+                    try await sink.enableForeignKeyChecks()
+                } catch {
+                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                }
             }
 
             // Re-throw cancellation as-is, wrap others

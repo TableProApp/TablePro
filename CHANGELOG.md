@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Import parser now surfaces file read and encoding errors instead of silently succeeding
+- Compressed (.gz) files are only decompressed once instead of twice
+- Import progress estimate uses decompressed file size for accurate progress
+- Transaction rollback error is now correctly reported
+- Foreign key checks are properly restored after failed import
+- File decompression no longer blocks Swift concurrency thread pool
 - Cmd+W closing the connection window instead of clearing to empty state
 - ER Diagram and Server Dashboard replacing the current tab instead of opening a new one
 - Welcome window stealing focus on connect, disabling Cmd+T until manual click

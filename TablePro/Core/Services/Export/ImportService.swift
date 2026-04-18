@@ -48,7 +48,8 @@ final class ImportService {
     func importFile(
         from url: URL,
         formatId: String,
-        encoding: String.Encoding
+        encoding: String.Encoding,
+        decompressedURL: URL? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugins[formatId] else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -67,7 +68,7 @@ final class ImportService {
 
         // Create adapter and source
         let sink = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
-        let source = SqlFileImportSource(url: url, encoding: encoding)
+        let source = SqlFileImportSource(url: url, encoding: encoding, decompressedURL: decompressedURL)
         defer { source.cleanup() }
 
         // Create progress tracker

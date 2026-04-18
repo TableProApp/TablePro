@@ -81,14 +81,14 @@ final class SQLFileParser: Sendable {
     ///   - url: File URL to parse
     ///   - encoding: Text encoding to use
     ///   - countOnly: When true, skips building statement strings for faster counting
-    /// - Returns: AsyncStream of (statement, lineNumber) tuples
+    /// - Returns: AsyncThrowingStream of (statement, lineNumber) tuples
     func parseFile(
         url: URL,
         encoding: String.Encoding,
         countOnly: Bool = false
-    ) async throws -> AsyncStream<(statement: String, lineNumber: Int)> {
-        AsyncStream { continuation in
-            Task.detached {
+    ) -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task.detached {
                 do {
                     let fileHandle = try FileHandle(forReadingFrom: url)
                     defer {
@@ -100,7 +100,6 @@ final class SQLFileParser: Sendable {
                     }
 
                     var state: ParserState = .normal
-                    // nil when countOnly — skips all string building via optional chaining
                     let currentStatement: NSMutableString? = countOnly ? nil : NSMutableString()
                     var hasStatementContent = false
                     var currentLine = 1
@@ -130,7 +129,6 @@ final class SQLFileParser: Sendable {
                             let char = nsBuffer.character(at: i)
                             let nextChar: unichar? = (i + 1 < bufLen) ? nsBuffer.character(at: i + 1) : nil
 
-                            // Defer processing if at chunk boundary with a multi-char start
                             if nextChar == nil && Self.isMultiCharSequenceStart(char) {
                                 break
                             }
@@ -238,7 +236,6 @@ final class SQLFileParser: Sendable {
                             }
                         }
 
-                        // Keep unprocessed characters for next chunk
                         if i < bufLen {
                             nsBuffer.deleteCharacters(in: NSRange(location: 0, length: i))
                         } else {
@@ -246,7 +243,6 @@ final class SQLFileParser: Sendable {
                         }
                     }
 
-                    // Add final statement if any
                     if hasStatementContent {
                         let text = (currentStatement as NSString?)?
                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -257,8 +253,12 @@ final class SQLFileParser: Sendable {
                 } catch {
                     Self.logger.error("SQL file parsing failed: \(error.localizedDescription)")
                     Self.logger.error("Error details: \(error)")
-                    continuation.finish()
+                    continuation.finish(throwing: error)
                 }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }
@@ -271,7 +271,7 @@ final class SQLFileParser: Sendable {
     func countStatements(url: URL, encoding: String.Encoding) async throws -> Int {
         var count = 0
 
-        for await _ in try await parseFile(url: url, encoding: encoding, countOnly: true) {
+        for try await _ in parseFile(url: url, encoding: encoding, countOnly: true) {
             try Task.checkCancellation()
             count += 1
         }
