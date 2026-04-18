@@ -49,7 +49,8 @@ final class ImportService {
         from url: URL,
         formatId: String,
         encoding: String.Encoding,
-        decompressedURL: URL? = nil
+        decompressedURL: URL? = nil,
+        knownStatementCount: Int? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugins[formatId] else {
             throw PluginImportError.importFailed("Import format '\(formatId)' not found")
@@ -72,8 +73,12 @@ final class ImportService {
         defer { source.cleanup() }
 
         // Create progress tracker
-        let nsProgress = Progress(totalUnitCount: 0)
+        let initialTotal = Int64(knownStatementCount ?? 0)
+        let nsProgress = Progress(totalUnitCount: initialTotal)
         let progress = PluginImportProgress(progress: nsProgress)
+        if knownStatementCount != nil {
+            state.estimatedTotalStatements = Int(initialTotal)
+        }
         currentProgress = progress
 
         let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
@@ -91,12 +96,10 @@ final class ImportService {
         defer { observation.invalidate() }
 
         let statusObservation = nsProgress.observe(\.localizedAdditionalDescription) { [weak self] observed, _ in
+            let status = observed.localizedAdditionalDescription ?? ""
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                let status = observed.localizedAdditionalDescription ?? ""
-                if !status.isEmpty {
-                    self.state.statusMessage = status
-                }
+                guard let self, !status.isEmpty else { return }
+                self.state.statusMessage = status
             }
         }
         defer { statusObservation.invalidate() }

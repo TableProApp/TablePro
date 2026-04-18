@@ -409,7 +409,8 @@ struct ImportDialog: View {
                     from: url,
                     formatId: selectedFormatId,
                     encoding: selectedEncoding.encoding,
-                    decompressedURL: tempPreviewURL
+                    decompressedURL: tempPreviewURL,
+                    knownStatementCount: statementCount > 0 ? statementCount : nil
                 )
 
                 await MainActor.run {
