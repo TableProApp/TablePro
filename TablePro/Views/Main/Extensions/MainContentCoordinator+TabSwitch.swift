@@ -28,7 +28,8 @@ extension MainContentCoordinator {
             )
         }
 
-        // Persist the outgoing tab's unsaved changes and filter state so they survive the switch
+        // Phase: save outgoing tab state
+        let saveStart = Date()
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
@@ -42,12 +43,18 @@ extension MainContentCoordinator {
             saveColumnVisibilityToTab()
             saveColumnLayoutForTable()
         }
+        let saveMs = Int(Date().timeIntervalSince(saveStart) * 1_000)
 
+        // Phase: evict inactive tabs
+        let evictStart = Date()
         if tabManager.tabs.count > 2 {
             let activeIds: Set<UUID> = Set([oldTabId, newTabId].compactMap { $0 })
             evictInactiveTabs(excluding: activeIds)
         }
+        let evictMs = Int(Date().timeIntervalSince(evictStart) * 1_000)
 
+        // Phase: restore incoming tab state
+        let restoreStart = Date()
         if let newId = newTabId,
            let newIndex = tabManager.tabs.firstIndex(where: { $0.id == newId }) {
             let newTab = tabManager.tabs[newIndex]
@@ -79,10 +86,10 @@ extension MainContentCoordinator {
                 )
             }
 
-            // Defer reloadVersion bump — only needed when we won't run a query.
-            // When a query runs, executeQueryInternal Phase 1 sets new result data
-            // that triggers its own SwiftUI update; bumping beforehand causes a
-            // redundant re-evaluation that blocks the Task executor (15-40ms).
+            let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
+            Self.lifecycleLogger.info(
+                "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms evict=\(evictMs)ms restoreIncoming=\(restoreMs)ms"
+            )
 
             if !newTab.databaseName.isEmpty {
                 let currentDatabase: String

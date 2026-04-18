@@ -314,22 +314,28 @@ struct MainContentView: View {
                 )
             }
             .onChange(of: tabManager.selectedTabId) { _, newTabId in
+                let seq = MainContentCoordinator.nextSwitchSeq()
                 let switchQueued = Date()
                 Self.lifecycleLogger.info(
-                    "[switch] tabManager.selectedTabId changed from=\(previousSelectedTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
+                    "[switch] selectedTabId changed seq=\(seq) from=\(previousSelectedTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
-                // Refresh Handoff activity (viewConnection ↔ viewTable + tableName)
-                // when the selected tab changes while this window is key.
                 (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
+                if pendingTabSwitch != nil {
+                    Self.lifecycleLogger.info("[switch] cancelling previous pendingTabSwitch seq=\(seq)")
+                }
                 pendingTabSwitch?.cancel()
                 pendingTabSwitch = Task { @MainActor in
                     await Task.yield()
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled else {
+                        Self.lifecycleLogger.info("[switch] pendingTabSwitch CANCELLED seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
+                        return
+                    }
                     let handleStart = Date()
+                    Self.lifecycleLogger.info("[switch] pendingTabSwitch executing seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
                     handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
                     previousSelectedTabId = newTabId
                     Self.lifecycleLogger.info(
-                        "[switch] handleTabSelectionChange done windowId=\(windowId, privacy: .public) handleMs=\(Int(Date().timeIntervalSince(handleStart) * 1_000)) queueToDoneMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))"
+                        "[switch] handleTabSelectionChange done seq=\(seq) handleMs=\(Int(Date().timeIntervalSince(handleStart) * 1_000)) totalMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))"
                     )
                 }
             }

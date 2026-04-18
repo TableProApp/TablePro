@@ -65,6 +65,13 @@ final class MainContentCoordinator {
     static let logger = Logger(subsystem: "com.TablePro", category: "MainContentCoordinator")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
+    /// Monotonic counter for correlating rapid tab-switch/close log entries.
+    @ObservationIgnored private(set) static var switchSeq: Int = 0
+    static func nextSwitchSeq() -> Int {
+        switchSeq += 1
+        return switchSeq
+    }
+
     /// Posted during teardown so DataGridView coordinators can release cell views.
     /// Object is the connection UUID.
     static let teardownNotification = Notification.Name("MainContentCoordinator.teardown")

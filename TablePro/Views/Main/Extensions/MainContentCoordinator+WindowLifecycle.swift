@@ -54,18 +54,18 @@ extension MainContentCoordinator {
             )
             runQuery()
         }
+        let t1 = Date()
 
-        // Auto-refresh schema for file-based connections (SQLite, DuckDB) when the
-        // window regains focus — catches external modifications.
         if PluginManager.shared.connectionMode(for: connection.type) == .fileBased && isConnected {
             Task { await self.refreshTablesIfStale() }
         }
+        let t2 = Date()
 
-        // View-layer: sync sidebar selection (requires access to @Binding tables).
         onWindowBecameKey?()
+        let t3 = Date()
 
         Self.lifecycleLogger.info(
-            "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(t0) * 1_000)) lazyLoadQueued=\(needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce) menuBounce=\(isMenuBounce)"
+            "[switch] coordinator.handleWindowDidBecomeKey done connId=\(self.connectionId, privacy: .public) lazyQuery=\(Int(t1.timeIntervalSince(t0) * 1_000))ms schemaRefresh=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms totalMs=\(Int(Date().timeIntervalSince(t0) * 1_000)) lazyLoad=\(needsLazyLoad && !hasPendingEdits && isConnected && !isMenuBounce) menuBounce=\(isMenuBounce)"
         )
     }
 

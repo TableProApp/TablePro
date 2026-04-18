@@ -261,20 +261,25 @@ extension AppDelegate {
     }
 
     @objc func windowWillClose(_ notification: Notification) {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
+        let isMain = isMainWindow(window)
 
         configuredWindows.remove(ObjectIdentifier(window))
 
-        if isMainWindow(window) {
+        if isMain {
             let remainingMainWindows = NSApp.windows.filter {
                 $0 !== window && isMainWindow($0) && $0.isVisible
             }.count
+            windowLogger.info("[close] AppDelegate.windowWillClose seq=\(seq) isMain=true remaining=\(remainingMainWindows)")
 
             if remainingMainWindows == 0 {
                 NotificationCenter.default.post(name: .mainWindowWillClose, object: nil)
                 openWelcomeWindow()
             }
         }
+        windowLogger.info("[close] AppDelegate.windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     @objc func windowDidChangeOcclusionState(_ notification: Notification) {

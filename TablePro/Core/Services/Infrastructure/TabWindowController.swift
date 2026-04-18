@@ -195,41 +195,52 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     internal func windowDidBecomeKey(_ notification: Notification) {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        let t0 = Date()
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
+        Self.lifecycleLogger.info(
+            "[switch] windowDidBecomeKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public) connId=\(coordinator.connectionId, privacy: .public)"
+        )
         installToolbar(coordinator: coordinator)
-        // Publish the current key window's command actions so menu shortcuts
-        // (Cmd+T, Cmd+1...9, etc.) stay live even when SwiftUI's
-        // `@FocusedValue(\.commandActions)` resolves to nil — happens when a
-        // toolbar Button's NSHostingController holds scene focus instead of
-        // MainContentView's.
+        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) installToolbar ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         CommandActionsRegistry.shared.current = coordinator.commandActions
         updateUserActivity(coordinator: coordinator)
+        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) userActivity ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         coordinator.handleWindowDidBecomeKey()
+        Self.lifecycleLogger.info("[switch] windowDidBecomeKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowDidResignKey(_ notification: Notification) {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        let t0 = Date()
         guard let window = notification.object as? NSWindow,
               let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         else { return }
+        Self.lifecycleLogger.info(
+            "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
+        )
         activity?.resignCurrent()
         coordinator.handleWindowDidResignKey()
+        Self.lifecycleLogger.info("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     internal func windowWillClose(_ notification: Notification) {
+        let seq = MainContentCoordinator.nextSwitchSeq()
+        let t0 = Date()
         guard let window = notification.object as? NSWindow else { return }
-        // Coordinator may be nil during startup races; guard defensively.
+        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) controllerId=\(self.controllerId, privacy: .public)")
         let coordinator = MainContentCoordinator.coordinator(forWindow: window)
         coordinator?.handleWindowWillClose()
-        // Clear the registry only if our actions were the published ones —
-        // otherwise we'd nil out actions that another window just published.
+        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) handleWindowWillClose ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
         if let actions = coordinator?.commandActions,
            CommandActionsRegistry.shared.current === actions {
             CommandActionsRegistry.shared.current = nil
         }
         activity?.invalidate()
         activity = nil
+        Self.lifecycleLogger.info("[close] windowWillClose seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
 
     // MARK: - NSUserActivity

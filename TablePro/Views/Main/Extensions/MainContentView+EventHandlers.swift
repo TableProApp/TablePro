@@ -6,48 +6,49 @@
 //  Extracted to reduce main view complexity.
 //
 
+import os
 import SwiftUI
 
 extension MainContentView {
     // MARK: - Event Handlers
 
     func handleTabSelectionChange(from oldTabId: UUID?, to newTabId: UUID?) {
+        let t0 = Date()
         coordinator.handleTabChange(
             from: oldTabId,
             to: newTabId,
             selectedRowIndices: &selectedRowIndices,
             tabs: tabManager.tabs
         )
+        let t1 = Date()
 
         updateWindowTitleAndFileState()
+        let t2 = Date()
 
-        // Sync sidebar selection to match the newly selected tab.
-        // Critical for new native windows: localSelectedTables starts empty,
-        // and this is the only place that can seed it from the restored tab.
         syncSidebarToCurrentTab()
+        let t3 = Date()
 
-        // Persist tab selection explicitly (skip during teardown)
         guard !coordinator.isTearingDown else { return }
         coordinator.persistence.saveNow(
             tabs: tabManager.tabs,
             selectedTabId: newTabId
         )
+        MainContentView.lifecycleLogger.info(
+            "[switch] handleTabSelectionChange breakdown: tabChange=\(Int(t1.timeIntervalSince(t0) * 1_000))ms windowTitle=\(Int(t2.timeIntervalSince(t1) * 1_000))ms sidebarSync=\(Int(t3.timeIntervalSince(t2) * 1_000))ms persistSave=\(Int(Date().timeIntervalSince(t3) * 1_000))ms"
+        )
     }
 
     func handleTabsChange(_ newTabs: [QueryTab]) {
+        let t0 = Date()
         updateWindowTitleAndFileState()
 
-        // Don't persist during teardown — SwiftUI may fire onChange with empty tabs
-        // as the view is being deallocated
         guard !coordinator.isTearingDown else { return }
         guard !coordinator.isUpdatingColumnLayout else { return }
 
-        // Promote preview tab if user has interacted with it
         if let tab = tabManager.selectedTab, tab.isPreview, tab.hasUserInteraction {
             coordinator.promotePreviewTab()
         }
 
-        // Persist tab changes (exclude preview tabs from persistence)
         let persistableTabs = newTabs.filter { !$0.isPreview }
         if persistableTabs.isEmpty {
             coordinator.persistence.clearSavedState()
@@ -60,6 +61,9 @@ extension MainContentView {
                 selectedTabId: normalizedSelectedId
             )
         }
+        MainContentView.lifecycleLogger.info(
+            "[switch] handleTabsChange tabCount=\(newTabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+        )
     }
 
     func handleColumnsChange(newColumns: [String]?) {
