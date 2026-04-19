@@ -99,6 +99,8 @@ extension TableStructureView {
     // MARK: - Lifecycle Callbacks
 
     func onSelectedTabChanged(_ new: StructureTab) {
+        searchText = ""
+        structureSortDescriptor = nil
         Task {
             await loadTabDataIfNeeded(new)
         }

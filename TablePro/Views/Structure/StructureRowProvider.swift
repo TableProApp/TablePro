@@ -9,6 +9,12 @@
 import Foundation
 import TableProPluginKit
 
+/// Sort descriptor for structure grid columns
+struct StructureSortDescriptor {
+    let column: Int
+    let ascending: Bool
+}
+
 /// Provides structure entities as rows for DataGridView
 @MainActor
 final class StructureRowProvider {
@@ -21,46 +27,16 @@ final class StructureRowProvider {
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
     private let orderedColumnFields: [StructureColumnField]
+    private let filterText: String?
+    private let sortDescriptor: StructureSortDescriptor?
+
+    /// Maps display indices (after filtering/sorting) back to source indices in the working arrays
+    private(set) var filteredToSourceMap: [Int] = []
 
     var rows: [[String?]] {
-        switch tab {
-        case .columns:
-            return changeManager.workingColumns.map { column in
-                orderedColumnFields.map { field -> String? in
-                    switch field {
-                    case .name: column.name
-                    case .type: column.dataType
-                    case .nullable: column.isNullable ? "YES" : "NO"
-                    case .defaultValue: column.defaultValue ?? ""
-                    case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
-                    case .autoIncrement: column.autoIncrement ? "YES" : "NO"
-                    case .comment: column.comment ?? ""
-                    }
-                }
-            }
-        case .indexes:
-            return changeManager.workingIndexes.map { indexInfo in
-                [
-                    indexInfo.name,
-                    indexInfo.columns.joined(separator: ", "),
-                    indexInfo.type.rawValue,
-                    indexInfo.isUnique ? "YES" : "NO"
-                ]
-            }
-        case .foreignKeys:
-            return changeManager.workingForeignKeys.map { fk in
-                [
-                    fk.name,
-                    fk.columns.joined(separator: ", "),
-                    fk.referencedTable,
-                    fk.referencedColumns.joined(separator: ", "),
-                    fk.onDelete.rawValue,
-                    fk.onUpdate.rawValue
-                ]
-            }
-        case .ddl, .parts:
-            return []
-        }
+        let allRows = buildAllRows()
+        let indexed = applyFilterAndSort(allRows)
+        return indexed.map { $0.row }
     }
 
     var columns: [String] {
@@ -109,6 +85,20 @@ final class StructureRowProvider {
         }
     }
 
+    /// Custom dropdown options for specific columns (non-YES/NO dropdowns)
+    var customDropdownOptions: [Int: [String]] {
+        switch tab {
+        case .foreignKeys:
+            let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
+            return [4: actions, 5: actions]
+        case .indexes:
+            let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
+            return [2: types]
+        case .columns, .ddl, .parts:
+            return [:]
+        }
+    }
+
     var typePickerColumns: Set<Int> {
         switch tab {
         case .columns:
@@ -127,13 +117,22 @@ final class StructureRowProvider {
         changeManager: StructureChangeManager,
         tab: StructureTab,
         databaseType: DatabaseType = .mysql,
-        additionalFields: Set<StructureColumnField> = []
+        additionalFields: Set<StructureColumnField> = [],
+        filterText: String? = nil,
+        sortDescriptor: StructureSortDescriptor? = nil
     ) {
         self.changeManager = changeManager
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
+        self.filterText = filterText
+        self.sortDescriptor = sortDescriptor
         self.orderedColumnFields = Self.orderedFields(for: databaseType, additionalFields: additionalFields)
+
+        // Build filteredToSourceMap
+        let allRows = buildAllRows()
+        let indexed = applyFilterAndSort(allRows)
+        self.filteredToSourceMap = indexed.map { $0.sourceIndex }
     }
 
     static func orderedFields(
@@ -148,13 +147,14 @@ final class StructureRowProvider {
     // MARK: - InMemoryRowProvider-compatible methods
 
     func row(at index: Int) -> [String?]? {
-        guard index >= 0, index < rows.count else { return nil }
-        return rows[index]
+        let allRows = buildAllRows()
+        let indexed = applyFilterAndSort(allRows)
+        guard index >= 0, index < indexed.count else { return nil }
+        return indexed[index].row
     }
 
     func updateValue(_ newValue: String?, at rowIndex: Int, columnIndex: Int) {
         // Updates are handled by the onCellEdit callback in TableStructureView
-        // This method is called by DataGridView but we intercept edits earlier
     }
 
     func appendRow(_ row: [String?]) {
@@ -163,6 +163,77 @@ final class StructureRowProvider {
 
     func removeRow(at index: Int) {
         // Handled by changeManager.deleteColumn/Index/ForeignKey
+    }
+
+    // MARK: - Private Helpers
+
+    private struct IndexedRow {
+        let sourceIndex: Int
+        let row: [String?]
+    }
+
+    private func buildAllRows() -> [IndexedRow] {
+        switch tab {
+        case .columns:
+            return changeManager.workingColumns.enumerated().map { index, column in
+                let row = orderedColumnFields.map { field -> String? in
+                    switch field {
+                    case .name: column.name
+                    case .type: column.dataType
+                    case .nullable: column.isNullable ? "YES" : "NO"
+                    case .defaultValue: column.defaultValue ?? ""
+                    case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
+                    case .autoIncrement: column.autoIncrement ? "YES" : "NO"
+                    case .comment: column.comment ?? ""
+                    }
+                }
+                return IndexedRow(sourceIndex: index, row: row)
+            }
+        case .indexes:
+            return changeManager.workingIndexes.enumerated().map { index, indexInfo in
+                IndexedRow(sourceIndex: index, row: [
+                    indexInfo.name,
+                    indexInfo.columns.joined(separator: ", "),
+                    indexInfo.type.rawValue,
+                    indexInfo.isUnique ? "YES" : "NO"
+                ])
+            }
+        case .foreignKeys:
+            return changeManager.workingForeignKeys.enumerated().map { index, fk in
+                IndexedRow(sourceIndex: index, row: [
+                    fk.name,
+                    fk.columns.joined(separator: ", "),
+                    fk.referencedTable,
+                    fk.referencedColumns.joined(separator: ", "),
+                    fk.onDelete.rawValue,
+                    fk.onUpdate.rawValue
+                ])
+            }
+        case .ddl, .parts:
+            return []
+        }
+    }
+
+    private func applyFilterAndSort(_ rows: [IndexedRow]) -> [IndexedRow] {
+        var result = rows
+
+        if let filterText, !filterText.isEmpty {
+            result = result.filter { indexed in
+                guard let name = indexed.row.first ?? nil else { return false }
+                return name.localizedCaseInsensitiveContains(filterText)
+            }
+        }
+
+        if let sortDescriptor, sortDescriptor.column >= 0 {
+            result.sort { a, b in
+                let aVal = (sortDescriptor.column < a.row.count ? a.row[sortDescriptor.column] : nil) ?? ""
+                let bVal = (sortDescriptor.column < b.row.count ? b.row[sortDescriptor.column] : nil) ?? ""
+                let comparison = aVal.localizedStandardCompare(bVal)
+                return sortDescriptor.ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+            }
+        }
+
+        return result
     }
 }
 

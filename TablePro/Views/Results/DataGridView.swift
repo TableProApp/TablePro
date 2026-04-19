@@ -184,6 +184,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.delegate = delegate
         context.coordinator.dropdownColumns = configuration.dropdownColumns
         context.coordinator.typePickerColumns = configuration.typePickerColumns
+        context.coordinator.customDropdownOptions = configuration.customDropdownOptions
         context.coordinator.connectionId = configuration.connectionId
         context.coordinator.databaseType = configuration.databaseType
         context.coordinator.tableName = configuration.tableName
@@ -229,7 +230,7 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
-        if let connectionId, coordinator.teardownObserver == nil {
+        if let connectionId = configuration.connectionId, coordinator.teardownObserver == nil {
             coordinator.observeTeardown(connectionId: connectionId)
         }
 
@@ -307,6 +308,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.delegate = delegate
         coordinator.dropdownColumns = configuration.dropdownColumns
         coordinator.typePickerColumns = configuration.typePickerColumns
+        coordinator.customDropdownOptions = configuration.customDropdownOptions
         coordinator.connectionId = configuration.connectionId
         coordinator.databaseType = configuration.databaseType
         coordinator.tableName = configuration.tableName

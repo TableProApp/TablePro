@@ -240,8 +240,15 @@ extension TableViewCoordinator {
         pendingDropdownColumn = columnIndex
         pendingDropdownTableView = tableView
 
+        let options: [String]
+        if let custom = customDropdownOptions?[columnIndex] {
+            options = custom
+        } else {
+            options = ["YES", "NO"]
+        }
+
         let menu = NSMenu()
-        for option in ["YES", "NO"] {
+        for option in options {
             let item = NSMenuItem(title: option, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
             item.target = self
             if option == currentValue {

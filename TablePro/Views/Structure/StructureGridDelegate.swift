@@ -21,6 +21,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
     // Column reorder callback (set externally by the view when conditions allow)
     var moveRowHandler: ((Int, Int) -> Void)?
 
+    // Sort callback (set by TableStructureView to update its @State)
+    var sortHandler: ((Int, Bool) -> Void)?
+
+    // Current provider for index translation (set each render by the view)
+    var currentProvider: StructureRowProvider?
+
     init(
         structureChangeManager: StructureChangeManager,
         selectedTab: StructureTab,
@@ -35,10 +41,25 @@ final class StructureGridDelegate: DataGridViewDelegate {
         self.coordinator = coordinator
     }
 
+    // MARK: - Index Translation
+
+    private func sourceRow(for displayRow: Int) -> Int {
+        guard let provider = currentProvider,
+              provider.filteredToSourceMap.indices.contains(displayRow) else {
+            return displayRow
+        }
+        return provider.filteredToSourceMap[displayRow]
+    }
+
+    private func sourceRows(for displayRows: Set<Int>) -> Set<Int> {
+        Set(displayRows.map { sourceRow(for: $0) })
+    }
+
     // MARK: - DataGridViewDelegate
 
     func dataGridDidEditCell(row: Int, column: Int, newValue: String?) {
         guard column >= 0 else { return }
+        let row = sourceRow(for: row)
 
         switch selectedTab {
         case .columns:
@@ -65,24 +86,25 @@ final class StructureGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridDeleteRows(_ rows: Set<Int>) {
+        let translated = sourceRows(for: rows)
         let minRow = rows.min() ?? 0
         let maxRow = rows.max() ?? 0
 
         switch selectedTab {
         case .columns:
-            for row in rows.sorted(by: >) {
+            for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 let column = structureChangeManager.workingColumns[row]
                 structureChangeManager.deleteColumn(id: column.id)
             }
         case .indexes:
-            for row in rows.sorted(by: >) {
+            for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 let index = structureChangeManager.workingIndexes[row]
                 structureChangeManager.deleteIndex(id: index.id)
             }
         case .foreignKeys:
-            for row in rows.sorted(by: >) {
+            for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let fk = structureChangeManager.workingForeignKeys[row]
                 structureChangeManager.deleteForeignKey(id: fk.id)
@@ -115,22 +137,23 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
     func dataGridCopyRows(_ indices: Set<Int>) {
         guard selectedTab != .ddl, selectedTab != .parts, !indices.isEmpty else { return }
+        let translated = sourceRows(for: indices)
 
         var copiedItems: [Any] = []
 
         switch selectedTab {
         case .columns:
-            for row in indices.sorted() {
+            for row in translated.sorted() {
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 copiedItems.append(structureChangeManager.workingColumns[row])
             }
         case .indexes:
-            for row in indices.sorted() {
+            for row in translated.sorted() {
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 copiedItems.append(structureChangeManager.workingIndexes[row])
             }
         case .foreignKeys:
-            for row in indices.sorted() {
+            for row in translated.sorted() {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 copiedItems.append(structureChangeManager.workingForeignKeys[row])
             }
@@ -270,12 +293,16 @@ final class StructureGridDelegate: DataGridViewDelegate {
         }
     }
 
+    func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {
+        sortHandler?(column, ascending)
+    }
+
     func dataGridMoveRow(from source: Int, to destination: Int) {
         moveRowHandler?(source, destination)
     }
 
     func dataGridVisualState(forRow row: Int) -> RowVisualState? {
-        structureChangeManager.getVisualState(for: row, tab: selectedTab)
+        structureChangeManager.getVisualState(for: sourceRow(for: row), tab: selectedTab)
     }
 
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? {
@@ -300,16 +327,38 @@ final class StructureGridDelegate: DataGridViewDelegate {
         rowView.rowIndex = row
         rowView.structureTab = selectedTab
         rowView.isStructureEditable = connection.type.supportsSchemaEditing
-        rowView.isRowDeleted = structureChangeManager.getVisualState(for: row, tab: selectedTab).isDeleted
 
-        if selectedTab == .foreignKeys, row < structureChangeManager.workingForeignKeys.count {
-            rowView.referencedTableName = structureChangeManager.workingForeignKeys[row].referencedTable
+        let src = sourceRow(for: row)
+        rowView.isRowDeleted = structureChangeManager.getVisualState(for: src, tab: selectedTab).isDeleted
+
+        if selectedTab == .foreignKeys, src < structureChangeManager.workingForeignKeys.count {
+            rowView.referencedTableName = structureChangeManager.workingForeignKeys[src].referencedTable
         }
 
-        rowView.onCopyName = { [weak self] indices in self?.handleCopyName(indices) }
-        rowView.onCopyDefinition = { [weak self] indices in self?.handleCopyDefinition(indices) }
-        rowView.onNavigateFK = { [weak self] idx in self?.handleNavigateToFK(idx) }
-        rowView.onDuplicate = { [weak self] indices in self?.handleDuplicateItems(indices) }
+        rowView.onCopyName = { [weak self] indices in
+            guard let self else { return }
+            self.handleCopyName(self.sourceRows(for: indices))
+        }
+        rowView.onCopyDefinition = { [weak self] indices in
+            guard let self else { return }
+            self.handleCopyDefinition(self.sourceRows(for: indices))
+        }
+        rowView.onCopyAsCSV = { [weak self] indices in
+            guard let self else { return }
+            self.handleCopyAsCSV(self.sourceRows(for: indices))
+        }
+        rowView.onCopyAsJSON = { [weak self] indices in
+            guard let self else { return }
+            self.handleCopyAsJSON(self.sourceRows(for: indices))
+        }
+        rowView.onNavigateFK = { [weak self] idx in
+            guard let self else { return }
+            self.handleNavigateToFK(self.sourceRow(for: idx))
+        }
+        rowView.onDuplicate = { [weak self] indices in
+            guard let self else { return }
+            self.handleDuplicateItems(self.sourceRows(for: indices))
+        }
         rowView.onDelete = { [weak self] indices in self?.dataGridDeleteRows(indices) }
         rowView.onUndoDelete = { [weak self] _ in self?.dataGridUndo() }
         return rowView
@@ -382,6 +431,61 @@ final class StructureGridDelegate: DataGridViewDelegate {
         NSPasteboard.general.setString(definitions.joined(separator: "\n"), forType: .string)
     }
 
+    // MARK: - Copy As CSV/JSON
+
+    private func handleCopyAsCSV(_ indices: Set<Int>) {
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager, tab: selectedTab,
+            databaseType: connection.type, additionalFields: [.primaryKey]
+        )
+        let headers = provider.columns
+        guard !headers.isEmpty else { return }
+
+        var lines: [String] = [headers.map { escapeCSVField($0) }.joined(separator: ",")]
+        for row in indices.sorted() {
+            guard let rowData = provider.row(at: row) else { continue }
+            let line = rowData.map { escapeCSVField($0 ?? "") }.joined(separator: ",")
+            lines.append(line)
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    private func escapeCSVField(_ value: String) -> String {
+        if value.contains(",") || value.contains("\"") || value.contains("\n") {
+            return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+        }
+        return value
+    }
+
+    private func handleCopyAsJSON(_ indices: Set<Int>) {
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager, tab: selectedTab,
+            databaseType: connection.type, additionalFields: [.primaryKey]
+        )
+        let headers = provider.columns
+        guard !headers.isEmpty else { return }
+
+        var objects: [[String: String]] = []
+        for row in indices.sorted() {
+            guard let rowData = provider.row(at: row) else { continue }
+            var obj: [String: String] = [:]
+            for (i, header) in headers.enumerated() where i < rowData.count {
+                obj[header] = rowData[i] ?? ""
+            }
+            objects.append(obj)
+        }
+
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: objects,
+            options: [.prettyPrinted, .sortedKeys]
+        ), let jsonString = String(data: data, encoding: .utf8) else { return }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(jsonString, forType: .string)
+    }
+
     private func handleDuplicateItems(_ indices: Set<Int>) {
         for row in indices.sorted() {
             switch selectedTab {
@@ -424,25 +528,31 @@ final class StructureGridDelegate: DataGridViewDelegate {
     // MARK: - Column/Index/FK Update Helpers
 
     private func updateColumn(_ column: inout EditableColumnDefinition, at index: Int, with value: String) {
-        if connection.type == .clickhouse {
-            switch index {
-            case 0: column.name = value
-            case 1: column.dataType = value
-            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
-            case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.comment = value.isEmpty ? nil : value
-            default: break
-            }
-        } else {
-            switch index {
-            case 0: column.name = value
-            case 1: column.dataType = value
-            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
-            case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.autoIncrement = value.uppercased() == "YES" || value == "1"
-            case 5: column.comment = value.isEmpty ? nil : value
-            default: break
-            }
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager, tab: .columns,
+            databaseType: connection.type, additionalFields: [.primaryKey]
+        )
+        let columnNames = provider.columns
+        guard index < columnNames.count else { return }
+        let fieldName = columnNames[index]
+
+        switch fieldName {
+        case StructureColumnField.name.displayName:
+            column.name = value
+        case StructureColumnField.type.displayName:
+            column.dataType = value
+        case StructureColumnField.nullable.displayName:
+            column.isNullable = value.uppercased() == "YES" || value == "1"
+        case StructureColumnField.defaultValue.displayName:
+            column.defaultValue = value.isEmpty ? nil : value
+        case StructureColumnField.primaryKey.displayName:
+            column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
+        case StructureColumnField.autoIncrement.displayName:
+            column.autoIncrement = value.uppercased() == "YES" || value == "1"
+        case StructureColumnField.comment.displayName:
+            column.comment = value.isEmpty ? nil : value
+        default:
+            break
         }
     }
 

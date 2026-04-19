@@ -36,6 +36,10 @@ struct TableStructureView: View {
     @State var lastSaveTime: Date?  // Track when we last saved
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
 
+    // Search and sort state
+    @State var searchText = ""
+    @State var structureSortDescriptor: StructureSortDescriptor?
+
     // DataGridView state
     @State var structureChangeManager: StructureChangeManager
     @State var wrappedChangeManager: AnyChangeManager
@@ -122,18 +126,43 @@ struct TableStructureView: View {
         HStack {
             Spacer()
 
-            // Tab picker
             Picker("", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
-                    Text(tab.displayName).tag(tab)
+                    Text(tabLabel(for: tab)).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
 
+            if selectedTab == .columns || selectedTab == .indexes || selectedTab == .foreignKeys {
+                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+                    .frame(width: 160)
+            }
+
             Spacer()
         }
         .padding()
+    }
+
+    // MARK: - Tab Label with Count Badge
+
+    private func tabLabel(for tab: StructureTab) -> String {
+        let count: Int?
+        switch tab {
+        case .columns:
+            count = loadedTabs.contains(.columns) ? columns.count : nil
+        case .indexes:
+            count = loadedTabs.contains(.indexes) ? indexes.count : nil
+        case .foreignKeys:
+            count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
+        case .ddl, .parts:
+            count = nil
+        }
+
+        if let count {
+            return "\(tab.displayName) (\(count))"
+        }
+        return tab.displayName
     }
 
     // MARK: - Content Area
@@ -162,11 +191,24 @@ struct TableStructureView: View {
     // MARK: - Structure Grid (DataGridView)
 
     private var structureGrid: some View {
-        let provider = StructureRowProvider(changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type)
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager,
+            tab: selectedTab,
+            databaseType: connection.type,
+            additionalFields: [.primaryKey],
+            filterText: searchText.isEmpty ? nil : searchText,
+            sortDescriptor: structureSortDescriptor
+        )
         let canEdit = connection.type.supportsSchemaEditing
+        let customOptions = provider.customDropdownOptions
+        let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
         // Update delegate state for current render
         gridDelegate.selectedTab = selectedTab
+        gridDelegate.currentProvider = provider
+        gridDelegate.sortHandler = { [self] column, ascending in
+            structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
+        }
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
@@ -218,8 +260,9 @@ struct TableStructureView: View {
             changeManager: wrappedChangeManager,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
-                dropdownColumns: provider.dropdownColumns,
+                dropdownColumns: allDropdownColumns,
                 typePickerColumns: provider.typePickerColumns,
+                customDropdownOptions: customOptions.isEmpty ? nil : customOptions,
                 connectionId: connection.id,
                 databaseType: connection.type
             ),

@@ -22,6 +22,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     weak var activeFKPreviewPopover: NSPopover?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
+    var customDropdownOptions: [Int: [String]]?
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
