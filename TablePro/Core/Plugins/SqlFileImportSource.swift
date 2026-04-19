@@ -18,11 +18,11 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     private let _decompressedURL = OSAllocatedUnfairLock<URL?>(initialState: nil)
     private let ownsDecompressedFile: Bool
 
-    init(url: URL, encoding: String.Encoding, decompressedURL: URL? = nil) {
+    init(url: URL, encoding: String.Encoding, decompressedURL: URL? = nil, ownsDecompressedFile: Bool? = nil) {
         self.url = url
         self.encoding = encoding
         self.externalDecompressedURL = decompressedURL
-        self.ownsDecompressedFile = decompressedURL == nil
+        self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
     }
 
     func fileURL() -> URL {
@@ -54,9 +54,9 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
             return url
         }
 
-        if let tempURL {
+        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
             do {
-                try FileManager.default.removeItem(at: tempURL)
+                try FileManager.default.removeItem(at: fileURL)
             } catch {
                 Self.logger.warning("Failed to clean up temp file: \(error.localizedDescription)")
             }
@@ -66,8 +66,8 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     deinit {
         guard ownsDecompressedFile else { return }
         let tempURL = _decompressedURL.withLock { $0 }
-        if let tempURL {
-            try? FileManager.default.removeItem(at: tempURL)
+        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: fileURL)
         }
     }
 

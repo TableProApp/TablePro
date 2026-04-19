@@ -87,18 +87,17 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
             }
         } catch {
             let importError = error
+            var rollbackError: Error?
 
-            // Rollback on error
             if settings.wrapInTransaction {
                 do {
                     try await sink.rollbackTransaction()
-                } catch let rollbackError {
+                } catch {
                     Self.logger.error("Import failed: \(importError.localizedDescription). Rollback also failed.")
-                    throw PluginImportError.rollbackFailed(underlyingError: rollbackError)
+                    rollbackError = error
                 }
             }
 
-            // Re-enable FK checks
             if settings.disableForeignKeyChecks {
                 do {
                     try await sink.enableForeignKeyChecks()
@@ -107,7 +106,9 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
                 }
             }
 
-            // Re-throw cancellation as-is, wrap others
+            if let rollbackError {
+                throw PluginImportError.rollbackFailed(underlyingError: rollbackError)
+            }
             if importError is PluginImportCancellationError {
                 throw importError
             }

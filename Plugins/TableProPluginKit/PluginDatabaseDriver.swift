@@ -466,7 +466,7 @@ public extension PluginDatabaseDriver {
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
         AsyncThrowingStream(bufferingPolicy: .unbounded) { continuation in
-            Task {
+            let task = Task {
                 do {
                     let batchSize = 1_000
                     let firstPage = try await fetchRows(query: query, offset: 0, limit: batchSize)
@@ -497,6 +497,9 @@ public extension PluginDatabaseDriver {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }

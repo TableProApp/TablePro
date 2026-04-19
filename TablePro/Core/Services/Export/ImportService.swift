@@ -50,6 +50,7 @@ final class ImportService {
         formatId: String,
         encoding: String.Encoding,
         decompressedURL: URL? = nil,
+        ownsDecompressedFile: Bool = false,
         knownStatementCount: Int? = nil
     ) async throws -> PluginImportResult {
         guard let plugin = PluginManager.shared.importPlugins[formatId] else {
@@ -69,7 +70,7 @@ final class ImportService {
 
         // Create adapter and source
         let sink = ImportDataSinkAdapter(driver: driver, databaseType: connection.type)
-        let source = SqlFileImportSource(url: url, encoding: encoding, decompressedURL: decompressedURL)
+        let source = SqlFileImportSource(url: url, encoding: encoding, decompressedURL: decompressedURL, ownsDecompressedFile: ownsDecompressedFile)
         defer { source.cleanup() }
 
         // Create progress tracker
