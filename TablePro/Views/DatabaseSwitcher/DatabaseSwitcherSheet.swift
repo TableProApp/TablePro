@@ -23,6 +23,8 @@ struct DatabaseSwitcherSheet: View {
 
     @State private var viewModel: DatabaseSwitcherViewModel
     @State private var showCreateDialog = false
+    @State private var showDropDialog = false
+    @State private var databaseToDrop: String?
 
     private enum FocusField {
         case search
@@ -118,6 +120,13 @@ struct DatabaseSwitcherSheet: View {
         .sheet(isPresented: $showCreateDialog) {
             CreateDatabaseSheet(databaseType: databaseType, viewModel: viewModel)
         }
+        .sheet(isPresented: $showDropDialog) {
+            if let name = databaseToDrop {
+                DropDatabaseSheet(databaseName: name, viewModel: viewModel) {
+                    databaseToDrop = nil
+                }
+            }
+        }
         .onExitCommand {
             // SwiftUI handles sheet priority automatically - no nested sheets take precedence
             dismiss()
@@ -142,6 +151,11 @@ struct DatabaseSwitcherSheet: View {
         .onKeyPress(characters: .init(charactersIn: "kp"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             viewModel.moveUp()
+            return .handled
+        }
+        .onKeyPress(.delete) {
+            guard canDropSelected else { return .ignored }
+            initiateDropForSelected()
             return .handled
         }
     }
@@ -179,6 +193,17 @@ struct DatabaseSwitcherSheet: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "Create new database"))
+            }
+
+            // Drop
+            if !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType) {
+                Button(action: { initiateDropForSelected() }) {
+                    Image(systemName: "trash")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!canDropSelected)
+                .help(String(localized: "Drop selected database"))
             }
         }
         .padding(.horizontal, 12)
@@ -258,6 +283,18 @@ struct DatabaseSwitcherSheet: View {
                 openSelectedDatabase()
             }
         )
+        .contextMenu {
+            if !isSchemaMode && PluginManager.shared.supportsDropDatabase(for: databaseType)
+                && !database.isSystemDatabase && database.name != activeName
+            {
+                Button(role: .destructive) {
+                    databaseToDrop = database.name
+                    showDropDialog = true
+                } label: {
+                    Label(String(localized: "Drop Database..."), systemImage: "trash")
+                }
+            }
+        }
     }
 
     // MARK: - Empty States
@@ -368,6 +405,24 @@ struct DatabaseSwitcherSheet: View {
             .keyboardShortcut(.return, modifiers: [])
         }
         .padding(12)
+    }
+
+    // MARK: - Drop Helpers
+
+    private var canDropSelected: Bool {
+        guard !isSchemaMode,
+              PluginManager.shared.supportsDropDatabase(for: databaseType),
+              let selected = viewModel.selectedDatabase,
+              selected != activeName
+        else { return false }
+        let isSystem = viewModel.filteredDatabases.first { $0.name == selected }?.isSystemDatabase ?? false
+        return !isSystem
+    }
+
+    private func initiateDropForSelected() {
+        guard canDropSelected, let selected = viewModel.selectedDatabase else { return }
+        databaseToDrop = selected
+        showDropDialog = true
     }
 
     // MARK: - Actions
