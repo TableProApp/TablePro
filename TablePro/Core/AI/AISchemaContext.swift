@@ -53,7 +53,11 @@ struct AISchemaContext {
            let query = currentQuery,
            !query.isEmpty {
             let lang = editorLanguage.codeBlockTag
-            parts.append("\n## Current Query\n```\(lang)\n\(query)\n```")
+            let maxQueryLength = 2_000
+            let truncated = query.count > maxQueryLength
+                ? String(query.prefix(maxQueryLength)) + "\n-- ... truncated"
+                : query
+            parts.append("\n## Current Query\n```\(lang)\n\(truncated)\n```")
         }
 
         if settings.includeQueryResults,

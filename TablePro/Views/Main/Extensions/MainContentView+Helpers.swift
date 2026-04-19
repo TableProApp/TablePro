@@ -111,7 +111,8 @@ extension MainContentView {
 
         for row in displayRows {
             let values = columns.indices.map { i in
-                i < row.count ? (row[i] ?? "NULL") : "NULL"
+                let raw = i < row.count ? (row[i] ?? "NULL") : "NULL"
+                return raw.count > 200 ? String(raw.prefix(200)) + "..." : raw
             }
             lines.append(values.joined(separator: " | "))
         }
