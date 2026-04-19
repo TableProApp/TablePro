@@ -104,6 +104,8 @@ internal final class CassandraPlugin: NSObject, TableProPlugin, DriverPlugin {
         )
     }
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         CassandraPluginDriver(config: config)
     }
@@ -1242,6 +1244,11 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
             WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}
         """
         _ = try await execute(query: query)
+    }
+
+    func dropDatabase(name: String) async throws {
+        let safeKs = escapeIdentifier(name)
+        _ = try await execute(query: "DROP KEYSPACE \"\(safeKs)\"")
     }
 
     func switchDatabase(to database: String) async throws {

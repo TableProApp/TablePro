@@ -53,6 +53,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
 
     static let structureColumnFields: [StructureColumnField] = [.name, .type, .nullable, .defaultValue, .comment]
     static let supportsQueryProgress = true
+    static let supportsDropDatabase = true
 
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "`",
@@ -581,6 +582,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
         _ = try await execute(query: "CREATE DATABASE `\(escapedName)`")
+    }
+
+    func dropDatabase(name: String) async throws {
+        let escapedName = name.replacingOccurrences(of: "`", with: "``")
+        _ = try await execute(query: "DROP DATABASE `\(escapedName)`")
     }
 
     // MARK: - All Tables Metadata

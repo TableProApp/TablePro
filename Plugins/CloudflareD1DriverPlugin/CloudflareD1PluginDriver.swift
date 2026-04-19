@@ -512,6 +512,26 @@ final class CloudflareD1PluginDriver: PluginDatabaseDriver, @unchecked Sendable 
         lock.unlock()
     }
 
+    func dropDatabase(name: String) async throws {
+        guard let client = getClient() else {
+            throw CloudflareD1Error.notConnected
+        }
+
+        lock.lock()
+        let uuid = databaseNameToUuid[name]
+        lock.unlock()
+
+        guard let databaseId = uuid ?? (isUuid(name) ? name : nil) else {
+            throw CloudflareD1Error(message: String(format: String(localized: "Database '%@' not found"), name))
+        }
+
+        try await client.deleteDatabase(databaseId: databaseId)
+
+        lock.lock()
+        databaseNameToUuid.removeValue(forKey: name)
+        lock.unlock()
+    }
+
     func switchDatabase(to database: String) async throws {
         lock.lock()
         var uuid = databaseNameToUuid[database]

@@ -457,6 +457,14 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
         _ = try await conn.runCommand("{\"drop\": \"__tablepro_init\"}", database: name)
     }
 
+    func dropDatabase(name: String) async throws {
+        guard let conn = mongoConnection else {
+            throw MongoDBPluginError.notConnected
+        }
+
+        _ = try await conn.runCommand("{\"dropDatabase\": 1}", database: name)
+    }
+
     // MARK: - Database Switching
 
     func switchDatabase(to database: String) async throws {

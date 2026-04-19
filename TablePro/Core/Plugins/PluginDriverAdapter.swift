@@ -258,6 +258,10 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         try await pluginDriver.createDatabase(name: name, charset: charset, collation: collation)
     }
 
+    func dropDatabase(name: String) async throws {
+        try await pluginDriver.dropDatabase(name: name)
+    }
+
     // MARK: - Batch Operations
 
     func fetchAllColumns() async throws -> [String: [ColumnInfo]] {

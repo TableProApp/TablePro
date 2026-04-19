@@ -527,7 +527,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -598,7 +599,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -639,7 +641,19 @@ extension PluginMetadataRegistry {
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: false,
-                capabilities: .defaults,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: true,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
+                ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
                     defaultGroupName: "main",
@@ -685,7 +699,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -741,7 +756,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: true,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: true,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -817,7 +833,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -871,7 +888,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -924,7 +942,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: false,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -1006,7 +1025,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: true,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "main",

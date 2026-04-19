@@ -99,6 +99,8 @@ final class CloudflareD1Plugin: NSObject, TableProPlugin, DriverPlugin {
         )
     ]
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         CloudflareD1PluginDriver(config: config)
     }

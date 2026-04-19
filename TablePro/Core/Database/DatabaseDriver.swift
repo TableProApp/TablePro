@@ -130,6 +130,9 @@ protocol DatabaseDriver: AnyObject {
     /// Create a new database
     func createDatabase(name: String, charset: String, collation: String?) async throws
 
+    /// Drop a database
+    func dropDatabase(name: String) async throws
+
     // MARK: - Maintenance
 
     /// Returns the list of supported maintenance operations (e.g. "VACUUM", "ANALYZE").
@@ -231,6 +234,11 @@ extension DatabaseDriver {
         try await connect()
         disconnect()
         return true
+    }
+
+    func dropDatabase(name: String) async throws {
+        throw NSError(domain: "DatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
     /// Default fetchAllDatabaseMetadata: falls back to per-database calls (N+1).

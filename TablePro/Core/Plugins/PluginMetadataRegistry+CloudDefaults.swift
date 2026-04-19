@@ -31,7 +31,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",
@@ -172,7 +173,8 @@ extension PluginMetadataRegistry {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "",

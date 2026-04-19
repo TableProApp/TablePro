@@ -140,6 +140,15 @@ final class DatabaseSwitcherViewModel {
         try await driver.createDatabase(name: name, charset: charset, collation: collation)
     }
 
+    /// Drop a database
+    func dropDatabase(name: String) async throws {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+
+        try await driver.dropDatabase(name: name)
+    }
+
     // MARK: - Keyboard Navigation
 
     func moveUp() {

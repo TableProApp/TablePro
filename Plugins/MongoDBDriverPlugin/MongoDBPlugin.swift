@@ -126,6 +126,8 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
         ]
     }
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MongoDBPluginDriver(config: config)
     }

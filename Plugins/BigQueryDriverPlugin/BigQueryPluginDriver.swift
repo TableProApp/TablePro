@@ -811,6 +811,12 @@ internal final class BigQueryPluginDriver: PluginDatabaseDriver, @unchecked Send
         _ = try await conn.executeQuery("CREATE SCHEMA `\(escaped)`")
     }
 
+    func dropDatabase(name: String) async throws {
+        guard let conn = connection else { throw BigQueryError.notConnected }
+        let escaped = name.replacingOccurrences(of: "`", with: "\\`")
+        _ = try await conn.executeQuery("DROP SCHEMA `\(escaped)`")
+    }
+
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
         guard let conn = connection else { return nil }
         let dataset = lock.withLock { _currentDataset } ?? ""

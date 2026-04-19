@@ -260,6 +260,14 @@ final class D1HttpClient: @unchecked Sendable {
         return result
     }
 
+    func deleteDatabase(databaseId: String) async throws {
+        let url = try baseURL(databaseId: databaseId)
+        let data = try await performRequest(url: url, method: "DELETE", body: nil)
+
+        let envelope = try JSONDecoder().decode(D1ApiResponse<D1DatabaseInfo>.self, from: data)
+        try checkApiSuccess(envelope)
+    }
+
     // MARK: - Private Helpers
 
     private func baseURL(databaseId: String?) throws -> URL {

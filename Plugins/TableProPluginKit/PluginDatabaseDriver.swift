@@ -78,6 +78,7 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     func fetchDependentTypes(table: String, schema: String?) async throws -> [(name: String, labels: [String])]
     func fetchDependentSequences(table: String, schema: String?) async throws -> [(name: String, ddl: String)]
     func createDatabase(name: String, charset: String, collation: String?) async throws
+    func dropDatabase(name: String) async throws
     func executeParameterized(query: String, parameters: [String?]) async throws -> PluginQueryResult
 
     // Query building (optional, for NoSQL plugins)
@@ -221,6 +222,11 @@ public extension PluginDatabaseDriver {
 
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         throw NSError(domain: "PluginDatabaseDriver", code: -1, userInfo: [NSLocalizedDescriptionKey: "createDatabase not supported"])
+    }
+
+    func dropDatabase(name: String) async throws {
+        throw NSError(domain: "PluginDatabaseDriver", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "Drop database is not supported by this driver"])
     }
 
     func switchDatabase(to database: String) async throws {

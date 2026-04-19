@@ -93,6 +93,8 @@ final class MSSQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         autoLimitStyle: .top
     )
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MSSQLPluginDriver(config: config)
     }
@@ -1360,6 +1362,11 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
         _ = try await execute(query: "CREATE DATABASE \(quotedName)")
+    }
+
+    func dropDatabase(name: String) async throws {
+        let quotedName = "[\(name.replacingOccurrences(of: "]", with: "]]"))]"
+        _ = try await execute(query: "DROP DATABASE \(quotedName)")
     }
 
     // MARK: - All Tables Metadata

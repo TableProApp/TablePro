@@ -93,6 +93,8 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         requiresBackslashEscaping: true
     )
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         MySQLPluginDriver(config: config)
     }

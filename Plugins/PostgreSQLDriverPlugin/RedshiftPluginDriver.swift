@@ -687,6 +687,11 @@ final class RedshiftPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         _ = try await execute(query: query)
     }
 
+    func dropDatabase(name: String) async throws {
+        let escapedName = name.replacingOccurrences(of: "\"", with: "\"\"")
+        _ = try await execute(query: "DROP DATABASE \"\(escapedName)\"")
+    }
+
     // MARK: - All Tables Metadata
 
     func allTablesMetadataSQL(schema: String?) -> String? {

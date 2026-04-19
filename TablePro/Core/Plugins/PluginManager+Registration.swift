@@ -366,6 +366,11 @@ extension PluginManager {
             .supportsColumnReorder ?? false
     }
 
+    func supportsDropDatabase(for databaseType: DatabaseType) -> Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?
+            .capabilities.supportsDropDatabase ?? false
+    }
+
     func autoLimitStyle(for databaseType: DatabaseType) -> AutoLimitStyle {
         guard let snapshot = PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId) else {
             return .limit

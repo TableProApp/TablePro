@@ -209,6 +209,8 @@ final class BigQueryPlugin: NSObject, TableProPlugin, DriverPlugin {
         ]
     }
 
+    static let supportsDropDatabase = true
+
     func createDriver(config: DriverConnectionConfig) -> any PluginDatabaseDriver {
         BigQueryPluginDriver(config: config)
     }

@@ -50,6 +50,7 @@ struct PluginMetadataSnapshot: Sendable {
         let supportsReadOnlyMode: Bool
         let supportsQueryProgress: Bool
         let requiresReconnectForDatabaseSwitch: Bool
+        let supportsDropDatabase: Bool
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -61,7 +62,8 @@ struct PluginMetadataSnapshot: Sendable {
             supportsForeignKeyDisable: true,
             supportsReadOnlyMode: true,
             supportsQueryProgress: false,
-            requiresReconnectForDatabaseSwitch: false
+            requiresReconnectForDatabaseSwitch: false,
+            supportsDropDatabase: false
         )
     }
 
@@ -343,7 +345,19 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: true,
-                capabilities: .defaults,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: true,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
+                ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
@@ -373,7 +387,19 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
                 supportsColumnReorder: true,
-                capabilities: .defaults,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: true,
+                    supportsSSL: true,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: true,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: true
+                ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
@@ -414,7 +440,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: true
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -458,7 +485,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: false,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: true
+                    requiresReconnectForDatabaseSwitch: true,
+                    supportsDropDatabase: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -501,7 +529,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsForeignKeyDisable: true,
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -660,7 +689,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsForeignKeyDisable: driverType.supportsForeignKeyDisable,
                 supportsReadOnlyMode: driverType.supportsReadOnlyMode,
                 supportsQueryProgress: driverType.supportsQueryProgress,
-                requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch
+                requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
+                supportsDropDatabase: driverType.supportsDropDatabase
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,
