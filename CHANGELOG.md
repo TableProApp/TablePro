@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Execute All Statements shortcut (Cmd+Shift+Enter) to run all statements in the editor (#770)
 - Structure tab: search, sort, count badges, PK column, Copy As (CSV/JSON/SQL), destructive change confirmation
 - Structure tab: DDL view with tree-sitter highlighting, line numbers, and "Open in Editor"
 - Structure tab: charset/collation (MySQL), index prefix length, partial indexes (PostgreSQL), cross-schema FK
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selection highlight not covering the last line on Cmd+A (#770)
 - AI chat freeze when large queries or results are included in the system prompt (#774)
 - AI chat panel not updating when switching database connections
 - Schema restored on reconnect for PostgreSQL, Redshift, and BigQuery (#777)

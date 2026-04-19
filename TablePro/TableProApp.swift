@@ -273,6 +273,12 @@ struct AppMenuCommands: Commands {
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
 
+            Button(String(localized: "Execute All Statements")) {
+                actions?.runAllStatements()
+            }
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .disabled(!(actions?.isConnected ?? false) || !(actions?.hasQueryText ?? false))
+
             Button("Explain Query") {
                 actions?.explainQuery()
             }

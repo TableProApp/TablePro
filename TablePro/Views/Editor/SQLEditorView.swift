@@ -188,7 +188,7 @@ struct SQLEditorView: View {
                 indentOption: .spaces(count: ThemeEngine.shared.tabWidth)
             ),
             layout: .init(
-                contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+                contentInsets: NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
             ),
             peripherals: .init(
                 showGutter: ThemeEngine.shared.showLineNumbers,
