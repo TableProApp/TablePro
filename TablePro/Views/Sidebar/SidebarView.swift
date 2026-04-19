@@ -187,19 +187,11 @@ struct SidebarView: View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
         let noItemsDetail = String(format: String(localized: "This database has no %@ yet."), entityName.lowercased())
-        return VStack(spacing: 6) {
-            Image(systemName: "tablecells")
-                .font(.system(size: 28, weight: .thin))
-                .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
-
-            Text(noItemsLabel)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
-                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
-
-            Text(noItemsDetail)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
-        }
+        return ContentUnavailableView(
+            noItemsLabel,
+            systemImage: "tablecells",
+            description: Text(noItemsDetail)
+        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
