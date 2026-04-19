@@ -270,10 +270,11 @@ struct DataGridView: NSViewRepresentable {
         let newRowCount = rowProvider.totalRowCount
         let newColumnCount = rowProvider.columns.count
 
-        // Only do full reload if row/column count changed or columns changed
+        // Only do full reload if row/column count changed, columns changed, or result version changed
         // For cell edits (versionChanged but same count), use granular reload
         let structureChanged = oldRowCount != newRowCount || oldColumnCount != newColumnCount
-        let needsFullReload = structureChanged
+        let resultVersionChanged = previousIdentity.map { $0.resultVersion != resultVersion } ?? false
+        let needsFullReload = structureChanged || resultVersionChanged
 
         coordinator.rowProvider = rowProvider
 
