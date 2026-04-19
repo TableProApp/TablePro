@@ -416,6 +416,7 @@ extension MainContentCoordinator {
             try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
 
             closeSiblingNativeWindows()
+            persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
             tabManager.tabs = []
             tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in

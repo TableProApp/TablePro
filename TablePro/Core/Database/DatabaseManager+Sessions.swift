@@ -268,6 +268,8 @@ extension DatabaseManager {
             updateSession(connectionId) { session in
                 session.currentSchema = database
             }
+            AppSettingsStorage.shared.saveLastSchema(database, for: connectionId)
+            return
         } else if let adapter = driver as? PluginDriverAdapter {
             try await adapter.switchDatabase(to: database)
             let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
