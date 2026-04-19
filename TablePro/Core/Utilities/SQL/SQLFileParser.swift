@@ -44,11 +44,17 @@ final class SQLFileParser: Sendable {
 
     // State-aware chunk boundary deferral. Characters that need lookahead
     // in the current state must not be processed without nextChar available.
-    nonisolated private static func needsLookahead(_ char: unichar, state: ParserState) -> Bool {
+    nonisolated private static func needsLookahead(
+        _ char: unichar, state: ParserState, delimiter: NSString, isSingleCharDelimiter: Bool
+    ) -> Bool {
         switch state {
         case .normal:
-            return char == kDash || char == kSlash || char == kBackslash || char == kStar
-                || char == kSingleQuote || char == kDoubleQuote || char == kBacktick || char == kHash
+            var result = char == kDash || char == kSlash || char == kBackslash || char == kStar
+                || char == kSingleQuote || char == kDoubleQuote || char == kBacktick
+            if !isSingleCharDelimiter && char == delimiter.character(at: 0) {
+                result = true
+            }
+            return result
         case .inSingleQuotedString:
             return char == kSingleQuote || char == kBackslash
         case .inDoubleQuotedString:
@@ -159,7 +165,11 @@ final class SQLFileParser: Sendable {
                             let char = nsBuffer.character(at: i)
                             let nextChar: unichar? = (i + 1 < bufLen) ? nsBuffer.character(at: i + 1) : nil
 
-                            if nextChar == nil && Self.needsLookahead(char, state: state) {
+                            if nextChar == nil && Self.needsLookahead(
+                                char, state: state,
+                                delimiter: currentDelimiter,
+                                isSingleCharDelimiter: isSingleCharDelimiter
+                            ) {
                                 break
                             }
 
