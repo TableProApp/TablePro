@@ -74,10 +74,13 @@ struct CreateTableView: View {
         }
         .navigationTitle(String(localized: "Create Table"))
         .onAppear {
+            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
+            updateGridDelegate()
             if structureChangeManager.workingColumns.isEmpty {
                 structureChangeManager.addNewColumn()
             }
         }
+        .onChange(of: selectedTab) { updateGridDelegate() }
         .alert(String(localized: "Create Table Failed"), isPresented: $showError) {
             Button("OK") {}
         } message: {
@@ -213,6 +216,17 @@ struct CreateTableView: View {
         }
     }
 
+    private func updateGridDelegate() {
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager,
+            tab: structureTab,
+            databaseType: connection.type,
+            additionalFields: [.primaryKey]
+        )
+        gridDelegate.structureTab = structureTab
+        gridDelegate.orderedFields = provider.orderedColumnFields
+    }
+
     private var structureGrid: some View {
         let provider = StructureRowProvider(
             changeManager: structureChangeManager,
@@ -220,11 +234,6 @@ struct CreateTableView: View {
             databaseType: connection.type,
             additionalFields: [.primaryKey]
         )
-
-        // Update delegate state for current render
-        gridDelegate.structureTab = structureTab
-        gridDelegate.selectedRows = $selectedRows
-        gridDelegate.orderedFields = provider.orderedColumnFields
 
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),

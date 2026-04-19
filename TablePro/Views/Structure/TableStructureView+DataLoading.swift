@@ -17,12 +17,11 @@ import UniformTypeIdentifiers
 extension TableStructureView {
     @Sendable
     func loadInitialData() async {
-        isReloadingAfterSave = true
         await loadColumns()
         await loadTabDataIfNeeded(.indexes)
         await loadTabDataIfNeeded(.foreignKeys)
-        isReloadingAfterSave = false
         loadSchemaForEditing()
+        isInitialLoading = false
     }
 
     func loadColumns() async {
@@ -114,17 +113,17 @@ extension TableStructureView {
     }
 
     func onColumnsChanged() {
-        guard !isReloadingAfterSave else { return }
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
         loadSchemaForEditing()
     }
 
     func onIndexesChanged() {
-        guard !isReloadingAfterSave else { return }
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
         loadSchemaForEditing()
     }
 
     func onForeignKeysChanged() {
-        guard !isReloadingAfterSave else { return }
+        guard !isReloadingAfterSave, !isInitialLoading else { return }
         loadSchemaForEditing()
     }
 
@@ -142,7 +141,7 @@ extension TableStructureView {
         if structureChangeManager.hasChanges && !justSaved {
             // Show confirmation dialog
             Task { @MainActor in
-                let window = NSApp.keyWindow
+                let window = coordinator?.contentWindow
                 let confirmed = await AlertHelper.confirmDestructive(
                     title: String(localized: "Discard Changes?"),
                     message: String(localized: "You have unsaved changes to the table structure. Refreshing will discard these changes."),

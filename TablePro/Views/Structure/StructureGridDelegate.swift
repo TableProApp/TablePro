@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import SwiftUI
 import TableProPluginKit
 
 @MainActor
@@ -16,7 +15,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
     let connection: DatabaseConnection
     let tableName: String
     weak var coordinator: MainContentCoordinator?
-    var selectedRows: Binding<Set<Int>>?
+    var onSelectedRowsChanged: ((Set<Int>) -> Void)?
 
     // Column reorder callback (set externally by the view when conditions allow)
     var moveRowHandler: ((Int, Int) -> Void)?
@@ -113,21 +112,21 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 structureChangeManager.deleteForeignKey(id: fk.id)
             }
         case .parts, .ddl:
-            selectedRows?.wrappedValue.removeAll()
+            onSelectedRowsChanged?([])
             return
         }
 
         let displayCount = (currentProvider?.totalRowCount ?? 0) - rows.count
         if displayCount > 0 {
             if maxRow < displayCount {
-                selectedRows?.wrappedValue = [maxRow]
+                onSelectedRowsChanged?([maxRow])
             } else if minRow > 0 {
-                selectedRows?.wrappedValue = [minRow - 1]
+                onSelectedRowsChanged?([minRow - 1])
             } else {
-                selectedRows?.wrappedValue = [0]
+                onSelectedRowsChanged?([0])
             }
         } else {
-            selectedRows?.wrappedValue.removeAll()
+            onSelectedRowsChanged?([])
         }
     }
 
