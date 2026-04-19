@@ -54,7 +54,7 @@ extension TableStructureView {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Read-Only Connection"),
                 message: String(localized: "Cannot save schema changes: connection is read-only."),
-                window: NSApp.keyWindow
+                window: coordinator?.contentWindow
             )
             return
         }
@@ -76,7 +76,7 @@ extension TableStructureView {
                 message: message,
                 confirmButton: String(localized: "Apply Changes"),
                 cancelButton: String(localized: "Cancel"),
-                window: NSApp.keyWindow
+                window: coordinator?.contentWindow
             )
             guard confirmed else { return }
         }
@@ -127,7 +127,7 @@ extension TableStructureView {
             AlertHelper.showErrorSheet(
                 title: String(localized: "Error Applying Changes"),
                 message: error.localizedDescription,
-                window: NSApp.keyWindow
+                window: coordinator?.contentWindow
             )
         }
     }
@@ -234,7 +234,7 @@ extension TableStructureView {
         }
         savePanel.nameFieldStringValue = "\(tableName).sql"
 
-        guard let window = NSApp.keyWindow else { return }
+        guard let window = coordinator?.contentWindow else { return }
         savePanel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = savePanel.url else { return }
             do {

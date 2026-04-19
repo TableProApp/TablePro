@@ -7,7 +7,6 @@
 //
 
 import AppKit
-import SwiftUI
 import TableProPluginKit
 
 @MainActor
@@ -15,7 +14,7 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
     let structureChangeManager: StructureChangeManager
     var structureTab: StructureTab
     let connection: DatabaseConnection
-    var selectedRows: Binding<Set<Int>>?
+    var onSelectedRowsChanged: ((Set<Int>) -> Void)?
     var orderedFields: [StructureColumnField] = []
 
     init(
@@ -93,14 +92,14 @@ final class CreateTableGridDelegate: DataGridViewDelegate {
             let maxRow = rows.max() ?? 0
             let minRow = rows.min() ?? 0
             if maxRow < newCount {
-                selectedRows?.wrappedValue = [maxRow]
+                onSelectedRowsChanged?([maxRow])
             } else if minRow > 0 {
-                selectedRows?.wrappedValue = [minRow - 1]
+                onSelectedRowsChanged?([minRow - 1])
             } else {
-                selectedRows?.wrappedValue = [0]
+                onSelectedRowsChanged?([0])
             }
         } else {
-            selectedRows?.wrappedValue.removeAll()
+            onSelectedRowsChanged?([])
         }
     }
 

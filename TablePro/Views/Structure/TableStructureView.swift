@@ -16,6 +16,7 @@ import UniformTypeIdentifiers
 /// View displaying table structure with DataGridView
 struct TableStructureView: View {
     static let logger = Logger(subsystem: "com.TablePro", category: "TableStructureView")
+    static let structurePasteboardType = NSPasteboard.PasteboardType("com.TablePro.structure")
     let tableName: String
     let connection: DatabaseConnection
     let toolbarState: ConnectionToolbarState
@@ -30,6 +31,7 @@ struct TableStructureView: View {
     @State var showCopyConfirmation = false
     @State var copyResetTask: Task<Void, Never>?
     @State var isLoading = true
+    @State var isInitialLoading = true
     @State var errorMessage: String?
     @State var loadedTabs: Set<StructureTab> = []
     @State var isReloadingAfterSave = false  // Prevent onChange loops during save reload
@@ -81,14 +83,21 @@ struct TableStructureView: View {
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
         .onChange(of: searchText) { displayVersion += 1 }
+        .onChange(of: displayVersion) { updateGridDelegate() }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
-            // Sync delegate state
-            gridDelegate.selectedRows = $selectedRows
+            gridDelegate.onSelectedRowsChanged = { self.selectedRows = $0 }
             gridDelegate.coordinator = coordinator
+            gridDelegate.sortHandler = { [self] column, ascending in
+                structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
+                var newSortState = SortState()
+                newSortState.columns = [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)]
+                sortState = newSortState
+                displayVersion += 1
+            }
+            updateGridDelegate()
 
-            // Wire action handler for direct coordinator calls
             actionHandler.saveChanges = {
                 if self.structureChangeManager.hasChanges && self.selectedTab != .ddl {
                     Task { await self.executeSchemaChanges() }
@@ -107,6 +116,7 @@ struct TableStructureView: View {
         }
         .onChange(of: structureChangeManager.hasChanges) { _, newValue in
             coordinator?.toolbarState.hasStructureChanges = newValue
+            updateGridDelegate()
         }
         .onReceive(NotificationCenter.default.publisher(for: .refreshData), perform: onRefreshData)
     }
@@ -187,8 +197,8 @@ struct TableStructureView: View {
 
     // MARK: - Structure Grid (DataGridView)
 
-    private var structureGrid: some View {
-        let provider = StructureRowProvider(
+    private func makeCurrentProvider() -> StructureRowProvider {
+        StructureRowProvider(
             changeManager: structureChangeManager,
             tab: selectedTab,
             databaseType: connection.type,
@@ -196,22 +206,15 @@ struct TableStructureView: View {
             filterText: searchText.isEmpty ? nil : searchText,
             sortDescriptor: structureSortDescriptor
         )
-        let canEdit = connection.type.supportsSchemaEditing
-        let customOptions = provider.customDropdownOptions
-        let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
+    }
 
-        // Update delegate state for current render
+    func updateGridDelegate() {
+        let provider = makeCurrentProvider()
+        let canEdit = connection.type.supportsSchemaEditing
+
         gridDelegate.selectedTab = selectedTab
-        gridDelegate.selectedRows = $selectedRows
         gridDelegate.currentProvider = provider
         gridDelegate.orderedFields = provider.orderedColumnFields
-        gridDelegate.sortHandler = { [self] column, ascending in
-            structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
-            var newSortState = SortState()
-            newSortState.columns = [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)]
-            sortState = newSortState
-            displayVersion += 1
-        }
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
@@ -249,7 +252,7 @@ struct TableStructureView: View {
                         AlertHelper.showErrorSheet(
                             title: String(localized: "Column Reorder Failed"),
                             message: error.localizedDescription,
-                            window: NSApp.keyWindow
+                            window: coordinator?.contentWindow
                         )
                     }
                 }
@@ -257,6 +260,13 @@ struct TableStructureView: View {
         }()
 
         gridDelegate.moveRowHandler = moveRowHandler
+    }
+
+    private var structureGrid: some View {
+        let provider = makeCurrentProvider()
+        let canEdit = connection.type.supportsSchemaEditing
+        let customOptions = provider.customDropdownOptions
+        let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
