@@ -151,18 +151,29 @@ struct AIChatCodeBlockView: View {
         // swiftlint:enable force_try
     }
 
-    private func highlightedSQL(_ code: String) -> AttributedString {
+    /// Shared highlighting engine: applies regex-based coloring with protected ranges and a 10k char cap.
+    private static func highlightCode(
+        _ code: String,
+        protectedPatterns: [(NSRegularExpression, NSColor)],
+        unprotectedPatterns: [(NSRegularExpression, NSColor)]
+    ) -> AttributedString {
         var result = AttributedString(code)
         result.font = .system(size: 12, design: .monospaced)
 
         var protectedRanges: [Range<AttributedString.Index>] = []
 
-        func applyColor(_ nsRange: NSRange, color: NSColor, protect: Bool = false) {
+        let nsCode = code as NSString
+        let maxHighlightLength = 10_000
+        let highlightRange = NSRange(
+            location: 0,
+            length: min(nsCode.length, maxHighlightLength)
+        )
+
+        func applyColor(_ nsRange: NSRange, color: NSColor, protect: Bool) {
             guard let stringRange = Range(nsRange, in: code),
                   let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result) else {
-                return
-            }
+                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result)
+            else { return }
             let range = attrStart..<attrEnd
             result[range].foregroundColor = Color(nsColor: color)
             if protect {
@@ -173,56 +184,42 @@ struct AIChatCodeBlockView: View {
         func isProtected(_ nsRange: NSRange) -> Bool {
             guard let stringRange = Range(nsRange, in: code),
                   let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result) else {
-                return false
-            }
+                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result)
+            else { return false }
             let range = attrStart..<attrEnd
             return protectedRanges.contains { $0.overlaps(range) }
         }
 
-        let nsCode = code as NSString
-        let maxHighlightLength = 10_000
-        let highlightRange: NSRange
-        if nsCode.length > maxHighlightLength {
-            highlightRange = NSRange(location: 0, length: maxHighlightLength)
-        } else {
-            highlightRange = NSRange(location: 0, length: nsCode.length)
+        for (regex, color) in protectedPatterns {
+            for match in regex.matches(in: code, range: highlightRange) {
+                applyColor(match.range, color: color, protect: true)
+            }
         }
 
-        // 1. Single-line comments: --.*
-        for match in SQLPatterns.singleLineComment.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemGreen, protect: true)
-        }
-
-        // 2. Multi-line comments: /* ... */
-        for match in SQLPatterns.multiLineComment.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemGreen, protect: true)
-        }
-
-        // 3. String literals: '...'
-        for match in SQLPatterns.stringLiteral.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemRed, protect: true)
-        }
-
-        // 4. Numbers: \b\d+(\.\d+)?\b
-        for match in SQLPatterns.number.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemPurple)
-        }
-
-        // 5. NULL / TRUE / FALSE
-        for match in SQLPatterns.nullBoolLiteral.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemOrange)
-        }
-
-        // 6. SQL keywords
-        for match in SQLPatterns.keyword.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemBlue)
+        for (regex, color) in unprotectedPatterns {
+            for match in regex.matches(in: code, range: highlightRange) {
+                guard !isProtected(match.range) else { continue }
+                applyColor(match.range, color: color, protect: false)
+            }
         }
 
         return result
+    }
+
+    private func highlightedSQL(_ code: String) -> AttributedString {
+        Self.highlightCode(
+            code,
+            protectedPatterns: [
+                (SQLPatterns.singleLineComment, .systemGreen),
+                (SQLPatterns.multiLineComment, .systemGreen),
+                (SQLPatterns.stringLiteral, .systemRed)
+            ],
+            unprotectedPatterns: [
+                (SQLPatterns.number, .systemPurple),
+                (SQLPatterns.nullBoolLiteral, .systemOrange),
+                (SQLPatterns.keyword, .systemBlue)
+            ]
+        )
     }
 
     // MARK: - Static JavaScript Regex Patterns (compiled once)
@@ -261,85 +258,22 @@ struct AIChatCodeBlockView: View {
     }
 
     private func highlightedJavaScript(_ code: String) -> AttributedString {
-        var result = AttributedString(code)
-        result.font = .system(size: 12, design: .monospaced)
-
-        var protectedRanges: [Range<AttributedString.Index>] = []
-
-        func applyColor(_ nsRange: NSRange, color: NSColor, protect: Bool = false) {
-            guard let stringRange = Range(nsRange, in: code),
-                  let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result) else {
-                return
-            }
-            let range = attrStart..<attrEnd
-            result[range].foregroundColor = Color(nsColor: color)
-            if protect {
-                protectedRanges.append(range)
-            }
-        }
-
-        func isProtected(_ nsRange: NSRange) -> Bool {
-            guard let stringRange = Range(nsRange, in: code),
-                  let attrStart = AttributedString.Index(stringRange.lowerBound, within: result),
-                  let attrEnd = AttributedString.Index(stringRange.upperBound, within: result) else {
-                return false
-            }
-            let range = attrStart..<attrEnd
-            return protectedRanges.contains { $0.overlaps(range) }
-        }
-
-        let nsCode = code as NSString
-        let maxHighlightLength = 10_000
-        let highlightRange: NSRange
-        if nsCode.length > maxHighlightLength {
-            highlightRange = NSRange(location: 0, length: maxHighlightLength)
-        } else {
-            highlightRange = NSRange(location: 0, length: nsCode.length)
-        }
-
-        for match in JSPatterns.singleLineComment.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemGreen, protect: true)
-        }
-
-        for match in JSPatterns.multiLineComment.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemGreen, protect: true)
-        }
-
-        for match in JSPatterns.doubleQuoteString.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemRed, protect: true)
-        }
-
-        for match in JSPatterns.singleQuoteString.matches(in: code, range: highlightRange) {
-            applyColor(match.range, color: .systemRed, protect: true)
-        }
-
-        for match in JSPatterns.number.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemPurple)
-        }
-
-        for match in JSPatterns.boolNull.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemOrange)
-        }
-
-        for match in JSPatterns.keyword.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemPink)
-        }
-
-        for match in JSPatterns.method.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemBlue)
-        }
-
-        for match in JSPatterns.property.matches(in: code, range: highlightRange) {
-            guard !isProtected(match.range) else { continue }
-            applyColor(match.range, color: .systemTeal)
-        }
-
-        return result
+        Self.highlightCode(
+            code,
+            protectedPatterns: [
+                (JSPatterns.singleLineComment, .systemGreen),
+                (JSPatterns.multiLineComment, .systemGreen),
+                (JSPatterns.doubleQuoteString, .systemRed),
+                (JSPatterns.singleQuoteString, .systemRed)
+            ],
+            unprotectedPatterns: [
+                (JSPatterns.number, .systemPurple),
+                (JSPatterns.boolNull, .systemOrange),
+                (JSPatterns.keyword, .systemPink),
+                (JSPatterns.method, .systemBlue),
+                (JSPatterns.property, .systemTeal)
+            ]
+        )
     }
 }
 
