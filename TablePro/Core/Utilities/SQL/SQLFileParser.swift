@@ -168,6 +168,19 @@ final class SQLFileParser: Sendable {
 
                             switch state {
                             case .normal:
+                                // DELIMITER is a client command terminated by newline, not by delimiter
+                                if char == Self.kNewline && hasStatementContent {
+                                    let text = (currentStatement as NSString?)?
+                                        .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                    if let newDelim = Self.extractDelimiterChange(text) {
+                                        currentDelimiter = newDelim as NSString
+                                        isSingleCharDelimiter = currentDelimiter.length == 1
+                                            && currentDelimiter.character(at: 0) == Self.kSemicolon
+                                        currentStatement?.setString("")
+                                        hasStatementContent = false
+                                    }
+                                }
+
                                 if char == Self.kDash && nextChar == Self.kDash {
                                     state = .inSingleLineComment
                                     i += 2
@@ -233,13 +246,7 @@ final class SQLFileParser: Sendable {
                                     if hasStatementContent {
                                         let text = (currentStatement as NSString?)?
                                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                        if let newDelim = Self.extractDelimiterChange(text) {
-                                            currentDelimiter = newDelim as NSString
-                                            isSingleCharDelimiter = currentDelimiter.length == 1
-                                                && currentDelimiter.character(at: 0) == Self.kSemicolon
-                                        } else {
-                                            continuation.yield((text, statementStartLine))
-                                        }
+                                        continuation.yield((text, statementStartLine))
                                     }
                                     currentStatement?.setString("")
                                     hasStatementContent = false
@@ -250,13 +257,7 @@ final class SQLFileParser: Sendable {
                                     if hasStatementContent {
                                         let text = (currentStatement as NSString?)?
                                             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                                        if let newDelim = Self.extractDelimiterChange(text) {
-                                            currentDelimiter = newDelim as NSString
-                                            isSingleCharDelimiter = currentDelimiter.length == 1
-                                                && currentDelimiter.character(at: 0) == Self.kSemicolon
-                                        } else {
-                                            continuation.yield((text, statementStartLine))
-                                        }
+                                        continuation.yield((text, statementStartLine))
                                     }
                                     currentStatement?.setString("")
                                     hasStatementContent = false
