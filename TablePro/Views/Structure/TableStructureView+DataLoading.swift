@@ -103,6 +103,8 @@ extension TableStructureView {
     func onSelectedTabChanged(_ new: StructureTab) {
         searchText = ""
         structureSortDescriptor = nil
+        sortState = SortState()
+        displayVersion += 1
         Task {
             await loadTabDataIfNeeded(new)
         }

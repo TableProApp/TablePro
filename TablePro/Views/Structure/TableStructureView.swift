@@ -217,6 +217,9 @@ struct TableStructureView: View {
         gridDelegate.currentProvider = provider
         gridDelegate.sortHandler = { [self] column, ascending in
             structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
+            var newSortState = SortState()
+            newSortState.columns = [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)]
+            sortState = newSortState
             displayVersion += 1
         }
 
