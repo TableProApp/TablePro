@@ -88,7 +88,9 @@ final class DatabaseManager {
     internal init() {}
 
     private func persistOpenConnectionIds() {
-        let ids = Array(activeSessions.keys)
+        let connections = ConnectionStorage.shared.loadConnections()
+        let activeKeys = Set(activeSessions.keys)
+        let ids = connections.filter { activeKeys.contains($0.id) }.map(\.id)
         AppSettingsStorage.shared.saveLastOpenConnectionIds(ids)
     }
 }
