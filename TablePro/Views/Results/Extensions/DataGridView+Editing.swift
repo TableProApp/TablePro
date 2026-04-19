@@ -94,7 +94,7 @@ extension TableViewCoordinator {
         )
 
         rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        onCellEdit?(row, columnIndex, newValue)
+        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
 
         let tableColumnIndex = columnIndex + 1
         tableView?.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: tableColumnIndex))
@@ -148,6 +148,15 @@ extension TableViewCoordinator {
         guard row >= 0, column > 0 else { return true }
 
         let columnIndex = column - 1
+
+        if isEscapeCancelling {
+            isEscapeCancelling = false
+            let originalValue = rowProvider.value(atRow: row, column: columnIndex)
+            textField.stringValue = originalValue ?? ""
+            (control as? CellTextField)?.restoreTruncatedDisplay()
+            return true
+        }
+
         let newValue: String? = textField.stringValue
 
         let oldValue = rowProvider.value(atRow: row, column: columnIndex)
@@ -165,7 +174,7 @@ extension TableViewCoordinator {
         )
 
         rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        onCellEdit?(row, columnIndex, newValue)
+        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
 
         Task { @MainActor in
             tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
@@ -234,6 +243,7 @@ extension TableViewCoordinator {
         }
 
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            isEscapeCancelling = true
             tableView.window?.makeFirstResponder(tableView)
             return true
         }

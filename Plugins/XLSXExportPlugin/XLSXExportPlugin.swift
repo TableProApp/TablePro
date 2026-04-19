@@ -102,10 +102,11 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
                                 currentSheetRowCount += overflow.count
                             }
                         }
-                        for _ in rowBatch {
+                        let batchCount = rowBatch.count
+                        rowBatch.removeAll(keepingCapacity: true)
+                        for _ in 0..<batchCount {
                             progress.incrementRow()
                         }
-                        rowBatch.removeAll(keepingCapacity: true)
                     }
                 }
             }
@@ -140,7 +141,7 @@ final class XLSXExportPlugin: ExportFormatPlugin, SettablePlugin {
                         currentSheetRowCount += overflow.count
                     }
                 }
-                for _ in rowBatch {
+                for _ in 0..<rowBatch.count {
                     progress.incrementRow()
                 }
             }

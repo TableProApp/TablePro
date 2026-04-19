@@ -11,7 +11,9 @@ public final class PluginImportProgress: @unchecked Sendable {
     }
 
     public func setEstimatedTotal(_ count: Int) {
-        progress.totalUnitCount = Int64(count)
+        if progress.totalUnitCount <= 0 {
+            progress.totalUnitCount = Int64(count)
+        }
     }
 
     public func incrementStatement() {

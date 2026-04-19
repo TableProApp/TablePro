@@ -30,15 +30,12 @@ extension TableViewCoordinator {
                 currentValue: currentValue,
                 onCommit: { newValue in
                     guard let self else { return }
-                    let oldValue = self.rowProvider.value(atRow: row, column: columnIndex)
-                    guard oldValue != newValue else { return }
-
-                    self.rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-                    self.onCellEdit?(row, columnIndex, newValue)
-
-                    tableView.reloadData(
-                        forRowIndexes: IndexSet(integer: row),
-                        columnIndexes: IndexSet(integer: column)
+                    self.commitPopoverEdit(
+                        tableView: tableView,
+                        row: row,
+                        column: column,
+                        columnIndex: columnIndex,
+                        newValue: newValue
                     )
                 },
                 onDismiss: dismiss

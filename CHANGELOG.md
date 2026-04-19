@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Structure tab: filter columns/indexes/FKs by name, sort by clicking headers, count badges on tabs
+- Structure tab: Primary Key column visible in edit mode, dropdown pickers for FK actions and index types
+- Structure tab: DDL view with tree-sitter highlighting and line numbers, "Open in Editor" button
+- Structure tab: Copy As (CSV, JSON, SQL) in context menu, destructive change confirmation
+- Schema changes recorded in query history
+
 ### Changed
 
 - Query results now load progressively with configurable row limit instead of fixed 100K truncation
@@ -18,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL import parser rewritten: fixes chunk boundary quote escapes, adds DELIMITER support, MySQL conditional comments, and hash comments
+- Import parser now surfaces file read and encoding errors instead of silently succeeding
+- Compressed (.gz) files are only decompressed once instead of twice
+- Import progress estimate uses decompressed file size for accurate progress
+- Transaction rollback error is now correctly reported
+- Foreign key checks are properly restored after failed import
+- File decompression no longer blocks Swift concurrency thread pool
 - Cmd+W closing the connection window instead of clearing to empty state
 - ER Diagram and Server Dashboard replacing the current tab instead of opening a new one
 - Welcome window stealing focus on connect, disabling Cmd+T until manual click
@@ -34,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Load More" and "Fetch All" buttons for query results exceeding the configured limit
 - Cancel button in toolbar to stop running queries (Cmd+.)
 - Query result limit setting in Preferences > Data Grid (default: 10,000 rows)
+- Import error handling modes: Stop and Rollback, Stop and Commit, Skip and Continue
 - Handoff via NSUserActivity
 
 ## [0.32.1] - 2026-04-17

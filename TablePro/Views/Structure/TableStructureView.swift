@@ -36,14 +36,20 @@ struct TableStructureView: View {
     @State var lastSaveTime: Date?  // Track when we last saved
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
 
+    // Search and sort state
+    @State var searchText = ""
+    @State var structureSortDescriptor: StructureSortDescriptor?
+    @State var displayVersion: Int = 0
+
     // DataGridView state
-    @State var structureChangeManager = StructureChangeManager()
+    @State var structureChangeManager: StructureChangeManager
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()
     @State var editingCell: CellPosition?
     @State var structureColumnLayout = ColumnLayoutState()
     @State var actionHandler = StructureViewActionHandler()
+    @State var gridDelegate: StructureGridDelegate
 
     init(tableName: String, connection: DatabaseConnection, toolbarState: ConnectionToolbarState, coordinator: MainContentCoordinator?) {
         self.tableName = tableName
@@ -51,10 +57,16 @@ struct TableStructureView: View {
         self.toolbarState = toolbarState
         self.coordinator = coordinator
 
-        // Initialize wrappedChangeManager using the StateObject's wrappedValue
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(structureManager: manager))
+        _gridDelegate = State(wrappedValue: StructureGridDelegate(
+            structureChangeManager: manager,
+            selectedTab: .columns,
+            connection: connection,
+            tableName: tableName,
+            coordinator: coordinator
+        ))
     }
 
     var body: some View {
@@ -68,8 +80,13 @@ struct TableStructureView: View {
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
+        .onChange(of: searchText) { displayVersion += 1 }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
+
+            // Sync delegate state
+            gridDelegate.selectedRows = $selectedRows
+            gridDelegate.coordinator = coordinator
 
             // Wire action handler for direct coordinator calls
             actionHandler.saveChanges = {
@@ -78,10 +95,10 @@ struct TableStructureView: View {
                 }
             }
             actionHandler.previewSQL = { self.generateStructurePreviewSQL() }
-            actionHandler.copyRows = { self.handleCopyRows(self.selectedRows) }
-            actionHandler.pasteRows = { self.handlePaste() }
-            actionHandler.undo = { self.handleUndo() }
-            actionHandler.redo = { self.handleRedo() }
+            actionHandler.copyRows = { self.gridDelegate.dataGridCopyRows(self.selectedRows) }
+            actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
+            actionHandler.undo = { self.gridDelegate.dataGridUndo() }
+            actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             coordinator?.structureActions = actionHandler
         }
         .onDisappear {
@@ -111,10 +128,9 @@ struct TableStructureView: View {
         HStack {
             Spacer()
 
-            // Tab picker
             Picker("", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tabLabel(for: tab)).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -123,6 +139,27 @@ struct TableStructureView: View {
             Spacer()
         }
         .padding()
+    }
+
+    // MARK: - Tab Label with Count Badge
+
+    private func tabLabel(for tab: StructureTab) -> String {
+        let count: Int?
+        switch tab {
+        case .columns:
+            count = loadedTabs.contains(.columns) ? columns.count : nil
+        case .indexes:
+            count = loadedTabs.contains(.indexes) ? indexes.count : nil
+        case .foreignKeys:
+            count = loadedTabs.contains(.foreignKeys) ? foreignKeys.count : nil
+        case .ddl, .parts:
+            count = nil
+        }
+
+        if let count {
+            return "\(tab.displayName) (\(count))"
+        }
+        return tab.displayName
     }
 
     // MARK: - Content Area
@@ -151,8 +188,30 @@ struct TableStructureView: View {
     // MARK: - Structure Grid (DataGridView)
 
     private var structureGrid: some View {
-        let provider = StructureRowProvider(changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type)
+        let provider = StructureRowProvider(
+            changeManager: structureChangeManager,
+            tab: selectedTab,
+            databaseType: connection.type,
+            additionalFields: [.primaryKey],
+            filterText: searchText.isEmpty ? nil : searchText,
+            sortDescriptor: structureSortDescriptor
+        )
         let canEdit = connection.type.supportsSchemaEditing
+        let customOptions = provider.customDropdownOptions
+        let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
+
+        // Update delegate state for current render
+        gridDelegate.selectedTab = selectedTab
+        gridDelegate.selectedRows = $selectedRows
+        gridDelegate.currentProvider = provider
+        gridDelegate.orderedFields = provider.orderedColumnFields
+        gridDelegate.sortHandler = { [self] column, ascending in
+            structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
+            var newSortState = SortState()
+            newSortState.columns = [SortColumn(columnIndex: column, direction: ascending ? .ascending : .descending)]
+            sortState = newSortState
+            displayVersion += 1
+        }
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
@@ -161,7 +220,7 @@ struct TableStructureView: View {
                   PluginManager.shared.supportsColumnReorder(for: connection.type) else {
                 return nil
             }
-            return { fromIndex, toIndex in
+            return { [self] fromIndex, toIndex in
                 let columnsSnapshot = structureChangeManager.workingColumns
                 Task { @MainActor in
                     do {
@@ -197,36 +256,34 @@ struct TableStructureView: View {
             }
         }()
 
+        gridDelegate.moveRowHandler = moveRowHandler
+
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
+            resultVersion: displayVersion,
             isEditable: canEdit,
-            onRefresh: nil,
-            onCellEdit: handleCellEdit,
-            onDeleteRows: handleDeleteRows,
-            onCopyRows: handleCopyRows,
-            onPasteRows: handlePaste,
-            onUndo: handleUndo,
-            onRedo: handleRedo,
-            onSort: nil,
-            onAddRow: canEdit ? { addNewRow() } : nil,
-            onUndoInsert: nil,
-            onFilterColumn: nil,
-            getVisualState: { row in
-                structureChangeManager.getVisualState(for: row, tab: selectedTab)
-            },
-            dropdownColumns: provider.dropdownColumns,
-            typePickerColumns: provider.typePickerColumns,
-            connectionId: connection.id,
-            databaseType: getDatabaseType(),
-            onMoveRow: moveRowHandler,
-            rowViewProvider: makeStructureRowView,
-            emptySpaceMenu: makeEmptySpaceMenu,
+            configuration: DataGridConfiguration(
+                dropdownColumns: allDropdownColumns,
+                typePickerColumns: provider.typePickerColumns,
+                customDropdownOptions: customOptions.isEmpty ? nil : customOptions,
+                connectionId: connection.id,
+                databaseType: connection.type
+            ),
+            delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                Divider()
+            }
+        }
     }
 
     // MARK: - Helper Views

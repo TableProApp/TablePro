@@ -3,7 +3,7 @@
 //  TablePro
 //
 //  Custom row view with structure-specific context menu.
-//  Provides Copy Name, Copy Definition, Duplicate, Delete for structure items.
+//  Provides Copy Name, Copy Definition, Copy As, Duplicate, Delete for structure items.
 //
 
 import AppKit
@@ -19,6 +19,8 @@ final class StructureRowViewWithMenu: NSTableRowView {
 
     var onCopyName: ((Set<Int>) -> Void)?
     var onCopyDefinition: ((Set<Int>) -> Void)?
+    var onCopyAsCSV: ((Set<Int>) -> Void)?
+    var onCopyAsJSON: ((Set<Int>) -> Void)?
     var onNavigateFK: ((Int) -> Void)?
     var onDuplicate: ((Set<Int>) -> Void)?
     var onDelete: ((Set<Int>) -> Void)?
@@ -56,6 +58,40 @@ final class StructureRowViewWithMenu: NSTableRowView {
         )
         copyDefItem.target = self
         menu.addItem(copyDefItem)
+
+        // Copy As submenu
+        let copyAsSubmenu = NSMenu()
+        let csvItem = NSMenuItem(
+            title: "CSV",
+            action: #selector(handleCopyAsCSV),
+            keyEquivalent: ""
+        )
+        csvItem.target = self
+        copyAsSubmenu.addItem(csvItem)
+
+        let jsonItem = NSMenuItem(
+            title: "JSON",
+            action: #selector(handleCopyAsJSON),
+            keyEquivalent: ""
+        )
+        jsonItem.target = self
+        copyAsSubmenu.addItem(jsonItem)
+
+        let sqlItem = NSMenuItem(
+            title: "SQL",
+            action: #selector(handleCopyDefinition),
+            keyEquivalent: ""
+        )
+        sqlItem.target = self
+        copyAsSubmenu.addItem(sqlItem)
+
+        let copyAsItem = NSMenuItem(
+            title: String(localized: "Copy As"),
+            action: nil,
+            keyEquivalent: ""
+        )
+        copyAsItem.submenu = copyAsSubmenu
+        menu.addItem(copyAsItem)
 
         if structureTab == .foreignKeys,
            let tableName = referencedTableName, !tableName.isEmpty {
@@ -105,6 +141,8 @@ final class StructureRowViewWithMenu: NSTableRowView {
 
     @objc private func handleCopyName() { onCopyName?(effectiveIndices()) }
     @objc private func handleCopyDefinition() { onCopyDefinition?(effectiveIndices()) }
+    @objc private func handleCopyAsCSV() { onCopyAsCSV?(effectiveIndices()) }
+    @objc private func handleCopyAsJSON() { onCopyAsJSON?(effectiveIndices()) }
     @objc private func handleNavigateFK() { onNavigateFK?(rowIndex) }
     @objc private func handleDuplicate() { onDuplicate?(effectiveIndices()) }
     @objc private func handleDelete() { onDelete?(effectiveIndices()) }

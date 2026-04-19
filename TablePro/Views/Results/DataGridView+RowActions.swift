@@ -19,12 +19,12 @@ extension TableViewCoordinator {
     }
 
     func addNewRow() {
-        onAddRow?()
+        delegate?.dataGridAddRow()
     }
 
     @MainActor
     func undoInsertRow(at index: Int) {
-        onUndoInsert?(index)
+        delegate?.dataGridUndoInsert(at: index)
         changeManager.undoRowInsertion(rowIndex: index)
         rowProvider.removeRow(at: index)
         updateCache()
@@ -175,7 +175,7 @@ extension TableViewCoordinator {
     private static let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
-        guard onMoveRow != nil else { return nil }
+        guard delegate != nil else { return nil }
         let item = NSPasteboardItem()
         item.setString(String(row), forType: Self.rowDragType)
         return item
@@ -187,7 +187,7 @@ extension TableViewCoordinator {
         proposedRow row: Int,
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        guard onMoveRow != nil else { return [] }
+        guard delegate != nil else { return [] }
         guard info.draggingSource as? NSTableView === tableView else { return [] }
         guard info.draggingPasteboard.availableType(from: [Self.rowDragType]) != nil else { return [] }
         guard dropOperation == .above else {
@@ -203,14 +203,14 @@ extension TableViewCoordinator {
         row: Int,
         dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        guard let onMoveRow else { return false }
+        guard let delegate else { return false }
         guard let item = info.draggingPasteboard.pasteboardItems?.first,
               let rowString = item.string(forType: Self.rowDragType),
               let fromRow = Int(rowString) else {
             return false
         }
         guard fromRow != row && fromRow != row - 1 else { return false }
-        onMoveRow(fromRow, row)
+        delegate.dataGridMoveRow(from: fromRow, to: row)
         return true
     }
 }

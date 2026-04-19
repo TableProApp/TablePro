@@ -45,8 +45,11 @@ Click a table in the sidebar, then click the **Structure** tab. Or right-click a
 | **Type** | Data type (VARCHAR, INT, etc.) |
 | **Nullable** | Whether NULL values are allowed |
 | **Default** | Default value if none specified |
-| **Extra** | Additional attributes (AUTO_INCREMENT, etc.) |
-| **Key** | Primary key (PRI), Foreign key (FOR), etc. |
+| **Primary Key** | Whether the column is part of the primary key |
+| **Auto Inc** | AUTO_INCREMENT / SERIAL |
+| **Comment** | Column comment |
+
+Use the filter field at the top to search columns by name. Click any column header to sort.
 
 ## Indexes Tab
 
@@ -91,10 +94,13 @@ Click a table in the sidebar, then click the **Structure** tab. Or right-click a
 | Property | Description |
 |----------|-------------|
 | **Name** | Constraint name |
-| **Column** | Local column(s) |
-| **References** | Target table and column |
-| **On Delete** | Action when referenced row is deleted |
+| **Columns** | Local column(s) |
+| **Ref Table** | Referenced table |
+| **Ref Columns** | Referenced column(s) |
+| **On Delete** | Action when referenced row is deleted (NO ACTION, CASCADE, SET NULL, SET DEFAULT, RESTRICT) |
 | **On Update** | Action when referenced row is updated |
+
+On Delete and On Update use dropdown pickers with all standard referential actions.
 
 ## DDL Tab
 
@@ -112,7 +118,11 @@ Click a table in the sidebar, then click the **Structure** tab. Or right-click a
   />
 </Frame>
 
-Select all with `Cmd+A` and copy with `Cmd+C`. Useful for recreating tables or copying schema definitions.
+The DDL view uses tree-sitter syntax highlighting with line numbers. Use the toolbar buttons to:
+
+- **Copy** the DDL to clipboard
+- **Export** as a `.sql` file
+- **Open in Editor** to send the DDL to a new query tab for editing
 
 ## Creating a New Table
 
@@ -188,12 +198,13 @@ Right-click any row in the Columns, Indexes, or Foreign Keys tabs:
 | Action | Description |
 |--------|-------------|
 | **Copy Name** | Copy the item name to clipboard |
-| **Copy Definition** | Copy the SQL definition (e.g., column definition, index creation clause) |
-| **Open [table]** | (Foreign Keys tab only) Navigate to the referenced table |
-| **Duplicate** | Copy and paste the selected items |
+| **Copy Definition** | Copy the SQL definition |
+| **Copy As** | Copy as CSV, JSON, or SQL INSERT |
+| **Open [table]** | (Foreign Keys tab) Navigate to the referenced table |
+| **Duplicate** | Duplicate selected items |
 | **Delete** | Mark items for deletion (apply to execute) |
 
-Multi-select rows first to copy or delete multiple items at once.
+Multi-select rows to copy or delete multiple items at once.
 
 ### Schema Change Preview
 
@@ -213,7 +224,9 @@ Before applying, TablePro shows the generated ALTER TABLE SQL for review.
   />
 </Frame>
 
-`Cmd+Z` to undo, `Cmd+Shift+Z` to redo structure changes before applying.
+Destructive changes (dropping columns, changing data types) show a confirmation dialog before executing.
+
+`Cmd+Z` to undo, `Cmd+Shift+Z` to redo structure changes before applying. Schema changes are recorded in query history.
 
 {/* Screenshot: Undo and redo for structure changes */}
 <Frame caption="Undo and redo for structure changes">

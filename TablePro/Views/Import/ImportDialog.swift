@@ -35,6 +35,8 @@ struct ImportDialog: View {
     @State private var hasPreviewError = false
     @State private var tempPreviewURL: URL?
     @State private var loadFileTask: Task<Void, Never>?
+    @State private var countStatementsTask: Task<Void, Never>?
+    @State private var importTask: Task<Void, Never>?
 
     // MARK: - Import Service
 
@@ -86,17 +88,17 @@ struct ImportDialog: View {
         }
         .onDisappear {
             loadFileTask?.cancel()
+            countStatementsTask?.cancel()
+            importTask?.cancel()
             cleanupTempFiles()
         }
         .sheet(isPresented: $showProgressDialog) {
-            ImportProgressView(
-                processedStatements: importService?.state.processedStatements ?? 0,
-                estimatedTotalStatements: importService?.state.estimatedTotalStatements ?? 0,
-                statusMessage: importService?.state.statusMessage ?? ""
-            ) {
-                importService?.cancelImport()
+            if let service = importService {
+                ImportProgressView(service: service) {
+                    service.cancelImport()
+                }
+                .interactiveDismissDisabled()
             }
-            .interactiveDismissDisabled()
         }
         .sheet(isPresented: $showSuccessDialog) {
             ImportSuccessView(
@@ -367,7 +369,8 @@ struct ImportDialog: View {
             hasPreviewError = true
         }
 
-        Task {
+        countStatementsTask?.cancel()
+        countStatementsTask = Task {
             await countStatements(url: urlToRead)
         }
     }
@@ -398,14 +401,21 @@ struct ImportDialog: View {
         let service = ImportService(connection: connection)
         importService = service
 
+        let decompressedURL = tempPreviewURL
+        let ownsDecompressedFile = decompressedURL != nil
+        tempPreviewURL = nil
+
         showProgressDialog = true
 
-        Task {
+        importTask = Task {
             do {
                 let result = try await service.importFile(
                     from: url,
                     formatId: selectedFormatId,
-                    encoding: selectedEncoding.encoding
+                    encoding: selectedEncoding.encoding,
+                    decompressedURL: decompressedURL,
+                    ownsDecompressedFile: ownsDecompressedFile,
+                    knownStatementCount: statementCount > 0 ? statementCount : nil
                 )
 
                 await MainActor.run {

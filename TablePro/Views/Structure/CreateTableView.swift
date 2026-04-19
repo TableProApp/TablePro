@@ -33,7 +33,7 @@ struct CreateTableView: View {
     let connection: DatabaseConnection
     var coordinator: MainContentCoordinator?
 
-    @State private var structureChangeManager = StructureChangeManager()
+    @State private var structureChangeManager: StructureChangeManager
     @State private var wrappedChangeManager: AnyChangeManager
     @State private var tableName = ""
     @State private var tableOptions = CreateTableOptions()
@@ -42,6 +42,7 @@ struct CreateTableView: View {
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var previewSQL = ""
+    @State private var gridDelegate: CreateTableGridDelegate
 
     // DataGridView state
     @State private var selectedRows: Set<Int> = []
@@ -56,6 +57,11 @@ struct CreateTableView: View {
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(structureManager: manager))
+        _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
+            structureChangeManager: manager,
+            structureTab: .columns,
+            connection: connection
+        ))
     }
 
     var body: some View {
@@ -147,14 +153,14 @@ struct CreateTableView: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Button(action: addNewRow) {
+            Button(action: { gridDelegate.dataGridAddRow() }) {
                 Image(systemName: "plus")
                     .frame(width: 24, height: 24)
             }
             .help(String(localized: "Add Row"))
             .disabled(!isGridTab)
 
-            Button(action: { handleDeleteRows(selectedRows) }) {
+            Button(action: { gridDelegate.dataGridDeleteRows(selectedRows) }) {
                 Image(systemName: "minus")
                     .frame(width: 24, height: 24)
             }
@@ -215,27 +221,22 @@ struct CreateTableView: View {
             additionalFields: [.primaryKey]
         )
 
+        // Update delegate state for current render
+        gridDelegate.structureTab = structureTab
+        gridDelegate.selectedRows = $selectedRows
+        gridDelegate.orderedFields = provider.orderedColumnFields
+
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
             isEditable: true,
-            onRefresh: nil,
-            onCellEdit: handleCellEdit,
-            onDeleteRows: handleDeleteRows,
-            onCopyRows: nil,
-            onPasteRows: nil,
-            onUndo: handleUndo,
-            onRedo: handleRedo,
-            onSort: nil,
-            onAddRow: { addNewRow() },
-            onUndoInsert: nil,
-            onFilterColumn: nil,
-            getVisualState: nil,
-            dropdownColumns: provider.dropdownColumns,
-            typePickerColumns: provider.typePickerColumns,
-            connectionId: connection.id,
-            databaseType: connection.type,
-            onMoveRow: nil,
+            configuration: DataGridConfiguration(
+                dropdownColumns: provider.dropdownColumns,
+                typePickerColumns: provider.typePickerColumns,
+                connectionId: connection.id,
+                databaseType: connection.type
+            ),
+            delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,
@@ -267,160 +268,7 @@ struct CreateTableView: View {
         .onChange(of: tableOptions) { generatePreviewSQL() }
     }
 
-    // MARK: - Cell Editing
-
-    private func handleCellEdit(_ row: Int, _ column: Int, _ value: String?) {
-        guard column >= 0 else { return }
-
-        switch structureTab {
-        case .columns:
-            guard row < structureChangeManager.workingColumns.count else { return }
-            var col = structureChangeManager.workingColumns[row]
-            updateColumn(&col, at: column, with: value ?? "")
-            structureChangeManager.updateColumn(id: col.id, with: col)
-
-        case .indexes:
-            guard row < structureChangeManager.workingIndexes.count else { return }
-            var idx = structureChangeManager.workingIndexes[row]
-            updateIndex(&idx, at: column, with: value ?? "")
-            structureChangeManager.updateIndex(id: idx.id, with: idx)
-
-        case .foreignKeys:
-            guard row < structureChangeManager.workingForeignKeys.count else { return }
-            var fk = structureChangeManager.workingForeignKeys[row]
-            updateForeignKey(&fk, at: column, with: value ?? "")
-            structureChangeManager.updateForeignKey(id: fk.id, with: fk)
-
-        default:
-            break
-        }
-    }
-
-    private func updateColumn(_ column: inout EditableColumnDefinition, at index: Int, with value: String) {
-        if connection.type == .clickhouse {
-            switch index {
-            case 0: column.name = value
-            case 1: column.dataType = value
-            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
-            case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
-            case 5: column.comment = value.isEmpty ? nil : value
-            default: break
-            }
-        } else {
-            switch index {
-            case 0: column.name = value
-            case 1: column.dataType = value
-            case 2: column.isNullable = value.uppercased() == "YES" || value == "1"
-            case 3: column.defaultValue = value.isEmpty ? nil : value
-            case 4: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
-            case 5: column.autoIncrement = value.uppercased() == "YES" || value == "1"
-            case 6: column.comment = value.isEmpty ? nil : value
-            default: break
-            }
-        }
-    }
-
-    private func updateIndex(_ index: inout EditableIndexDefinition, at colIndex: Int, with value: String) {
-        switch colIndex {
-        case 0: index.name = value
-        case 1: index.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
-                index.type = indexType
-            }
-        case 3: index.isUnique = value.uppercased() == "YES" || value == "1"
-        default: break
-        }
-    }
-
-    private func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {
-        switch index {
-        case 0: fk.name = value
-        case 1: fk.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 2: fk.referencedTable = value
-        case 3: fk.referencedColumns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 4:
-            if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
-                fk.onDelete = action
-            }
-        case 5:
-            if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
-                fk.onUpdate = action
-            }
-        default: break
-        }
-    }
-
-    // MARK: - Row Operations
-
-    private func handleDeleteRows(_ rows: Set<Int>) {
-        switch structureTab {
-        case .columns:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingColumns.count else { continue }
-                let column = structureChangeManager.workingColumns[row]
-                structureChangeManager.deleteColumn(id: column.id)
-            }
-        case .indexes:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingIndexes.count else { continue }
-                let index = structureChangeManager.workingIndexes[row]
-                structureChangeManager.deleteIndex(id: index.id)
-            }
-        case .foreignKeys:
-            for row in rows.sorted(by: >) {
-                guard row < structureChangeManager.workingForeignKeys.count else { continue }
-                let fk = structureChangeManager.workingForeignKeys[row]
-                structureChangeManager.deleteForeignKey(id: fk.id)
-            }
-        default:
-            break
-        }
-
-        let newCount: Int
-        switch structureTab {
-        case .columns: newCount = structureChangeManager.workingColumns.count
-        case .indexes: newCount = structureChangeManager.workingIndexes.count
-        case .foreignKeys: newCount = structureChangeManager.workingForeignKeys.count
-        default: newCount = 0
-        }
-
-        if newCount > 0 {
-            let maxRow = rows.max() ?? 0
-            let minRow = rows.min() ?? 0
-            if maxRow < newCount {
-                selectedRows = [maxRow]
-            } else if minRow > 0 {
-                selectedRows = [minRow - 1]
-            } else {
-                selectedRows = [0]
-            }
-        } else {
-            selectedRows.removeAll()
-        }
-    }
-
-    private func addNewRow() {
-        switch structureTab {
-        case .columns:
-            structureChangeManager.addNewColumn()
-        case .indexes:
-            structureChangeManager.addNewIndex()
-        case .foreignKeys:
-            structureChangeManager.addNewForeignKey()
-        default:
-            break
-        }
-    }
-
-    private func handleUndo() {
-        structureChangeManager.undo()
-    }
-
-    private func handleRedo() {
-        structureChangeManager.redo()
-    }
+    // Cell editing, row operations, undo/redo handled by CreateTableGridDelegate
 
     // MARK: - SQL Generation
 

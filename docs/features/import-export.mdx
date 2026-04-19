@@ -143,7 +143,7 @@ Export data in five formats (CSV, JSON, SQL, MQL, XLSX), import SQL files with g
     | Include headers (bold first row) | Yes |
     | NULL as empty cells | Yes |
 
-    Each table exports as a separate worksheet. Numbers are stored as numeric cells for proper Excel formatting. Handles 175K+ rows.
+    Each table exports as a separate worksheet. Numbers are stored as numeric cells for proper Excel formatting. Tables exceeding 1,048,576 rows (Excel's limit) auto-split into multiple sheets.
 
     {/* Screenshot: Excel export options */}
     <Frame caption="Excel export options">
@@ -222,13 +222,26 @@ Import `.sql` and `.sql.gz` files. Statements execute directly against your data
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| On error | How to handle failed statements (see below) | Stop and Rollback |
 | Encoding | File encoding: UTF-8, UTF-16, Latin1, or ASCII | UTF-8 |
 | Wrap in transaction | Execute all statements within a single transaction | Yes |
 | Disable foreign key checks | Temporarily disable FK constraints during import | Yes |
 
+### Error Handling Modes
+
+Three modes for handling errors during import:
+
+| Mode | Behavior |
+|------|----------|
+| **Stop and Rollback** | Stops on first error. If transaction is enabled, rolls back all changes. Default. |
+| **Stop and Commit** | Stops on first error. Commits statements that succeeded before the error. |
+| **Skip and Continue** | Logs failed statements and continues importing. Shows a summary with all errors at the end. Transaction wrapping is disabled in this mode. |
+
+In **Skip and Continue** mode, failed statements are collected (up to 1,000) with line numbers and error messages. After import completes, a summary dialog shows how many succeeded vs failed, with a scrollable error list and a "Copy Errors to Clipboard" button.
+
 ## Progress and Errors
 
-During import, a progress bar shows statements processed, current statement, and overall completion.
+During import, a progress bar shows statements processed and overall completion.
 
 {/* Screenshot: Import progress bar */}
 <Frame caption="Import progress">
@@ -243,5 +256,3 @@ During import, a progress bar shows statements processed, current statement, and
     alt="Import progress"
   />
 </Frame>
-
-Import stops on the first error. If wrapped in a transaction, all changes roll back automatically.

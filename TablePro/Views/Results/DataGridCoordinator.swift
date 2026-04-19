@@ -18,27 +18,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var rowProvider: InMemoryRowProvider
     var changeManager: AnyChangeManager
     var isEditable: Bool
-    var onRefresh: (() -> Void)?
-    var onCellEdit: ((Int, Int, String?) -> Void)?
-    var onDeleteRows: ((Set<Int>) -> Void)?
-    var onCopyRows: ((Set<Int>) -> Void)?
-    var onPasteRows: (() -> Void)?
-    var onUndo: (() -> Void)?
-    var onRedo: (() -> Void)?
-    var onSort: ((Int, Bool, Bool) -> Void)?
-    var onAddRow: (() -> Void)?
-    var onUndoInsert: ((Int) -> Void)?
-    var onFilterColumn: ((String) -> Void)?
-    var onHideColumn: ((String) -> Void)?
-    var onShowAllColumns: (() -> Void)?
-    var onMoveRow: ((Int, Int) -> Void)?
-    var rowViewProvider: ((NSTableView, Int, TableViewCoordinator) -> NSTableRowView)?
-    var emptySpaceMenu: (() -> NSMenu?)?
-    var onNavigateFK: ((String, ForeignKeyInfo) -> Void)?
+    weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
-    var getVisualState: ((Int) -> RowVisualState)?
     var dropdownColumns: Set<Int>?
     var typePickerColumns: Set<Int>?
+    var customDropdownOptions: [Int: [String]]?
     var connectionId: UUID?
     var databaseType: DatabaseType?
     var tableName: String?
@@ -110,6 +94,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var hasUserResizedColumns: Bool = false
     /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
+    var isEscapeCancelling = false
     /// Debounced task for persisting column layout after resize/reorder
     var layoutPersistTask: Task<Void, Never>?
 
@@ -129,25 +114,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         changeManager: AnyChangeManager,
         isEditable: Bool,
         selectedRowIndices: Binding<Set<Int>>,
-        onRefresh: (() -> Void)?,
-        onCellEdit: ((Int, Int, String?) -> Void)?,
-        onDeleteRows: ((Set<Int>) -> Void)?,
-        onCopyRows: ((Set<Int>) -> Void)?,
-        onPasteRows: (() -> Void)?,
-        onUndo: (() -> Void)?,
-        onRedo: (() -> Void)?
+        delegate: (any DataGridViewDelegate)?
     ) {
         self.rowProvider = rowProvider
         self.changeManager = changeManager
         self.isEditable = isEditable
         self._selectedRowIndices = selectedRowIndices
-        self.onRefresh = onRefresh
-        self.onCellEdit = onCellEdit
-        self.onDeleteRows = onDeleteRows
-        self.onCopyRows = onCopyRows
-        self.onPasteRows = onPasteRows
-        self.onUndo = onUndo
-        self.onRedo = onRedo
+        self.delegate = delegate
         self.lastDataGridSettings = AppSettingsManager.shared.dataGrid
         super.init()
         updateCache()
@@ -243,29 +216,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             tableView.reloadData()
         }
-        // Release closures
-        onRefresh = nil
-        onCellEdit = nil
-        onDeleteRows = nil
-        onCopyRows = nil
-        onPasteRows = nil
-        onUndo = nil
-        onRedo = nil
-        onSort = nil
-        onAddRow = nil
-        onUndoInsert = nil
-        onFilterColumn = nil
-        onHideColumn = nil
-        onShowAllColumns = nil
-        onNavigateFK = nil
+        // Release delegate
+        delegate = nil
         activeFKPreviewPopover?.close()
         activeFKPreviewPopover = nil
-        rowViewProvider = nil
-        emptySpaceMenu = nil
-        getVisualState = nil
     }
 
-    private var teardownObserver: NSObjectProtocol?
+    private(set) var teardownObserver: NSObjectProtocol?
 
     deinit {
         if let observer = settingsObserver {
@@ -349,11 +306,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         rowVisualStateCache.removeAll(keepingCapacity: true)
 
-        // If custom getVisualState provided, don't build cache (use callback instead)
-        if getVisualState != nil {
-            return
-        }
-
         // Always clear cache, then rebuild if there are changes
         // This ensures deleted state is cleared when changeManager.clearChanges() is called
         guard changeManager.hasChanges else {
@@ -379,9 +331,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func visualState(for row: Int) -> RowVisualState {
-        // If custom callback provided, use it
-        if let callback = getVisualState {
-            return callback(row)
+        // If delegate provides custom visual state, use it
+        if let delegateState = delegate?.dataGridVisualState(forRow: row) {
+            return delegateState
         }
         // Otherwise use cache
         return rowVisualStateCache[row] ?? .empty

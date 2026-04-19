@@ -176,8 +176,15 @@ struct MainContentView: View {
                 )
             }
         case .importDialog:
+            let importDismiss = Binding<Bool>(
+                get: { coordinator.activeSheet != nil },
+                set: { if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.importFileURL = nil
+                }}
+            )
             ImportDialog(
-                isPresented: dismissBinding,
+                isPresented: importDismiss,
                 connection: connection,
                 initialFileURL: coordinator.importFileURL
             )

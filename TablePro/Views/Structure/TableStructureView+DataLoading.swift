@@ -17,7 +17,12 @@ import UniformTypeIdentifiers
 extension TableStructureView {
     @Sendable
     func loadInitialData() async {
+        isReloadingAfterSave = true
         await loadColumns()
+        await loadTabDataIfNeeded(.indexes)
+        await loadTabDataIfNeeded(.foreignKeys)
+        isReloadingAfterSave = false
+        loadSchemaForEditing()
     }
 
     func loadColumns() async {
@@ -82,19 +87,27 @@ extension TableStructureView {
     }
 
     func loadSchemaForEditing() {
+        let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
+        let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
+        let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes
+
         structureChangeManager.loadSchema(
             tableName: tableName,
             columns: columns,
             indexes: indexes,
             foreignKeys: foreignKeys,
-            primaryKey: columns.filter { $0.isPrimaryKey }.map { $0.name },
-            databaseType: getDatabaseType()
+            primaryKey: primaryKey,
+            databaseType: connection.type
         )
     }
 
     // MARK: - Lifecycle Callbacks
 
     func onSelectedTabChanged(_ new: StructureTab) {
+        searchText = ""
+        structureSortDescriptor = nil
+        sortState = SortState()
+        displayVersion += 1
         Task {
             await loadTabDataIfNeeded(new)
         }
@@ -139,16 +152,16 @@ extension TableStructureView {
                 )
 
                 if confirmed {
-                    // User chose to discard
                     discardChanges()
+                    loadedTabs.removeAll()
                     await loadColumns()
                     await loadTabDataIfNeeded(selectedTab)
                 }
             }
             // If cancelled, do nothing
         } else {
-            // No changes (or just saved), safe to refresh
-            Task {
+            Task { @MainActor in
+                loadedTabs.removeAll()
                 await loadColumns()
                 await loadTabDataIfNeeded(selectedTab)
             }

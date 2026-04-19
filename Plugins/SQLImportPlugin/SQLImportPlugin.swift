@@ -4,11 +4,14 @@
 //
 
 import Foundation
+import os
 import SwiftUI
 import TableProPluginKit
 
 @Observable
 final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "SQLImportPlugin")
+
     static let pluginName = "SQL Import"
     static let pluginVersion = "1.0.0"
     static let pluginDescription = "Import data from SQL files"
@@ -37,24 +40,26 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
     ) async throws -> PluginImportResult {
         let startTime = Date()
         var executedCount = 0
+        var skippedCount = 0
+        var errors: [PluginImportResult.ImportStatementError] = []
+        let maxErrors = 1_000
 
-        // Estimate total from file size (~500 bytes per statement)
+        let errorMode = settings.errorHandling
+        let useTransaction = settings.wrapInTransaction && errorMode != .skipAndContinue
+
         let fileSizeBytes = source.fileSizeBytes()
         let estimatedTotal = max(1, Int(fileSizeBytes / 500))
         progress.setEstimatedTotal(estimatedTotal)
 
         do {
-            // Disable FK checks if enabled
             if settings.disableForeignKeyChecks {
                 try await sink.disableForeignKeyChecks()
             }
 
-            // Begin transaction if enabled
-            if settings.wrapInTransaction {
+            if useTransaction {
                 try await sink.beginTransaction()
             }
 
-            // Stream and execute statements
             let stream = try await source.statements()
 
             for try await (statement, lineNumber) in stream {
@@ -65,41 +70,84 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
                     executedCount += 1
                     progress.incrementStatement()
                 } catch {
-                    throw PluginImportError.statementFailed(
-                        statement: statement,
-                        line: lineNumber,
-                        underlyingError: error
-                    )
+                    switch errorMode {
+                    case .stopAndRollback:
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: error
+                        )
+
+                    case .stopAndCommit:
+                        let statementError = error
+                        if useTransaction {
+                            do {
+                                try await sink.commitTransaction()
+                            } catch {
+                                Self.logger.warning("Failed to commit partial import: \(error.localizedDescription)")
+                            }
+                        }
+                        if settings.disableForeignKeyChecks {
+                            do {
+                                try await sink.enableForeignKeyChecks()
+                            } catch {
+                                Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                            }
+                        }
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: statementError
+                        )
+
+                    case .skipAndContinue:
+                        skippedCount += 1
+                        if errors.count < maxErrors {
+                            let snippet = (statement as NSString).length > 200
+                                ? String(statement.prefix(200)) + "..."
+                                : statement
+                            errors.append(.init(
+                                statement: snippet,
+                                line: lineNumber,
+                                errorMessage: error.localizedDescription
+                            ))
+                        }
+                        progress.incrementStatement()
+                    }
                 }
             }
 
-            // Commit transaction
-            if settings.wrapInTransaction {
+            if useTransaction {
                 try await sink.commitTransaction()
             }
 
-            // Re-enable FK checks
             if settings.disableForeignKeyChecks {
                 try await sink.enableForeignKeyChecks()
             }
         } catch {
             let importError = error
+            var rollbackError: Error?
 
-            // Rollback on error
-            if settings.wrapInTransaction {
+            if useTransaction {
                 do {
                     try await sink.rollbackTransaction()
                 } catch {
-                    throw PluginImportError.rollbackFailed(underlyingError: importError)
+                    Self.logger.error("Import failed: \(importError.localizedDescription). Rollback also failed.")
+                    rollbackError = error
                 }
             }
 
-            // Re-enable FK checks (best-effort)
             if settings.disableForeignKeyChecks {
-                try? await sink.enableForeignKeyChecks()
+                do {
+                    try await sink.enableForeignKeyChecks()
+                } catch {
+                    Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                }
             }
 
-            // Re-throw cancellation as-is, wrap others
+            if let rollbackError {
+                throw PluginImportError.rollbackFailed(underlyingError: rollbackError)
+            }
             if importError is PluginImportCancellationError {
                 throw importError
             }
@@ -113,7 +161,9 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
 
         return PluginImportResult(
             executedStatements: executedCount,
-            executionTime: Date().timeIntervalSince(startTime)
+            executionTime: Date().timeIntervalSince(startTime),
+            skippedStatements: skippedCount,
+            errors: errors
         )
     }
 }

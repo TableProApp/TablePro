@@ -2,120 +2,82 @@
 //  DDLTextView.swift
 //  TablePro
 //
-//  Simple AppKit text view for displaying DDL with syntax highlighting
+//  Read-only DDL view with tree-sitter syntax highlighting via CodeEditSourceEditor
 //
 
-import AppKit
+import CodeEditLanguages
+import CodeEditSourceEditor
 import SwiftUI
+import TableProPluginKit
 
-/// Simple AppKit-based text view for DDL display - NO LINE NUMBERS FOR NOW
-struct DDLTextView: NSViewRepresentable {
+/// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor
+struct DDLTextView: View {
     let ddl: String
     @Binding var fontSize: CGFloat
+    var databaseType: DatabaseType?
 
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+    @State private var text: String
+    @State private var editorState = SourceEditorState()
+    @State private var editorConfiguration: SourceEditorConfiguration
+    @Environment(\.colorScheme) private var colorScheme
 
-        guard let textView = scrollView.documentView as? NSTextView else {
-            return scrollView
-        }
-
-        // Configure text view - SIMPLE SETUP
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        textView.textContainerInset = NSSize(width: 16, height: 16)
-        textView.backgroundColor = NSColor.textBackgroundColor
-        textView.textColor = NSColor.labelColor
-
-        // Disable line wrapping
-        textView.textContainer?.widthTracksTextView = false
-        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isHorizontallyResizable = true
-
-        return scrollView
+    /// Primary initializer accepting DDL as a value (read-only display)
+    init(ddl: String, fontSize: Binding<CGFloat>, databaseType: DatabaseType? = nil) {
+        self.ddl = ddl
+        self._text = State(wrappedValue: ddl)
+        self._fontSize = fontSize
+        self.databaseType = databaseType
+        self._editorConfiguration = State(wrappedValue: Self.makeConfiguration(fontSize: fontSize.wrappedValue))
     }
 
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-
-        // Update font if changed
-        if let currentFont = textView.font, currentFont.pointSize != fontSize {
-            textView.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            if !textView.string.isEmpty {
-                applyBasicSyntaxHighlighting(to: textView, fontSize: fontSize)
+    var body: some View {
+        if ddl.isEmpty {
+            Color(nsColor: .textBackgroundColor)
+        } else {
+            SourceEditor(
+                $text,
+                language: resolvedLanguage,
+                configuration: editorConfiguration,
+                state: $editorState
+            )
+            .onChange(of: ddl) { _, newDDL in
+                text = newDDL
             }
-        }
-
-        // Update text if changed
-        if textView.string != ddl {
-            textView.string = ddl
-            if !ddl.isEmpty {
-                applyBasicSyntaxHighlighting(to: textView, fontSize: fontSize)
+            .onChange(of: colorScheme) {
+                editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
+            }
+            .onChange(of: fontSize) { _, newSize in
+                editorConfiguration = Self.makeConfiguration(fontSize: newSize)
             }
         }
     }
 
-    // MARK: - Pre-compiled Syntax Patterns
-
-    private static let syntaxPatterns: [(regex: NSRegularExpression, color: NSColor)] = {
-        var patterns: [(NSRegularExpression, NSColor)] = []
-
-        // SQL Keywords (blue) — single alternation regex for all keywords
-        let keywords = [
-            "CREATE", "TABLE", "PRIMARY", "KEY", "FOREIGN", "REFERENCES",
-            "NOT", "NULL", "DEFAULT", "UNIQUE", "INDEX", "AUTO_INCREMENT",
-            "ON", "DELETE", "UPDATE", "CASCADE", "RESTRICT", "SET",
-            "INT", "INTEGER", "VARCHAR", "CHAR", "TEXT", "TIMESTAMP", "DATETIME"
-        ]
-        let keywordPattern = "\\b(" + keywords.joined(separator: "|") + ")\\b"
-        if let regex = try? NSRegularExpression(pattern: keywordPattern, options: .caseInsensitive) {
-            patterns.append((regex, .systemBlue))
+    private var resolvedLanguage: CodeLanguage {
+        if let databaseType {
+            return PluginManager.shared.editorLanguage(for: databaseType).treeSitterLanguage
         }
+        return .sql
+    }
 
-        // Strings (red)
-        if let regex = try? NSRegularExpression(pattern: "'[^']*'", options: .caseInsensitive) {
-            patterns.append((regex, .systemRed))
-        }
-
-        // Backticks (orange)
-        if let regex = try? NSRegularExpression(pattern: "`[^`]*`", options: .caseInsensitive) {
-            patterns.append((regex, .systemOrange))
-        }
-
-        // Numbers (purple)
-        if let regex = try? NSRegularExpression(pattern: "\\b\\d+\\b", options: .caseInsensitive) {
-            patterns.append((regex, .systemPurple))
-        }
-
-        return patterns
-    }()
-
-    /// Apply basic SQL syntax highlighting
-    private func applyBasicSyntaxHighlighting(to textView: NSTextView, fontSize: CGFloat) {
-        guard let textStorage = textView.textStorage else { return }
-        guard textStorage.length > 0 else { return }
-
-        let fullRange = NSRange(location: 0, length: textStorage.length)
-
-        textStorage.beginEditing()
-
-        // Reset to base style
+    private static func makeConfiguration(fontSize: CGFloat) -> SourceEditorConfiguration {
         let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        textStorage.addAttribute(.font, value: font, range: fullRange)
-        textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
-
-        // Apply pre-compiled patterns (cap to 10k chars for large DDL safety)
-        let text = textStorage.string
-        let highlightLength = min(textStorage.length, 10_000)
-        let highlightRange = NSRange(location: 0, length: highlightLength)
-        for (regex, color) in Self.syntaxPatterns {
-            let matches = regex.matches(in: text, options: [], range: highlightRange)
-            for match in matches {
-                textStorage.addAttribute(.foregroundColor, value: color, range: match.range)
-            }
-        }
-
-        textStorage.endEditing()
+        return SourceEditorConfiguration(
+            appearance: .init(
+                theme: TableProEditorTheme.make(),
+                font: font,
+                wrapLines: false
+            ),
+            behavior: .init(
+                isEditable: false
+            ),
+            layout: .init(
+                contentInsets: NSEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+            ),
+            peripherals: .init(
+                showGutter: true,
+                showMinimap: false,
+                showFoldingRibbon: false
+            )
+        )
     }
 }

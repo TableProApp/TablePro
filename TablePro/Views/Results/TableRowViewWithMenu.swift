@@ -199,11 +199,15 @@ final class TableRowViewWithMenu: NSTableRowView {
         } else {
             [rowIndex]
         }
-        NotificationCenter.default.post(
-            name: .deleteSelectedRows,
-            object: nil,
-            userInfo: ["rowIndices": indices]
-        )
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridDeleteRows(indices)
+        } else {
+            NotificationCenter.default.post(
+                name: .deleteSelectedRows,
+                object: nil,
+                userInfo: ["rowIndices": indices]
+            )
+        }
     }
 
     @objc private func duplicateRow() {
@@ -240,15 +244,19 @@ final class TableRowViewWithMenu: NSTableRowView {
         let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
             ? coordinator.selectedRowIndices
             : [rowIndex]
-        if let callback = coordinator.onCopyRows {
-            callback(indices)
+        if let delegate = coordinator.delegate {
+            delegate.dataGridCopyRows(indices)
         } else {
             coordinator.copyRows(at: indices)
         }
     }
 
     @objc private func pasteRows() {
-        NotificationCenter.default.post(name: .pasteRows, object: nil)
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridPasteRows()
+        } else {
+            NotificationCenter.default.post(name: .pasteRows, object: nil)
+        }
     }
 
     @objc private func copyCellValue(_ sender: NSMenuItem) {
@@ -313,6 +321,6 @@ final class TableRowViewWithMenu: NSTableRowView {
         let columnName = coordinator.rowProvider.columns[columnIndex]
         guard let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
               let value = coordinator.rowProvider.value(atRow: rowIndex, column: columnIndex) else { return }
-        coordinator.onNavigateFK?(value, fkInfo)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
     }
 }

@@ -34,6 +34,30 @@ struct DataGridIdentity: Equatable {
     let columnCount: Int
     let isEditable: Bool
     let hiddenColumns: Set<String>
+
+    init(reloadVersion: Int, resultVersion: Int, metadataVersion: Int, paginationVersion: Int,
+         rowCount: Int, columnCount: Int, isEditable: Bool, hiddenColumns: Set<String>) {
+        self.reloadVersion = reloadVersion
+        self.resultVersion = resultVersion
+        self.metadataVersion = metadataVersion
+        self.paginationVersion = paginationVersion
+        self.rowCount = rowCount
+        self.columnCount = columnCount
+        self.isEditable = isEditable
+        self.hiddenColumns = hiddenColumns
+    }
+
+    init(reloadVersion: Int, resultVersion: Int, metadataVersion: Int, paginationVersion: Int,
+         rowCount: Int, columnCount: Int, isEditable: Bool, configuration: DataGridConfiguration) {
+        self.reloadVersion = reloadVersion
+        self.resultVersion = resultVersion
+        self.metadataVersion = metadataVersion
+        self.paginationVersion = paginationVersion
+        self.rowCount = rowCount
+        self.columnCount = columnCount
+        self.isEditable = isEditable
+        self.hiddenColumns = configuration.hiddenColumns
+    }
 }
 
 /// High-performance table view using AppKit NSTableView
@@ -44,33 +68,8 @@ struct DataGridView: NSViewRepresentable {
     var metadataVersion: Int = 0
     var paginationVersion: Int = 0
     let isEditable: Bool
-    var onRefresh: (() -> Void)?
-    var onCellEdit: ((Int, Int, String?) -> Void)?
-    var onDeleteRows: ((Set<Int>) -> Void)?
-    var onCopyRows: ((Set<Int>) -> Void)?
-    var onPasteRows: (() -> Void)?
-    var onUndo: (() -> Void)?
-    var onRedo: (() -> Void)?
-    var onSort: ((Int, Bool, Bool) -> Void)?
-    var onAddRow: (() -> Void)?
-    var onUndoInsert: ((Int) -> Void)?
-    var onFilterColumn: ((String) -> Void)?
-    var onNavigateFK: ((String, ForeignKeyInfo) -> Void)?
-    var getVisualState: ((Int) -> RowVisualState)?
-    var dropdownColumns: Set<Int>? // Column indices that should use YES/NO dropdowns
-    var typePickerColumns: Set<Int>?
-    var connectionId: UUID?
-    var databaseType: DatabaseType?
-    var tableName: String?
-    var primaryKeyColumns: [String] = []
-    var tabType: TabType?
-    var showRowNumbers: Bool = true
-    var hiddenColumns: Set<String> = []
-    var onHideColumn: ((String) -> Void)?
-    var onShowAllColumns: (() -> Void)?
-    var onMoveRow: ((Int, Int) -> Void)?
-    var rowViewProvider: ((NSTableView, Int, TableViewCoordinator) -> NSTableRowView)?
-    var emptySpaceMenu: (() -> NSMenu?)?
+    var configuration: DataGridConfiguration = .init()
+    var delegate: (any DataGridViewDelegate)?
 
     @Binding var selectedRowIndices: Set<Int>
     @Binding var sortState: SortState
@@ -119,7 +118,7 @@ struct DataGridView: NSViewRepresentable {
         rowNumberColumn.resizingMask = []
         rowNumberColumn.headerCell.setAccessibilityLabel(String(localized: "Row number"))
         tableView.addTableColumn(rowNumberColumn)
-        rowNumberColumn.isHidden = !showRowNumbers
+        rowNumberColumn.isHidden = !configuration.showRowNumbers
 
         // Add data columns (suppress resize notifications during setup)
         context.coordinator.isRebuildingColumns = true
@@ -173,20 +172,26 @@ struct DataGridView: NSViewRepresentable {
             headerView.menu = headerMenu
         }
 
-        // Register for row drag-and-drop if onMoveRow is provided
-        if onMoveRow != nil {
+        // Register for row drag-and-drop if delegate supports move
+        let hasMoveRow = delegate != nil
+        if hasMoveRow {
             tableView.registerForDraggedTypes([NSPasteboard.PasteboardType("com.TablePro.rowDrag")])
             tableView.draggingDestinationFeedbackStyle = .gap
         }
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
-        context.coordinator.onMoveRow = onMoveRow
-        context.coordinator.rowViewProvider = rowViewProvider
-        context.coordinator.emptySpaceMenu = emptySpaceMenu
-        context.coordinator.onShowAllColumns = onShowAllColumns
+        context.coordinator.delegate = delegate
+        context.coordinator.dropdownColumns = configuration.dropdownColumns
+        context.coordinator.typePickerColumns = configuration.typePickerColumns
+        context.coordinator.customDropdownOptions = configuration.customDropdownOptions
+        context.coordinator.connectionId = configuration.connectionId
+        context.coordinator.databaseType = configuration.databaseType
+        context.coordinator.tableName = configuration.tableName
+        context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
+        context.coordinator.tabType = configuration.tabType
         context.coordinator.rebuildColumnMetadataCache()
-        if let connectionId {
+        if let connectionId = configuration.connectionId {
             context.coordinator.observeTeardown(connectionId: connectionId)
         }
 
@@ -204,24 +209,29 @@ struct DataGridView: NSViewRepresentable {
 
         // Sync row number visibility before identity check (setting can change without data change)
         if let rowNumCol = tableView.tableColumns.first(where: { $0.identifier.rawValue == "__rowNumber__" }) {
-            let shouldHide = !showRowNumbers
+            let shouldHide = !configuration.showRowNumbers
             if rowNumCol.isHidden != shouldHide {
                 rowNumCol.isHidden = shouldHide
             }
         }
 
-        // Sync row drag registration when onMoveRow availability changes
+        // Sync row drag registration when delegate availability changes
         let rowDragType = NSPasteboard.PasteboardType("com.TablePro.rowDrag")
         let hasDragRegistered = tableView.registeredDraggedTypes.contains(rowDragType)
-        if onMoveRow != nil && !hasDragRegistered {
+        let hasMoveRow = delegate != nil
+        if hasMoveRow && !hasDragRegistered {
             tableView.registerForDraggedTypes([rowDragType])
             tableView.draggingDestinationFeedbackStyle = .gap
-        } else if onMoveRow == nil && hasDragRegistered {
+        } else if !hasMoveRow && hasDragRegistered {
             let remaining = tableView.registeredDraggedTypes.filter { $0 != rowDragType }
             tableView.unregisterDraggedTypes()
             if !remaining.isEmpty {
                 tableView.registerForDraggedTypes(remaining)
             }
+        }
+
+        if let connectionId = configuration.connectionId, coordinator.teardownObserver == nil {
+            coordinator.observeTeardown(connectionId: connectionId)
         }
 
         // Identity-based early-return BEFORE reading settings — avoids
@@ -234,24 +244,11 @@ struct DataGridView: NSViewRepresentable {
             rowCount: rowProvider.totalRowCount,
             columnCount: rowProvider.columns.count,
             isEditable: isEditable,
-            hiddenColumns: hiddenColumns
+            configuration: configuration
         )
         if currentIdentity == coordinator.lastIdentity {
-            // Only refresh closure callbacks — they capture new state on each body eval
-            coordinator.onCellEdit = onCellEdit
-            coordinator.onSort = onSort
-            coordinator.onAddRow = onAddRow
-            coordinator.onUndoInsert = onUndoInsert
-            coordinator.onFilterColumn = onFilterColumn
-            coordinator.onHideColumn = onHideColumn
-            coordinator.onShowAllColumns = onShowAllColumns
-            coordinator.onMoveRow = onMoveRow
-            coordinator.onRefresh = onRefresh
-            coordinator.onDeleteRows = onDeleteRows
-            coordinator.getVisualState = getVisualState
-            coordinator.onNavigateFK = onNavigateFK
-            coordinator.rowViewProvider = rowViewProvider
-            coordinator.emptySpaceMenu = emptySpaceMenu
+            // Only refresh delegate reference — it may have changed between body evals
+            coordinator.delegate = delegate
             return
         }
         let previousIdentity = coordinator.lastIdentity
@@ -273,10 +270,11 @@ struct DataGridView: NSViewRepresentable {
         let newRowCount = rowProvider.totalRowCount
         let newColumnCount = rowProvider.columns.count
 
-        // Only do full reload if row/column count changed or columns changed
+        // Only do full reload if row/column count changed, columns changed, or result version changed
         // For cell edits (versionChanged but same count), use granular reload
         let structureChanged = oldRowCount != newRowCount || oldColumnCount != newColumnCount
-        let needsFullReload = structureChanged
+        let resultVersionChanged = previousIdentity.map { $0.resultVersion != resultVersion } ?? false
+        let needsFullReload = structureChanged || resultVersionChanged
 
         coordinator.rowProvider = rowProvider
 
@@ -308,27 +306,15 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.changeManager = changeManager
         coordinator.isEditable = isEditable
-        coordinator.onRefresh = onRefresh
-        coordinator.onCellEdit = onCellEdit
-        coordinator.onDeleteRows = onDeleteRows
-        coordinator.onSort = onSort
-        coordinator.onAddRow = onAddRow
-        coordinator.onUndoInsert = onUndoInsert
-        coordinator.onFilterColumn = onFilterColumn
-        coordinator.onHideColumn = onHideColumn
-        coordinator.onShowAllColumns = onShowAllColumns
-        coordinator.onMoveRow = onMoveRow
-        coordinator.getVisualState = getVisualState
-        coordinator.onNavigateFK = onNavigateFK
-        coordinator.rowViewProvider = rowViewProvider
-        coordinator.emptySpaceMenu = emptySpaceMenu
-        coordinator.dropdownColumns = dropdownColumns
-        coordinator.typePickerColumns = typePickerColumns
-        coordinator.connectionId = connectionId
-        coordinator.databaseType = databaseType
-        coordinator.tableName = tableName
-        coordinator.primaryKeyColumns = primaryKeyColumns
-        coordinator.tabType = tabType
+        coordinator.delegate = delegate
+        coordinator.dropdownColumns = configuration.dropdownColumns
+        coordinator.typePickerColumns = configuration.typePickerColumns
+        coordinator.customDropdownOptions = configuration.customDropdownOptions
+        coordinator.connectionId = configuration.connectionId
+        coordinator.databaseType = configuration.databaseType
+        coordinator.tableName = configuration.tableName
+        coordinator.primaryKeyColumns = configuration.primaryKeyColumns
+        coordinator.tabType = configuration.tabType
 
         coordinator.rebuildVisualStateCache()
 
@@ -618,13 +604,15 @@ struct DataGridView: NSViewRepresentable {
             if cell.row < tableView.numberOfRows && tableColumn < tableView.numberOfColumns {
                 tableView.scrollRowToVisible(cell.row)
                 Task { @MainActor [weak tableView] in
-                    guard let tableView = tableView else { return }
+                    guard let tableView else { return }
                     tableView.selectRowIndexes(IndexSet(integer: cell.row), byExtendingSelection: false)
                     tableView.editColumn(tableColumn, row: cell.row, with: nil, select: true)
+                    self.editingCell = nil
                 }
-            }
-            Task { @MainActor in
-                self.editingCell = nil
+            } else {
+                Task { @MainActor in
+                    self.editingCell = nil
+                }
             }
         }
     }
@@ -637,7 +625,7 @@ struct DataGridView: NSViewRepresentable {
             guard let colIndex = Self.columnIndex(from: column.identifier),
                   colIndex < rowProvider.columns.count else { continue }
             let columnName = rowProvider.columns[colIndex]
-            let shouldHide = hiddenColumns.contains(columnName)
+            let shouldHide = configuration.hiddenColumns.contains(columnName)
             if column.isHidden != shouldHide {
                 column.isHidden = shouldHide
             }
@@ -724,13 +712,7 @@ struct DataGridView: NSViewRepresentable {
             changeManager: changeManager,
             isEditable: isEditable,
             selectedRowIndices: $selectedRowIndices,
-            onRefresh: onRefresh,
-            onCellEdit: onCellEdit,
-            onDeleteRows: onDeleteRows,
-            onCopyRows: onCopyRows,
-            onPasteRows: onPasteRows,
-            onUndo: onUndo,
-            onRedo: onRedo
+            delegate: delegate
         )
     }
 }
@@ -752,7 +734,7 @@ struct DataGridView: NSViewRepresentable {
         isEditable: true,
         selectedRowIndices: .constant([]),
         sortState: .constant(SortState()),
-        editingCell: .constant(nil as CellPosition?),
+        editingCell: .constant(nil),
         columnLayout: .constant(ColumnLayoutState())
     )
     .frame(width: 600, height: 400)

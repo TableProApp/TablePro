@@ -7,6 +7,7 @@
 
 import AppKit
 import Foundation
+import TableProPluginKit
 import UniformTypeIdentifiers
 
 extension MainContentCoordinator {
@@ -121,8 +122,12 @@ extension MainContentCoordinator {
         }
         let panel = NSOpenPanel()
         var contentTypes: [UTType] = []
-        if let sqlType = UTType(filenameExtension: "sql") {
-            contentTypes.append(sqlType)
+        for (_, plugin) in PluginManager.shared.importPlugins {
+            for ext in type(of: plugin).acceptedFileExtensions {
+                if let utType = UTType(filenameExtension: ext) {
+                    contentTypes.append(utType)
+                }
+            }
         }
         if let gzType = UTType(filenameExtension: "gz") {
             contentTypes.append(gzType)

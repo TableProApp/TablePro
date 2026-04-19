@@ -170,6 +170,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                     let batchSize = settings.batchSize
                     var wroteAnyRows = false
                     var columns: [String] = []
+                    var columnTypeNames: [String] = []
                     var rowBatch: [[String?]] = []
 
                     let stream = dataSource.streamRows(table: table.name, databaseName: table.databaseName)
@@ -179,6 +180,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                         switch element {
                         case .header(let header):
                             columns = header.columns
+                            columnTypeNames = header.columnTypeNames ?? []
                         case .rows(let rows):
                             for row in rows {
                                 rowBatch.append(row)
@@ -186,6 +188,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                                     try writeInsertStatements(
                                         tableName: table.name,
                                         columns: columns,
+                                        columnTypeNames: columnTypeNames,
                                         rows: rowBatch,
                                         batchSize: batchSize,
                                         dataSource: dataSource,
@@ -203,6 +206,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
                         try writeInsertStatements(
                             tableName: table.name,
                             columns: columns,
+                            columnTypeNames: columnTypeNames,
                             rows: rowBatch,
                             batchSize: batchSize,
                             dataSource: dataSource,
@@ -261,6 +265,7 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
     private func writeInsertStatements(
         tableName: String,
         columns: [String],
+        columnTypeNames: [String],
         rows: [[String?]],
         batchSize: Int,
         dataSource: any PluginExportDataSource,
@@ -274,6 +279,10 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
 
         let insertPrefix = "INSERT INTO \(tableRef) (\(quotedColumns)) VALUES\n"
 
+        let numericIndices: Set<Int> = Set(columnTypeNames.enumerated().compactMap { index, typeName in
+            isNumericColumnType(typeName) ? index : nil
+        })
+
         let effectiveBatchSize = batchSize <= 1 ? 1 : batchSize
         var valuesBatch: [String] = []
         valuesBatch.reserveCapacity(effectiveBatchSize)
@@ -281,8 +290,11 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
         for row in rows {
             try progress.checkCancellation()
 
-            let values = row.map { value -> String in
+            let values = row.enumerated().map { colIndex, value -> String in
                 guard let val = value else { return "NULL" }
+                if numericIndices.contains(colIndex) && isNumericLiteral(val) {
+                    return val
+                }
                 let escaped = dataSource.escapeStringLiteral(val)
                 return "'\(escaped)'"
             }.joined(separator: ", ")
@@ -302,6 +314,19 @@ final class SQLExportPlugin: ExportFormatPlugin, SettablePlugin {
             let statement = insertPrefix + valuesBatch.joined(separator: ",\n") + ";\n\n"
             try fileHandle.write(contentsOf: statement.toUTF8Data())
         }
+    }
+
+    private func isNumericColumnType(_ typeName: String) -> Bool {
+        let numericPrefixes = [
+            "int", "bigint", "decimal", "float", "double", "numeric",
+            "real", "smallint", "tinyint", "mediumint", "integer", "number"
+        ]
+        let lower = typeName.lowercased()
+        return numericPrefixes.contains { lower.hasPrefix($0) }
+    }
+
+    private func isNumericLiteral(_ val: String) -> Bool {
+        val.allSatisfy { $0.isNumber || $0 == "." || $0 == "-" || $0 == "+" || $0 == "e" || $0 == "E" }
     }
 
     private func compressFile(source: URL, destination: URL) async throws {

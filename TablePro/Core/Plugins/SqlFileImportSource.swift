@@ -14,11 +14,15 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     private let encoding: String.Encoding
     private let parser = SQLFileParser()
 
+    private let externalDecompressedURL: URL?
     private let _decompressedURL = OSAllocatedUnfairLock<URL?>(initialState: nil)
+    private let ownsDecompressedFile: Bool
 
-    init(url: URL, encoding: String.Encoding) {
+    init(url: URL, encoding: String.Encoding, decompressedURL: URL? = nil, ownsDecompressedFile: Bool? = nil) {
         self.url = url
         self.encoding = encoding
+        self.externalDecompressedURL = decompressedURL
+        self.ownsDecompressedFile = ownsDecompressedFile ?? (decompressedURL == nil)
     }
 
     func fileURL() -> URL {
@@ -26,40 +30,33 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     }
 
     func fileSizeBytes() -> Int64 {
+        let targetURL = effectiveURL
         do {
-            let attrs = try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))
+            let attrs = try FileManager.default.attributesOfItem(atPath: targetURL.path(percentEncoded: false))
             return attrs[.size] as? Int64 ?? 0
         } catch {
-            Self.logger.warning("Failed to get file size for \(self.url.path(percentEncoded: false)): \(error.localizedDescription)")
+            Self.logger.warning("Failed to get file size for \(targetURL.path(percentEncoded: false)): \(error.localizedDescription)")
             return 0
         }
     }
 
     func statements() async throws -> AsyncThrowingStream<(statement: String, lineNumber: Int), Error> {
-        let fileURL = try await decompressIfNeeded()
-
-        let stream = try await parser.parseFile(url: fileURL, encoding: encoding)
-
-        return AsyncThrowingStream { continuation in
-            Task {
-                for try await item in stream {
-                    continuation.yield(item)
-                }
-                continuation.finish()
-            }
-        }
+        let fileURL = try await resolveURL()
+        return parser.parseFile(url: fileURL, encoding: encoding)
     }
 
     func cleanup() {
+        guard ownsDecompressedFile else { return }
+
         let tempURL = _decompressedURL.withLock {
             let url = $0
             $0 = nil
             return url
         }
 
-        if let tempURL {
+        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
             do {
-                try FileManager.default.removeItem(at: tempURL)
+                try FileManager.default.removeItem(at: fileURL)
             } catch {
                 Self.logger.warning("Failed to clean up temp file: \(error.localizedDescription)")
             }
@@ -67,15 +64,30 @@ final class SqlFileImportSource: PluginImportSource, @unchecked Sendable {
     }
 
     deinit {
+        guard ownsDecompressedFile else { return }
         let tempURL = _decompressedURL.withLock { $0 }
-        if let tempURL {
-            try? FileManager.default.removeItem(at: tempURL)
+        for fileURL in [tempURL, externalDecompressedURL].compactMap({ $0 }) {
+            try? FileManager.default.removeItem(at: fileURL)
         }
     }
 
     // MARK: - Private
 
-    private func decompressIfNeeded() async throws -> URL {
+    private var effectiveURL: URL {
+        if let external = externalDecompressedURL {
+            return external
+        }
+        if let decompressed = _decompressedURL.withLock({ $0 }) {
+            return decompressed
+        }
+        return url
+    }
+
+    private func resolveURL() async throws -> URL {
+        if let external = externalDecompressedURL {
+            return external
+        }
+
         if let existing = _decompressedURL.withLock({ $0 }) {
             return existing
         }

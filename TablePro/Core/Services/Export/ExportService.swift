@@ -167,11 +167,6 @@ final class ExportService {
                 progress: progress
             )
         } catch {
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch {
-                Self.logger.warning("Failed to clean up export file: \(error.localizedDescription)")
-            }
             state.errorMessage = error.localizedDescription
             throw error
         }
@@ -250,11 +245,6 @@ final class ExportService {
                 progress: progress
             )
         } catch {
-            do {
-                try FileManager.default.removeItem(at: url)
-            } catch {
-                Self.logger.warning("Failed to clean up export file: \(error.localizedDescription)")
-            }
             state.errorMessage = error.localizedDescription
             throw error
         }

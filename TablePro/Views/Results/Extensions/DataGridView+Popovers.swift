@@ -37,7 +37,7 @@ extension TableViewCoordinator {
             )
 
             self.rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-            self.onCellEdit?(row, columnIndex, newValue)
+            self.delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
 
             tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
         }
@@ -105,7 +105,7 @@ extension TableViewCoordinator {
                 onNavigate: {
                     dismiss()
                     guard let value = cellValue else { return }
-                    self?.onNavigateFK?(value, fkInfo)
+                    self?.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
                 },
                 onDismiss: dismiss
             )
@@ -240,8 +240,15 @@ extension TableViewCoordinator {
         pendingDropdownColumn = columnIndex
         pendingDropdownTableView = tableView
 
+        let options: [String]
+        if let custom = customDropdownOptions?[columnIndex] {
+            options = custom
+        } else {
+            options = ["YES", "NO"]
+        }
+
         let menu = NSMenu()
-        for option in ["YES", "NO"] {
+        for option in options {
             let item = NSMenuItem(title: option, action: #selector(dropdownMenuItemSelected(_:)), keyEquivalent: "")
             item.target = self
             if option == currentValue {
@@ -280,7 +287,7 @@ extension TableViewCoordinator {
         )
 
         rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        onCellEdit?(row, columnIndex, newValue)
+        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
 
         tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
     }

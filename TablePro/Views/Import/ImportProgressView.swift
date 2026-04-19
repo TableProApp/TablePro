@@ -8,9 +8,7 @@
 import SwiftUI
 
 struct ImportProgressView: View {
-    let processedStatements: Int
-    let estimatedTotalStatements: Int
-    let statusMessage: String
+    let service: ImportService
     let onStop: () -> Void
 
     var body: some View {
@@ -20,19 +18,19 @@ struct ImportProgressView: View {
 
             VStack(spacing: 8) {
                 HStack {
-                    if !statusMessage.isEmpty {
-                        Text(statusMessage)
+                    if !service.state.statusMessage.isEmpty {
+                        Text(service.state.statusMessage)
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("Executed \(processedStatements) statements")
+                        Text("Executed \(service.state.processedStatements) statements")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
 
                         Spacer()
                     }
                 }
 
-                if !statusMessage.isEmpty {
+                if !service.state.statusMessage.isEmpty {
                     ProgressView()
                         .progressViewStyle(.linear)
                 } else {
@@ -52,7 +50,7 @@ struct ImportProgressView: View {
     }
 
     private var progressValue: Double {
-        guard estimatedTotalStatements > 0 else { return 0 }
-        return min(1.0, Double(processedStatements) / Double(estimatedTotalStatements))
+        guard service.state.estimatedTotalStatements > 0 else { return 0 }
+        return min(1.0, Double(service.state.processedStatements) / Double(service.state.estimatedTotalStatements))
     }
 }
