@@ -31,7 +31,7 @@ extension MainContentCoordinator {
             let writeStatements = statements.filter { isWriteQuery($0) }
             if !writeStatements.isEmpty {
                 tabManager.tabs[index].errorMessage =
-                    "Cannot execute write queries: connection is read-only"
+                    String(localized: "Cannot execute write queries: connection is read-only")
                 return
             }
         }
