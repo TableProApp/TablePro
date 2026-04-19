@@ -427,6 +427,16 @@ final class MainContentCoordinator {
         )
     }
 
+    /// Transition sidebar from `.idle` to `.loaded` when tables already exist
+    /// (e.g. populated by another window's `refreshTables()`).
+    func healSidebarLoadingStateIfNeeded() {
+        guard sidebarLoadingState == .idle else { return }
+        let tables = DatabaseManager.shared.session(for: connectionId)?.tables ?? []
+        if !tables.isEmpty {
+            sidebarLoadingState = .loaded
+        }
+    }
+
     /// Start watching the database file for external changes (SQLite, DuckDB).
     private func startFileWatcherIfNeeded() {
         guard PluginManager.shared.connectionMode(for: connection.type) == .fileBased else { return }
