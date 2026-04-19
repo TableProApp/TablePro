@@ -15,6 +15,7 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
     var columns: [String]
     var referencedTable: String
     var referencedColumns: [String]
+    var referencedSchema: String?
     var onDelete: ReferentialAction
     var onUpdate: ReferentialAction
 
@@ -34,6 +35,7 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             columns: [],
             referencedTable: "",
             referencedColumns: [],
+            referencedSchema: nil,
             onDelete: .noAction,
             onUpdate: .noAction
         )
@@ -55,6 +57,7 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             columns: [fkInfo.column],
             referencedTable: fkInfo.referencedTable,
             referencedColumns: [fkInfo.referencedColumn],
+            referencedSchema: fkInfo.referencedSchema,
             onDelete: ReferentialAction(rawValue: fkInfo.onDelete.uppercased()) ?? .noAction,
             onUpdate: ReferentialAction(rawValue: fkInfo.onUpdate.uppercased()) ?? .noAction
         )
@@ -63,7 +66,8 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
     func toPlugin() -> PluginForeignKeyDefinition {
         PluginForeignKeyDefinition(
             name: name, columns: columns, referencedTable: referencedTable,
-            referencedColumns: referencedColumns, onDelete: onDelete.rawValue, onUpdate: onUpdate.rawValue
+            referencedColumns: referencedColumns, onDelete: onDelete.rawValue, onUpdate: onUpdate.rawValue,
+            referencedSchema: referencedSchema
         )
     }
 
@@ -79,6 +83,7 @@ struct EditableForeignKeyDefinition: Hashable, Codable, Identifiable {
             column: column,
             referencedTable: referencedTable,
             referencedColumn: referencedColumn,
+            referencedSchema: referencedSchema,
             onDelete: onDelete.rawValue,
             onUpdate: onUpdate.rawValue
         )

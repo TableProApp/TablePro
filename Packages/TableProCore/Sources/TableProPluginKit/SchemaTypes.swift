@@ -10,6 +10,8 @@ public struct PluginColumnDefinition: Sendable {
     public let comment: String?
     public let unsigned: Bool
     public let onUpdate: String?
+    public let charset: String?
+    public let collation: String?
 
     public init(
         name: String,
@@ -20,7 +22,9 @@ public struct PluginColumnDefinition: Sendable {
         autoIncrement: Bool = false,
         comment: String? = nil,
         unsigned: Bool = false,
-        onUpdate: String? = nil
+        onUpdate: String? = nil,
+        charset: String? = nil,
+        collation: String? = nil
     ) {
         self.name = name
         self.dataType = dataType
@@ -31,6 +35,8 @@ public struct PluginColumnDefinition: Sendable {
         self.comment = comment
         self.unsigned = unsigned
         self.onUpdate = onUpdate
+        self.charset = charset
+        self.collation = collation
     }
 }
 
@@ -39,17 +45,23 @@ public struct PluginIndexDefinition: Sendable {
     public let columns: [String]
     public let isUnique: Bool
     public let indexType: String?
+    public let columnPrefixes: [String: Int]?
+    public let whereClause: String?
 
     public init(
         name: String,
         columns: [String],
         isUnique: Bool = false,
-        indexType: String? = nil
+        indexType: String? = nil,
+        columnPrefixes: [String: Int]? = nil,
+        whereClause: String? = nil
     ) {
         self.name = name
         self.columns = columns
         self.isUnique = isUnique
         self.indexType = indexType
+        self.columnPrefixes = columnPrefixes
+        self.whereClause = whereClause
     }
 }
 
@@ -60,6 +72,7 @@ public struct PluginForeignKeyDefinition: Sendable {
     public let referencedColumns: [String]
     public let onDelete: String
     public let onUpdate: String
+    public let referencedSchema: String?
 
     public init(
         name: String,
@@ -67,7 +80,8 @@ public struct PluginForeignKeyDefinition: Sendable {
         referencedTable: String,
         referencedColumns: [String],
         onDelete: String = "NO ACTION",
-        onUpdate: String = "NO ACTION"
+        onUpdate: String = "NO ACTION",
+        referencedSchema: String? = nil
     ) {
         self.name = name
         self.columns = columns
@@ -75,6 +89,7 @@ public struct PluginForeignKeyDefinition: Sendable {
         self.referencedColumns = referencedColumns
         self.onDelete = onDelete
         self.onUpdate = onUpdate
+        self.referencedSchema = referencedSchema
     }
 }
 

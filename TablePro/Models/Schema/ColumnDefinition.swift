@@ -74,7 +74,7 @@ struct EditableColumnDefinition: Hashable, Codable, Identifiable {
         PluginColumnDefinition(
             name: name, dataType: dataType, isNullable: isNullable, defaultValue: defaultValue,
             isPrimaryKey: isPrimaryKey, autoIncrement: autoIncrement, comment: comment,
-            unsigned: unsigned, onUpdate: onUpdate
+            unsigned: unsigned, onUpdate: onUpdate, charset: charset, collation: collation
         )
     }
 

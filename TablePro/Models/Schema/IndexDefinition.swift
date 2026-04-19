@@ -17,6 +17,8 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
     var isUnique: Bool
     var isPrimary: Bool
     var comment: String?
+    var columnPrefixes: [String: Int] = [:]
+    var whereClause: String?
 
     enum IndexType: String, Codable, CaseIterable {
         case btree = "BTREE"
@@ -37,7 +39,9 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             type: .btree,
             isUnique: false,
             isPrimary: false,
-            comment: nil
+            comment: nil,
+            columnPrefixes: [:],
+            whereClause: nil
         )
     }
 
@@ -56,12 +60,18 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             type: IndexType(rawValue: indexInfo.type.uppercased()) ?? .btree,
             isUnique: indexInfo.isUnique,
             isPrimary: indexInfo.isPrimary,
-            comment: nil
+            comment: nil,
+            columnPrefixes: indexInfo.columnPrefixes ?? [:],
+            whereClause: indexInfo.whereClause
         )
     }
 
     func toPlugin() -> PluginIndexDefinition {
-        PluginIndexDefinition(name: name, columns: columns, isUnique: isUnique, indexType: type.rawValue)
+        PluginIndexDefinition(
+            name: name, columns: columns, isUnique: isUnique, indexType: type.rawValue,
+            columnPrefixes: columnPrefixes.isEmpty ? nil : columnPrefixes,
+            whereClause: whereClause
+        )
     }
 
     /// Convert back to IndexInfo
@@ -71,7 +81,9 @@ struct EditableIndexDefinition: Hashable, Codable, Identifiable {
             columns: columns,
             isUnique: isUnique,
             isPrimary: isPrimary,
-            type: type.rawValue
+            type: type.rawValue,
+            columnPrefixes: columnPrefixes.isEmpty ? nil : columnPrefixes,
+            whereClause: whereClause
         )
     }
 }

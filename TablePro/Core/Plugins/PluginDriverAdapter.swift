@@ -171,7 +171,9 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
                 columns: idx.columns,
                 isUnique: idx.isUnique,
                 isPrimary: idx.isPrimary,
-                type: idx.type
+                type: idx.type,
+                columnPrefixes: idx.columnPrefixes,
+                whereClause: idx.whereClause
             )
         }
     }
