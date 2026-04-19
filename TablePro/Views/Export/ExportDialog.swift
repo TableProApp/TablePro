@@ -303,7 +303,7 @@ struct ExportDialog: View {
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .buttonStyle(.link)
                     } else if case .streamingQuery = mode {
-                        Text("All rows (streaming from database)")
+                        Text("All rows")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                             .foregroundStyle(.secondary)
                     } else if isQueryResultsMode {
@@ -847,31 +847,20 @@ struct ExportDialog: View {
     private func startQueryResultsExport(to url: URL) async {
         isExporting = true
         exportedFileURL = url
-
-        let service = ExportService(databaseType: connection.type)
-        exportService = service
         showProgressDialog = true
 
         do {
+            let service: ExportService
             switch mode {
             case .streamingQuery(_, let query, _):
                 guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
-                let streamingService = ExportService(
-                    driver: driver,
-                    databaseType: connection.type
-                )
-                exportService = streamingService
-                try await streamingService.exportStreamingQuery(
-                    query: query,
-                    config: config,
-                    to: url
-                )
+                service = ExportService(driver: driver, databaseType: connection.type)
+                exportService = service
+                try await service.exportStreamingQuery(query: query, config: config, to: url)
             case .queryResults(_, let rowBuffer, _):
-                try await service.exportQueryResults(
-                    rowBuffer: rowBuffer,
-                    config: config,
-                    to: url
-                )
+                service = ExportService(databaseType: connection.type)
+                exportService = service
+                try await service.exportQueryResults(rowBuffer: rowBuffer, config: config, to: url)
             default:
                 return
             }

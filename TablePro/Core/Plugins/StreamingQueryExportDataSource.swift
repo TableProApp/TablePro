@@ -35,7 +35,7 @@ final class StreamingQueryExportDataSource: PluginExportDataSource, @unchecked S
     }
 
     func fetchApproximateRowCount(table: String, databaseName: String) async throws -> Int? {
-        try? await driver.fetchRowCount(query: query)
+        nil
     }
 
     func quoteIdentifier(_ identifier: String) -> String {

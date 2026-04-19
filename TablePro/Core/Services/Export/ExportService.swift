@@ -268,7 +268,7 @@ final class ExportService {
             throw ExportError.exportFailed("No database connection")
         }
 
-        let estimatedRows = (try? await driver.fetchRowCount(query: query)) ?? 0
+        let estimatedRows = 0
         state = ExportState(isExporting: true, totalTables: 1, totalRows: estimatedRows)
         isCancelled = false
 
