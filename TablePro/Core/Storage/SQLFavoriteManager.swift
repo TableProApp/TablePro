@@ -6,8 +6,8 @@
 import Foundation
 import os
 
-/// Manages SQL favorites with notifications and sync tracking
-internal final class SQLFavoriteManager {
+/// Manages SQL favorites with notifications
+internal final class SQLFavoriteManager: @unchecked Sendable {
     static let shared = SQLFavoriteManager()
     private static let logger = Logger(subsystem: "com.TablePro", category: "SQLFavoriteManager")
 
@@ -27,7 +27,6 @@ internal final class SQLFavoriteManager {
     func addFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.addFavorite(favorite)
         if result {
-            SyncChangeTracker.shared.markDirty(.favorite, id: favorite.id.uuidString)
             postUpdateNotification()
         }
         return result
@@ -36,7 +35,6 @@ internal final class SQLFavoriteManager {
     func updateFavorite(_ favorite: SQLFavorite) async -> Bool {
         let result = await storage.updateFavorite(favorite)
         if result {
-            SyncChangeTracker.shared.markDirty(.favorite, id: favorite.id.uuidString)
             postUpdateNotification()
         }
         return result
@@ -45,22 +43,20 @@ internal final class SQLFavoriteManager {
     func deleteFavorite(id: UUID) async -> Bool {
         let result = await storage.deleteFavorite(id: id)
         if result {
-            SyncChangeTracker.shared.markDeleted(.favorite, id: id.uuidString)
             postUpdateNotification()
         }
         return result
     }
 
     func deleteFavorites(ids: [UUID]) async {
-        for id in ids {
-            let result = await storage.deleteFavorite(id: id)
-            if result {
-                SyncChangeTracker.shared.markDeleted(.favorite, id: id.uuidString)
-            }
-        }
-        if !ids.isEmpty {
+        let result = await storage.deleteFavorites(ids: ids)
+        if result {
             postUpdateNotification()
         }
+    }
+
+    func fetchFavorite(id: UUID) async -> SQLFavorite? {
+        await storage.fetchFavorite(id: id)
     }
 
     func fetchFavorites(
@@ -76,7 +72,6 @@ internal final class SQLFavoriteManager {
     func addFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.addFolder(folder)
         if result {
-            SyncChangeTracker.shared.markDirty(.favoriteFolder, id: folder.id.uuidString)
             postUpdateNotification()
         }
         return result
@@ -85,7 +80,6 @@ internal final class SQLFavoriteManager {
     func updateFolder(_ folder: SQLFavoriteFolder) async -> Bool {
         let result = await storage.updateFolder(folder)
         if result {
-            SyncChangeTracker.shared.markDirty(.favoriteFolder, id: folder.id.uuidString)
             postUpdateNotification()
         }
         return result
@@ -94,7 +88,6 @@ internal final class SQLFavoriteManager {
     func deleteFolder(id: UUID) async -> Bool {
         let result = await storage.deleteFolder(id: id)
         if result {
-            SyncChangeTracker.shared.markDeleted(.favoriteFolder, id: id.uuidString)
             postUpdateNotification()
         }
         return result

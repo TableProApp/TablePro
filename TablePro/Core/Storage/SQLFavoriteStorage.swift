@@ -44,7 +44,7 @@ internal final class SQLFavoriteStorage {
 
     deinit {
         if let db = db {
-            sqlite3_close(db)
+            sqlite3_close_v2(db)
         }
         if Self.isRunningTests, let dbPath = dbPath {
             try? FileManager.default.removeItem(atPath: dbPath)
@@ -119,14 +119,75 @@ internal final class SQLFavoriteStorage {
     private func migrateIfNeeded() {
         let currentVersion = getUserVersion()
 
-        // Future migrations go here:
-        // if currentVersion < 2 {
-        //     execute("ALTER TABLE favorites ADD COLUMN new_col TEXT;")
-        // }
+        if currentVersion < 1 {
+            // Fresh database — tables already created without is_synced, jump to latest version
+            setUserVersion(2)
+            return
+        }
 
-        let targetVersion: Int32 = 1
-        if currentVersion < targetVersion {
-            setUserVersion(targetVersion)
+        if currentVersion < 2 {
+            // Remove is_synced column using rename-recreate-copy pattern
+            // (SQLite < 3.35.0 doesn't support ALTER TABLE DROP COLUMN)
+            execute("ALTER TABLE favorites RENAME TO favorites_old")
+            execute("""
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, query TEXT NOT NULL,
+                    keyword TEXT, folder_id TEXT, connection_id TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, updated_at REAL NOT NULL
+                )
+            """)
+            execute("""
+                INSERT INTO favorites SELECT id, name, query, keyword, folder_id, connection_id,
+                sort_order, created_at, updated_at FROM favorites_old
+            """)
+            execute("DROP TABLE favorites_old")
+
+            execute("ALTER TABLE folders RENAME TO folders_old")
+            execute("""
+                CREATE TABLE IF NOT EXISTS folders (
+                    id TEXT PRIMARY KEY, name TEXT NOT NULL, parent_id TEXT, connection_id TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0, created_at REAL NOT NULL, updated_at REAL NOT NULL
+                )
+            """)
+            execute("""
+                INSERT INTO folders SELECT id, name, parent_id, connection_id,
+                sort_order, created_at, updated_at FROM folders_old
+            """)
+            execute("DROP TABLE folders_old")
+
+            // Recreate indexes dropped with the old tables
+            execute("CREATE INDEX IF NOT EXISTS idx_favorites_connection ON favorites(connection_id);")
+            execute("CREATE INDEX IF NOT EXISTS idx_favorites_folder ON favorites(folder_id);")
+            execute("CREATE INDEX IF NOT EXISTS idx_favorites_keyword ON favorites(keyword);")
+            execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_favorites_keyword_scope ON favorites(keyword, connection_id) WHERE keyword IS NOT NULL;")
+            execute("CREATE INDEX IF NOT EXISTS idx_folders_connection ON folders(connection_id);")
+            execute("CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);")
+
+            // Recreate FTS5 triggers referencing the new table
+            execute("DROP TRIGGER IF EXISTS favorites_ai;")
+            execute("DROP TRIGGER IF EXISTS favorites_ad;")
+            execute("DROP TRIGGER IF EXISTS favorites_au;")
+            execute("""
+                CREATE TRIGGER IF NOT EXISTS favorites_ai AFTER INSERT ON favorites BEGIN
+                    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
+                END;
+            """)
+            execute("""
+                CREATE TRIGGER IF NOT EXISTS favorites_ad AFTER DELETE ON favorites BEGIN
+                    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword) VALUES('delete', old.rowid, old.name, old.query, old.keyword);
+                END;
+            """)
+            execute("""
+                CREATE TRIGGER IF NOT EXISTS favorites_au AFTER UPDATE ON favorites BEGIN
+                    INSERT INTO favorites_fts(favorites_fts, rowid, name, query, keyword) VALUES('delete', old.rowid, old.name, old.query, old.keyword);
+                    INSERT INTO favorites_fts(rowid, name, query, keyword) VALUES (new.rowid, new.name, new.query, new.keyword);
+                END;
+            """)
+
+            // Rebuild FTS5 index to match new table rowids
+            execute("INSERT INTO favorites_fts(favorites_fts) VALUES('rebuild');")
+
+            setUserVersion(2)
         }
     }
 
@@ -158,8 +219,7 @@ internal final class SQLFavoriteStorage {
                 connection_id TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
-                is_synced INTEGER DEFAULT 0
+                updated_at REAL NOT NULL
             );
             """
 
@@ -171,8 +231,7 @@ internal final class SQLFavoriteStorage {
                 connection_id TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
-                is_synced INTEGER DEFAULT 0
+                updated_at REAL NOT NULL
             );
             """
 
@@ -225,8 +284,14 @@ internal final class SQLFavoriteStorage {
 
     private func execute(_ sql: String) {
         var statement: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK {
-            sqlite3_step(statement)
+        let prepareResult = sqlite3_prepare_v2(db, sql, -1, &statement, nil)
+        if prepareResult == SQLITE_OK {
+            let stepResult = sqlite3_step(statement)
+            if stepResult != SQLITE_DONE && stepResult != SQLITE_ROW {
+                Self.logger.error("sqlite3_step failed (\(stepResult)): \(String(cString: sqlite3_errmsg(self.db)))")
+            }
+        } else {
+            Self.logger.error("sqlite3_prepare_v2 failed (\(prepareResult)): \(String(cString: sqlite3_errmsg(self.db)))")
         }
         sqlite3_finalize(statement)
     }
@@ -368,6 +433,58 @@ internal final class SQLFavoriteStorage {
             let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
             sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
             return sqlite3_step(statement) == SQLITE_DONE
+        }
+    }
+
+    func deleteFavorites(ids: [UUID]) async -> Bool {
+        guard !ids.isEmpty else { return true }
+        let idStrings = ids.map { $0.uuidString }
+        return await performDatabaseWork { [weak self] in
+            guard let self = self else { return false }
+
+            let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+            let sql = "DELETE FROM favorites WHERE id IN (\(placeholders));"
+
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
+                return false
+            }
+
+            defer { sqlite3_finalize(statement) }
+
+            let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            for (index, idString) in idStrings.enumerated() {
+                sqlite3_bind_text(statement, Int32(index + 1), idString, -1, SQLITE_TRANSIENT)
+            }
+
+            let result = sqlite3_step(statement)
+            if result != SQLITE_DONE {
+                Self.logger.error("Failed to batch delete favorites: \(String(cString: sqlite3_errmsg(self.db)))")
+            }
+            return result == SQLITE_DONE
+        }
+    }
+
+    func fetchFavorite(id: UUID) async -> SQLFavorite? {
+        let idString = id.uuidString
+        return await performDatabaseWork { [weak self] in
+            guard let self = self else { return nil }
+
+            let sql = "SELECT id, name, query, keyword, folder_id, connection_id, sort_order, created_at, updated_at FROM favorites WHERE id = ? LIMIT 1;"
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
+                return nil
+            }
+
+            defer { sqlite3_finalize(statement) }
+
+            let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+            sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
+
+            if sqlite3_step(statement) == SQLITE_ROW {
+                return self.parseFavorite(from: statement)
+            }
+            return nil
         }
     }
 
