@@ -283,7 +283,7 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         let safeTable = table.replacingOccurrences(of: "`", with: "``")
         let result = try await execute(query: "SHOW INDEX FROM `\(safeTable)`")
 
-        var indexMap: [String: (columns: [String], isUnique: Bool, type: String)] = [:]
+        var indexMap: [String: (columns: [String], isUnique: Bool, type: String, prefixes: [String: Int])] = [:]
 
         for row in result.rows {
             guard let indexName = row[safe: 2] ?? nil,
@@ -292,12 +292,20 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
             let nonUnique = (row[safe: 1] ?? nil) == "1"
             let indexType = (row[safe: 10] ?? nil) ?? "BTREE"
+            let subPart = (row[safe: 7] ?? nil).flatMap { Int($0) }
 
             if var existing = indexMap[indexName] {
                 existing.columns.append(columnName)
+                if let subPart {
+                    existing.prefixes[columnName] = subPart
+                }
                 indexMap[indexName] = existing
             } else {
-                indexMap[indexName] = (columns: [columnName], isUnique: !nonUnique, type: indexType)
+                var prefixes: [String: Int] = [:]
+                if let subPart {
+                    prefixes[columnName] = subPart
+                }
+                indexMap[indexName] = (columns: [columnName], isUnique: !nonUnique, type: indexType, prefixes: prefixes)
             }
         }
 
@@ -305,7 +313,8 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             .map { name, info in
                 PluginIndexInfo(
                     name: name, columns: info.columns, isUnique: info.isUnique,
-                    isPrimary: name == "PRIMARY", type: info.type
+                    isPrimary: name == "PRIMARY", type: info.type,
+                    columnPrefixes: info.prefixes.isEmpty ? nil : info.prefixes
                 )
             }
             .sorted { $0.isPrimary && !$1.isPrimary }
@@ -476,6 +485,54 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         )
     }
 
+    // MARK: - Progressive Loading
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        // If query already has a LIMIT clause, run as-is
+        if let regex = Self.limitRegex,
+           regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)) != nil
+        {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        // Inject LIMIT (limit+1) to detect if more rows exist
+        let baseQuery = stripLimitOffset(from: query)
+        let probeQuery = "\(baseQuery) LIMIT \(limit + 1)"
+        let result = try await execute(query: probeQuery)
+
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
     // MARK: - Streaming
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
@@ -570,9 +627,11 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     func createDatabase(name: String, charset: String, collation: String?) async throws {
         let escapedName = name.replacingOccurrences(of: "`", with: "``")
 
-        let validCharsets = ["utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
-                              "binary", "utf16", "utf32", "cp1251", "big5",
-                              "euckr", "gb2312", "gbk", "sjis"]
+        let validCharsets = [
+            "utf8mb4", "utf8mb3", "utf8", "latin1", "ascii",
+            "binary", "utf16", "utf32", "cp1251", "big5",
+            "euckr", "gb2312", "gbk", "sjis"
+        ]
         guard validCharsets.contains(charset) else {
             throw MariaDBPluginError(code: 0, message: "Invalid character set: \(charset)", sqlState: nil)
         }
@@ -699,6 +758,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if column.unsigned {
             def += " UNSIGNED"
         }
+        if let charset = column.charset, !charset.isEmpty {
+            def += " CHARACTER SET \(charset)"
+        }
+        if let collation = column.collation, !collation.isEmpty {
+            def += " COLLATE \(collation)"
+        }
         if column.isNullable {
             def += " NULL"
         } else {
@@ -733,7 +798,13 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     }
 
     private func buildIndexDefinitionSQL(_ index: PluginIndexDefinition) -> String {
-        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let cols = index.columns.map { col -> String in
+            let quoted = quoteIdentifier(col)
+            if let prefixes = index.columnPrefixes, let prefix = prefixes[col] {
+                return "\(quoted)(\(prefix))"
+            }
+            return quoted
+        }.joined(separator: ", ")
         var def = ""
 
         let upperType = index.indexType?.uppercased() ?? ""
@@ -759,7 +830,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
     private func buildForeignKeyDefinitionSQL(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        let refTable = quoteIdentifier(fk.referencedTable)
+        let refTable: String
+        if let schema = fk.referencedSchema, !schema.isEmpty {
+            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
+        } else {
+            refTable = quoteIdentifier(fk.referencedTable)
+        }
 
         var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
 
@@ -799,6 +875,12 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         var def = "\(column.dataType)"
         if column.unsigned {
             def += " UNSIGNED"
+        }
+        if let charset = column.charset, !charset.isEmpty {
+            def += " CHARACTER SET \(charset)"
+        }
+        if let collation = column.collation, !collation.isEmpty {
+            def += " COLLATE \(collation)"
         }
         if column.isNullable {
             def += " NULL"

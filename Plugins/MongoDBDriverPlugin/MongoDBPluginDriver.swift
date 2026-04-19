@@ -647,7 +647,7 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             let result = try await conn.find(
                 database: db, collection: collection, filter: filter,
                 sort: options.sort, projection: options.projection,
-                skip: options.skip ?? 0, limit: options.limit ?? PluginRowLimits.defaultMax
+                skip: options.skip ?? 0, limit: options.limit ?? PluginRowLimits.emergencyMax
             )
             if result.docs.isEmpty {
                 return PluginQueryResult(

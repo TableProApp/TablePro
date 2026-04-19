@@ -116,6 +116,26 @@ struct IndexInfo: Identifiable, Hashable {
     let isUnique: Bool
     let isPrimary: Bool
     let type: String  // BTREE, HASH, FULLTEXT, etc.
+    let columnPrefixes: [String: Int]?
+    let whereClause: String?
+
+    init(
+        name: String,
+        columns: [String],
+        isUnique: Bool,
+        isPrimary: Bool,
+        type: String,
+        columnPrefixes: [String: Int]? = nil,
+        whereClause: String? = nil
+    ) {
+        self.name = name
+        self.columns = columns
+        self.isUnique = isUnique
+        self.isPrimary = isPrimary
+        self.type = type
+        self.columnPrefixes = columnPrefixes
+        self.whereClause = whereClause
+    }
 }
 
 /// Information about a foreign key relationship

@@ -356,8 +356,8 @@ private actor DuckDBConnectionActor {
         var rows: [[String?]] = []
         var truncated = false
 
-        let maxRows = min(rowCount, UInt64(PluginRowLimits.defaultMax))
-        if rowCount > UInt64(PluginRowLimits.defaultMax) {
+        let maxRows = min(rowCount, UInt64(PluginRowLimits.emergencyMax))
+        if rowCount > UInt64(PluginRowLimits.emergencyMax) {
             truncated = true
         }
 

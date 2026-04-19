@@ -57,6 +57,12 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch rows with LIMIT/OFFSET pagination
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> QueryResult
 
+    /// Fetch first page of results with progressive loading support
+    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult
+
+    /// Fetch subsequent pages of results
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -332,6 +338,45 @@ extension DatabaseDriver {
     func fetchSchemas() async throws -> [String] { [] }
 
     var supportsTransactions: Bool { true }
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PagedQueryResult {
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PagedQueryResult(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PagedQueryResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
+        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PagedQueryResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
+        )
+    }
 
     /// Default no-op implementation for drivers that don't support query cancellation
     func cancelQuery() throws {

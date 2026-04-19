@@ -17,7 +17,7 @@ final class RedisPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.TablePro.RedisDriver", category: "RedisPluginDriver")
 
-    private static let maxScanKeys = PluginRowLimits.defaultMax
+    private static let maxScanKeys = PluginRowLimits.emergencyMax
 
     private var cachedScanPattern: String?
     private var cachedScanKeys: [String]?
@@ -750,8 +750,8 @@ private extension RedisPluginDriver {
                 return buildEmptyKeyResult(startTime: startTime)
             }
             let keys = items.map { redisReplyToString($0) }
-            let capped = Array(keys.prefix(PluginRowLimits.defaultMax))
-            let keysTruncated = keys.count > PluginRowLimits.defaultMax
+            let capped = Array(keys.prefix(PluginRowLimits.emergencyMax))
+            let keysTruncated = keys.count > PluginRowLimits.emergencyMax
             return try await buildKeyBrowseResult(
                 keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
             )
@@ -1243,8 +1243,8 @@ private extension RedisPluginDriver {
             return nil
         }
 
-        let capped = Array(keys.prefix(PluginRowLimits.defaultMax))
-        let keysTruncated = keys.count > PluginRowLimits.defaultMax
+        let capped = Array(keys.prefix(PluginRowLimits.emergencyMax))
+        let keysTruncated = keys.count > PluginRowLimits.emergencyMax
         return try await buildKeyBrowseResult(
             keys: capped, connection: conn, startTime: startTime, isTruncated: keysTruncated
         )

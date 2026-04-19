@@ -8,16 +8,20 @@ public enum StructureColumnField: String, Sendable, CaseIterable {
     case primaryKey
     case autoIncrement
     case comment
+    case charset
+    case collation
 
     public var displayName: String {
         switch self {
-        case .name: return "Name"
-        case .type: return "Type"
-        case .nullable: return "Nullable"
-        case .defaultValue: return "Default"
-        case .primaryKey: return "Primary Key"
-        case .autoIncrement: return "Auto Inc"
-        case .comment: return "Comment"
+        case .name: String(localized: "Name")
+        case .type: String(localized: "Type")
+        case .nullable: String(localized: "Nullable")
+        case .defaultValue: String(localized: "Default")
+        case .primaryKey: String(localized: "Primary Key")
+        case .autoIncrement: String(localized: "Auto Inc")
+        case .comment: String(localized: "Comment")
+        case .charset: String(localized: "Charset")
+        case .collation: String(localized: "Collation")
         }
     }
 }

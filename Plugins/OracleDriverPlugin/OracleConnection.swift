@@ -204,7 +204,7 @@ final class OracleConnectionWrapper: @unchecked Sendable {
                 }
                 didReadTypes = true
                 allRows.append(rowValues)
-                if allRows.count >= PluginRowLimits.defaultMax {
+                if allRows.count >= PluginRowLimits.emergencyMax {
                     truncated = true
                     break
                 }

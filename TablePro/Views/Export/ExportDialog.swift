@@ -42,12 +42,15 @@ struct ExportDialog: View {
         switch mode {
         case .tables(let conn, _): return conn
         case .queryResults(let conn, _, _): return conn
+        case .streamingQuery(let conn, _, _): return conn
         }
     }
 
     private var isQueryResultsMode: Bool {
-        if case .queryResults = mode { return true }
-        return false
+        switch mode {
+        case .queryResults, .streamingQuery: return true
+        default: return false
+        }
     }
 
     private var queryResultsRowCount: Int {
@@ -112,8 +115,13 @@ struct ExportDialog: View {
         }
         .task {
             if isQueryResultsMode {
-                if case .queryResults(_, _, let suggestedFileName) = mode {
+                switch mode {
+                case .queryResults(_, _, let suggestedFileName):
                     config.fileName = suggestedFileName
+                case .streamingQuery(_, _, let suggestedFileName):
+                    config.fileName = suggestedFileName
+                default:
+                    break
                 }
                 isLoading = false
             } else {
@@ -294,6 +302,10 @@ struct ExportDialog: View {
                         }
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .buttonStyle(.link)
+                    } else if case .streamingQuery = mode {
+                        Text("All rows")
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .foregroundStyle(.secondary)
                     } else if isQueryResultsMode {
                         Text("\(queryResultsRowCount) row\(queryResultsRowCount == 1 ? "" : "s") to export")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
@@ -429,6 +441,9 @@ struct ExportDialog: View {
     private var isExportDisabled: Bool {
         if isExporting || !isFileNameValid || availableFormats.isEmpty || isProGatedFormat(config.formatId) {
             return true
+        }
+        if case .streamingQuery = mode {
+            return false
         }
         if isQueryResultsMode {
             return queryResultsRowCount == 0
@@ -758,7 +773,9 @@ struct ExportDialog: View {
         }
 
         let formatName = currentPlugin.map { type(of: $0).formatDisplayName } ?? config.formatId.uppercased()
-        if isQueryResultsMode {
+        if case .streamingQuery = mode {
+            savePanel.message = String(format: String(localized: "Export query results to %@"), formatName)
+        } else if isQueryResultsMode {
             savePanel.message = String(format: String(localized: "Export %d row(s) to %@"), queryResultsRowCount, formatName)
         } else {
             savePanel.message = String(format: String(localized: "Export %d table(s) to %@"), exportableCount, formatName)
@@ -828,21 +845,25 @@ struct ExportDialog: View {
 
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
-        guard case .queryResults(_, let rowBuffer, _) = mode else { return }
-
         isExporting = true
         exportedFileURL = url
-
-        let service = ExportService(databaseType: connection.type)
-        exportService = service
         showProgressDialog = true
 
         do {
-            try await service.exportQueryResults(
-                rowBuffer: rowBuffer,
-                config: config,
-                to: url
-            )
+            let service: ExportService
+            switch mode {
+            case .streamingQuery(_, let query, _):
+                guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+                service = ExportService(driver: driver, databaseType: connection.type)
+                exportService = service
+                try await service.exportStreamingQuery(query: query, config: config, to: url)
+            case .queryResults(_, let rowBuffer, _):
+                service = ExportService(databaseType: connection.type)
+                exportService = service
+                try await service.exportQueryResults(rowBuffer: rowBuffer, config: config, to: url)
+            default:
+                return
+            }
 
             showProgressDialog = false
             isExporting = false

@@ -267,6 +267,7 @@ final class MainContentCommandActions {
     // MARK: - Per-Window State (replaces AppState.shared for menu enablement)
 
     var isConnected: Bool { coordinator != nil }
+    var isQueryExecuting: Bool { coordinator?.toolbarState.isExecuting ?? false }
 
     var safeModeLevel: SafeModeLevel { connection.safeModeLevel }
 
@@ -632,6 +633,10 @@ final class MainContentCommandActions {
 
     func runQuery() {
         coordinator?.runQuery()
+    }
+
+    func cancelCurrentQuery() {
+        coordinator?.cancelCurrentQuery()
     }
 
     func formatQuery() {

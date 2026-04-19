@@ -224,6 +224,21 @@ Tables above this threshold show an estimated count (`~3,000,000 rows`) from dat
 - **NULL Display**: Maximum 20 characters, no newlines or tabs
 </Note>
 
+### Query Result Limit
+
+How many rows to load on first execution in query tabs. Table tabs use page size instead.
+
+| Setting | Default | Range |
+|---------|---------|-------|
+| **Enforce query result limit** | On | On / Off |
+| **Row limit** | 10,000 | 100 - 500,000 |
+
+When enabled, `SELECT` queries load up to the configured limit. If more rows exist, the status bar shows **Load More** and **Fetch All** actions.
+
+Turn this off to load all rows at once (capped at 5M by the driver safety limit).
+
+See [Data Grid - Progressive Loading](/features/data-grid#progressive-loading) for details.
+
 ### Alternate Row Colors
 
 | Option | Description |

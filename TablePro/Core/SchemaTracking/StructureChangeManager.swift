@@ -88,6 +88,7 @@ final class StructureChangeManager {
                 columns: fkInfos.map { $0.column },
                 referencedTable: first.referencedTable,
                 referencedColumns: fkInfos.map { $0.referencedColumn },
+                referencedSchema: first.referencedSchema,
                 onDelete: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onDelete.uppercased()) ?? .noAction,
                 onUpdate: EditableForeignKeyDefinition.ReferentialAction(rawValue: first.onUpdate.uppercased()) ?? .noAction
             )
@@ -810,7 +811,7 @@ final class StructureChangeManager {
             state = RowVisualState(
                 isDeleted: isDeleted,
                 isInserted: isInserted,
-                modifiedColumns: isModified ? Set(0..<4) : []
+                modifiedColumns: isModified ? Set(0..<5) : []
             )
 
         case .foreignKeys:
@@ -825,7 +826,7 @@ final class StructureChangeManager {
             state = RowVisualState(
                 isDeleted: isDeleted,
                 isInserted: isInserted,
-                modifiedColumns: isModified ? Set(0..<6) : []
+                modifiedColumns: isModified ? Set(0..<7) : []
             )
 
         case .ddl:

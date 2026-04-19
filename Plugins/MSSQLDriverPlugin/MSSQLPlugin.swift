@@ -381,7 +381,7 @@ private final class FreeTDSConnection: @unchecked Sendable {
                     }
                 }
                 allRows.append(row)
-                if allRows.count >= PluginRowLimits.defaultMax {
+                if allRows.count >= PluginRowLimits.emergencyMax {
                     truncated = true
                     break
                 }

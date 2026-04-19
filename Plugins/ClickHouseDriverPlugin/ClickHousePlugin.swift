@@ -996,7 +996,7 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 return Self.unescapeTsvField(field)
             }
             rows.append(row)
-            if rows.count >= PluginRowLimits.defaultMax {
+            if rows.count >= PluginRowLimits.emergencyMax {
                 truncated = true
                 break
             }

@@ -159,6 +159,9 @@
         }
       }
     },
+    "'%@' is a reserved Windows device name" : {
+
+    },
     "\"%@\" was modified on both this Mac and another device." : {
       "localizations" : {
         "tr" : {
@@ -838,6 +841,16 @@
         }
       }
     },
+    "%@ of %@%@ rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ of %2$@%3$@ rows"
+          }
+        }
+      }
+    },
     "%@ on %@ completed successfully." : {
       "localizations" : {
         "en" : {
@@ -931,6 +944,9 @@
           }
         }
       }
+    },
+    "%@ rows (more available)" : {
+
     },
     "%@ s" : {
       "localizations" : {
@@ -1735,6 +1751,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已执行 %lld 条语句"
+          }
+        }
+      }
+    },
+    "%lld statements executed, %lld failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld statements executed, %2$lld failed"
           }
         }
       }
@@ -2749,6 +2775,9 @@
         }
       }
     },
+    "50,000" : {
+
+    },
     "60s" : {
       "localizations" : {
         "tr" : {
@@ -2902,6 +2931,9 @@
           }
         }
       }
+    },
+    "500,000" : {
+
     },
     "A built-in plugin \"%@\" already provides this bundle ID" : {
       "localizations" : {
@@ -6168,6 +6200,9 @@
     "Cancel Query" : {
 
     },
+    "Cancel Query (⌘.)" : {
+
+    },
     "Cancel query for session %@" : {
 
     },
@@ -8994,6 +9029,9 @@
         }
       }
     },
+    "Copy As" : {
+
+    },
     "Copy as Hex" : {
       "localizations" : {
         "tr" : {
@@ -9148,6 +9186,9 @@
         }
       }
     },
+    "Copy Errors to Clipboard" : {
+
+    },
     "Copy EXPLAIN output to clipboard" : {
       "localizations" : {
         "tr" : {
@@ -9238,6 +9279,7 @@
       }
     },
     "Copy this statement to clipboard" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -11795,6 +11837,9 @@
         }
       }
     },
+    "Destructive Changes" : {
+
+    },
     "Details" : {
       "localizations" : {
         "tr" : {
@@ -13289,6 +13334,9 @@
           }
         }
       }
+    },
+    "Enforce query result limit" : {
+
     },
     "Engine" : {
       "localizations" : {
@@ -15856,6 +15904,12 @@
         }
       }
     },
+    "Fetch All" : {
+
+    },
+    "Fetch All Rows" : {
+
+    },
     "FIELDS" : {
       "localizations" : {
         "tr" : {
@@ -15989,6 +16043,18 @@
           }
         }
       }
+    },
+    "Filename cannot be '.' or '..' or contain path traversal" : {
+
+    },
+    "Filename cannot be empty" : {
+
+    },
+    "Filename contains invalid characters: / \\ : * ? \" < > |" : {
+
+    },
+    "Filename is too long (max 255 bytes)" : {
+
     },
     "Filter" : {
       "localizations" : {
@@ -17726,6 +17792,9 @@
           }
         }
       }
+    },
+    "Import Completed with Errors" : {
+
     },
     "Import Connection from Link" : {
       "localizations" : {
@@ -20388,6 +20457,19 @@
         }
       }
     },
+    "Limit initial query results and load more on demand" : {
+
+    },
+    "Line %lld: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Line %1$lld: %2$@"
+          }
+        }
+      }
+    },
     "Line break" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20523,6 +20605,9 @@
       }
     },
     "Load Models" : {
+
+    },
+    "Load More" : {
 
     },
     "Load Table Template" : {
@@ -20729,6 +20814,9 @@
           }
         }
       }
+    },
+    "Loading…" : {
+
     },
     "localhost" : {
       "localizations" : {
@@ -22531,6 +22619,7 @@
       }
     },
     "No changes to preview" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24712,6 +24801,9 @@
         }
       }
     },
+    "Open in Editor" : {
+
+    },
     "Open MQL Editor" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -26746,6 +26838,7 @@
       }
     },
     "Preview Schema Changes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27554,6 +27647,22 @@
           }
         }
       }
+    },
+    "Query Result Limit" : {
+
+    },
+    "Query result limit must be between %@ and %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Query result limit must be between %1$@ and %2$@"
+          }
+        }
+      }
+    },
+    "Query results exceeding this limit show Load More / Fetch All buttons" : {
+
     },
     "Query timeout:" : {
       "localizations" : {
@@ -29586,6 +29695,9 @@
           }
         }
       }
+    },
+    "Row limit:" : {
+
     },
     "Row number" : {
       "localizations" : {
@@ -33482,6 +33594,7 @@
       }
     },
     "Statement %lld" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35257,6 +35370,9 @@
         }
       }
     },
+    "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?" : {
+
+    },
     "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry." : {
 
     },
@@ -35978,6 +36094,12 @@
           }
         }
       }
+    },
+    "This will fetch all remaining rows. Large result sets use significant memory. Continue?" : {
+
+    },
+    "This will fetch approximately %@ more rows. Large result sets use significant memory. Continue?" : {
+
     },
     "This will permanently delete %lld %@. This action cannot be undone." : {
       "localizations" : {
@@ -39156,6 +39278,7 @@
       }
     },
     "You can re-enable this in Settings" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

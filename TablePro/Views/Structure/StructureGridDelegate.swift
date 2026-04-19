@@ -238,7 +238,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
                     type: item.type,
                     isUnique: item.isUnique,
                     isPrimary: item.isPrimary,
-                    comment: item.comment
+                    comment: item.comment,
+                    columnPrefixes: item.columnPrefixes,
+                    whereClause: item.whereClause
                 )
                 structureChangeManager.addIndex(newIndex)
             }
@@ -254,6 +256,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                     columns: item.columns,
                     referencedTable: item.referencedTable,
                     referencedColumns: item.referencedColumns,
+                    referencedSchema: item.referencedSchema,
                     onDelete: item.onDelete,
                     onUpdate: item.onUpdate
                 )
@@ -498,7 +501,8 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 let copy = structureChangeManager.workingIndexes[row]
                 structureChangeManager.addIndex(EditableIndexDefinition(
                     id: UUID(), name: copy.name, columns: copy.columns,
-                    type: copy.type, isUnique: copy.isUnique, isPrimary: false, comment: copy.comment
+                    type: copy.type, isUnique: copy.isUnique, isPrimary: false, comment: copy.comment,
+                    columnPrefixes: copy.columnPrefixes, whereClause: copy.whereClause
                 ))
             case .foreignKeys:
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
@@ -506,6 +510,7 @@ final class StructureGridDelegate: DataGridViewDelegate {
                 structureChangeManager.addForeignKey(EditableForeignKeyDefinition(
                     id: UUID(), name: copy.name, columns: copy.columns,
                     referencedTable: copy.referencedTable, referencedColumns: copy.referencedColumns,
+                    referencedSchema: copy.referencedSchema,
                     onDelete: copy.onDelete, onUpdate: copy.onUpdate
                 ))
             case .ddl, .parts:

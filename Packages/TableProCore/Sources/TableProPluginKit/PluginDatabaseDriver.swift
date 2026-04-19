@@ -173,6 +173,10 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
 
     // Streaming row fetch for export
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error>
+
+    // Progressive loading
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult
 }
 
 // MARK: - Default Implementations
@@ -520,6 +524,45 @@ public extension PluginDatabaseDriver {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "''")
         return "'\(escaped)'"
+    }
+
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let result = try await fetchRows(query: query, offset: 0, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
+    func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult {
+        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
+        )
     }
 
     func fetchRowCount(query: String) async throws -> Int {

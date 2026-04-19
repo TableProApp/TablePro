@@ -8,6 +8,18 @@
 import Foundation
 
 extension MainContentCoordinator {
+    // MARK: - DDL Query Detection
+
+    /// DDL operations that modify schema structure
+    private static let ddlPrefixes: [String] = [
+        "CREATE", "DROP", "ALTER", "TRUNCATE", "RENAME",
+    ]
+
+    func isDDLQuery(_ sql: String) -> Bool {
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        return Self.ddlPrefixes.contains { trimmed.hasPrefix($0) }
+    }
+
     // MARK: - Write Query Detection
 
     /// Write-operation SQL prefixes blocked in read-only mode

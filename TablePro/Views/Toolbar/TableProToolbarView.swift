@@ -18,6 +18,7 @@ import TableProPluginKit
 /// Displays environment badge, connection status, and execution indicator in a unified card
 struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
+    var onCancelQuery: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -44,7 +45,8 @@ struct ToolbarPrincipalContent: View {
                 isExecuting: state.isExecuting,
                 lastDuration: state.lastQueryDuration,
                 clickHouseProgress: state.clickHouseProgress,
-                lastClickHouseProgress: state.lastClickHouseProgress
+                lastClickHouseProgress: state.lastClickHouseProgress,
+                onCancel: onCancelQuery
             )
         }
     }
@@ -114,7 +116,10 @@ struct TableProToolbar: ViewModifier {
                 // MARK: - Principal (Center)
 
                 ToolbarItem(placement: .principal) {
-                    ToolbarPrincipalContent(state: state)
+                    ToolbarPrincipalContent(
+                        state: state,
+                        onCancelQuery: { actions?.cancelCurrentQuery() }
+                    )
                 }
 
                 // MARK: - Primary Action (Right)

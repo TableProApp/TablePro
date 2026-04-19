@@ -17,6 +17,7 @@ struct ClickHousePartsView: View {
     @State private var parts: [ClickHousePartInfo] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var selection: Set<UUID> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,14 +45,40 @@ struct ClickHousePartsView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                partsToolbar
                 partsTable
             }
         }
         .task { await loadParts() }
     }
 
+    private var partsToolbar: some View {
+        HStack(spacing: 8) {
+            Button(action: optimizeTable) {
+                Label(String(localized: "Optimize"), systemImage: "arrow.triangle.merge")
+            }
+            .help(String(localized: "Optimize table (merge parts)"))
+
+            Button(action: dropSelectedPartition) {
+                Label(String(localized: "Drop Partition"), systemImage: "trash")
+            }
+            .disabled(selection.count != 1)
+            .help(String(localized: "Drop selected partition"))
+
+            Button(action: detachSelectedPartition) {
+                Label(String(localized: "Detach Partition"), systemImage: "arrow.down.doc")
+            }
+            .disabled(selection.count != 1)
+            .help(String(localized: "Detach selected partition"))
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+    }
+
     private var partsTable: some View {
-        Table(parts) {
+        Table(parts, selection: $selection) {
             TableColumn("Partition", value: \.partition)
                 .width(min: 80, ideal: 120)
             TableColumn("Name", value: \.name)
@@ -75,6 +102,85 @@ struct ClickHousePartsView: View {
             .width(min: 50, ideal: 60)
         }
     }
+
+    // MARK: - Actions
+
+    private func optimizeTable() {
+        Task {
+            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
+            let sql = "OPTIMIZE TABLE `\(escapedTable)` FINAL"
+            do {
+                _ = try await driver.execute(query: sql)
+                await loadParts()
+            } catch {
+                Self.logger.error("Optimize failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func dropSelectedPartition() {
+        guard let partitionValue = selectedPartitionValue() else { return }
+        Task { @MainActor in
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Drop Partition?"),
+                message: String(
+                    format: String(localized: "This will permanently delete all data in partition '%@'."),
+                    partitionValue
+                ),
+                confirmButton: String(localized: "Drop"),
+                cancelButton: String(localized: "Cancel")
+            )
+            guard confirmed else { return }
+
+            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
+            let sql = "ALTER TABLE `\(escapedTable)` DROP PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            do {
+                _ = try await driver.execute(query: sql)
+                selection.removeAll()
+                await loadParts()
+            } catch {
+                Self.logger.error("Drop partition failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func detachSelectedPartition() {
+        guard let partitionValue = selectedPartitionValue() else { return }
+        Task { @MainActor in
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Detach Partition?"),
+                message: String(
+                    format: String(localized: "This will detach partition '%@'. Data will be preserved but inaccessible until re-attached."),
+                    partitionValue
+                ),
+                confirmButton: String(localized: "Detach"),
+                cancelButton: String(localized: "Cancel")
+            )
+            guard confirmed else { return }
+
+            guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
+            let escapedTable = tableName.replacingOccurrences(of: "`", with: "``")
+            let sql = "ALTER TABLE `\(escapedTable)` DETACH PARTITION '\(partitionValue.replacingOccurrences(of: "'", with: "''"))'"
+            do {
+                _ = try await driver.execute(query: sql)
+                selection.removeAll()
+                await loadParts()
+            } catch {
+                Self.logger.error("Detach partition failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    private func selectedPartitionValue() -> String? {
+        guard let selectedId = selection.first,
+              let part = parts.first(where: { $0.id == selectedId })
+        else { return nil }
+        return part.partition
+    }
+
+    // MARK: - Data Loading
 
     private func loadParts() async {
         isLoading = true
@@ -119,6 +225,8 @@ struct ClickHousePartsView: View {
 
         isLoading = false
     }
+
+    // MARK: - Formatting
 
     private static let numberFormatter: NumberFormatter = {
         let formatter = NumberFormatter()

@@ -256,6 +256,74 @@ final class ExportService {
         }
     }
 
+    func exportStreamingQuery(
+        query: String,
+        config: ExportConfiguration,
+        to url: URL
+    ) async throws {
+        guard let plugin = PluginManager.shared.exportPlugins[config.formatId] else {
+            throw ExportError.formatNotFound(config.formatId)
+        }
+        guard let driver else {
+            throw ExportError.exportFailed("No database connection")
+        }
+
+        let estimatedRows = 0
+        state = ExportState(isExporting: true, totalTables: 1, totalRows: estimatedRows)
+        isCancelled = false
+
+        defer {
+            state.isExporting = false
+            isCancelled = false
+            state.statusMessage = ""
+            currentProgress = nil
+        }
+
+        let dataSource = StreamingQueryExportDataSource(
+            query: query,
+            driver: driver,
+            databaseType: databaseType
+        )
+
+        let nsProgress = Progress(totalUnitCount: Int64(max(estimatedRows, 1)))
+        let progress = PluginExportProgress(progress: nsProgress)
+        currentProgress = progress
+
+        let observation = nsProgress.observe(\.completedUnitCount) { [weak self] observed, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.state.processedRows = Int(observed.completedUnitCount)
+            }
+        }
+        defer { observation.invalidate() }
+
+        let exportTable = PluginExportTable(
+            name: config.fileName,
+            databaseName: "",
+            tableType: "query",
+            optionValues: plugin.defaultTableOptionValues()
+        )
+
+        let result: ExportFormatResult
+        do {
+            result = try await plugin.export(
+                tables: [exportTable],
+                dataSource: dataSource,
+                destination: url,
+                progress: progress
+            )
+        } catch {
+            state.errorMessage = error.localizedDescription
+            throw error
+        }
+
+        state.processedRows = progress.processedRows
+
+        if !result.warnings.isEmpty {
+            state.warningMessage = result.warnings.joined(separator: "\n")
+        }
+    }
+
     // MARK: - Row Count Fetching
 
     private func qualifiedTableRef(for table: ExportTableItem, driver: DatabaseDriver) -> String {

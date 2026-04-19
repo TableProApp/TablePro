@@ -1089,9 +1089,9 @@ private extension MongoDBConnection {
                 results.append(bsonToDict(doc))
             }
 
-            if results.count >= PluginRowLimits.defaultMax {
+            if results.count >= PluginRowLimits.emergencyMax {
                 truncated = true
-                logger.warning("Result set truncated at \(PluginRowLimits.defaultMax) documents")
+                logger.warning("Result set truncated at \(PluginRowLimits.emergencyMax) documents")
                 break
             }
         }

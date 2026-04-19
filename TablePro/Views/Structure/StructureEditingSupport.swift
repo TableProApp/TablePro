@@ -27,18 +27,34 @@ enum StructureEditingSupport {
         case .primaryKey: column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
         case .autoIncrement: column.autoIncrement = value.uppercased() == "YES" || value == "1"
         case .comment: column.comment = value.isEmpty ? nil : value
+        case .charset: column.charset = value.isEmpty ? nil : value
+        case .collation: column.collation = value.isEmpty ? nil : value
         }
     }
 
     static func updateIndex(_ index: inout EditableIndexDefinition, at colIndex: Int, with value: String) {
         switch colIndex {
         case 0: index.name = value
-        case 1: index.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        case 1:
+            var prefixes: [String: Int] = [:]
+            index.columns = value.split(separator: ",").map { part in
+                let trimmed = part.trimmingCharacters(in: .whitespaces)
+                if let parenStart = trimmed.firstIndex(of: "("),
+                   let parenEnd = trimmed.firstIndex(of: ")"),
+                   let prefix = Int(trimmed[trimmed.index(after: parenStart)..<parenEnd]) {
+                    let name = String(trimmed[..<parenStart])
+                    prefixes[name] = prefix
+                    return name
+                }
+                return trimmed
+            }
+            index.columnPrefixes = prefixes
         case 2:
             if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
                 index.type = indexType
             }
         case 3: index.isUnique = value.uppercased() == "YES" || value == "1"
+        case 4: index.whereClause = value.isEmpty ? nil : value
         default: break
         }
     }
@@ -49,11 +65,12 @@ enum StructureEditingSupport {
         case 1: fk.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
         case 2: fk.referencedTable = value
         case 3: fk.referencedColumns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 4:
+        case 4: fk.referencedSchema = value.isEmpty ? nil : value
+        case 5:
             if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
                 fk.onDelete = action
             }
-        case 5:
+        case 6:
             if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
                 fk.onUpdate = action
             }

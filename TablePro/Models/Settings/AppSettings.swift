@@ -123,6 +123,8 @@ struct DataGridSettings: Codable, Equatable {
     var autoShowInspector: Bool
     var enableSmartValueDetection: Bool
     var countRowsIfEstimateLessThan: Int
+    var queryResultLimit: Int
+    var enforceQueryResultLimit: Bool
 
     static let `default` = DataGridSettings(
         rowHeight: .normal,
@@ -133,7 +135,9 @@ struct DataGridSettings: Codable, Equatable {
         showRowNumbers: true,
         autoShowInspector: false,
         enableSmartValueDetection: true,
-        countRowsIfEstimateLessThan: 100_000
+        countRowsIfEstimateLessThan: 100_000,
+        queryResultLimit: 10_000,
+        enforceQueryResultLimit: true
     )
 
     init(
@@ -145,7 +149,9 @@ struct DataGridSettings: Codable, Equatable {
         showRowNumbers: Bool = true,
         autoShowInspector: Bool = false,
         enableSmartValueDetection: Bool = true,
-        countRowsIfEstimateLessThan: Int = 100_000
+        countRowsIfEstimateLessThan: Int = 100_000,
+        queryResultLimit: Int = 10_000,
+        enforceQueryResultLimit: Bool = true
     ) {
         self.rowHeight = rowHeight
         self.dateFormat = dateFormat
@@ -156,6 +162,8 @@ struct DataGridSettings: Codable, Equatable {
         self.autoShowInspector = autoShowInspector
         self.enableSmartValueDetection = enableSmartValueDetection
         self.countRowsIfEstimateLessThan = countRowsIfEstimateLessThan
+        self.queryResultLimit = queryResultLimit
+        self.enforceQueryResultLimit = enforceQueryResultLimit
     }
 
     init(from decoder: Decoder) throws {
@@ -170,6 +178,8 @@ struct DataGridSettings: Codable, Equatable {
         autoShowInspector = try container.decodeIfPresent(Bool.self, forKey: .autoShowInspector) ?? false
         enableSmartValueDetection = try container.decodeIfPresent(Bool.self, forKey: .enableSmartValueDetection) ?? true
         countRowsIfEstimateLessThan = try container.decodeIfPresent(Int.self, forKey: .countRowsIfEstimateLessThan) ?? 100_000
+        queryResultLimit = try container.decodeIfPresent(Int.self, forKey: .queryResultLimit) ?? 10_000
+        enforceQueryResultLimit = try container.decodeIfPresent(Bool.self, forKey: .enforceQueryResultLimit) ?? true
     }
 
     // MARK: - Validated Properties
@@ -213,6 +223,25 @@ struct DataGridSettings: Codable, Equatable {
         let range = SettingsValidationRules.defaultPageSizeRange
         if defaultPageSize < range.lowerBound || defaultPageSize > range.upperBound {
             return String(format: String(localized: "Page size must be between %@ and %@"), range.lowerBound.formatted(), range.upperBound.formatted())
+        }
+        return nil
+    }
+
+    /// Validated queryResultLimit (100 to 500,000; 0 means unlimited)
+    var validatedQueryResultLimit: Int {
+        if queryResultLimit == 0 { return 0 }
+        return queryResultLimit.clamped(to: SettingsValidationRules.queryResultLimitRange)
+    }
+
+    /// Validation error for queryResultLimit (for UI feedback)
+    var queryResultLimitValidationError: String? {
+        let range = SettingsValidationRules.queryResultLimitRange
+        if queryResultLimit != 0 && (queryResultLimit < range.lowerBound || queryResultLimit > range.upperBound) {
+            return String(
+                format: String(localized: "Query result limit must be between %@ and %@"),
+                range.lowerBound.formatted(),
+                range.upperBound.formatted()
+            )
         }
         return nil
     }

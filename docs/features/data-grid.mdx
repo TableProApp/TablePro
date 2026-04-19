@@ -356,6 +356,38 @@ Right-click a column header > **Display As** to override per column. Overrides p
 NULL values show as styled "NULL" text (customizable in **Settings** > **Data Grid**). Configure date format, row height, and alternate row colors in the same settings panel.
 
 
+## Progressive Loading
+
+Query tabs load rows in batches. The first execution returns up to 10,000 rows (configurable in Settings). If more rows exist, the status bar shows the count and two actions:
+
+<Frame caption="Status bar with progressive loading actions">
+  <img
+    className="block dark:hidden"
+    src="/images/progressive-loading.png"
+    alt="Progressive loading status bar"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/progressive-loading-dark.png"
+    alt="Progressive loading status bar"
+  />
+</Frame>
+
+- **Load More** - appends the next batch to the grid
+- **Fetch All** - loads all remaining rows in one query. Shows a confirmation first.
+
+The status bar shows how many rows are loaded and the estimated total, for example: `10,000 of ~1,238,120 rows`.
+
+Table tabs use page-based navigation and are not affected by this setting.
+
+### Sorting with partial results
+
+When only part of the result is loaded and you click a column header to sort, TablePro re-runs the query with `ORDER BY` added. This gives correct sort order across the full table, not just the loaded rows.
+
+### Cancelling
+
+Press `Cmd+.` or click the stop button in the toolbar to cancel a running query or a Load More / Fetch All operation.
+
 ## MongoDB Collections
 
 ### Schema and Display

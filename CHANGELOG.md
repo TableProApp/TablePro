@@ -9,14 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Structure tab: filter columns/indexes/FKs by name, sort by clicking headers, count badges on tabs
-- Structure tab: Primary Key column visible in edit mode, dropdown pickers for FK actions and index types
-- Structure tab: DDL view with tree-sitter highlighting and line numbers, "Open in Editor" button
-- Structure tab: Copy As (CSV, JSON, SQL) in context menu, destructive change confirmation
-- Schema changes recorded in query history
+- Structure tab: search, sort, count badges, PK column, Copy As (CSV/JSON/SQL), destructive change confirmation
+- Structure tab: DDL view with tree-sitter highlighting, line numbers, and "Open in Editor"
+- Structure tab: charset/collation (MySQL), index prefix length, partial indexes (PostgreSQL), cross-schema FK
+- Structure tab: dropdown pickers for FK actions and index types, schema changes in query history
+- ClickHouse: parts tab actions (optimize table, drop/detach partition)
 
 ### Changed
 
+- Query tabs load rows progressively (default 10,000) with Load More and Fetch All in status bar
 - Main editor window rewritten on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and correct lifecycle
 - Toolbar layout follows Apple HIG (sidebar left, connection center, view actions right)
 - Export engine rewritten to use streaming row fetch instead of offset/limit pagination
@@ -45,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Cancel running query from toolbar or `Cmd+.`
+- Query result limit setting in Data Grid preferences
+- Streaming export for query results with partial loading (exports directly from database, no memory limit)
 - Import error handling modes: Stop and Rollback, Stop and Commit, Skip and Continue
 - Handoff via NSUserActivity
 

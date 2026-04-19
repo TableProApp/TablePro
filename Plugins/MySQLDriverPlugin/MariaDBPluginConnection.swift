@@ -464,9 +464,9 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         var rows: [[String?]] = []
-        rows.reserveCapacity(min(1_000, PluginRowLimits.defaultMax))
+        rows.reserveCapacity(min(1_000, PluginRowLimits.emergencyMax))
 
-        let maxRows = PluginRowLimits.defaultMax
+        let maxRows = PluginRowLimits.emergencyMax
         var truncated = false
 
         while let rowPtr = mysql_fetch_row(resultPtr) {
@@ -644,7 +644,7 @@ final class MariaDBPluginConnection: @unchecked Sendable {
         }
 
         var rows: [[String?]] = []
-        let maxRows = PluginRowLimits.defaultMax
+        let maxRows = PluginRowLimits.emergencyMax
         var truncated = false
 
         while true {
