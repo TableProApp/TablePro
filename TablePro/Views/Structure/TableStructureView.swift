@@ -177,7 +177,10 @@ struct TableStructureView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .columns, .indexes, .foreignKeys:
-            structureGrid
+            NavigationStack {
+                structureGrid
+            }
+            .searchable(text: $searchText, placement: .toolbar, prompt: String(localized: "Filter"))
         case .ddl:
             ddlView
         case .parts:
@@ -276,14 +279,6 @@ struct TableStructureView: View {
             editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 4)
-                Divider()
-            }
-        }
     }
 
     // MARK: - Helper Views
