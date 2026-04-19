@@ -29,6 +29,7 @@ final class ClickHousePlugin: NSObject, TableProPlugin, DriverPlugin {
         ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE"),
     ]
     static let brandColorHex = "#FFD100"
+    static let postConnectActions: [PostConnectAction] = [.selectDatabaseFromLastSession]
     static let supportsForeignKeys = false
     static let systemDatabaseNames: [String] = ["information_schema", "INFORMATION_SCHEMA", "system"]
     static let columnTypesByCategory: [String: [String]] = [
