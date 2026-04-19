@@ -14,14 +14,14 @@ import TableProPluginKit
 private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
 
 /// Context for progressive query result loading
-struct QueryPageContext {
+internal struct QueryPageContext {
     let hasMore: Bool
     let nextOffset: Int
     let baseQuery: String
 }
 
 /// Result of the data fetch phase (either progressive or full)
-struct QueryFetchResult {
+internal struct QueryFetchResult {
     let columns: [String]
     let columnTypes: [ColumnType]
     let rows: [[String?]]
@@ -81,7 +81,7 @@ extension MainContentCoordinator {
     func resolveProgressiveLoading(sql: String, tabType: TabType) -> (useProgressive: Bool, limit: Int) {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
         let trimmedUpper = sql.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ")
+        let isSelectQuery = trimmedUpper.hasPrefix("SELECT ") || trimmedUpper.hasPrefix("WITH ")
 
         if tabType == .query && isSelectQuery && !isWriteQuery(sql) && !isDDLQuery(sql)
             && dataGridSettings.enforceQueryResultLimit

@@ -306,7 +306,7 @@ struct AppMenuCommands: Commands {
                 actions?.cancelCurrentQuery()
             }
             .keyboardShortcut(".", modifiers: .command)
-            .disabled(!(actions?.isConnected ?? false))
+            .disabled(!(actions?.isQueryExecuting ?? false))
 
             Button("Refresh") {
                 NotificationCenter.default.post(name: .refreshData, object: nil)
