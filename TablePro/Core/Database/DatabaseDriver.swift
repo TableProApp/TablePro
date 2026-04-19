@@ -365,14 +365,16 @@ extension DatabaseDriver {
     }
 
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult {
-        let result = try await fetchRows(query: query, offset: offset, limit: limit)
+        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
         return PagedQueryResult(
             columns: result.columns,
             columnTypes: result.columnTypes,
-            rows: result.rows,
+            rows: rows,
             executionTime: result.executionTime,
-            hasMore: result.rows.count >= limit,
-            nextOffset: offset + result.rows.count
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
         )
     }
 

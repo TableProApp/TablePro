@@ -11,6 +11,8 @@ import Foundation
 import os
 import TableProPluginKit
 
+private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
+
 /// Context for progressive query result loading
 struct QueryPageContext {
     let hasMore: Bool
@@ -40,7 +42,11 @@ extension MainContentCoordinator {
         progressiveLimit: Int
     ) async throws -> QueryFetchResult {
         if useProgressiveLoading && progressiveLimit > 0 {
+            let start = CFAbsoluteTimeGetCurrent()
+            progressLog.info("[fetchFirstPage] sql=\(sql.prefix(100), privacy: .public) limit=\(progressiveLimit)")
             let pagedResult = try await driver.fetchFirstPage(query: sql, limit: progressiveLimit)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            progressLog.info("[fetchFirstPage] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) driverTime=\(String(format: "%.3f", pagedResult.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
             let pageContext: QueryPageContext? = pagedResult.hasMore
                 ? QueryPageContext(hasMore: true, nextOffset: pagedResult.nextOffset, baseQuery: sql)
                 : nil
@@ -54,7 +60,11 @@ extension MainContentCoordinator {
                 pageContext: pageContext
             )
         } else {
+            let start = CFAbsoluteTimeGetCurrent()
+            progressLog.info("[execute] sql=\(sql.prefix(100), privacy: .public)")
             let result = try await driver.execute(query: sql)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            progressLog.info("[execute] rows=\(result.rows.count) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
             return QueryFetchResult(
                 columns: result.columns,
                 columnTypes: result.columnTypes,

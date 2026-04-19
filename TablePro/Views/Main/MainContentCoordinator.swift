@@ -996,8 +996,11 @@ final class MainContentCoordinator {
         guard let index = tabManager.selectedTabIndex else { return }
         guard !tabManager.tabs[index].isExecuting else { return }
 
-        currentQueryTask?.cancel()
-        try? DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+        if currentQueryTask != nil {
+            currentQueryTask?.cancel()
+            try? DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+            currentQueryTask = nil
+        }
         queryGeneration += 1
         let capturedGeneration = queryGeneration
 
@@ -1360,7 +1363,7 @@ final class MainContentCoordinator {
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
-                let quotedColumn = "`\(columnName.replacingOccurrences(of: "`", with: "``"))`"
+                let quotedColumn = queryBuilder.quoteIdentifier(columnName)
                 let orderQuery = "\(strippedQuery) ORDER BY \(quotedColumn) \(direction)"
                 tabManager.tabs[tabIndex].sortState = currentSort
                 tabManager.tabs[tabIndex].hasUserInteraction = true

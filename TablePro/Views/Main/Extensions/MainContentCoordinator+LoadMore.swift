@@ -9,12 +9,15 @@ import AppKit
 import Foundation
 import os
 
+private let progressLog = Logger(subsystem: "com.TablePro", category: "ProgressiveLoad")
+
 extension MainContentCoordinator {
     // MARK: - Cancel Current Query
 
     func cancelCurrentQuery() {
         currentQueryTask?.cancel()
         currentQueryTask = nil
+        queryGeneration += 1
         if let driver = DatabaseManager.shared.driver(for: connectionId) {
             try? driver.cancelQuery()
         }
@@ -35,6 +38,7 @@ extension MainContentCoordinator {
         guard let idx = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[idx]
         guard !tab.pagination.isLoadingMore,
+              !tab.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
@@ -44,31 +48,40 @@ extension MainContentCoordinator {
         let capturedGeneration = queryGeneration
 
         tabManager.tabs[idx].pagination.isLoadingMore = true
+        toolbarState.setExecuting(true)
 
         currentQueryTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, !isTearingDown else { return }
 
             do {
                 guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
                     throw DatabaseError.notConnected
                 }
+                let fetchStart = CFAbsoluteTimeGetCurrent()
+                progressLog.info("[loadMore] offset=\(offset) limit=\(limit)")
                 let pagedResult = try await driver.fetchNextPage(
                     query: baseQuery,
                     offset: offset,
                     limit: limit
                 )
+                let fetchElapsed = CFAbsoluteTimeGetCurrent() - fetchStart
+                progressLog.info("[loadMore] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) fetchTime=\(String(format: "%.3f", fetchElapsed))s")
 
                 guard !Task.isCancelled else { return }
 
                 await MainActor.run { [weak self] in
-                    guard let self else { return }
+                    guard let self, !isTearingDown else { return }
                     guard capturedGeneration == queryGeneration else {
                         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                             tabManager.tabs[idx].pagination.isLoadingMore = false
                         }
+                        toolbarState.setExecuting(false)
                         return
                     }
-                    guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+                    guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+                        toolbarState.setExecuting(false)
+                        return
+                    }
 
                     var tab = tabManager.tabs[idx]
                     tab.rowBuffer.rows.append(contentsOf: pagedResult.rows)
@@ -79,10 +92,15 @@ extension MainContentCoordinator {
                     if !pagedResult.hasMore {
                         tab.pagination.baseQueryForMore = nil
                     }
+                    if let rs = tab.activeResultSet {
+                        rs.resultVersion = tab.resultVersion
+                    }
                     tabManager.tabs[idx] = tab
+                    toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil
                     }
+                    progressLog.info("[loadMore] applied totalRows=\(tab.rowBuffer.rows.count)")
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -90,6 +108,7 @@ extension MainContentCoordinator {
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         tabManager.tabs[idx].pagination.isLoadingMore = false
                     }
+                    toolbarState.setExecuting(false)
                     currentQueryTask = nil
                     Self.logger.error("Load more failed: \(error.localizedDescription, privacy: .public)")
                 }
@@ -102,7 +121,9 @@ extension MainContentCoordinator {
     func fetchAllRows() {
         guard let idx = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[idx]
-        guard tab.pagination.hasMoreRows,
+        guard !tab.pagination.isLoadingMore,
+              !tab.isExecuting,
+              tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
         let loadedCount = tab.resultRows.count
@@ -110,7 +131,7 @@ extension MainContentCoordinator {
 
         let message: String
         if let total = totalEstimate {
-            let remaining = total - loadedCount
+            let remaining = max(0, total - loadedCount)
             message = String(
                 format: String(localized: "This will fetch approximately %@ more rows. Large result sets use significant memory. Continue?"),
                 remaining.formatted()
@@ -141,69 +162,58 @@ extension MainContentCoordinator {
 
     private func performFetchAll(tabId: UUID, baseQuery: String) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+        guard !tabManager.tabs[idx].pagination.isLoadingMore else { return }
 
-        let limit = AppSettingsManager.shared.dataGrid.validatedQueryResultLimit
         let capturedGeneration = queryGeneration
 
         tabManager.tabs[idx].pagination.isLoadingMore = true
         toolbarState.setExecuting(true)
 
         currentQueryTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self, !isTearingDown else { return }
 
             do {
                 guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
                     throw DatabaseError.notConnected
                 }
 
-                var currentOffset = await MainActor.run {
-                    tabManager.tabs.first { $0.id == tabId }?.pagination.loadMoreOffset ?? 0
-                }
+                let start = CFAbsoluteTimeGetCurrent()
+                progressLog.info("[fetchAll] executing full query: \(baseQuery.prefix(100), privacy: .public)")
+                let result = try await driver.execute(query: baseQuery)
+                let fetchTime = CFAbsoluteTimeGetCurrent() - start
+                progressLog.info("[fetchAll] rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s")
 
-                while !Task.isCancelled {
-                    let pagedResult = try await driver.fetchNextPage(
-                        query: baseQuery,
-                        offset: currentOffset,
-                        limit: limit
-                    )
-
-                    guard !Task.isCancelled else { break }
-
-                    let hasMore = pagedResult.hasMore
-                    let nextOffset = pagedResult.nextOffset
-                    let newRows = pagedResult.rows
-
-                    await MainActor.run { [weak self] in
-                        guard let self else { return }
-                        guard capturedGeneration == queryGeneration else { return }
-                        guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-
-                        var tab = tabManager.tabs[idx]
-                        tab.rowBuffer.rows.append(contentsOf: newRows)
-                        tab.resultVersion += 1
-                        tab.pagination.loadMoreOffset = nextOffset
-                        tab.pagination.hasMoreRows = hasMore
-                        if !hasMore {
-                            tab.pagination.isLoadingMore = false
-                            tab.pagination.baseQueryForMore = nil
-                        }
-                        tabManager.tabs[idx] = tab
-                    }
-
-                    if !hasMore { break }
-                    currentOffset = nextOffset
-                    await Task.yield()
-                }
+                guard !Task.isCancelled else { return }
 
                 await MainActor.run { [weak self] in
-                    guard let self else { return }
-                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].pagination.isLoadingMore = false
+                    guard let self, !isTearingDown else { return }
+                    guard capturedGeneration == queryGeneration else {
+                        if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                            tabManager.tabs[idx].pagination.isLoadingMore = false
+                        }
+                        toolbarState.setExecuting(false)
+                        return
                     }
+                    guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else {
+                        toolbarState.setExecuting(false)
+                        return
+                    }
+
+                    var tab = tabManager.tabs[idx]
+                    tab.rowBuffer.rows = result.rows
+                    tab.executionTime = result.executionTime
+                    tab.resultVersion += 1
+                    tab.pagination.resetLoadMore()
+                    if let rs = tab.activeResultSet {
+                        rs.resultVersion = tab.resultVersion
+                    }
+                    tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
-                    if capturedGeneration == queryGeneration {
-                        currentQueryTask = nil
-                    }
+                    toolbarState.lastQueryDuration = result.executionTime
+                    currentQueryTask = nil
+
+                    let totalTime = CFAbsoluteTimeGetCurrent() - start
+                    progressLog.info("[fetchAll] DONE rows=\(result.rows.count) fetchTime=\(String(format: "%.3f", fetchTime))s totalTime=\(String(format: "%.3f", totalTime))s")
                 }
             } catch {
                 await MainActor.run { [weak self] in

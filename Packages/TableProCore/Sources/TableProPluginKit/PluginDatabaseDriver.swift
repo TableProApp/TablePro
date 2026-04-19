@@ -552,14 +552,16 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult {
-        let result = try await fetchRows(query: query, offset: offset, limit: limit)
+        let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
         return PluginPagedResult(
             columns: result.columns,
             columnTypeNames: result.columnTypeNames,
-            rows: result.rows,
+            rows: rows,
             executionTime: result.executionTime,
-            hasMore: result.rows.count >= limit,
-            nextOffset: offset + result.rows.count
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
         )
     }
 

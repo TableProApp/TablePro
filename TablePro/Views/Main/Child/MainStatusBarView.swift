@@ -55,11 +55,11 @@ struct MainStatusBarView: View {
 
             // Center: Row info (selection or pagination summary) and status message
             if let tab = tab, !tab.resultRows.isEmpty {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     if tab.pagination.isLoadingMore {
                         ProgressView()
                             .controlSize(.mini)
-                        Text("Loading more rows...")
+                        Text("Loading…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
@@ -69,17 +69,29 @@ struct MainStatusBarView: View {
                     }
 
                     if tab.tabType == .query && tab.pagination.hasMoreRows && !tab.pagination.isLoadingMore {
-                        Button("Load More") {
+                        Text("—")
+                            .font(.caption)
+                            .foregroundStyle(.quaternary)
+                        Button {
                             onLoadMore?()
+                        } label: {
+                            Text("Load More")
+                                .font(.caption)
                         }
-                        .controlSize(.small)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
 
-                        Button("Fetch All") {
+                        Text("·")
+                            .font(.caption)
+                            .foregroundStyle(.quaternary)
+                        Button {
                             onFetchAll?()
+                        } label: {
+                            Text("Fetch All")
+                                .font(.caption)
                         }
-                        .controlSize(.small)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
                     }
 
                     if let statusMessage = tab.statusMessage {
@@ -182,6 +194,11 @@ struct MainStatusBarView: View {
             }
         } else if tab.tabType == .query && pagination.hasMoreRows {
             let formattedCount = Self.decimalFormatter.string(from: NSNumber(value: loadedCount)) ?? "\(loadedCount)"
+            if let total = total, total > 0 {
+                let formattedTotal = Self.decimalFormatter.string(from: NSNumber(value: total)) ?? "\(total)"
+                let prefix = pagination.isApproximateRowCount ? "~" : ""
+                return String(format: String(localized: "%@ of %@%@ rows"), formattedCount, prefix, formattedTotal)
+            }
             return String(format: String(localized: "%@ rows (more available)"), formattedCount)
         } else if tab.tabType == .table, let total = total, total > 0 {
             let formattedTotal = Self.decimalFormatter.string(from: NSNumber(value: total)) ?? "\(total)"
