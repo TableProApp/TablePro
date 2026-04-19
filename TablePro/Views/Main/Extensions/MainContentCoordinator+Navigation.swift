@@ -465,7 +465,6 @@ extension MainContentCoordinator {
             DatabaseManager.shared.updateSession(connId) { session in
                 session.currentDatabase = database
             }
-            AppSettingsStorage.shared.saveLastDatabase(database, for: connId)
             toolbarState.databaseName = database
             executeTableTabQueryDirectly()
 

@@ -726,7 +726,7 @@ extension PluginMetadataRegistry {
                     ExplainVariant(id: "estimate", label: "Estimate", sqlPrefix: "EXPLAIN ESTIMATE")
                 ],
                 pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: ["clickhouse", "ch"], postConnectActions: [],
+                supportsHealthMonitor: true, urlSchemes: ["clickhouse", "ch"], postConnectActions: [.selectDatabaseFromLastSession],
                 brandColorHex: "#FFD100",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .network, supportsDatabaseSwitching: true,
