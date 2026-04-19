@@ -393,14 +393,15 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
                 ARRAY_AGG(a.attname ORDER BY array_position(ix.indkey, a.attnum)) AS columns,
                 ix.indisunique AS is_unique,
                 ix.indisprimary AS is_primary,
-                am.amname AS index_type
+                am.amname AS index_type,
+                pg_get_expr(ix.indpred, ix.indrelid) AS predicate
             FROM pg_index ix
             JOIN pg_class i ON i.oid = ix.indexrelid
             JOIN pg_class t ON t.oid = ix.indrelid
             JOIN pg_am am ON am.oid = i.relam
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
             WHERE t.relname = '\(escapeLiteral(table))'
-            GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname
+            GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname, ix.indpred, ix.indrelid
             ORDER BY ix.indisprimary DESC, i.relname
             """
         let result = try await execute(query: query)
@@ -409,12 +410,14 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             let columns = columnsStr
                 .trimmingCharacters(in: CharacterSet(charactersIn: "{}"))
                 .components(separatedBy: ",")
+            let whereClause = row.count > 5 ? row[5] : nil
             return PluginIndexInfo(
                 name: name,
                 columns: columns,
                 isUnique: row[2] == "t",
                 isPrimary: row[3] == "t",
-                type: row[4]?.uppercased() ?? "BTREE"
+                type: row[4]?.uppercased() ?? "BTREE",
+                whereClause: whereClause
             )
         }
     }
@@ -898,13 +901,22 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
             def += " USING \(type.lowercased())"
         }
         def += " (\(cols))"
+        if let whereClause = index.whereClause, !whereClause.isEmpty {
+            def += " WHERE \(whereClause)"
+        }
         return def
     }
 
     private func pgForeignKeyDefinition(_ fk: PluginForeignKeyDefinition) -> String {
         let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(quoteIdentifier(fk.referencedTable)) (\(refCols))"
+        let refTable: String
+        if let schema = fk.referencedSchema, !schema.isEmpty {
+            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
+        } else {
+            refTable = quoteIdentifier(fk.referencedTable)
+        }
+        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
         if fk.onDelete != "NO ACTION" {
             def += " ON DELETE \(fk.onDelete)"
         }
