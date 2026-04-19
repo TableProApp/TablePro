@@ -12,6 +12,7 @@ import TableProPluginKit
 enum ExportMode {
     case tables(connection: DatabaseConnection, preselectedTables: Set<String>)
     case queryResults(connection: DatabaseConnection, rowBuffer: RowBuffer, suggestedFileName: String)
+    case streamingQuery(connection: DatabaseConnection, query: String, suggestedFileName: String)
 }
 
 // MARK: - Export Configuration

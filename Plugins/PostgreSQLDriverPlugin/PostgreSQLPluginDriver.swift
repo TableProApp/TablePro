@@ -136,6 +136,50 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return Int(countStr ?? "0") ?? 0
     }
 
+    func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        if let regex = Self.limitRegex,
+           regex.firstMatch(in: query, range: NSRange(query.startIndex..., in: query)) != nil
+        {
+            let result = try await execute(query: query)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+
+        let baseQuery = stripLimitOffset(from: query)
+        let probeQuery = "\(baseQuery) LIMIT \(limit + 1)"
+        let result = try await execute(query: probeQuery)
+
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
         let baseQuery = stripLimitOffset(from: query)
         let paginatedQuery = "\(baseQuery) LIMIT \(limit) OFFSET \(offset)"

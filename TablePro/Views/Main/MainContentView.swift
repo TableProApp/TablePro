@@ -163,14 +163,26 @@ struct MainContentView: View {
             )
         case .exportQueryResults:
             if let tab = coordinator.tabManager.selectedTab {
-                ExportDialog(
-                    isPresented: dismissBinding,
-                    mode: .queryResults(
-                        connection: connectionWithCurrentDatabase,
-                        rowBuffer: tab.rowBuffer,
-                        suggestedFileName: tab.tableName ?? "query_results"
+                let fileName = tab.tableName ?? "query_results"
+                if tab.pagination.hasMoreRows, let baseQuery = tab.pagination.baseQueryForMore {
+                    ExportDialog(
+                        isPresented: dismissBinding,
+                        mode: .streamingQuery(
+                            connection: connectionWithCurrentDatabase,
+                            query: baseQuery,
+                            suggestedFileName: fileName
+                        )
                     )
-                )
+                } else {
+                    ExportDialog(
+                        isPresented: dismissBinding,
+                        mode: .queryResults(
+                            connection: connectionWithCurrentDatabase,
+                            rowBuffer: tab.rowBuffer,
+                            suggestedFileName: fileName
+                        )
+                    )
+                }
             }
         case .importDialog:
             let importDismiss = Binding<Bool>(

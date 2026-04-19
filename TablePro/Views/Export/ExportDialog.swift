@@ -42,12 +42,15 @@ struct ExportDialog: View {
         switch mode {
         case .tables(let conn, _): return conn
         case .queryResults(let conn, _, _): return conn
+        case .streamingQuery(let conn, _, _): return conn
         }
     }
 
     private var isQueryResultsMode: Bool {
-        if case .queryResults = mode { return true }
-        return false
+        switch mode {
+        case .queryResults, .streamingQuery: return true
+        default: return false
+        }
     }
 
     private var queryResultsRowCount: Int {
@@ -112,8 +115,13 @@ struct ExportDialog: View {
         }
         .task {
             if isQueryResultsMode {
-                if case .queryResults(_, _, let suggestedFileName) = mode {
+                switch mode {
+                case .queryResults(_, _, let suggestedFileName):
                     config.fileName = suggestedFileName
+                case .streamingQuery(_, _, let suggestedFileName):
+                    config.fileName = suggestedFileName
+                default:
+                    break
                 }
                 isLoading = false
             } else {
@@ -758,7 +766,9 @@ struct ExportDialog: View {
         }
 
         let formatName = currentPlugin.map { type(of: $0).formatDisplayName } ?? config.formatId.uppercased()
-        if isQueryResultsMode {
+        if case .streamingQuery = mode {
+            savePanel.message = String(format: String(localized: "Export query results to %@"), formatName)
+        } else if isQueryResultsMode {
             savePanel.message = String(format: String(localized: "Export %d row(s) to %@"), queryResultsRowCount, formatName)
         } else {
             savePanel.message = String(format: String(localized: "Export %d table(s) to %@"), exportableCount, formatName)
@@ -828,8 +838,6 @@ struct ExportDialog: View {
 
     @MainActor
     private func startQueryResultsExport(to url: URL) async {
-        guard case .queryResults(_, let rowBuffer, _) = mode else { return }
-
         isExporting = true
         exportedFileURL = url
 
@@ -838,11 +846,28 @@ struct ExportDialog: View {
         showProgressDialog = true
 
         do {
-            try await service.exportQueryResults(
-                rowBuffer: rowBuffer,
-                config: config,
-                to: url
-            )
+            switch mode {
+            case .streamingQuery(_, let query, _):
+                guard let driver = DatabaseManager.shared.driver(for: connection.id) else { return }
+                let streamingService = ExportService(
+                    driver: driver,
+                    databaseType: connection.type
+                )
+                exportService = streamingService
+                try await streamingService.exportStreamingQuery(
+                    query: query,
+                    config: config,
+                    to: url
+                )
+            case .queryResults(_, let rowBuffer, _):
+                try await service.exportQueryResults(
+                    rowBuffer: rowBuffer,
+                    config: config,
+                    to: url
+                )
+            default:
+                return
+            }
 
             showProgressDialog = false
             isExporting = false

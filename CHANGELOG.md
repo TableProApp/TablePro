@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Cancel running query from toolbar or `Cmd+.`
 - Query result limit setting in Data Grid preferences
+- Streaming export for query results with partial loading (exports directly from database, no memory limit)
 - Import error handling modes: Stop and Rollback, Stop and Commit, Skip and Continue
 - Handoff via NSUserActivity
 
