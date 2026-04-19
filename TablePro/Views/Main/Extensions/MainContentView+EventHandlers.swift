@@ -48,7 +48,12 @@ extension MainContentView {
             return
         }
         let t0 = Date()
-        updateWindowTitleAndFileState()
+
+        // Only update title when the tab array changes independently of a tab switch.
+        // During a tab switch, handleTabSelectionChange already updates the title.
+        if !coordinator.isHandlingTabSwitch {
+            updateWindowTitleAndFileState()
+        }
 
         guard !coordinator.isUpdatingColumnLayout else { return }
 
@@ -144,20 +149,21 @@ extension MainContentView {
     /// Only writes when the value actually changes, preventing spurious onChange triggers.
     /// Navigation safety is guaranteed by `SidebarNavigationResult.resolve` returning `.skip`
     /// when the selected table matches the current tab.
+    /// Reads from DatabaseManager (authoritative source) instead of the `tables` binding,
+    /// and skips background windows to avoid overwriting shared sidebar state.
     func syncSidebarToCurrentTab() {
+        guard coordinator.isKeyWindow else { return }
+        let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
         let target: Set<TableInfo>
         if let currentTableName = tabManager.selectedTab?.tableName,
-            let match = tables.first(where: { $0.name == currentTableName })
+            let match = liveTables.first(where: { $0.name == currentTableName })
         {
             target = [match]
         } else {
             target = []
         }
         if sidebarState.selectedTables != target {
-            // Don't clear sidebar selection while the table list is still loading.
-            // Clearing it prematurely triggers SidebarSyncAction to re-select on
-            // tables load, causing a double-navigation race condition.
-            if target.isEmpty && tables.isEmpty { return }
+            if target.isEmpty && liveTables.isEmpty { return }
             sidebarState.selectedTables = target
         }
     }

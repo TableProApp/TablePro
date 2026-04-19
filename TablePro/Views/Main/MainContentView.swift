@@ -49,14 +49,11 @@ struct MainContentView: View {
     // MARK: - Local State
 
     @State var selectedRowIndices: Set<Int> = []
-    @State var previousSelectedTabId: UUID?
-    @State var previousSelectedTables: Set<TableInfo> = []
     @State var editingCell: CellPosition?
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
     @State var inspectorUpdateTask: Task<Void, Never>?
     @State var lazyLoadTask: Task<Void, Never>?
-    @State var pendingTabSwitch: Task<Void, Never>?
     /// Stable identifier for this window in WindowLifecycleMonitor
     @State var windowId = UUID()
     @State var hasInitialized = false
@@ -320,39 +317,21 @@ struct MainContentView: View {
                     "[open] bodyContentCore.task initializeAndRestoreTabs done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"
                 )
             }
-            .onChange(of: tabManager.selectedTabId) { _, newTabId in
+            .onChange(of: tabManager.selectedTabId) { oldTabId, newTabId in
                 guard !coordinator.isTearingDown else {
                     Self.lifecycleLogger.debug("[switch] selectedTabId SKIPPED (tearingDown) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)")
                     return
                 }
-                guard previousSelectedTabId != nil || newTabId != nil else {
+                guard oldTabId != nil || newTabId != nil else {
                     Self.lifecycleLogger.debug("[switch] selectedTabId SKIPPED (nil→nil) windowId=\(windowId, privacy: .public)")
                     return
                 }
                 let seq = MainContentCoordinator.nextSwitchSeq()
-                let switchQueued = Date()
                 Self.lifecycleLogger.debug(
-                    "[switch] selectedTabId changed seq=\(seq) from=\(previousSelectedTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
+                    "[switch] selectedTabId changed seq=\(seq) from=\(oldTabId?.uuidString ?? "nil", privacy: .public) to=\(newTabId?.uuidString ?? "nil", privacy: .public) windowId=\(windowId, privacy: .public)"
                 )
                 (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
-                if pendingTabSwitch != nil {
-                    Self.lifecycleLogger.debug("[switch] cancelling previous pendingTabSwitch seq=\(seq)")
-                }
-                pendingTabSwitch?.cancel()
-                pendingTabSwitch = Task { @MainActor in
-                    await Task.yield()
-                    guard !Task.isCancelled else {
-                        Self.lifecycleLogger.debug("[switch] pendingTabSwitch CANCELLED seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
-                        return
-                    }
-                    let handleStart = Date()
-                    Self.lifecycleLogger.debug("[switch] pendingTabSwitch executing seq=\(seq) waitMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))")
-                    handleTabSelectionChange(from: previousSelectedTabId, to: newTabId)
-                    previousSelectedTabId = newTabId
-                    Self.lifecycleLogger.debug(
-                        "[switch] handleTabSelectionChange done seq=\(seq) handleMs=\(Int(Date().timeIntervalSince(handleStart) * 1_000)) totalMs=\(Int(Date().timeIntervalSince(switchQueued) * 1_000))"
-                    )
-                }
+                handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
             .onChange(of: tabManager.tabs) { _, newTabs in
                 handleTabsChange(newTabs)
@@ -368,13 +347,12 @@ struct MainContentView: View {
                 handleConnectionStatusChange()
             }
 
-            .onChange(of: sidebarState.selectedTables) { _, newTables in
+            .onChange(of: sidebarState.selectedTables) { oldTables, newTables in
                 guard !coordinator.isTearingDown else {
                     Self.lifecycleLogger.debug("[switch] sidebarState.selectedTables SKIPPED (tearingDown) windowId=\(windowId, privacy: .public)")
                     return
                 }
-                handleTableSelectionChange(from: previousSelectedTables, to: newTables)
-                previousSelectedTables = newTables
+                handleTableSelectionChange(from: oldTables, to: newTables)
             }
             // Phase 2: NSWindow.didBecomeKey / .didResignKey observers removed.
             // TabWindowController's NSWindowDelegate dispatches to
