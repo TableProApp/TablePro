@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Structure tab: charset and collation column editing for MySQL/MariaDB
+- Structure tab: index prefix length display and editing
+- Structure tab: partial index WHERE clause display and editing (PostgreSQL)
+- Structure tab: cross-schema foreign key reference display and editing
+- Structure tab: ClickHouse parts actions (optimize table, drop/detach partition)
 - Structure tab: filter columns/indexes/FKs by name, sort by clicking headers, count badges on tabs
 - Structure tab: Primary Key column visible in edit mode, dropdown pickers for FK actions and index types
 - Structure tab: DDL view with tree-sitter highlighting and line numbers, "Open in Editor" button
