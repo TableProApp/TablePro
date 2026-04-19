@@ -36,18 +36,21 @@ enum AIProviderFactory {
             case .claude:
                 provider = AnthropicProvider(
                     endpoint: config.endpoint,
-                    apiKey: apiKey ?? ""
+                    apiKey: apiKey ?? "",
+                    maxOutputTokens: config.maxOutputTokens ?? 4_096
                 )
             case .gemini:
                 provider = GeminiProvider(
                     endpoint: config.endpoint,
-                    apiKey: apiKey ?? ""
+                    apiKey: apiKey ?? "",
+                    maxOutputTokens: config.maxOutputTokens ?? 8_192
                 )
             case .openAI, .openRouter, .ollama, .custom:
                 provider = OpenAICompatibleProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey,
-                    providerType: config.type
+                    providerType: config.type,
+                    maxOutputTokens: config.maxOutputTokens
                 )
             }
             cache[config.id] = (apiKey, provider)

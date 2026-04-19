@@ -14,11 +14,13 @@ final class AnthropicProvider: AIProvider {
 
     private let endpoint: String
     private let apiKey: String
+    private let maxOutputTokens: Int
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String) {
+    init(endpoint: String, apiKey: String, maxOutputTokens: Int = 4_096) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -182,9 +184,10 @@ final class AnthropicProvider: AIProvider {
         messages: [AIChatMessage],
         model: String,
         systemPrompt: String?,
-        maxTokens: Int = 4_096,
+        maxTokens: Int? = nil,
         stream: Bool = true
     ) throws -> URLRequest {
+        let maxTokens = maxTokens ?? maxOutputTokens
         guard let url = URL(string: "\(endpoint)/v1/messages") else {
             throw AIProviderError.invalidEndpoint(endpoint)
         }

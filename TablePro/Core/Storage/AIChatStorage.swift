@@ -59,12 +59,25 @@ actor AIChatStorage {
 
     // MARK: - Public Methods
 
+    /// Maximum encoded size for a single conversation file (500 KB)
+    private static let maxFileSize = 500_000
+
+    /// Maximum number of messages to keep after trimming
+    private static let trimmedMessageCount = 50
+
     /// Save a conversation to disk
     func save(_ conversation: AIConversation) {
         let fileURL = directory.appendingPathComponent("\(conversation.id.uuidString).json")
 
         do {
-            let data = try Self.encoder.encode(conversation)
+            var data = try Self.encoder.encode(conversation)
+
+            if data.count > Self.maxFileSize {
+                var trimmed = conversation
+                trimmed.messages = Array(trimmed.messages.suffix(Self.trimmedMessageCount))
+                data = try Self.encoder.encode(trimmed)
+            }
+
             try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             Self.logger.error("Failed to save conversation \(conversation.id): \(error.localizedDescription)")

@@ -18,12 +18,14 @@ final class OpenAICompatibleProvider: AIProvider {
     private let endpoint: String
     private let apiKey: String?
     private let providerType: AIProviderType
+    private let maxOutputTokens: Int?
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String?, providerType: AIProviderType) {
+    init(endpoint: String, apiKey: String?, providerType: AIProviderType, maxOutputTokens: Int? = nil) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providerType = providerType
+        self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -253,6 +255,10 @@ final class OpenAICompatibleProvider: AIProvider {
             "messages": apiMessages,
             "stream": true
         ]
+
+        if let maxOutputTokens {
+            body["max_tokens"] = maxOutputTokens
+        }
 
         // Request usage stats in stream (OpenAI/OpenRouter support this)
         if providerType != .ollama {

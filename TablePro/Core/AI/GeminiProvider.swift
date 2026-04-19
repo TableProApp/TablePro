@@ -14,11 +14,13 @@ final class GeminiProvider: AIProvider {
 
     private let endpoint: String
     private let apiKey: String
+    private let maxOutputTokens: Int
     private let session: URLSession
 
-    init(endpoint: String, apiKey: String) {
+    init(endpoint: String, apiKey: String, maxOutputTokens: Int = 8_192) {
         self.endpoint = endpoint.hasSuffix("/") ? String(endpoint.dropLast()) : endpoint
         self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.maxOutputTokens = maxOutputTokens
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -106,6 +108,14 @@ final class GeminiProvider: AIProvider {
         }
     }
 
+    private static let knownModels = [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
+    ]
+
     func fetchAvailableModels() async throws -> [String] {
         guard let url = URL(string: "\(endpoint)/v1beta/models") else {
             throw AIProviderError.invalidEndpoint(endpoint)
@@ -115,36 +125,41 @@ final class GeminiProvider: AIProvider {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            return Self.knownModels
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw AIProviderError.networkError("Invalid response")
+            return Self.knownModels
         }
 
         guard httpResponse.statusCode == 200 else {
-            throw mapHTTPError(
-                statusCode: httpResponse.statusCode,
-                body: String(data: data, encoding: .utf8) ?? ""
-            )
+            return Self.knownModels
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = json["models"] as? [[String: Any]]
         else {
-            return []
+            return Self.knownModels
         }
 
-        return models.compactMap { model -> String? in
+        let fetched = models.compactMap { model -> String? in
             guard let name = model["name"] as? String,
                   let methods = model["supportedGenerationMethods"] as? [String],
                   methods.contains("generateContent")
             else { return nil }
-            // Strip "models/" prefix: "models/gemini-2.0-flash" → "gemini-2.0-flash"
+            // Strip "models/" prefix: "models/gemini-2.0-flash" -> "gemini-2.0-flash"
             if name.hasPrefix("models/") {
                 return String(name.dropFirst(7))
             }
             return name
         }
+
+        return fetched.isEmpty ? Self.knownModels : fetched
     }
 
     func testConnection() async throws -> Bool {
@@ -196,7 +211,7 @@ final class GeminiProvider: AIProvider {
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
 
         var body: [String: Any] = [
-            "generationConfig": ["maxOutputTokens": 8_192]
+            "generationConfig": ["maxOutputTokens": maxOutputTokens]
         ]
 
         if let systemPrompt, !systemPrompt.isEmpty {
