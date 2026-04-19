@@ -18,6 +18,8 @@ extension TableStructureView {
     @Sendable
     func loadInitialData() async {
         await loadColumns()
+        await loadTabDataIfNeeded(.indexes)
+        await loadTabDataIfNeeded(.foreignKeys)
     }
 
     func loadColumns() async {

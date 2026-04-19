@@ -39,6 +39,7 @@ struct TableStructureView: View {
     // Search and sort state
     @State var searchText = ""
     @State var structureSortDescriptor: StructureSortDescriptor?
+    @State var displayVersion: Int = 0
 
     // DataGridView state
     @State var structureChangeManager: StructureChangeManager
@@ -79,6 +80,7 @@ struct TableStructureView: View {
         .onChange(of: columns) { onColumnsChanged() }
         .onChange(of: indexes) { onIndexesChanged() }
         .onChange(of: foreignKeys) { onForeignKeysChanged() }
+        .onChange(of: searchText) { displayVersion += 1 }
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
@@ -123,25 +125,32 @@ struct TableStructureView: View {
     }
 
     private var toolbar: some View {
-        HStack {
-            Spacer()
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
 
-            Picker("", selection: $selectedTab) {
-                ForEach(availableTabs, id: \.self) { tab in
-                    Text(tabLabel(for: tab)).tag(tab)
+                Picker("", selection: $selectedTab) {
+                    ForEach(availableTabs, id: \.self) { tab in
+                        Text(tabLabel(for: tab)).tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                Spacer()
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .padding()
 
             if selectedTab == .columns || selectedTab == .indexes || selectedTab == .foreignKeys {
-                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
-                    .frame(width: 160)
+                Divider()
+                HStack {
+                    NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
             }
-
-            Spacer()
         }
-        .padding()
     }
 
     // MARK: - Tab Label with Count Badge
@@ -208,6 +217,7 @@ struct TableStructureView: View {
         gridDelegate.currentProvider = provider
         gridDelegate.sortHandler = { [self] column, ascending in
             structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
+            displayVersion += 1
         }
 
         let moveRowHandler: ((Int, Int) -> Void)? = {
@@ -258,6 +268,7 @@ struct TableStructureView: View {
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
+            resultVersion: displayVersion,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
                 dropdownColumns: allDropdownColumns,
