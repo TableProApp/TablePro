@@ -117,8 +117,13 @@ struct MainEditorContentView: View {
             FavoriteEditDialog(
                 connectionId: connectionId,
                 favorite: nil,
-                initialQuery: item.query
+                initialQuery: item.query,
+                folders: []
             )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
+            guard let query = notification.userInfo?["query"] as? String else { return }
+            favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
         .onChange(of: tabManager.tabIds) { _, newIds in
             guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty

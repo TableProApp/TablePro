@@ -85,10 +85,6 @@ internal struct FavoritesTabView: View {
                 Text(String(format: String(localized: "%d favorites will be permanently deleted."), count))
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .saveAsFavoriteRequested)) { notification in
-            guard let query = notification.userInfo?["query"] as? String else { return }
-            viewModel.createFavorite(query: query)
-        }
     }
 
     // MARK: - List
