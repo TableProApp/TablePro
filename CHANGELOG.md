@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL parser handles `''`/`""`/` `` ` escaped quotes at 64KB chunk boundaries correctly
+- SQL parser preserves MySQL conditional comments (`/*!...*/`) instead of discarding them
+- SQL parser supports `DELIMITER` commands for stored procedures and triggers
+- SQL parser handles `#` hash-style MySQL comments
 - Import parser now surfaces file read and encoding errors instead of silently succeeding
 - Compressed (.gz) files are only decompressed once instead of twice
 - Import progress estimate uses decompressed file size for accurate progress
