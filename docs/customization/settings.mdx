@@ -226,23 +226,18 @@ Tables above this threshold show an estimated count (`~3,000,000 rows`) from dat
 
 ### Query Result Limit
 
-Controls how many rows are loaded initially when running a query in a query tab (not table tabs, which use pagination).
+How many rows to load on first execution in query tabs. Table tabs use page size instead.
 
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| **Enforce query result limit** | On | -- | When enabled, SELECT queries load a limited number of rows with Load More / Fetch All buttons |
-| **Row limit** | 10,000 | 100 -- 500,000 | Maximum rows to load on first execution |
+| Setting | Default | Range |
+|---------|---------|-------|
+| **Enforce query result limit** | On | On / Off |
+| **Row limit** | 10,000 | 100 - 500,000 |
 
-When a query returns more rows than the limit, the status bar shows "10,000 rows (more available)" with two buttons:
+When enabled, `SELECT` queries load up to the configured limit. If more rows exist, the status bar shows **Load More** and **Fetch All** actions.
 
-- **Load More**: fetches the next batch (same size as the limit)
-- **Fetch All**: fetches all remaining rows (shows a memory warning first)
+Turn this off to load all rows at once (capped at 5M by the driver safety limit).
 
-Disable the limit to load all rows at once (the old behavior with a 100K cap).
-
-<Tip>
-Start with 10,000 rows and use Load More to fetch incrementally. This keeps the app responsive even for million-row tables.
-</Tip>
+See [Data Grid - Progressive Loading](/features/data-grid#progressive-loading) for details.
 
 ### Alternate Row Colors
 

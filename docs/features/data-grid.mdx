@@ -358,18 +358,24 @@ NULL values show as styled "NULL" text (customizable in **Settings** > **Data Gr
 
 ## Progressive Loading
 
-When a query in a query tab returns more rows than the configured limit (default: 10,000), TablePro loads the first batch immediately and shows **Load More** and **Fetch All** buttons in the status bar.
+Query tabs load rows in batches. The first execution returns up to 10,000 rows (configurable in Settings). If more rows exist, the status bar shows the count and two actions:
 
-- **Load More** fetches the next batch and appends it to the current results
-- **Fetch All** loads all remaining rows (shows a confirmation dialog for large result sets)
+{/* Screenshot: Status bar showing "10,000 of ~1,238,120 rows - Load More · Fetch All" */}
 
-The status bar shows the loaded row count and indicates when more rows are available. Configure the limit in **Settings > Data Grid > Query Result Limit**.
+- **Load More** - appends the next batch to the grid
+- **Fetch All** - loads all remaining rows in one query. Shows a confirmation first.
 
-Table tabs are unaffected - they use page-based navigation with the configured page size.
+The status bar shows how many rows are loaded and the estimated total, for example: `10,000 of ~1,238,120 rows`.
 
-If you sort a column while more rows are available, TablePro re-executes the query with `ORDER BY` to ensure correct sort order across the full result set.
+Table tabs use page-based navigation and are not affected by this setting.
 
-You can cancel a running query or progressive load with the stop button in the toolbar or `Cmd+.`.
+### Sorting with partial results
+
+When only part of the result is loaded and you click a column header to sort, TablePro re-runs the query with `ORDER BY` added. This gives correct sort order across the full table, not just the loaded rows.
+
+### Cancelling
+
+Press `Cmd+.` or click the stop button in the toolbar to cancel a running query or a Load More / Fetch All operation.
 
 ## MongoDB Collections
 
