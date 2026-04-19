@@ -644,6 +644,10 @@ final class MainContentCommandActions {
         coordinator?.runQuery()
     }
 
+    func runAllStatements() {
+        coordinator?.runAllStatements()
+    }
+
     func cancelCurrentQuery() {
         coordinator?.cancelCurrentQuery()
     }

@@ -160,7 +160,7 @@ final class MainContentCoordinator {
     @ObservationIgnored internal var isShowingConfirmAlert = false
 
     /// Guards against duplicate safe mode confirmation prompts
-    @ObservationIgnored private var isShowingSafeModePrompt = false
+    @ObservationIgnored internal var isShowingSafeModePrompt = false
 
     /// Continuation for callers that need to await the result of a fire-and-forget save
     /// (e.g. save-then-close). Set before calling `saveChanges`, resumed by `executeCommitStatements`.
@@ -746,71 +746,7 @@ final class MainContentCoordinator {
         let statements = SQLStatementScanner.allStatements(in: sql)
         guard !statements.isEmpty else { return }
 
-        // Safe mode enforcement for query execution
-        let level = safeModeLevel
-
-        if level == .readOnly {
-            let writeStatements = statements.filter { isWriteQuery($0) }
-            if !writeStatements.isEmpty {
-                tabManager.tabs[index].errorMessage =
-                    "Cannot execute write queries: connection is read-only"
-                return
-            }
-        }
-
-        if level == .silent {
-            if statements.count == 1 {
-                Task { @MainActor in
-                    let window = NSApp.keyWindow
-                    guard await confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
-                    executeQueryInternal(statements[0])
-                }
-            } else {
-                Task { @MainActor in
-                    let window = NSApp.keyWindow
-                    let dangerousStatements = statements.filter { isDangerousQuery($0) }
-                    if !dangerousStatements.isEmpty {
-                        guard await confirmDangerousQueries(dangerousStatements, window: window) else { return }
-                    }
-                    executeMultipleStatements(statements)
-                }
-            }
-        } else if level.requiresConfirmation {
-            guard !isShowingSafeModePrompt else { return }
-            isShowingSafeModePrompt = true
-            Task { @MainActor in
-                defer { isShowingSafeModePrompt = false }
-                let window = NSApp.keyWindow
-                let combinedSQL = statements.joined(separator: "\n")
-                let hasWrite = statements.contains { isWriteQuery($0) }
-                let permission = await SafeModeGuard.checkPermission(
-                    level: level,
-                    isWriteOperation: hasWrite,
-                    sql: combinedSQL,
-                    operationDescription: String(localized: "Execute Query"),
-                    window: window,
-                    databaseType: connection.type
-                )
-                switch permission {
-                case .allowed:
-                    if statements.count == 1 {
-                        executeQueryInternal(statements[0])
-                    } else {
-                        executeMultipleStatements(statements)
-                    }
-                case .blocked(let reason):
-                    if index < tabManager.tabs.count {
-                        tabManager.tabs[index].errorMessage = reason
-                    }
-                }
-            }
-        } else {
-            if statements.count == 1 {
-                executeQueryInternal(statements[0])
-            } else {
-                executeMultipleStatements(statements)
-            }
-        }
+        dispatchStatements(statements, tabIndex: index)
     }
 
     /// Execute table tab query directly.
@@ -990,7 +926,7 @@ final class MainContentCoordinator {
     }
 
     /// Internal query execution (called after any confirmations)
-    private func executeQueryInternal(
+    internal func executeQueryInternal(
         _ sql: String
     ) {
         guard let index = tabManager.selectedTabIndex else { return }

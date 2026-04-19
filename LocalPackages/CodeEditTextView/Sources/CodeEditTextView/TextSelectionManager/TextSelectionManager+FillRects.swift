@@ -90,7 +90,12 @@ extension TextSelectionManager {
             } else if let maxFragmentRect = layoutManager.rectForOffset(intersectionRange.max) {
                 maxRect = maxFragmentRect
             } else {
-                continue
+                maxRect = CGRect(
+                    x: minRect.maxX,
+                    y: minRect.origin.y,
+                    width: 0,
+                    height: minRect.height
+                )
             }
 
             fillRects.append(CGRect(

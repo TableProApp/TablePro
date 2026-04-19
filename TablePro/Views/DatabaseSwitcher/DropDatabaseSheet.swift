@@ -36,7 +36,7 @@ struct DropDatabaseSheet: View {
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
                     .multilineTextAlignment(.center)
 
-                Text("All tables and data will be permanently deleted.")
+                Text(String(localized: "All tables and data will be permanently deleted."))
                     .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

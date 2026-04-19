@@ -184,6 +184,9 @@
         }
       }
     },
+    "\"%@\" will be permanently deleted." : {
+
+    },
     "\"%@\" will be removed from your system. This action cannot be undone." : {
       "localizations" : {
         "tr" : {
@@ -280,6 +283,7 @@
       }
     },
     "(%lld hidden)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -319,6 +323,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "(%lld)"
+          }
+        }
+      }
+    },
+    "(%lld/%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "(%1$lld/%2$lld)"
           }
         }
       }
@@ -1220,6 +1234,9 @@
           }
         }
       }
+    },
+    "%d favorites will be permanently deleted." : {
+
     },
     "%d of %d rows selected" : {
       "localizations" : {
@@ -4203,6 +4220,9 @@
         }
       }
     },
+    "All rows" : {
+
+    },
     "ALL SCHEMAS" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4247,6 +4267,9 @@
           }
         }
       }
+    },
+    "All tables and data will be permanently deleted." : {
+
     },
     "All Time" : {
       "localizations" : {
@@ -8061,6 +8084,9 @@
     "Compression failed with exit status %d" : {
 
     },
+    "Condition" : {
+
+    },
     "Config Host" : {
       "localizations" : {
         "tr" : {
@@ -11494,6 +11520,9 @@
         }
       }
     },
+    "Delete Favorite?" : {
+
+    },
     "Delete Folder" : {
       "localizations" : {
         "tr" : {
@@ -11838,6 +11867,18 @@
       }
     },
     "Destructive Changes" : {
+
+    },
+    "Detach" : {
+
+    },
+    "Detach Partition" : {
+
+    },
+    "Detach Partition?" : {
+
+    },
+    "Detach selected partition" : {
 
     },
     "Details" : {
@@ -12285,7 +12326,6 @@
       }
     },
     "Drop" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -12374,6 +12414,27 @@
         }
       }
     },
+    "Drop Database" : {
+
+    },
+    "Drop database '%@'?" : {
+
+    },
+    "Drop Database..." : {
+
+    },
+    "Drop Partition" : {
+
+    },
+    "Drop Partition?" : {
+
+    },
+    "Drop selected database" : {
+
+    },
+    "Drop selected partition" : {
+
+    },
     "Drop table '%@'" : {
       "localizations" : {
         "tr" : {
@@ -12417,6 +12478,9 @@
           }
         }
       }
+    },
+    "Dropping..." : {
+
     },
     "duplicate" : {
       "localizations" : {
@@ -12754,6 +12818,9 @@
           }
         }
       }
+    },
+    "Edit Favorite" : {
+
     },
     "Edit Foreign Key" : {
       "localizations" : {
@@ -14818,6 +14885,9 @@
         }
       }
     },
+    "Export query results to %@" : {
+
+    },
     "Export Results..." : {
       "localizations" : {
         "tr" : {
@@ -16501,6 +16571,9 @@
         }
       }
     },
+    "Folder" : {
+
+    },
     "Folder name" : {
       "localizations" : {
         "tr" : {
@@ -16950,7 +17023,14 @@
         }
       }
     },
+    "global" : {
+
+    },
+    "Global" : {
+
+    },
     "Global:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19793,6 +19873,7 @@
       }
     },
     "Keyword:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21291,6 +21372,9 @@
     "Memory Limit" : {
 
     },
+    "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings." : {
+
+    },
     "METADATA" : {
       "localizations" : {
         "tr" : {
@@ -21790,6 +21874,7 @@
       }
     },
     "Name:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24983,6 +25068,9 @@
         }
       }
     },
+    "Optimize" : {
+
+    },
     "Optimize Query" : {
       "localizations" : {
         "tr" : {
@@ -25004,6 +25092,9 @@
           }
         }
       }
+    },
+    "Optimize table (merge parts)" : {
+
     },
     "Optimize this SQL query for better performance:\n\n```sql\n%@\n```" : {
       "extractionState" : "stale",
@@ -27687,6 +27778,7 @@
       }
     },
     "Query:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -28321,6 +28413,9 @@
           }
         }
       }
+    },
+    "Ref Schema" : {
+
     },
     "Ref Table" : {
       "localizations" : {
@@ -30330,6 +30425,7 @@
       }
     },
     "Save frequently used queries\nfor quick access." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30350,6 +30446,9 @@
           }
         }
       }
+    },
+    "Save frequently used queries for quick access." : {
+
     },
     "Save passphrase in Keychain" : {
 
@@ -36095,6 +36194,9 @@
         }
       }
     },
+    "This will detach partition '%@'. Data will be preserved but inaccessible until re-attached." : {
+
+    },
     "This will fetch all remaining rows. Large result sets use significant memory. Continue?" : {
 
     },
@@ -36128,6 +36230,9 @@
           }
         }
       }
+    },
+    "This will permanently delete all data in partition '%@'." : {
+
     },
     "This will permanently delete all query history entries. This action cannot be undone." : {
       "localizations" : {
