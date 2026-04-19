@@ -15,7 +15,7 @@ import SwiftUI
 final class SidebarViewModel {
     // MARK: - Published State
 
-    var debouncedSearchText = ""
+    var searchText = ""
     var isTablesExpanded: Bool = {
         let key = "sidebar.isTablesExpanded"
         if UserDefaults.standard.object(forKey: key) != nil {

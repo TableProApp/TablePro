@@ -18,14 +18,13 @@ struct SidebarView: View {
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
 
-    var activeTableName: String?
     var onDoubleClick: ((TableInfo) -> Void)?
     var connectionId: UUID
     private weak var coordinator: MainContentCoordinator?
 
     private var filteredTables: [TableInfo] {
-        guard !viewModel.debouncedSearchText.isEmpty else { return tables }
-        return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.debouncedSearchText) }
+        guard !viewModel.searchText.isEmpty else { return tables }
+        return tables.filter { $0.name.localizedCaseInsensitiveContains(viewModel.searchText) }
     }
 
     private var selectedTablesBinding: Binding<Set<TableInfo>> {
@@ -38,7 +37,6 @@ struct SidebarView: View {
     init(
         tables: Binding<[TableInfo]>,
         sidebarState: SharedSidebarState,
-        activeTableName: String? = nil,
         onDoubleClick: ((TableInfo) -> Void)? = nil,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -65,12 +63,11 @@ struct SidebarView: View {
             databaseType: databaseType,
             connectionId: connectionId
         )
-        vm.debouncedSearchText = sidebarState.searchText
+        vm.searchText = sidebarState.searchText
         if databaseType == .redis, let existingVM = sidebarState.redisKeyTreeViewModel {
             vm.redisKeyTreeViewModel = existingVM
         }
         _viewModel = State(wrappedValue: vm)
-        self.activeTableName = activeTableName
         self.connectionId = connectionId
         self.coordinator = coordinator
     }
@@ -78,18 +75,17 @@ struct SidebarView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            tablesContent
-                .opacity(sidebarState.selectedSidebarTab == .tables ? 1 : 0)
-                .allowsHitTesting(sidebarState.selectedSidebarTab == .tables)
-
-            FavoritesTabView(
-                connectionId: connectionId,
-                searchText: viewModel.debouncedSearchText,
-                coordinator: coordinator
-            )
-            .opacity(sidebarState.selectedSidebarTab == .favorites ? 1 : 0)
-            .allowsHitTesting(sidebarState.selectedSidebarTab == .favorites)
+        Group {
+            switch sidebarState.selectedSidebarTab {
+            case .tables:
+                tablesContent
+            case .favorites:
+                FavoritesTabView(
+                    connectionId: connectionId,
+                    searchText: viewModel.searchText,
+                    coordinator: coordinator
+                )
+            }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
@@ -121,26 +117,15 @@ struct SidebarView: View {
         }
         .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in
-            viewModel.debouncedSearchText = newValue
+            viewModel.searchText = newValue
         }
         .onAppear {
             coordinator?.sidebarViewModel = viewModel
-            if coordinator?.sidebarLoadingState == .idle && !tables.isEmpty {
-                coordinator?.sidebarLoadingState = .loaded
-            }
+            coordinator?.healSidebarLoadingStateIfNeeded()
             // Update toolbar version if driver connected before this window's observer was set up
             if let driver = DatabaseManager.shared.driver(for: connectionId),
                coordinator?.toolbarState.databaseVersion == nil {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
-            }
-        }
-        .onChange(of: tables) { _, newTables in
-            // Heal sidebar state when tables arrive from another window's refreshTables().
-            // Safe unlike the old onChange that was removed in PR #690: this only transitions
-            // .idle -> .loaded (no fetching, no cache reads). The old version called
-            // loadTables() which fetched from stale schema provider cache.
-            if !newTables.isEmpty && coordinator?.sidebarLoadingState == .idle {
-                coordinator?.sidebarLoadingState = .loaded
             }
         }
         .sheet(isPresented: $viewModel.showOperationDialog) {
@@ -238,7 +223,6 @@ struct SidebarView: View {
                     ForEach(filteredTables) { table in
                         TableRow(
                             table: table,
-                            isActive: activeTableName == table.name,
                             isPendingTruncate: pendingTruncates.contains(table.name),
                             isPendingDelete: pendingDeletes.contains(table.name)
                         )
@@ -272,7 +256,7 @@ struct SidebarView: View {
                 if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
                     Section(isExpanded: $viewModel.isRedisKeysExpanded) {
                         RedisKeyTreeView(
-                            nodes: keyTreeVM.displayNodes(searchText: viewModel.debouncedSearchText),
+                            nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
                             expandedPrefixes: Binding(
                                 get: { keyTreeVM.expandedPrefixes },
                                 set: { keyTreeVM.expandedPrefixes = $0 }

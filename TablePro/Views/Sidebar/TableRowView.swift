@@ -37,7 +37,6 @@ enum TableRowLogic {
 /// Row view for a single table
 struct TableRow: View {
     let table: TableInfo
-    let isActive: Bool
     let isPendingTruncate: Bool
     let isPendingDelete: Bool
 

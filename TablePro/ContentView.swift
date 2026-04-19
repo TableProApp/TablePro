@@ -181,7 +181,6 @@ struct ContentView: View {
                     SidebarView(
                         tables: sessionTablesBinding,
                         sidebarState: SharedSidebarState.forConnection(currentSession.connection.id),
-                        activeTableName: windowTitle,
                         onDoubleClick: { table in
                             let isView = table.type == .view
                             if let preview = WindowLifecycleMonitor.shared.previewWindow(for: currentSession.connection.id),
