@@ -152,8 +152,8 @@ extension TableStructureView {
                 )
 
                 if confirmed {
-                    // User chose to discard
                     discardChanges()
+                    loadedTabs.removeAll()
                     await loadColumns()
                     await loadTabDataIfNeeded(selectedTab)
                 }
@@ -161,6 +161,7 @@ extension TableStructureView {
             // If cancelled, do nothing
         } else {
             Task { @MainActor in
+                loadedTabs.removeAll()
                 await loadColumns()
                 await loadTabDataIfNeeded(selectedTab)
             }

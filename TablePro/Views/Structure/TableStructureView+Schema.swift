@@ -104,7 +104,9 @@ extension TableStructureView {
             }
             do {
                 indexes = try await driver.fetchIndexes(table: tableName)
+                loadedTabs.insert(.indexes)
                 foreignKeys = try await driver.fetchForeignKeys(table: tableName)
+                loadedTabs.insert(.foreignKeys)
             } catch {
                 Self.logger.error("Failed to reload indexes/FKs: \(error.localizedDescription, privacy: .public)")
             }

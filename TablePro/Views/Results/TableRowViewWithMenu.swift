@@ -199,11 +199,15 @@ final class TableRowViewWithMenu: NSTableRowView {
         } else {
             [rowIndex]
         }
-        NotificationCenter.default.post(
-            name: .deleteSelectedRows,
-            object: nil,
-            userInfo: ["rowIndices": indices]
-        )
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridDeleteRows(indices)
+        } else {
+            NotificationCenter.default.post(
+                name: .deleteSelectedRows,
+                object: nil,
+                userInfo: ["rowIndices": indices]
+            )
+        }
     }
 
     @objc private func duplicateRow() {
@@ -248,7 +252,11 @@ final class TableRowViewWithMenu: NSTableRowView {
     }
 
     @objc private func pasteRows() {
-        NotificationCenter.default.post(name: .pasteRows, object: nil)
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridPasteRows()
+        } else {
+            NotificationCenter.default.post(name: .pasteRows, object: nil)
+        }
     }
 
     @objc private func copyCellValue(_ sender: NSMenuItem) {

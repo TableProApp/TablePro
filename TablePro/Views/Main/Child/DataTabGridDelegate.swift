@@ -50,6 +50,26 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         onRefresh?()
     }
 
+    func dataGridDeleteRows(_ indices: Set<Int>) {
+        NotificationCenter.default.post(
+            name: .deleteSelectedRows,
+            object: nil,
+            userInfo: ["rowIndices": indices]
+        )
+    }
+
+    func dataGridCopyRows(_ indices: Set<Int>) {
+        NotificationCenter.default.post(
+            name: .copySelectedRows,
+            object: nil,
+            userInfo: ["rowIndices": indices]
+        )
+    }
+
+    func dataGridPasteRows() {
+        NotificationCenter.default.post(name: .pasteRows, object: nil)
+    }
+
     func dataGridUndo() {
         guard let selectedRowIndices else { return }
         var indices = selectedRowIndices.wrappedValue
