@@ -128,7 +128,6 @@ final class MainContentCoordinator {
     // Removed: showErrorAlert and errorAlertMessage - errors now display inline
     var activeSheet: ActiveSheet?
     var importFileURL: URL?
-    var pendingSaveAsFavoriteQuery: String?
     var needsLazyLoad = false
     var sidebarLoadingState: SidebarLoadingState = .idle
 

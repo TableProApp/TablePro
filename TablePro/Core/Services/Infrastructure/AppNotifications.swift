@@ -35,6 +35,7 @@ extension Notification.Name {
     // MARK: - SQL Favorites
 
     static let sqlFavoritesDidUpdate = Notification.Name("sqlFavoritesDidUpdate")
+    static let saveAsFavoriteRequested = Notification.Name("saveAsFavoriteRequested")
 
     // MARK: - Plugins
 
