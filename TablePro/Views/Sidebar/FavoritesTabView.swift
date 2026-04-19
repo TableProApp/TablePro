@@ -264,6 +264,7 @@ internal struct FavoritesTabView: View {
             systemImage: "star",
             description: Text("Save frequently used queries for quick access.")
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var noMatchState: some View {
@@ -271,6 +272,7 @@ internal struct FavoritesTabView: View {
             String(localized: "No Matching Favorites"),
             systemImage: "magnifyingglass"
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Bottom Toolbar
