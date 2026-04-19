@@ -214,7 +214,9 @@ struct TableStructureView: View {
 
         // Update delegate state for current render
         gridDelegate.selectedTab = selectedTab
+        gridDelegate.selectedRows = $selectedRows
         gridDelegate.currentProvider = provider
+        gridDelegate.orderedFields = provider.orderedColumnFields
         gridDelegate.sortHandler = { [self] column, ascending in
             structureSortDescriptor = StructureSortDescriptor(column: column, ascending: ascending)
             var newSortState = SortState()

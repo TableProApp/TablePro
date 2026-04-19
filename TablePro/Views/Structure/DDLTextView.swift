@@ -12,25 +12,19 @@ import TableProPluginKit
 
 /// Read-only DDL display with syntax highlighting powered by CodeEditSourceEditor
 struct DDLTextView: View {
-    @Binding var ddl: String
+    let ddl: String
     @Binding var fontSize: CGFloat
     var databaseType: DatabaseType?
 
+    @State private var text: String
     @State private var editorState = SourceEditorState()
     @State private var editorConfiguration: SourceEditorConfiguration
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Primary initializer with bindings
-    init(ddl: Binding<String>, fontSize: Binding<CGFloat>, databaseType: DatabaseType? = nil) {
-        self._ddl = ddl
-        self._fontSize = fontSize
-        self.databaseType = databaseType
-        self._editorConfiguration = State(wrappedValue: Self.makeConfiguration(fontSize: fontSize.wrappedValue))
-    }
-
-    /// Convenience initializer for non-binding DDL text (read-only display)
+    /// Primary initializer accepting DDL as a value (read-only display)
     init(ddl: String, fontSize: Binding<CGFloat>, databaseType: DatabaseType? = nil) {
-        self._ddl = .constant(ddl)
+        self.ddl = ddl
+        self._text = State(wrappedValue: ddl)
         self._fontSize = fontSize
         self.databaseType = databaseType
         self._editorConfiguration = State(wrappedValue: Self.makeConfiguration(fontSize: fontSize.wrappedValue))
@@ -41,11 +35,14 @@ struct DDLTextView: View {
             Color(nsColor: .textBackgroundColor)
         } else {
             SourceEditor(
-                $ddl,
+                $text,
                 language: resolvedLanguage,
                 configuration: editorConfiguration,
                 state: $editorState
             )
+            .onChange(of: ddl) { _, newDDL in
+                text = newDDL
+            }
             .onChange(of: colorScheme) {
                 editorConfiguration = Self.makeConfiguration(fontSize: fontSize)
             }

@@ -17,9 +17,12 @@ import UniformTypeIdentifiers
 extension TableStructureView {
     @Sendable
     func loadInitialData() async {
+        isReloadingAfterSave = true
         await loadColumns()
         await loadTabDataIfNeeded(.indexes)
         await loadTabDataIfNeeded(.foreignKeys)
+        isReloadingAfterSave = false
+        loadSchemaForEditing()
     }
 
     func loadColumns() async {

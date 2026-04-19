@@ -193,7 +193,7 @@ extension TableStructureView {
             if ddlStatement.isEmpty {
                 emptyState(String(localized: "No DDL available"))
             } else {
-                DDLTextView(ddl: $ddlStatement, fontSize: $ddlFontSize, databaseType: connection.type)
+                DDLTextView(ddl: ddlStatement, fontSize: $ddlFontSize, databaseType: connection.type)
             }
         }
     }

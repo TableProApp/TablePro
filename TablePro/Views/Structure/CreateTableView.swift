@@ -224,6 +224,7 @@ struct CreateTableView: View {
         // Update delegate state for current render
         gridDelegate.structureTab = structureTab
         gridDelegate.selectedRows = $selectedRows
+        gridDelegate.orderedFields = provider.orderedColumnFields
 
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),

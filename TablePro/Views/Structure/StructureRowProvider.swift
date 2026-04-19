@@ -26,17 +26,18 @@ final class StructureRowProvider {
     private let tab: StructureTab
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
-    private let orderedColumnFields: [StructureColumnField]
+    let orderedColumnFields: [StructureColumnField]
     private let filterText: String?
     private let sortDescriptor: StructureSortDescriptor?
 
-    /// Maps display indices (after filtering/sorting) back to source indices in the working arrays
-    private(set) var filteredToSourceMap: [Int] = []
+    private let cachedRows: [IndexedRow]
+
+    var filteredToSourceMap: [Int] {
+        cachedRows.map { $0.sourceIndex }
+    }
 
     var rows: [[String?]] {
-        let allRows = buildAllRows()
-        let indexed = applyFilterAndSort(allRows)
-        return indexed.map { $0.row }
+        cachedRows.map { $0.row }
     }
 
     var columns: [String] {
@@ -110,7 +111,7 @@ final class StructureRowProvider {
     }
 
     var totalRowCount: Int {
-        rows.count
+        cachedRows.count
     }
 
     init(
@@ -129,10 +130,12 @@ final class StructureRowProvider {
         self.sortDescriptor = sortDescriptor
         self.orderedColumnFields = Self.orderedFields(for: databaseType, additionalFields: additionalFields)
 
-        // Build filteredToSourceMap
-        let allRows = buildAllRows()
-        let indexed = applyFilterAndSort(allRows)
-        self.filteredToSourceMap = indexed.map { $0.sourceIndex }
+        let allRows = Self.buildAllRows(
+            tab: tab, changeManager: changeManager, orderedColumnFields: self.orderedColumnFields
+        )
+        self.cachedRows = Self.applyFilterAndSort(
+            allRows, filterText: filterText, sortDescriptor: sortDescriptor
+        )
     }
 
     static func orderedFields(
@@ -147,10 +150,8 @@ final class StructureRowProvider {
     // MARK: - InMemoryRowProvider-compatible methods
 
     func row(at index: Int) -> [String?]? {
-        let allRows = buildAllRows()
-        let indexed = applyFilterAndSort(allRows)
-        guard index >= 0, index < indexed.count else { return nil }
-        return indexed[index].row
+        guard index >= 0, index < cachedRows.count else { return nil }
+        return cachedRows[index].row
     }
 
     func updateValue(_ newValue: String?, at rowIndex: Int, columnIndex: Int) {
@@ -172,7 +173,11 @@ final class StructureRowProvider {
         let row: [String?]
     }
 
-    private func buildAllRows() -> [IndexedRow] {
+    private static func buildAllRows(
+        tab: StructureTab,
+        changeManager: StructureChangeManager,
+        orderedColumnFields: [StructureColumnField]
+    ) -> [IndexedRow] {
         switch tab {
         case .columns:
             return changeManager.workingColumns.enumerated().map { index, column in
@@ -214,7 +219,11 @@ final class StructureRowProvider {
         }
     }
 
-    private func applyFilterAndSort(_ rows: [IndexedRow]) -> [IndexedRow] {
+    private static func applyFilterAndSort(
+        _ rows: [IndexedRow],
+        filterText: String?,
+        sortDescriptor: StructureSortDescriptor?
+    ) -> [IndexedRow] {
         var result = rows
 
         if let filterText, !filterText.isEmpty {

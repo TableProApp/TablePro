@@ -27,6 +27,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
     // Current provider for index translation (set each render by the view)
     var currentProvider: StructureRowProvider?
 
+    // Ordered fields for column editing (updated when currentProvider is set)
+    var orderedFields: [StructureColumnField] = []
+
     init(
         structureChangeManager: StructureChangeManager,
         selectedTab: StructureTab,
@@ -65,19 +68,19 @@ final class StructureGridDelegate: DataGridViewDelegate {
         case .columns:
             guard row < structureChangeManager.workingColumns.count else { return }
             var col = structureChangeManager.workingColumns[row]
-            updateColumn(&col, at: column, with: newValue ?? "")
+            StructureEditingSupport.updateColumn(&col, at: column, with: newValue ?? "", orderedFields: orderedFields)
             structureChangeManager.updateColumn(id: col.id, with: col)
 
         case .indexes:
             guard row < structureChangeManager.workingIndexes.count else { return }
             var idx = structureChangeManager.workingIndexes[row]
-            updateIndex(&idx, at: column, with: newValue ?? "")
+            StructureEditingSupport.updateIndex(&idx, at: column, with: newValue ?? "")
             structureChangeManager.updateIndex(id: idx.id, with: idx)
 
         case .foreignKeys:
             guard row < structureChangeManager.workingForeignKeys.count else { return }
             var fk = structureChangeManager.workingForeignKeys[row]
-            updateForeignKey(&fk, at: column, with: newValue ?? "")
+            StructureEditingSupport.updateForeignKey(&fk, at: column, with: newValue ?? "")
             structureChangeManager.updateForeignKey(id: fk.id, with: fk)
 
         case .ddl, .parts:
@@ -114,16 +117,9 @@ final class StructureGridDelegate: DataGridViewDelegate {
             return
         }
 
-        let newCount: Int
-        switch selectedTab {
-        case .columns: newCount = structureChangeManager.workingColumns.count
-        case .indexes: newCount = structureChangeManager.workingIndexes.count
-        case .foreignKeys: newCount = structureChangeManager.workingForeignKeys.count
-        case .ddl, .parts: newCount = 0
-        }
-
-        if newCount > 0 {
-            if maxRow < newCount {
+        let displayCount = (currentProvider?.totalRowCount ?? 0) - rows.count
+        if displayCount > 0 {
+            if maxRow < displayCount {
                 selectedRows?.wrappedValue = [maxRow]
             } else if minRow > 0 {
                 selectedRows?.wrappedValue = [minRow - 1]
@@ -175,12 +171,12 @@ final class StructureGridDelegate: DataGridViewDelegate {
             jsonString = String(data: encoded, encoding: .utf8)
         }
 
-        let provider = StructureRowProvider(
+        let displayProvider = currentProvider ?? StructureRowProvider(
             changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type
         )
         var lines: [String] = []
         for row in indices.sorted() {
-            guard let rowData = provider.row(at: row) else { continue }
+            guard let rowData = displayProvider.row(at: row) else { continue }
             let line = rowData.map { $0 ?? "NULL" }.joined(separator: "\t")
             lines.append(line)
         }
@@ -525,65 +521,4 @@ final class StructureGridDelegate: DataGridViewDelegate {
         coordinator?.openTableTab(fk.referencedTable, showStructure: false, isView: false)
     }
 
-    // MARK: - Column/Index/FK Update Helpers
-
-    private func updateColumn(_ column: inout EditableColumnDefinition, at index: Int, with value: String) {
-        let provider = StructureRowProvider(
-            changeManager: structureChangeManager, tab: .columns,
-            databaseType: connection.type, additionalFields: [.primaryKey]
-        )
-        let columnNames = provider.columns
-        guard index < columnNames.count else { return }
-        let fieldName = columnNames[index]
-
-        switch fieldName {
-        case StructureColumnField.name.displayName:
-            column.name = value
-        case StructureColumnField.type.displayName:
-            column.dataType = value
-        case StructureColumnField.nullable.displayName:
-            column.isNullable = value.uppercased() == "YES" || value == "1"
-        case StructureColumnField.defaultValue.displayName:
-            column.defaultValue = value.isEmpty ? nil : value
-        case StructureColumnField.primaryKey.displayName:
-            column.isPrimaryKey = value.uppercased() == "YES" || value == "1"
-        case StructureColumnField.autoIncrement.displayName:
-            column.autoIncrement = value.uppercased() == "YES" || value == "1"
-        case StructureColumnField.comment.displayName:
-            column.comment = value.isEmpty ? nil : value
-        default:
-            break
-        }
-    }
-
-    private func updateIndex(_ index: inout EditableIndexDefinition, at colIndex: Int, with value: String) {
-        switch colIndex {
-        case 0: index.name = value
-        case 1: index.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 2:
-            if let indexType = EditableIndexDefinition.IndexType(rawValue: value.uppercased()) {
-                index.type = indexType
-            }
-        case 3: index.isUnique = value.uppercased() == "YES" || value == "1"
-        default: break
-        }
-    }
-
-    private func updateForeignKey(_ fk: inout EditableForeignKeyDefinition, at index: Int, with value: String) {
-        switch index {
-        case 0: fk.name = value
-        case 1: fk.columns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 2: fk.referencedTable = value
-        case 3: fk.referencedColumns = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        case 4:
-            if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
-                fk.onDelete = action
-            }
-        case 5:
-            if let action = EditableForeignKeyDefinition.ReferentialAction(rawValue: value.uppercased()) {
-                fk.onUpdate = action
-            }
-        default: break
-        }
-    }
 }
