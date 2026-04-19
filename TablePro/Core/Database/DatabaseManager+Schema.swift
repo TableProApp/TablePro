@@ -70,6 +70,20 @@ extension DatabaseManager {
 
                 try await driver.commitTransaction()
 
+                // Record each statement in query history
+                let connId = connectionId
+                let dbName = self.activeSessions[connectionId]?.connection.database ?? ""
+                for stmt in statements {
+                    QueryHistoryManager.shared.recordQuery(
+                        query: stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";",
+                        connectionId: connId,
+                        databaseName: dbName,
+                        executionTime: 0,
+                        rowCount: 0,
+                        wasSuccessful: true
+                    )
+                }
+
                 // Post notification to refresh UI
                 NotificationCenter.default.post(name: .refreshData, object: nil)
             } catch {

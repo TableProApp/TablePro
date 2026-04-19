@@ -62,6 +62,25 @@ extension TableStructureView {
         let changes = structureChangeManager.getChangesArray()
         guard !changes.isEmpty else { return }
 
+        // Check for destructive changes that require confirmation
+        let destructiveChanges = changes.filter { $0.requiresDataMigration }
+        if !destructiveChanges.isEmpty {
+            let descriptions = destructiveChanges.map { $0.description }
+            let message = String(
+                format: String(localized: "The following changes may cause data loss:\n\n%@\n\nDo you want to proceed?"),
+                descriptions.joined(separator: "\n")
+            )
+
+            let confirmed = await AlertHelper.confirmDestructive(
+                title: String(localized: "Destructive Changes"),
+                message: message,
+                confirmButton: String(localized: "Apply Changes"),
+                cancelButton: String(localized: "Cancel"),
+                window: NSApp.keyWindow
+            )
+            guard confirmed else { return }
+        }
+
         // Set flag BEFORE calling DatabaseManager (so we ignore its refresh notification)
         isReloadingAfterSave = true
 
@@ -150,6 +169,12 @@ extension TableStructureView {
                     .transition(.opacity)
                 }
 
+                Button(action: openInEditor) {
+                    Label("Open in Editor", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(.bordered)
+                .disabled(ddlStatement.isEmpty)
+
                 Button(action: copyDDL) {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
@@ -168,12 +193,20 @@ extension TableStructureView {
             if ddlStatement.isEmpty {
                 emptyState(String(localized: "No DDL available"))
             } else {
-                DDLTextView(ddl: ddlStatement, fontSize: $ddlFontSize)
+                DDLTextView(ddl: $ddlStatement, fontSize: $ddlFontSize, databaseType: connection.type)
             }
         }
     }
 
     // MARK: - DDL Actions
+
+    private func openInEditor() {
+        guard !ddlStatement.isEmpty else { return }
+        coordinator?.tabManager.addTab(
+            initialQuery: ddlStatement,
+            title: "\(tableName) DDL"
+        )
+    }
 
     private func copyDDL() {
         ClipboardService.shared.writeText(ddlStatement)

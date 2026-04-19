@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Structure tab: search/filter field for columns, indexes, and foreign keys
+- Structure tab: sortable columns via header click
+- Structure tab: count badges on tab labels (e.g. "Columns (12)")
+- Structure tab: Primary Key column visible by default
+- Structure tab: custom dropdown menus for index type and FK referential actions
+- Structure tab: "Open in Editor" button in DDL view
+- Structure tab: destructive schema change confirmation before applying
+- Structure tab: DDL view uses tree-sitter syntax highlighting via CodeEditSourceEditor
+- Structure tab: Copy As submenu (CSV, JSON, SQL) in context menu
+- Schema changes recorded in query history after commit
+
 ### Changed
 
 - Main editor window rewritten on AppKit (`NSWindowController` + `NSToolbar`) for faster tab opens and correct lifecycle
