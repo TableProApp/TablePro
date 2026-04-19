@@ -302,6 +302,10 @@ struct ExportDialog: View {
                         }
                         .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
                         .buttonStyle(.link)
+                    } else if case .streamingQuery = mode {
+                        Text("All rows (streaming from database)")
+                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .foregroundStyle(.secondary)
                     } else if isQueryResultsMode {
                         Text("\(queryResultsRowCount) row\(queryResultsRowCount == 1 ? "" : "s") to export")
                             .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
@@ -437,6 +441,9 @@ struct ExportDialog: View {
     private var isExportDisabled: Bool {
         if isExporting || !isFileNameValid || availableFormats.isEmpty || isProGatedFormat(config.formatId) {
             return true
+        }
+        if case .streamingQuery = mode {
+            return false
         }
         if isQueryResultsMode {
             return queryResultsRowCount == 0
