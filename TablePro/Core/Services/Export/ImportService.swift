@@ -17,6 +17,7 @@ struct ImportState {
     var isImporting: Bool = false
     var progress: Double = 0.0
     var processedStatements: Int = 0
+    var skippedStatements: Int = 0
     var estimatedTotalStatements: Int = 0
     var statusMessage: String = ""
     var errorMessage: String?
@@ -131,7 +132,8 @@ final class ImportService {
 
         // Update final state
         state.processedStatements = result.executedStatements
-        state.estimatedTotalStatements = result.executedStatements
+        state.skippedStatements = result.skippedStatements
+        state.estimatedTotalStatements = result.executedStatements + result.skippedStatements
         state.progress = 1.0
 
         // Record success history

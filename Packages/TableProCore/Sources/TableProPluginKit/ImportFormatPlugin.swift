@@ -1,21 +1,41 @@
 import Foundation
 
+public enum ImportErrorHandling: String, Codable, CaseIterable, Sendable {
+    case stopAndRollback
+    case stopAndCommit
+    case skipAndContinue
+}
+
 public struct PluginImportResult: Sendable {
     public let executedStatements: Int
+    public let skippedStatements: Int
     public let executionTime: TimeInterval
-    public let failedStatement: String?
-    public let failedLine: Int?
+    public let errors: [ImportStatementError]
 
     public init(
         executedStatements: Int,
         executionTime: TimeInterval,
-        failedStatement: String? = nil,
-        failedLine: Int? = nil
+        skippedStatements: Int = 0,
+        errors: [ImportStatementError] = []
     ) {
         self.executedStatements = executedStatements
+        self.skippedStatements = skippedStatements
         self.executionTime = executionTime
-        self.failedStatement = failedStatement
-        self.failedLine = failedLine
+        self.errors = errors
+    }
+}
+
+public extension PluginImportResult {
+    struct ImportStatementError: Sendable {
+        public let statement: String
+        public let line: Int
+        public let errorMessage: String
+
+        public init(statement: String, line: Int, errorMessage: String) {
+            self.statement = statement
+            self.line = line
+            self.errorMessage = errorMessage
+        }
     }
 }
 

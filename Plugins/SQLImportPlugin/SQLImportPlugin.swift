@@ -40,24 +40,26 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
     ) async throws -> PluginImportResult {
         let startTime = Date()
         var executedCount = 0
+        var skippedCount = 0
+        var errors: [PluginImportResult.ImportStatementError] = []
+        let maxErrors = 1_000
 
-        // Estimate total from file size (~500 bytes per statement)
+        let errorMode = settings.errorHandling
+        let useTransaction = settings.wrapInTransaction && errorMode != .skipAndContinue
+
         let fileSizeBytes = source.fileSizeBytes()
         let estimatedTotal = max(1, Int(fileSizeBytes / 500))
         progress.setEstimatedTotal(estimatedTotal)
 
         do {
-            // Disable FK checks if enabled
             if settings.disableForeignKeyChecks {
                 try await sink.disableForeignKeyChecks()
             }
 
-            // Begin transaction if enabled
-            if settings.wrapInTransaction {
+            if useTransaction {
                 try await sink.beginTransaction()
             }
 
-            // Stream and execute statements
             let stream = try await source.statements()
 
             for try await (statement, lineNumber) in stream {
@@ -68,20 +70,52 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
                     executedCount += 1
                     progress.incrementStatement()
                 } catch {
-                    throw PluginImportError.statementFailed(
-                        statement: statement,
-                        line: lineNumber,
-                        underlyingError: error
-                    )
+                    switch errorMode {
+                    case .stopAndRollback:
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: error
+                        )
+
+                    case .stopAndCommit:
+                        if useTransaction {
+                            try await sink.commitTransaction()
+                        }
+                        if settings.disableForeignKeyChecks {
+                            do {
+                                try await sink.enableForeignKeyChecks()
+                            } catch {
+                                Self.logger.warning("Failed to re-enable foreign key checks: \(error.localizedDescription)")
+                            }
+                        }
+                        throw PluginImportError.statementFailed(
+                            statement: statement,
+                            line: lineNumber,
+                            underlyingError: error
+                        )
+
+                    case .skipAndContinue:
+                        skippedCount += 1
+                        if errors.count < maxErrors {
+                            let snippet = statement.count > 200
+                                ? String(statement.prefix(200)) + "..."
+                                : statement
+                            errors.append(.init(
+                                statement: snippet,
+                                line: lineNumber,
+                                errorMessage: error.localizedDescription
+                            ))
+                        }
+                        progress.incrementStatement()
+                    }
                 }
             }
 
-            // Commit transaction
-            if settings.wrapInTransaction {
+            if useTransaction {
                 try await sink.commitTransaction()
             }
 
-            // Re-enable FK checks
             if settings.disableForeignKeyChecks {
                 try await sink.enableForeignKeyChecks()
             }
@@ -89,7 +123,7 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
             let importError = error
             var rollbackError: Error?
 
-            if settings.wrapInTransaction {
+            if useTransaction {
                 do {
                     try await sink.rollbackTransaction()
                 } catch {
@@ -122,7 +156,9 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
 
         return PluginImportResult(
             executedStatements: executedCount,
-            executionTime: Date().timeIntervalSince(startTime)
+            executionTime: Date().timeIntervalSince(startTime),
+            skippedStatements: skippedCount,
+            errors: errors
         )
     }
 }

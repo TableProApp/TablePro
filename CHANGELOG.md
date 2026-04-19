@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Import error handling modes: Stop and Rollback, Stop and Commit, Skip and Continue
 - Handoff via NSUserActivity
 
 ## [0.32.1] - 2026-04-17
