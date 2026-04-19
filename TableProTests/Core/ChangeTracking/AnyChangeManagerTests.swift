@@ -114,7 +114,7 @@ struct AnyChangeManagerTests {
         let structureManager = StructureChangeManager()
         let wrapper = AnyChangeManager(structureManager: structureManager)
 
-        structureManager.hasChanges = true
+        structureManager.addNewColumn()
 
         #expect(wrapper.hasChanges == true)
     }
