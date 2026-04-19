@@ -30,11 +30,13 @@ internal struct FavoriteEditDialog: View {
     @State private var isKeywordWarning = false
     @State private var isSaving = false
     @State private var validationId = 0
+    @State private var loadedFolders: [SQLFavoriteFolder]?
 
     enum FocusField { case name, keyword }
     @FocusState private var focusedField: FocusField?
 
     private var isEditing: Bool { favorite != nil }
+    private var effectiveFolders: [SQLFavoriteFolder] { loadedFolders ?? (folders.isEmpty ? nil : folders) ?? [] }
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
             !query.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -67,10 +69,10 @@ internal struct FavoriteEditDialog: View {
                 TextField("Name", text: $name)
                     .focused($focusedField, equals: .name)
 
-                if !folders.isEmpty {
+                if !effectiveFolders.isEmpty {
                     Picker("Folder", selection: $selectedFolderId) {
-                        Text("None").tag(nil as UUID?)
-                        ForEach(folders) { folder in
+                        Text(String(localized: "None")).tag(nil as UUID?)
+                        ForEach(effectiveFolders) { folder in
                             Text(folder.name).tag(folder.id as UUID?)
                         }
                     }
@@ -145,6 +147,11 @@ internal struct FavoriteEditDialog: View {
                 }
             }
             focusedField = .name
+            if folders.isEmpty {
+                Task {
+                    loadedFolders = await SQLFavoriteManager.shared.fetchFolders(connectionId: connectionId)
+                }
+            }
         }
     }
 
