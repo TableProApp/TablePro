@@ -367,7 +367,7 @@ final class AIChatViewModel {
             }
         }
 
-        let systemPrompt = buildSystemPrompt(settings: settings)
+        let promptContext = capturePromptContext(settings: settings)
 
         // Create assistant message placeholder
         let assistantMessage = AIChatMessage(role: .assistant, content: "")
@@ -384,6 +384,41 @@ final class AIChatViewModel {
 
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
+                // Build system prompt off the main actor
+                let systemPrompt: String? = promptContext.map {
+                    AISchemaContext.buildSystemPrompt(
+                        databaseType: $0.databaseType,
+                        databaseName: $0.databaseName,
+                        tables: $0.tables,
+                        columnsByTable: $0.columnsByTable,
+                        foreignKeys: $0.foreignKeys,
+                        currentQuery: $0.currentQuery,
+                        queryResults: $0.queryResults,
+                        settings: $0.settings,
+                        identifierQuote: $0.identifierQuote,
+                        editorLanguage: $0.editorLanguage,
+                        queryLanguageName: $0.queryLanguageName
+                    )
+                }
+
+                // Pre-send size check
+                let totalSize = (systemPrompt?.count ?? 0)
+                    + chatMessages.reduce(0) { $0 + $1.content.count }
+                if totalSize > 100_000 {
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        self.errorMessage = String(
+                            localized: "Message too large. Try disabling 'Include schema' or 'Include query results' in AI settings."
+                        )
+                        if let idx = self.messages.firstIndex(where: { $0.id == assistantID }) {
+                            self.messages.remove(at: idx)
+                        }
+                        self.isStreaming = false
+                        self.streamingAssistantID = nil
+                    }
+                    return
+                }
+
                 let stream = resolved.provider.streamChat(
                     messages: chatMessages,
                     model: resolved.model,
@@ -488,13 +523,23 @@ final class AIChatViewModel {
         return policy
     }
 
-    private func buildSystemPrompt(settings: AISettings) -> String? {
-        guard let connection else { return nil }
+    private struct PromptContext: Sendable {
+        let databaseType: DatabaseType
+        let databaseName: String
+        let tables: [TableInfo]
+        let columnsByTable: [String: [ColumnInfo]]
+        let foreignKeys: [String: [ForeignKeyInfo]]
+        let currentQuery: String?
+        let queryResults: String?
+        let settings: AISettings
+        let identifierQuote: String
+        let editorLanguage: EditorLanguage
+        let queryLanguageName: String
+    }
 
-        let idQuote = PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\""
-        let editorLanguage = PluginManager.shared.editorLanguage(for: connection.type)
-        let queryLanguageName = PluginManager.shared.queryLanguageName(for: connection.type)
-        return AISchemaContext.buildSystemPrompt(
+    private func capturePromptContext(settings: AISettings) -> PromptContext? {
+        guard let connection else { return nil }
+        return PromptContext(
             databaseType: connection.type,
             databaseName: connection.database,
             tables: tables,
@@ -503,9 +548,9 @@ final class AIChatViewModel {
             currentQuery: settings.includeCurrentQuery ? currentQuery : nil,
             queryResults: settings.includeQueryResults ? queryResults : nil,
             settings: settings,
-            identifierQuote: idQuote,
-            editorLanguage: editorLanguage,
-            queryLanguageName: queryLanguageName
+            identifierQuote: PluginManager.shared.sqlDialect(for: connection.type)?.identifierQuote ?? "\"",
+            editorLanguage: PluginManager.shared.editorLanguage(for: connection.type),
+            queryLanguageName: PluginManager.shared.queryLanguageName(for: connection.type)
         )
     }
 
