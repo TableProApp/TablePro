@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- AI chat freeze when large queries or results are included in the system prompt (#774)
+- AI chat panel not updating when switching database connections
 - Schema restored on reconnect for PostgreSQL, Redshift, and BigQuery (#777)
 - Database restored after auto-reconnect (was lost when connection dropped)
 - Redis database selection persisted across sessions

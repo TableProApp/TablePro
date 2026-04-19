@@ -60,6 +60,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable {
     var model: String
     var endpoint: String
     var isEnabled: Bool
+    var maxOutputTokens: Int?
 
     init(
         id: UUID = UUID(),
@@ -67,7 +68,8 @@ struct AIProviderConfig: Codable, Equatable, Identifiable {
         type: AIProviderType = .claude,
         model: String = "",
         endpoint: String = "",
-        isEnabled: Bool = true
+        isEnabled: Bool = true,
+        maxOutputTokens: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -75,6 +77,7 @@ struct AIProviderConfig: Codable, Equatable, Identifiable {
         self.model = model
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
         self.isEnabled = isEnabled
+        self.maxOutputTokens = maxOutputTokens
     }
 }
 
