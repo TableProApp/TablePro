@@ -7,6 +7,13 @@ import Foundation
 import os
 import Security
 
+enum KeychainLoadResult {
+    case success(Data)
+    case notFound
+    case locked
+    case error(OSStatus)
+}
+
 final class KeychainHelper {
     static let shared = KeychainHelper()
 
@@ -90,6 +97,38 @@ final class KeychainHelper {
         }
 
         return result as? Data
+    }
+
+    func loadWithStatus(key: String) -> KeychainLoadResult {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecAttrAccessGroup as String: accessGroup,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        switch status {
+        case errSecSuccess:
+            if let data = result as? Data {
+                return .success(data)
+            }
+            return .notFound
+        case errSecItemNotFound:
+            return .notFound
+        case errSecInteractionNotAllowed:
+            Self.logger.warning("Keychain locked (before first unlock) for key '\(key, privacy: .public)'")
+            return .locked
+        default:
+            Self.logger.error("Keychain error for key '\(key, privacy: .public)': \(status)")
+            return .error(status)
+        }
     }
 
     func delete(key: String) {

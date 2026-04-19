@@ -51,6 +51,7 @@ struct ExportableConnection: Codable {
     let color: String?
     let tagName: String?
     let groupName: String?
+    let sshProfileId: String?
     let safeModeLevel: String?
     let aiPolicy: String?
     let additionalFields: [String: String]?

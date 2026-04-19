@@ -188,6 +188,7 @@ enum ConnectionExportService {
                 color: color,
                 tagName: tagName,
                 groupName: groupName,
+                sshProfileId: connection.sshProfileId?.uuidString,
                 safeModeLevel: safeModeLevel,
                 aiPolicy: aiPolicy,
                 additionalFields: additionalFields,
@@ -653,6 +654,8 @@ enum ConnectionExportService {
             GroupStorage.shared.loadGroups().first { $0.name.lowercased() == name.lowercased() }?.id
         }
 
+        let parsedSSHProfileId = exportable.sshProfileId.flatMap { UUID(uuidString: $0) }
+
         return DatabaseConnection(
             id: id,
             name: name,
@@ -666,6 +669,7 @@ enum ConnectionExportService {
             color: exportable.color.flatMap { ConnectionColor(rawValue: $0) } ?? .none,
             tagId: tagId,
             groupId: groupId,
+            sshProfileId: parsedSSHProfileId,
             safeModeLevel: exportable.safeModeLevel.flatMap { SafeModeLevel(rawValue: $0) } ?? .silent,
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,
