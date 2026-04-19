@@ -623,6 +623,15 @@ final class MainContentCommandActions {
         coordinator?.openImportDialog()
     }
 
+    func saveAsFavorite() {
+        coordinator?.saveCurrentQueryAsFavorite()
+    }
+
+    var canSaveAsFavorite: Bool {
+        guard let tab = coordinator?.tabManager.selectedTab else { return false }
+        return tab.tabType == .query && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     func previewSQL() {
         coordinator?.handlePreviewSQL(
             pendingTruncates: pendingTruncates.wrappedValue,

@@ -322,6 +322,14 @@ struct AppMenuCommands: Commands {
 
             Divider()
 
+            Button(String(localized: "Save as Favorite")) {
+                actions?.saveAsFavorite()
+            }
+            .optionalKeyboardShortcut(shortcut(for: .saveAsFavorite))
+            .disabled(!(actions?.canSaveAsFavorite ?? false))
+
+            Divider()
+
             Button(String(localized: "Explain with AI")) {
                 actions?.aiExplainQuery()
             }

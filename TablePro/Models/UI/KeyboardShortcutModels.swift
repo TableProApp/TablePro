@@ -72,6 +72,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
     case duplicateRow
     case truncateTable
     case previewFKReference
+    case saveAsFavorite
 
     // View
     case toggleTableBrowser
@@ -98,7 +99,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .manageConnections, .newTab, .openDatabase, .openFile, .switchConnection,
              .saveChanges, .saveAs, .previewSQL, .closeTab, .refresh,
              .executeQuery, .explainQuery, .formatQuery, .export, .importData, .quickSwitcher,
-             .previousPage, .nextPage:
+             .previousPage, .nextPage, .saveAsFavorite:
             return .file
         case .undo, .redo, .cut, .copy, .copyWithHeaders, .copyAsJson, .paste,
              .delete, .selectAll, .clearSelection, .addRow,
@@ -148,6 +149,7 @@ enum ShortcutAction: String, Codable, CaseIterable, Identifiable {
         case .duplicateRow: return String(localized: "Duplicate Row")
         case .truncateTable: return String(localized: "Truncate Table")
         case .previewFKReference: return String(localized: "Preview FK Reference")
+        case .saveAsFavorite: return String(localized: "Save as Favorite")
         case .toggleTableBrowser: return String(localized: "Toggle Table Browser")
         case .toggleInspector: return String(localized: "Toggle Inspector")
         case .toggleFilters: return String(localized: "Toggle Filters")
@@ -486,6 +488,7 @@ struct KeyboardSettings: Codable, Equatable {
         .duplicateRow: KeyCombo(key: "d", command: true, shift: true),
         .truncateTable: KeyCombo(key: "delete", option: true, isSpecialKey: true),
         .previewFKReference: KeyCombo(key: "space", isSpecialKey: true),
+        .saveAsFavorite: KeyCombo(key: "d", command: true),
 
         // View
         .toggleTableBrowser: KeyCombo(key: "0", command: true),

@@ -28,6 +28,15 @@ extension MainContentCoordinator {
         }
     }
 
+    /// Set the current query as pending for save-as-favorite dialog.
+    func saveCurrentQueryAsFavorite() {
+        guard let tab = tabManager.selectedTab,
+              tab.tabType == .query else { return }
+        let query = tab.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return }
+        pendingSaveAsFavoriteQuery = query
+    }
+
     /// Run a favorite's query: uses current tab if empty, otherwise opens a new tab.
     func runFavoriteInNewTab(_ favorite: SQLFavorite) {
         if tabManager.tabs.isEmpty {
