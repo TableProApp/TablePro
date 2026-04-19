@@ -166,6 +166,17 @@ final class KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
+    func loadStringWithStatus(forKey key: String) -> (value: String?, isLocked: Bool) {
+        switch loadWithStatus(key: key) {
+        case .success(let data):
+            return (String(data: data, encoding: .utf8), false)
+        case .locked:
+            return (nil, true)
+        case .notFound, .error:
+            return (nil, false)
+        }
+    }
+
     // MARK: - Migration
 
     func migrateFromLegacyKeychainIfNeeded() {

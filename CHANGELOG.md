@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - SSH jumphost configuration lost after disconnect/reconnect (#790)
-- Keychain errors now distinguished between locked and missing states (#780)
+- Password loading now detects Keychain locked state and logs a warning instead of silent nil (#780)
 - SQL import parser rewritten: fixes chunk boundary quote escapes, adds DELIMITER support, MySQL conditional comments, and hash comments
 - Import parser now surfaces file read and encoding errors instead of silently succeeding
 - Compressed (.gz) files are only decompressed once instead of twice

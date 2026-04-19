@@ -239,7 +239,11 @@ final class ConnectionStorage {
 
     func loadPassword(for connectionId: UUID) -> String? {
         let key = "com.TablePro.password.\(connectionId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
+        if isLocked {
+            Self.logger.warning("Database password unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
+        }
+        return value
     }
 
     func deletePassword(for connectionId: UUID) {
@@ -256,7 +260,11 @@ final class ConnectionStorage {
 
     func loadSSHPassword(for connectionId: UUID) -> String? {
         let key = "com.TablePro.sshpassword.\(connectionId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
+        if isLocked {
+            Self.logger.warning("SSH password unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
+        }
+        return value
     }
 
     func deleteSSHPassword(for connectionId: UUID) {
@@ -273,7 +281,11 @@ final class ConnectionStorage {
 
     func loadKeyPassphrase(for connectionId: UUID) -> String? {
         let key = "com.TablePro.keypassphrase.\(connectionId.uuidString)"
-        return KeychainHelper.shared.loadString(forKey: key)
+        let (value, isLocked) = KeychainHelper.shared.loadStringWithStatus(forKey: key)
+        if isLocked {
+            Self.logger.warning("Key passphrase unavailable — Keychain locked (connId=\(connectionId.uuidString, privacy: .public))")
+        }
+        return value
     }
 
     func deleteKeyPassphrase(for connectionId: UUID) {
