@@ -79,8 +79,13 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
                         )
 
                     case .stopAndCommit:
+                        let statementError = error
                         if useTransaction {
-                            try await sink.commitTransaction()
+                            do {
+                                try await sink.commitTransaction()
+                            } catch {
+                                Self.logger.warning("Failed to commit partial import: \(error.localizedDescription)")
+                            }
                         }
                         if settings.disableForeignKeyChecks {
                             do {
@@ -92,13 +97,13 @@ final class SQLImportPlugin: ImportFormatPlugin, SettablePlugin {
                         throw PluginImportError.statementFailed(
                             statement: statement,
                             line: lineNumber,
-                            underlyingError: error
+                            underlyingError: statementError
                         )
 
                     case .skipAndContinue:
                         skippedCount += 1
                         if errors.count < maxErrors {
-                            let snippet = statement.count > 200
+                            let snippet = (statement as NSString).length > 200
                                 ? String(statement.prefix(200)) + "..."
                                 : statement
                             errors.append(.init(
