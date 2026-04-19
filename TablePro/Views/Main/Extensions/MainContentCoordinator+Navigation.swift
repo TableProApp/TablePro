@@ -374,57 +374,21 @@ extension MainContentCoordinator {
     /// Switch to a different database (called from database switcher)
     func switchDatabase(to database: String) async {
         sidebarLoadingState = .loading
-
         filterStateManager.clearAll()
-
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
-            sidebarLoadingState = .error(String(localized: "Not connected"))
-            return
-        }
-
         let previousDatabase = toolbarState.databaseName
-
         toolbarState.databaseName = database
-        closeSiblingNativeWindows()
-        persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-        tabManager.tabs = []
-        tabManager.selectedTabId = nil
-        DatabaseManager.shared.updateSession(connectionId) { session in
-            session.tables = []
-        }
 
         do {
-            let pm = PluginManager.shared
-            if pm.requiresReconnectForDatabaseSwitch(for: connection.type) {
-                DatabaseManager.shared.updateSession(connectionId) { session in
-                    session.connection.database = database
-                    session.currentDatabase = database
-                    session.currentSchema = nil
-                }
-                AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
-                await DatabaseManager.shared.reconnectSession(connectionId)
-            } else if pm.supportsSchemaSwitching(for: connection.type) {
-                guard let schemaDriver = driver as? SchemaSwitchable else {
-                    sidebarLoadingState = .idle
-                    return
-                }
-                try await schemaDriver.switchSchema(to: database)
-                DatabaseManager.shared.updateSession(connectionId) { session in
-                    session.currentSchema = database
-                }
-            } else {
-                if let adapter = driver as? PluginDriverAdapter {
-                    try await adapter.switchDatabase(to: database)
-                }
-                let grouping = pm.databaseGroupingStrategy(for: connection.type)
-                DatabaseManager.shared.updateSession(connectionId) { session in
-                    session.currentDatabase = database
-                    if grouping == .bySchema {
-                        session.currentSchema = pm.defaultSchemaName(for: connection.type)
-                    }
-                }
+            try await DatabaseManager.shared.switchDatabase(to: database, for: connectionId)
+
+            closeSiblingNativeWindows()
+            persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
+            tabManager.tabs = []
+            tabManager.selectedTabId = nil
+            DatabaseManager.shared.updateSession(connectionId) { session in
+                session.tables = []
             }
-            AppSettingsStorage.shared.saveLastDatabase(database, for: connectionId)
+
             await refreshTables()
         } catch {
             toolbarState.databaseName = previousDatabase
@@ -442,32 +406,21 @@ extension MainContentCoordinator {
     /// Switch to a different PostgreSQL schema (used for URL-based schema selection)
     func switchSchema(to schema: String) async {
         guard PluginManager.shared.supportsSchemaSwitching(for: connection.type) else { return }
-        guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
         sidebarLoadingState = .loading
         filterStateManager.clearAll()
-
         let previousSchema = toolbarState.databaseName
-
         toolbarState.databaseName = schema
-        closeSiblingNativeWindows()
-        tabManager.tabs = []
-        tabManager.selectedTabId = nil
-        DatabaseManager.shared.updateSession(connectionId) { session in
-            session.tables = []
-        }
 
         do {
-            guard let schemaDriver = driver as? SchemaSwitchable else {
-                sidebarLoadingState = .idle
-                return
-            }
-            try await schemaDriver.switchSchema(to: schema)
+            try await DatabaseManager.shared.switchSchema(to: schema, for: connectionId)
 
+            closeSiblingNativeWindows()
+            tabManager.tabs = []
+            tabManager.selectedTabId = nil
             DatabaseManager.shared.updateSession(connectionId) { session in
-                session.currentSchema = schema
+                session.tables = []
             }
-            AppSettingsStorage.shared.saveLastSchema(schema, for: connectionId)
 
             await refreshTables()
         } catch {
@@ -511,6 +464,7 @@ extension MainContentCoordinator {
             DatabaseManager.shared.updateSession(connId) { session in
                 session.currentDatabase = database
             }
+            AppSettingsStorage.shared.saveLastDatabase(database, for: connId)
             toolbarState.databaseName = database
             executeTableTabQueryDirectly()
 

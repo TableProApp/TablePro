@@ -156,7 +156,8 @@ extension PluginMetadataRegistry {
                     ExplainVariant(id: "dryrun", label: "Dry Run (Cost)", sqlPrefix: "EXPLAIN")
                 ],
                 pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: [], postConnectActions: [],
+                supportsHealthMonitor: true, urlSchemes: [],
+                postConnectActions: [.selectSchemaFromLastSession],
                 brandColorHex: "#4285F4",
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .apiOnly, supportsDatabaseSwitching: false,

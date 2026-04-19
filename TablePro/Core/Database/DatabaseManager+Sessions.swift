@@ -221,13 +221,78 @@ extension DatabaseManager {
                 if initialDb != 0 {
                     do {
                         try await (driver as? PluginDriverAdapter)?.switchDatabase(to: String(initialDb))
+                        activeSessions[connection.id]?.currentDatabase = String(initialDb)
                     } catch {
                         Self.logger.error("Failed to switch to database \(initialDb): \(error.localizedDescription)")
                     }
+                } else {
+                    activeSessions[connection.id]?.currentDatabase = "0"
                 }
-                activeSessions[connection.id]?.currentDatabase = String(initialDb)
+            case .selectSchemaFromLastSession:
+                if let schemaDriver = driver as? SchemaSwitchable,
+                   let savedSchema = AppSettingsStorage.shared.loadLastSchema(for: connection.id),
+                   savedSchema != schemaDriver.currentSchema {
+                    do {
+                        try await schemaDriver.switchSchema(to: savedSchema)
+                        activeSessions[connection.id]?.currentSchema = savedSchema
+                    } catch {
+                        Self.logger.warning("Failed to restore saved schema '\(savedSchema, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                    }
+                }
             }
         }
+    }
+
+    // MARK: - Database / Schema Switching
+
+    func switchDatabase(to database: String, for connectionId: UUID) async throws {
+        guard let driver = driver(for: connectionId) else {
+            throw DatabaseError.notConnected
+        }
+
+        let pm = PluginMetadataRegistry.shared.snapshot(
+            forTypeId: session(for: connectionId)?.connection.type.pluginTypeId ?? ""
+        )
+
+        if pm?.capabilities.requiresReconnectForDatabaseSwitch == true {
+            updateSession(connectionId) { session in
+                session.connection.database = database
+                session.currentDatabase = database
+                session.currentSchema = nil
+            }
+            AppSettingsStorage.shared.saveLastSchema(nil, for: connectionId)
+            await reconnectSession(connectionId)
+        } else if pm?.capabilities.supportsSchemaSwitching == true,
+                  let schemaDriver = driver as? SchemaSwitchable {
+            try await schemaDriver.switchSchema(to: database)
+            updateSession(connectionId) { session in
+                session.currentSchema = database
+            }
+        } else if let adapter = driver as? PluginDriverAdapter {
+            try await adapter.switchDatabase(to: database)
+            let grouping = pm?.schema.databaseGroupingStrategy ?? .byDatabase
+            updateSession(connectionId) { session in
+                session.currentDatabase = database
+                if grouping == .bySchema {
+                    session.currentSchema = pm?.schema.defaultSchemaName
+                }
+            }
+        }
+
+        AppSettingsStorage.shared.saveLastDatabase(database, for: connectionId)
+    }
+
+    func switchSchema(to schema: String, for connectionId: UUID) async throws {
+        guard let driver = driver(for: connectionId),
+              let schemaDriver = driver as? SchemaSwitchable else {
+            throw DatabaseError.unsupportedOperation
+        }
+
+        try await schemaDriver.switchSchema(to: schema)
+        updateSession(connectionId) { session in
+            session.currentSchema = schema
+        }
+        AppSettingsStorage.shared.saveLastSchema(schema, for: connectionId)
     }
 
     /// Switch to an existing session

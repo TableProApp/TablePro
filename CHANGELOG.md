@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Schema restored on reconnect for PostgreSQL, Redshift, and BigQuery (#777)
+- Database restored after auto-reconnect (was lost when connection dropped)
+- Redis database selection persisted across sessions
+- Database switch no longer closes windows before confirming success
 - SSH jumphost lost after disconnect or app restart (#790)
 - Password appears missing when Keychain is locked after reboot (#780)
 - SQL import parser rewritten: fixes chunk boundary quote escapes, adds DELIMITER support, MySQL conditional comments, and hash comments

@@ -150,6 +150,9 @@ final class ConnectionStorage {
 
         let secureFieldIds = Self.secureFieldIds(for: connection.type)
         deleteAllPluginSecureFields(for: connection.id, fieldIds: secureFieldIds)
+
+        AppSettingsStorage.shared.saveLastDatabase(nil, for: connection.id)
+        AppSettingsStorage.shared.saveLastSchema(nil, for: connection.id)
     }
 
     /// Batch-delete multiple connections and clean up their Keychain entries
@@ -168,6 +171,8 @@ final class ConnectionStorage {
             deleteTOTPSecret(for: conn.id)
             let fields = Self.secureFieldIds(for: conn.type)
             deleteAllPluginSecureFields(for: conn.id, fieldIds: fields)
+            AppSettingsStorage.shared.saveLastDatabase(nil, for: conn.id)
+            AppSettingsStorage.shared.saveLastSchema(nil, for: conn.id)
         }
     }
 

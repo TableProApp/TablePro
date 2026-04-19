@@ -68,7 +68,14 @@ struct ConnectionSession: Identifiable {
         pendingTruncates = []
         pendingDeletes = []
         tableOperationOptions = [:]
+    }
+
+    /// Full state reset for explicit disconnect. Clears everything including
+    /// database/schema desired state that `clearCachedData()` preserves for reconnect.
+    mutating func clearAllState() {
+        clearCachedData()
         currentDatabase = nil
+        currentSchema = nil
     }
 
     /// Compares fields used by ContentView's body to avoid unnecessary SwiftUI re-renders.
