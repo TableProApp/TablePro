@@ -150,6 +150,6 @@ extension TableViewCoordinator {
         let value = rowProvider.value(atRow: row, column: columnIndex)
         guard let value = value, !value.isEmpty else { return }
 
-        onNavigateFK?(value, fkInfo)
+        delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
     }
 }

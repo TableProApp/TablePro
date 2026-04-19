@@ -73,8 +73,8 @@ extension TableViewCoordinator {
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        if let provider = rowViewProvider {
-            return provider(tableView, row, self)
+        if let delegateRowView = delegate?.dataGridRowView(for: tableView, row: row, coordinator: self) {
+            return delegateRowView
         }
         let rowView = (tableView.makeView(withIdentifier: Self.rowViewIdentifier, owner: nil) as? TableRowViewWithMenu)
             ?? TableRowViewWithMenu()

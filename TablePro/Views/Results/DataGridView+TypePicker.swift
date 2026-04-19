@@ -34,7 +34,7 @@ extension TableViewCoordinator {
                     guard oldValue != newValue else { return }
 
                     self.rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-                    self.onCellEdit?(row, columnIndex, newValue)
+                    self.delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
 
                     tableView.reloadData(
                         forRowIndexes: IndexSet(integer: row),

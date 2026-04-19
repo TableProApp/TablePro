@@ -21,7 +21,7 @@ extension TableViewCoordinator {
         }
 
         let isMultiSort = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-        onSort?(columnIndex, sortDescriptor.ascending, isMultiSort)
+        delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
     }
 
     // MARK: - Double-Click Column Divider Auto-Fit
@@ -153,7 +153,7 @@ extension TableViewCoordinator {
         hideItem.target = self
         menu.addItem(hideItem)
 
-        if onShowAllColumns != nil,
+        if delegate != nil,
            tableView.tableColumns.contains(where: { $0.isHidden && $0.identifier.rawValue != "__rowNumber__" }) {
             let showAllItem = NSMenuItem(
                 title: String(localized: "Show All Columns"),
@@ -167,16 +167,16 @@ extension TableViewCoordinator {
 
     @objc func sortAscending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
-        onSort?(columnIndex, true, false)
+        delegate?.dataGridSort(column: columnIndex, ascending: true, isMultiSort: false)
     }
 
     @objc func sortDescending(_ sender: NSMenuItem) {
         guard let columnIndex = sender.representedObject as? Int else { return }
-        onSort?(columnIndex, false, false)
+        delegate?.dataGridSort(column: columnIndex, ascending: false, isMultiSort: false)
     }
 
     @objc func showAllColumns() {
-        onShowAllColumns?()
+        delegate?.dataGridShowAllColumns()
     }
 
     @objc func copyColumnName(_ sender: NSMenuItem) {
@@ -186,12 +186,12 @@ extension TableViewCoordinator {
 
     @objc func filterWithColumn(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
-        onFilterColumn?(columnName)
+        delegate?.dataGridFilterColumn(columnName)
     }
 
     @objc func hideColumn(_ sender: NSMenuItem) {
         guard let columnName = sender.representedObject as? String else { return }
-        onHideColumn?(columnName)
+        delegate?.dataGridHideColumn(columnName)
     }
 
     @objc func sizeColumnToFit(_ sender: NSMenuItem) {

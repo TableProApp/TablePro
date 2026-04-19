@@ -240,8 +240,8 @@ final class TableRowViewWithMenu: NSTableRowView {
         let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
             ? coordinator.selectedRowIndices
             : [rowIndex]
-        if let callback = coordinator.onCopyRows {
-            callback(indices)
+        if let delegate = coordinator.delegate {
+            delegate.dataGridCopyRows(indices)
         } else {
             coordinator.copyRows(at: indices)
         }
@@ -313,6 +313,6 @@ final class TableRowViewWithMenu: NSTableRowView {
         let columnName = coordinator.rowProvider.columns[columnIndex]
         guard let fkInfo = coordinator.rowProvider.columnForeignKeys[columnName],
               let value = coordinator.rowProvider.value(atRow: rowIndex, column: columnIndex) else { return }
-        coordinator.onNavigateFK?(value, fkInfo)
+        coordinator.delegate?.dataGridNavigateFK(value: value, fkInfo: fkInfo)
     }
 }

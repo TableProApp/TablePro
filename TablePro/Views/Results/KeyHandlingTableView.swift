@@ -68,8 +68,8 @@ final class KeyHandlingTableView: NSTableView {
 
         // Double-click in empty area adds a new row
         if event.clickCount == 2 && clickedRow == -1 && coordinator?.isEditable == true {
-            if let callback = coordinator?.onAddRow {
-                callback()
+            if let delegate = coordinator?.delegate {
+                delegate.dataGridAddRow()
             } else {
                 NotificationCenter.default.post(name: .addNewRow, object: nil)
             }
@@ -111,12 +111,9 @@ final class KeyHandlingTableView: NSTableView {
         guard coordinator?.isEditable == true else { return }
         guard !selectedRowIndexes.isEmpty else { return }
 
-        // Use callback if available (e.g., Structure tab), otherwise fall back to notification (Data tab)
-        if let callback = coordinator?.onDeleteRows {
-            callback(Set(selectedRowIndexes))
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridDeleteRows(Set(selectedRowIndexes))
         } else {
-            // Fallback for views that haven't migrated to callback pattern
-            // Pass selected indices so the handler doesn't rely on SwiftUI binding sync timing
             NotificationCenter.default.post(
                 name: .deleteSelectedRows,
                 object: nil,
@@ -128,8 +125,8 @@ final class KeyHandlingTableView: NSTableView {
     /// Copy selected rows to clipboard
     @objc func copy(_ sender: Any?) {
         let indices = Set(selectedRowIndexes)
-        if let callback = coordinator?.onCopyRows {
-            callback(indices)
+        if let delegate = coordinator?.delegate {
+            delegate.dataGridCopyRows(indices)
         } else {
             coordinator?.copyRows(at: indices)
         }
@@ -138,25 +135,19 @@ final class KeyHandlingTableView: NSTableView {
     /// Paste rows from clipboard
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if let callback = coordinator?.onPasteRows {
-            callback()
-        }
+        coordinator?.delegate?.dataGridPasteRows()
     }
 
     /// Undo last change
     @objc func undo(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if let callback = coordinator?.onUndo {
-            callback()
-        }
+        coordinator?.delegate?.dataGridUndo()
     }
 
     /// Redo last undone change
     @objc func redo(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
-        if let callback = coordinator?.onRedo {
-            callback()
-        }
+        coordinator?.delegate?.dataGridRedo()
     }
 
     /// Validate menu items and shortcuts
@@ -167,7 +158,7 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(copy(_:)):
             return !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
-            return coordinator?.isEditable == true && coordinator?.onPasteRows != nil
+            return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(undo(_:)):
             return coordinator?.isEditable == true && (coordinator?.canUndo() ?? false)
         case #selector(redo(_:)):
@@ -430,8 +421,8 @@ final class KeyHandlingTableView: NSTableView {
             return rowView.menu(for: event)
         }
 
-        // Empty space: ask coordinator for a fallback menu (e.g., Structure tab "Add" actions)
-        if let menu = coordinator?.emptySpaceMenu?() {
+        // Empty space: ask delegate for a fallback menu (e.g., Structure tab "Add" actions)
+        if let menu = coordinator?.delegate?.dataGridEmptySpaceMenu() {
             return menu
         }
 

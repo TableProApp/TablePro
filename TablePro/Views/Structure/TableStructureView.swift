@@ -44,6 +44,7 @@ struct TableStructureView: View {
     @State var editingCell: CellPosition?
     @State var structureColumnLayout = ColumnLayoutState()
     @State var actionHandler = StructureViewActionHandler()
+    @State var gridDelegate: StructureGridDelegate
 
     init(tableName: String, connection: DatabaseConnection, toolbarState: ConnectionToolbarState, coordinator: MainContentCoordinator?) {
         self.tableName = tableName
@@ -51,10 +52,16 @@ struct TableStructureView: View {
         self.toolbarState = toolbarState
         self.coordinator = coordinator
 
-        // Initialize wrappedChangeManager using the StateObject's wrappedValue
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
         _wrappedChangeManager = State(wrappedValue: AnyChangeManager(structureManager: manager))
+        _gridDelegate = State(wrappedValue: StructureGridDelegate(
+            structureChangeManager: manager,
+            selectedTab: .columns,
+            connection: connection,
+            tableName: tableName,
+            coordinator: coordinator
+        ))
     }
 
     var body: some View {
@@ -71,6 +78,10 @@ struct TableStructureView: View {
         .onAppear {
             coordinator?.toolbarState.hasStructureChanges = structureChangeManager.hasChanges
 
+            // Sync delegate state
+            gridDelegate.selectedRows = $selectedRows
+            gridDelegate.coordinator = coordinator
+
             // Wire action handler for direct coordinator calls
             actionHandler.saveChanges = {
                 if self.structureChangeManager.hasChanges && self.selectedTab != .ddl {
@@ -78,10 +89,10 @@ struct TableStructureView: View {
                 }
             }
             actionHandler.previewSQL = { self.generateStructurePreviewSQL() }
-            actionHandler.copyRows = { self.handleCopyRows(self.selectedRows) }
-            actionHandler.pasteRows = { self.handlePaste() }
-            actionHandler.undo = { self.handleUndo() }
-            actionHandler.redo = { self.handleRedo() }
+            actionHandler.copyRows = { self.gridDelegate.dataGridCopyRows(self.selectedRows) }
+            actionHandler.pasteRows = { self.gridDelegate.dataGridPasteRows() }
+            actionHandler.undo = { self.gridDelegate.dataGridUndo() }
+            actionHandler.redo = { self.gridDelegate.dataGridRedo() }
             coordinator?.structureActions = actionHandler
         }
         .onDisappear {
@@ -154,6 +165,9 @@ struct TableStructureView: View {
         let provider = StructureRowProvider(changeManager: structureChangeManager, tab: selectedTab, databaseType: connection.type)
         let canEdit = connection.type.supportsSchemaEditing
 
+        // Update delegate state for current render
+        gridDelegate.selectedTab = selectedTab
+
         let moveRowHandler: ((Int, Int) -> Void)? = {
             guard selectedTab == .columns,
                   canEdit,
@@ -161,7 +175,7 @@ struct TableStructureView: View {
                   PluginManager.shared.supportsColumnReorder(for: connection.type) else {
                 return nil
             }
-            return { fromIndex, toIndex in
+            return { [self] fromIndex, toIndex in
                 let columnsSnapshot = structureChangeManager.workingColumns
                 Task { @MainActor in
                     do {
@@ -197,31 +211,19 @@ struct TableStructureView: View {
             }
         }()
 
+        gridDelegate.moveRowHandler = moveRowHandler
+
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
             isEditable: canEdit,
-            onRefresh: nil,
-            onCellEdit: handleCellEdit,
-            onDeleteRows: handleDeleteRows,
-            onCopyRows: handleCopyRows,
-            onPasteRows: handlePaste,
-            onUndo: handleUndo,
-            onRedo: handleRedo,
-            onSort: nil,
-            onAddRow: canEdit ? { addNewRow() } : nil,
-            onUndoInsert: nil,
-            onFilterColumn: nil,
-            getVisualState: { row in
-                structureChangeManager.getVisualState(for: row, tab: selectedTab)
-            },
-            dropdownColumns: provider.dropdownColumns,
-            typePickerColumns: provider.typePickerColumns,
-            connectionId: connection.id,
-            databaseType: connection.type,
-            onMoveRow: moveRowHandler,
-            rowViewProvider: makeStructureRowView,
-            emptySpaceMenu: makeEmptySpaceMenu,
+            configuration: DataGridConfiguration(
+                dropdownColumns: provider.dropdownColumns,
+                typePickerColumns: provider.typePickerColumns,
+                connectionId: connection.id,
+                databaseType: connection.type
+            ),
+            delegate: gridDelegate,
             selectedRowIndices: $selectedRows,
             sortState: $sortState,
             editingCell: $editingCell,

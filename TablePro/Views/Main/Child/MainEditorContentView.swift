@@ -74,6 +74,7 @@ struct MainEditorContentView: View {
     @State private var erDiagramViewModels: [UUID: ERDiagramViewModel] = [:]
     @State private var serverDashboardViewModels: [UUID: ServerDashboardViewModel] = [:]
     @State private var favoriteDialogQuery: FavoriteDialogQuery?
+    @State private var dataTabDelegate = DataTabGridDelegate()
 
     // Native macOS window tabs — no LRU tracking needed (single tab per window)
 
@@ -469,57 +470,40 @@ struct MainEditorContentView: View {
 
     @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
+        let isEditable = tab.isEditable && !tab.isView && !coordinator.safeModeLevel.blocksAllWrites
+        let showEmptySpaceMenu = isEditable && tab.tableName != nil
+
+        // Update delegate state for current render
+        let _ = {
+            dataTabDelegate.coordinator = coordinator
+            dataTabDelegate.columnVisibilityManager = columnVisibilityManager
+            dataTabDelegate.selectedRowIndices = $selectedRowIndices
+            dataTabDelegate.editingCell = $editingCell
+            dataTabDelegate.onCellEdit = onCellEdit
+            dataTabDelegate.onSort = onSort
+            dataTabDelegate.onAddRow = showEmptySpaceMenu ? onAddRow : nil
+            dataTabDelegate.onUndoInsert = onUndoInsert
+            dataTabDelegate.onFilterColumn = onFilterColumn
+            dataTabDelegate.onRefresh = onRefresh
+        }()
+
         DataGridView(
             rowProvider: rowProvider(for: tab),
             changeManager: currentChangeManager,
             resultVersion: tab.resultVersion,
             metadataVersion: tab.metadataVersion,
             paginationVersion: tab.paginationVersion,
-            isEditable: tab.isEditable && !tab.isView && !coordinator.safeModeLevel.blocksAllWrites,
-            onRefresh: onRefresh,
-            onCellEdit: onCellEdit,
-            onUndo: { [binding = _selectedRowIndices, coordinator] in
-                var indices = binding.wrappedValue
-                coordinator.undoLastChange(selectedRowIndices: &indices)
-                binding.wrappedValue = indices
-            },
-            onRedo: { [coordinator] in
-                coordinator.redoLastChange()
-            },
-            onSort: onSort,
-            onAddRow: onAddRow,
-            onUndoInsert: onUndoInsert,
-            onFilterColumn: onFilterColumn,
-            onNavigateFK: { [coordinator] value, fkInfo in
-                coordinator.navigateToFKReference(value: value, fkInfo: fkInfo)
-            },
-            connectionId: connection.id,
-            databaseType: connection.type,
-            tableName: tab.tableName,
-            primaryKeyColumns: changeManager.primaryKeyColumns,
-            tabType: tab.tabType,
-            showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
-            hiddenColumns: columnVisibilityManager.hiddenColumns,
-            onHideColumn: { [coordinator] columnName in
-                coordinator.hideColumn(columnName)
-            },
-            onShowAllColumns: { [columnVisibilityManager, coordinator] in
-                columnVisibilityManager.showAll()
-                coordinator.saveColumnVisibilityToTab()
-            },
-            emptySpaceMenu: (tab.isEditable && !tab.isView && tab.tableName != nil) ? { [onAddRow] in
-                let menu = NSMenu()
-                let target = StructureMenuTarget { onAddRow() }
-                let item = NSMenuItem(
-                    title: String(localized: "Add Row"),
-                    action: #selector(StructureMenuTarget.addNewItem),
-                    keyEquivalent: ""
-                )
-                item.target = target
-                item.representedObject = target
-                menu.addItem(item)
-                return menu
-            } : nil,
+            isEditable: isEditable,
+            configuration: DataGridConfiguration(
+                connectionId: connection.id,
+                databaseType: connection.type,
+                tableName: tab.tableName,
+                primaryKeyColumns: changeManager.primaryKeyColumns,
+                tabType: tab.tabType,
+                showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
+                hiddenColumns: columnVisibilityManager.hiddenColumns
+            ),
+            delegate: dataTabDelegate,
             selectedRowIndices: $selectedRowIndices,
             sortState: sortStateBinding(for: tab),
             editingCell: $editingCell,
