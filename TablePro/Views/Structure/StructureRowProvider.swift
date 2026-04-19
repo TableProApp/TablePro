@@ -20,16 +20,13 @@ final class StructureRowProvider {
     private let tab: StructureTab
     private let databaseType: DatabaseType
     private let additionalFields: Set<StructureColumnField>
+    private let orderedColumnFields: [StructureColumnField]
 
-    // Computed properties that match InMemoryRowProvider interface
     var rows: [[String?]] {
         switch tab {
         case .columns:
-            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
-            let fields = pluginFields.union(additionalFields)
-            let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             return changeManager.workingColumns.map { column in
-                ordered.map { field -> String? in
+                orderedColumnFields.map { field -> String? in
                     switch field {
                     case .name: column.name
                     case .type: column.dataType
@@ -69,10 +66,7 @@ final class StructureRowProvider {
     var columns: [String] {
         switch tab {
         case .columns:
-            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
-            let fields = pluginFields.union(additionalFields)
-            let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
-            return ordered.map { $0.displayName }
+            return orderedColumnFields.map { $0.displayName }
         case .indexes:
             return [
                 String(localized: "Name"),
@@ -95,39 +89,30 @@ final class StructureRowProvider {
     }
 
     var columnTypes: [ColumnType] {
-        // All columns are text for structure editing
         Array(repeating: .text(rawType: nil), count: columns.count)
     }
 
-    /// Column indices that should use YES/NO dropdowns instead of text fields
     var dropdownColumns: Set<Int> {
         switch tab {
         case .columns:
-            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
-            let fields = pluginFields.union(additionalFields)
-            let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
             var result: Set<Int> = []
-            if let i = ordered.firstIndex(of: .nullable) { result.insert(i) }
-            if let i = ordered.firstIndex(of: .primaryKey) { result.insert(i) }
-            if let i = ordered.firstIndex(of: .autoIncrement) { result.insert(i) }
+            if let i = orderedColumnFields.firstIndex(of: .nullable) { result.insert(i) }
+            if let i = orderedColumnFields.firstIndex(of: .primaryKey) { result.insert(i) }
+            if let i = orderedColumnFields.firstIndex(of: .autoIncrement) { result.insert(i) }
             return result
         case .indexes:
-            return [3] // Unique (index 3)
+            return [3]
         case .foreignKeys:
-            return [] // On Delete/Update use text for now (could add dropdown for CASCADE/SET NULL/etc later)
+            return []
         case .ddl, .parts:
             return []
         }
     }
 
-    /// Column indices that should use the type picker popover
     var typePickerColumns: Set<Int> {
         switch tab {
         case .columns:
-            let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
-            let fields = pluginFields.union(additionalFields)
-            let ordered = Self.canonicalFieldOrder.filter { fields.contains($0) }
-            if let i = ordered.firstIndex(of: .type) { return [i] }
+            if let i = orderedColumnFields.firstIndex(of: .type) { return [i] }
             return []
         case .indexes, .foreignKeys, .ddl, .parts:
             return []
@@ -148,6 +133,16 @@ final class StructureRowProvider {
         self.tab = tab
         self.databaseType = databaseType
         self.additionalFields = additionalFields
+        self.orderedColumnFields = Self.orderedFields(for: databaseType, additionalFields: additionalFields)
+    }
+
+    static func orderedFields(
+        for databaseType: DatabaseType,
+        additionalFields: Set<StructureColumnField> = []
+    ) -> [StructureColumnField] {
+        let pluginFields = Set(PluginManager.shared.structureColumnFields(for: databaseType))
+        let fields = pluginFields.union(additionalFields)
+        return canonicalFieldOrder.filter { fields.contains($0) }
     }
 
     // MARK: - InMemoryRowProvider-compatible methods
