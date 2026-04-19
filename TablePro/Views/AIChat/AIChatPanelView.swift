@@ -47,6 +47,9 @@ struct AIChatPanelView: View {
         .onAppear {
             viewModel.connection = connection
         }
+        .onChange(of: connection.id) {
+            viewModel.connection = connection
+        }
         .task(id: tables) {
             viewModel.tables = tables
             viewModel.fetchSchemaContext()
@@ -202,6 +205,7 @@ struct AIChatPanelView: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
             }
+            .defaultScrollAnchor(.bottom)
             .scrollIndicators(.hidden)
             .onAppear {
                 scrollProxy = proxy

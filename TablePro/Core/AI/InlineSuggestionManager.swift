@@ -234,22 +234,38 @@ final class InlineSuggestionManager {
             systemPrompt: systemPrompt
         )
 
+        let flushInterval: ContinuousClock.Duration = .milliseconds(50)
+        var lastFlushTime: ContinuousClock.Instant = .now
+
         for try await event in stream {
             guard !Task.isCancelled else { break }
-            switch event {
-            case .text(let token):
+            if case .text(let token) = event {
                 accumulated += token
-                // Progressive update: show partial ghost text as tokens arrive
-                await MainActor.run { [weak self, accumulated] in
-                    guard let self else { return }
-                    let cleaned = self.cleanSuggestion(accumulated)
-                    if !cleaned.isEmpty {
-                        self.currentSuggestion = cleaned
-                        self.showGhostText(cleaned, at: self.suggestionOffset)
+                if ContinuousClock.now - lastFlushTime >= flushInterval {
+                    let snapshot = accumulated
+                    await MainActor.run { [weak self] in
+                        guard let self else { return }
+                        let cleaned = self.cleanSuggestion(snapshot)
+                        if !cleaned.isEmpty {
+                            self.currentSuggestion = cleaned
+                            self.showGhostText(cleaned, at: self.suggestionOffset)
+                        }
                     }
+                    lastFlushTime = .now
                 }
-            case .usage:
-                break
+            }
+        }
+
+        // Final flush
+        if !Task.isCancelled, !accumulated.isEmpty {
+            let snapshot = accumulated
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                let cleaned = self.cleanSuggestion(snapshot)
+                if !cleaned.isEmpty {
+                    self.currentSuggestion = cleaned
+                    self.showGhostText(cleaned, at: self.suggestionOffset)
+                }
             }
         }
 
