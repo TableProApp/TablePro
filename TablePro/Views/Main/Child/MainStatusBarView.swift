@@ -119,7 +119,8 @@ struct MainStatusBarView: View {
                                     : "eye.circle")
                             Text("Columns")
                             if columnVisibilityManager.hasHiddenColumns {
-                                Text("(\(columnVisibilityManager.hiddenCount) hidden)")
+                                let visible = allColumns.count - columnVisibilityManager.hiddenCount
+                                Text("(\(visible)/\(allColumns.count))")
                                     .foregroundStyle(.secondary)
                             }
                         }

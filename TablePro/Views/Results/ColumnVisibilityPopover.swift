@@ -24,20 +24,28 @@ struct ColumnVisibilityPopover: View {
 
             Divider()
 
-            if columns.count > 10 {
+            if columns.count > 5 {
                 searchField
                 Divider()
             }
 
             columnList
         }
-        .frame(width: 220)
-        .frame(maxHeight: 350)
+        .frame(width: 260)
+        .frame(maxHeight: 420)
+    }
+
+    private var headerTitle: String {
+        let visible = columns.count - columnVisibilityManager.hiddenCount
+        if columnVisibilityManager.hasHiddenColumns {
+            return "\(visible) of \(columns.count)"
+        }
+        return String(localized: "Columns")
     }
 
     private var header: some View {
         HStack {
-            Text("Columns")
+            Text(headerTitle)
                 .font(.headline)
                 .foregroundStyle(.primary)
 
