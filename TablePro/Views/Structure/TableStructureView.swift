@@ -114,7 +114,7 @@ struct TableStructureView: View {
             // Tab picker
             Picker("", selection: $selectedTab) {
                 ForEach(availableTabs, id: \.self) { tab in
-                    Text(tab.rawValue).tag(tab)
+                    Text(tab.displayName).tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -218,7 +218,7 @@ struct TableStructureView: View {
             dropdownColumns: provider.dropdownColumns,
             typePickerColumns: provider.typePickerColumns,
             connectionId: connection.id,
-            databaseType: getDatabaseType(),
+            databaseType: connection.type,
             onMoveRow: moveRowHandler,
             rowViewProvider: makeStructureRowView,
             emptySpaceMenu: makeEmptySpaceMenu,

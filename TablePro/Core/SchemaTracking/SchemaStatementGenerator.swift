@@ -44,15 +44,18 @@ struct SchemaStatementGenerator {
         let sortedChanges = sortByDependency(changes)
 
         for change in sortedChanges {
-            guard let stmt = try generateStatement(for: change) else {
+            let stmts = try generateStatements(for: change)
+            guard !stmts.isEmpty else {
                 throw NSError(
                     domain: "SchemaStatementGenerator",
                     code: -1,
                     userInfo: [NSLocalizedDescriptionKey: String(format: String(localized: "Unsupported schema operation: %@"), change.description)]
                 )
             }
-            let sql = stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";"
-            statements.append(SchemaStatement(sql: sql, description: stmt.description, isDestructive: stmt.isDestructive))
+            for stmt in stmts {
+                let sql = stmt.sql.hasSuffix(";") ? stmt.sql : stmt.sql + ";"
+                statements.append(SchemaStatement(sql: sql, description: stmt.description, isDestructive: stmt.isDestructive))
+            }
         }
 
         return statements
@@ -105,26 +108,26 @@ struct SchemaStatementGenerator {
 
     // MARK: - Statement Generation
 
-    private func generateStatement(for change: SchemaChange) throws -> SchemaStatement? {
+    private func generateStatements(for change: SchemaChange) throws -> [SchemaStatement] {
         switch change {
         case .addColumn(let column):
-            return generateAddColumn(column)
+            return generateAddColumn(column).map { [$0] } ?? []
         case .modifyColumn(let old, let new):
-            return generateModifyColumn(old: old, new: new)
+            return generateModifyColumn(old: old, new: new).map { [$0] } ?? []
         case .deleteColumn(let column):
-            return generateDeleteColumn(column)
+            return generateDeleteColumn(column).map { [$0] } ?? []
         case .addIndex(let index):
-            return generateAddIndex(index)
+            return generateAddIndex(index).map { [$0] } ?? []
         case .modifyIndex(let old, let new):
             return generateModifyIndex(old: old, new: new)
         case .deleteIndex(let index):
-            return generateDeleteIndex(index)
+            return generateDeleteIndex(index).map { [$0] } ?? []
         case .addForeignKey(let fk):
-            return generateAddForeignKey(fk)
+            return generateAddForeignKey(fk).map { [$0] } ?? []
         case .modifyForeignKey(let old, let new):
             return generateModifyForeignKey(old: old, new: new)
         case .deleteForeignKey(let fk):
-            return generateDeleteForeignKey(fk)
+            return generateDeleteForeignKey(fk).map { [$0] } ?? []
         case .modifyPrimaryKey(let old, let new):
             return generateModifyPrimaryKey(old: old, new: new)
         }
@@ -170,17 +173,15 @@ struct SchemaStatementGenerator {
         return SchemaStatement(sql: sql, description: "Add index '\(index.name)'", isDestructive: false)
     }
 
-    private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) -> SchemaStatement? {
+    private func generateModifyIndex(old: EditableIndexDefinition, new: EditableIndexDefinition) -> [SchemaStatement] {
         guard let dropSql = pluginDriver.generateDropIndexSQL(table: tableName, indexName: old.name),
               let addSql = pluginDriver.generateAddIndexSQL(table: tableName, index: new.toPlugin()) else {
-            return nil
+            return []
         }
-        let sql = "\(dropSql);\n\(addSql);"
-        return SchemaStatement(
-            sql: sql,
-            description: "Modify index '\(old.name)' to '\(new.name)'",
-            isDestructive: false
-        )
+        return [
+            SchemaStatement(sql: dropSql, description: "Drop index '\(old.name)'", isDestructive: false),
+            SchemaStatement(sql: addSql, description: "Add index '\(new.name)'", isDestructive: false)
+        ]
     }
 
     private func generateDeleteIndex(_ index: EditableIndexDefinition) -> SchemaStatement? {
@@ -202,17 +203,15 @@ struct SchemaStatementGenerator {
         return SchemaStatement(sql: sql, description: "Add foreign key '\(fk.name)'", isDestructive: false)
     }
 
-    private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) -> SchemaStatement? {
+    private func generateModifyForeignKey(old: EditableForeignKeyDefinition, new: EditableForeignKeyDefinition) -> [SchemaStatement] {
         guard let dropSql = pluginDriver.generateDropForeignKeySQL(table: tableName, constraintName: old.name),
               let addSql = pluginDriver.generateAddForeignKeySQL(table: tableName, fk: new.toPlugin()) else {
-            return nil
+            return []
         }
-        let sql = "\(dropSql);\n\(addSql);"
-        return SchemaStatement(
-            sql: sql,
-            description: "Modify foreign key '\(old.name)' to '\(new.name)'",
-            isDestructive: false
-        )
+        return [
+            SchemaStatement(sql: dropSql, description: "Drop foreign key '\(old.name)'", isDestructive: false),
+            SchemaStatement(sql: addSql, description: "Add foreign key '\(new.name)'", isDestructive: false)
+        ]
     }
 
     private func generateDeleteForeignKey(_ fk: EditableForeignKeyDefinition) -> SchemaStatement? {
@@ -224,17 +223,18 @@ struct SchemaStatementGenerator {
 
     // MARK: - Primary Key Operations
 
-    private func generateModifyPrimaryKey(old: [String], new: [String]) -> SchemaStatement? {
+    private func generateModifyPrimaryKey(old: [String], new: [String]) -> [SchemaStatement] {
         guard let sqls = pluginDriver.generateModifyPrimaryKeySQL(
             table: tableName, oldColumns: old, newColumns: new, constraintName: primaryKeyConstraintName
         ) else {
-            return nil
+            return []
         }
-        let joined = sqls.joined(separator: ";\n")
-        return SchemaStatement(
-            sql: joined,
-            description: "Modify primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]",
-            isDestructive: true
-        )
+        return sqls.map { sql in
+            SchemaStatement(
+                sql: sql,
+                description: "Modify primary key from [\(old.joined(separator: ", "))] to [\(new.joined(separator: ", "))]",
+                isDestructive: true
+            )
+        }
     }
 }

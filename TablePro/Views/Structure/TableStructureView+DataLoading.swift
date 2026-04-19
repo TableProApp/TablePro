@@ -88,7 +88,7 @@ extension TableStructureView {
             indexes: indexes,
             foreignKeys: foreignKeys,
             primaryKey: columns.filter { $0.isPrimaryKey }.map { $0.name },
-            databaseType: getDatabaseType()
+            databaseType: connection.type
         )
     }
 
@@ -147,8 +147,7 @@ extension TableStructureView {
             }
             // If cancelled, do nothing
         } else {
-            // No changes (or just saved), safe to refresh
-            Task {
+            Task { @MainActor in
                 await loadColumns()
                 await loadTabDataIfNeeded(selectedTab)
             }

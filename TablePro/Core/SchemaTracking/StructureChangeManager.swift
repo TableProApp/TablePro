@@ -14,7 +14,7 @@ import Observation
 final class StructureChangeManager {
     private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
     private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
-    var hasChanges: Bool = false
+    var hasChanges: Bool { !pendingChanges.isEmpty }
     var reloadVersion: Int = 0  // Incremented to trigger table reload
 
     // Track which rows changed since last reload for granular updates
@@ -42,7 +42,7 @@ final class StructureChangeManager {
         manager.levelsOfUndo = 100
         return manager
     }()
-    private var visualStateCache: [Int: RowVisualState] = [:]
+    private var visualStateCache: [VisualStateCacheKey: RowVisualState] = [:]
 
     var canUndo: Bool { undoManager.canUndo }
     var canRedo: Bool { undoManager.canRedo }
@@ -100,7 +100,6 @@ final class StructureChangeManager {
         pendingChanges.removeAll()
         validationErrors.removeAll()
         undoManager.removeAllActions()
-        hasChanges = false
 
         // Increment reloadVersion to trigger DataGridView column width recalculation
         // This ensures columns auto-size based on actual cell content after initial load
@@ -127,7 +126,6 @@ final class StructureChangeManager {
         }
         undoManager.setActionName(String(localized: "Add Column"))
         validate()
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -141,7 +139,6 @@ final class StructureChangeManager {
         }
         undoManager.setActionName(String(localized: "Add Index"))
         validate()
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -155,7 +152,6 @@ final class StructureChangeManager {
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
         validate()
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -169,7 +165,6 @@ final class StructureChangeManager {
             target.applySchemaUndo(.columnAdd(column: column))
         }
         undoManager.setActionName(String(localized: "Add Column"))
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -181,7 +176,6 @@ final class StructureChangeManager {
             target.applySchemaUndo(.indexAdd(index: index))
         }
         undoManager.setActionName(String(localized: "Add Index"))
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -193,7 +187,6 @@ final class StructureChangeManager {
             target.applySchemaUndo(.foreignKeyAdd(fk: foreignKey))
         }
         undoManager.setActionName(String(localized: "Add Foreign Key"))
-        hasChanges = true
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -231,9 +224,8 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
-        reloadVersion += 1  // Trigger table reload to show visual changes
-        rebuildVisualStateCache()  // Rebuild cache to reflect updated state
+        reloadVersion += 1
+        rebuildVisualStateCache()
     }
 
     func deleteColumn(id: UUID) {
@@ -268,7 +260,6 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -304,9 +295,8 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
-        reloadVersion += 1  // Trigger table reload to show visual changes
-        rebuildVisualStateCache()  // Rebuild cache to reflect updated state
+        reloadVersion += 1
+        rebuildVisualStateCache()
     }
 
     func deleteIndex(id: UUID) {
@@ -341,7 +331,6 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -377,9 +366,8 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
-        reloadVersion += 1  // Trigger table reload to show visual changes
-        rebuildVisualStateCache()  // Rebuild cache to reflect updated state
+        reloadVersion += 1
+        rebuildVisualStateCache()
     }
 
     func deleteForeignKey(id: UUID) {
@@ -414,7 +402,6 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -439,7 +426,6 @@ final class StructureChangeManager {
 
         workingPrimaryKey = columns
         validate()
-        hasChanges = !pendingChanges.isEmpty
     }
 
     // MARK: - Validation
@@ -463,7 +449,7 @@ final class StructureChangeManager {
             .map { $0.key }
 
         for duplicate in duplicateColumns {
-            if let column = workingColumns.first(where: { $0.name == duplicate }) {
+            for column in workingColumns.filter({ $0.name == duplicate && !isColumnPendingDeletion($0.id) }) {
                 validationErrors[.column(column.id)] = "Duplicate column name: \(duplicate)"
             }
         }
@@ -489,7 +475,7 @@ final class StructureChangeManager {
             .map { $0.key }
 
         for duplicate in duplicateIndexes {
-            if let index = workingIndexes.first(where: { $0.name == duplicate }) {
+            for index in workingIndexes.filter({ $0.name == duplicate }) {
                 validationErrors[.index(index.id)] = "Duplicate index name: \(duplicate)"
             }
         }
@@ -536,8 +522,7 @@ final class StructureChangeManager {
     func discardChanges() {
         pendingChanges.removeAll()
         validationErrors.removeAll()
-        changedRowIndices.removeAll()  // Clear changed row tracking
-        hasChanges = false
+        changedRowIndices.removeAll()
         resetWorkingState()
         reloadVersion += 1
         rebuildVisualStateCache()
@@ -706,7 +691,6 @@ final class StructureChangeManager {
         }
 
         validate()
-        hasChanges = !pendingChanges.isEmpty
         reloadVersion += 1
         rebuildVisualStateCache()
     }
@@ -714,16 +698,7 @@ final class StructureChangeManager {
     // MARK: - Visual State Management
 
     func getVisualState(for row: Int, tab: StructureTab) -> RowVisualState {
-        // Check cache first
-        let tabIndex: Int
-        switch tab {
-        case .columns: tabIndex = 0
-        case .indexes: tabIndex = 1
-        case .foreignKeys: tabIndex = 2
-        case .ddl: tabIndex = 3
-        case .parts: tabIndex = 4
-        }
-        let cacheKey = tabIndex * 10_000 + row
+        let cacheKey = VisualStateCacheKey(tab: tab, row: row)
         if let cached = visualStateCache[cacheKey] {
             return cached
         }
@@ -788,6 +763,11 @@ final class StructureChangeManager {
 
     func rebuildVisualStateCache() {
         visualStateCache.removeAll()
+    }
+
+    private struct VisualStateCacheKey: Hashable {
+        let tab: StructureTab
+        let row: Int
     }
 }
 

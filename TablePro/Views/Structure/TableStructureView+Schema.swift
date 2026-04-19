@@ -69,7 +69,7 @@ extension TableStructureView {
             try await DatabaseManager.shared.executeSchemaChanges(
                 tableName: tableName,
                 changes: changes,
-                databaseType: getDatabaseType()
+                databaseType: connection.type
             )
 
             // Success - reload schema
@@ -113,10 +113,6 @@ extension TableStructureView {
 
     func discardChanges() {
         structureChangeManager.discardChanges()
-    }
-
-    func getDatabaseType() -> DatabaseType {
-        connection.type
     }
 
     // MARK: - DDL View
