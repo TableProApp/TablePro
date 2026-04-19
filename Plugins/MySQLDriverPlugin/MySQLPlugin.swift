@@ -44,6 +44,10 @@ final class MySQLPlugin: NSObject, TableProPlugin, DriverPlugin {
         "Spatial": ["GEOMETRY", "POINT", "LINESTRING", "POLYGON"]
     ]
 
+    static let structureColumnFields: [StructureColumnField] = [
+        .name, .type, .nullable, .defaultValue, .autoIncrement, .comment, .charset, .collation
+    ]
+
     static let sqlDialect: SQLDialectDescriptor? = SQLDialectDescriptor(
         identifierQuote: "`",
         keywords: [

@@ -19,7 +19,7 @@ struct StructureSortDescriptor {
 @MainActor
 final class StructureRowProvider {
     private static let canonicalFieldOrder: [StructureColumnField] = [
-        .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment
+        .name, .type, .nullable, .defaultValue, .primaryKey, .autoIncrement, .comment, .charset, .collation
     ]
 
     private let changeManager: StructureChangeManager
@@ -49,7 +49,8 @@ final class StructureRowProvider {
                 String(localized: "Name"),
                 String(localized: "Columns"),
                 String(localized: "Type"),
-                String(localized: "Unique")
+                String(localized: "Unique"),
+                String(localized: "Condition")
             ]
         case .foreignKeys:
             return [
@@ -57,6 +58,7 @@ final class StructureRowProvider {
                 String(localized: "Columns"),
                 String(localized: "Ref Table"),
                 String(localized: "Ref Columns"),
+                String(localized: "Ref Schema"),
                 String(localized: "On Delete"),
                 String(localized: "On Update")
             ]
@@ -91,7 +93,7 @@ final class StructureRowProvider {
         switch tab {
         case .foreignKeys:
             let actions = EditableForeignKeyDefinition.ReferentialAction.allCases.map(\.rawValue)
-            return [4: actions, 5: actions]
+            return [5: actions, 6: actions]
         case .indexes:
             let types = EditableIndexDefinition.IndexType.allCases.map(\.rawValue)
             return [2: types]
@@ -190,17 +192,26 @@ final class StructureRowProvider {
                     case .primaryKey: column.isPrimaryKey ? "YES" : "NO"
                     case .autoIncrement: column.autoIncrement ? "YES" : "NO"
                     case .comment: column.comment ?? ""
+                    case .charset: column.charset ?? ""
+                    case .collation: column.collation ?? ""
                     }
                 }
                 return IndexedRow(sourceIndex: index, row: row)
             }
         case .indexes:
             return changeManager.workingIndexes.enumerated().map { index, indexInfo in
-                IndexedRow(sourceIndex: index, row: [
+                let columnsStr = indexInfo.columns.map { col in
+                    if let prefix = indexInfo.columnPrefixes[col] {
+                        return "\(col)(\(prefix))"
+                    }
+                    return col
+                }.joined(separator: ", ")
+                return IndexedRow(sourceIndex: index, row: [
                     indexInfo.name,
-                    indexInfo.columns.joined(separator: ", "),
+                    columnsStr,
                     indexInfo.type.rawValue,
-                    indexInfo.isUnique ? "YES" : "NO"
+                    indexInfo.isUnique ? "YES" : "NO",
+                    indexInfo.whereClause ?? ""
                 ])
             }
         case .foreignKeys:
@@ -210,6 +221,7 @@ final class StructureRowProvider {
                     fk.columns.joined(separator: ", "),
                     fk.referencedTable,
                     fk.referencedColumns.joined(separator: ", "),
+                    fk.referencedSchema ?? "",
                     fk.onDelete.rawValue,
                     fk.onUpdate.rawValue
                 ])

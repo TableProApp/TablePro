@@ -354,7 +354,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment, .charset, .collation]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
@@ -384,7 +384,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     systemSchemaNames: [],
                     fileExtensions: [],
                     databaseGroupingStrategy: .byDatabase,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment]
+                    structureColumnFields: [.name, .type, .nullable, .defaultValue, .autoIncrement, .comment, .charset, .collation]
                 ),
                 editor: PluginMetadataSnapshot.EditorConfig(
                     sqlDialect: mysqlDialect,
