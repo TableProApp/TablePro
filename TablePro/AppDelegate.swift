@@ -205,16 +205,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Save all currently open connection IDs for multi-session restore.
-        // Sort by connection name for deterministic restore order across launches
-        // (Dictionary.keys has no guaranteed order).
-        let connections = ConnectionStorage.shared.loadConnections()
-        let activeIds = Set(DatabaseManager.shared.activeSessions.keys)
-        let openConnectionIds = connections
-            .filter { activeIds.contains($0.id) }
-            .map(\.id)
-        AppSettingsStorage.shared.saveLastOpenConnectionIds(openConnectionIds)
-
         LinkedFolderWatcher.shared.stop()
         UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()

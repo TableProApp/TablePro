@@ -22,6 +22,7 @@ final class DatabaseManager {
         didSet {
             if Set(oldValue.keys) != Set(activeSessions.keys) {
                 connectionListVersion &+= 1
+                persistOpenConnectionIds()
             }
             connectionStatusVersion &+= 1
         }
@@ -85,4 +86,9 @@ final class DatabaseManager {
     }
 
     internal init() {}
+
+    private func persistOpenConnectionIds() {
+        let ids = Array(activeSessions.keys)
+        AppSettingsStorage.shared.saveLastOpenConnectionIds(ids)
+    }
 }
