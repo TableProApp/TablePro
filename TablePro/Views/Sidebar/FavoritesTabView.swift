@@ -99,7 +99,8 @@ internal struct FavoritesTabView: View {
             deleteSelectedFavorite()
         }
         .onKeyPress(.return) {
-            guard let nodeId = selectedNodeId,
+            guard viewModel.renamingFolderId == nil,
+                  let nodeId = selectedNodeId,
                   let fav = viewModel.favoriteForNodeId(nodeId) else { return .ignored }
             coordinator?.insertFavorite(fav)
             return .handled
