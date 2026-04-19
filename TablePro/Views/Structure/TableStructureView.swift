@@ -125,32 +125,20 @@ struct TableStructureView: View {
     }
 
     private var toolbar: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Spacer()
+        HStack {
+            Spacer()
 
-                Picker("", selection: $selectedTab) {
-                    ForEach(availableTabs, id: \.self) { tab in
-                        Text(tabLabel(for: tab)).tag(tab)
-                    }
+            Picker("", selection: $selectedTab) {
+                ForEach(availableTabs, id: \.self) { tab in
+                    Text(tabLabel(for: tab)).tag(tab)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-
-                Spacer()
             }
-            .padding()
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-            if selectedTab == .columns || selectedTab == .indexes || selectedTab == .foreignKeys {
-                Divider()
-                HStack {
-                    NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
-                    Spacer()
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 6)
-            }
+            Spacer()
         }
+        .padding()
     }
 
     // MARK: - Tab Label with Count Badge
@@ -288,6 +276,14 @@ struct TableStructureView: View {
             editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                Divider()
+                NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+            }
+        }
     }
 
     // MARK: - Helper Views
