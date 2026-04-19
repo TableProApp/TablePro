@@ -110,6 +110,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var hasUserResizedColumns: Bool = false
     /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
+    var isEscapeCancelling = false
     /// Debounced task for persisting column layout after resize/reorder
     var layoutPersistTask: Task<Void, Never>?
 
@@ -265,7 +266,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         getVisualState = nil
     }
 
-    private var teardownObserver: NSObjectProtocol?
+    private(set) var teardownObserver: NSObjectProtocol?
 
     deinit {
         if let observer = settingsObserver {

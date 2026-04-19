@@ -37,7 +37,7 @@ struct TableStructureView: View {
     @AppStorage("skipSchemaPreview") var skipSchemaPreview = false
 
     // DataGridView state
-    @State var structureChangeManager = StructureChangeManager()
+    @State var structureChangeManager: StructureChangeManager
     @State var wrappedChangeManager: AnyChangeManager
     @State var selectedRows: Set<Int> = []
     @State var sortState = SortState()

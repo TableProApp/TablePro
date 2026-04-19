@@ -224,6 +224,10 @@ struct DataGridView: NSViewRepresentable {
             }
         }
 
+        if let connectionId, coordinator.teardownObserver == nil {
+            coordinator.observeTeardown(connectionId: connectionId)
+        }
+
         // Identity-based early-return BEFORE reading settings — avoids
         // AppSettingsManager access on every SwiftUI re-evaluation.
         let currentIdentity = DataGridIdentity(
@@ -618,13 +622,15 @@ struct DataGridView: NSViewRepresentable {
             if cell.row < tableView.numberOfRows && tableColumn < tableView.numberOfColumns {
                 tableView.scrollRowToVisible(cell.row)
                 Task { @MainActor [weak tableView] in
-                    guard let tableView = tableView else { return }
+                    guard let tableView else { return }
                     tableView.selectRowIndexes(IndexSet(integer: cell.row), byExtendingSelection: false)
                     tableView.editColumn(tableColumn, row: cell.row, with: nil, select: true)
+                    self.editingCell = nil
                 }
-            }
-            Task { @MainActor in
-                self.editingCell = nil
+            } else {
+                Task { @MainActor in
+                    self.editingCell = nil
+                }
             }
         }
     }

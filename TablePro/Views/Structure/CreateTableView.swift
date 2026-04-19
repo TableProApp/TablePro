@@ -33,7 +33,7 @@ struct CreateTableView: View {
     let connection: DatabaseConnection
     var coordinator: MainContentCoordinator?
 
-    @State private var structureChangeManager = StructureChangeManager()
+    @State private var structureChangeManager: StructureChangeManager
     @State private var wrappedChangeManager: AnyChangeManager
     @State private var tableName = ""
     @State private var tableOptions = CreateTableOptions()

@@ -148,6 +148,15 @@ extension TableViewCoordinator {
         guard row >= 0, column > 0 else { return true }
 
         let columnIndex = column - 1
+
+        if isEscapeCancelling {
+            isEscapeCancelling = false
+            let originalValue = rowProvider.value(atRow: row, column: columnIndex)
+            textField.stringValue = originalValue ?? ""
+            (control as? CellTextField)?.restoreTruncatedDisplay()
+            return true
+        }
+
         let newValue: String? = textField.stringValue
 
         let oldValue = rowProvider.value(atRow: row, column: columnIndex)
@@ -234,6 +243,7 @@ extension TableViewCoordinator {
         }
 
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            isEscapeCancelling = true
             tableView.window?.makeFirstResponder(tableView)
             return true
         }

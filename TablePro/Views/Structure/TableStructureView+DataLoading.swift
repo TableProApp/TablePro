@@ -82,12 +82,16 @@ extension TableStructureView {
     }
 
     func loadSchemaForEditing() {
+        let pkFromIndexes = indexes.first(where: { $0.isPrimary })?.columns ?? []
+        let pkFromColumns = columns.filter { $0.isPrimaryKey }.map { $0.name }
+        let primaryKey = pkFromIndexes.isEmpty ? pkFromColumns : pkFromIndexes
+
         structureChangeManager.loadSchema(
             tableName: tableName,
             columns: columns,
             indexes: indexes,
             foreignKeys: foreignKeys,
-            primaryKey: columns.filter { $0.isPrimaryKey }.map { $0.name },
+            primaryKey: primaryKey,
             databaseType: connection.type
         )
     }
