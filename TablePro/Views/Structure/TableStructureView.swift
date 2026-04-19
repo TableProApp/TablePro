@@ -276,12 +276,12 @@ struct TableStructureView: View {
             editingCell: $editingCell,
             columnLayout: $structureColumnLayout
         )
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+        .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                Divider()
                 NativeSearchField(text: $searchText, placeholder: String(localized: "Filter"))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 4)
+                Divider()
             }
         }
     }
