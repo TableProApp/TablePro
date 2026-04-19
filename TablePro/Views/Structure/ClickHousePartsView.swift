@@ -62,13 +62,13 @@ struct ClickHousePartsView: View {
             Button(action: dropSelectedPartition) {
                 Label(String(localized: "Drop Partition"), systemImage: "trash")
             }
-            .disabled(selection.isEmpty)
+            .disabled(selection.count != 1)
             .help(String(localized: "Drop selected partition"))
 
             Button(action: detachSelectedPartition) {
                 Label(String(localized: "Detach Partition"), systemImage: "arrow.down.doc")
             }
-            .disabled(selection.isEmpty)
+            .disabled(selection.count != 1)
             .help(String(localized: "Detach selected partition"))
 
             Spacer()

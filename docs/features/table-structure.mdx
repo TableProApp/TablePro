@@ -48,6 +48,8 @@ Click a table in the sidebar, then click the **Structure** tab. Or right-click a
 | **Primary Key** | Whether the column is part of the primary key |
 | **Auto Inc** | AUTO_INCREMENT / SERIAL |
 | **Comment** | Column comment |
+| **Charset** | Character set (MySQL/MariaDB only) |
+| **Collation** | Collation (MySQL/MariaDB only) |
 
 Use the filter field at the top to search columns by name. Click any column header to sort.
 
@@ -70,10 +72,10 @@ Use the filter field at the top to search columns by name. Click any column head
 | Property | Description |
 |----------|-------------|
 | **Name** | Index name |
-| **Columns** | Columns included in the index |
-| **Type** | BTREE, HASH, FULLTEXT, etc. |
+| **Columns** | Columns included in the index. MySQL prefix lengths shown as `col(10)` |
+| **Type** | BTREE, HASH, FULLTEXT, GIN, GIST, BRIN, etc. |
 | **Unique** | Whether the index enforces uniqueness |
-| **Primary** | Whether this is the primary key |
+| **Condition** | WHERE clause for partial indexes (PostgreSQL) |
 
 ## Foreign Keys Tab
 
@@ -97,6 +99,7 @@ Use the filter field at the top to search columns by name. Click any column head
 | **Columns** | Local column(s) |
 | **Ref Table** | Referenced table |
 | **Ref Columns** | Referenced column(s) |
+| **Ref Schema** | Referenced schema (for cross-schema references) |
 | **On Delete** | Action when referenced row is deleted (NO ACTION, CASCADE, SET NULL, SET DEFAULT, RESTRICT) |
 | **On Update** | Action when referenced row is updated |
 
