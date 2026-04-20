@@ -59,6 +59,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             defaultTitle = String(localized: "ER Diagram")
         } else if payload?.tabType == .createTable {
             defaultTitle = String(localized: "Create Table")
+        } else if payload?.tabType == .terminal {
+            defaultTitle = String(localized: "Terminal")
         } else if let tabTitle = payload?.tabTitle {
             defaultTitle = tabTitle
         } else if let tableName = payload?.tableName {

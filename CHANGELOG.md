@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Import connections from TablePlus, Sequel Ace, and DBeaver with one-click migration
+- Embedded database CLI terminal (View > Open Terminal or Ctrl+Cmd+`) auto-launches mysql, psql, redis-cli, etc. for the active connection
 - Structure tab: modify existing tables (add, modify, drop columns, indexes, foreign keys, primary keys)
 
 ### Changed

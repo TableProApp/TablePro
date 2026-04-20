@@ -121,6 +121,10 @@ enum SessionStateFactory {
                     )
                 case .serverDashboard:
                     tabMgr.addServerDashboardTab()
+                case .terminal:
+                    tabMgr.addTerminalTab(
+                        databaseName: payload.databaseName ?? connection.database
+                    )
                 }
             case .newEmptyTab:
                 let allTabs = MainContentCoordinator.allTabs(for: connection.id)
