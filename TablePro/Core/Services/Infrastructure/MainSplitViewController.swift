@@ -34,7 +34,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailSplitItem: NSSplitViewItem!
     private var inspectorSplitItem: NSSplitViewItem!
 
-    private var sidebarHosting: NSHostingController<AnyView>!
+    private var sidebarContainer: SidebarContainerViewController!
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
 
@@ -116,8 +116,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.isVertical = true
         splitView.autosaveName = "com.TablePro.mainSplit"
 
-        sidebarHosting = NSHostingController(rootView: AnyView(buildSidebarView()))
-        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarHosting)
+        sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
+        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = 200
         sidebarSplitItem.maximumThickness = 600
@@ -155,6 +155,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             sessionState.coordinator.inspectorProxy = self
             sessionState.coordinator.sidebarProxy = self
             installToolbar(coordinator: sessionState.coordinator)
+        }
+
+        if let currentSession {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession.connection.id)
+            )
         }
 
         installObservers()
@@ -242,6 +248,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 sessionState?.coordinator.teardown()
                 sessionState = nil
                 currentSession = nil
+                sidebarContainer.updateSidebarState(nil)
                 if view.window?.isVisible == true {
                     sidebarSplitItem.animator().isCollapsed = true
                 } else {
@@ -286,7 +293,12 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     // MARK: - Pane Construction
 
     private func rebuildPanes() {
-        sidebarHosting.rootView = AnyView(buildSidebarView())
+        sidebarContainer.rootView = AnyView(buildSidebarView())
+        if let currentSession {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession.connection.id)
+            )
+        }
         detailHosting.rootView = AnyView(buildDetailView())
         inspectorHosting.rootView = AnyView(buildInspectorView())
     }

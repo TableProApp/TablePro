@@ -87,20 +87,6 @@ struct SidebarView: View {
                 )
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            NativeSearchField(
-                text: Binding(
-                    get: { sidebarState.searchText },
-                    set: { sidebarState.searchText = $0 }
-                ),
-                placeholder: sidebarState.selectedSidebarTab == .tables
-                    ? String(localized: "Filter")
-                    : String(localized: "Filter favorites")
-            )
-            .padding(.horizontal, 8)
-            .padding(.top, 6)
-            .padding(.bottom, 4)
-        }
         .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
@@ -143,6 +129,8 @@ struct SidebarView: View {
             errorState(message: message)
         case .loaded where tables.isEmpty:
             emptyState
+        case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
+            noMatchState
         case .loaded:
             tableList
         case .idle:
@@ -169,6 +157,11 @@ struct SidebarView: View {
         .padding()
     }
 
+    private var noMatchState: some View {
+        ContentUnavailableView.search(text: viewModel.searchText)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var emptyState: some View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
@@ -185,19 +178,10 @@ struct SidebarView: View {
 
     private var tableList: some View {
         let entityLabel = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
-        let noMatchLabel = String(format: String(localized: "No matching %@"), entityLabel.lowercased())
         let helpLabel = String(format: String(localized: "Right-click to show all %@"), entityLabel.lowercased())
         let showAllLabel = String(format: String(localized: "Show All %@"), entityLabel)
         return List(selection: selectedTablesBinding) {
-            if filteredTables.isEmpty {
-                ContentUnavailableView(
-                    noMatchLabel,
-                    systemImage: "magnifyingglass"
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } else {
-                Section(isExpanded: $viewModel.isTablesExpanded) {
+            Section(isExpanded: $viewModel.isTablesExpanded) {
                     ForEach(filteredTables) { table in
                         TableRow(
                             table: table,
@@ -252,7 +236,6 @@ struct SidebarView: View {
                         Text("Keys")
                     }
                 }
-            }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)

@@ -269,11 +269,8 @@ internal struct FavoritesTabView: View {
     }
 
     private var noMatchState: some View {
-        ContentUnavailableView(
-            String(localized: "No Matching Favorites"),
-            systemImage: "magnifyingglass"
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView.search(text: searchText)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Bottom Toolbar
