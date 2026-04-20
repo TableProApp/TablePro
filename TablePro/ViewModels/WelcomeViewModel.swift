@@ -12,6 +12,7 @@ enum WelcomeActiveSheet: Identifiable {
     case activation
     case importFile(URL)
     case exportConnections([DatabaseConnection])
+    case importFromApp
 
     var id: String {
         switch self {
@@ -19,6 +20,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .activation: "activation"
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
+        case .importFromApp: "importFromApp"
         }
     }
 }
@@ -72,6 +74,7 @@ final class WelcomeViewModel {
     @ObservationIgnored private var exportObserver: NSObjectProtocol?
     @ObservationIgnored private var importObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
+    @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
     @ObservationIgnored private var newConnectionObserver: NSObjectProtocol?
 
     // MARK: - Computed Properties
@@ -166,6 +169,14 @@ final class WelcomeViewModel {
             }
         }
 
+        importFromAppObserver = NotificationCenter.default.addObserver(
+            forName: .importConnectionsFromApp, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.activeSheet = .importFromApp
+            }
+        }
+
         linkedFoldersObserver = NotificationCenter.default.addObserver(
             forName: .linkedFoldersDidUpdate, object: nil, queue: .main
         ) { [weak self] _ in
@@ -186,7 +197,7 @@ final class WelcomeViewModel {
 
     deinit {
         [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, linkedFoldersObserver, newConnectionObserver].forEach {
+         importObserver, importFromAppObserver, linkedFoldersObserver, newConnectionObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }
@@ -379,6 +390,10 @@ final class WelcomeViewModel {
 
     func exportConnections(_ connectionsToExport: [DatabaseConnection]) {
         activeSheet = .exportConnections(connectionsToExport)
+    }
+
+    func importConnectionsFromApp() {
+        activeSheet = .importFromApp
     }
 
     func importConnectionsFromFile() {

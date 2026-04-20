@@ -186,6 +186,12 @@ extension WelcomeWindowView {
         } label: {
             Label(String(localized: "Import Connections..."), systemImage: "square.and.arrow.down")
         }
+
+        Button {
+            vm.importConnectionsFromApp()
+        } label: {
+            Label(String(localized: "Import from Other App..."), systemImage: "square.and.arrow.down.on.square")
+        }
     }
 }
 

@@ -236,6 +236,10 @@ struct AppMenuCommands: Commands {
                 NotificationCenter.default.post(name: .importConnections, object: nil)
             }
 
+            Button(String(localized: "Import from Other App...")) {
+                NotificationCenter.default.post(name: .importConnectionsFromApp, object: nil)
+            }
+
             Divider()
 
             Button("Export...") {

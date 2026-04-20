@@ -85,6 +85,13 @@ struct WelcomeWindowView: View {
                 }
             case .exportConnections(let conns):
                 ConnectionExportOptionsSheet(connections: conns)
+            case .importFromApp:
+                ImportFromAppSheet { count in
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
+                        vm.showImportResultAlert(count: count)
+                    }
+                }
             }
         }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in
@@ -534,6 +541,11 @@ struct WelcomeWindowView: View {
                 }
                 .controlSize(.large)
                 .padding(.top, 4)
+
+                Button(action: { vm.importConnectionsFromApp() }) {
+                    Label("Import from Other App...", systemImage: "square.and.arrow.down.on.square")
+                }
+                .controlSize(.large)
             } else {
                 Text("No Matching Connections")
                     .font(.title3.weight(.medium))
