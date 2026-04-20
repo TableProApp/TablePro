@@ -83,9 +83,9 @@ struct ConnectionImportSheet: View {
     private func header(_ preview: ConnectionImportPreview) -> some View {
         HStack {
             Text(String(localized: "Import Connections"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
             Text("(\(fileURL.lastPathComponent))")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
             Toggle(String(localized: "Select All"), isOn: Binding(
@@ -139,11 +139,11 @@ struct ConnectionImportSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(item.connection.name)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .font(.body)
                         .lineLimit(1)
                     if case .duplicate = item.status {
                         Text(String(localized: "duplicate"))
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
                             .padding(.vertical, 1)
@@ -157,7 +157,7 @@ struct ConnectionImportSheet: View {
                     Text("\(item.connection.host):\(String(item.connection.port))")
                     warningText(for: item.status)
                 }
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
@@ -191,11 +191,11 @@ struct ConnectionImportSheet: View {
         switch status {
         case .ready:
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(Color(nsColor: .systemGreen))
         case .warnings:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(Color(nsColor: .systemYellow))
         case .duplicate:
             EmptyView()
@@ -221,10 +221,10 @@ struct ConnectionImportSheet: View {
                 .foregroundStyle(.secondary)
 
             Text("This file is encrypted")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
 
             Text("Enter the passphrase to decrypt and import connections.")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -235,7 +235,7 @@ struct ConnectionImportSheet: View {
 
             if let passphraseError {
                 Text(passphraseError)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(Color(nsColor: .systemRed))
             }
 
@@ -260,7 +260,7 @@ struct ConnectionImportSheet: View {
     private func footer(_ preview: ConnectionImportPreview) -> some View {
         HStack {
             Text("\(selectedIds.count) of \(preview.items.count) selected")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             Spacer()

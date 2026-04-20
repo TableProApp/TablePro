@@ -56,7 +56,7 @@ struct FilterPanelView: View {
     private var filterHeader: some View {
         HStack(spacing: 8) {
             Text("Filters")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                .font(.callout.weight(.medium))
 
             if filterState.filters.count > 1 {
                 Picker("", selection: $filterState.filterLogicMode) {
@@ -91,7 +91,7 @@ struct FilterPanelView: View {
             .help(String(localized: "Apply filters"))
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xs)
+        .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor))
         .contentShape(Rectangle())
         .alert(String(localized: "Save Filter Preset"), isPresented: $showSavePresetAlert) {

@@ -179,21 +179,22 @@ struct ResolvedUIColors {
     let badgeAutoIncrementSwiftUI: Color
 
     init(from colors: UIThemeColors) {
-        windowBackground = colors.windowBackground.nsColor
-        windowBackgroundSwiftUI = colors.windowBackground.swiftUIColor
-        controlBackground = colors.controlBackground.nsColor
-        controlBackgroundSwiftUI = colors.controlBackground.swiftUIColor
-        cardBackground = colors.cardBackground.nsColor
-        cardBackgroundSwiftUI = colors.cardBackground.swiftUIColor
-        border = colors.border.nsColor
-        borderSwiftUI = colors.border.swiftUIColor
+        windowBackground = colors.windowBackground?.nsColor ?? .windowBackgroundColor
+        windowBackgroundSwiftUI = colors.windowBackground?.swiftUIColor ?? Color(nsColor: .windowBackgroundColor)
+        controlBackground = colors.controlBackground?.nsColor ?? .controlBackgroundColor
+        controlBackgroundSwiftUI = colors.controlBackground?.swiftUIColor
+            ?? Color(nsColor: .controlBackgroundColor)
+        cardBackground = colors.cardBackground?.nsColor ?? .controlBackgroundColor
+        cardBackgroundSwiftUI = colors.cardBackground?.swiftUIColor ?? Color(nsColor: .controlBackgroundColor)
+        border = colors.border?.nsColor ?? .separatorColor
+        borderSwiftUI = colors.border?.swiftUIColor ?? Color(nsColor: .separatorColor)
 
-        primaryText = colors.primaryText.nsColor
-        primaryTextSwiftUI = colors.primaryText.swiftUIColor
-        secondaryText = colors.secondaryText.nsColor
-        secondaryTextSwiftUI = colors.secondaryText.swiftUIColor
-        tertiaryText = colors.tertiaryText.nsColor
-        tertiaryTextSwiftUI = colors.tertiaryText.swiftUIColor
+        primaryText = colors.primaryText?.nsColor ?? .labelColor
+        primaryTextSwiftUI = colors.primaryText?.swiftUIColor ?? Color(nsColor: .labelColor)
+        secondaryText = colors.secondaryText?.nsColor ?? .secondaryLabelColor
+        secondaryTextSwiftUI = colors.secondaryText?.swiftUIColor ?? Color(nsColor: .secondaryLabelColor)
+        tertiaryText = colors.tertiaryText?.nsColor ?? .tertiaryLabelColor
+        tertiaryTextSwiftUI = colors.tertiaryText?.swiftUIColor ?? Color(nsColor: .tertiaryLabelColor)
 
         if let accent = colors.accentColor {
             accentColor = accent.nsColor
@@ -203,10 +204,12 @@ struct ResolvedUIColors {
             accentColorSwiftUI = nil
         }
 
-        selectionBackground = colors.selectionBackground.nsColor
-        selectionBackgroundSwiftUI = colors.selectionBackground.swiftUIColor
-        hoverBackground = colors.hoverBackground.nsColor
-        hoverBackgroundSwiftUI = colors.hoverBackground.swiftUIColor
+        selectionBackground = colors.selectionBackground?.nsColor ?? .selectedContentBackgroundColor
+        selectionBackgroundSwiftUI = colors.selectionBackground?.swiftUIColor
+            ?? Color(nsColor: .selectedContentBackgroundColor)
+        hoverBackground = colors.hoverBackground?.nsColor ?? .unemphasizedSelectedContentBackgroundColor
+        hoverBackgroundSwiftUI = colors.hoverBackground?.swiftUIColor
+            ?? Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
 
         success = colors.status.success.nsColor
         successSwiftUI = colors.status.success.swiftUIColor
@@ -239,16 +242,18 @@ struct ResolvedSidebarColors {
     let sectionHeaderSwiftUI: Color
 
     init(from colors: SidebarThemeColors) {
-        background = colors.background.nsColor
-        backgroundSwiftUI = colors.background.swiftUIColor
-        text = colors.text.nsColor
-        textSwiftUI = colors.text.swiftUIColor
-        selectedItem = colors.selectedItem.nsColor
-        selectedItemSwiftUI = colors.selectedItem.swiftUIColor
-        hover = colors.hover.nsColor
-        hoverSwiftUI = colors.hover.swiftUIColor
-        sectionHeader = colors.sectionHeader.nsColor
-        sectionHeaderSwiftUI = colors.sectionHeader.swiftUIColor
+        background = colors.background?.nsColor ?? .windowBackgroundColor
+        backgroundSwiftUI = colors.background?.swiftUIColor ?? Color(nsColor: .windowBackgroundColor)
+        text = colors.text?.nsColor ?? .labelColor
+        textSwiftUI = colors.text?.swiftUIColor ?? Color(nsColor: .labelColor)
+        selectedItem = colors.selectedItem?.nsColor ?? .selectedContentBackgroundColor
+        selectedItemSwiftUI = colors.selectedItem?.swiftUIColor
+            ?? Color(nsColor: .selectedContentBackgroundColor)
+        hover = colors.hover?.nsColor ?? .unemphasizedSelectedContentBackgroundColor
+        hoverSwiftUI = colors.hover?.swiftUIColor
+            ?? Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+        sectionHeader = colors.sectionHeader?.nsColor ?? .secondaryLabelColor
+        sectionHeaderSwiftUI = colors.sectionHeader?.swiftUIColor ?? Color(nsColor: .secondaryLabelColor)
     }
 }
 
@@ -259,10 +264,10 @@ struct ResolvedToolbarColors {
     let tertiaryTextSwiftUI: Color
 
     init(from colors: ToolbarThemeColors) {
-        secondaryText = colors.secondaryText.nsColor
-        secondaryTextSwiftUI = colors.secondaryText.swiftUIColor
-        tertiaryText = colors.tertiaryText.nsColor
-        tertiaryTextSwiftUI = colors.tertiaryText.swiftUIColor
+        secondaryText = colors.secondaryText?.nsColor ?? .secondaryLabelColor
+        secondaryTextSwiftUI = colors.secondaryText?.swiftUIColor ?? Color(nsColor: .secondaryLabelColor)
+        tertiaryText = colors.tertiaryText?.nsColor ?? .tertiaryLabelColor
+        tertiaryTextSwiftUI = colors.tertiaryText?.swiftUIColor ?? Color(nsColor: .tertiaryLabelColor)
     }
 }
 

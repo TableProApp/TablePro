@@ -20,7 +20,7 @@ struct SQLPreviewSheet: View {
         VStack(spacing: 16) {
             HStack {
                 Text("Generated WHERE Clause")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                    .font(.body.weight(.semibold))
                 Spacer()
                 Button(action: { dismiss() }) {
                     Image(systemName: "xmark.circle.fill")
@@ -35,16 +35,16 @@ struct SQLPreviewSheet: View {
 
             ScrollView {
                 Text(sql.isEmpty ? "(no conditions)" : sql)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
             .frame(maxHeight: 180)
             .background(Color(nsColor: .textBackgroundColor))
-            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
-                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
+                RoundedRectangle(cornerRadius: 6)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
 
@@ -52,9 +52,9 @@ struct SQLPreviewSheet: View {
                 Button(action: copyToClipboard) {
                     HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                         Text(copied ? "Copied!" : "Copy")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                            .font(.callout)
                     }
                 }
                 .buttonStyle(.bordered)

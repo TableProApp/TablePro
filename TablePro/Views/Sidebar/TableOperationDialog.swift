@@ -89,7 +89,7 @@ struct TableOperationDialog: View {
         VStack(spacing: 0) {
             // Header
             Text(title)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .padding(.vertical, 16)
                 .padding(.horizontal, 20)
 
@@ -100,7 +100,7 @@ struct TableOperationDialog: View {
                 // Note for multiple tables
                 if isMultipleTables {
                     Text("Same options will be applied to all selected tables.")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
@@ -108,14 +108,14 @@ struct TableOperationDialog: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $ignoreForeignKeys) {
                         Text("Ignore foreign key checks")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                     }
                     .toggleStyle(.checkbox)
                     .disabled(ignoreFKDisabled)
 
                     if let description = ignoreFKDescription {
                         Text(description)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 20)
                     }
@@ -126,13 +126,13 @@ struct TableOperationDialog: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(isOn: $cascade) {
                         Text("Cascade")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                     }
                     .toggleStyle(.checkbox)
                     .disabled(cascadeDisabled)
 
                     Text(cascadeDescription)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 20)
                 }

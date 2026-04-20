@@ -31,7 +31,7 @@ internal struct FavoriteRowView: View {
 
             if let keyword = favorite.keyword, !keyword.isEmpty {
                 Text(keyword)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .medium, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced).weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)

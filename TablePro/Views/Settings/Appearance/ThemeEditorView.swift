@@ -22,13 +22,11 @@ internal struct ThemeEditorView: View {
     private enum EditorTab: String, CaseIterable {
         case fonts = "Fonts"
         case colors = "Colors"
-        case layout = "Layout"
 
         var localizedName: String {
             switch self {
             case .fonts: return String(localized: "Fonts")
             case .colors: return String(localized: "Colors")
-            case .layout: return String(localized: "Layout")
             }
         }
     }
@@ -36,7 +34,7 @@ internal struct ThemeEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             Text(theme.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                .font(.title3.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -77,12 +75,6 @@ internal struct ThemeEditorView: View {
             } else {
                 duplicatePrompt
             }
-        case .layout:
-            if isEditable {
-                ThemeEditorLayoutSection()
-            } else {
-                duplicatePrompt
-            }
         }
     }
 
@@ -97,11 +89,11 @@ internal struct ThemeEditorView: View {
             Text(theme.isBuiltIn
                 ? String(localized: "This is a built-in theme.")
                 : String(localized: "This is a registry theme."))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .foregroundStyle(.secondary)
 
-            Text(String(localized: "Duplicate it to customize colors and layout."))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+            Text(String(localized: "Duplicate it to customize colors."))
+                .font(.subheadline)
                 .foregroundStyle(.tertiary)
 
             Button(String(localized: "Duplicate Theme")) {

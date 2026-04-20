@@ -13,7 +13,7 @@ internal struct SingleLineEditorView: View {
     var body: some View {
         TextField(context.placeholderText, text: context.value)
             .textFieldStyle(.roundedBorder)
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+            .font(.subheadline)
             .focused($isFocused)
             .disabled(context.isReadOnly)
     }

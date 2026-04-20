@@ -26,7 +26,7 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
 
         textView.isEditable = isEditable
         textView.isSelectable = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular)
+        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textContainerInset = NSSize(width: 4, height: 4)
         textView.backgroundColor = .textBackgroundColor
         textView.textColor = NSColor.labelColor
@@ -73,7 +73,7 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
         guard length > 0 else { return }
 
         let fullRange = NSRange(location: 0, length: length)
-        let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular)
+        let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         let content = textStorage.string
         let maxHighlightLength = 10_000
         let highlightRange: NSRange

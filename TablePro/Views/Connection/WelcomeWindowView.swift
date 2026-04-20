@@ -120,11 +120,11 @@ struct WelcomeWindowView: View {
             HStack(spacing: 8) {
                 Button(action: { openWindow(id: "connection-form") }) {
                     Image(systemName: "plus")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
                         .frame(
-                            width: ThemeEngine.shared.activeTheme.iconSizes.extraLarge,
-                            height: ThemeEngine.shared.activeTheme.iconSizes.extraLarge
+                            width: 24,
+                            height: 24
                         )
                         .background(
                             RoundedRectangle(cornerRadius: 6)
@@ -136,11 +136,11 @@ struct WelcomeWindowView: View {
 
                 Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
                     Image(systemName: "folder.badge.plus")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
                         .frame(
-                            width: ThemeEngine.shared.activeTheme.iconSizes.extraLarge,
-                            height: ThemeEngine.shared.activeTheme.iconSizes.extraLarge
+                            width: 24,
+                            height: 24
                         )
                         .background(
                             RoundedRectangle(cornerRadius: 6)
@@ -152,12 +152,12 @@ struct WelcomeWindowView: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                        .font(.callout)
                         .foregroundStyle(.tertiary)
 
                     TextField("Search for connection...", text: $vm.searchText)
                         .textFieldStyle(.plain)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .font(.body)
                         .focused($focus, equals: .search)
                         .onKeyPress(.return) {
                             vm.connectSelectedConnections()
@@ -201,15 +201,15 @@ struct WelcomeWindowView: View {
                             return .handled
                         }
                 }
-                .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.sm)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(nsColor: .quaternaryLabelColor))
                 )
             }
-            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.md)
-            .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.sm)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
 
             Divider()
 
@@ -350,7 +350,7 @@ struct WelcomeWindowView: View {
             onConnect: { vm.connectToDatabase(connection) }
         )
         .tag(connection.id)
-        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
         .contextMenu { contextMenuContent(for: connection) }
     }
@@ -374,8 +374,8 @@ struct WelcomeWindowView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
-        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .padding(.vertical, 4)
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture(count: 2).onEnded {
             vm.connectToLinkedConnection(linked)
@@ -401,11 +401,11 @@ struct WelcomeWindowView: View {
             }
 
             Text(group.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             Text("\(connectionCount(in: group.id, connections: vm.connections, groups: vm.groups))")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
 
             Spacer()
@@ -517,30 +517,30 @@ struct WelcomeWindowView: View {
             Spacer()
 
             Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
+                .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
 
             if vm.searchText.isEmpty {
                 Text("No Connections")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .medium))
+                    .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 Text("Create a connection to get started")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.tertiary)
 
                 Button(action: { openWindow(id: "connection-form") }) {
                     Label("New Connection", systemImage: "plus")
                 }
                 .controlSize(.large)
-                .padding(.top, ThemeEngine.shared.activeTheme.spacing.xxs)
+                .padding(.top, 4)
             } else {
                 Text("No Matching Connections")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .medium))
+                    .font(.title3.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 Text("Try a different search term")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.tertiary)
             }
 

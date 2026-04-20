@@ -20,7 +20,7 @@ internal struct SetPickerView: View {
             isSetPopoverPresented = true
         } label: {
             Text(displayLabel)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
         }

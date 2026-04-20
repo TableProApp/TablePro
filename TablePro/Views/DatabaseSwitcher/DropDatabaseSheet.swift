@@ -21,7 +21,7 @@ struct DropDatabaseSheet: View {
         VStack(spacing: 0) {
             // Header
             Text("Drop Database")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .padding(.vertical, 12)
 
             Divider()
@@ -33,17 +33,17 @@ struct DropDatabaseSheet: View {
                     .foregroundStyle(.red)
 
                 Text(String(format: String(localized: "Drop database '%@'?"), databaseName))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
                     .multilineTextAlignment(.center)
 
                 Text(String(localized: "All tables and data will be permanently deleted."))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
                 if let error = errorMessage {
                     Text(error)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(Color(nsColor: .systemRed))
                         .multilineTextAlignment(.center)
                 }

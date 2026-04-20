@@ -66,7 +66,7 @@ struct ConnectionSwitcherPopover: View {
                             }
                             .buttonStyle(.plain)
                             .listRowBackground(
-                                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                                RoundedRectangle(cornerRadius: 4)
                                     .fill(
                                         index == selectedIndex
                                             ? Color(nsColor: .selectedContentBackgroundColor)
@@ -74,12 +74,12 @@ struct ConnectionSwitcherPopover: View {
                                     )
                                     .padding(.horizontal, 4)
                             )
-                            .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                             .listRowSeparator(.hidden)
                         }
                     } header: {
                         Text("ACTIVE CONNECTIONS")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -100,7 +100,7 @@ struct ConnectionSwitcherPopover: View {
                             }
                             .buttonStyle(.plain)
                             .listRowBackground(
-                                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                                RoundedRectangle(cornerRadius: 4)
                                     .fill(
                                         itemIndex == selectedIndex
                                             ? Color(nsColor: .selectedContentBackgroundColor)
@@ -108,12 +108,12 @@ struct ConnectionSwitcherPopover: View {
                                     )
                                     .padding(.horizontal, 4)
                             )
-                            .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
                             .listRowSeparator(.hidden)
                         }
                     } header: {
                         Text("SAVED CONNECTIONS")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
                 }

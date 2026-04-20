@@ -75,13 +75,13 @@ internal struct FieldDetailView: View {
             }
 
             Text(context.columnName)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .lineLimit(1)
 
             Spacer()
 
             Text(context.columnType.badgeLabel)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
+                .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)
@@ -90,7 +90,7 @@ internal struct FieldDetailView: View {
 
             if isTruncated && !isLoadingFullValue {
                 Text("truncated")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
+                    .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(Color(nsColor: .systemOrange))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)

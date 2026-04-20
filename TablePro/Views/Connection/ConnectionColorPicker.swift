@@ -39,20 +39,20 @@ private struct ColorDot: View {
                 // "None" option - shows as crossed circle
                 Circle()
                     .stroke(Color.secondary, lineWidth: 1)
-                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.large, height: ThemeEngine.shared.activeTheme.iconSizes.large)
+                    .frame(width: 20, height: 20)
                 Image(systemName: "circle.slash")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.small))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             } else {
                 Circle()
                     .fill(color.color)
-                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.large, height: ThemeEngine.shared.activeTheme.iconSizes.large)
+                    .frame(width: 20, height: 20)
             }
 
             if isSelected {
                 Circle()
                     .stroke(Color.primary, lineWidth: 2)
-                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.extraLarge, height: ThemeEngine.shared.activeTheme.iconSizes.extraLarge)
+                    .frame(width: 24, height: 24)
             }
         }
         .frame(width: 28, height: 28)

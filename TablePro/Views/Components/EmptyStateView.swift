@@ -30,43 +30,17 @@ struct EmptyStateView: View {
     }
 
     var body: some View {
-        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.sm) {
-            // Icon
-            Image(systemName: icon)
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
-                .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
-                .padding(.bottom, ThemeEngine.shared.activeTheme.spacing.xxs)
-
-            // Title
-            Text(title)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
-                .foregroundStyle(ThemeEngine.shared.colors.ui.secondaryTextSwiftUI)
-
-            // Description (optional)
-            if let description = description {
+        ContentUnavailableView {
+            Label(title, systemImage: icon)
+        } description: {
+            if let description {
                 Text(description)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            // Action button (optional)
-            if let actionTitle = actionTitle, let action = action {
-                Button(action: action) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                        Text(actionTitle)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
-                    }
-                }
-                .buttonStyle(.borderless)
-                .padding(.top, ThemeEngine.shared.activeTheme.spacing.xxs)
+        } actions: {
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 }
 

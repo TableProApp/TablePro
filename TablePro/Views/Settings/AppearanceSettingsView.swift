@@ -53,7 +53,7 @@ struct AppearanceSettingsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Text("Appearance")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
 
                 Picker("", selection: $settings.appearanceMode) {

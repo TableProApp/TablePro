@@ -20,29 +20,29 @@ struct ImportErrorView: View {
 
             VStack(spacing: 6) {
                 Text("Import Failed")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                    .font(.title3.weight(.semibold))
 
                 if let pluginError = error as? PluginImportError,
                    case .statementFailed(let statement, let line, let underlyingError) = pluginError
                 {
                     Text("Failed at line \(line)")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .font(.body)
                         .foregroundStyle(.secondary)
 
                     ScrollView {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Statement:")
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                                .font(.callout.weight(.medium))
                             Text(statement)
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
+                                .font(.system(.subheadline, design: .monospaced))
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             Text("Error:")
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                                .font(.callout.weight(.medium))
                                 .padding(.top, 8)
                             Text(underlyingError.localizedDescription)
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                                .font(.subheadline)
                                 .foregroundStyle(Color(nsColor: .systemRed))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -51,10 +51,10 @@ struct ImportErrorView: View {
                     .frame(height: 150)
                     .padding(8)
                     .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
                 } else {
                     Text(error?.localizedDescription ?? String(localized: "Unknown error"))
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .font(.body)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }

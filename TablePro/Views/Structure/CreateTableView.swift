@@ -93,7 +93,7 @@ struct CreateTableView: View {
     private var configBar: some View {
         HStack(spacing: 12) {
             Text("Table Name:")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                .font(.body.weight(.medium))
 
             TextField("Enter table name", text: $tableName)
                 .textFieldStyle(.roundedBorder)

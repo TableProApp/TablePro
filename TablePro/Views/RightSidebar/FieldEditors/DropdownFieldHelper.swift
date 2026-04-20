@@ -16,7 +16,7 @@ internal func dropdownField<Content: View>(
         content()
     } label: {
         Text(label)
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+            .font(.subheadline)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
     }

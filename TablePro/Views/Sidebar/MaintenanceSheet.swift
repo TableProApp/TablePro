@@ -53,7 +53,7 @@ struct MaintenanceSheet: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
             Divider()

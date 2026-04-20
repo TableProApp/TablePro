@@ -68,7 +68,7 @@ struct DatabaseSwitcherSheet: View {
             Text(isSchemaMode
                 ? String(localized: "Open Schema")
                 : String(localized: "Open Database"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .padding(.vertical, 12)
 
             // Databases / Schemas toggle (PostgreSQL only)
@@ -273,7 +273,7 @@ struct DatabaseSwitcherSheet: View {
                 .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
                 .padding(.horizontal, 4)
         )
-        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
         .id(database.name)
         .tag(database.name)
@@ -306,7 +306,7 @@ struct DatabaseSwitcherSheet: View {
             Text(isSchemaMode
                 ? String(localized: "Loading schemas...")
                 : String(localized: "Loading databases..."))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -315,16 +315,16 @@ struct DatabaseSwitcherSheet: View {
     private func errorView(_ message: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
+                .font(.system(size: 24))
                 .foregroundStyle(.orange)
 
             Text(isSchemaMode
                 ? String(localized: "Failed to load schemas")
                 : String(localized: "Failed to load databases"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                .font(.body.weight(.medium))
 
             Text(message)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
@@ -341,16 +341,16 @@ struct DatabaseSwitcherSheet: View {
     private var sqliteEmptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "doc.fill")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
+                .font(.system(size: 24))
                 .foregroundStyle(.secondary)
 
             Text("SQLite is file-based")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                .font(.body.weight(.medium))
 
             Text(
                 "Each SQLite file is a separate database.\nTo open a different database, create a new connection."
             )
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+            .font(.subheadline)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.horizontal)
@@ -361,24 +361,24 @@ struct DatabaseSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
+                .font(.system(size: 24))
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {
                 Text(isSchemaMode
                     ? String(localized: "No schemas found")
                     : String(localized: "No databases found"))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
             } else {
                 Text(isSchemaMode
                     ? String(localized: "No matching schemas")
                     : String(localized: "No matching databases"))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
 
                 Text(isSchemaMode
                     ? String(format: String(localized: "No schemas match \"%@\""), viewModel.searchText)
                     : String(format: String(localized: "No databases match \"%@\""), viewModel.searchText))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }

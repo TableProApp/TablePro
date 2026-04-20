@@ -12,12 +12,6 @@ internal struct ThemeDefinition: Codable, Identifiable, Equatable, Sendable {
     var sidebar: SidebarThemeColors
     var toolbar: ToolbarThemeColors
     var fonts: ThemeFonts
-    var spacing: ThemeSpacing
-    var typography: ThemeTypography
-    var iconSizes: ThemeIconSizes
-    var cornerRadius: ThemeCornerRadius
-    var rowHeights: ThemeRowHeights
-    var animations: ThemeAnimations
 
     var isBuiltIn: Bool { id.hasPrefix("tablepro.") }
     var isRegistry: Bool { id.hasPrefix("registry.") }
@@ -34,13 +28,7 @@ internal struct ThemeDefinition: Codable, Identifiable, Equatable, Sendable {
         ui: .defaultLight,
         sidebar: .defaultLight,
         toolbar: .defaultLight,
-        fonts: .default,
-        spacing: .default,
-        typography: .default,
-        iconSizes: .default,
-        cornerRadius: .default,
-        rowHeights: .default,
-        animations: .default
+        fonts: .default
     )
 
     init(
@@ -54,13 +42,7 @@ internal struct ThemeDefinition: Codable, Identifiable, Equatable, Sendable {
         ui: UIThemeColors,
         sidebar: SidebarThemeColors,
         toolbar: ToolbarThemeColors,
-        fonts: ThemeFonts,
-        spacing: ThemeSpacing = .default,
-        typography: ThemeTypography = .default,
-        iconSizes: ThemeIconSizes = .default,
-        cornerRadius: ThemeCornerRadius = .default,
-        rowHeights: ThemeRowHeights = .default,
-        animations: ThemeAnimations = .default
+        fonts: ThemeFonts
     ) {
         self.id = id
         self.name = name
@@ -73,12 +55,6 @@ internal struct ThemeDefinition: Codable, Identifiable, Equatable, Sendable {
         self.sidebar = sidebar
         self.toolbar = toolbar
         self.fonts = fonts
-        self.spacing = spacing
-        self.typography = typography
-        self.iconSizes = iconSizes
-        self.cornerRadius = cornerRadius
-        self.rowHeights = rowHeights
-        self.animations = animations
     }
 
     init(from decoder: Decoder) throws {
@@ -96,12 +72,6 @@ internal struct ThemeDefinition: Codable, Identifiable, Equatable, Sendable {
         sidebar = try container.decodeIfPresent(SidebarThemeColors.self, forKey: .sidebar) ?? fallback.sidebar
         toolbar = try container.decodeIfPresent(ToolbarThemeColors.self, forKey: .toolbar) ?? fallback.toolbar
         fonts = try container.decodeIfPresent(ThemeFonts.self, forKey: .fonts) ?? fallback.fonts
-        spacing = try container.decodeIfPresent(ThemeSpacing.self, forKey: .spacing) ?? fallback.spacing
-        typography = try container.decodeIfPresent(ThemeTypography.self, forKey: .typography) ?? fallback.typography
-        iconSizes = try container.decodeIfPresent(ThemeIconSizes.self, forKey: .iconSizes) ?? fallback.iconSizes
-        cornerRadius = try container.decodeIfPresent(ThemeCornerRadius.self, forKey: .cornerRadius) ?? fallback.cornerRadius
-        rowHeights = try container.decodeIfPresent(ThemeRowHeights.self, forKey: .rowHeights) ?? fallback.rowHeights
-        animations = try container.decodeIfPresent(ThemeAnimations.self, forKey: .animations) ?? fallback.animations
     }
 }
 

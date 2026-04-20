@@ -35,7 +35,7 @@ struct AIChatCodeBlockView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color(nsColor: .separatorColor))
-                    .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
             }
 
             Spacer()
@@ -291,9 +291,9 @@ private struct CodeBlockGroupBoxStyle: GroupBoxStyle {
             configuration.content
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.large))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
-            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.large)
+            RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         )
     }

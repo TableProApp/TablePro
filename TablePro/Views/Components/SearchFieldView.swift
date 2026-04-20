@@ -11,7 +11,7 @@ struct SearchFieldView: View {
     var fontSize: CGFloat?
 
     var body: some View {
-        let resolvedSize = fontSize ?? ThemeEngine.shared.activeTheme.typography.body
+        let resolvedSize = fontSize ?? 13
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: resolvedSize))
@@ -32,6 +32,6 @@ struct SearchFieldView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }

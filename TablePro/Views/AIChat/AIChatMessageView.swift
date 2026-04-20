@@ -51,7 +51,7 @@ struct AIChatMessageView: View {
                 }
                 .padding(8)
                 .background(Color.accentColor.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.large))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 // Assistant: role header above content
                 roleHeader

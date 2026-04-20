@@ -206,7 +206,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         LinkedFolderWatcher.shared.stop()
-        UserDefaults.standard.synchronize()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }
 

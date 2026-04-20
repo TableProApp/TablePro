@@ -149,7 +149,7 @@ struct RightSidebarView: View {
             SearchFieldView(
                 placeholder: "Search for field...",
                 text: $searchText,
-                fontSize: ThemeEngine.shared.activeTheme.typography.small
+                fontSize: 11
             )
             .padding(.horizontal, 10)
 
@@ -159,7 +159,7 @@ struct RightSidebarView: View {
                 Section {
                     if filtered.isEmpty && !searchText.isEmpty {
                         Text("No matching fields")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity)
                     } else {

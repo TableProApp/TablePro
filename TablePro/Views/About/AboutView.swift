@@ -12,31 +12,31 @@ struct AboutView: View {
     @State private var hoveredLink: String?
 
     var body: some View {
-        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.md) {
+        VStack(spacing: 16) {
             Spacer()
 
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .frame(width: 80, height: 80)
 
-            VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxs) {
+            VStack(spacing: 4) {
                 Text("TablePro")
                     .font(
                         .system(
-                            size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge, weight: .semibold,
+                            size: 24, weight: .semibold,
                             design: .rounded))
 
                 Text("Version \(Bundle.main.appVersion) (Build \(Bundle.main.buildNumber))")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Text("© 2026 Ngo Quoc Dat.\n\(String(localized: "All rights reserved."))")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
 
-            HStack(spacing: ThemeEngine.shared.activeTheme.spacing.lg) {
+            HStack(spacing: 20) {
                 linkButton(
                     title: String(localized: "Website"),
                     icon: "globe",
@@ -70,11 +70,11 @@ struct AboutView: View {
                 NSWorkspace.shared.open(link)
             }
         } label: {
-            VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxxs) {
+            VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                    .font(.body)
                 Text(title)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .underline(hoveredLink == title)
             }
             .foregroundStyle(.secondary)

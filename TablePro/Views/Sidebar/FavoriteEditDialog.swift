@@ -85,9 +85,9 @@ internal struct FavoriteEditDialog: View {
                         .scrollContentBackground(.hidden)
                         .padding(4)
                         .background(Color(nsColor: .textBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
                         .overlay(
-                            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                            RoundedRectangle(cornerRadius: 4)
                                 .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                         )
                 }

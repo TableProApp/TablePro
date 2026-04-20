@@ -4619,6 +4619,7 @@
       }
     },
     "Animations" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5897,6 +5898,7 @@
       }
     },
     "Body" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -6325,6 +6327,7 @@
       }
     },
     "Caption" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9372,6 +9375,7 @@
       }
     },
     "Corner Radius" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -12595,6 +12599,7 @@
       }
     },
     "Duplicate it to customize colors and layout." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -12615,6 +12620,9 @@
           }
         }
       }
+    },
+    "Duplicate it to customize colors." : {
+
     },
     "Duplicate Row" : {
       "localizations" : {
@@ -13965,6 +13973,9 @@
         }
       }
     },
+    "Execute All Statements" : {
+
+    },
     "Execute all statements in a single transaction. If any statement fails, all changes are rolled back." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15023,6 +15034,7 @@
       }
     },
     "Extra Large" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15887,6 +15899,7 @@
       }
     },
     "Fast" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -17587,6 +17600,7 @@
       }
     },
     "Huge" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -17763,6 +17777,7 @@
       }
     },
     "Icon Sizes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19940,6 +19955,7 @@
       }
     },
     "Large" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -20139,6 +20155,7 @@
       }
     },
     "Layout" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21058,6 +21075,7 @@
       }
     },
     "Massive" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21326,6 +21344,7 @@
       }
     },
     "Medium" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29325,6 +29344,9 @@
         }
       }
     },
+    "Reset to System Default" : {
+
+    },
     "Reset Zoom" : {
       "localizations" : {
         "tr" : {
@@ -29770,6 +29792,7 @@
       }
     },
     "Row Heights" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32605,6 +32628,7 @@
       }
     },
     "Slow" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32630,6 +32654,7 @@
 
     },
     "Small" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32696,6 +32721,7 @@
       }
     },
     "Smooth" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -32899,6 +32925,7 @@
       }
     },
     "Spacing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33855,6 +33882,7 @@
       }
     },
     "Status Dot" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36354,6 +36382,7 @@
       }
     },
     "Tiny" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36376,6 +36405,7 @@
       }
     },
     "Tiny Dot" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36398,6 +36428,7 @@
       }
     },
     "Title 2" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -36420,6 +36451,7 @@
       }
     },
     "Title 3" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37388,6 +37420,7 @@
       }
     },
     "Typography" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

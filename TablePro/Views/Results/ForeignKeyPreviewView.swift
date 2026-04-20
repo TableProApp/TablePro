@@ -49,7 +49,7 @@ struct ForeignKeyPreviewView: View {
     private var header: some View {
         HStack {
             Text("\(fkInfo.column) → \(referencedTableDisplay).\(fkInfo.referencedColumn)")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
+                .font(.system(.subheadline, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -66,7 +66,7 @@ struct ForeignKeyPreviewView: View {
         if cellValue == nil {
             Text("NULL — no referenced row")
                 .foregroundStyle(.secondary)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else if isLoading {
@@ -76,12 +76,12 @@ struct ForeignKeyPreviewView: View {
         } else if let errorMessage {
             Text(errorMessage)
                 .foregroundStyle(Color(nsColor: .systemRed))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .padding(10)
         } else if values.isEmpty {
             Text("Referenced row not found")
                 .foregroundStyle(.secondary)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(height: 60)
         } else {
@@ -91,20 +91,20 @@ struct ForeignKeyPreviewView: View {
                         let (col, value) = pair
                         HStack(alignment: .top, spacing: 8) {
                             Text(col)
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
+                                .font(.system(.subheadline, design: .monospaced))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 120, alignment: .trailing)
                                 .lineLimit(1)
 
                             if let val = value {
                                 Text(val)
-                                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                                    .font(.system(.callout, design: .monospaced))
                                     .foregroundStyle(.primary)
                                     .lineLimit(3)
                                     .textSelection(.enabled)
                             } else {
                                 Text("NULL")
-                                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                                    .font(.system(.callout, design: .monospaced))
                                     .foregroundStyle(.tertiary)
                                     .italic()
                             }

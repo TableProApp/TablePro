@@ -379,6 +379,7 @@ final class VimEngine {
                 let range = NSRange(location: pos, length: deleteCount)
                 register.text = buffer.string(in: range)
                 register.isLinewise = false
+                register.syncToPasteboard()
                 buffer.replaceCharacters(in: range, with: "")
             }
             return true
@@ -489,6 +490,7 @@ final class VimEngine {
             if sel.length > 0 {
                 register.text = buffer.string(in: sel)
                 register.isLinewise = isLinewise
+                register.syncToPasteboard()
                 buffer.replaceCharacters(in: sel, with: "")
             }
             mode = .normal
@@ -499,6 +501,7 @@ final class VimEngine {
             if sel.length > 0 {
                 register.text = buffer.string(in: sel)
                 register.isLinewise = isLinewise
+                register.syncToPasteboard()
             }
             mode = .normal
             buffer.setSelectedRange(NSRange(location: sel.location, length: 0))
@@ -509,6 +512,7 @@ final class VimEngine {
             if sel.length > 0 {
                 register.text = buffer.string(in: sel)
                 register.isLinewise = isLinewise
+                register.syncToPasteboard()
                 buffer.replaceCharacters(in: sel, with: "")
             }
             mode = .insert
@@ -750,6 +754,7 @@ final class VimEngine {
         let deleteRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
         register.text = buffer.string(in: deleteRange)
         register.isLinewise = true
+        register.syncToPasteboard()
         buffer.replaceCharacters(in: deleteRange, with: "")
         // Position cursor at start of next line (or current position if at end)
         let newPos = min(startRange.location, max(0, buffer.length - 1))
@@ -773,6 +778,7 @@ final class VimEngine {
         let yankRange = NSRange(location: startRange.location, length: endOffset - startRange.location)
         register.text = buffer.string(in: yankRange)
         register.isLinewise = true
+        register.syncToPasteboard()
     }
 
     private func changeLine(_ count: Int, in buffer: VimTextBuffer) {
@@ -791,6 +797,7 @@ final class VimEngine {
         let deleteRange = NSRange(location: startRange.location, length: deleteEnd - startRange.location)
         register.text = buffer.string(in: deleteRange)
         register.isLinewise = true
+        register.syncToPasteboard()
         buffer.replaceCharacters(in: deleteRange, with: "")
         buffer.setSelectedRange(NSRange(location: startRange.location, length: 0))
         mode = .insert
@@ -867,6 +874,7 @@ final class VimEngine {
 
         register.text = buffer.string(in: range)
         register.isLinewise = linewise
+        register.syncToPasteboard()
 
         switch op {
         case .delete:

@@ -21,7 +21,7 @@ struct CompletionTextField: NSViewRepresentable {
         textField.placeholderString = placeholder
         textField.bezelStyle = .roundedBezel
         textField.controlSize = .small
-        textField.font = .systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium)
+        textField.font = .systemFont(ofSize: 12)
         textField.delegate = context.coordinator
         textField.stringValue = text
         textField.completionItems = completions

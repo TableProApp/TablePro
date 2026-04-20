@@ -48,7 +48,7 @@ struct SQLReviewPopover: View {
     private var contentHeight: CGFloat {
         let lineHeight: CGFloat = 18
         let headerHeight: CGFloat = 30
-        let padding: CGFloat = ThemeEngine.shared.activeTheme.spacing.md * 2 + ThemeEngine.shared.activeTheme.spacing.sm
+        let padding: CGFloat = 16 * 2 + 12
         let editorInsets: CGFloat = 16 // top + bottom content insets
 
         // Count lines directly from statements to avoid recomputing combinedSQL.
@@ -72,7 +72,7 @@ struct SQLReviewPopover: View {
     }
 
     var body: some View {
-        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.sm) {
+        VStack(spacing: 12) {
             headerView
             if statements.isEmpty {
                 emptyState
@@ -80,7 +80,7 @@ struct SQLReviewPopover: View {
                 editorView
             }
         }
-        .padding(ThemeEngine.shared.activeTheme.spacing.md)
+        .padding(16)
         .frame(width: 520, height: contentHeight)
         .onExitCommand {
             dismiss()
@@ -101,18 +101,18 @@ struct SQLReviewPopover: View {
     private var headerView: some View {
         HStack {
             Text("\(PluginManager.shared.queryLanguageName(for: databaseType)) Preview")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
             if !statements.isEmpty {
                 Text(
                     "(\(statements.count) \(statements.count == 1 ? String(localized: "statement") : String(localized: "statements")))"
                 )
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
             Spacer()
             if !statements.isEmpty {
                 Button(action: copyAllToClipboard) {
-                    HStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxs) {
+                    HStack(spacing: 4) {
                         Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         Text(copied ? String(localized: "Copied!") : String(localized: "Copy All"))
                     }
@@ -126,13 +126,13 @@ struct SQLReviewPopover: View {
     // MARK: - Empty State
 
     private var emptyState: some View {
-        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xs) {
+        VStack(spacing: 8) {
             Spacer()
             Image(systemName: "doc.plaintext")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.huge))
+                .font(.system(size: 32))
                 .foregroundStyle(.tertiary)
             Text(String(localized: "No pending changes"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
         }
@@ -150,17 +150,17 @@ struct SQLReviewPopover: View {
                 configuration: Self.makeConfiguration(),
                 state: $editorState
             )
-            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .overlay(
-                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
+                RoundedRectangle(cornerRadius: 6)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
             )
         } else {
             // Lightweight placeholder while SourceEditor loads
             Color(nsColor: .textBackgroundColor)
-                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
+                    RoundedRectangle(cornerRadius: 6)
                         .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
                 )
         }
@@ -173,7 +173,7 @@ struct SQLReviewPopover: View {
             appearance: .init(
                 theme: TableProEditorTheme.make(),
                 font: NSFont.monospacedSystemFont(
-                    ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .regular),
+                    ofSize: 12, weight: .regular),
                 wrapLines: true
             ),
             behavior: .init(

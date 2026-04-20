@@ -45,28 +45,28 @@ struct SectionHeaderView<Actions: View>: View {
     }
 
     private var headerContent: some View {
-        HStack(spacing: ThemeEngine.shared.activeTheme.spacing.xs) {
+        HStack(spacing: 8) {
             if isCollapsible {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .animation(.easeInOut(duration: ThemeEngine.shared.activeTheme.animations.normal), value: isExpanded)
+                    .animation(.easeInOut(duration: 0.15), value: isExpanded)
             }
 
             if let icon = icon {
                 Image(systemName: icon)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                    .font(.body)
                     .foregroundStyle(ThemeEngine.shared.colors.ui.secondaryTextSwiftUI)
             }
 
             Text(title)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(ThemeEngine.shared.colors.ui.primaryTextSwiftUI)
 
             if let count = count {
                 Text("(\(count))")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(ThemeEngine.shared.colors.ui.tertiaryTextSwiftUI)
             }
 
@@ -74,14 +74,14 @@ struct SectionHeaderView<Actions: View>: View {
 
             actions()
         }
-        .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.sm)
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xs)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(
             isCollapsible ?
                 ThemeEngine.shared.colors.ui.controlBackgroundSwiftUI.opacity(0.5) :
                 Color.clear
         )
-        .cornerRadius(ThemeEngine.shared.activeTheme.cornerRadius.medium)
+        .cornerRadius(6)
         .contentShape(Rectangle())
     }
 }

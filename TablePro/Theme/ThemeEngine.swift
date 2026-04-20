@@ -430,8 +430,8 @@ extension DatabaseType {
 extension View {
     func cardStyle() -> some View {
         self
-            .background(ThemeEngine.shared.colors.ui.controlBackgroundSwiftUI)
-            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     func toolbarButtonStyle() -> some View {

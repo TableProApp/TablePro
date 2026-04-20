@@ -110,7 +110,7 @@ private extension HistoryPanelView {
                         .contextMenu { contextMenu(for: entry) }
                 }
                 .listStyle(.plain)
-                .environment(\.defaultMinListRowHeight, ThemeEngine.shared.activeTheme.rowHeights.comfortable)
+                .environment(\.defaultMinListRowHeight, 44)
                 .onDeleteCommand {
                     deleteSelectedEntry()
                 }
@@ -154,10 +154,10 @@ private extension HistoryPanelView {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
                 Text("No Matching Queries")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
                 Text("Try adjusting your search terms\nor date filter.")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             } else {
@@ -166,10 +166,10 @@ private extension HistoryPanelView {
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
                 Text("No Query History Yet")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
                 Text("Your executed queries will\nappear here for quick access.")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
             }
@@ -229,10 +229,10 @@ private extension HistoryPanelView {
                 // Metadata
                 VStack(alignment: .leading, spacing: 4) {
                     Text(buildPrimaryMetadata(entry))
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Text(buildSecondaryMetadata(entry))
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -269,10 +269,10 @@ private extension HistoryPanelView {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
             Text("Select a Query")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .medium))
+                .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
             Text("Choose a query from the list\nto see its full content here.")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
@@ -414,25 +414,25 @@ private struct HistoryRowSwiftUI: View {
         HStack(spacing: 8) {
             Image(systemName: entry.wasSuccessful ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(entry.wasSuccessful ? Color(nsColor: .systemGreen) : Color(nsColor: .systemRed))
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.default))
+                .font(.system(size: 14))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.queryPreview)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .lineLimit(1)
 
                 Text(entry.databaseName)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 HStack {
                     Text(relativeTime(entry.executedAt))
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.tertiary)
                     Spacer()
                     Text(entry.formattedExecutionTime)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.tertiary)
                 }
             }

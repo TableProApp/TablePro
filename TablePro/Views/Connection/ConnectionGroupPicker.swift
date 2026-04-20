@@ -240,13 +240,13 @@ private struct GroupColorPicker: View {
                 Button(action: { selectedColor = color }) {
                     Circle()
                         .fill(color == .none ? Color(nsColor: .quaternaryLabelColor) : color.color)
-                        .frame(width: ThemeEngine.shared.activeTheme.iconSizes.medium, height: ThemeEngine.shared.activeTheme.iconSizes.medium)
+                        .frame(width: 16, height: 16)
                         .overlay(
                             Circle()
                                 .stroke(Color.primary, lineWidth: selectedColor == color ? 2 : 0)
                                 .frame(
-                                    width: ThemeEngine.shared.activeTheme.iconSizes.large,
-                                    height: ThemeEngine.shared.activeTheme.iconSizes.large
+                                    width: 20,
+                                    height: 20
                                 )
                         )
                 }

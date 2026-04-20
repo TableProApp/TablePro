@@ -272,45 +272,45 @@ internal struct BadgeColors: Codable, Equatable, Sendable {
 // MARK: - UI Theme Colors
 
 internal struct UIThemeColors: Codable, Equatable, Sendable {
-    var windowBackground: String
-    var controlBackground: String
-    var cardBackground: String
-    var border: String
-    var primaryText: String
-    var secondaryText: String
-    var tertiaryText: String
+    var windowBackground: String?
+    var controlBackground: String?
+    var cardBackground: String?
+    var border: String?
+    var primaryText: String?
+    var secondaryText: String?
+    var tertiaryText: String?
     var accentColor: String?
-    var selectionBackground: String
-    var hoverBackground: String
+    var selectionBackground: String?
+    var hoverBackground: String?
     var status: StatusColors
     var badges: BadgeColors
 
     static let defaultLight = UIThemeColors(
-        windowBackground: "#ECECEC",
-        controlBackground: "#FFFFFF",
-        cardBackground: "#FFFFFF",
-        border: "#D1D1D6",
-        primaryText: "#000000",
-        secondaryText: "#3C3C43",
-        tertiaryText: "#8E8E93",
+        windowBackground: nil,
+        controlBackground: nil,
+        cardBackground: nil,
+        border: nil,
+        primaryText: nil,
+        secondaryText: nil,
+        tertiaryText: nil,
         accentColor: nil,
-        selectionBackground: "#0A84FF",
-        hoverBackground: "#F2F2F7",
+        selectionBackground: nil,
+        hoverBackground: nil,
         status: .defaultLight,
         badges: .defaultLight
     )
 
     init(
-        windowBackground: String,
-        controlBackground: String,
-        cardBackground: String,
-        border: String,
-        primaryText: String,
-        secondaryText: String,
-        tertiaryText: String,
+        windowBackground: String?,
+        controlBackground: String?,
+        cardBackground: String?,
+        border: String?,
+        primaryText: String?,
+        secondaryText: String?,
+        tertiaryText: String?,
         accentColor: String?,
-        selectionBackground: String,
-        hoverBackground: String,
+        selectionBackground: String?,
+        hoverBackground: String?,
         status: StatusColors,
         badges: BadgeColors
     ) {
@@ -333,19 +333,15 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
         let fallback = UIThemeColors.defaultLight
 
         windowBackground = try container.decodeIfPresent(String.self, forKey: .windowBackground)
-            ?? fallback.windowBackground
         controlBackground = try container.decodeIfPresent(String.self, forKey: .controlBackground)
-            ?? fallback.controlBackground
-        cardBackground = try container.decodeIfPresent(String.self, forKey: .cardBackground) ?? fallback.cardBackground
-        border = try container.decodeIfPresent(String.self, forKey: .border) ?? fallback.border
-        primaryText = try container.decodeIfPresent(String.self, forKey: .primaryText) ?? fallback.primaryText
-        secondaryText = try container.decodeIfPresent(String.self, forKey: .secondaryText) ?? fallback.secondaryText
-        tertiaryText = try container.decodeIfPresent(String.self, forKey: .tertiaryText) ?? fallback.tertiaryText
+        cardBackground = try container.decodeIfPresent(String.self, forKey: .cardBackground)
+        border = try container.decodeIfPresent(String.self, forKey: .border)
+        primaryText = try container.decodeIfPresent(String.self, forKey: .primaryText)
+        secondaryText = try container.decodeIfPresent(String.self, forKey: .secondaryText)
+        tertiaryText = try container.decodeIfPresent(String.self, forKey: .tertiaryText)
         accentColor = try container.decodeIfPresent(String.self, forKey: .accentColor)
         selectionBackground = try container.decodeIfPresent(String.self, forKey: .selectionBackground)
-            ?? fallback.selectionBackground
         hoverBackground = try container.decodeIfPresent(String.self, forKey: .hoverBackground)
-            ?? fallback.hoverBackground
         status = try container.decodeIfPresent(StatusColors.self, forKey: .status) ?? fallback.status
         badges = try container.decodeIfPresent(BadgeColors.self, forKey: .badges) ?? fallback.badges
     }
@@ -354,21 +350,21 @@ internal struct UIThemeColors: Codable, Equatable, Sendable {
 // MARK: - Sidebar Theme Colors
 
 internal struct SidebarThemeColors: Codable, Equatable, Sendable {
-    var background: String
-    var text: String
-    var selectedItem: String
-    var hover: String
-    var sectionHeader: String
+    var background: String?
+    var text: String?
+    var selectedItem: String?
+    var hover: String?
+    var sectionHeader: String?
 
     static let defaultLight = SidebarThemeColors(
-        background: "#F5F5F5",
-        text: "#000000",
-        selectedItem: "#0A84FF",
-        hover: "#E5E5EA",
-        sectionHeader: "#8E8E93"
+        background: nil,
+        text: nil,
+        selectedItem: nil,
+        hover: nil,
+        sectionHeader: nil
     )
 
-    init(background: String, text: String, selectedItem: String, hover: String, sectionHeader: String) {
+    init(background: String?, text: String?, selectedItem: String?, hover: String?, sectionHeader: String?) {
         self.background = background
         self.text = text
         self.selectedItem = selectedItem
@@ -378,37 +374,35 @@ internal struct SidebarThemeColors: Codable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let fallback = SidebarThemeColors.defaultLight
 
-        background = try container.decodeIfPresent(String.self, forKey: .background) ?? fallback.background
-        text = try container.decodeIfPresent(String.self, forKey: .text) ?? fallback.text
-        selectedItem = try container.decodeIfPresent(String.self, forKey: .selectedItem) ?? fallback.selectedItem
-        hover = try container.decodeIfPresent(String.self, forKey: .hover) ?? fallback.hover
-        sectionHeader = try container.decodeIfPresent(String.self, forKey: .sectionHeader) ?? fallback.sectionHeader
+        background = try container.decodeIfPresent(String.self, forKey: .background)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        selectedItem = try container.decodeIfPresent(String.self, forKey: .selectedItem)
+        hover = try container.decodeIfPresent(String.self, forKey: .hover)
+        sectionHeader = try container.decodeIfPresent(String.self, forKey: .sectionHeader)
     }
 }
 
 // MARK: - Toolbar Theme Colors
 
 internal struct ToolbarThemeColors: Codable, Equatable, Sendable {
-    var secondaryText: String
-    var tertiaryText: String
+    var secondaryText: String?
+    var tertiaryText: String?
 
     static let defaultLight = ToolbarThemeColors(
-        secondaryText: "#3C3C43",
-        tertiaryText: "#8E8E93"
+        secondaryText: nil,
+        tertiaryText: nil
     )
 
-    init(secondaryText: String, tertiaryText: String) {
+    init(secondaryText: String?, tertiaryText: String?) {
         self.secondaryText = secondaryText
         self.tertiaryText = tertiaryText
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let fallback = ToolbarThemeColors.defaultLight
 
-        secondaryText = try container.decodeIfPresent(String.self, forKey: .secondaryText) ?? fallback.secondaryText
-        tertiaryText = try container.decodeIfPresent(String.self, forKey: .tertiaryText) ?? fallback.tertiaryText
+        secondaryText = try container.decodeIfPresent(String.self, forKey: .secondaryText)
+        tertiaryText = try container.decodeIfPresent(String.self, forKey: .tertiaryText)
     }
 }

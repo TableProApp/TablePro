@@ -53,7 +53,7 @@ struct LicenseSettingsView: View {
                     .controlSize(.small)
             }
             .padding(12)
-            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.large))
+            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
         }
 
         Section("License") {

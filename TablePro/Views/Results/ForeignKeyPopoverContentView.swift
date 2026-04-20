@@ -43,7 +43,7 @@ struct ForeignKeyPopoverContentView: View {
         VStack(spacing: 0) {
             TextField("Search...", text: $searchText)
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
 
@@ -56,7 +56,7 @@ struct ForeignKeyPopoverContentView: View {
             } else if filteredValues.isEmpty {
                 Text("No values found")
                     .foregroundStyle(.secondary)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                    .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 60)
             } else {
@@ -97,13 +97,13 @@ struct ForeignKeyPopoverContentView: View {
     private func rowLabel(for value: FKValue) -> some View {
         if value.id == currentValue {
             Text(value.display)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.tint)
                 .lineLimit(1)
                 .truncationMode(.tail)
         } else {
             Text(value.display)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)

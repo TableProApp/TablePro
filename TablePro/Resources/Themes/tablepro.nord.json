@@ -76,56 +76,5 @@
         "editorFontSize": 13,
         "dataGridFontFamily": "System Mono",
         "dataGridFontSize": 13
-    },
-    "spacing": {
-        "xxxs": 2,
-        "xxs": 4,
-        "xs": 8,
-        "sm": 12,
-        "md": 16,
-        "lg": 20,
-        "xl": 24,
-        "listRowInsets": {
-            "top": 4,
-            "leading": 8,
-            "bottom": 4,
-            "trailing": 8
-        }
-    },
-    "typography": {
-        "tiny": 9,
-        "caption": 10,
-        "small": 11,
-        "medium": 12,
-        "body": 13,
-        "title3": 15,
-        "title2": 17
-    },
-    "iconSizes": {
-        "tinyDot": 6,
-        "statusDot": 8,
-        "small": 12,
-        "default": 14,
-        "medium": 16,
-        "large": 20,
-        "extraLarge": 24,
-        "huge": 32,
-        "massive": 64
-    },
-    "cornerRadius": {
-        "small": 4,
-        "medium": 6,
-        "large": 8
-    },
-    "rowHeights": {
-        "compact": 24,
-        "table": 32,
-        "comfortable": 44
-    },
-    "animations": {
-        "fast": 0.1,
-        "normal": 0.15,
-        "smooth": 0.2,
-        "slow": 0.3
     }
 }

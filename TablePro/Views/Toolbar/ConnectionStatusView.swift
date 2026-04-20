@@ -26,7 +26,7 @@ struct ConnectionStatusView: View {
 
             // Vertical separator
             Divider()
-                .frame(height: ThemeEngine.shared.activeTheme.spacing.sm)
+                .frame(height: 12)
 
             // Database name (clickable to switch databases)
             if !databaseName.isEmpty {
@@ -40,7 +40,7 @@ struct ConnectionStatusView: View {
     /// Database type and version info
     private var databaseInfoSection: some View {
         Text(formattedDatabaseInfo)
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .regular, design: .monospaced))
+            .font(.system(.subheadline, design: .monospaced))
             .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
             .lineLimit(1)
             .truncationMode(.middle)
@@ -77,7 +77,7 @@ struct ConnectionStatusView: View {
                 .foregroundStyle(ThemeEngine.shared.colors.toolbar.secondaryTextSwiftUI)
 
             Text(databaseName)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
         }
     }

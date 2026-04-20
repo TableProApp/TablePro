@@ -46,28 +46,28 @@ struct TableRow: View {
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: table.type == .view ? "eye" : "tablecells")
                     .foregroundStyle(TableRowLogic.iconColor(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
-                    .frame(width: ThemeEngine.shared.activeTheme.iconSizes.default)
+                    .frame(width: 14)
 
                 // Pending operation indicator
                 if isPendingDelete {
                     Image(systemName: "minus.circle.fill")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption))
+                        .font(.caption)
                         .foregroundStyle(Color(nsColor: .systemRed))
                         .offset(x: 4, y: 4)
                 } else if isPendingTruncate {
                     Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption))
+                        .font(.caption)
                         .foregroundStyle(Color(nsColor: .systemOrange))
                         .offset(x: 4, y: 4)
                 }
             }
 
             Text(table.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
                 .foregroundStyle(TableRowLogic.textColor(isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
         }
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(TableRowLogic.accessibilityLabel(table: table, isPendingDelete: isPendingDelete, isPendingTruncate: isPendingTruncate))
     }

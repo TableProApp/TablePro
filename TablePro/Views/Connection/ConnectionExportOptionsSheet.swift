@@ -30,7 +30,7 @@ struct ConnectionExportOptionsSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(String(localized: "Export Options"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 8) {
@@ -41,7 +41,7 @@ struct ConnectionExportOptionsSheet: View {
 
                     if !isProAvailable {
                         Text("Pro")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .medium))
+                            .font(.caption.weight(.medium))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
@@ -54,7 +54,7 @@ struct ConnectionExportOptionsSheet: View {
 
                 if includeCredentials {
                     Text("Passwords will be encrypted with the passphrase you provide.")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
 
                     SecureField("Passphrase (8+ characters)", text: $passphrase)
@@ -65,7 +65,7 @@ struct ConnectionExportOptionsSheet: View {
 
                     if !passphrase.isEmpty && !confirmPassphrase.isEmpty && passphrase != confirmPassphrase {
                         Text("Passphrases do not match")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(Color(nsColor: .systemRed))
                     }
                 }

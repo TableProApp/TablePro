@@ -371,7 +371,7 @@ final class DataGridCellFactory {
     private static let maxMeasureChars = 50
     /// Font for measuring header
     private var headerFont: NSFont {
-        NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold)
+        NSFont.systemFont(ofSize: 13, weight: .semibold)
     }
 
     /// Calculate column width based on header name only (used for initial display)

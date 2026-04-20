@@ -17,7 +17,7 @@ struct InlineErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color(nsColor: .systemRed))
             Text(message)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .lineLimit(3)
                 .textSelection(.enabled)
             Spacer()

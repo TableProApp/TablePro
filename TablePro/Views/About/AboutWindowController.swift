@@ -40,5 +40,15 @@ final class AboutWindowController {
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.panel = nil
+            }
+        }
     }
 }

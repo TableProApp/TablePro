@@ -20,15 +20,15 @@ struct ResultSuccessView: View {
                 .font(.largeTitle)
                 .foregroundStyle(Color(nsColor: .systemGreen))
             Text(String(format: String(localized: "%lld row(s) affected"), Int64(rowsAffected)))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
             if let time = executionTime {
                 Text(String(format: "%.3fs", time))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             if let status = statusMessage, !status.isEmpty {
                 Text(status)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()

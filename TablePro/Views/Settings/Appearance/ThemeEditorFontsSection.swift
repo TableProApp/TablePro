@@ -84,10 +84,10 @@ struct ThemeEditorFontsSection: View {
             Text("SELECT * FROM users WHERE id = 42;")
                 .font(Font(editorFont))
                 .foregroundStyle(theme.editor.text.swiftUIColor)
-                .padding(theme.spacing.xs)
+                .padding(8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(theme.editor.background.swiftUIColor)
-                .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius.small))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
     }
 

@@ -144,7 +144,7 @@ final class ShortcutRecorderNSView: NSView {
         // Text
         let text = displayText
         let textColor: NSColor = isRecording ? .secondaryLabelColor : .labelColor
-        let font = NSFont.systemFont(ofSize: ThemeEngine.shared.activeTheme.typography.medium, weight: .medium)
+        let font = NSFont.systemFont(ofSize: 12, weight: .medium)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: textColor

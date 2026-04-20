@@ -35,7 +35,7 @@ struct ResultTabBar: View {
                     .foregroundStyle(.secondary)
             }
             Text(rs.label)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .lineLimit(1)
             if !rs.isPinned {
                 Button { onClose?(rs.id) } label: {
@@ -49,7 +49,7 @@ struct ResultTabBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+            RoundedRectangle(cornerRadius: 4)
                 .fill(isActive ? Color(nsColor: .selectedControlColor) : Color.clear)
         )
         .contentShape(Rectangle())

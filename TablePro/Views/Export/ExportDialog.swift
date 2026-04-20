@@ -205,7 +205,7 @@ struct ExportDialog: View {
             // Header with title and selection count
             HStack {
                 Text("Items")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
 
                 Spacer()
@@ -213,7 +213,7 @@ struct ExportDialog: View {
                 if let plugin = currentPlugin {
                     ForEach(type(of: plugin).perTableOptionColumns) { column in
                         Text(column.label)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
                             .frame(width: column.width, alignment: .center)
                     }
@@ -232,7 +232,7 @@ struct ExportDialog: View {
                     ProgressView()
                         .scaleEffect(0.8)
                     Text("Loading databases...")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
                     Spacer()
@@ -257,7 +257,7 @@ struct ExportDialog: View {
                     HStack {
                         Spacer()
                         Text("No export formats available. Enable export plugins in Settings > Plugins.")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -286,7 +286,7 @@ struct ExportDialog: View {
                     let description = formatDescription(for: config.formatId)
                     if !description.isEmpty {
                         Text(description)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -295,29 +295,29 @@ struct ExportDialog: View {
                 VStack(spacing: 2) {
                     if isProGatedFormat(config.formatId) {
                         Text(String(localized: "XLSX export requires a Pro license."))
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(Color(nsColor: .systemOrange))
                         Button(String(localized: "Activate License...")) {
                             showActivationSheet = true
                         }
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .buttonStyle(.link)
                     } else if case .streamingQuery = mode {
                         Text("All rows")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else if isQueryResultsMode {
                         Text("\(queryResultsRowCount) row\(queryResultsRowCount == 1 ? "" : "s") to export")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("\(exportableCount) table\(exportableCount == 1 ? "" : "s") to export")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
 
                         if let plugin = currentPlugin, !type(of: plugin).perTableOptionColumns.isEmpty, exportableCount < selectedCount {
                             Text("\(selectedCount - exportableCount) skipped (no options)")
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                                .font(.subheadline)
                                 .foregroundStyle(Color(nsColor: .systemOrange))
                         }
                     }
@@ -349,17 +349,17 @@ struct ExportDialog: View {
             // File name section
             VStack(alignment: .leading, spacing: 6) {
                 Text("File name")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 4) {
                     TextField("export", text: $config.fileName)
                         .textFieldStyle(.roundedBorder)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                        .font(.body)
 
                     Text(".\(fileExtension)")
                         .foregroundStyle(.secondary)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, design: .monospaced))
+                        .font(.system(.body, design: .monospaced))
                         .lineLimit(1)
                         .fixedSize()
                 }
@@ -367,7 +367,7 @@ struct ExportDialog: View {
                 // Show validation error if filename is invalid
                 if let validationError = fileNameValidationError {
                     Text(validationError)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(Color(nsColor: .systemRed))
                 }
             }
@@ -392,7 +392,7 @@ struct ExportDialog: View {
                         .scaleEffect(0.7)
 
                     Text(exportService?.state.currentTable ?? "")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)

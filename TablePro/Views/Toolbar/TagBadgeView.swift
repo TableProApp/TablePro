@@ -20,16 +20,16 @@ struct TagBadgeView: View {
 
     var body: some View {
         Text(displayName)
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(tag.color.color)
             .lineLimit(1)  // Prevent overflow from very long tag names
-            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.xs)
-            .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .background(
                 Capsule()
                     .fill(tag.color.color.opacity(0.2))
             )
-            .padding(.leading, ThemeEngine.shared.activeTheme.spacing.xs)
+            .padding(.leading, 8)
             .help(String(format: String(localized: "Tag: %@"), tag.name))
             .accessibilityLabel(String(format: String(localized: "Tag: %@"), tag.name))
     }

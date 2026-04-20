@@ -20,33 +20,33 @@ struct WelcomeConnectionRow: View {
         HStack(spacing: 12) {
             connection.type.iconImage
                 .renderingMode(.template)
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
+                .font(.system(size: 16))
                 .foregroundStyle(connection.displayColor)
                 .frame(
-                    width: ThemeEngine.shared.activeTheme.iconSizes.medium,
-                    height: ThemeEngine.shared.activeTheme.iconSizes.medium
+                    width: 16,
+                    height: 16
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(connection.name)
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                        .font(.body.weight(.medium))
                         .foregroundStyle(.primary)
 
                     if let tag = displayTag {
                         Text(tag.name)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                            .font(.system(size: 9))
                             .foregroundStyle(tag.color.color)
-                            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.xxs)
-                            .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxxs)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
                             .background(
-                                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small).fill(
+                                RoundedRectangle(cornerRadius: 4).fill(
                                     tag.color.color.opacity(0.15)))
                     }
                 }
 
                 Text(connectionSubtitle)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .help(connectionSubtitle)
@@ -54,7 +54,7 @@ struct WelcomeConnectionRow: View {
 
             Spacer()
         }
-        .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxs)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .overlay(
             DoubleClickView { onConnect?() }

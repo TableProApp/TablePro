@@ -31,22 +31,22 @@ struct ImportSuccessView: View {
 
             VStack(spacing: 6) {
                 Text(hasErrors ? "Import Completed with Errors" : "Import Successful")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                    .font(.title3.weight(.semibold))
 
                 if let result {
                     if hasErrors {
                         Text("\(result.executedStatements) statements executed, \(result.skippedStatements) failed")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("\(result.executedStatements) statements executed")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     }
 
                     let formattedTime = String(format: "%.2f", result.executionTime)
                     Text(String(format: String(localized: "%@ seconds"), formattedTime))
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -79,11 +79,11 @@ struct ImportSuccessView: View {
                 ForEach(Array(errors.enumerated()), id: \.offset) { _, error in
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Line \(error.line): \(error.statement)")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium, design: .monospaced))
+                            .font(.system(.callout, design: .monospaced))
                             .lineLimit(2)
 
                         Text(error.errorMessage)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }

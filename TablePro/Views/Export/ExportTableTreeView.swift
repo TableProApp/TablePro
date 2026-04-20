@@ -71,10 +71,10 @@ struct ExportTableTreeView: View {
 
             Image(systemName: "cylinder")
                 .foregroundStyle(.blue)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
 
             Text(database.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -107,10 +107,10 @@ struct ExportTableTreeView: View {
 
             Image(systemName: table.wrappedValue.type == .view ? "eye" : "tablecells")
                 .foregroundStyle(table.wrappedValue.type == .view ? .purple : .gray)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
 
             Text(table.wrappedValue.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .lineLimit(1)
                 .truncationMode(.middle)
 

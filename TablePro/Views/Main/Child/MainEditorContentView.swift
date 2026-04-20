@@ -462,10 +462,10 @@ struct MainEditorContentView: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text("No rows returned")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                .font(.body.weight(.medium))
             if let time = executionTime {
                 Text(String(format: "%.3fs", time))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -811,7 +811,7 @@ struct MainEditorContentView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
-                            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                            RoundedRectangle(cornerRadius: 4)
                                 .fill(Color(nsColor: .quaternaryLabelColor))
                         )
                     Text(
@@ -837,7 +837,7 @@ struct MainEditorContentView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .background(
-                            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                            RoundedRectangle(cornerRadius: 4)
                                 .fill(Color(nsColor: .quaternaryLabelColor))
                         )
                     Text("Switch Database")

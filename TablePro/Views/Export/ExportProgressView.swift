@@ -24,7 +24,7 @@ struct ExportProgressView: View {
             Text(totalTables > 1
                 ? String(localized: "Export multiple tables")
                 : String(localized: "Export table"))
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                .font(.title3.weight(.semibold))
 
             // Table info and row count
             VStack(spacing: 8) {
@@ -32,11 +32,11 @@ struct ExportProgressView: View {
                     // Show status message if set, otherwise show table name
                     if !statusMessage.isEmpty {
                         Text(statusMessage)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("\(tableName) (\(tableIndex)/\(totalTables))")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -45,7 +45,7 @@ struct ExportProgressView: View {
 
                     if statusMessage.isEmpty {
                         Text("\(processedRows.formatted())/\(totalRows.formatted()) rows")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, design: .monospaced))
+                            .font(.system(.body, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
                 }

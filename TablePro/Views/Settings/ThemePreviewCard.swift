@@ -30,26 +30,26 @@ struct ThemePreviewCard: View {
     // MARK: - Standard Card
 
     private var standardCard: some View {
-        VStack(spacing: ThemeEngine.shared.activeTheme.spacing.xxs) {
+        VStack(spacing: 4) {
             thumbnail
                 .frame(width: 160, height: 100)
-                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(
-                    RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.medium)
+                    RoundedRectangle(cornerRadius: 6)
                         .strokeBorder(isActive ? Color.accentColor : Color.clear, lineWidth: 2.5)
                 )
                 .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
 
             VStack(spacing: 1) {
                 Text(theme.name)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .lineLimit(1)
                     .foregroundStyle(.primary)
 
                 Text(theme.isBuiltIn
                     ? String(localized: "Built-in")
                     : String(localized: "Custom"))
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny))
+                    .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
         }
@@ -63,9 +63,9 @@ struct ThemePreviewCard: View {
     private var compactCard: some View {
         thumbnail
             .frame(width: 72, height: 45)
-            .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
             .overlay(
-                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                RoundedRectangle(cornerRadius: 4)
                     .strokeBorder(isActive ? Color.accentColor : Color.clear, lineWidth: 0.5)
             )
     }
@@ -103,7 +103,8 @@ struct ThemePreviewCard: View {
     private var sidebarStrip: some View {
         ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(theme.sidebar.background.swiftUIColor)
+                .fill(theme.sidebar.background?.swiftUIColor
+                    ?? Color(nsColor: .windowBackgroundColor))
 
             VStack(alignment: .leading, spacing: size == .compact ? 3 : 4) {
                 let widths: [CGFloat] = size == .compact
@@ -112,8 +113,10 @@ struct ThemePreviewCard: View {
                 ForEach(0..<4, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1)
                         .fill(i == 1
-                            ? theme.sidebar.selectedItem.swiftUIColor.opacity(0.6)
-                            : theme.sidebar.text.swiftUIColor.opacity(0.25))
+                            ? (theme.sidebar.selectedItem?.swiftUIColor
+                                ?? Color(nsColor: .selectedContentBackgroundColor)).opacity(0.6)
+                            : (theme.sidebar.text?.swiftUIColor
+                                ?? Color(nsColor: .labelColor)).opacity(0.25))
                         .frame(
                             width: widths[i],
                             height: codeLineHeight

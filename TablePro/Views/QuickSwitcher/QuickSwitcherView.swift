@@ -33,7 +33,7 @@ internal struct QuickSwitcherSheet: View {
         VStack(spacing: 0) {
             // Header
             Text("Quick Switcher")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .semibold))
+                .font(.body.weight(.semibold))
                 .padding(.vertical, 12)
 
             Divider()
@@ -118,7 +118,7 @@ internal struct QuickSwitcherSheet: View {
                             }
                         } header: {
                             Text(sectionTitle(for: group.kind))
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .semibold))
+                                .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -145,18 +145,18 @@ internal struct QuickSwitcherSheet: View {
 
         return HStack(spacing: 10) {
             Image(systemName: item.iconName)
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.default))
+                .font(.system(size: 14))
                 .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
 
             Text(item.name)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                .font(.body)
                 .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if !item.subtitle.isEmpty {
                 Text(item.subtitle)
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : Color.secondary)
                     .lineLimit(1)
             }
@@ -164,23 +164,23 @@ internal struct QuickSwitcherSheet: View {
             Spacer()
 
             Text(item.kindLabel)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, weight: .medium))
+                .font(.caption.weight(.medium))
                 .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : .secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
-                    RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+                    RoundedRectangle(cornerRadius: 4)
                         .fill(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.15) : Color(nsColor: .quaternaryLabelColor))
                 )
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .listRowBackground(
-            RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small)
+            RoundedRectangle(cornerRadius: 4)
                 .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
                 .padding(.horizontal, 4)
         )
-        .listRowInsets(ThemeEngine.shared.activeTheme.spacing.listRowInsets.swiftUI)
+        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
         .id(item.id)
         .tag(item.id)
@@ -199,7 +199,7 @@ internal struct QuickSwitcherSheet: View {
             ProgressView()
                 .scaleEffect(0.8)
             Text("Loading...")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -208,18 +208,18 @@ internal struct QuickSwitcherSheet: View {
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge))
+                .font(.system(size: 24))
                 .foregroundStyle(.secondary)
 
             if viewModel.searchText.isEmpty {
                 Text("No objects found")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
             } else {
                 Text("No matching objects")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                    .font(.body.weight(.medium))
 
                 Text("No objects match \"\(viewModel.searchText)\"")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
         }

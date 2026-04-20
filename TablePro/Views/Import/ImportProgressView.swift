@@ -14,17 +14,17 @@ struct ImportProgressView: View {
     var body: some View {
         VStack(spacing: 20) {
             Text("Importing...")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.title3, weight: .semibold))
+                .font(.title3.weight(.semibold))
 
             VStack(spacing: 8) {
                 HStack {
                     if !service.state.statusMessage.isEmpty {
                         Text(service.state.statusMessage)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Executed \(service.state.processedStatements) statements")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+                            .font(.body)
 
                         Spacer()
                     }

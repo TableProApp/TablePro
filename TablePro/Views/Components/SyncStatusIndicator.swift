@@ -24,7 +24,7 @@ struct SyncStatusIndicator: View {
                     Text(statusLabel)
                         .contentTransition(.numericText())
                 }
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(foregroundStyle)
                 .animation(.default, value: syncCoordinator.syncStatus)
             }

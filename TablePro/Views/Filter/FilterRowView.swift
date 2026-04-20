@@ -112,7 +112,7 @@ struct FilterRowView: View {
 
             if filter.filterOperator.requiresSecondValue {
                 Text("and")
-                    .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 TextField("Value", text: Binding(
@@ -121,14 +121,14 @@ struct FilterRowView: View {
                 ))
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .frame(minWidth: 80)
                 .accessibilityLabel(String(localized: "Second filter value"))
                 .onSubmit { onSubmit() }
             }
         } else {
             Text("—")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                .font(.callout)
                 .foregroundStyle(.tertiary)
                 .frame(minWidth: 80, alignment: .leading)
         }

@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Structure tab: modify existing tables (add, modify, drop columns, indexes, foreign keys, primary keys)
 
+### Changed
+
+- Theme system: UI colors now use native macOS semantic colors (labelColor, separatorColor, etc.) by default, adapting automatically to light/dark mode, accent color, and high contrast settings. Custom themes can still override with hex values.
+- Theme system: removed Layout tab (typography, spacing, corner radius customization). Views now use native Apple text styles (.body, .caption, .title3, etc.) for accessibility and Dynamic Type support.
+- Empty state views now use native ContentUnavailableView
+
+### Fixed
+
+- About window no longer retains memory after closing
+
 ## [0.33.0] - 2026-04-19
 
 ### Added

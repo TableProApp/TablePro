@@ -19,7 +19,7 @@ struct VimModeIndicatorView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(backgroundColor)
-                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         } else {
             Text(mode.displayLabel)
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
@@ -27,7 +27,7 @@ struct VimModeIndicatorView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(backgroundColor)
-                .clipShape(RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.small))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
     }
 

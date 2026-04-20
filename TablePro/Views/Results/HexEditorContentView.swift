@@ -169,7 +169,7 @@ private struct HexDumpDisplayView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(
-            ofSize: ThemeEngine.shared.activeTheme.typography.small,
+            ofSize: 11,
             weight: .regular
         )
         textView.textContainerInset = NSSize(width: 8, height: 8)
@@ -206,7 +206,7 @@ private struct HexInputTextView: NSViewRepresentable {
         textView.isEditable = true
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(
-            ofSize: ThemeEngine.shared.activeTheme.typography.medium,
+            ofSize: 12,
             weight: .regular
         )
         textView.textContainerInset = NSSize(width: 8, height: 8)

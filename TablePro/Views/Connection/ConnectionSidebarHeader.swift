@@ -92,17 +92,17 @@ struct ConnectionSidebarHeader: View {
                     if let session = currentSession {
                         session.connection.type.iconImage
                             .renderingMode(.template)
-                            .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
+                            .font(.system(size: 16))
                             .foregroundStyle(session.connection.displayColor)
                     } else {
                         Image(systemName: "cylinder")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.iconSizes.medium))
+                            .font(.system(size: 16))
                             .foregroundStyle(.secondary)
                     }
 
                     // Connection name
                     Text(currentSession?.connection.name ?? "No Connection")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.body, weight: .medium))
+                        .font(.body.weight(.medium))
                         .lineLimit(1)
 
                     Spacer()
@@ -113,17 +113,17 @@ struct ConnectionSidebarHeader: View {
                             Circle()
                                 .fill(statusColor(for: session))
                                 .frame(
-                                    width: ThemeEngine.shared.activeTheme.iconSizes.tinyDot,
-                                    height: ThemeEngine.shared.activeTheme.iconSizes.tinyDot)
+                                    width: 6,
+                                    height: 6)
                         }
 
                         Image(systemName: "chevron.down")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.tiny, weight: .medium))
+                            .font(.system(size: 9, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.sm)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -144,8 +144,8 @@ struct ConnectionSidebarHeader: View {
             Circle()
                 .fill(statusColor(for: session))
                 .frame(
-                    width: ThemeEngine.shared.activeTheme.iconSizes.tinyDot,
-                    height: ThemeEngine.shared.activeTheme.iconSizes.tinyDot)
+                    width: 6,
+                    height: 6)
 
             if case .connecting = session.status {
                 ProgressView()

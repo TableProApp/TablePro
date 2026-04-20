@@ -38,16 +38,7 @@
         "focusBorder": "#007AFF"
     },
     "ui": {
-        "windowBackground": "#1E1E1E",
-        "controlBackground": "#2D2D2D",
-        "cardBackground": "#252526",
-        "border": "#3C3C3C",
-        "primaryText": "#D4D4D4",
-        "secondaryText": "#A0A0A0",
-        "tertiaryText": "#6D6D6D",
         "accentColor": null,
-        "selectionBackground": "#264F78",
-        "hoverBackground": "#007AFF0D",
         "status": {
             "success": "#32D74B",
             "warning": "#FF9F0A",
@@ -60,72 +51,10 @@
             "autoIncrement": "#BF5AF226"
         }
     },
-    "sidebar": {
-        "background": "#252526",
-        "text": "#CCCCCC",
-        "selectedItem": "#094771",
-        "hover": "#2A2D2E",
-        "sectionHeader": "#858585"
-    },
-    "toolbar": {
-        "secondaryText": "#A0A0A0",
-        "tertiaryText": "#6D6D6D"
-    },
     "fonts": {
         "editorFontFamily": "System Mono",
         "editorFontSize": 13,
         "dataGridFontFamily": "System Mono",
         "dataGridFontSize": 13
-    },
-    "spacing": {
-        "xxxs": 2,
-        "xxs": 4,
-        "xs": 8,
-        "sm": 12,
-        "md": 16,
-        "lg": 20,
-        "xl": 24,
-        "listRowInsets": {
-            "top": 4,
-            "leading": 8,
-            "bottom": 4,
-            "trailing": 8
-        }
-    },
-    "typography": {
-        "tiny": 9,
-        "caption": 10,
-        "small": 11,
-        "medium": 12,
-        "body": 13,
-        "title3": 15,
-        "title2": 17
-    },
-    "iconSizes": {
-        "tinyDot": 6,
-        "statusDot": 8,
-        "small": 12,
-        "default": 14,
-        "medium": 16,
-        "large": 20,
-        "extraLarge": 24,
-        "huge": 32,
-        "massive": 64
-    },
-    "cornerRadius": {
-        "small": 4,
-        "medium": 6,
-        "large": 8
-    },
-    "rowHeights": {
-        "compact": 24,
-        "table": 32,
-        "comfortable": 44
-    },
-    "animations": {
-        "fast": 0.1,
-        "normal": 0.15,
-        "smooth": 0.2,
-        "slow": 0.3
     }
 }

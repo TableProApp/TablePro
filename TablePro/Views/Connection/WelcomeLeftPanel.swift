@@ -23,21 +23,21 @@ struct WelcomeLeftPanel: View {
                     Text("TablePro")
                         .font(
                             .system(
-                                size: ThemeEngine.shared.activeTheme.iconSizes.extraLarge, weight: .semibold,
+                                size: 24, weight: .semibold,
                                 design: .rounded))
 
                     Text("Version \(Bundle.main.appVersion)")
-                        .font(.system(size: ThemeEngine.shared.activeTheme.typography.medium))
+                        .font(.callout)
                         .foregroundStyle(.secondary)
 
                     if LicenseManager.shared.status.isValid {
                         Label("Pro", systemImage: "checkmark.seal.fill")
-                            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(Color(nsColor: .systemGreen))
                     } else {
                         Button(action: onActivateLicense) {
                             Text("Activate License")
-                                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.secondary)
@@ -57,7 +57,7 @@ struct WelcomeLeftPanel: View {
                     Label("Sponsor TablePro", systemImage: "heart")
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .foregroundStyle(.pink)
 
                 Button(action: onCreateConnection) {
@@ -82,10 +82,10 @@ struct WelcomeLeftPanel: View {
                     KeyboardHint(keys: "⌘,", label: nil)
                 }
             }
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+            .font(.subheadline)
             .foregroundStyle(.tertiary)
-            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.sm)
-            .padding(.bottom, ThemeEngine.shared.activeTheme.spacing.lg)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 20)
         }
         .frame(width: 260)
     }
@@ -94,13 +94,13 @@ struct WelcomeLeftPanel: View {
 struct WelcomeButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: ThemeEngine.shared.activeTheme.typography.body))
+            .font(.body)
             .foregroundStyle(.primary)
-            .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.md)
-            .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.sm)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: ThemeEngine.shared.activeTheme.cornerRadius.large)
+                RoundedRectangle(cornerRadius: 8)
                     .fill(
                         Color(
                             nsColor: configuration.isPressed
@@ -116,9 +116,9 @@ struct KeyboardHint: View {
     var body: some View {
         HStack(spacing: 4) {
             Text(keys)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.caption, design: .monospaced))
-                .padding(.horizontal, ThemeEngine.shared.activeTheme.spacing.xxs + 1)
-                .padding(.vertical, ThemeEngine.shared.activeTheme.spacing.xxxs)
+                .font(.system(.caption, design: .monospaced))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color(nsColor: .quaternaryLabelColor))

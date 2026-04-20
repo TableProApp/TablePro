@@ -17,7 +17,7 @@ internal struct PendingStateOverlay<Editor: View>: View {
         if isLoadingFullValue {
             TextField("", text: .constant(""))
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .disabled(true)
                 .overlay {
                     ProgressView()
@@ -26,11 +26,11 @@ internal struct PendingStateOverlay<Editor: View>: View {
         } else if isTruncated {
             TextField(String(localized: "Value excluded from query"), text: .constant(""))
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small))
+                .font(.subheadline)
                 .disabled(true)
         } else if isPendingNull || isPendingDefault {
             Text(isPendingNull ? "NULL" : "DEFAULT")
-                .font(.system(size: ThemeEngine.shared.activeTheme.typography.small, design: .monospaced))
+                .font(.system(.subheadline, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
                 .padding(6)

@@ -32,7 +32,7 @@ final class BooleanCellEditor: NSPopUpButton {
 
         // Style to match text fields
         bezelStyle = .texturedSquare
-        font = .monospacedSystemFont(ofSize: ThemeEngine.shared.activeTheme.typography.body, weight: .regular)
+        font = .monospacedSystemFont(ofSize: 13, weight: .regular)
     }
 
     @objc private func valueChanged() {

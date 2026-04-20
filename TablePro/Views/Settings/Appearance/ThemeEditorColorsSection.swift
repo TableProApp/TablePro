@@ -152,33 +152,24 @@ internal struct ThemeEditorColorsSection: View {
 
     private var interfaceSection: some View {
         Section(String(localized: "Interface")) {
-            LabeledContent(String(localized: "Window Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.windowBackground))
-            }
-            LabeledContent(String(localized: "Control Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.controlBackground))
-            }
-            LabeledContent(String(localized: "Card Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.cardBackground))
-            }
-            LabeledContent(String(localized: "Border")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.border))
-            }
-            LabeledContent(String(localized: "Primary Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.primaryText))
-            }
-            LabeledContent(String(localized: "Secondary Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.secondaryText))
-            }
-            LabeledContent(String(localized: "Tertiary Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.tertiaryText))
-            }
-            LabeledContent(String(localized: "Selection")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.selectionBackground))
-            }
-            LabeledContent(String(localized: "Hover")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.ui.hoverBackground))
-            }
+            optionalColorRow(String(localized: "Window Background"), keyPath: \.ui.windowBackground,
+                             fallback: .windowBackgroundColor)
+            optionalColorRow(String(localized: "Control Background"), keyPath: \.ui.controlBackground,
+                             fallback: .controlBackgroundColor)
+            optionalColorRow(String(localized: "Card Background"), keyPath: \.ui.cardBackground,
+                             fallback: .controlBackgroundColor)
+            optionalColorRow(String(localized: "Border"), keyPath: \.ui.border,
+                             fallback: .separatorColor)
+            optionalColorRow(String(localized: "Primary Text"), keyPath: \.ui.primaryText,
+                             fallback: .labelColor)
+            optionalColorRow(String(localized: "Secondary Text"), keyPath: \.ui.secondaryText,
+                             fallback: .secondaryLabelColor)
+            optionalColorRow(String(localized: "Tertiary Text"), keyPath: \.ui.tertiaryText,
+                             fallback: .tertiaryLabelColor)
+            optionalColorRow(String(localized: "Selection"), keyPath: \.ui.selectionBackground,
+                             fallback: .selectedContentBackgroundColor)
+            optionalColorRow(String(localized: "Hover"), keyPath: \.ui.hoverBackground,
+                             fallback: .unemphasizedSelectedContentBackgroundColor)
         }
     }
 
@@ -217,21 +208,16 @@ internal struct ThemeEditorColorsSection: View {
 
     private var sidebarSection: some View {
         Section(String(localized: "Sidebar")) {
-            LabeledContent(String(localized: "Background")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.sidebar.background))
-            }
-            LabeledContent(String(localized: "Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.sidebar.text))
-            }
-            LabeledContent(String(localized: "Selected Item")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.sidebar.selectedItem))
-            }
-            LabeledContent(String(localized: "Hover")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.sidebar.hover))
-            }
-            LabeledContent(String(localized: "Section Header")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.sidebar.sectionHeader))
-            }
+            optionalColorRow(String(localized: "Background"), keyPath: \.sidebar.background,
+                             fallback: .windowBackgroundColor)
+            optionalColorRow(String(localized: "Text"), keyPath: \.sidebar.text,
+                             fallback: .labelColor)
+            optionalColorRow(String(localized: "Selected Item"), keyPath: \.sidebar.selectedItem,
+                             fallback: .selectedContentBackgroundColor)
+            optionalColorRow(String(localized: "Hover"), keyPath: \.sidebar.hover,
+                             fallback: .unemphasizedSelectedContentBackgroundColor)
+            optionalColorRow(String(localized: "Section Header"), keyPath: \.sidebar.sectionHeader,
+                             fallback: .secondaryLabelColor)
         }
     }
 
@@ -239,12 +225,10 @@ internal struct ThemeEditorColorsSection: View {
 
     private var toolbarSection: some View {
         Section(String(localized: "Toolbar")) {
-            LabeledContent(String(localized: "Secondary Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.toolbar.secondaryText))
-            }
-            LabeledContent(String(localized: "Tertiary Text")) {
-                HexColorPicker(label: "", hex: colorBinding(for: \.toolbar.tertiaryText))
-            }
+            optionalColorRow(String(localized: "Secondary Text"), keyPath: \.toolbar.secondaryText,
+                             fallback: .secondaryLabelColor)
+            optionalColorRow(String(localized: "Tertiary Text"), keyPath: \.toolbar.tertiaryText,
+                             fallback: .tertiaryLabelColor)
         }
     }
 
@@ -264,5 +248,59 @@ internal struct ThemeEditorColorsSection: View {
                 }
             }
         )
+    }
+
+    private func optionalColorBinding(
+        for keyPath: WritableKeyPath<ThemeDefinition, String?>,
+        fallback: NSColor
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                if let hex = theme[keyPath: keyPath] {
+                    return hex
+                }
+                return (fallback.usingColorSpace(.sRGB) ?? fallback).hexString
+            },
+            set: { newValue in
+                guard theme.isEditable else { return }
+                var updated = theme
+                updated[keyPath: keyPath] = newValue
+                do {
+                    try engine.saveUserTheme(updated)
+                } catch {
+                    Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func optionalColorRow(
+        _ label: String,
+        keyPath: WritableKeyPath<ThemeDefinition, String?>,
+        fallback: NSColor
+    ) -> some View {
+        LabeledContent(label) {
+            HStack(spacing: 4) {
+                HexColorPicker(label: "", hex: optionalColorBinding(for: keyPath, fallback: fallback))
+                if theme[keyPath: keyPath] != nil {
+                    Button {
+                        guard theme.isEditable else { return }
+                        var updated = theme
+                        updated[keyPath: keyPath] = nil
+                        do {
+                            try engine.saveUserTheme(updated)
+                        } catch {
+                            Self.logger.error("Failed to save theme: \(error.localizedDescription, privacy: .public)")
+                        }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(String(localized: "Reset to System Default"))
+                }
+            }
+        }
     }
 }
