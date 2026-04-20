@@ -133,6 +133,7 @@ internal struct FavoritesTabView: View {
                 } label: {
                     folderLabel(folder)
                 }
+                .tag(node.id)
             }
         })
     }
