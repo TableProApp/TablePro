@@ -315,13 +315,6 @@ build_for_arch() {
     prepare_libmongoc "$arch"
     prepare_hiredis "$arch"
 
-    # Xcode 26's Icon Composer (.icon) crashes actool in headless CI.
-    # Keep AppIcon.appiconset as fallback; remove .icon so actool uses it.
-    if [ -d "TablePro/AppIcon.icon" ] && [ -d "TablePro/Assets.xcassets/AppIcon.appiconset" ]; then
-        echo "🎨 Using AppIcon.appiconset fallback for headless CI..."
-        rm -rf "TablePro/AppIcon.icon"
-    fi
-
     # Persistent SPM package cache (speeds up CI on self-hosted runners)
     SPM_CACHE_DIR="${HOME}/.spm-cache"
     mkdir -p "$SPM_CACHE_DIR"
