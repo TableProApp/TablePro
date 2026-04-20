@@ -455,20 +455,13 @@ struct MainEditorContentView: View {
     }
 
     private func emptyResultView(executionTime: TimeInterval?) -> some View {
-        VStack(spacing: 12) {
-            Spacer()
-            Image(systemName: "tray")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            Text("No rows returned")
-                .font(.body.weight(.medium))
-            if let time = executionTime {
-                Text(String(format: "%.3fs", time))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        let description: String? = executionTime.map { String(format: "%.3fs", $0) }
+        return ContentUnavailableView {
+            Label(String(localized: "No rows returned"), systemImage: "tray")
+        } description: {
+            if let description {
+                Text(description)
             }
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

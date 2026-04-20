@@ -228,10 +228,10 @@ struct SidebarView: View {
                         .contextMenu {
                             SidebarContextMenu(
                                 clickedTable: table,
-                                selectedTables: selectedTablesBinding,
+                                selectedTables: sidebarState.selectedTables,
                                 isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                                onBatchToggleTruncate: { viewModel.batchToggleTruncate() },
-                                onBatchToggleDelete: { viewModel.batchToggleDelete() },
+                                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
                                 coordinator: coordinator
                             )
                         }
@@ -274,10 +274,10 @@ struct SidebarView: View {
         .contextMenu {
             SidebarContextMenu(
                 clickedTable: nil,
-                selectedTables: selectedTablesBinding,
+                selectedTables: sidebarState.selectedTables,
                 isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                onBatchToggleTruncate: { viewModel.batchToggleTruncate() },
-                onBatchToggleDelete: { viewModel.batchToggleDelete() },
+                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
                 coordinator: coordinator
             )
         }

@@ -55,6 +55,7 @@ struct ResultTabBar: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { activeResultSetId = rs.id }
+        .accessibilityAddTraits(.isButton)
         .contextMenu {
             Button(rs.isPinned ? String(localized: "Unpin") : String(localized: "Pin Result")) {
                 onPin?(rs.id)

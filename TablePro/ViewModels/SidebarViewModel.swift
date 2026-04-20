@@ -101,8 +101,8 @@ final class SidebarViewModel {
 
     // MARK: - Batch Operations
 
-    func batchToggleTruncate() {
-        let tablesToToggle = selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name })
+    func batchToggleTruncate(tableNames: [String]? = nil) {
+        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
         guard !tablesToToggle.isEmpty else { return }
 
         // Check if all tables are already pending truncate - if so, remove them
@@ -124,8 +124,8 @@ final class SidebarViewModel {
         }
     }
 
-    func batchToggleDelete() {
-        let tablesToToggle = selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name })
+    func batchToggleDelete(tableNames: [String]? = nil) {
+        let tablesToToggle = tableNames ?? (selectedTables.isEmpty ? [] : Array(selectedTables.map { $0.name }))
         guard !tablesToToggle.isEmpty else { return }
 
         // Check if all tables are already pending delete - if so, remove them

@@ -11,13 +11,13 @@ import SwiftUI
 struct NativeSearchField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
+    var controlSize: NSControl.ControlSize = .regular
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.placeholderString = placeholder
         field.delegate = context.coordinator
-        field.bezelStyle = .roundedBezel
-        field.controlSize = .regular
+        field.controlSize = controlSize
         field.sendsSearchStringImmediately = true
         field.setAccessibilityIdentifier("sidebar-filter")
         return field

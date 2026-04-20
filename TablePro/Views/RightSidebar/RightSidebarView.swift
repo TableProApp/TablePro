@@ -139,12 +139,12 @@ struct RightSidebarView: View {
 
         return VStack(spacing: 0) {
             // Inline search field
-            SearchFieldView(
-                placeholder: "Search for field...",
+            NativeSearchField(
                 text: $searchText,
-                fontSize: 11
+                placeholder: String(localized: "Search for field..."),
+                controlSize: .small
             )
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 6)
 
             Divider()
 

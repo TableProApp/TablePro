@@ -101,7 +101,8 @@ extension MainContentCoordinator {
 
     // MARK: - Export/Import
 
-    func openExportDialog() {
+    func openExportDialog(preselectedTableNames: Set<String>? = nil) {
+        exportPreselectedTableNames = preselectedTableNames
         activeSheet = .exportDialog
     }
 

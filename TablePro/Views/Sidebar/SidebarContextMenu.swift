@@ -34,10 +34,10 @@ enum SidebarContextMenuLogic {
 /// Unified context menu for sidebar — used for both table rows and empty space
 struct SidebarContextMenu: View {
     let clickedTable: TableInfo?
-    @Binding var selectedTables: Set<TableInfo>
+    let selectedTables: Set<TableInfo>
     let isReadOnly: Bool
-    let onBatchToggleTruncate: () -> Void
-    let onBatchToggleDelete: () -> Void
+    let onBatchToggleTruncate: ([String]) -> Void
+    let onBatchToggleDelete: ([String]) -> Void
     let coordinator: MainContentCoordinator?
 
     private var hasSelection: Bool {
@@ -46,6 +46,13 @@ struct SidebarContextMenu: View {
 
     private var isView: Bool {
         SidebarContextMenuLogic.isView(clickedTable: clickedTable)
+    }
+
+    private var effectiveTableNames: [String] {
+        if selectedTables.isEmpty, let table = clickedTable {
+            return [table.name]
+        }
+        return selectedTables.map(\.name).sorted()
     }
 
     var body: some View {
@@ -82,21 +89,12 @@ struct SidebarContextMenu: View {
         }
 
         Button("Copy Name") {
-            let names: [String]
-            if selectedTables.isEmpty, let table = clickedTable {
-                names = [table.name]
-            } else {
-                names = selectedTables.map { $0.name }.sorted()
-            }
-            ClipboardService.shared.writeText(names.joined(separator: ","))
+            ClipboardService.shared.writeText(effectiveTableNames.joined(separator: ","))
         }
         .disabled(!hasSelection)
 
         Button("Export...") {
-            if selectedTables.isEmpty, let table = clickedTable {
-                selectedTables.insert(table)
-            }
-            coordinator?.openExportDialog()
+            coordinator?.openExportDialog(preselectedTableNames: Set(effectiveTableNames))
         }
         .disabled(!hasSelection)
 
@@ -129,10 +127,7 @@ struct SidebarContextMenu: View {
 
         if !isView {
             Button("Truncate") {
-                if selectedTables.isEmpty, let table = clickedTable {
-                    selectedTables.insert(table)
-                }
-                onBatchToggleTruncate()
+                onBatchToggleTruncate(effectiveTableNames)
             }
             .disabled(!hasSelection || isReadOnly)
         }
@@ -141,10 +136,7 @@ struct SidebarContextMenu: View {
             isView ? String(localized: "Drop View") : String(localized: "Delete"),
             role: .destructive
         ) {
-            if selectedTables.isEmpty, let table = clickedTable {
-                selectedTables.insert(table)
-            }
-            onBatchToggleDelete()
+            onBatchToggleDelete(effectiveTableNames)
         }
         .disabled(!hasSelection || isReadOnly)
     }
