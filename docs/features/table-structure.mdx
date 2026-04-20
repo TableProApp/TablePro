@@ -149,6 +149,22 @@ Supported databases: MySQL, MariaDB, PostgreSQL, SQLite, SQL Server, ClickHouse,
 Structure modifications alter your database schema. Always backup important data before making changes.
 </Warning>
 
+### Database Support
+
+Not all databases support every ALTER TABLE operation. TablePro disables unsupported actions in the UI.
+
+| Operation | MySQL / MariaDB | PostgreSQL | SQLite | ClickHouse | SQL Server | DuckDB | Oracle |
+|-----------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Add column | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Modify column | Yes | Yes | Rename only | Yes | Yes | Yes | Yes |
+| Drop column | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Add / drop index | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Add / drop FK | Yes | Yes | - | - | Yes | Yes | Yes |
+| Modify PK | Yes | Yes | - | - | Yes | Yes | Yes |
+| Reorder columns | Yes | - | - | - | - | - | - |
+
+Cassandra supports add and drop column only. MongoDB structure is read-only. Redis, Etcd, and DynamoDB do not have table schemas.
+
 ### Visual Structure Editor
 
 #### Adding Columns

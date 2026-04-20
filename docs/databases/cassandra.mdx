@@ -102,6 +102,6 @@ DESCRIBE TABLE users;
 
 **Read timeout**: Include full partition key in WHERE, remove `ALLOW FILTERING`, check cluster health with `nodetool`, use `LIMIT`.
 
-**Limitations**: Multi-DC not configurable, UDFs/UDAs in CQL but not sidebar, counter columns read-only (use editor), large partitions paginated.
+**Limitations**: Multi-DC not configurable, UDFs/UDAs in CQL but not sidebar, counter columns read-only (use editor), large partitions paginated. Structure editing supports add and drop column. Other schema changes (modify column type, indexes, primary key) require the CQL editor.
 
 **Performance**: Include partition key, avoid `ALLOW FILTERING` in prod, use `LIMIT`, use `TOKEN()` for range scans.
