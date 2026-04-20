@@ -972,6 +972,32 @@ final class SQLitePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        let colDef = sqliteColumnDefinition(column, inlinePK: false)
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(colDef)"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        guard oldColumn.name != newColumn.name else { return nil }
+        return "ALTER TABLE \(quoteIdentifier(table)) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))"
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let unique = index.isUnique ? "UNIQUE " : ""
+        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(quoteIdentifier(table)) (\(cols))"
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
     private func formatDDL(_ ddl: String) -> String {
         guard ddl.uppercased().hasPrefix("CREATE TABLE") else {
             return ddl

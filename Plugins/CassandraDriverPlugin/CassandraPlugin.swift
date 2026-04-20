@@ -1269,6 +1269,21 @@ internal final class CassandraPluginDriver: PluginDatabaseDriver, @unchecked Sen
         try await switchDatabase(to: schema)
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table)) ADD \(quoteIdentifier(column.name)) \(column.dataType)"
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table)) DROP \(quoteIdentifier(columnName))"
+    }
+
+    private func qualifiedTableName(_ table: String) -> String {
+        let ks = resolveKeyspace(nil)
+        return "\(quoteIdentifier(ks)).\(quoteIdentifier(table))"
+    }
+
     // MARK: - Private Helpers
 
     private func resolveKeyspace(_ schema: String?) -> String {

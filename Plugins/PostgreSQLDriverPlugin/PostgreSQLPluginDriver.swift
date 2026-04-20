@@ -990,6 +990,90 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         pgForeignKeyDefinition(fk)
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    private var qualifiedTableName: (String) -> String {
+        { [self] table in
+            "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        }
+    }
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        let qt = qualifiedTableName(table)
+        let colDef = pgColumnDefinition(column, inlinePK: false)
+        return "ALTER TABLE \(qt) ADD COLUMN \(colDef)"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        let qt = qualifiedTableName(table)
+        var stmts: [String] = []
+
+        if oldColumn.name != newColumn.name {
+            stmts.append("ALTER TABLE \(qt) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+        }
+
+        let colName = quoteIdentifier(newColumn.name)
+
+        if oldColumn.dataType.uppercased() != newColumn.dataType.uppercased() {
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) TYPE \(newColumn.dataType)")
+        }
+
+        if oldColumn.isNullable != newColumn.isNullable {
+            let clause = newColumn.isNullable ? "DROP NOT NULL" : "SET NOT NULL"
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(clause)")
+        }
+
+        if oldColumn.defaultValue != newColumn.defaultValue {
+            if let defaultValue = newColumn.defaultValue {
+                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) SET DEFAULT \(pgDefaultValue(defaultValue))")
+            } else {
+                stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) DROP DEFAULT")
+            }
+        }
+
+        if let newComment = newColumn.comment, !newComment.isEmpty, newColumn.comment != oldColumn.comment {
+            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS '\(escapeLiteral(newComment))'")
+        } else if oldColumn.comment != nil && (newColumn.comment == nil || newColumn.comment?.isEmpty == true) {
+            stmts.append("COMMENT ON COLUMN \(qt).\(colName) IS NULL")
+        }
+
+        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        pgIndexDefinition(index, qualifiedTable: qualifiedTableName(table))
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(_currentSchema)).\(quoteIdentifier(indexName))"
+    }
+
+    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table)) ADD \(pgForeignKeyDefinition(fk))"
+    }
+
+    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
+        "ALTER TABLE \(qualifiedTableName(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
+        let qt = qualifiedTableName(table)
+        var stmts: [String] = []
+        if !oldColumns.isEmpty {
+            let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"
+            stmts.append("ALTER TABLE \(qt) DROP CONSTRAINT \(name)")
+        }
+        if !newColumns.isEmpty {
+            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            stmts.append("ALTER TABLE \(qt) ADD PRIMARY KEY (\(cols))")
+        }
+        return stmts.isEmpty ? nil : stmts
+    }
+
     // MARK: - Helpers
 
     private func stripLimitOffset(from query: String) -> String {

@@ -51,6 +51,13 @@ struct PluginMetadataSnapshot: Sendable {
         let supportsQueryProgress: Bool
         let requiresReconnectForDatabaseSwitch: Bool
         let supportsDropDatabase: Bool
+        var supportsAddColumn: Bool = true
+        var supportsModifyColumn: Bool = true
+        var supportsDropColumn: Bool = true
+        var supportsRenameColumn: Bool = false
+        var supportsAddIndex: Bool = true
+        var supportsDropIndex: Bool = true
+        var supportsModifyPrimaryKey: Bool = true
 
         static let defaults = CapabilityFlags(
             supportsSchemaSwitching: false,
@@ -63,7 +70,14 @@ struct PluginMetadataSnapshot: Sendable {
             supportsReadOnlyMode: true,
             supportsQueryProgress: false,
             requiresReconnectForDatabaseSwitch: false,
-            supportsDropDatabase: false
+            supportsDropDatabase: false,
+            supportsAddColumn: true,
+            supportsModifyColumn: true,
+            supportsDropColumn: true,
+            supportsRenameColumn: false,
+            supportsAddIndex: true,
+            supportsDropIndex: true,
+            supportsModifyPrimaryKey: true
         )
     }
 
@@ -356,7 +370,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -398,7 +413,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -441,7 +457,8 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: true,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -530,7 +547,10 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false
+                    supportsDropDatabase: false,
+                    supportsModifyColumn: false,
+                    supportsRenameColumn: true,
+                    supportsModifyPrimaryKey: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -690,7 +710,14 @@ final class PluginMetadataRegistry: @unchecked Sendable {
                 supportsReadOnlyMode: driverType.supportsReadOnlyMode,
                 supportsQueryProgress: driverType.supportsQueryProgress,
                 requiresReconnectForDatabaseSwitch: driverType.requiresReconnectForDatabaseSwitch,
-                supportsDropDatabase: driverType.supportsDropDatabase
+                supportsDropDatabase: driverType.supportsDropDatabase,
+                supportsAddColumn: driverType.supportsAddColumn,
+                supportsModifyColumn: driverType.supportsModifyColumn,
+                supportsDropColumn: driverType.supportsDropColumn,
+                supportsRenameColumn: driverType.supportsRenameColumn,
+                supportsAddIndex: driverType.supportsAddIndex,
+                supportsDropIndex: driverType.supportsDropIndex,
+                supportsModifyPrimaryKey: driverType.supportsModifyPrimaryKey
             ),
             schema: PluginMetadataSnapshot.SchemaInfo(
                 defaultSchemaName: driverType.defaultSchemaName,

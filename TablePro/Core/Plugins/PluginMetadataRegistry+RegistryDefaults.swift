@@ -652,7 +652,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsRenameColumn: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "dbo",
@@ -700,7 +701,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: true
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -757,7 +759,8 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: true,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsModifyPrimaryKey: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -792,7 +795,20 @@ extension PluginMetadataRegistry {
                 queryLanguageName: "SQL", editorLanguage: .sql,
                 connectionMode: .fileBased, supportsDatabaseSwitching: false,
                 supportsColumnReorder: false,
-                capabilities: .defaults,
+                capabilities: PluginMetadataSnapshot.CapabilityFlags(
+                    supportsSchemaSwitching: false,
+                    supportsImport: true,
+                    supportsExport: true,
+                    supportsSSH: false,
+                    supportsSSL: false,
+                    supportsCascadeDrop: false,
+                    supportsForeignKeyDisable: true,
+                    supportsReadOnlyMode: true,
+                    supportsQueryProgress: false,
+                    requiresReconnectForDatabaseSwitch: false,
+                    supportsDropDatabase: false,
+                    supportsRenameColumn: true
+                ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
                     defaultGroupName: "main",
@@ -834,7 +850,11 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsModifyColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",
@@ -889,7 +909,11 @@ extension PluginMetadataRegistry {
                     supportsReadOnlyMode: true,
                     supportsQueryProgress: false,
                     requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: true
+                    supportsDropDatabase: true,
+                    supportsModifyColumn: false,
+                    supportsAddIndex: false,
+                    supportsDropIndex: false,
+                    supportsModifyPrimaryKey: false
                 ),
                 schema: PluginMetadataSnapshot.SchemaInfo(
                     defaultSchemaName: "public",

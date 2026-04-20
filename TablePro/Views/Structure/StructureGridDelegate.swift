@@ -94,18 +94,21 @@ final class StructureGridDelegate: DataGridViewDelegate {
 
         switch selectedTab {
         case .columns:
+            guard connection.type.supportsDropColumn else { return }
             for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingColumns.count else { continue }
                 let column = structureChangeManager.workingColumns[row]
                 structureChangeManager.deleteColumn(id: column.id)
             }
         case .indexes:
+            guard connection.type.supportsDropIndex else { return }
             for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingIndexes.count else { continue }
                 let index = structureChangeManager.workingIndexes[row]
                 structureChangeManager.deleteIndex(id: index.id)
             }
         case .foreignKeys:
+            guard connection.type.supportsForeignKeys else { return }
             for row in translated.sorted(by: >) {
                 guard row < structureChangeManager.workingForeignKeys.count else { continue }
                 let fk = structureChangeManager.workingForeignKeys[row]
@@ -281,10 +284,13 @@ final class StructureGridDelegate: DataGridViewDelegate {
     func dataGridAddRow() {
         switch selectedTab {
         case .columns:
+            guard connection.type.supportsAddColumn else { return }
             structureChangeManager.addNewColumn()
         case .indexes:
+            guard connection.type.supportsAddIndex else { return }
             structureChangeManager.addNewIndex()
         case .foreignKeys:
+            guard connection.type.supportsForeignKeys else { return }
             structureChangeManager.addNewForeignKey()
         case .ddl, .parts:
             break
@@ -369,9 +375,15 @@ final class StructureGridDelegate: DataGridViewDelegate {
         let menu = NSMenu()
         let label: String
         switch selectedTab {
-        case .columns: label = String(localized: "Add Column")
-        case .indexes: label = String(localized: "Add Index")
-        case .foreignKeys: label = String(localized: "Add Foreign Key")
+        case .columns:
+            guard connection.type.supportsAddColumn else { return nil }
+            label = String(localized: "Add Column")
+        case .indexes:
+            guard connection.type.supportsAddIndex else { return nil }
+            label = String(localized: "Add Index")
+        case .foreignKeys:
+            guard connection.type.supportsForeignKeys else { return nil }
+            label = String(localized: "Add Foreign Key")
         case .ddl, .parts: return nil
         }
 

@@ -1320,6 +1320,36 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return "'\(escapeStringLiteral(value))'"
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(clickhouseColumnDefinition(column))"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        let tableName = quoteIdentifier(table)
+        var stmts: [String] = []
+        if oldColumn.name != newColumn.name {
+            stmts.append("ALTER TABLE \(tableName) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+        }
+        stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(clickhouseColumnDefinition(newColumn))")
+        return stmts.joined(separator: ";\n")
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let indexType = index.indexType ?? "minmax"
+        return "ALTER TABLE \(quoteIdentifier(table)) ADD INDEX \(quoteIdentifier(index.name)) (\(cols)) TYPE \(indexType) GRANULARITY 1"
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
     // MARK: - TLS Delegate
 
     private class InsecureTLSDelegate: NSObject, URLSessionDelegate {

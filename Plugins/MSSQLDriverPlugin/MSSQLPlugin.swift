@@ -1707,6 +1707,92 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    private var mssqlQualifiedTable: (String) -> String {
+        { [self] table in
+            "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
+        }
+    }
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlColumnDefinition(column, inlinePK: false))"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        let qt = mssqlQualifiedTable(table)
+        var stmts: [String] = []
+        let needsTypeChange = oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
+        let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
+
+        // Rename column first so subsequent statements reference the correct name
+        if oldColumn.name != newColumn.name {
+            let escapedPath = "\(escapeStringLiteral(_currentSchema)).\(escapeStringLiteral(table)).\(escapeStringLiteral(oldColumn.name))"
+            stmts.append("EXEC sp_rename '\(escapedPath)', '\(escapeStringLiteral(newColumn.name))', 'COLUMN'")
+        }
+
+        let colName = quoteIdentifier(newColumn.name)
+
+        // Drop existing default constraint before ALTER COLUMN or default change
+        if (defaultChanged || needsTypeChange) && oldColumn.defaultValue != nil {
+            let objectId = escapeStringLiteral("\(_currentSchema).\(table)")
+            stmts.append("""
+                DECLARE @dfName NVARCHAR(256); \
+                SELECT @dfName = dc.name FROM sys.default_constraints dc \
+                JOIN sys.columns c ON dc.parent_column_id = c.column_id AND dc.parent_object_id = c.object_id \
+                WHERE c.name = '\(escapeStringLiteral(newColumn.name))' \
+                AND dc.parent_object_id = OBJECT_ID('\(objectId)'); \
+                IF @dfName IS NOT NULL EXEC('ALTER TABLE \(qt) DROP CONSTRAINT [' + @dfName + ']')
+                """)
+        }
+
+        if needsTypeChange {
+            let nullable = newColumn.isNullable ? "NULL" : "NOT NULL"
+            stmts.append("ALTER TABLE \(qt) ALTER COLUMN \(colName) \(newColumn.dataType) \(nullable)")
+        }
+
+        if defaultChanged, let defaultValue = newColumn.defaultValue {
+            stmts.append("ALTER TABLE \(qt) ADD DEFAULT \(mssqlDefaultValue(defaultValue)) FOR \(colName)")
+        }
+
+        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        mssqlIndexDefinition(index, qualifiedTable: mssqlQualifiedTable(table))
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(indexName)) ON \(mssqlQualifiedTable(table))"
+    }
+
+    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table)) ADD \(mssqlForeignKeyDefinition(fk))"
+    }
+
+    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
+        "ALTER TABLE \(mssqlQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
+        let qt = mssqlQualifiedTable(table)
+        var stmts: [String] = []
+        if !oldColumns.isEmpty {
+            let name = constraintName.map { quoteIdentifier($0) } ?? "/* unknown constraint */"
+            stmts.append("ALTER TABLE \(qt) DROP CONSTRAINT \(name)")
+        }
+        if !newColumns.isEmpty {
+            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            let pkName = quoteIdentifier("PK_\(table)")
+            stmts.append("ALTER TABLE \(qt) ADD CONSTRAINT \(pkName) PRIMARY KEY (\(cols))")
+        }
+        return stmts.isEmpty ? nil : stmts
+    }
+
     private func stripMSSQLOffsetFetch(from query: String) -> String {
         let ns = query.uppercased() as NSString
         let len = ns.length

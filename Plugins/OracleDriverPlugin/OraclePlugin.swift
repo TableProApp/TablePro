@@ -776,6 +776,173 @@ final class OraclePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return (statement: sql, parameters: parameters)
     }
 
+    // MARK: - Create Table DDL
+
+    func generateCreateTableSQL(definition: PluginCreateTableDefinition) -> String? {
+        guard !definition.columns.isEmpty else { return nil }
+
+        let qualifiedTable = oracleQualifiedTable(definition.tableName)
+        let pkColumns = definition.columns.filter { $0.isPrimaryKey }
+        let inlinePK = pkColumns.count == 1
+        var parts: [String] = definition.columns.map { oracleColumnDefinition($0, inlinePK: inlinePK) }
+
+        if pkColumns.count > 1 {
+            let pkCols = pkColumns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
+            parts.append("PRIMARY KEY (\(pkCols))")
+        }
+
+        for fk in definition.foreignKeys {
+            parts.append(oracleForeignKeyConstraint(fk))
+        }
+
+        var sql = "CREATE TABLE \(qualifiedTable) (\n  " +
+            parts.joined(separator: ",\n  ") +
+            "\n);"
+
+        var indexStatements: [String] = []
+        for index in definition.indexes {
+            indexStatements.append(oracleIndexDefinition(index, qualifiedTable: qualifiedTable))
+        }
+        if !indexStatements.isEmpty {
+            sql += "\n\n" + indexStatements.joined(separator: ";\n") + ";"
+        }
+
+        return sql
+    }
+
+    // MARK: - Definition SQL (clipboard copy)
+
+    func generateColumnDefinitionSQL(column: PluginColumnDefinition) -> String? {
+        oracleColumnDefinition(column, inlinePK: false)
+    }
+
+    func generateIndexDefinitionSQL(index: PluginIndexDefinition, tableName: String?) -> String? {
+        let qualifiedTable = tableName.map { oracleQualifiedTable($0) } ?? "\"table\""
+        return oracleIndexDefinition(index, qualifiedTable: qualifiedTable)
+    }
+
+    func generateForeignKeyDefinitionSQL(fk: PluginForeignKeyDefinition) -> String? {
+        oracleForeignKeyConstraint(fk)
+    }
+
+    // MARK: - ALTER TABLE DDL
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        let qt = oracleQualifiedTable(table)
+        let colDef = oracleColumnDefinition(column, inlinePK: false)
+        return "ALTER TABLE \(qt) ADD (\(colDef))"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        let qt = oracleQualifiedTable(table)
+        var stmts: [String] = []
+
+        if oldColumn.name != newColumn.name {
+            stmts.append("ALTER TABLE \(qt) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
+        }
+
+        var modifyParts: [String] = []
+        let colName = quoteIdentifier(newColumn.name)
+
+        let typeChanged = oldColumn.dataType.uppercased() != newColumn.dataType.uppercased()
+        let nullabilityChanged = oldColumn.isNullable != newColumn.isNullable
+        let defaultChanged = oldColumn.defaultValue != newColumn.defaultValue
+
+        if typeChanged || nullabilityChanged || defaultChanged {
+            var def = "\(colName) \(newColumn.dataType.uppercased())"
+            if let defaultValue = newColumn.defaultValue {
+                def += " DEFAULT \(oracleDefaultValue(defaultValue))"
+            } else if defaultChanged {
+                def += " DEFAULT NULL"
+            }
+            if !newColumn.isNullable {
+                def += " NOT NULL"
+            } else if nullabilityChanged {
+                def += " NULL"
+            }
+            modifyParts.append(def)
+        }
+
+        if !modifyParts.isEmpty {
+            stmts.append("ALTER TABLE \(qt) MODIFY (\(modifyParts.joined(separator: ", ")))")
+        }
+
+        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        oracleIndexDefinition(index, qualifiedTable: oracleQualifiedTable(table))
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
+    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table)) ADD \(oracleForeignKeyConstraint(fk))"
+    }
+
+    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
+        "ALTER TABLE \(oracleQualifiedTable(table)) DROP CONSTRAINT \(quoteIdentifier(constraintName))"
+    }
+
+    // MARK: - DDL Helpers
+
+    private func oracleQualifiedTable(_ table: String) -> String {
+        let schema = _currentSchema ?? config.username.uppercased()
+        return "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
+    }
+
+    private func oracleColumnDefinition(_ col: PluginColumnDefinition, inlinePK: Bool) -> String {
+        var def = "\(quoteIdentifier(col.name)) \(col.dataType.uppercased())"
+        if let defaultValue = col.defaultValue {
+            def += " DEFAULT \(oracleDefaultValue(defaultValue))"
+        }
+        if !col.isNullable {
+            def += " NOT NULL"
+        }
+        if inlinePK && col.isPrimaryKey {
+            def += " PRIMARY KEY"
+        }
+        return def
+    }
+
+    private func oracleDefaultValue(_ value: String) -> String {
+        let upper = value.uppercased()
+        if upper == "NULL" || upper == "SYSDATE" || upper == "SYSTIMESTAMP"
+            || upper == "SYS_GUID()" || upper == "USER"
+            || value.hasPrefix("'") || Int64(value) != nil || Double(value) != nil {
+            return value
+        }
+        return "'\(escapeStringLiteral(value))'"
+    }
+
+    private func oracleIndexDefinition(_ index: PluginIndexDefinition, qualifiedTable: String) -> String {
+        let cols = index.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let unique = index.isUnique ? "UNIQUE " : ""
+        return "CREATE \(unique)INDEX \(quoteIdentifier(index.name)) ON \(qualifiedTable) (\(cols))"
+    }
+
+    private func oracleForeignKeyConstraint(_ fk: PluginForeignKeyDefinition) -> String {
+        let cols = fk.columns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refCols = fk.referencedColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+        let refTable: String
+        if let schema = fk.referencedSchema, !schema.isEmpty {
+            refTable = "\(quoteIdentifier(schema)).\(quoteIdentifier(fk.referencedTable))"
+        } else {
+            refTable = quoteIdentifier(fk.referencedTable)
+        }
+        var def = "CONSTRAINT \(quoteIdentifier(fk.name)) FOREIGN KEY (\(cols)) REFERENCES \(refTable) (\(refCols))"
+        if fk.onDelete != "NO ACTION" {
+            def += " ON DELETE \(fk.onDelete)"
+        }
+        return def
+    }
+
     // MARK: - Schema Switching
 
     func switchSchema(to schema: String) async throws {

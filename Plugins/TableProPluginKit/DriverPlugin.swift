@@ -55,6 +55,15 @@ public protocol DriverPlugin: TableProPlugin {
     static var postConnectActions: [PostConnectAction] { get }
     static var parameterStyle: ParameterStyle { get }
     static var supportsDropDatabase: Bool { get }
+
+    // Schema editing granularity
+    static var supportsAddColumn: Bool { get }
+    static var supportsModifyColumn: Bool { get }
+    static var supportsDropColumn: Bool { get }
+    static var supportsRenameColumn: Bool { get }
+    static var supportsAddIndex: Bool { get }
+    static var supportsDropIndex: Bool { get }
+    static var supportsModifyPrimaryKey: Bool { get }
 }
 
 public extension DriverPlugin {
@@ -116,4 +125,13 @@ public extension DriverPlugin {
     static var isDownloadable: Bool { false }
     static var postConnectActions: [PostConnectAction] { [] }
     static var supportsDropDatabase: Bool { false }
+
+    // Schema editing granularity
+    static var supportsAddColumn: Bool { true }
+    static var supportsModifyColumn: Bool { true }
+    static var supportsDropColumn: Bool { true }
+    static var supportsRenameColumn: Bool { false }
+    static var supportsAddIndex: Bool { true }
+    static var supportsDropIndex: Bool { true }
+    static var supportsModifyPrimaryKey: Bool { true }
 }

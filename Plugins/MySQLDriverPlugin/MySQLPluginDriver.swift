@@ -871,6 +871,53 @@ final class MySQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         buildForeignKeyDefinitionSQL(fk)
     }
 
+    // MARK: - ALTER TABLE DDL
+
+    func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD COLUMN \(buildColumnDefinitionSQL(column))"
+    }
+
+    func generateModifyColumnSQL(table: String, oldColumn: PluginColumnDefinition, newColumn: PluginColumnDefinition) -> String? {
+        let tableName = quoteIdentifier(table)
+        if oldColumn.name != newColumn.name {
+            return "ALTER TABLE \(tableName) CHANGE COLUMN \(quoteIdentifier(oldColumn.name)) \(buildColumnDefinitionSQL(newColumn))"
+        }
+        return "ALTER TABLE \(tableName) MODIFY COLUMN \(buildColumnDefinitionSQL(newColumn))"
+    }
+
+    func generateDropColumnSQL(table: String, columnName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP COLUMN \(quoteIdentifier(columnName))"
+    }
+
+    func generateAddIndexSQL(table: String, index: PluginIndexDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD \(buildIndexDefinitionSQL(index))"
+    }
+
+    func generateDropIndexSQL(table: String, indexName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP INDEX \(quoteIdentifier(indexName))"
+    }
+
+    func generateAddForeignKeySQL(table: String, fk: PluginForeignKeyDefinition) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) ADD \(buildForeignKeyDefinitionSQL(fk))"
+    }
+
+    func generateDropForeignKeySQL(table: String, constraintName: String) -> String? {
+        "ALTER TABLE \(quoteIdentifier(table)) DROP FOREIGN KEY \(quoteIdentifier(constraintName))"
+    }
+
+    func generateModifyPrimaryKeySQL(table: String, oldColumns: [String], newColumns: [String], constraintName: String?) -> [String]? {
+        let tableName = quoteIdentifier(table)
+        var stmts: [String] = []
+        if !oldColumns.isEmpty {
+            stmts.append("ALTER TABLE \(tableName) DROP PRIMARY KEY")
+        }
+        if !newColumns.isEmpty {
+            let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
+            stmts.append("ALTER TABLE \(tableName) ADD PRIMARY KEY (\(cols))")
+        }
+        return stmts.isEmpty ? nil : stmts
+    }
+
     // MARK: - Column Reorder DDL
 
     func generateMoveColumnSQL(table: String, column: PluginColumnDefinition, afterColumn: String?) -> String? {

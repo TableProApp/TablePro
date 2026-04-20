@@ -112,6 +112,34 @@ extension DatabaseType {
     var supportsSchemaEditing: Bool {
         PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.supportsSchemaEditing ?? true
     }
+
+    var supportsAddColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddColumn ?? true
+    }
+
+    var supportsModifyColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyColumn ?? true
+    }
+
+    var supportsDropColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropColumn ?? true
+    }
+
+    var supportsRenameColumn: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsRenameColumn ?? false
+    }
+
+    var supportsAddIndex: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsAddIndex ?? true
+    }
+
+    var supportsDropIndex: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsDropIndex ?? true
+    }
+
+    var supportsModifyPrimaryKey: Bool {
+        PluginMetadataRegistry.shared.snapshot(forTypeId: pluginTypeId)?.capabilities.supportsModifyPrimaryKey ?? true
+    }
 }
 
 // MARK: - Connection Color
