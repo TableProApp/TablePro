@@ -114,9 +114,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         splitView.dividerStyle = .thin
         splitView.isVertical = true
-        if let connectionId = payload?.connectionId {
-            splitView.autosaveName = "com.TablePro.mainSplit.\(connectionId.uuidString)"
-        }
+        splitView.autosaveName = "com.TablePro.mainSplit"
 
         sidebarHosting = NSHostingController(rootView: AnyView(buildSidebarView()))
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarHosting)
