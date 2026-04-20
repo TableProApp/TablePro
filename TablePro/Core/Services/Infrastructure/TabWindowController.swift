@@ -236,6 +236,10 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
         Self.lifecycleLogger.debug(
             "[switch] windowDidResignKey seq=\(seq) controllerId=\(self.controllerId, privacy: .public)"
         )
+        if let actions = coordinator.commandActions,
+           CommandActionsRegistry.shared.current === actions {
+            CommandActionsRegistry.shared.current = nil
+        }
         activity?.resignCurrent()
         coordinator.handleWindowDidResignKey()
         Self.lifecycleLogger.debug("[switch] windowDidResignKey seq=\(seq) total ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")

@@ -220,13 +220,8 @@ struct AppMenuCommands: Commands {
             Button(actions != nil ? "Close Tab" : "Close") {
                 if let resolved = resolvedCloseTabActions {
                     resolved.closeTab()
-                } else if let window = NSApp.keyWindow {
-                    if window.identifier?.rawValue.hasPrefix("main") == true,
-                       let coordinator = MainContentCoordinator.coordinator(forWindow: window) {
-                        coordinator.commandActions?.closeTab()
-                    } else {
-                        window.performClose(nil)
-                    }
+                } else {
+                    NSApp.keyWindow?.performClose(nil)
                 }
             }
             .optionalKeyboardShortcut(shortcut(for: .closeTab))
