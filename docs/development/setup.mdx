@@ -1,68 +1,82 @@
 ---
 title: Development Setup
-description: Clone, build, and run TablePro locally with Xcode 15+, SwiftLint, and SwiftFormat
+description: Get TablePro building on your machine in under 5 minutes
 ---
 
 # Development Setup
 
 ## Prerequisites
 
-### Required Software
+| Software | Version | Notes |
+|----------|---------|-------|
+| macOS | 14.0+ (Sonoma) | Target platform |
+| Xcode | 15.0+ | Includes Swift 5.9 |
 
-| Software | Version | Purpose |
-|----------|---------|---------|
-| **macOS** | 14.0+ (Sonoma) | Target platform |
-| **Xcode** | 15.0+ | Development IDE |
-| **Git** | Latest | Version control |
+Optional but recommended:
 
-### Optional Tools
+| Tool | Install | Purpose |
+|------|---------|---------|
+| SwiftLint | `brew install swiftlint` | Linting |
+| SwiftFormat | `brew install swiftformat` | Code formatting |
+| GitHub CLI | `brew install gh` | Used by `download-libs.sh` |
 
-| Tool | Purpose |
-|------|---------|
-| **SwiftLint** | Code linting |
-| **SwiftFormat** | Code formatting |
-| **Homebrew** | Package management |
-| **GitHub CLI (`gh`)** | Downloads pre-built native libraries from GitHub Releases |
+## Quick Start
 
-## Getting Started
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/TableProApp/TablePro.git && cd TablePro
+    ```
+  </Step>
 
-### Step 1: Clone and Bootstrap
+  <Step title="Download native libraries">
+    ```bash
+    scripts/download-libs.sh
+    ```
 
-```bash
-git clone https://github.com/TableProApp/TablePro.git
-cd tablepro
+    This pulls pre-built `.a` files (libmariadb, libpq, etc.) from GitHub Releases into `Libs/`. Takes a few seconds.
 
-# Download pre-built native libraries from GitHub Releases
-scripts/download-libs.sh
+    <Warning>
+    Skipping this step causes linker errors. The static libraries are not checked into git.
+    </Warning>
+  </Step>
 
-# Create required build config (empty is fine for development)
-touch Secrets.xcconfig
+  <Step title="Create build config">
+    ```bash
+    touch Secrets.xcconfig
+    ```
 
-# Install linting/formatting tools
-brew install swiftlint swiftformat
-```
+    Empty file is fine for development. Production builds use this for API keys.
+  </Step>
 
-<Warning>
-Skipping `scripts/download-libs.sh` leaves `Libs/` without binaries, causing linker errors.
-</Warning>
+  <Step title="Install tools">
+    ```bash
+    brew install swiftlint swiftformat
+    ```
+  </Step>
 
-### Step 2: Open in Xcode
+  <Step title="Open in Xcode">
+    ```bash
+    open TablePro.xcodeproj
+    ```
+  </Step>
 
-```bash
-open TablePro.xcodeproj
-```
+  <Step title="Configure signing">
+    1. Select the **TablePro** target
+    2. Go to **Signing & Capabilities**
+    3. Change **Team** to your Apple Developer account (free account works)
+  </Step>
 
-### Step 3: Configure Signing
+  <Step title="Build and run">
+    Select the **TablePro** scheme, set destination to **My Mac**, press `Cmd+R`.
 
-1. Select **TablePro** target
-2. Go to **Signing & Capabilities**
-3. Change **Team** to your own Apple Developer account (free account works for development)
+    Or from the command line:
 
-### Step 4: Build and Run
-
-1. Select the **TablePro** scheme
-2. Select **My Mac** as the destination
-3. Press `Cmd+R` to build and run
+    ```bash
+    xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
+    ```
+  </Step>
+</Steps>
 
 {/* Screenshot: Xcode with scheme selected */}
 <Frame caption="Xcode project setup">
@@ -81,77 +95,33 @@ open TablePro.xcodeproj
 ## Project Structure
 
 <Tree>
-  <Tree.Folder name="tablepro" defaultOpen>
-    <Tree.Folder name="TablePro" defaultOpen>
-      <Tree.Folder name="Core" defaultOpen>
-        <Tree.Folder name="Database">
-          <Tree.File name="DatabaseDriver.swift" />
-          <Tree.File name="DatabaseManager.swift" />
-        </Tree.Folder>
-        <Tree.Folder name="Plugins">
-          <Tree.File name="PluginDriverAdapter.swift" />
-          <Tree.File name="PluginManager.swift" />
-        </Tree.Folder>
-        <Tree.Folder name="Services" />
-        <Tree.Folder name="Utilities" />
-      </Tree.Folder>
-      <Tree.Folder name="Models" />
-      <Tree.Folder name="Views">
-        <Tree.Folder name="Connection" />
-        <Tree.Folder name="Editor" />
-        <Tree.Folder name="Main" />
-        <Tree.Folder name="Results" />
-        <Tree.Folder name="Settings" />
-      </Tree.Folder>
-      <Tree.Folder name="ViewModels" />
-      <Tree.Folder name="Extensions" />
-      <Tree.Folder name="Theme" />
-      <Tree.Folder name="Resources" />
+  <Tree.Folder name="TablePro" defaultOpen>
+    <Tree.Folder name="Core">
+      <Tree.File name="Database/, Plugins/, Services/, Utilities/, SSH/, Autocomplete/" />
     </Tree.Folder>
-    <Tree.Folder name="Plugins" defaultOpen>
-      <Tree.Folder name="TableProPluginKit" />
-      <Tree.Folder name="MySQLDriverPlugin" />
-      <Tree.Folder name="PostgreSQLDriverPlugin" />
-      <Tree.Folder name="SQLiteDriverPlugin" />
-      <Tree.Folder name="ClickHouseDriverPlugin" />
-      <Tree.Folder name="..." />
+    <Tree.Folder name="Views">
+      <Tree.File name="Connection/, Editor/, Main/, Results/, Settings/, Sidebar/" />
     </Tree.Folder>
-    <Tree.Folder name="TableProTests" />
-    <Tree.Folder name="Libs" />
-    <Tree.Folder name="scripts">
-      <Tree.File name="build-release.sh" />
-      <Tree.File name="create-dmg.sh" />
-    </Tree.Folder>
-    <Tree.File name=".swiftlint.yml" />
-    <Tree.File name=".swiftformat" />
+    <Tree.Folder name="Models" />
+    <Tree.Folder name="ViewModels" />
+    <Tree.Folder name="Extensions" />
+    <Tree.Folder name="Theme" />
+    <Tree.Folder name="Resources" />
+  </Tree.Folder>
+  <Tree.Folder name="Plugins">
+    <Tree.File name=".tableplugin bundles + TableProPluginKit framework" />
+  </Tree.Folder>
+  <Tree.Folder name="Libs">
+    <Tree.File name="Pre-built static libraries (downloaded, not in git)" />
+  </Tree.Folder>
+  <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="docs">
+    <Tree.File name="Mintlify docs site" />
+  </Tree.Folder>
+  <Tree.Folder name="scripts">
+    <Tree.File name="build-release.sh, create-dmg.sh, download-libs.sh" />
   </Tree.Folder>
 </Tree>
-
-## Building
-
-### Development Build
-
-```bash
-# Build for current architecture (Debug)
-xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
-
-# Or use Xcode: Cmd+B
-```
-
-### Release Build
-
-```bash
-# Apple Silicon
-scripts/build-release.sh arm64
-
-# Intel
-scripts/build-release.sh x86_64
-
-# Both architectures
-scripts/build-release.sh both
-```
-
-See [Building](/development/building) for detailed instructions.
 
 ## Running Tests
 
@@ -168,48 +138,35 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
     -only-testing:TableProTests/TestClassName/testMethodName
 ```
 
-Or in Xcode: **Product** > **Test** (`Cmd+U`).
+Or in Xcode: `Cmd+U`.
 
-## Code Quality
-
-### SwiftLint
+## Linting and Formatting
 
 ```bash
 # Check for issues
 swiftlint lint
 
-# Auto-fix fixable issues
+# Auto-fix
 swiftlint --fix
-```
 
-SwiftLint also runs automatically during Xcode builds.
-
-### SwiftFormat
-
-```bash
 # Format all code
 swiftformat .
-
-# Check without applying
-swiftformat --lint .
 ```
 
 <Tip>
-Run SwiftFormat before committing to keep code style consistent.
+Run `swiftlint --fix && swiftformat .` before committing.
 </Tip>
-
-## Development Workflow
-
-Before committing, lint and format:
-
-```bash
-swiftlint --fix && swiftformat .
-```
-
-**Logging**: Use OSLog with `Logger(subsystem: "com.TablePro", category: "Name")`.
 
 ## Troubleshooting
 
-**Build fails**: Clean with `Cmd+Shift+K`, delete derived data, close/reopen Xcode.
-**SwiftLint errors**: Run `swiftlint --fix` for auto-fixable issues.
-**Missing libraries**: Run `scripts/download-libs.sh` and `touch Secrets.xcconfig`.
+| Problem | Fix |
+|---------|-----|
+| Linker errors about missing symbols | Run `scripts/download-libs.sh` |
+| SPM resolution fails | Clean build folder (`Cmd+Shift+K`), reopen Xcode |
+| Build fails after pulling | Delete derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData` |
+| Missing `Secrets.xcconfig` error | Run `touch Secrets.xcconfig` in project root |
+| Code signing errors | Change Team in Signing & Capabilities |
+
+<Note>
+The `-skipPackagePluginValidation` flag is required because CodeEditSourceEditor (an SPM dependency) bundles a SwiftLint plugin. Without this flag, CLI builds fail with a validation error.
+</Note>

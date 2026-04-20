@@ -1,114 +1,31 @@
 ---
 title: Architecture
-description: MVVM structure, database driver protocol, actor-based SSH tunnels, and autocomplete engine internals
+description: App structure, plugin system, data flow, and key components
 ---
 
 # Architecture
 
 TablePro is built with:
 
-- **SwiftUI** for the UI
-- **AppKit** for low-level macOS integration
-- **Swift Concurrency** (async/await, actors) for concurrent operations
-- **Native C libraries** for database connectivity
-
-```mermaid
-block-beta
-    columns 3
-
-    block:ui["User Interface"]:3
-        Views["Views<br>(SwiftUI)"]
-        ViewModels["ViewModels<br>(Observable)"]
-        Theme["Theme<br>(Colors)"]
-    end
-
-    block:logic["Business Logic"]:3
-        Drivers["Database<br>Drivers"]
-        Autocomplete["Autocomplete<br>Engine"]
-        SSH["SSH<br>Tunnel"]
-    end
-
-    block:data["Data Layer"]:3
-        Models["Models<br>(Structs)"]
-        Storage["Storage<br>(JSON)"]
-        Keychain["Keychain<br>(Passwords)"]
-    end
-
-    block:native["Native Libraries"]:3
-        libmariadb["libmariadb<br>(MySQL)"]
-        libpq["libpq<br>(PostgreSQL)"]
-        SQLite["SQLite<br>(Built-in)"]
-    end
-```
-
-## Dependencies
-
-SPM dependencies:
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| **CodeEditSourceEditor** | 0.15.2+ | Tree-sitter-powered code editor for the SQL editor |
-| **Sparkle** | 2.x | Auto-update framework with EdDSA signing |
-
-<Note>
-CodeEditSourceEditor bundles a SwiftLint plugin that requires `-skipPackagePluginValidation` for CLI builds. See [Building](/development/building).
-</Note>
-
-## Directory Structure
-
-<Tree>
-  <Tree.Folder name="TablePro" defaultOpen>
-    <Tree.Folder name="Core">
-      <Tree.Folder name="Database">
-        <Tree.File name="DatabaseDriver.swift" />
-        <Tree.File name="DatabaseManager.swift" />
-      </Tree.Folder>
-      <Tree.Folder name="Plugins">
-        <Tree.File name="PluginManager.swift" />
-        <Tree.File name="PluginDriverAdapter.swift" />
-      </Tree.Folder>
-      <Tree.Folder name="Autocomplete" />
-      <Tree.Folder name="Services" />
-      <Tree.Folder name="SSH" />
-    </Tree.Folder>
-    <Tree.Folder name="Views" />
-    <Tree.Folder name="Models" />
-    <Tree.Folder name="ViewModels" />
-    <Tree.Folder name="Extensions" />
-    <Tree.Folder name="Theme" />
-    <Tree.Folder name="Resources" />
-  </Tree.Folder>
-  <Tree.Folder name="Plugins" defaultOpen>
-    <Tree.Folder name="TableProPluginKit" />
-    <Tree.Folder name="MySQLDriverPlugin" />
-    <Tree.Folder name="PostgreSQLDriverPlugin" />
-    <Tree.File name="..." />
-  </Tree.Folder>
-  <Tree.Folder name="Libs" />
-  <Tree.Folder name="TableProTests" />
-  <Tree.Folder name="scripts" />
-</Tree>
+- **SwiftUI** for the UI layer
+- **AppKit** for low-level macOS integration (windows, menus, native tabs)
+- **Swift Concurrency** (async/await, actors) for all async work
+- **Native C libraries** for database connectivity (linked as static `.a` files)
 
 ## Design Patterns
 
-### MVVM Architecture
+### MVVM
 
-```mermaid
-flowchart LR
-    Model["Model<br>(Struct)"] <--> ViewModel["ViewModel<br>(Observable)"] <--> View["View<br>(SwiftUI)"]
-```
+- **Models**: structs (value types, Codable)
+- **ViewModels**: `@Observable` classes (Swift 5.9+)
+- **Views**: SwiftUI, with AppKit bridging where needed
 
-Models are structs, ViewModels are `@Observable`/`ObservableObject` classes, Views are SwiftUI.
+### Protocol-Oriented Drivers
 
-### Protocol-Oriented Design
-
-All database drivers conform to a single protocol:
+All database connectivity goes through one protocol:
 
 ```swift
 protocol DatabaseDriver: AnyObject {
-    var connection: DatabaseConnection { get }
-    var status: ConnectionStatus { get }
-
     func connect() async throws
     func disconnect()
     func execute(query: String) async throws -> QueryResult
@@ -117,37 +34,45 @@ protocol DatabaseDriver: AnyObject {
 }
 ```
 
-Database drivers are implemented as `.tableplugin` bundles loaded at runtime. Each plugin implements `DriverPlugin` and `PluginDatabaseDriver` from the shared `TableProPluginKit` framework. `PluginDriverAdapter` bridges `PluginDatabaseDriver` to the core `DatabaseDriver` protocol.
+No switch statements on database type. No hardcoded driver list. Plugins register themselves, and the factory resolves them by `DatabaseType.pluginTypeId`.
 
 ### Actor Isolation
 
-Concurrent operations use Swift actors:
+Thread-safe shared state uses Swift actors:
 
 ```swift
 actor SSHTunnelManager {
-    static let shared = SSHTunnelManager()
-
     private var tunnels: [UUID: SSHTunnel] = [:]
-
-    func createTunnel(
-        connectionId: UUID,
-        sshHost: String,
-        // ...
-    ) async throws -> Int {
-        // Thread-safe tunnel management
-    }
+    func createTunnel(connectionId: UUID, ...) async throws -> Int { ... }
 }
 ```
 
-### Plugin System
+## Dependencies
 
-Driver creation uses a plugin-based factory. `PluginManager` discovers and loads `.tableplugin` bundles at runtime. `DatabaseDriverFactory` looks up plugins via `DatabaseType.pluginTypeId` and wraps them with `PluginDriverAdapter` to conform to the core `DatabaseDriver` protocol. No switch statement or hardcoded driver list is needed.
+| Package | Purpose |
+|---------|---------|
+| CodeEditSourceEditor | Tree-sitter SQL editor |
+| Sparkle (2.8.1) | Auto-update with EdDSA signing |
+| OracleNIO | Oracle driver (SPM, used by OracleDriverPlugin) |
 
-## Key Components
+<Note>
+CodeEditSourceEditor bundles a SwiftLint plugin, which is why `-skipPackagePluginValidation` is required for CLI builds.
+</Note>
 
-### Database Driver Plugins
+## Plugin System
 
-Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, and Redis are built into the app bundle; the rest are distributed via the plugin registry and downloaded on demand.
+All database drivers are `.tableplugin` bundles loaded at runtime. This keeps the app binary small and makes adding new databases a matter of dropping in a bundle.
+
+**Key files:**
+
+| Component | Location | Role |
+|-----------|----------|------|
+| TableProPluginKit | `Plugins/TableProPluginKit/` | Shared framework with `DriverPlugin` and `PluginDatabaseDriver` protocols |
+| PluginManager | `Core/Plugins/PluginManager.swift` | Discovers, loads, version-checks plugin bundles |
+| PluginDriverAdapter | `Core/Plugins/PluginDriverAdapter.swift` | Bridges `PluginDatabaseDriver` to core `DatabaseDriver` |
+| DatabaseDriverFactory | `Core/Database/DatabaseDriver.swift` | Resolves `DatabaseType` to loaded plugin |
+
+### Driver Plugins
 
 | Plugin | Database Types | C Bridge | Distribution |
 |--------|---------------|----------|--------------|
@@ -166,65 +91,116 @@ Each driver is a `.tableplugin` bundle under `Plugins/`. MySQL, PostgreSQL, SQLi
 | DynamoDBDriverPlugin | DynamoDB | AWS SDK | Registry |
 | BigQueryDriverPlugin | BigQuery | URLSession REST | Registry |
 
+Built-in plugins ship inside the app bundle. Registry plugins are downloaded on demand from the [plugin registry](/development/plugin-registry).
+
+## Key Components
+
+### DatabaseManager
+
+Connection pool and lifecycle management. Primary interface between UI and drivers. Handles connect, disconnect, reconnect, and session tracking.
+
+### ConnectionHealthMonitor
+
+Pings active connections every 30 seconds. Auto-reconnects with exponential backoff on failure.
+
 ### Autocomplete Engine
 
 ```mermaid
-flowchart TB
-    Engine["CompletionEngine<br>(Entry)"]
-    Engine --> Context["SQLContext<br>Analyzer"]
-    Engine --> Schema["SQLSchema<br>Provider"]
-    Schema --> Tables["Tables"]
-    Schema --> Columns["Columns"]
-    Context --> Keywords["SQLKeywords"]
+flowchart LR
+    CE["CompletionEngine"] --> SCA["SQLContextAnalyzer"]
+    CE --> SSP["SQLSchemaProvider"]
+    SSP --> Tables
+    SSP --> Columns
+    SCA --> Keywords["SQL Keywords"]
 ```
 
-- **CompletionEngine**: Main entry point
-- **SQLContextAnalyzer**: Parses query context
-- **SQLSchemaProvider**: Provides schema information
-- **SQLKeywords**: SQL keyword definitions
+- **CompletionEngine**: entry point, produces ranked suggestions
+- **SQLContextAnalyzer**: parses cursor position context (table ref, column ref, keyword)
+- **SQLSchemaProvider**: actor that caches and serves schema data
 
 ## Data Flow
 
-### Connection Flow
+### Connection
 
 ```mermaid
-flowchart TB
-    User["User clicks Connect"]
-    User --> Form["ConnectionFormView<br>(UI Validation)"]
-    Form --> Manager["DatabaseManager<br>.connectToSession"]
-    Manager --> SSH["SSHTunnelManager"]
-    Manager --> Factory["DatabaseDriverFactory"]
-    Factory --> Plugin["PluginManager<br>(loads .tableplugin)"]
-    Plugin --> Adapter["PluginDriverAdapter"]
-    SSH --> Connected["Connection Established"]
-    Adapter --> Connected
-
-    subgraph optional ["if SSH enabled"]
-        SSH
-    end
+flowchart TD
+    UI["ConnectionFormView"] --> DM["DatabaseManager"]
+    DM --> SSH["SSHTunnelManager (if SSH)"]
+    DM --> Factory["DatabaseDriverFactory"]
+    Factory --> PM["PluginManager"]
+    PM --> Adapter["PluginDriverAdapter"]
+    Adapter --> Connected["Connection Ready"]
+    SSH --> Connected
 ```
 
-### Query Execution Flow
+### Query Execution
 
 ```mermaid
-flowchart TB
-    User["User executes query<br>(Cmd+Enter)"]
-    User --> Editor["EditorTextView<br>(Gets query)"]
-    Editor --> Manager["DatabaseManager<br>.executeQuery"]
-    Manager --> Driver["DatabaseDriver<br>.execute(query)"]
-    Driver --> Result["QueryResult<br>(Rows + Columns)"]
-    Result --> Grid["DataGridView<br>(Display results)"]
+flowchart TD
+    User["Cmd+Enter"] --> Editor["SQL Editor"]
+    Editor --> DM["DatabaseManager.executeQuery"]
+    DM --> Driver["DatabaseDriver.execute"]
+    Driver --> Result["QueryResult"]
+    Result --> Grid["DataGridView"]
 ```
 
 ## State Management
 
 | Pattern | What | Where |
 |---------|------|-------|
-| `@Published` | UI state (sessions, active tab) | ViewModels |
+| `@Observable` | UI state, sessions, active tab | ViewModels |
 | `@AppStorage` | User preferences | Settings |
-| Keychain | Passwords | ConnectionStorage |
-| SQLite FTS5 | Query history | QueryHistoryStorage |
-| JSON files | Tab state | TabStateStorage |
+| Keychain | Connection passwords | ConnectionStorage |
+| SQLite FTS5 | Query history (full-text search) | QueryHistoryStorage |
+| JSON files | Tab state persistence | TabStateStorage |
 
-Tests live in `TableProTests/`. Run with `xcodebuild test -skipPackagePluginValidation`.
+## Directory Structure
 
+<Tree>
+  <Tree.Folder name="TablePro" defaultOpen>
+    <Tree.Folder name="Core" defaultOpen>
+      <Tree.Folder name="Database">
+        <Tree.File name="DatabaseDriver.swift" />
+        <Tree.File name="DatabaseManager.swift" />
+      </Tree.Folder>
+      <Tree.Folder name="Plugins">
+        <Tree.File name="PluginManager.swift" />
+        <Tree.File name="PluginDriverAdapter.swift" />
+      </Tree.Folder>
+      <Tree.Folder name="Services">
+        <Tree.File name="Export/, Formatting/, Infrastructure/, Licensing/, Query/" />
+      </Tree.Folder>
+      <Tree.Folder name="Utilities">
+        <Tree.File name="Connection/, SQL/, File/, UI/" />
+      </Tree.Folder>
+      <Tree.Folder name="Autocomplete" />
+      <Tree.Folder name="SSH" />
+      <Tree.Folder name="QuerySupport">
+        <Tree.File name="MongoDB/, Redis/" />
+      </Tree.Folder>
+    </Tree.Folder>
+    <Tree.Folder name="Views">
+      <Tree.File name="Connection/, Editor/, Main/, Results/, Settings/, Sidebar/" />
+    </Tree.Folder>
+    <Tree.Folder name="Models">
+      <Tree.File name="AI/, Connection/, Database/, Export/, Query/, Settings/, UI/, Schema/" />
+    </Tree.Folder>
+    <Tree.Folder name="ViewModels" />
+    <Tree.Folder name="Extensions" />
+    <Tree.Folder name="Theme" />
+    <Tree.Folder name="Resources" />
+  </Tree.Folder>
+  <Tree.Folder name="Plugins" defaultOpen>
+    <Tree.Folder name="TableProPluginKit" />
+    <Tree.Folder name="MySQLDriverPlugin" />
+    <Tree.Folder name="PostgreSQLDriverPlugin" />
+    <Tree.Folder name="SQLiteDriverPlugin" />
+    <Tree.Folder name="ClickHouseDriverPlugin" />
+    <Tree.Folder name="MSSQLDriverPlugin" />
+    <Tree.Folder name="RedisDriverPlugin" />
+    <Tree.File name="..." />
+  </Tree.Folder>
+  <Tree.Folder name="Libs" />
+  <Tree.Folder name="TableProTests" />
+  <Tree.Folder name="scripts" />
+</Tree>

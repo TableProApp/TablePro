@@ -1,200 +1,123 @@
 ---
 title: Code Style
-description: Swift conventions, SwiftLint/SwiftFormat rules, naming, access control, and file organization
+description: Swift conventions, tooling, naming, and file organization rules
 ---
 
-# Code Style Guide
+# Code Style
 
 ## Tools
 
-| Tool | Purpose | Config File |
-|------|---------|-------------|
-| **SwiftLint** | Linting and static analysis | `.swiftlint.yml` |
-| **SwiftFormat** | Code formatting | `.swiftformat` |
-
-### Running Tools
+`.swiftlint.yml` and `.swiftformat` are the source of truth. When in doubt, check those files.
 
 ```bash
-# Check for linting issues
+# Check for issues
 swiftlint lint
 
-# Auto-fix linting issues
+# Auto-fix
 swiftlint --fix
 
-# Format code
+# Format all code
 swiftformat .
 
 # Check formatting without applying
 swiftformat --lint .
 ```
 
-SwiftLint also runs automatically during Xcode builds.
-
-## Naming Conventions
-
-### Types
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Classes/Structs | UpperCamelCase | `DatabaseConnection` |
-| Enums | UpperCamelCase | `DatabaseType` |
-| Enum cases | lowerCamelCase | `.postgresql` |
-| Protocols | UpperCamelCase | `DatabaseDriver` |
-
-### Functions and Variables
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Functions | lowerCamelCase | `executeQuery()` |
-| Variables | lowerCamelCase | `connectionString` |
-| Constants | lowerCamelCase | `maxRetryAttempts` |
-| Parameters | lowerCamelCase | `tableName: String` |
-
-### Boolean Properties
-
-Use `is`/`has`/`can` prefixes:
-
-```swift
-var isConnected: Bool
-var hasValidCredentials: Bool
-var canExecuteQuery: Bool
-```
-
-### Factory Methods
-
-Use `make` prefix:
-
-```swift
-func makeConnection() -> DatabaseConnection
-func makeDriver(for type: DatabaseType) -> DatabaseDriver
-```
+SwiftLint also runs during Xcode builds automatically.
 
 ## Formatting
 
-### Indentation
+| Rule | Value |
+|------|-------|
+| Indentation | 4 spaces (never tabs) |
+| Line length | 120 chars (SwiftLint warns at 180, errors at 300) |
+| Braces | K&R (opening brace on same line) |
+| Line endings | LF |
+| Semicolons | None |
+| Trailing commas | None |
 
-- **4 spaces** (never tabs)
-- Configure your editor to convert tabs to spaces
+## Naming
 
-### Line Length
-
-- **120 characters max** per line
-- Break long lines for readability
-
-```swift
-// Good: Line breaks for readability
-let result = try await driver.executeParameterized(
-    query: "SELECT * FROM users WHERE email = ?",
-    parameters: [email]
-)
-
-// Avoid: Long single line
-let result = try await driver.executeParameterized(query: "SELECT * FROM users WHERE email = ?", parameters: [email])
-```
-
-### Braces
-
-K&R style: opening brace on same line:
-
-```swift
-// Good
-if condition {
-    doSomething()
-} else {
-    doSomethingElse()
-}
-
-// Bad
-if condition
-{
-    doSomething()
-}
-```
-
-### Spacing
-
-```swift
-// Space around operators
-let sum = a + b
-let isValid = count > 0 && name.isEmpty == false
-
-// No space for ranges
-for i in 0..<10 { }
-
-// Space after colon in type declarations
-var name: String
-func connect(host: String, port: Int)
-```
+| Element | Convention | Example |
+|---------|------------|---------|
+| Classes, Structs, Enums, Protocols | UpperCamelCase | `DatabaseConnection` |
+| Enum cases | lowerCamelCase | `.postgresql` |
+| Functions, Variables, Constants | lowerCamelCase | `executeQuery()`, `maxRetryAttempts` |
+| Booleans | is/has/can prefix | `isConnected`, `hasValidCredentials` |
+| Factory methods | make prefix | `makeConnection()` |
+| Acronyms | Treat as words | `JsonEncoder` not `JSONEncoder` (except SDK types) |
 
 ## Access Control
 
-### Specify Explicitly
-
-Always specify access modifiers:
+Always explicit. Prefer the most restrictive level that works.
 
 ```swift
-// Good: Explicit access
-private var connectionPool: [Connection] = []
-internal func processResult(_ result: QueryResult)
-public func connect() async throws
-
-// Avoid: Implicit internal
-var connectionPool: [Connection] = []  // Implicit internal
-```
-
-### Prefer Private
-
-Use the most restrictive access that works:
-
-```swift
-class DatabaseManager {
-    // Public API
-    public func connect() async throws { ... }
-
-    // Internal helpers
-    private func validateConnection() -> Bool { ... }
-    private var activeDriver: DatabaseDriver?
-}
-```
-
-### Extension Access
-
-Specify access on the extension, not individual members:
-
-```swift
-// Good
+// Specify on the extension, not individual members
 public extension NSEvent {
     var semanticKeyCode: KeyCode? { ... }
 }
-
-// Avoid
-extension NSEvent {
-    public var semanticKeyCode: KeyCode? { ... }
-}
 ```
 
-## Optionals & Safety
+## Imports
 
-Never force unwrap. Use `if let`, `guard let`, or `as?` for safe optional handling.
+System frameworks first (alphabetical), then third-party, then local. Blank line after imports.
+
+```swift
+import AppKit
+import Foundation
+import os
+
+import CodeEditSourceEditor
+
+import TableProPluginKit
+```
+
+## Safety
+
+No force unwrapping (`!`) or force casting (`as!`). Use `guard let`, `if let`, `as?`.
+
+```swift
+// Good
+guard let connection = activeConnection else { return }
+
+// Bad
+let connection = activeConnection!
+```
+
+## Logging
+
+OSLog only. Never `print()`.
+
+```swift
+import os
+
+private static let logger = Logger(subsystem: "com.TablePro", category: "DatabaseManager")
+```
+
+## Localization
+
+- `String(localized:)` for user-facing strings in computed properties, AppKit code, alerts, error descriptions
+- SwiftUI view literals (`Text("Save")`, `Button("Cancel")`) auto-localize
+- Do not localize technical terms: font names, database types, SQL keywords, encoding names
+- Never use `String(localized:)` with string interpolation. Use `String(format: String(localized: "Preview %@"), name)` instead.
 
 ## SwiftUI Patterns
 
-Use `@State` for local state, `@Observable` for viewmodels (Swift 5.9+). Order property wrappers: Environment, State, Binding, regular properties. Extract large views into subviews.
+- `@State` for local view state
+- `@Observable` for viewmodels (Swift 5.9+)
+- Property wrapper order: Environment, State, Binding, regular properties
+- Extract large views into subviews
 
 ## Limits
 
-### SwiftLint Limits
-
 | Metric | Warning | Error |
 |--------|---------|-------|
-| Function body length | 160 lines | 250 lines |
-| Type body length | 1100 lines | 1500 lines |
 | File length | 1200 lines | 1800 lines |
+| Type body | 1100 lines | 1500 lines |
+| Function body | 160 lines | 250 lines |
 | Cyclomatic complexity | 40 | 60 |
 
-### Handling Long Files
-
-Extract extensions into separate files:
+When approaching these limits, extract into extension files:
 
 <Tree>
   <Tree.File name="MainContentCoordinator.swift" />
@@ -205,3 +128,4 @@ Extract extensions into separate files:
   </Tree.Folder>
 </Tree>
 
+Group by domain logic, not arbitrary line counts.

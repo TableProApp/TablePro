@@ -1,30 +1,31 @@
 ---
 title: Building
-description: Debug builds, release builds for arm64/x86_64, DMG packaging, code signing, and CI/CD workflows
+description: Development builds, release builds, DMG packaging, code signing, and CI/CD
 ---
 
 # Building TablePro
 
 ## Development Builds
 
-### Using Xcode
+### Xcode
 
-1. Open `TablePro.xcodeproj`
-2. Select the **TablePro** scheme
-3. Select **My Mac** as the destination
-4. `Cmd+R` to build and run, or `Cmd+B` to build only
+- `Cmd+R` to build and run
+- `Cmd+B` to build only
+- Scheme: **TablePro**, Destination: **My Mac**
 
-### Using Command Line
+### Command Line
 
 ```bash
-# Build for current architecture (Debug)
 xcodebuild -project TablePro.xcodeproj \
     -scheme TablePro \
     -configuration Debug \
     build \
     -skipPackagePluginValidation
+```
 
-# Build and run
+Build and run:
+
+```bash
 xcodebuild -project TablePro.xcodeproj \
     -scheme TablePro \
     -configuration Debug \
@@ -32,26 +33,14 @@ xcodebuild -project TablePro.xcodeproj \
     -skipPackagePluginValidation && open build/Debug/TablePro.app
 ```
 
-### Clean Build
-
-If you hit build issues:
-
-```bash
-# Clean via xcodebuild
-xcodebuild -project TablePro.xcodeproj -scheme TablePro clean
-
-# Or clean derived data
-rm -rf ~/Library/Developer/Xcode/DerivedData
-
-# Or in Xcode: Cmd+Shift+K
-```
+<Note>
+`-skipPackagePluginValidation` is required. CodeEditSourceEditor bundles a SwiftLint plugin that triggers Xcode's plugin validation on CLI builds.
+</Note>
 
 ## Release Builds
 
-### Using the Build Script
-
 ```bash
-# Apple Silicon (M1/M2/M3/M4/M5)
+# Apple Silicon
 scripts/build-release.sh arm64
 
 # Intel
@@ -61,67 +50,53 @@ scripts/build-release.sh x86_64
 scripts/build-release.sh both
 ```
 
-### Output Location
+Output:
 
 ```
-build/Release/TablePro-arm64.app   # Apple Silicon
-build/Release/TablePro-x86_64.app  # Intel
+build/Release/TablePro-arm64.app
+build/Release/TablePro-x86_64.app
 ```
 
-### Manual Release Build
-
-```bash
-# Set architecture
-ARCH=arm64  # or x86_64
-
-# Build
-xcodebuild \
-    -project TablePro.xcodeproj \
-    -scheme TablePro \
-    -configuration Release \
-    -arch $ARCH \
-    ONLY_ACTIVE_ARCH=YES \
-    CODE_SIGN_IDENTITY="" \
-    CODE_SIGNING_REQUIRED=NO \
-    clean build
-```
+The build script handles architecture slicing from universal static libraries automatically.
 
 ## Native Libraries
 
-TablePro uses native C libraries for database connectivity. These are hosted on a dedicated [GitHub Release](https://github.com/TableProApp/TablePro/releases/tag/libs-v1) and downloaded via `scripts/download-libs.sh`.
-
-### Library Setup
+Static `.a` files (libmariadb, libpq, libfreetds, etc.) are hosted on a GitHub Release (tag `libs-v1`). They are not in git.
 
 ```bash
-# Download libraries (skips if already present)
+# Download (skips if already present)
 scripts/download-libs.sh
 
 # Force re-download
 scripts/download-libs.sh --force
 ```
 
-The build script (`build-release.sh`) extracts the correct architecture slice automatically from the universal libraries.
+### Updating Libraries (Maintainers)
+
+When updating a static library:
+
+```bash
+# Regenerate checksums
+shasum -a 256 Libs/*.a > Libs/checksums.sha256
+
+# Create and upload archive
+tar czf /tmp/tablepro-libs-v1.tar.gz -C Libs .
+gh release upload libs-v1 /tmp/tablepro-libs-v1.tar.gz --clobber --repo TableProApp/TablePro
+
+# Commit checksum changes
+git add Libs/checksums.sha256 && git commit -m "build: update static library checksums"
+```
 
 ## Creating DMG
 
-### Using the DMG Script
+Build the release first, then package:
 
 ```bash
-# Build the release first
 scripts/build-release.sh arm64
-
-# Then create DMG
 scripts/create-dmg.sh arm64
 ```
 
-### DMG Contents
-
-- TablePro.app
-- Applications folder shortcut
-- Background image (if configured)
-- License file (if included)
-
-### Output
+Output:
 
 ```
 build/Release/TablePro-arm64.dmg
@@ -130,145 +105,69 @@ build/Release/TablePro-x86_64.dmg
 
 ## Code Signing
 
-### Development Builds
+### Development
 
-Unsigned by default. Fine for local testing.
+Unsigned by default. No certificate needed for local testing.
 
-### Release Distribution
-
-To sign (requires Apple Developer account):
+### Distribution
 
 ```bash
-# Sign the app
+# Sign
 codesign --force --deep --sign "Developer ID Application: Your Name (TEAM_ID)" \
     build/Release/TablePro-arm64.app
 
-# Verify signature
+# Verify
 codesign --verify --verbose build/Release/TablePro-arm64.app
 ```
 
 ### Notarization
 
-For distribution outside the App Store:
-
 ```bash
-# Create ZIP for notarization
-ditto -c -k --keepParent build/Release/TablePro-arm64.app TablePro.zip
-
-# Submit for notarization
+# Submit
 xcrun notarytool submit TablePro.zip \
     --apple-id "your@email.com" \
     --team-id "TEAM_ID" \
     --password "app-specific-password" \
     --wait
 
-# Staple the ticket
+# Staple
 xcrun stapler staple build/Release/TablePro-arm64.app
 ```
 
-## Build Configuration
+## Clean Build
 
-### Build Settings
-
-| Setting | Debug | Release |
-|---------|-------|---------|
-| Optimization | None (-O0) | Optimize for Speed (-O) |
-| Debug Information | Full | Stripped |
-| Assertions | Enabled | Disabled |
-| Code Signing | None | Developer ID (optional) |
-
-### Architecture Settings
-
-| Setting | Value |
-|---------|-------|
-| ARCHS | Standard (arm64, x86_64) |
-| ONLY_ACTIVE_ARCH | Yes (Debug), No (Release) |
-| VALID_ARCHS | arm64 x86_64 |
-
-## Troubleshooting
-
-**Missing libraries**: Run `scripts/download-libs.sh` and verify libraries exist for your architecture.
-
-**Code signing errors**: Build script disables signing. For manual builds, add `CODE_SIGN_IDENTITY=""` and `CODE_SIGNING_REQUIRED=NO`.
-
-**Architecture mismatch**: Clean build and ensure libraries match target. Use the build script.
-
-**Xcode issues**: Delete derived data: `rm -rf ~/Library/Developer/Xcode/DerivedData`
+| Method | Command |
+|--------|---------|
+| Xcode | `Cmd+Shift+K` |
+| CLI | `xcodebuild -project TablePro.xcodeproj -scheme TablePro clean` |
+| Nuclear | `rm -rf ~/Library/Developer/Xcode/DerivedData` |
 
 ## CI/CD
 
-### GitHub Actions
+### App Releases
 
-Example CI workflow:
+GitHub Actions workflow: `.github/workflows/build.yml`
 
-```yaml
-name: Build
+Triggered by `v*` tags (e.g., `v0.18.0`).
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+Pipeline: lint -> build arm64 -> build x86_64 -> release (DMG + ZIP + Sparkle signatures)
 
-jobs:
-  build:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+Release notes are auto-extracted from `CHANGELOG.md`.
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.0.app
+### Plugin Releases
 
-      - name: Build
-        run: |
-          xcodebuild -project TablePro.xcodeproj \
-            -scheme TablePro \
-            -configuration Debug \
-            build \
-            -skipPackagePluginValidation
+Workflow: `.github/workflows/build-plugin.yml`
 
-      - name: Test
-        run: |
-          xcodebuild -project TablePro.xcodeproj \
-            -scheme TablePro \
-            test \
-            -skipPackagePluginValidation
-```
+Triggered by `plugin-*-v*` tags (e.g., `plugin-oracle-v1.0.0`).
 
-### Release Workflow
-
-```yaml
-release:
-  runs-on: macos-latest
-  steps:
-    - uses: actions/checkout@v4
-
-    - name: Build Release (arm64)
-      run: scripts/build-release.sh arm64
-
-    - name: Build Release (x86_64)
-      run: scripts/build-release.sh x86_64
-
-    - name: Create DMGs
-      run: |
-        scripts/create-dmg.sh arm64
-        scripts/create-dmg.sh x86_64
-
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: release-dmgs
-        path: build/Release/*.dmg
-```
+<Warning>
+GitHub only fires one workflow per multi-tag push. Push plugin tags individually, or use `workflow_dispatch` with comma-separated tags for bulk releases.
+</Warning>
 
 ## Build Sizes
-
-Typical sizes (v0.1.1):
 
 | Build | Size |
 |-------|------|
 | Debug app | ~15 MB |
 | Release app | ~10 MB |
-| DMG (arm64) | ~3.5 MB |
-| DMG (x86_64) | ~3.5 MB |
-
+| DMG (per arch) | ~3.5 MB |

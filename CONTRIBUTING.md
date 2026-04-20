@@ -1,22 +1,23 @@
-# Contributing
+# Contributing to TablePro
 
 ## Setup
 
-You'll need macOS 14.0+, Xcode 15+, and [Git LFS](https://git-lfs.github.com/) (static libs in `Libs/` are LFS-tracked). Install [SwiftLint](https://github.com/realm/SwiftLint) and [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) too.
+Requirements: macOS 14.0+, Xcode 15+. Optional: SwiftLint, SwiftFormat, GitHub CLI (`gh`).
 
 ```bash
-git clone https://github.com/<your-username>/TablePro.git
-cd TablePro
-git lfs pull
+git clone https://github.com/TableProApp/TablePro.git && cd TablePro
+scripts/download-libs.sh
+touch Secrets.xcconfig
+brew install swiftlint swiftformat
 ```
 
-Build with the `-skipPackagePluginValidation` flag (needed for the SwiftLint plugin in CodeEditSourceEditor):
+Build:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro -configuration Debug build -skipPackagePluginValidation
 ```
 
-Run tests:
+Tests:
 
 ```bash
 xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginValidation
@@ -26,13 +27,13 @@ xcodebuild -project TablePro.xcodeproj -scheme TablePro test -skipPackagePluginV
 
 `.swiftlint.yml` and `.swiftformat` are the source of truth. The short version:
 
-- 4-space indentation, 120-char line length target
+- 4-space indent, 120-char lines
 - Explicit access control (`private`, `internal`, `public`)
-- No force unwraps or force casts. Use `guard let`, `if let`, `as?`
-- `String(localized:)` for user-facing strings. SwiftUI view literals auto-localize
+- No force unwraps (`!`) or force casts (`as!`)
+- `String(localized:)` for user-facing strings
 - OSLog only, no `print()`
 
-Run both before committing:
+Before committing:
 
 ```bash
 swiftlint lint --strict
@@ -59,43 +60,45 @@ Branch off `main`:
 
 ## Pull Requests
 
-One change per PR. Make sure tests pass and lint is clean. Link related issues.
+One logical change per PR. Make sure tests pass and lint is clean.
 
-Before opening, check:
+Checklist:
 
 - [ ] Tests added or updated
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (skip for unreleased-only fixes)
-- [ ] Docs updated in `docs/` and `docs/vi/` if the change affects user-facing behavior
+- [ ] Docs updated in `docs/` if the change affects user-facing behavior
 - [ ] User-facing strings localized
 - [ ] No SwiftLint/SwiftFormat violations
 
 ## Project Layout
 
 ```
-TablePro/              # App source (Core/, Views/, Models/, ViewModels/, etc.)
-Plugins/               # Database driver .tableplugin bundles
-  TableProPluginKit/   # Shared plugin framework
-  MySQLDriverPlugin/   # MySQL/MariaDB
-  PostgreSQLDriverPlugin/
-  SQLiteDriverPlugin/
-  ...
-Libs/                  # Pre-built static libraries (Git LFS)
-TableProTests/         # Tests
-docs/                  # Mintlify docs site
-scripts/               # Build and release scripts
+TablePro/              App source (Core/, Views/, Models/, ViewModels/, Extensions/, Theme/)
+Plugins/               .tableplugin bundles + TableProPluginKit framework
+Libs/                  Pre-built static libraries (downloaded via script, not in git)
+TableProTests/         Tests
+docs/                  Mintlify docs site
+scripts/               Build and release scripts
 ```
 
 ## Adding a Database Driver
 
-Drivers are `.tableplugin` bundles loaded at runtime. Create a new bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver` from `TableProPluginKit`, and add the target to the Xcode project. Details in `docs/development/plugin-system/`.
+Drivers are `.tableplugin` bundles loaded at runtime. Create a new bundle under `Plugins/`, implement `DriverPlugin` + `PluginDatabaseDriver` from `TableProPluginKit`, and add the target to the Xcode project.
+
+Full guide: [docs/development/plugin-registry](https://tablepro.app/development/plugin-registry)
 
 ## Reporting Bugs
 
-Open a [GitHub issue](https://github.com/TableProApp/TablePro/issues) with your macOS version, TablePro version, and reproduction steps. For database-specific bugs, include the database type and version.
+Open a [GitHub issue](https://github.com/TableProApp/TablePro/issues) with:
+
+- macOS version
+- TablePro version
+- Reproduction steps
+- Database type and version (for database-specific bugs)
 
 ## CLA
 
-You'll need to sign the Contributor License Agreement on your first PR. The CLA bot will walk you through it. One-time thing.
+Sign the Contributor License Agreement on your first PR. The CLA bot walks you through it. One-time thing.
 
 ## License
 
