@@ -13,7 +13,7 @@ import os
 import SwiftUI
 
 @MainActor
-internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy {
+internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy, SidebarVisibilityProxy {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Payload & Session
@@ -153,6 +153,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         if let sessionState {
             sessionState.coordinator.inspectorProxy = self
+            sessionState.coordinator.sidebarProxy = self
             installToolbar(coordinator: sessionState.coordinator)
         }
 
@@ -246,6 +247,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 } else {
                     sidebarSplitItem.isCollapsed = true
                 }
+                syncSidebarVisibility()
             }
             return
         }
@@ -268,6 +270,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             let state = SessionStateFactory.create(connection: newSession.connection, payload: payload)
             sessionState = state
             state.coordinator.inspectorProxy = self
+            state.coordinator.sidebarProxy = self
             installToolbar(coordinator: state.coordinator)
         }
 
@@ -276,6 +279,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             sidebarSplitItem.isCollapsed = false
         }
+        syncSidebarVisibility()
         rebuildPanes()
     }
 
@@ -429,6 +433,32 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
         UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
+    }
+
+    // MARK: - SidebarVisibilityProxy
+
+    var isSidebarVisible: Bool {
+        guard let sidebarSplitItem else { return false }
+        return !sidebarSplitItem.isCollapsed
+    }
+
+    func showSidebar() {
+        sidebarSplitItem?.animator().isCollapsed = false
+        syncSidebarVisibility()
+    }
+
+    func hideSidebar() {
+        sidebarSplitItem?.animator().isCollapsed = true
+        syncSidebarVisibility()
+    }
+
+    override func toggleSidebar(_ sender: Any?) {
+        super.toggleSidebar(sender)
+        syncSidebarVisibility()
+    }
+
+    private func syncSidebarVisibility() {
+        sessionState?.coordinator.toolbarState.isSidebarVisible = isSidebarVisible
     }
 
     // MARK: - Constants

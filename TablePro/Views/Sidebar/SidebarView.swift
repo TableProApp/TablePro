@@ -88,33 +88,18 @@ struct SidebarView: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                NativeSearchField(
-                    text: Binding(
-                        get: { sidebarState.searchText },
-                        set: { sidebarState.searchText = $0 }
-                    ),
-                    placeholder: sidebarState.selectedSidebarTab == .tables
-                        ? String(localized: "Filter")
-                        : String(localized: "Filter favorites")
-                )
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
-                .padding(.bottom, 4)
-
-                Picker("", selection: Binding(
-                    get: { sidebarState.selectedSidebarTab },
-                    set: { sidebarState.selectedSidebarTab = $0 }
-                )) {
-                    Text("Tables").tag(SidebarTab.tables)
-                    Text("Favorites").tag(SidebarTab.favorites)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "Sidebar view"))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            }
+            NativeSearchField(
+                text: Binding(
+                    get: { sidebarState.searchText },
+                    set: { sidebarState.searchText = $0 }
+                ),
+                placeholder: sidebarState.selectedSidebarTab == .tables
+                    ? String(localized: "Filter")
+                    : String(localized: "Filter favorites")
+            )
+            .padding(.horizontal, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
         }
         .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in

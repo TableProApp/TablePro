@@ -88,12 +88,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
     private static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
     private static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
+    private static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
 
     // MARK: - NSToolbarDelegate
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            .toggleSidebar,
+            Self.sidebarToggle,
             .sidebarTrackingSeparator,
             Self.connection,
             Self.database,
@@ -137,6 +138,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         guard let coordinator else { return nil }
 
         switch itemIdentifier {
+        case Self.sidebarToggle:
+            return hostingItem(id: itemIdentifier, label: String(localized: "Sidebar"),
+                               content: SidebarToggleToolbarButtons(coordinator: coordinator))
         case Self.connection:
             return hostingItem(id: itemIdentifier, label: String(localized: "Connection"),
                                content: ConnectionToolbarButton(coordinator: coordinator))
@@ -497,5 +501,67 @@ private struct ImportToolbarButton: View {
         )
         .opacity(supportsImport ? 1 : 0)
         .allowsHitTesting(supportsImport)
+    }
+}
+
+// MARK: - Sidebar Toggle Buttons
+
+private struct SidebarToggleToolbarButtons: View {
+    let coordinator: MainContentCoordinator
+
+    var body: some View {
+        let state = coordinator.toolbarState
+        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+        let isDisabled = state.connectionState != .connected
+
+        HStack(spacing: 0) {
+            sidebarButton(
+                tab: .tables,
+                icon: "tablecells",
+                activeIcon: "tablecells.fill",
+                label: String(localized: "Tables"),
+                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
+                sidebarState: sidebarState
+            )
+            if !state.isSidebarVisible {
+                Divider()
+                    .frame(height: 14)
+                    .padding(.horizontal, 1)
+            }
+            sidebarButton(
+                tab: .favorites,
+                icon: "star",
+                activeIcon: "star.fill",
+                label: String(localized: "Favorites"),
+                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites,
+                sidebarState: sidebarState
+            )
+        }
+        .disabled(isDisabled)
+    }
+
+    private func sidebarButton(
+        tab: SidebarTab,
+        icon: String,
+        activeIcon: String,
+        label: String,
+        isActive: Bool,
+        sidebarState: SharedSidebarState
+    ) -> some View {
+        Button {
+            if coordinator.toolbarState.isSidebarVisible {
+                if sidebarState.selectedSidebarTab == tab {
+                    coordinator.sidebarProxy?.hideSidebar()
+                } else {
+                    sidebarState.selectedSidebarTab = tab
+                }
+            } else {
+                sidebarState.selectedSidebarTab = tab
+                coordinator.sidebarProxy?.showSidebar()
+            }
+        } label: {
+            Label(label, systemImage: isActive ? activeIcon : icon)
+        }
+        .help(label)
     }
 }
