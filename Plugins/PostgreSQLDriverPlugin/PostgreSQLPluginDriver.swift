@@ -992,10 +992,8 @@ final class PostgreSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
-    private var qualifiedTableName: (String) -> String {
-        { [self] table in
-            "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
-        }
+    private func qualifiedTableName(_ table: String) -> String {
+        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {

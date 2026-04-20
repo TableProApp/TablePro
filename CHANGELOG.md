@@ -9,8 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- ALTER TABLE support for modifying existing table structure (add, modify, drop columns, indexes, foreign keys, primary keys) across MySQL, PostgreSQL, SQLite, ClickHouse, MSSQL, DuckDB, Cassandra, and Oracle
-- Granular schema editing capability flags per database type (e.g., SQLite disables modify column, ClickHouse disables foreign keys)
+- Structure tab: modify existing tables (add, modify, drop columns, indexes, foreign keys, primary keys)
 
 ## [0.33.0] - 2026-04-19
 

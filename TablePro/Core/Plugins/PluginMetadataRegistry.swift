@@ -51,6 +51,7 @@ struct PluginMetadataSnapshot: Sendable {
         let supportsQueryProgress: Bool
         let requiresReconnectForDatabaseSwitch: Bool
         let supportsDropDatabase: Bool
+        // `var` with defaults so existing call sites compile without passing these fields
         var supportsAddColumn: Bool = true
         var supportsModifyColumn: Bool = true
         var supportsDropColumn: Bool = true

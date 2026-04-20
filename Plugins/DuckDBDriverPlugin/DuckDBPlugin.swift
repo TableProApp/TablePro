@@ -1315,10 +1315,8 @@ final class DuckDBPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         return def
     }
 
-    private var qualifiedTableName: (String) -> String {
-        { [self] table in
-            "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
-        }
+    private func qualifiedTableName(_ table: String) -> String {
+        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
     }
 
     // MARK: - ALTER TABLE DDL

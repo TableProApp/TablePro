@@ -1332,8 +1332,11 @@ final class ClickHousePluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         if oldColumn.name != newColumn.name {
             stmts.append("ALTER TABLE \(tableName) RENAME COLUMN \(quoteIdentifier(oldColumn.name)) TO \(quoteIdentifier(newColumn.name))")
         }
-        stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(clickhouseColumnDefinition(newColumn))")
-        return stmts.joined(separator: ";\n")
+        if oldColumn.dataType != newColumn.dataType || oldColumn.isNullable != newColumn.isNullable
+            || oldColumn.defaultValue != newColumn.defaultValue || oldColumn.comment != newColumn.comment {
+            stmts.append("ALTER TABLE \(tableName) MODIFY COLUMN \(clickhouseColumnDefinition(newColumn))")
+        }
+        return stmts.isEmpty ? nil : stmts.joined(separator: ";\n")
     }
 
     func generateDropColumnSQL(table: String, columnName: String) -> String? {

@@ -1709,10 +1709,8 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
 
     // MARK: - ALTER TABLE DDL
 
-    private var mssqlQualifiedTable: (String) -> String {
-        { [self] table in
-            "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
-        }
+    private func mssqlQualifiedTable(_ table: String) -> String {
+        "\(quoteIdentifier(_currentSchema)).\(quoteIdentifier(table))"
     }
 
     func generateAddColumnSQL(table: String, column: PluginColumnDefinition) -> String? {
@@ -1787,7 +1785,7 @@ final class MSSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         }
         if !newColumns.isEmpty {
             let cols = newColumns.map { quoteIdentifier($0) }.joined(separator: ", ")
-            let pkName = quoteIdentifier("PK_\(table)")
+            let pkName = constraintName.map { quoteIdentifier($0) } ?? quoteIdentifier("PK_\(table)")
             stmts.append("ALTER TABLE \(qt) ADD CONSTRAINT \(pkName) PRIMARY KEY (\(cols))")
         }
         return stmts.isEmpty ? nil : stmts
