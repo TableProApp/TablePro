@@ -53,7 +53,7 @@ final class ERDiagramViewModel {
 
     // MARK: - Auto-Pan
 
-    @ObservationIgnored nonisolated(unsafe) private var autoPanTimer: Timer?
+    @ObservationIgnored nonisolated(unsafe) private var autoPanTask: Task<Void, Never>?
     @ObservationIgnored private var autoPanVelocity: CGPoint = .zero
     @ObservationIgnored private var autoPanAccum: CGPoint = .zero
 
@@ -77,8 +77,7 @@ final class ERDiagramViewModel {
     }
 
     deinit {
-        autoPanTimer?.invalidate()
-        autoPanTimer = nil
+        autoPanTask?.cancel()
         layoutTask?.cancel()
     }
 
@@ -320,15 +319,16 @@ final class ERDiagramViewModel {
         }
 
         autoPanVelocity = v
-        if v != .zero && autoPanTimer == nil {
-            autoPanTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated {
+        if v != .zero && autoPanTask == nil {
+            autoPanTask = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
                     self?.autoPanTick()
+                    try? await Task.sleep(for: .milliseconds(16))
                 }
             }
-        } else if v == .zero && autoPanTimer != nil {
-            autoPanTimer?.invalidate()
-            autoPanTimer = nil
+        } else if v == .zero && autoPanTask != nil {
+            autoPanTask?.cancel()
+            autoPanTask = nil
         }
     }
 
@@ -356,8 +356,8 @@ final class ERDiagramViewModel {
     }
 
     private func stopAutoPan() {
-        autoPanTimer?.invalidate()
-        autoPanTimer = nil
+        autoPanTask?.cancel()
+        autoPanTask = nil
         autoPanVelocity = .zero
         autoPanAccum = .zero
     }

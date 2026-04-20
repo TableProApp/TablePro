@@ -111,6 +111,7 @@ struct SidebarView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .accessibilityLabel(String(localized: "Sidebar view"))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
             }

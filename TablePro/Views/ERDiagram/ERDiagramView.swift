@@ -230,39 +230,27 @@ struct ERDiagramView: View {
         let nodeIndex = viewModel.graph.nodeIndex
 
         let padding: CGFloat = 40
-        var minX: CGFloat = .infinity, minY: CGFloat = .infinity
-        var maxX: CGFloat = 0, maxY: CGFloat = 0
-        for (_, rect) in nodeRects {
-            minX = min(minX, rect.minX)
-            minY = min(minY, rect.minY)
-            maxX = max(maxX, rect.maxX)
-            maxY = max(maxY, rect.maxY)
-        }
-        guard minX.isFinite else {
-            return AnyView(Color.clear.frame(width: 100, height: 100))
-        }
-        let exportWidth = maxX - minX + padding * 2
-        let exportHeight = maxY - minY + padding * 2
-        let offsetX = -minX + padding
-        let offsetY = -minY + padding
+        let bounds = nodeRects.values.reduce(CGRect.null) { $0.union($1) }
+        let exportWidth = bounds.isNull ? 100 : bounds.width + padding * 2
+        let exportHeight = bounds.isNull ? 100 : bounds.height + padding * 2
+        let offsetX = bounds.isNull ? 0 : -bounds.minX + padding
+        let offsetY = bounds.isNull ? 0 : -bounds.minY + padding
 
-        return AnyView(
-            Canvas { context, _ in
-                context.translateBy(x: offsetX, y: offsetY)
-                ERDiagramEdgeRenderer.drawEdges(
-                    context: context,
-                    edges: edges,
-                    nodeRects: nodeRects,
-                    nodeIndex: nodeIndex
-                )
-                for node in nodes {
-                    guard let rect = nodeRects[node.id] else { continue }
-                    ERDiagramNodeRenderer.drawNode(context: &context, node: node, rect: rect, isSelected: false)
-                }
+        return Canvas { context, _ in
+            context.translateBy(x: offsetX, y: offsetY)
+            ERDiagramEdgeRenderer.drawEdges(
+                context: context,
+                edges: edges,
+                nodeRects: nodeRects,
+                nodeIndex: nodeIndex
+            )
+            for node in nodes {
+                guard let rect = nodeRects[node.id] else { continue }
+                ERDiagramNodeRenderer.drawNode(context: &context, node: node, rect: rect, isSelected: false)
             }
-            .frame(width: exportWidth, height: exportHeight)
-            .background(Color(nsColor: .controlBackgroundColor))
-        )
+        }
+        .frame(width: exportWidth, height: exportHeight)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func copyDiagramToClipboard() {

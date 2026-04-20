@@ -44,6 +44,7 @@ struct ResultTabBar: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Close result tab"))
             }
         }
         .padding(.horizontal, 10)

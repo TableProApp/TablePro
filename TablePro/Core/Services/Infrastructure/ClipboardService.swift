@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import UniformTypeIdentifiers
 
 /// Protocol for clipboard operations
 /// Abstraction allows for mocking in tests
@@ -30,8 +31,10 @@ struct NSPasteboardClipboardProvider: ClipboardProvider {
     }
 
     func writeText(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        pb.setString(text, forType: NSPasteboard.PasteboardType(UTType.utf8PlainText.identifier))
     }
 
     var hasText: Bool {
