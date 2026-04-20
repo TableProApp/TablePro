@@ -123,6 +123,9 @@ codesign --verify --verbose build/Release/TablePro-arm64.app
 ### Notarization
 
 ```bash
+# Create ZIP
+ditto -c -k --keepParent build/Release/TablePro-arm64.app TablePro.zip
+
 # Submit
 xcrun notarytool submit TablePro.zip \
     --apple-id "your@email.com" \

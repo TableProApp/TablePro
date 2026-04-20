@@ -44,6 +44,31 @@ The registry file (`plugins.json`):
 Either `downloadURL`/`sha256` (flat fields) or the `binaries` array is required. When `binaries` is present, the app picks the matching architecture. Flat fields act as fallback for older app versions.
 </Note>
 
+## Example Entry
+
+A complete entry for the Oracle driver plugin:
+
+```json
+{
+  "id": "com.TablePro.OracleDriver",
+  "name": "Oracle Driver",
+  "version": "1.0.0",
+  "summary": "Oracle Database 12c+ driver via OracleNIO",
+  "author": { "name": "TablePro", "url": "https://tablepro.app" },
+  "homepage": "https://tablepro.app/databases/oracle",
+  "category": "database-driver",
+  "databaseTypeIds": ["Oracle"],
+  "binaries": [
+    { "architecture": "arm64", "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.0/OracleDriver-arm64.zip", "sha256": "<sha256>" },
+    { "architecture": "x86_64", "downloadURL": "https://github.com/TableProApp/TablePro/releases/download/plugin-oracle-v1.0.0/OracleDriver-x86_64.zip", "sha256": "<sha256>" }
+  ],
+  "minAppVersion": "0.17.0",
+  "minPluginKitVersion": 2,
+  "iconName": "server.rack",
+  "isVerified": true
+}
+```
+
 ## databaseTypeIds Mapping
 
 The `databaseTypeIds` field tells the app which registry plugin to install when a user picks a database type that has no loaded driver.

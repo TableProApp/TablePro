@@ -4,8 +4,10 @@
 
 Requirements: macOS 14.0+, Xcode 15+. Optional: SwiftLint, SwiftFormat, GitHub CLI (`gh`).
 
+Fork the repo on GitHub, then:
+
 ```bash
-git clone https://github.com/TableProApp/TablePro.git && cd TablePro
+git clone https://github.com/<your-fork>/TablePro.git && cd TablePro
 scripts/download-libs.sh
 touch Secrets.xcconfig
 brew install swiftlint swiftformat
