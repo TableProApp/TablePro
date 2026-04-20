@@ -134,14 +134,14 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorHosting = NSHostingController(rootView: AnyView(buildInspectorView()))
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
-        inspectorSplitItem.minimumThickness = RightPanelVisibility.minWidth
-        inspectorSplitItem.maximumThickness = RightPanelVisibility.maxWidth
+        inspectorSplitItem.minimumThickness = 280
+        inspectorSplitItem.maximumThickness = 500
         addSplitViewItem(inspectorSplitItem)
 
         if currentSession == nil {
             sidebarSplitItem.isCollapsed = true
         }
-        inspectorSplitItem.isCollapsed = !RightPanelVisibility.shared.isPresented
+        inspectorSplitItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
     }
 
     override func viewWillAppear() {
@@ -425,24 +425,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
     func showInspector() {
         inspectorSplitItem?.animator().isCollapsed = false
-        RightPanelVisibility.shared.isPresented = true
+        UserDefaults.standard.set(true, forKey: Self.inspectorPresentedKey)
     }
 
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
-        RightPanelVisibility.shared.isPresented = false
+        UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
     }
-}
 
-// MARK: - NSSplitViewDelegate
+    // MARK: - Constants
 
-internal extension MainSplitViewController {
-    override func splitViewDidResizeSubviews(_ notification: Notification) {
-        super.splitViewDidResizeSubviews(notification)
-        guard let inspectorSplitItem, !inspectorSplitItem.isCollapsed else { return }
-        let inspectorWidth = inspectorSplitItem.viewController.view.frame.width
-        if inspectorWidth > 0 {
-            RightPanelVisibility.shared.panelWidth = inspectorWidth
-        }
-    }
+    private static let inspectorPresentedKey = "com.TablePro.rightPanel.isPresented"
 }

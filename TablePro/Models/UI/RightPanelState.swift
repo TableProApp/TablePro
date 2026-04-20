@@ -3,7 +3,6 @@
 //  TablePro
 //
 //  Per-window state for the right panel: active tab, edit state, AI chat.
-//  Panel visibility and width are shared via RightPanelVisibility.
 //
 
 import Foundation
