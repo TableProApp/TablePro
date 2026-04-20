@@ -112,6 +112,9 @@ final class MainContentCoordinator {
     /// Direct reference to right panel state — enables showing AI panel programmatically
     @ObservationIgnored weak var rightPanelState: RightPanelState?
 
+    /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
+    @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
+
     /// Direct reference to this coordinator's content window, used for presenting alerts.
     /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.
     @ObservationIgnored weak var contentWindow: NSWindow?
@@ -460,7 +463,7 @@ final class MainContentCoordinator {
     }
 
     func showAIChatPanel() {
-        RightPanelVisibility.shared.isPresented = true
+        inspectorProxy?.showInspector()
         rightPanelState?.activeTab = .aiChat
     }
 

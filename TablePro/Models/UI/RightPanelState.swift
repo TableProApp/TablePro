@@ -13,6 +13,7 @@ import os
     @ObservationIgnored private let _didTeardown = OSAllocatedUnfairLock(initialState: false)
 
     var activeTab: RightPanelTab = .details
+    var inspectorContext: InspectorContext = .empty
 
     // Save closure — set by MainContentCommandActions, called by UnifiedRightPanelView
     var onSave: (() -> Void)?

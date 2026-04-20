@@ -35,7 +35,6 @@ struct MainContentView: View {
     @Binding var pendingTruncates: Set<String>
     @Binding var pendingDeletes: Set<String>
     @Binding var tableOperationOptions: [String: TableOperationOptions]
-    @Binding var inspectorContext: InspectorContext
     var rightPanelState: RightPanelState
 
     // MARK: - State Objects
@@ -74,7 +73,6 @@ struct MainContentView: View {
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
-        inspectorContext: Binding<InspectorContext>,
         rightPanelState: RightPanelState,
         tabManager: QueryTabManager,
         changeManager: DataChangeManager,
@@ -90,7 +88,6 @@ struct MainContentView: View {
         self._pendingTruncates = pendingTruncates
         self._pendingDeletes = pendingDeletes
         self._tableOperationOptions = tableOperationOptions
-        self._inspectorContext = inspectorContext
         self.rightPanelState = rightPanelState
         self.tabManager = tabManager
         self.changeManager = changeManager
@@ -388,7 +385,7 @@ struct MainContentView: View {
                     AppSettingsManager.shared.dataGrid.autoShowInspector,
                     tabManager.selectedTab?.tabType == .table
                 {
-                    RightPanelVisibility.shared.isPresented = true
+                    coordinator.inspectorProxy?.showInspector()
                 }
                 // Deferred: expensive inspector rebuild coalesced with other triggers
                 scheduleInspectorUpdate()

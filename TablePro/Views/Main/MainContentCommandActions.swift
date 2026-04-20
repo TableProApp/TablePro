@@ -680,9 +680,7 @@ final class MainContentCommandActions {
     }
 
     func toggleRightSidebar() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            RightPanelVisibility.shared.isPresented.toggle()
-        }
+        coordinator?.inspectorProxy?.toggleInspector()
     }
 
     func toggleResults() {

@@ -59,7 +59,6 @@ struct FocusedCommandActionsModifier: ViewModifier {
         pendingTruncates: .constant([]),
         pendingDeletes: .constant([]),
         tableOperationOptions: .constant([:]),
-        inspectorContext: .constant(.empty),
         rightPanelState: RightPanelState(),
         tabManager: state.tabManager,
         changeManager: state.changeManager,

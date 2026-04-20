@@ -66,8 +66,8 @@ private final class SharedDoubleClickMonitor {
     func register(_ view: SidebarDoubleClickView) {
         registeredViews.add(view)
         if monitor == nil {
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
-                self?.handleMouseUp(event)
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                self?.handleMouseDown(event)
                 return event
             }
         }
@@ -81,7 +81,7 @@ private final class SharedDoubleClickMonitor {
         }
     }
 
-    private func handleMouseUp(_ event: NSEvent) {
+    private func handleMouseDown(_ event: NSEvent) {
         guard event.clickCount == 2 else { return }
 
         for view in registeredViews.allObjects {

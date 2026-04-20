@@ -48,7 +48,7 @@ struct NativeSearchField: NSViewRepresentable {
 
         func searchFieldDidEndSearching(_ sender: NSSearchField) {
             text.wrappedValue = ""
-            sender.window?.makeFirstResponder(sender.superview)
+            sender.window?.makeFirstResponder(nil)
         }
     }
 }

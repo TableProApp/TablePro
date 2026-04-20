@@ -10,17 +10,18 @@ import SwiftUI
 
 struct UnifiedRightPanelView: View {
     @Bindable var state: RightPanelState
-    let inspectorContext: InspectorContext
     let connection: DatabaseConnection
     let tables: [TableInfo]
 
+    private var ctx: InspectorContext { state.inspectorContext }
+
     private var detailsView: some View {
         RightSidebarView(
-            tableName: inspectorContext.tableName,
-            tableMetadata: inspectorContext.tableMetadata,
-            selectedRowData: inspectorContext.selectedRowData,
-            isEditable: inspectorContext.isEditable,
-            isRowDeleted: inspectorContext.isRowDeleted,
+            tableName: ctx.tableName,
+            tableMetadata: ctx.tableMetadata,
+            selectedRowData: ctx.selectedRowData,
+            isEditable: ctx.isEditable,
+            isRowDeleted: ctx.isRowDeleted,
             onSave: { state.onSave?() },
             editState: state.editState,
             databaseType: connection.type
@@ -48,8 +49,8 @@ struct UnifiedRightPanelView: View {
                     AIChatPanelView(
                         connection: connection,
                         tables: tables,
-                        currentQuery: inspectorContext.currentQuery,
-                        queryResults: inspectorContext.queryResults,
+                        currentQuery: ctx.currentQuery,
+                        queryResults: ctx.queryResults,
                         viewModel: state.aiViewModel
                     )
                 }

@@ -255,13 +255,8 @@ extension MainContentView {
             CommandActionsRegistry.shared.current = actions
         }
 
-        // Install NSToolbar. `installToolbar` is idempotent — safe to call
-        // from multiple lifecycle triggers. Called from both here AND
-        // `TabWindowController.windowDidBecomeKey` because the two tab-open
-        // paths (Cmd+T menu vs. toolbar "+" button click) have different
-        // calling contexts, and each hits one trigger but not the other.
-        if let controller = window.windowController as? TabWindowController {
-            controller.installToolbar(coordinator: coordinator)
+        if let splitVC = window.contentViewController as? MainSplitViewController {
+            splitVC.installToolbar(coordinator: coordinator)
         }
         MainContentView.lifecycleLogger.info(
             "[open] configureWindow done windowId=\(windowId, privacy: .public) tabbingId=\(resolvedId, privacy: .public) isPreview=\(isPreview) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

@@ -92,15 +92,6 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     // MARK: - NSToolbarDelegate
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        // Layout: [sidebar][sidebar sep] [left actions] [flex] [Principal]
-        //         [flex] [right actions] [Inspector]
-        //
-        // No `inspectorTrackingSeparator`: with NSHostingView setup (no
-        // NSSplitViewItem with `.inspector` behavior), the separator creates
-        // a separate trailing region that ABSORBS flex space, leaving right
-        // items pinned next to the principal instead of at the right edge.
-        // Plain `[flex, principal, flex, …rightItems, inspector]` justifies
-        // right items against the inspector toggle (Apple Music-style).
         [
             .toggleSidebar,
             .sidebarTrackingSeparator,
@@ -434,7 +425,7 @@ private struct InspectorToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         Button {
-            coordinator.commandActions?.toggleRightSidebar()
+            coordinator.inspectorProxy?.toggleInspector()
         } label: {
             Label("Inspector", systemImage: "sidebar.trailing")
         }

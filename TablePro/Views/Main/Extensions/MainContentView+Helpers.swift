@@ -72,7 +72,7 @@ extension MainContentView {
     }
 
     func updateInspectorContext() {
-        inspectorContext = InspectorContext(
+        rightPanelState.inspectorContext = InspectorContext(
             tableName: currentTab?.tableName,
             tableMetadata: coordinator.tableMetadata,
             selectedRowData: selectedRowDataForSidebar,
