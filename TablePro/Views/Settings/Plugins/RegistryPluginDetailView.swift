@@ -137,14 +137,8 @@ struct RegistryPluginDetailView: View {
         }
     }
 
-    private static let decimalFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return formatter
-    }()
-
     private func formattedCount(_ count: Int) -> String {
-        let formatted = Self.decimalFormatter.string(from: NSNumber(value: count)) ?? "\(count)"
+        let formatted = count.formatted(.number.grouping(.automatic))
         return count == 1
             ? String(format: String(localized: "%@ download"), formatted)
             : String(format: String(localized: "%@ downloads"), formatted)

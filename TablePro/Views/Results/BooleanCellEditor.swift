@@ -72,8 +72,7 @@ final class BooleanFieldEditor: NSTextView {
             addSubview(popup)
             popupButton = popup
 
-            // Pull down the menu immediately
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 popup.performClick(nil)
             }
         }

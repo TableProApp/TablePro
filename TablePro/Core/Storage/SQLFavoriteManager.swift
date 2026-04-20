@@ -114,7 +114,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Notifications
 
     private func postUpdateNotification() {
-        DispatchQueue.main.async {
+        Task { @MainActor in
             NotificationCenter.default.post(name: .sqlFavoritesDidUpdate, object: nil)
         }
     }

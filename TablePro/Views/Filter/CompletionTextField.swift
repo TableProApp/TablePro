@@ -37,7 +37,7 @@ struct CompletionTextField: NSViewRepresentable {
         }
 
         if shouldFocus {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 textField.window?.makeFirstResponder(textField)
             }
         }

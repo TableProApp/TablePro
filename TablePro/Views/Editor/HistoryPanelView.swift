@@ -293,15 +293,8 @@ private extension HistoryPanelView {
         return parts.joined(separator: "  |  ")
     }
 
-    private static let metadataDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     func buildSecondaryMetadata(_ entry: QueryHistoryEntry) -> String {
-        let executedAt = Self.metadataDateFormatter.string(from: entry.executedAt)
+        let executedAt = entry.executedAt.formatted(date: .abbreviated, time: .shortened)
         var text = String(format: String(localized: "Executed: %@"), executedAt)
 
         if !entry.wasSuccessful, let error = entry.errorMessage {

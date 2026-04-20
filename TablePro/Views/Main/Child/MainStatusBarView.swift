@@ -9,11 +9,6 @@ import SwiftUI
 
 /// Status bar at the bottom of the results section
 struct MainStatusBarView: View {
-    private static let decimalFormatter: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        return f
-    }()
 
     let tab: QueryTab?
     let filterStateManager: FilterStateManager
@@ -194,20 +189,20 @@ struct MainStatusBarView: View {
                 return String(format: String(localized: "%d of %d rows selected"), selectedCount, loadedCount)
             }
         } else if tab.tabType == .query && pagination.hasMoreRows {
-            let formattedCount = Self.decimalFormatter.string(from: NSNumber(value: loadedCount)) ?? "\(loadedCount)"
+            let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
             if let total = total, total > 0 {
-                let formattedTotal = Self.decimalFormatter.string(from: NSNumber(value: total)) ?? "\(total)"
+                let formattedTotal = total.formatted(.number.grouping(.automatic))
                 let prefix = pagination.isApproximateRowCount ? "~" : ""
                 return String(format: String(localized: "%@ of %@%@ rows"), formattedCount, prefix, formattedTotal)
             }
             return String(format: String(localized: "%@ rows (more available)"), formattedCount)
         } else if tab.tabType == .table, let total = total, total > 0 {
-            let formattedTotal = Self.decimalFormatter.string(from: NSNumber(value: total)) ?? "\(total)"
+            let formattedTotal = total.formatted(.number.grouping(.automatic))
             let prefix = pagination.isApproximateRowCount ? "~" : ""
 
             return String(format: String(localized: "%d-%d of %@%@ rows"), pagination.rangeStart, pagination.rangeEnd, prefix, formattedTotal)
         } else if loadedCount > 0 {
-            let formattedCount = Self.decimalFormatter.string(from: NSNumber(value: loadedCount)) ?? "\(loadedCount)"
+            let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
             return String(format: String(localized: "%@ rows"), formattedCount)
         } else {
             return String(localized: "No rows")

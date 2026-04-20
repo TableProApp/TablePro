@@ -51,11 +51,6 @@ struct QueryPlanTreeView: View {
 // MARK: - Row View
 
 private struct QueryPlanRowView: View {
-    static let rowFormatter: NumberFormatter = {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        return f
-    }()
 
     let node: QueryPlanNode
 
@@ -105,7 +100,7 @@ private struct QueryPlanRowView: View {
 
             // Rows
             if let rows = node.estimatedRows {
-                Text(Self.rowFormatter.string(from: NSNumber(value: rows)).map { "\($0) rows" } ?? "\(rows) rows")
+                Text("\(rows.formatted(.number.grouping(.automatic))) rows")
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 80, alignment: .trailing)

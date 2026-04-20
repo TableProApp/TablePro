@@ -228,14 +228,8 @@ struct ClickHousePartsView: View {
 
     // MARK: - Formatting
 
-    private static let numberFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return formatter
-    }()
-
     private func formatNumber(_ number: UInt64) -> String {
-        Self.numberFormatter.string(from: NSNumber(value: number)) ?? "\(number)"
+        number.formatted(.number.grouping(.automatic))
     }
 
     private func formatBytes(_ bytes: UInt64) -> String {

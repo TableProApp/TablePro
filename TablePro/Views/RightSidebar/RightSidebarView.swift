@@ -120,15 +120,8 @@ struct RightSidebarView: View {
         .formStyle(.grouped)
     }
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     private func formatDate(_ date: Date) -> String {
-        RightSidebarView.dateFormatter.string(from: date)
+        date.formatted(date: .numeric, time: .shortened)
     }
 
     // MARK: - Row Detail Form

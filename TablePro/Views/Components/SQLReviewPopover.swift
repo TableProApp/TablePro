@@ -85,11 +85,8 @@ struct SQLReviewPopover: View {
         .onExitCommand {
             dismiss()
         }
-        .onAppear {
-            // Defer SourceEditor creation to avoid toolbar layout crash
-            DispatchQueue.main.async {
-                isEditorReady = true
-            }
+        .task {
+            isEditorReady = true
         }
         .onDisappear {
             isEditorReady = false
