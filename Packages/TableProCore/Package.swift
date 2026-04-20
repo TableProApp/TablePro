@@ -13,7 +13,8 @@ let package = Package(
         .library(name: "TableProModels", targets: ["TableProModels"]),
         .library(name: "TableProDatabase", targets: ["TableProDatabase"]),
         .library(name: "TableProQuery", targets: ["TableProQuery"]),
-        .library(name: "TableProSync", targets: ["TableProSync"])
+        .library(name: "TableProSync", targets: ["TableProSync"]),
+        .library(name: "TableProAnalytics", targets: ["TableProAnalytics"])
     ],
     targets: [
         .target(
@@ -40,6 +41,11 @@ let package = Package(
             name: "TableProSync",
             dependencies: ["TableProModels"],
             path: "Sources/TableProSync"
+        ),
+        .target(
+            name: "TableProAnalytics",
+            dependencies: [],
+            path: "Sources/TableProAnalytics"
         ),
         .testTarget(
             name: "TableProModelsTests",

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEED2F7F893000D028D1 /* TableProAnalytics */; };
 		5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEC2F7F893000D028D0 /* TableProSync */; };
 		5AA136062F82610F00ADCD58 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136052F82610F00ADCD58 /* WidgetKit.framework */; };
 		5AA136082F82610F00ADCD58 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136072F82610F00ADCD58 /* SwiftUI.framework */; };
@@ -580,6 +581,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */,
 				5AA3133A2F7EA5B4008EBA97 /* LibPQ.xcframework in Frameworks */,
 				5AB9F3EF2F7C1D03001F3337 /* TableProQuery in Frameworks */,
 				5AA313402F7EA5B4008EBA97 /* MariaDB.xcframework in Frameworks */,
@@ -1695,6 +1697,7 @@
 				5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */,
 				5AB9F3EE2F7C1D03001F3337 /* TableProQuery */,
 				5A87EEEC2F7F893000D028D0 /* TableProSync */,
+				5A87EEED2F7F893000D028D1 /* TableProAnalytics */,
 			);
 			productName = TableProMobile;
 			productReference = 5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */;
@@ -2101,6 +2104,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProSync;
+		};
+		5A87EEED2F7F893000D028D1 /* TableProAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TableProAnalytics;
 		};
 		5AB9F3E82F7C1D03001F3337 /* TableProDatabase */ = {
 			isa = XCSwiftPackageProductDependency;
