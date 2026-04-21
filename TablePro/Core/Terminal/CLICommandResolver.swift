@@ -149,8 +149,9 @@ enum CLICommandResolver {
             : "\(sshConfig.username)@\(sshConfig.host)"
         sshArgs.append(userHost)
 
-        // Remote command (the CLI invocation on the remote host)
-        sshArgs.append(remoteCommand)
+        // Wrap in login shell so the remote user's PATH is loaded
+        // (non-login SSH commands don't source .bashrc/.profile)
+        sshArgs += ["bash", "-l", "-c", remoteCommand]
 
         return CLILaunchSpec(executablePath: sshPath, arguments: sshArgs, environment: [:])
     }

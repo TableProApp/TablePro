@@ -68,7 +68,8 @@ final class TerminalProcessManager {
         self.ptyFD = ptyFDValue
         self.childPID = pid
 
-        Self.logger.info("Launched \(spec.executablePath, privacy: .public) pid=\(pid)")
+        let fullCmd = ([spec.executablePath] + spec.arguments).joined(separator: " ")
+        Self.logger.info("Launched: \(fullCmd, privacy: .public) pid=\(pid)")
 
         startReadingOutput()
         monitorChildExit()
