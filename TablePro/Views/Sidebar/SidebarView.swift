@@ -87,35 +87,6 @@ struct SidebarView: View {
                 )
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 0) {
-                NativeSearchField(
-                    text: Binding(
-                        get: { sidebarState.searchText },
-                        set: { sidebarState.searchText = $0 }
-                    ),
-                    placeholder: sidebarState.selectedSidebarTab == .tables
-                        ? String(localized: "Filter")
-                        : String(localized: "Filter favorites")
-                )
-                .padding(.horizontal, 8)
-                .padding(.top, 6)
-                .padding(.bottom, 4)
-
-                Picker("", selection: Binding(
-                    get: { sidebarState.selectedSidebarTab },
-                    set: { sidebarState.selectedSidebarTab = $0 }
-                )) {
-                    Text("Tables").tag(SidebarTab.tables)
-                    Text("Favorites").tag(SidebarTab.favorites)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "Sidebar view"))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-            }
-        }
         .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
@@ -158,6 +129,8 @@ struct SidebarView: View {
             errorState(message: message)
         case .loaded where tables.isEmpty:
             emptyState
+        case .loaded where !viewModel.searchText.isEmpty && filteredTables.isEmpty:
+            noMatchState
         case .loaded:
             tableList
         case .idle:
@@ -184,6 +157,11 @@ struct SidebarView: View {
         .padding()
     }
 
+    private var noMatchState: some View {
+        ContentUnavailableView.search(text: viewModel.searchText)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var emptyState: some View {
         let entityName = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
         let noItemsLabel = String(format: String(localized: "No %@"), entityName)
@@ -200,72 +178,62 @@ struct SidebarView: View {
 
     private var tableList: some View {
         let entityLabel = PluginManager.shared.tableEntityName(for: viewModel.databaseType)
-        let noMatchLabel = String(format: String(localized: "No matching %@"), entityLabel.lowercased())
         let helpLabel = String(format: String(localized: "Right-click to show all %@"), entityLabel.lowercased())
         let showAllLabel = String(format: String(localized: "Show All %@"), entityLabel)
         return List(selection: selectedTablesBinding) {
-            if filteredTables.isEmpty {
-                ContentUnavailableView(
-                    noMatchLabel,
-                    systemImage: "magnifyingglass"
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            } else {
-                Section(isExpanded: $viewModel.isTablesExpanded) {
-                    ForEach(filteredTables) { table in
-                        TableRow(
-                            table: table,
-                            isPendingTruncate: pendingTruncates.contains(table.name),
-                            isPendingDelete: pendingDeletes.contains(table.name)
-                        )
-                        .tag(table)
-                        .overlay {
-                            DoubleClickDetector {
-                                onDoubleClick?(table)
-                            }
-                        }
-                        .contextMenu {
-                            SidebarContextMenu(
-                                clickedTable: table,
-                                selectedTables: sidebarState.selectedTables,
-                                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                                coordinator: coordinator
-                            )
+            Section(isExpanded: $viewModel.isTablesExpanded) {
+                ForEach(filteredTables) { table in
+                    TableRow(
+                        table: table,
+                        isPendingTruncate: pendingTruncates.contains(table.name),
+                        isPendingDelete: pendingDeletes.contains(table.name)
+                    )
+                    .tag(table)
+                    .overlay {
+                        DoubleClickDetector {
+                            onDoubleClick?(table)
                         }
                     }
-                } header: {
-                    Text(entityLabel)
-                        .help(helpLabel)
-                        .contextMenu {
-                            Button(showAllLabel) {
-                                coordinator?.showAllTablesMetadata()
-                            }
-                        }
+                    .contextMenu {
+                        SidebarContextMenu(
+                            clickedTable: table,
+                            selectedTables: sidebarState.selectedTables,
+                            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                            coordinator: coordinator
+                        )
+                    }
                 }
-
-                if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
-                    Section(isExpanded: $viewModel.isRedisKeysExpanded) {
-                        RedisKeyTreeView(
-                            nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
-                            expandedPrefixes: Binding(
-                                get: { keyTreeVM.expandedPrefixes },
-                                set: { keyTreeVM.expandedPrefixes = $0 }
-                            ),
-                            isLoading: keyTreeVM.isLoading,
-                            isTruncated: keyTreeVM.isTruncated,
-                            onSelectNamespace: { prefix in
-                                coordinator?.browseRedisNamespace(prefix)
-                            },
-                            onSelectKey: { key, keyType in
-                                coordinator?.openRedisKey(key, keyType: keyType)
-                            }
-                        )
-                    } header: {
-                        Text("Keys")
+            } header: {
+                Text(entityLabel)
+                    .help(helpLabel)
+                    .contextMenu {
+                        Button(showAllLabel) {
+                            coordinator?.showAllTablesMetadata()
+                        }
                     }
+            }
+
+            if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
+                Section(isExpanded: $viewModel.isRedisKeysExpanded) {
+                    RedisKeyTreeView(
+                        nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
+                        expandedPrefixes: Binding(
+                            get: { keyTreeVM.expandedPrefixes },
+                            set: { keyTreeVM.expandedPrefixes = $0 }
+                        ),
+                        isLoading: keyTreeVM.isLoading,
+                        isTruncated: keyTreeVM.isTruncated,
+                        onSelectNamespace: { prefix in
+                            coordinator?.browseRedisNamespace(prefix)
+                        },
+                        onSelectKey: { key, keyType in
+                            coordinator?.openRedisKey(key, keyType: keyType)
+                        }
+                    )
+                } header: {
+                    Text("Keys")
                 }
             }
         }

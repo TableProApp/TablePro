@@ -36,6 +36,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// deallocs immediately and its view becomes orphaned, producing zero-size
     /// items that get pushed right by flexibleSpace.
     private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
+    private var sidebarButtons: [NSButton] = []
+    private var sidebarObservationTask: Task<Void, Never>?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -65,6 +67,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Release all hosted toolbar views and sever the coordinator reference.
     /// Called by TabWindowController.windowWillClose before coordinator teardown.
     func invalidate() {
+        sidebarObservationTask?.cancel()
+        sidebarObservationTask = nil
+        sidebarButtons = []
         hostingControllers.removeAll()
         coordinator = nil
     }
@@ -88,12 +93,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let importTables = NSToolbarItem.Identifier("com.TablePro.toolbar.import")
     private static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
     private static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
+    private static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
 
     // MARK: - NSToolbarDelegate
 
     internal func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
-            .toggleSidebar,
+            Self.sidebarToggle,
             .sidebarTrackingSeparator,
             Self.connection,
             Self.database,
@@ -137,6 +143,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         guard let coordinator else { return nil }
 
         switch itemIdentifier {
+        case Self.sidebarToggle:
+            return makeSidebarToggleItem(coordinator: coordinator)
         case Self.connection:
             return hostingItem(id: itemIdentifier, label: String(localized: "Connection"),
                                content: ConnectionToolbarButton(coordinator: coordinator))
@@ -497,5 +505,116 @@ private struct ImportToolbarButton: View {
         )
         .opacity(supportsImport ? 1 : 0)
         .allowsHitTesting(supportsImport)
+    }
+}
+
+// MARK: - Sidebar Toggle (Pure AppKit)
+
+extension MainWindowToolbar {
+    fileprivate func makeSidebarToggleItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: Self.sidebarToggle)
+        item.label = String(localized: "Sidebar")
+        item.paletteLabel = String(localized: "Sidebar")
+
+        let container = NSStackView()
+        container.orientation = .horizontal
+        container.spacing = 2
+
+        let tablesButton = makeSidebarNSButton(
+            icon: "tablecells",
+            label: String(localized: "Tables"),
+            tag: 0
+        )
+        let favoritesButton = makeSidebarNSButton(
+            icon: "star",
+            label: String(localized: "Favorites"),
+            tag: 1
+        )
+
+        container.addArrangedSubview(tablesButton)
+        container.addArrangedSubview(favoritesButton)
+
+        sidebarButtons = [tablesButton, favoritesButton]
+        item.view = container
+
+        syncSidebarButtonState(coordinator: coordinator)
+        startSidebarObservation(coordinator: coordinator)
+
+        return item
+    }
+
+    private func makeSidebarNSButton(icon: String, label: String, tag: Int) -> NSButton {
+        let button = NSButton()
+        button.bezelStyle = .recessed
+        button.setButtonType(.pushOnPushOff)
+        button.showsBorderOnlyWhileMouseInside = true
+        button.isBordered = true
+        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.tag = tag
+        button.target = self
+        button.action = #selector(sidebarButtonClicked(_:))
+        button.setAccessibilityLabel(label)
+        button.toolTip = label
+        return button
+    }
+
+    @objc fileprivate func sidebarButtonClicked(_ sender: NSButton) {
+        guard let coordinator else { return }
+        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+        let tabs: [SidebarTab] = [.tables, .favorites]
+        guard sender.tag >= 0, sender.tag < tabs.count else { return }
+        let tab = tabs[sender.tag]
+
+        if coordinator.toolbarState.isSidebarVisible {
+            if sidebarState.selectedSidebarTab == tab {
+                coordinator.sidebarProxy?.hideSidebar()
+            } else {
+                sidebarState.selectedSidebarTab = tab
+            }
+        } else {
+            sidebarState.selectedSidebarTab = tab
+            coordinator.sidebarProxy?.showSidebar()
+        }
+    }
+
+    fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
+        guard sidebarButtons.count == 2 else { return }
+        let state = coordinator.toolbarState
+        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+        let isConnected = state.connectionState == .connected || state.connectionState == .executing
+        let icons = ["tablecells", "star"]
+
+        for (index, button) in sidebarButtons.enumerated() {
+            let isActive = state.isSidebarVisible && isConnected
+                && (index == 0 ? sidebarState.selectedSidebarTab == .tables : sidebarState.selectedSidebarTab == .favorites)
+            button.isEnabled = isConnected
+            button.state = isActive ? .on : .off
+            button.showsBorderOnlyWhileMouseInside = !isActive
+            button.image = NSImage(systemSymbolName: icons[index], accessibilityDescription: button.accessibilityLabel())
+        }
+    }
+
+    fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
+        sidebarObservationTask?.cancel()
+        sidebarObservationTask = Task { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            while !Task.isCancelled {
+                let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        _ = coordinator.toolbarState.isSidebarVisible
+                        _ = coordinator.toolbarState.connectionState
+                        _ = sidebarState.selectedSidebarTab
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                guard !Task.isCancelled, let self else { return }
+                await MainActor.run {
+                    self.syncSidebarButtonState(coordinator: coordinator)
+                }
+            }
+        }
     }
 }
