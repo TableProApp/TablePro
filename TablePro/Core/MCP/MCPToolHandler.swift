@@ -221,13 +221,8 @@ final class MCPToolHandler: Sendable {
         let outputPath = optionalString(args, key: "output_path")
         let maxRows = optionalInt(args, key: "max_rows", default: 50_000, clamp: 1...100_000)
 
-        guard ["csv", "json", "sql", "xlsx"].contains(format) else {
-            throw MCPError.invalidParams("Unsupported format: \(format). Must be csv, json, sql, or xlsx")
-        }
-
-        // XLSX is binary and cannot be returned inline
-        if format == "xlsx" && outputPath == nil {
-            throw MCPError.invalidParams("XLSX export requires output_path since it is a binary format")
+        guard ["csv", "json", "sql"].contains(format) else {
+            throw MCPError.invalidParams("Unsupported format: \(format). Must be csv, json, or sql")
         }
 
         guard query != nil || tables != nil else {
@@ -280,9 +275,6 @@ final class MCPToolHandler: Sendable {
                 formatted = formatJSON(columns: columnNames, rows: rows)
             case "sql":
                 formatted = formatSQL(table: label, columns: columnNames, rows: rows)
-            case "xlsx":
-                // XLSX is handled via file write below; generate CSV as intermediate
-                formatted = formatCSV(columns: columnNames, rows: rows)
             default:
                 formatted = formatCSV(columns: columnNames, rows: rows)
             }

@@ -24,6 +24,7 @@ final class MCPServerManager {
     private(set) var connectedClients: [MCPServer.SessionSnapshot] = []
     private var server: MCPServer?
     private var clientRefreshTask: Task<Void, Never>?
+    private var serverGeneration: Int = 0
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -43,9 +44,12 @@ final class MCPServerManager {
             await stop()
         }
 
+        serverGeneration += 1
+        let generation = serverGeneration
         let newServer = MCPServer { [weak self] newState in
             Task { @MainActor in
-                self?.state = newState
+                guard let self, self.serverGeneration == generation else { return }
+                self.state = newState
             }
         }
 

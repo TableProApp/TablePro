@@ -106,18 +106,15 @@ actor MCPServer {
 
         if let currentListener = listener {
             listener = nil
-            currentListener.cancel()
-            // Wait for the listener to fully release the port
             await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                 currentListener.stateUpdateHandler = { state in
                     if case .cancelled = state {
                         continuation.resume()
                     }
                 }
+                currentListener.cancel()
             }
         }
-
-        stateCallback(.stopped)
     }
 
     var sessionCount: Int {

@@ -268,16 +268,30 @@ final class MCPRouter: Sendable {
             return encodeError(MCPError.internalError("Server not fully initialized"), id: id)
         }
 
+        let session = await server.session(for: sessionId)
+        let toolTask = Task {
+            try await handler(name, arguments, sessionId)
+        }
+        if let session {
+            await session.addRunningTask(id, task: Task { _ = try? await toolTask.value })
+        }
+
         do {
-            let toolResult = try await handler(name, arguments, sessionId)
+            let toolResult = try await toolTask.value
+            if let session { _ = await session.removeRunningTask(id) }
             let resultData = try encoder.encode(toolResult)
             guard let resultValue = try? decoder.decode(JSONValue.self, from: resultData) else {
                 return encodeError(MCPError.internalError("Failed to encode tool result"), id: id)
             }
             return encodeRawResult(resultValue, id: id, sessionId: sessionId)
+        } catch is CancellationError {
+            if let session { _ = await session.removeRunningTask(id) }
+            return encodeError(MCPError.timeout("Request was cancelled"), id: id)
         } catch let mcpError as MCPError {
+            if let session { _ = await session.removeRunningTask(id) }
             return encodeError(mcpError, id: id)
         } catch {
+            if let session { _ = await session.removeRunningTask(id) }
             return encodeError(MCPError.internalError(error.localizedDescription), id: id)
         }
     }
@@ -651,8 +665,8 @@ extension MCPRouter {
                         ]),
                         "format": .object([
                             "type": "string",
-                            "description": "Export format: csv, json, sql, or xlsx",
-                            "enum": .array([.string("csv"), .string("json"), .string("sql"), .string("xlsx")])
+                            "description": "Export format: csv, json, or sql",
+                            "enum": .array([.string("csv"), .string("json"), .string("sql")])
                         ]),
                         "query": .object([
                             "type": "string",

@@ -138,6 +138,7 @@ actor MCPAuthGuard {
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(30))
+                approvalTask.cancel()
                 throw MCPError.timeout(
                     String(localized: "User approval timed out after 30 seconds")
                 )
@@ -145,6 +146,7 @@ actor MCPAuthGuard {
             guard let result = try await group.next() else {
                 throw MCPError.internalError("No result from approval prompt")
             }
+            approvalTask.cancel()
             group.cancelAll()
             return result
         }

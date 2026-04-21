@@ -389,20 +389,19 @@ actor MCPConnectionBridge {
             }
         }
 
+        let (driver, _) = try await resolveDriver(connectionId)
+
         let tables: [TableInfo]
         if !cachedTables.isEmpty {
             tables = cachedTables
         } else {
-            let (driver, _) = try await resolveDriver(connectionId)
             tables = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
                 try await driver.fetchTables()
             }
         }
 
-        // Limit to first 100 tables to prevent excessive round-trips
         let limitedTables = Array(tables.prefix(100))
 
-        let (driver, _) = try await resolveDriver(connectionId)
         var tableSchemas: [JSONValue] = []
         for table in limitedTables {
             let columns = try await DatabaseManager.shared.trackOperation(sessionId: connectionId) {
