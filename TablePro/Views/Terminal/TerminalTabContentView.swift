@@ -4,7 +4,6 @@
 //
 
 import GhosttyTerminal
-import os
 import SwiftUI
 
 struct TerminalTabContentView: View {
@@ -114,16 +113,23 @@ private struct TerminalFocusHelper: NSViewRepresentable {
 }
 
 private final class TerminalFocusHelperView: NSView {
+    private weak var terminalView: NSView?
+    private var rightClickMonitor: Any?
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard let window else { return }
+        guard let window else {
+            removeMonitor()
+            return
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             var ancestor: NSView? = self.superview?.superview
             while let current = ancestor {
                 if let keyView = Self.firstKeyView(in: current, excluding: self) {
                     window.makeFirstResponder(keyView)
-                    Self.installContextMenu(on: keyView)
+                    self.terminalView = keyView
+                    self.installRightClickMonitor()
                     return
                 }
                 ancestor = current.superview
@@ -131,36 +137,45 @@ private final class TerminalFocusHelperView: NSView {
         }
     }
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalContextMenu")
+    override func removeFromSuperview() {
+        removeMonitor()
+        super.removeFromSuperview()
+    }
 
-    private static func installContextMenu(on terminalView: NSView) {
-        logger.info("installContextMenu on \(terminalView.className, privacy: .public) menu=\(String(describing: terminalView.menu), privacy: .public)")
+    // MARK: - Right-Click Context Menu
 
-        // Check if the terminal view overrides menu(for:) which would prevent our NSMenu from showing
-        let existingMenu = terminalView.menu
-        logger.info("existing menu: \(String(describing: existingMenu), privacy: .public), menuClass: \(String(describing: type(of: terminalView)), privacy: .public)")
-        logger.info("responds to menuForEvent: \(terminalView.responds(to: #selector(NSView.menu(for:))), privacy: .public)")
+    private func installRightClickMonitor() {
+        removeMonitor()
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, let terminal = self.terminalView else { return event }
+            let locationInTerminal = terminal.convert(event.locationInWindow, from: nil)
+            guard terminal.bounds.contains(locationInTerminal) else { return event }
 
+            let menu = Self.buildContextMenu()
+            NSMenu.popUpContextMenu(menu, with: event, for: terminal)
+            return nil
+        }
+    }
+
+    private func removeMonitor() {
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            rightClickMonitor = nil
+        }
+    }
+
+    private static func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
 
-        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        copy.keyEquivalentModifierMask = .command
-        menu.addItem(copy)
-
-        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        paste.keyEquivalentModifierMask = .command
-        menu.addItem(paste)
-
+        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: ""))
         menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: ""))
 
-        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        selectAll.keyEquivalentModifierMask = .command
-        menu.addItem(selectAll)
-
-        terminalView.menu = menu
-        logger.info("menu installed, items=\(menu.items.count)")
-        logger.info("terminalView.menu after set: \(String(describing: terminalView.menu), privacy: .public)")
+        return menu
     }
+
+    // MARK: - Key View Discovery
 
     private static func firstKeyView(in view: NSView, excluding: NSView) -> NSView? {
         for subview in view.subviews where subview !== excluding {
