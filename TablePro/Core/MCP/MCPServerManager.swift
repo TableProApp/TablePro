@@ -49,6 +49,19 @@ final class MCPServerManager {
 
         self.server = newServer
 
+        // Wire tool and resource handlers
+        let bridge = MCPConnectionBridge()
+        let authGuard = MCPAuthGuard()
+        let toolHandler = MCPToolHandler(bridge: bridge, authGuard: authGuard)
+        let resourceHandler = MCPResourceHandler(bridge: bridge)
+
+        await newServer.setToolCallHandler { name, arguments, sessionId in
+            try await toolHandler.handleToolCall(name: name, arguments: arguments, sessionId: sessionId)
+        }
+        await newServer.setResourceReadHandler { uri, sessionId in
+            try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
+        }
+
         do {
             try await newServer.start(port: port)
         } catch {

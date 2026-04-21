@@ -23,14 +23,24 @@ actor MCPServer {
     private let stateCallback: @Sendable (MCPServerState) -> Void
     private var router: MCPRouter!
 
-    var toolCallHandler: (@Sendable (String, JSONValue?, String) async throws -> MCPToolResult)?
-    var resourceReadHandler: (@Sendable (String, String) async throws -> MCPResourceReadResult)?
+    private(set) var toolCallHandler: (@Sendable (String, JSONValue?, String) async throws -> MCPToolResult)?
+    private(set) var resourceReadHandler: (@Sendable (String, String) async throws -> MCPResourceReadResult)?
 
     // MARK: - Initialization
 
     init(stateCallback: @escaping @Sendable (MCPServerState) -> Void) {
         self.stateCallback = stateCallback
         self.router = MCPRouter()
+    }
+
+    // MARK: - Handler Configuration
+
+    func setToolCallHandler(_ handler: @escaping @Sendable (String, JSONValue?, String) async throws -> MCPToolResult) {
+        self.toolCallHandler = handler
+    }
+
+    func setResourceReadHandler(_ handler: @escaping @Sendable (String, String) async throws -> MCPResourceReadResult) {
+        self.resourceReadHandler = handler
     }
 
     // MARK: - Lifecycle
