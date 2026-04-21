@@ -251,11 +251,19 @@ actor MCPServer {
 
     // MARK: - HTTP Request Handling
 
+    private static let corsHeaders: [(String, String)] = [
+        ("Access-Control-Allow-Origin", "*"),
+        ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
+        ("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, mcp-protocol-version"),
+        ("Access-Control-Expose-Headers", "Mcp-Session-Id"),
+        ("Access-Control-Max-Age", "86400")
+    ]
+
     private func handleHTTPRequest(_ request: HTTPRequest, connection: NWConnection) async {
         let result = await router.route(request, server: self)
 
         switch result {
-        case .jsonResponse(let data, let sessionId):
+        case .json(let data, let sessionId):
             sendJsonResponse(connection: connection, data: data, sessionId: sessionId)
 
         case .sseStream(let sessionId):
@@ -265,11 +273,14 @@ actor MCPServer {
             }
             sendSseHeaders(connection: connection, sessionId: sessionId)
 
+        case .accepted:
+            sendResponse(connection: connection, status: 202, headers: Self.corsHeaders, body: nil)
+
+        case .noContent:
+            sendResponse(connection: connection, status: 204, headers: Self.corsHeaders, body: nil)
+
         case .httpError(let status, let message):
             sendHTTPError(connection: connection, status: status, message: message)
-
-        case .noContent(let headers):
-            sendResponse(connection: connection, status: 204, headers: headers, body: nil)
         }
     }
 
@@ -367,6 +378,7 @@ actor MCPServer {
             ("Content-Type", "application/json"),
             ("Connection", "close")
         ]
+        headers.append(contentsOf: Self.corsHeaders)
         if let sessionId {
             headers.append(("Mcp-Session-Id", sessionId))
         }
@@ -374,7 +386,10 @@ actor MCPServer {
     }
 
     func sendSseHeaders(connection: NWConnection, sessionId: String) {
-        let headerData = MCPHTTPParser.buildSSEHeaders(sessionId: sessionId)
+        let headerData = MCPHTTPParser.buildSSEHeaders(
+            sessionId: sessionId,
+            corsHeaders: Self.corsHeaders
+        )
         connection.send(content: headerData, completion: .contentProcessed { error in
             if let error {
                 Self.logger.debug("SSE header send error: \(error.localizedDescription)")
@@ -382,8 +397,8 @@ actor MCPServer {
         })
     }
 
-    func sendSseEvent(connection: NWConnection, data: Data) {
-        let eventData = MCPHTTPParser.buildSSEEvent(data: data)
+    func sendSseEvent(connection: NWConnection, data: Data, eventId: String? = nil) {
+        let eventData = MCPHTTPParser.buildSSEEvent(data: data, id: eventId)
         connection.send(content: eventData, completion: .contentProcessed { error in
             if let error {
                 Self.logger.debug("SSE event send error: \(error.localizedDescription)")
@@ -394,14 +409,11 @@ actor MCPServer {
     func sendHTTPError(connection: NWConnection, status: Int, message: String) {
         let body: [String: String] = ["error": message]
         let data = (try? JSONEncoder().encode(body)) ?? Data()
-        sendResponse(
-            connection: connection,
-            status: status,
-            headers: [
-                ("Content-Type", "application/json"),
-                ("Connection", "close")
-            ],
-            body: data
-        )
+        var headers: [(String, String)] = [
+            ("Content-Type", "application/json"),
+            ("Connection", "close")
+        ]
+        headers.append(contentsOf: Self.corsHeaders)
+        sendResponse(connection: connection, status: status, headers: headers, body: data)
     }
 }

@@ -353,12 +353,6 @@ enum MCPError: Error, Sendable {
 
 // MARK: - MCP Initialize
 
-struct MCPInitializeParams: Codable, Sendable {
-    let protocolVersion: String
-    let capabilities: JSONValue?
-    let clientInfo: MCPClientInfo
-}
-
 struct MCPClientInfo: Codable, Sendable {
     let name: String
     let version: String?
@@ -397,11 +391,6 @@ struct MCPToolDefinition: Codable, Sendable {
     let inputSchema: JSONValue
 }
 
-struct MCPToolCallParams: Codable, Sendable {
-    let name: String
-    let arguments: JSONValue?
-}
-
 struct MCPToolResult: Codable, Sendable {
     let content: [MCPContent]
     let isError: Bool?
@@ -425,10 +414,6 @@ struct MCPResourceDefinition: Codable, Sendable {
     let mimeType: String?
 }
 
-struct MCPResourceReadParams: Codable, Sendable {
-    let uri: String
-}
-
 struct MCPResourceContent: Codable, Sendable {
     let uri: String
     let mimeType: String?
@@ -439,8 +424,3 @@ struct MCPResourceReadResult: Codable, Sendable {
     let contents: [MCPResourceContent]
 }
 
-// MARK: - MCP Cancellation
-
-struct MCPCancelParams: Codable, Sendable {
-    let requestId: JSONRPCId
-}

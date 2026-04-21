@@ -210,18 +210,25 @@ enum MCPHTTPParser {
         return data
     }
 
-    static func buildSSEHeaders(sessionId: String) -> Data {
-        let headers = "HTTP/1.1 200 OK\r\n"
+    static func buildSSEHeaders(sessionId: String, corsHeaders: [(String, String)] = []) -> Data {
+        var response = "HTTP/1.1 200 OK\r\n"
             + "Content-Type: text/event-stream\r\n"
             + "Cache-Control: no-cache\r\n"
             + "Connection: keep-alive\r\n"
             + "Mcp-Session-Id: \(sessionId)\r\n"
-            + "\r\n"
-        return Data(headers.utf8)
+        for (key, value) in corsHeaders {
+            response += "\(key): \(value)\r\n"
+        }
+        response += "\r\n"
+        return Data(response.utf8)
     }
 
-    static func buildSSEEvent(data: Data) -> Data {
-        var event = Data("data: ".utf8)
+    static func buildSSEEvent(data: Data, id: String? = nil) -> Data {
+        var event = Data()
+        if let id {
+            event.append(Data("id: \(id)\n".utf8))
+        }
+        event.append(Data("data: ".utf8))
         event.append(data)
         event.append(Data("\n\n".utf8))
         return event
@@ -233,8 +240,10 @@ enum MCPHTTPParser {
         case 202: return "Accepted"
         case 204: return "No Content"
         case 400: return "Bad Request"
+        case 403: return "Forbidden"
         case 404: return "Not Found"
         case 405: return "Method Not Allowed"
+        case 406: return "Not Acceptable"
         case 413: return "Content Too Large"
         case 500: return "Internal Server Error"
         default: return "Unknown"

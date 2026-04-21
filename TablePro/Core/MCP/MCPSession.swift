@@ -10,6 +10,7 @@ actor MCPSession {
     var clientInfo: MCPClientInfo?
     var sseConnection: NWConnection?
     var runningTasks: [JSONRPCId: Task<Void, Never>] = [:]
+    private(set) var eventCounter: Int = 0
 
     init() {
         self.id = UUID().uuidString
@@ -51,5 +52,10 @@ actor MCPSession {
 
     func removeRunningTask(_ id: JSONRPCId) -> Task<Void, Never>? {
         runningTasks.removeValue(forKey: id)
+    }
+
+    func nextEventId() -> String {
+        eventCounter += 1
+        return String(eventCounter)
     }
 }

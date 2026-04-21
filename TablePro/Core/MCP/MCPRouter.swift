@@ -13,10 +13,11 @@ final class MCPRouter: Sendable {
     private let decoder: JSONDecoder
 
     enum RouteResult: Sendable {
-        case jsonResponse(Data, sessionId: String?)
+        case json(Data, sessionId: String?)
         case sseStream(sessionId: String)
+        case accepted
+        case noContent
         case httpError(status: Int, message: String)
-        case noContent(headers: [(String, String)])
     }
 
     init() {
@@ -29,14 +30,16 @@ final class MCPRouter: Sendable {
     // MARK: - Main Entry
 
     func route(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
-        // OAuth discovery probes from Claude Code / MCP SDK.
-        // Return 404 with no auth requirement so the SDK skips authentication.
         if request.path.hasPrefix("/.well-known/") {
             return .httpError(status: 404, message: "Not found")
         }
 
         guard request.path == "/mcp" || request.path.hasPrefix("/mcp?") else {
             return .httpError(status: 404, message: "Not found")
+        }
+
+        if let origin = request.headers["origin"], !isAllowedOrigin(origin) {
+            return .httpError(status: 403, message: "Forbidden origin")
         }
 
         switch request.method {
@@ -51,24 +54,31 @@ final class MCPRouter: Sendable {
         }
     }
 
+    private func isAllowedOrigin(_ origin: String) -> Bool {
+        guard let components = URLComponents(string: origin),
+              let host = components.host
+        else {
+            return false
+        }
+        let allowedHosts: Set<String> = ["localhost", "127.0.0.1", "[::1]"]
+        return allowedHosts.contains(host)
+    }
+
     // MARK: - OPTIONS
 
     private func handleOptions() -> RouteResult {
-        .noContent(headers: [
-            ("Access-Control-Allow-Origin", "*"),
-            ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
-            ("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id"),
-            ("Access-Control-Max-Age", "86400")
-        ])
+        .noContent
     }
 
     // MARK: - GET (SSE Stream)
 
     private func handleGet(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
-        guard let sessionId = request.headers["mcp-session-id"],
-              let session = await server.session(for: sessionId)
-        else {
-            return encodeError(MCPError.invalidRequest("Missing or invalid Mcp-Session-Id"), id: nil)
+        guard let sessionId = request.headers["mcp-session-id"] else {
+            return .httpError(status: 400, message: "Missing Mcp-Session-Id header")
+        }
+
+        guard let session = await server.session(for: sessionId) else {
+            return .httpError(status: 404, message: "Session not found")
         }
 
         await session.markActive()
@@ -79,21 +89,25 @@ final class MCPRouter: Sendable {
 
     private func handleDelete(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
         guard let sessionId = request.headers["mcp-session-id"] else {
-            return encodeError(MCPError.invalidRequest("Missing Mcp-Session-Id"), id: nil)
+            return .httpError(status: 400, message: "Missing Mcp-Session-Id header")
+        }
+
+        guard await server.session(for: sessionId) != nil else {
+            return .httpError(status: 404, message: "Session not found")
         }
 
         await server.removeSession(sessionId)
         Self.logger.info("Session terminated via DELETE: \(sessionId)")
-
-        guard let body = try? encoder.encode(["status": "session_terminated"]) else {
-            return .httpError(status: 500, message: "Encoding error")
-        }
-        return .jsonResponse(body, sessionId: nil)
+        return .noContent
     }
 
     // MARK: - POST (JSON-RPC)
 
     private func handlePost(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
+        if let accept = request.headers["accept"], !accept.contains("application/json") && !accept.contains("*/*") {
+            return .httpError(status: 406, message: "Accept header must include application/json")
+        }
+
         guard let body = request.body else {
             return encodeError(MCPError.parseError, id: nil)
         }
@@ -109,6 +123,12 @@ final class MCPRouter: Sendable {
             return encodeError(MCPError.invalidRequest("jsonrpc must be \"2.0\""), id: rpcRequest.id)
         }
 
+        if let protocolVersion = request.headers["mcp-protocol-version"],
+           protocolVersion != "2025-03-26"
+        {
+            Self.logger.warning("Client mcp-protocol-version mismatch: \(protocolVersion)")
+        }
+
         let headerSessionId = request.headers["mcp-session-id"]
         return await dispatchMethod(rpcRequest, headerSessionId: headerSessionId, server: server)
     }
@@ -120,36 +140,39 @@ final class MCPRouter: Sendable {
         headerSessionId: String?,
         server: MCPServer
     ) async -> RouteResult {
-        // initialize does not require a session
         if request.method == "initialize" {
             return await handleInitialize(request, server: server)
         }
 
-        // ping does not strictly require a session
         if request.method == "ping" {
             return handlePing(request)
         }
 
-        // Notifications: best-effort, return 202 with empty body
-        if request.method == "notifications/initialized" {
-            if let sid = headerSessionId, let session = await server.session(for: sid) {
-                await session.markActive()
-            }
-            return .noContent(headers: [])
+        // Session-required methods: validate header and lookup
+        guard let sessionId = headerSessionId else {
+            return .httpError(status: 400, message: "Missing Mcp-Session-Id header")
         }
-
-        if request.method == "notifications/cancelled" {
-            return await handleCancellation(request, headerSessionId: headerSessionId, server: server)
-        }
-
-        // All other methods require a valid session
-        guard let sessionId = headerSessionId,
-              let session = await server.session(for: sessionId)
-        else {
-            return encodeError(MCPError.invalidRequest("Missing or invalid Mcp-Session-Id"), id: request.id)
+        guard let session = await server.session(for: sessionId) else {
+            return .httpError(status: 404, message: "Session not found")
         }
 
         await session.markActive()
+
+        if request.method == "notifications/initialized" {
+            await session.setInitialized(true)
+            return .accepted
+        }
+
+        if request.method == "notifications/cancelled" {
+            return await handleCancellation(request, session: session)
+        }
+
+        guard await session.isInitialized else {
+            return encodeError(
+                MCPError.invalidRequest("Session not initialized. Send notifications/initialized first."),
+                id: request.id
+            )
+        }
 
         switch request.method {
         case "tools/list":
@@ -183,7 +206,6 @@ final class MCPRouter: Sendable {
             let version = clientInfo["version"]?.stringValue
             await session.setClientInfo(MCPClientInfo(name: name, version: version))
         }
-        await session.setInitialized(true)
 
         let result = MCPInitializeResult(
             protocolVersion: "2025-03-26",
@@ -201,7 +223,7 @@ final class MCPRouter: Sendable {
 
     private func handlePing(_ request: JSONRPCRequest) -> RouteResult {
         guard let id = request.id else {
-            return .noContent(headers: [])
+            return .accepted
         }
         return encodeRawResult(.object([:]), id: id, sessionId: nil)
     }
@@ -210,15 +232,12 @@ final class MCPRouter: Sendable {
 
     private func handleCancellation(
         _ request: JSONRPCRequest,
-        headerSessionId: String?,
-        server: MCPServer
+        session: MCPSession
     ) async -> RouteResult {
-        guard let sessionId = headerSessionId,
-              let session = await server.session(for: sessionId),
-              let params = request.params,
+        guard let params = request.params,
               let requestIdValue = params["requestId"]
         else {
-            return .noContent(headers: [])
+            return .accepted
         }
 
         let cancelId: JSONRPCId?
@@ -233,17 +252,17 @@ final class MCPRouter: Sendable {
 
         if let cancelId, let task = await session.removeRunningTask(cancelId) {
             task.cancel()
-            Self.logger.info("Cancelled request \(String(describing: cancelId)) in session \(sessionId)")
+            Self.logger.info("Cancelled request \(String(describing: cancelId)) in session \(session.id)")
         }
 
-        return .noContent(headers: [])
+        return .accepted
     }
 
     // MARK: - tools/list
 
     private func handleToolsList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
-            return .noContent(headers: [])
+            return .accepted
         }
 
         let tools = Self.toolDefinitions()
@@ -306,7 +325,7 @@ final class MCPRouter: Sendable {
 
     private func handleResourcesList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
-            return .noContent(headers: [])
+            return .accepted
         }
 
         let resources = Self.resourceDefinitions()
@@ -353,7 +372,7 @@ final class MCPRouter: Sendable {
 
     private func encodeResult<T: Encodable>(_ result: T, id: JSONRPCId?, sessionId: String?) -> RouteResult {
         guard let id else {
-            return .noContent(headers: [])
+            return .accepted
         }
 
         do {
@@ -361,7 +380,7 @@ final class MCPRouter: Sendable {
             let resultValue = try decoder.decode(JSONValue.self, from: resultData)
             let response = JSONRPCResponse(id: id, result: resultValue)
             let data = try encoder.encode(response)
-            return .jsonResponse(data, sessionId: sessionId)
+            return .json(data, sessionId: sessionId)
         } catch {
             Self.logger.error("Failed to encode response: \(error.localizedDescription)")
             return encodeError(MCPError.internalError("Encoding failed"), id: id)
@@ -372,7 +391,7 @@ final class MCPRouter: Sendable {
         do {
             let response = JSONRPCResponse(id: id, result: result)
             let data = try encoder.encode(response)
-            return .jsonResponse(data, sessionId: sessionId)
+            return .json(data, sessionId: sessionId)
         } catch {
             Self.logger.error("Failed to encode response: \(error.localizedDescription)")
             return encodeError(MCPError.internalError("Encoding failed"), id: id)
@@ -383,7 +402,7 @@ final class MCPRouter: Sendable {
         let errorResponse = error.toJsonRpcError(id: id)
         do {
             let data = try encoder.encode(errorResponse)
-            return .jsonResponse(data, sessionId: nil)
+            return .json(data, sessionId: nil)
         } catch {
             Self.logger.error("Failed to encode error response")
             return .httpError(status: 500, message: "Internal encoding error")
