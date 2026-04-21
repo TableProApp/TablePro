@@ -43,7 +43,7 @@ struct MCPSettingsView: View {
             HStack {
                 Text("Port")
                 Spacer()
-                TextField("", value: $settingsManager.mcp.port, format: .number)
+                TextField("", value: $settingsManager.mcp.port, format: .number.grouping(.never))
                     .frame(width: 80)
                     .multilineTextAlignment(.trailing)
             }
@@ -51,7 +51,7 @@ struct MCPSettingsView: View {
             HStack {
                 Text("Default row limit")
                 Spacer()
-                TextField("", value: $settingsManager.mcp.defaultRowLimit, format: .number)
+                TextField("", value: $settingsManager.mcp.defaultRowLimit, format: .number.grouping(.never))
                     .frame(width: 80)
                     .multilineTextAlignment(.trailing)
             }
@@ -59,7 +59,7 @@ struct MCPSettingsView: View {
             HStack {
                 Text("Maximum row limit")
                 Spacer()
-                TextField("", value: $settingsManager.mcp.maxRowLimit, format: .number)
+                TextField("", value: $settingsManager.mcp.maxRowLimit, format: .number.grouping(.never))
                     .frame(width: 80)
                     .multilineTextAlignment(.trailing)
             }
@@ -67,7 +67,7 @@ struct MCPSettingsView: View {
             HStack {
                 Text("Query timeout")
                 Spacer()
-                TextField("", value: $settingsManager.mcp.queryTimeoutSeconds, format: .number)
+                TextField("", value: $settingsManager.mcp.queryTimeoutSeconds, format: .number.grouping(.never))
                     .frame(width: 80)
                     .multilineTextAlignment(.trailing)
                 Text("seconds")
@@ -158,7 +158,11 @@ private struct MCPStatusIndicator: View {
         case .running(let port):
             String(format: String(localized: "Running on port %d"), port)
         case .failed(let message):
-            String(format: String(localized: "Failed: %@"), message)
+            if message.contains("48") || message.lowercased().contains("address already in use") {
+                String(localized: "Port is already in use. Try a different port or close the other process.")
+            } else {
+                String(format: String(localized: "Failed: %@"), message)
+            }
         }
     }
 }
