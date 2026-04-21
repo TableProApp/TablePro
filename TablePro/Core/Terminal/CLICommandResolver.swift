@@ -22,6 +22,25 @@ enum CLICommandResolver {
         password: String?,
         activeDatabase: String?
     ) -> CLILaunchSpec? {
+        let sshConfig = extractSSHConfig(from: connection)
+        if let sshConfig {
+            return resolveViaSSH(
+                connection: connection,
+                password: password,
+                activeDatabase: activeDatabase,
+                sshConfig: sshConfig
+            )
+        }
+        return resolveLocal(connection: connection, password: password, activeDatabase: activeDatabase)
+    }
+
+    // MARK: - Local Resolution
+
+    private static func resolveLocal(
+        connection: DatabaseConnection,
+        password: String?,
+        activeDatabase: String?
+    ) -> CLILaunchSpec? {
         let dbName = activeDatabase ?? connection.database
         let type = connection.type
 
@@ -48,6 +67,172 @@ enum CLICommandResolver {
             logger.warning("No CLI mapping for database type: \(type.rawValue, privacy: .public)")
             return nil
         }
+    }
+
+    // MARK: - SSH Resolution
+
+    private static func extractSSHConfig(from connection: DatabaseConnection) -> SSHConfiguration? {
+        switch connection.sshTunnelMode {
+        case .disabled:
+            return nil
+        case .inline(let config):
+            return config
+        case .profile(_, let snapshot):
+            return snapshot
+        }
+    }
+
+    private static func resolveViaSSH(
+        connection: DatabaseConnection,
+        password: String?,
+        activeDatabase: String?,
+        sshConfig: SSHConfiguration
+    ) -> CLILaunchSpec? {
+        guard let sshPath = findExecutable("ssh") else {
+            logger.error("ssh binary not found")
+            return nil
+        }
+
+        let cliName = binaryName(for: connection.type)
+        let dbName = activeDatabase ?? connection.database
+
+        // Build the remote CLI command
+        var remoteCommand = buildRemoteCommand(
+            connection: connection,
+            password: password,
+            database: dbName,
+            cliName: cliName
+        )
+        guard !remoteCommand.isEmpty else { return nil }
+
+        // Build ssh args
+        var sshArgs: [String] = []
+
+        // SSH port
+        if sshConfig.port != 22 {
+            sshArgs += ["-p", String(sshConfig.port)]
+        }
+
+        // Private key
+        if sshConfig.authMethod == .privateKey, let keyPath = sshConfig.privateKeyPath, !keyPath.isEmpty {
+            let expanded = (keyPath as NSString).expandingTildeInPath
+            sshArgs += ["-i", expanded]
+        }
+
+        // Jump hosts
+        if !sshConfig.jumpHosts.isEmpty {
+            let jumpSpec = sshConfig.jumpHosts.map { jump -> String in
+                if jump.port != 22 {
+                    return "\(jump.username.isEmpty ? "" : "\(jump.username)@")\(jump.host):\(jump.port)"
+                }
+                return "\(jump.username.isEmpty ? "" : "\(jump.username)@")\(jump.host)"
+            }.joined(separator: ",")
+            sshArgs += ["-J", jumpSpec]
+        }
+
+        // Disable strict host key checking for non-interactive use
+        sshArgs += ["-o", "StrictHostKeyChecking=accept-new"]
+
+        // Request TTY for interactive CLI
+        sshArgs.append("-t")
+
+        // user@host
+        let userHost = sshConfig.username.isEmpty
+            ? sshConfig.host
+            : "\(sshConfig.username)@\(sshConfig.host)"
+        sshArgs.append(userHost)
+
+        // Remote command (the CLI invocation on the remote host)
+        sshArgs.append(remoteCommand)
+
+        return CLILaunchSpec(executablePath: sshPath, arguments: sshArgs, environment: [:])
+    }
+
+    /// Builds the remote shell command string to run the database CLI on the SSH host.
+    /// The DB connects to localhost on the remote (or the configured host from there).
+    private static func buildRemoteCommand(
+        connection: DatabaseConnection,
+        password: String?,
+        database: String,
+        cliName: String
+    ) -> String {
+        let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
+        var envPrefix = ""
+        var cmd = cliName
+        let type = connection.type
+
+        switch type {
+        case .mysql, .mariadb:
+            if let password, !password.isEmpty {
+                envPrefix = "MYSQL_PWD=\(shellEscape(password)) "
+            }
+            cmd += " -h \(host) -P \(connection.port)"
+            if !connection.username.isEmpty { cmd += " -u \(shellEscape(connection.username))" }
+            if !database.isEmpty { cmd += " \(shellEscape(database))" }
+
+        case .postgresql, .redshift:
+            if let password, !password.isEmpty {
+                envPrefix = "PGPASSWORD=\(shellEscape(password)) "
+            }
+            cmd += " -h \(host) -p \(connection.port)"
+            if !connection.username.isEmpty { cmd += " -U \(shellEscape(connection.username))" }
+            if !database.isEmpty { cmd += " \(shellEscape(database))" }
+
+        case .redis:
+            if let password, !password.isEmpty {
+                envPrefix = "REDISCLI_AUTH=\(shellEscape(password)) "
+            }
+            cmd += " -h \(host) -p \(connection.port)"
+            if let dbIndex = connection.redisDatabase, dbIndex > 0 {
+                cmd += " -n \(dbIndex)"
+            }
+
+        case .mongodb:
+            let db = database.isEmpty ? "test" : database
+            if !connection.username.isEmpty, let password, !password.isEmpty {
+                cmd += " 'mongodb://\(connection.username):\(password)@\(host):\(connection.port)/\(db)'"
+            } else {
+                cmd += " 'mongodb://\(host):\(connection.port)/\(db)'"
+            }
+
+        case .mssql:
+            if let password, !password.isEmpty {
+                envPrefix = "SQLCMDPASSWORD=\(shellEscape(password)) "
+            }
+            cmd += " -S \(host),\(connection.port)"
+            if !connection.username.isEmpty { cmd += " -U \(shellEscape(connection.username))" }
+            if !database.isEmpty { cmd += " -d \(shellEscape(database))" }
+
+        case .clickhouse:
+            if let password, !password.isEmpty {
+                envPrefix = "CLICKHOUSE_PASSWORD=\(shellEscape(password)) "
+            }
+            cmd += " --host \(host) --port \(connection.port)"
+            if !connection.username.isEmpty { cmd += " --user \(shellEscape(connection.username))" }
+            if !database.isEmpty { cmd += " --database \(shellEscape(database))" }
+
+        case .oracle:
+            let serviceName = connection.additionalFields["oracleServiceName"] ?? database
+            let pass = password ?? ""
+            if !connection.username.isEmpty {
+                cmd += " \(shellEscape(connection.username))/\(shellEscape(pass))@\(host):\(connection.port)/\(serviceName)"
+            } else {
+                cmd += " @\(host):\(connection.port)/\(serviceName)"
+            }
+
+        default:
+            return ""
+        }
+
+        return "\(envPrefix)\(cmd)"
+    }
+
+    /// Escapes a string for safe use in a shell command.
+    private static func shellEscape(_ value: String) -> String {
+        if value.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." || $0 == "/" }) {
+            return value
+        }
+        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     static func findExecutable(_ name: String) -> String? {
