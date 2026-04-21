@@ -114,8 +114,8 @@ enum CLICommandResolver {
         }
 
         // Private key
-        if sshConfig.authMethod == .privateKey, let keyPath = sshConfig.privateKeyPath, !keyPath.isEmpty {
-            let expanded = (keyPath as NSString).expandingTildeInPath
+        if sshConfig.authMethod == .privateKey, !sshConfig.privateKeyPath.isEmpty {
+            let expanded = (sshConfig.privateKeyPath as NSString).expandingTildeInPath
             sshArgs += ["-i", expanded]
         }
 
