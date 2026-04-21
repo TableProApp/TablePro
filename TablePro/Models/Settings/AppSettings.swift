@@ -322,3 +322,70 @@ struct TabSettings: Codable, Equatable {
         groupAllConnectionTabs = try container.decodeIfPresent(Bool.self, forKey: .groupAllConnectionTabs) ?? false
     }
 }
+
+// MARK: - Terminal Settings
+
+enum TerminalCursorStyleOption: String, Codable, CaseIterable {
+    case block
+    case bar
+    case underline
+
+    var displayName: String {
+        switch self {
+        case .block: return String(localized: "Block")
+        case .bar: return String(localized: "Bar")
+        case .underline: return String(localized: "Underline")
+        }
+    }
+}
+
+struct TerminalSettings: Codable, Equatable {
+    var fontFamily: String = "Menlo"
+    var fontSize: Int = 13
+    var cursorStyle: TerminalCursorStyleOption = .block
+    var cursorBlink: Bool = true
+    var scrollbackLines: Int = 10_000
+    var optionAsMeta: Bool = true
+    var bellEnabled: Bool = true
+    var themeName: String = ""
+
+    /// Per-database CLI path overrides (empty = auto-detect)
+    var cliPaths: [String: String] = [:]
+
+    static let `default` = TerminalSettings()
+
+    init(
+        fontFamily: String = "Menlo",
+        fontSize: Int = 13,
+        cursorStyle: TerminalCursorStyleOption = .block,
+        cursorBlink: Bool = true,
+        scrollbackLines: Int = 10_000,
+        optionAsMeta: Bool = true,
+        bellEnabled: Bool = true,
+        themeName: String = "",
+        cliPaths: [String: String] = [:]
+    ) {
+        self.fontFamily = fontFamily
+        self.fontSize = fontSize
+        self.cursorStyle = cursorStyle
+        self.cursorBlink = cursorBlink
+        self.scrollbackLines = scrollbackLines
+        self.optionAsMeta = optionAsMeta
+        self.bellEnabled = bellEnabled
+        self.themeName = themeName
+        self.cliPaths = cliPaths
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fontFamily = try container.decodeIfPresent(String.self, forKey: .fontFamily) ?? "Menlo"
+        fontSize = try container.decodeIfPresent(Int.self, forKey: .fontSize) ?? 13
+        cursorStyle = try container.decodeIfPresent(TerminalCursorStyleOption.self, forKey: .cursorStyle) ?? .block
+        cursorBlink = try container.decodeIfPresent(Bool.self, forKey: .cursorBlink) ?? true
+        scrollbackLines = try container.decodeIfPresent(Int.self, forKey: .scrollbackLines) ?? 10_000
+        optionAsMeta = try container.decodeIfPresent(Bool.self, forKey: .optionAsMeta) ?? true
+        bellEnabled = try container.decodeIfPresent(Bool.self, forKey: .bellEnabled) ?? true
+        themeName = try container.decodeIfPresent(String.self, forKey: .themeName) ?? ""
+        cliPaths = try container.decodeIfPresent([String: String].self, forKey: .cliPaths) ?? [:]
+    }
+}

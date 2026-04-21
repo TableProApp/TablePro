@@ -30,6 +30,7 @@ final class AppSettingsStorage {
         static let keyboard = "com.TablePro.settings.keyboard"
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
+        static let terminal = "com.TablePro.settings.terminal"
         static let lastConnectionId = "com.TablePro.settings.lastConnectionId"
         static let lastOpenConnectionIds = "com.TablePro.settings.lastOpenConnectionIds"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
@@ -128,6 +129,16 @@ final class AppSettingsStorage {
         save(settings, key: Keys.sync)
     }
 
+    // MARK: - Terminal Settings
+
+    func loadTerminal() -> TerminalSettings {
+        load(key: Keys.terminal, default: .default)
+    }
+
+    func saveTerminal(_ settings: TerminalSettings) {
+        save(settings, key: Keys.terminal)
+    }
+
     // MARK: - Last Connection (for Reopen Last Session)
 
     /// Load the last used connection ID
@@ -219,6 +230,7 @@ final class AppSettingsStorage {
         saveKeyboard(.default)
         saveAI(.default)
         saveSync(.default)
+        saveTerminal(.default)
     }
 
     // MARK: - Helpers

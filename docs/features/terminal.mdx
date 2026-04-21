@@ -1,0 +1,96 @@
+---
+title: Database Terminal
+description: Embedded database CLI terminal for direct command-line access to your connections
+---
+
+# Database Terminal
+
+TablePro includes an embedded terminal that auto-launches the appropriate database CLI tool for your active connection. Instead of switching to a separate terminal app, you get a native terminal right inside the database client.
+
+## Opening the Terminal
+
+There are three ways to open a terminal:
+
+- **Menu**: View > Open Terminal
+- **Keyboard shortcut**: `Ctrl+Cmd+``
+- **Context menu**: Right-click a connection in the sidebar
+
+The terminal automatically detects which CLI tool to use based on the connection type and launches it with the correct host, port, username, and database arguments.
+
+## Supported Databases
+
+| Database | CLI Tool | Install Command |
+|----------|----------|-----------------|
+| MySQL / MariaDB | `mysql` | `brew install mysql` |
+| PostgreSQL / Redshift | `psql` | `brew install libpq` |
+| Redis | `redis-cli` | `brew install redis` |
+| MongoDB | `mongosh` | `brew install mongosh` |
+| SQLite | `sqlite3` | Included with macOS |
+| SQL Server | `sqlcmd` | `brew install sqlcmd` |
+| ClickHouse | `clickhouse-client` | `brew install clickhouse` |
+| DuckDB | `duckdb` | `brew install duckdb` |
+| Oracle | `sqlplus` | `brew install instantclient-sqlplus` |
+
+If the CLI tool is not installed, TablePro shows an error with the install command.
+
+## SSH Tunnel Support
+
+When your connection uses an SSH tunnel, the terminal launches `ssh` with the correct parameters (host, port, key, jump hosts) and runs the database CLI on the remote host. This works with:
+
+- Inline SSH configuration
+- SSH profiles (uses the resolved snapshot)
+- Jump hosts (multi-hop tunnels)
+
+Password-based authentication for the database is passed through environment variables, keeping it out of the process argument list.
+
+## Settings
+
+Open **Settings > Terminal** to customize:
+
+### Display
+
+- **Font**: Choose from system monospace fonts (Menlo, SF Mono, Monaco, Courier New, JetBrains Mono)
+- **Font size**: 9 to 24 points (default: 13)
+- **Cursor style**: Block, bar, or underline
+- **Cursor blink**: Enable or disable cursor blinking
+- **Scrollback lines**: 1,000 to 50,000, or unlimited
+- **Option as Meta**: Use the Option key as Meta for terminal shortcuts like `Alt+B` (word back) and `Alt+F` (word forward)
+
+### Theme
+
+Pick from 300+ built-in Ghostty terminal themes. Color swatches preview the background, foreground, and cursor colors for each theme. The default theme follows system appearance (Alabaster for light, Afterglow for dark).
+
+### CLI Paths
+
+Override the auto-detected CLI path for any database type. Useful when you have multiple versions installed or the CLI is in a non-standard location. Leave empty to auto-detect from system PATH and common Homebrew locations.
+
+### Notifications
+
+- **Terminal bell**: Enable or disable the terminal bell sound
+
+## Context Menu
+
+Right-click inside the terminal for:
+
+- **Copy** (`Cmd+C`)
+- **Paste** (`Cmd+V`)
+- **Select All** (`Cmd+A`)
+- **Clear Terminal**: Sends Ctrl+L to clear the screen
+
+## Connection Handling
+
+- The terminal connects when the tab opens and disconnects when you close the tab
+- If the CLI process exits, a "Disconnected" view appears with the exit code and a Reconnect button
+- Pressing Enter on the disconnected view reconnects
+- The terminal uses the active database from your current session, not just the connection default
+
+## Keyboard Shortcuts
+
+| Action | Shortcut |
+|--------|----------|
+| Open Terminal | `Ctrl+Cmd+`` |
+| Copy | `Cmd+C` |
+| Paste | `Cmd+V` |
+| Clear screen | `Ctrl+L` (in terminal) |
+
+Settings changes (font, theme, cursor style) apply immediately to all open terminals without reconnecting.

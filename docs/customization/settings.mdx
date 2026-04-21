@@ -1,6 +1,6 @@
 ---
 title: Settings Overview
-description: All settings categories - General, Appearance, Editor, Data Grid, Tabs, Keyboard, AI, History, Plugins, Sync, and License
+description: All settings categories - General, Appearance, Editor, Data Grid, Tabs, Keyboard, AI, Terminal, History, Plugins, Sync, and License
 ---
 
 # Settings Overview
@@ -44,6 +44,9 @@ Open settings via **TablePro** > **Settings** or `Cmd+,`.
   </Card>
   <Card title="AI" icon="sparkles" href="/features/ai-chat">
     AI provider setup
+  </Card>
+  <Card title="Terminal" icon="terminal" href="/features/terminal#settings">
+    Terminal font, theme, CLI paths
   </Card>
   <Card title="History" icon="clock-rotate-left">
     History retention
@@ -417,6 +420,22 @@ Disabling auto cleanup with unlimited entries may cause the history database to 
     alt="History settings"
   />
 </Frame>
+
+## Terminal Settings
+
+Configure the embedded database terminal. See [Database Terminal](/features/terminal) for full documentation.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Font** | Menlo | Monospace font for the terminal |
+| **Font size** | 13 | Font size (9-24 pt) |
+| **Cursor style** | Block | Block, bar, or underline |
+| **Cursor blink** | On | Animate the cursor |
+| **Scrollback lines** | 10,000 | Lines kept in scroll history (0 = unlimited) |
+| **Option as Meta** | On | Use Option key as Meta for terminal shortcuts |
+| **Theme** | Default | Terminal color theme (300+ built-in options) |
+| **CLI paths** | Auto-detect | Per-database override for CLI executable path |
+| **Terminal bell** | On | Play sound on bell character |
 
 ## Plugins Settings
 

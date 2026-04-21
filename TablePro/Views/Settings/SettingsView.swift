@@ -9,7 +9,7 @@ import SwiftUI
 
 /// Settings tab identifiers for programmatic navigation
 enum SettingsTab: String {
-    case general, appearance, editor, dataGrid, keyboard, history, ai, plugins, sync, license
+    case general, appearance, editor, dataGrid, keyboard, history, ai, terminal, plugins, sync, license
 }
 
 /// Main settings view with tab-based navigation (macOS Settings style)
@@ -65,6 +65,12 @@ struct SettingsView: View {
                     Label("AI", systemImage: "sparkles")
                 }
                 .tag(SettingsTab.ai.rawValue)
+
+            TerminalSettingsView(settings: $settingsManager.terminal)
+                .tabItem {
+                    Label("Terminal", systemImage: "terminal")
+                }
+                .tag(SettingsTab.terminal.rawValue)
 
             PluginsSettingsView()
                 .tabItem {

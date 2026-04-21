@@ -20,7 +20,9 @@ enum CLICommandResolver {
     static func resolve(
         connection: DatabaseConnection,
         password: String?,
-        activeDatabase: String?
+        activeDatabase: String?,
+        databaseType: DatabaseType? = nil,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
         let sshConfig = extractSSHConfig(from: connection)
         if let sshConfig {
@@ -31,7 +33,12 @@ enum CLICommandResolver {
                 sshConfig: sshConfig
             )
         }
-        return resolveLocal(connection: connection, password: password, activeDatabase: activeDatabase)
+        return resolveLocal(
+            connection: connection,
+            password: password,
+            activeDatabase: activeDatabase,
+            customCliPath: customCliPath
+        )
     }
 
     // MARK: - Local Resolution
@@ -39,30 +46,31 @@ enum CLICommandResolver {
     private static func resolveLocal(
         connection: DatabaseConnection,
         password: String?,
-        activeDatabase: String?
+        activeDatabase: String?,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
         let dbName = activeDatabase ?? connection.database
         let type = connection.type
 
         switch type {
         case .mysql, .mariadb:
-            return resolveMysql(connection: connection, password: password, database: dbName)
+            return resolveMysql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .postgresql, .redshift:
-            return resolvePsql(connection: connection, password: password, database: dbName)
+            return resolvePsql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .redis:
-            return resolveRedisCli(connection: connection, password: password)
+            return resolveRedisCli(connection: connection, password: password, customCliPath: customCliPath)
         case .mongodb:
-            return resolveMongosh(connection: connection, password: password, database: dbName)
+            return resolveMongosh(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .sqlite:
-            return resolveSqlite3(connection: connection)
+            return resolveSqlite3(connection: connection, customCliPath: customCliPath)
         case .mssql:
-            return resolveSqlcmd(connection: connection, password: password, database: dbName)
+            return resolveSqlcmd(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .clickhouse:
-            return resolveClickhouseClient(connection: connection, password: password, database: dbName)
+            return resolveClickhouseClient(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .duckdb:
-            return resolveDuckdb(connection: connection)
+            return resolveDuckdb(connection: connection, customCliPath: customCliPath)
         case .oracle:
-            return resolveSqlplus(connection: connection, password: password, database: dbName)
+            return resolveSqlplus(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         default:
             logger.warning("No CLI mapping for database type: \(type.rawValue, privacy: .public)")
             return nil
@@ -238,14 +246,27 @@ enum CLICommandResolver {
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    static func findExecutable(_ name: String) -> String? {
-        // 1. System PATH via /usr/bin/which
+    @MainActor
+    static func userConfiguredPath(for databaseType: DatabaseType) -> String? {
+        let customPath = AppSettingsManager.shared.terminal.cliPaths[databaseType.rawValue] ?? ""
+        guard !customPath.isEmpty else { return nil }
+        return customPath
+    }
+
+    static func findExecutable(_ name: String, customPath: String? = nil) -> String? {
+        // 1. User-configured path
+        if let customPath, !customPath.isEmpty,
+           FileManager.default.isExecutableFile(atPath: customPath) {
+            return customPath
+        }
+
+        // 2. System PATH via /usr/bin/which
         let whichResult = shell("/usr/bin/which", arguments: [name])
         if let path = whichResult, !path.isEmpty {
             return path
         }
 
-        // 2. Common locations
+        // 3. Common locations
         let commonPaths = [
             "/opt/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
@@ -307,9 +328,10 @@ enum CLICommandResolver {
     private static func resolveMysql(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("mysql") else { return nil }
+        guard let path = findExecutable("mysql", customPath: customCliPath) else { return nil }
 
         var args: [String] = []
         if !connection.username.isEmpty {
@@ -332,9 +354,10 @@ enum CLICommandResolver {
     private static func resolvePsql(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("psql") else { return nil }
+        guard let path = findExecutable("psql", customPath: customCliPath) else { return nil }
 
         var args: [String] = []
         if !connection.username.isEmpty {
@@ -356,9 +379,10 @@ enum CLICommandResolver {
 
     private static func resolveRedisCli(
         connection: DatabaseConnection,
-        password: String?
+        password: String?,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("redis-cli") else { return nil }
+        guard let path = findExecutable("redis-cli", customPath: customCliPath) else { return nil }
 
         var args: [String] = []
         args += ["-h", connection.host.isEmpty ? "127.0.0.1" : connection.host]
@@ -378,9 +402,10 @@ enum CLICommandResolver {
     private static func resolveMongosh(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("mongosh") else { return nil }
+        guard let path = findExecutable("mongosh", customPath: customCliPath) else { return nil }
 
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         let port = connection.port
@@ -398,8 +423,8 @@ enum CLICommandResolver {
         return CLILaunchSpec(executablePath: path, arguments: [uri], environment: [:])
     }
 
-    private static func resolveSqlite3(connection: DatabaseConnection) -> CLILaunchSpec? {
-        guard let path = findExecutable("sqlite3") else { return nil }
+    private static func resolveSqlite3(connection: DatabaseConnection, customCliPath: String? = nil) -> CLILaunchSpec? {
+        guard let path = findExecutable("sqlite3", customPath: customCliPath) else { return nil }
 
         let dbPath = connection.database
         return CLILaunchSpec(executablePath: path, arguments: [dbPath], environment: [:])
@@ -408,9 +433,10 @@ enum CLICommandResolver {
     private static func resolveSqlcmd(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("sqlcmd") else { return nil }
+        guard let path = findExecutable("sqlcmd", customPath: customCliPath) else { return nil }
 
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         var args: [String] = ["-S", "\(host),\(connection.port)"]
@@ -432,9 +458,10 @@ enum CLICommandResolver {
     private static func resolveClickhouseClient(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("clickhouse-client") else { return nil }
+        guard let path = findExecutable("clickhouse-client", customPath: customCliPath) else { return nil }
 
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         var args: [String] = ["--host", host, "--port", String(connection.port)]
@@ -455,9 +482,10 @@ enum CLICommandResolver {
     private static func resolveSqlplus(
         connection: DatabaseConnection,
         password: String?,
-        database: String
+        database: String,
+        customCliPath: String? = nil
     ) -> CLILaunchSpec? {
-        guard let path = findExecutable("sqlplus") else { return nil }
+        guard let path = findExecutable("sqlplus", customPath: customCliPath) else { return nil }
 
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         let serviceName = connection.additionalFields["oracleServiceName"] ?? database
@@ -474,8 +502,8 @@ enum CLICommandResolver {
         return CLILaunchSpec(executablePath: path, arguments: [connectString], environment: [:])
     }
 
-    private static func resolveDuckdb(connection: DatabaseConnection) -> CLILaunchSpec? {
-        guard let path = findExecutable("duckdb") else { return nil }
+    private static func resolveDuckdb(connection: DatabaseConnection, customCliPath: String? = nil) -> CLILaunchSpec? {
+        guard let path = findExecutable("duckdb", customPath: customCliPath) else { return nil }
 
         let dbPath = connection.database
         return CLILaunchSpec(executablePath: path, arguments: [dbPath], environment: [:])

@@ -134,6 +134,14 @@ final class AppSettingsManager {
         }
     }
 
+    var terminal: TerminalSettings {
+        didSet {
+            storage.saveTerminal(terminal)
+            notifyChange(.terminalSettingsDidChange)
+            SyncChangeTracker.shared.markDirty(.settings, id: "terminal")
+        }
+    }
+
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     /// Reentrancy guard for didSet validation that re-assigns the property.
     @ObservationIgnored private var isValidating = false
@@ -156,6 +164,7 @@ final class AppSettingsManager {
         self.keyboard = storage.loadKeyboard()
         self.ai = storage.loadAI()
         self.sync = storage.loadSync()
+        self.terminal = storage.loadTerminal()
 
         // Apply language immediately
         general.language.apply()
@@ -232,6 +241,7 @@ final class AppSettingsManager {
         keyboard = .default
         ai = .default
         sync = .default
+        terminal = .default
         storage.resetToDefaults()
     }
 }
