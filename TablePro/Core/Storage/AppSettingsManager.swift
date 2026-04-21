@@ -146,12 +146,16 @@ final class AppSettingsManager {
         didSet {
             storage.saveMCP(mcp)
             SyncChangeTracker.shared.markDirty(.settings, id: "mcp")
-            let settings = mcp
-            Task {
-                if settings.enabled {
-                    await MCPServerManager.shared.restart(port: UInt16(clamping: settings.port))
-                } else {
-                    await MCPServerManager.shared.stop()
+            let enabledChanged = mcp.enabled != oldValue.enabled
+            let portChanged = mcp.port != oldValue.port
+            if enabledChanged || portChanged {
+                let settings = mcp
+                Task {
+                    if settings.enabled {
+                        await MCPServerManager.shared.restart(port: UInt16(clamping: settings.port))
+                    } else {
+                        await MCPServerManager.shared.stop()
+                    }
                 }
             }
         }

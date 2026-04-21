@@ -92,23 +92,30 @@ actor MCPServer {
         startCleanupTimer()
     }
 
-    func stop() {
+    func stop() async {
         Self.logger.info("Stopping MCP server")
 
         cleanupTask?.cancel()
         cleanupTask = nil
 
         for (_, session) in sessions {
-            Task {
-                await session.cancelAllTasks()
-                await session.cancelSSEConnection()
-            }
+            await session.cancelAllTasks()
+            await session.cancelSSEConnection()
         }
         sessions.removeAll()
 
-        let currentListener = listener
-        listener = nil
-        currentListener?.cancel()
+        if let currentListener = listener {
+            listener = nil
+            currentListener.cancel()
+            // Wait for the listener to fully release the port
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                currentListener.stateUpdateHandler = { state in
+                    if case .cancelled = state {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
 
         stateCallback(.stopped)
     }
