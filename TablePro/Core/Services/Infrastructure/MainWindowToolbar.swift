@@ -514,76 +514,54 @@ private struct SidebarToggleToolbarButtons: View {
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let isDisabled = state.connectionState != .connected
 
-        HStack(spacing: 0) {
-            SidebarToggleNSButton(
+        HStack(spacing: 2) {
+            sidebarButton(
+                tab: .tables,
                 icon: "tablecells",
                 label: String(localized: "Tables"),
-                isOn: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables
-            ) {
-                handleToggle(tab: .tables, sidebarState: sidebarState)
-            }
-            if !state.isSidebarVisible {
-                Divider()
-                    .frame(height: 14)
-                    .padding(.horizontal, 1)
-            }
-            SidebarToggleNSButton(
+                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
+                sidebarState: sidebarState
+            )
+            sidebarButton(
+                tab: .favorites,
                 icon: "star",
                 label: String(localized: "Favorites"),
-                isOn: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites
-            ) {
-                handleToggle(tab: .favorites, sidebarState: sidebarState)
-            }
+                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites,
+                sidebarState: sidebarState
+            )
         }
         .disabled(isDisabled)
     }
 
-    private func handleToggle(tab: SidebarTab, sidebarState: SharedSidebarState) {
-        if coordinator.toolbarState.isSidebarVisible {
-            if sidebarState.selectedSidebarTab == tab {
-                coordinator.sidebarProxy?.hideSidebar()
+    private func sidebarButton(
+        tab: SidebarTab,
+        icon: String,
+        label: String,
+        isActive: Bool,
+        sidebarState: SharedSidebarState
+    ) -> some View {
+        Button {
+            if coordinator.toolbarState.isSidebarVisible {
+                if sidebarState.selectedSidebarTab == tab {
+                    coordinator.sidebarProxy?.hideSidebar()
+                } else {
+                    sidebarState.selectedSidebarTab = tab
+                }
             } else {
                 sidebarState.selectedSidebarTab = tab
+                coordinator.sidebarProxy?.showSidebar()
             }
-        } else {
-            sidebarState.selectedSidebarTab = tab
-            coordinator.sidebarProxy?.showSidebar()
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 28, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.primary.opacity(isActive ? 0.12 : 0))
+                )
         }
-    }
-}
-
-private struct SidebarToggleNSButton: NSViewRepresentable {
-    let icon: String
-    let label: String
-    let isOn: Bool
-    let action: () -> Void
-
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton()
-        button.bezelStyle = .accessoryBar
-        button.setButtonType(.pushOnPushOff)
-        button.isBordered = true
-        button.imagePosition = .imageOnly
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.clicked)
-        button.setAccessibilityLabel(label)
-        return button
-    }
-
-    func updateNSView(_ button: NSButton, context: Context) {
-        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
-        button.state = isOn ? .on : .off
-        button.isEnabled = button.superview?.isDescendant(of: button.window?.contentView ?? NSView()) ?? true
-        context.coordinator.action = action
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    final class Coordinator: NSObject {
-        var action: () -> Void
-        init(action: @escaping () -> Void) { self.action = action }
-        @objc func clicked() { action() }
+        .buttonStyle(.plain)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }
