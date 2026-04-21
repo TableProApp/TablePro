@@ -522,6 +522,11 @@ private struct SidebarToggleToolbarButtons: View {
                 isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
                 sidebarState: sidebarState
             )
+            if !state.isSidebarVisible {
+                Divider()
+                    .frame(height: 14)
+                    .padding(.horizontal, 1)
+            }
             sidebarButton(
                 tab: .favorites,
                 icon: "star",
