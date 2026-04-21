@@ -520,6 +520,7 @@ extension MainWindowToolbar {
         segmented.segmentCount = 2
         segmented.trackingMode = .selectAny
         segmented.segmentStyle = .separated
+        segmented.selectedSegmentBezelColor = .unemphasizedSelectedContentBackgroundColor
         segmented.target = self
         segmented.action = #selector(sidebarSegmentClicked(_:))
 
