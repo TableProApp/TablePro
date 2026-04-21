@@ -147,8 +147,8 @@ final class TerminalSessionState: Identifiable {
         let settings = AppSettingsManager.shared.terminal
         let config = Self.buildTerminalConfiguration(from: settings)
         let theme = Self.buildTerminalTheme(from: settings)
-        terminalViewState.setTheme(theme)
-        terminalViewState.setTerminalConfiguration(config)
+        terminalViewState.controller.setTheme(theme)
+        terminalViewState.controller.setTerminalConfiguration(config)
     }
 
     private func observeSettingsChanges() {
