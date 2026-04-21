@@ -22,8 +22,8 @@ final class TerminalProcessManager {
     }
 
     private var childPID: pid_t = 0
-    private var readSource: DispatchSourceRead?
-    private var processMonitor: DispatchSourceProcess?
+    private nonisolated(unsafe) var readSource: DispatchSourceRead?
+    private nonisolated(unsafe) var processMonitor: DispatchSourceProcess?
 
     var onData: ((Data) -> Void)?
     var onExit: ((Int32) -> Void)?
@@ -38,33 +38,39 @@ final class TerminalProcessManager {
             return
         }
 
+        // Pre-build all C strings BEFORE fork. After fork, the child must only
+        // use async-signal-safe POSIX calls (execve, _exit) — no Swift allocations.
+        let allArgs = [spec.executablePath] + spec.arguments
+        var env = ProcessInfo.processInfo.environment
+        for (key, value) in spec.environment {
+            env[key] = value
+        }
+        env["TERM"] = "xterm-256color"
+
+        let cArgs: [UnsafeMutablePointer<CChar>?] = allArgs.map { strdup($0) } + [nil]
+        let cEnv: [UnsafeMutablePointer<CChar>?] = env.map { "\($0.key)=\($0.value)" }.map { strdup($0) } + [nil]
+
         var ptyFDValue: Int32 = -1
         var winSize = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
 
         let pid = forkpty(&ptyFDValue, nil, nil, &winSize)
 
         if pid < 0 {
-            throw TerminalError.forkFailed(errno: errno)
+            let forkErrno = errno
+            for ptr in cArgs { ptr.map { free($0) } }
+            for ptr in cEnv { ptr.map { free($0) } }
+            throw TerminalError.forkFailed(errno: forkErrno)
         }
 
         if pid == 0 {
-            // Child process
-            var env = ProcessInfo.processInfo.environment
-            for (key, value) in spec.environment {
-                env[key] = value
-            }
-
-            env["TERM"] = "xterm-256color"
-
-            let envArray = env.map { "\($0.key)=\($0.value)" }
-            let cArgs = ([spec.executablePath] + spec.arguments).map { strdup($0) } + [nil]
-            let cEnv = envArray.map { strdup($0) } + [nil]
-
-            execve(spec.executablePath, cArgs, cEnv)
+            // Child process: ONLY async-signal-safe POSIX calls, no Swift
+            execve(cArgs[0]!, cArgs, cEnv)
             _exit(127)
         }
 
-        // Parent process
+        // Parent process: free the strdup'd strings
+        for ptr in cArgs { ptr.map { free($0) } }
+        for ptr in cEnv { ptr.map { free($0) } }
         self.ptyFD = ptyFDValue
         self.childPID = pid
 
@@ -111,18 +117,23 @@ final class TerminalProcessManager {
     // MARK: - Terminate
 
     func terminate() {
+        // Kill and reap the child BEFORE cancelling sources so the monitor can still reap.
+        if childPID > 0 {
+            kill(childPID, SIGHUP)
+            var status: Int32 = 0
+            // Give the process a moment to exit, then force-kill
+            if waitpid(childPID, &status, WNOHANG) == 0 {
+                kill(childPID, SIGKILL)
+                waitpid(childPID, &status, 0) // blocking — child is SIGKILL'd, returns immediately
+            }
+            Self.logger.info("Terminated child pid=\(self.childPID)")
+            childPID = 0
+        }
+
         readSource?.cancel()
         readSource = nil
         processMonitor?.cancel()
         processMonitor = nil
-
-        if childPID > 0 {
-            kill(childPID, SIGHUP)
-            var status: Int32 = 0
-            waitpid(childPID, &status, WNOHANG)
-            Self.logger.info("Terminated child pid=\(self.childPID)")
-            childPID = 0
-        }
 
         if ptyFD >= 0 {
             close(ptyFD)
@@ -131,8 +142,11 @@ final class TerminalProcessManager {
     }
 
     deinit {
+        readSource?.cancel()
+        processMonitor?.cancel()
         let fd = fdLock.withLock { _ptyFD }
         if fd >= 0 { close(fd) }
+        if childPID > 0 { kill(childPID, SIGKILL) }
     }
 
     // MARK: - Private

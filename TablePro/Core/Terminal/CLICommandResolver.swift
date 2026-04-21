@@ -165,10 +165,10 @@ enum CLICommandResolver {
             : "\(sshConfig.username)@\(sshConfig.host)"
         sshArgs.append(userHost)
 
-        // Wrap in login shell so the remote user's PATH is loaded.
-        // Must be a single argument — bash -c takes one string.
-        let bashEscaped = remoteCommand.replacingOccurrences(of: "'", with: "'\\''")
-        sshArgs.append("bash -l -c '\(bashEscaped)'")
+        // Source common profile files inline so the remote PATH is loaded.
+        // Avoids bash -l -c '...' which causes nested single-quote issues
+        // when remoteCommand already contains single-quoted shell-escaped values.
+        sshArgs.append(". ~/.profile 2>/dev/null; . ~/.bashrc 2>/dev/null; " + remoteCommand)
 
         return CLILaunchSpec(executablePath: sshPath, arguments: sshArgs, environment: [:])
     }
@@ -243,6 +243,8 @@ enum CLICommandResolver {
             if !database.isEmpty { cmd += " --database \(shellEscape(database))" }
 
         case .oracle:
+            // sqlplus requires password in connect string (no env var support).
+            // Visible in ps output — accepted industry limitation for Oracle CLI.
             let serviceName = connection.additionalFields["oracleServiceName"] ?? database
             let pass = password ?? ""
             var connectString: String
@@ -323,6 +325,7 @@ enum CLICommandResolver {
 
     static func installInstructions(for databaseType: DatabaseType) -> String {
         switch databaseType {
+        // brew commands are not localized — they are technical shell commands
         case .mysql:
             return "brew install mysql-client"
         case .mariadb:
@@ -334,7 +337,7 @@ enum CLICommandResolver {
         case .mongodb:
             return "brew install mongosh"
         case .sqlite:
-            return "sqlite3 is included with macOS"
+            return String(localized: "sqlite3 is included with macOS")
         case .mssql:
             return "brew install sqlcmd"
         case .clickhouse:
@@ -344,7 +347,7 @@ enum CLICommandResolver {
         case .oracle:
             return "brew install instantclient-sqlplus"
         default:
-            return "Install the CLI client for \(databaseType.displayName)"
+            return String(format: String(localized: "Install the CLI client for %@"), databaseType.displayName)
         }
     }
 
@@ -543,7 +546,8 @@ enum CLICommandResolver {
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         let serviceName = connection.additionalFields["oracleServiceName"] ?? database
 
-        // sqlplus user/password@host:port/service_name
+        // sqlplus requires password in connect string (no env var support).
+        // Visible in ps output — accepted industry limitation for Oracle CLI.
         var connectString: String
         if !connection.username.isEmpty {
             let pass = password ?? ""
@@ -564,6 +568,8 @@ enum CLICommandResolver {
 
     // MARK: - Shell Helper
 
+    // Note: shell() and findExecutable() perform synchronous I/O. They are called
+    // from Task.detached in TerminalSessionState.connect() to avoid blocking MainActor.
     private static func shell(_ path: String, arguments: [String]) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)

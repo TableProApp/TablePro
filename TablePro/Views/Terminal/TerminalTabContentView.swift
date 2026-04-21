@@ -129,6 +129,9 @@ private final class TerminalFocusHelperView: NSView {
             removeMonitor()
             return
         }
+        // Walk up from the .background {} NSView to find the terminal's key view.
+        // The superview chain (self -> hosting view -> TerminalSurfaceView container)
+        // is determined by SwiftUI's .background {} modifier — stable since macOS 14.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             var ancestor: NSView? = self.superview?.superview
@@ -155,6 +158,8 @@ private final class TerminalFocusHelperView: NSView {
         removeMonitor()
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
             guard let self, let terminal = self.terminalView else { return event }
+            // Only handle right-clicks when this terminal's window is key (multi-terminal safety)
+            guard terminal.window?.isKeyWindow == true else { return event }
             let locationInTerminal = terminal.convert(event.locationInWindow, from: nil)
             guard terminal.bounds.contains(locationInTerminal) else { return event }
 

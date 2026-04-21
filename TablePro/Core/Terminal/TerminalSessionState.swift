@@ -18,7 +18,7 @@ final class TerminalSessionState: Identifiable {
 
     var terminalViewState: TerminalViewState
     var session: InMemoryTerminalSession?
-    var processManager: TerminalProcessManager?
+    nonisolated(unsafe) var processManager: TerminalProcessManager?
     var isConnected: Bool = false
     var isDisconnected: Bool = false
     var exitCode: Int32 = 0
@@ -39,6 +39,9 @@ final class TerminalSessionState: Identifiable {
         if let settingsObserver {
             NotificationCenter.default.removeObserver(settingsObserver)
         }
+        // TerminalProcessManager.deinit handles source cancellation, fd close, and child kill
+        // via nonisolated(unsafe) fields (see Issue 5 fix). Releasing our strong reference
+        // here triggers that cleanup if no other references remain.
     }
 
     // MARK: - Connect
@@ -46,9 +49,8 @@ final class TerminalSessionState: Identifiable {
     func connect(connection: DatabaseConnection, password: String?, activeDatabase: String?) {
         let customCliPath = CLICommandResolver.userConfiguredPath(for: databaseType)
         let effectiveConnection = DatabaseManager.shared.session(for: connectionId)?.effectiveConnection
+        let dbType = databaseType // Read immutable let before task to avoid unnecessary hop
         Task.detached(priority: .userInitiated) { [weak self] in
-            guard let self else { return }
-            let dbType = await self.databaseType
             let spec = CLICommandResolver.resolve(
                 connection: connection,
                 password: password,
@@ -117,6 +119,8 @@ final class TerminalSessionState: Identifiable {
             if settings.optionAsMeta {
                 builder.withCustom("macos-option-as-alt", "true")
             }
+
+            builder.withCustom("bell-feature", settings.bellEnabled ? "system" : "ignore")
 
             builder.withWindowPaddingX(4)
             builder.withWindowPaddingY(4)
