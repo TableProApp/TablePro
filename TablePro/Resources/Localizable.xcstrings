@@ -3783,6 +3783,9 @@
         }
       }
     },
+    "Add this to your AI tool's MCP configuration:" : {
+
+    },
     "Add validation rules to ensure data integrity" : {
       "localizations" : {
         "tr" : {
@@ -3870,6 +3873,12 @@
           }
         }
       }
+    },
+    "AI access is disabled for this connection" : {
+
+    },
+    "AI access policies are configured per-connection in each connection's settings." : {
+
     },
     "AI Chat" : {
       "localizations" : {
@@ -4535,6 +4544,9 @@
           }
         }
       }
+    },
+    "An MCP client wants to access '%@' (%@). Allow?" : {
+
     },
     "An unknown sync error occurred: %@" : {
       "localizations" : {
@@ -7312,6 +7324,9 @@
         }
       }
     },
+    "Client Configuration" : {
+
+    },
     "Client Key" : {
       "localizations" : {
         "tr" : {
@@ -8135,6 +8150,9 @@
           }
         }
       }
+    },
+    "Configuration" : {
+
     },
     "Configure an AI provider in Settings to start chatting." : {
       "localizations" : {
@@ -9353,6 +9371,9 @@
           }
         }
       }
+    },
+    "Copy to clipboard" : {
+
     },
     "Copy Value" : {
       "localizations" : {
@@ -11291,6 +11312,9 @@
         }
       }
     },
+    "Default row limit" : {
+
+    },
     "Default value" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11902,6 +11926,9 @@
           }
         }
       }
+    },
+    "Deny" : {
+
     },
     "Destructive Changes" : {
 
@@ -13288,6 +13315,9 @@
           }
         }
       }
+    },
+    "Enable MCP Server" : {
+
     },
     "Enable preview tabs" : {
       "localizations" : {
@@ -15869,6 +15899,9 @@
           }
         }
       }
+    },
+    "Failed: %@" : {
+
     },
     "false" : {
       "localizations" : {
@@ -21016,6 +21049,9 @@
         }
       }
     },
+    "Log MCP queries in history" : {
+
+    },
     "Maintenance" : {
       "localizations" : {
         "tr" : {
@@ -21377,6 +21413,9 @@
         }
       }
     },
+    "Maximum row limit" : {
+
+    },
     "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections." : {
       "localizations" : {
         "tr" : {
@@ -21398,6 +21437,15 @@
           }
         }
       }
+    },
+    "MCP" : {
+
+    },
+    "MCP Access Request" : {
+
+    },
+    "MCP query execution" : {
+
     },
     "Medium" : {
       "extractionState" : "stale",
@@ -27850,6 +27898,9 @@
     "Query results exceeding this limit show Load More / Fetch All buttons" : {
 
     },
+    "Query timeout" : {
+
+    },
     "Query timeout:" : {
       "localizations" : {
         "tr" : {
@@ -30076,6 +30127,9 @@
         }
       }
     },
+    "Running on port %d" : {
+
+    },
     "Running Threads" : {
 
     },
@@ -31139,6 +31193,9 @@
           }
         }
       }
+    },
+    "seconds" : {
+
     },
     "Secret Access Key" : {
       "localizations" : {
@@ -33739,6 +33796,9 @@
         }
       }
     },
+    "Starting..." : {
+
+    },
     "starts with" : {
       "localizations" : {
         "tr" : {
@@ -34064,6 +34124,9 @@
           }
         }
       }
+    },
+    "Stopped" : {
+
     },
     "Streaming failed: %@" : {
       "localizations" : {
@@ -38284,6 +38347,12 @@
           }
         }
       }
+    },
+    "User approval timed out after 30 seconds" : {
+
+    },
+    "User denied MCP access to this connection" : {
+
     },
     "User Sessions" : {
 

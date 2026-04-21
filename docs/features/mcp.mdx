@@ -1,0 +1,104 @@
+---
+title: MCP Server
+description: Built-in Model Context Protocol server for AI tool integration
+---
+
+# MCP Server
+
+TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI tools query your databases, browse schemas, and export data through TablePro's saved connections. The server runs locally on `127.0.0.1` and is never exposed to the network.
+
+## Enabling the Server
+
+Open **Settings > MCP** and toggle **Enable MCP Server**. The server starts on port `23508` by default. A green status indicator confirms it is running.
+
+You can also configure:
+
+- **Port** - TCP port for the MCP endpoint (default 23508)
+- **Default row limit** - maximum rows returned per query (default 500)
+- **Maximum row limit** - hard cap on rows (default 10,000)
+- **Query timeout** - seconds before a query is cancelled (default 30)
+- **Log MCP queries in history** - whether MCP-executed queries appear in Query History
+
+## Client Configuration
+
+Add this JSON to your AI tool's MCP configuration file:
+
+```json
+{
+  "mcpServers": {
+    "tablepro": {
+      "url": "http://127.0.0.1:23508/mcp"
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add the snippet above to your `claude_desktop_config.json` file. On macOS this is at `~/Library/Application Support/Claude/claude_desktop_config.json`.
+
+### Claude Code
+
+Run:
+
+```bash
+claude mcp add tablepro --transport http http://127.0.0.1:23508/mcp
+```
+
+### Cursor
+
+Add the snippet to your `.cursor/mcp.json` file in the project root, or to the global MCP config at `~/.cursor/mcp.json`.
+
+## Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_connections` | List all saved connections with status |
+| `connect` | Connect to a saved database |
+| `disconnect` | Disconnect from a database |
+| `get_connection_status` | Get connection details (version, uptime) |
+| `list_databases` | List databases on the server |
+| `list_schemas` | List schemas in a database |
+| `list_tables` | List tables and views |
+| `describe_table` | Get columns, indexes, foreign keys, and DDL |
+| `get_table_ddl` | Get the CREATE TABLE statement |
+| `execute_query` | Run a SQL or NoSQL query |
+| `export_data` | Export results as CSV, JSON, or SQL |
+| `switch_database` | Switch the active database |
+| `switch_schema` | Switch the active schema |
+
+The server also exposes three resources that AI tools can read directly:
+
+- `tablepro://connections` - all saved connections with metadata
+- `tablepro://connections/{id}/schema` - full schema for a connected database
+- `tablepro://connections/{id}/history` - recent query history (supports `?limit=`, `?search=`, `?date_filter=`)
+
+## Security
+
+### AI Connection Policy
+
+Each connection has an **AI Policy** that controls MCP access:
+
+- **Always Allow** - MCP tools can use this connection without prompts
+- **Ask Each Time** - TablePro shows an approval dialog when an MCP client first accesses the connection in a session
+- **Never** - MCP access is blocked entirely
+
+Set the policy in the connection's settings. The default policy for new connections is configurable in **Settings > AI**.
+
+### Safe Mode
+
+[Safe Mode](/features/safe-mode) applies to MCP queries the same way it applies to manual queries. If a connection is set to Alert or higher, write queries from MCP clients require the same confirmation or Touch ID authentication.
+
+Read-Only connections block all write queries from MCP clients.
+
+## Troubleshooting
+
+**Port conflict**: If the server fails to start, another process may be using port 23508. Change the port in **Settings > MCP**.
+
+**"Server not fully initialized"**: Restart the MCP server from **Settings > MCP**. If the issue persists, quit and relaunch TablePro.
+
+**App must be running**: The MCP server only runs while TablePro is open. AI tools cannot connect if the app is quit or the server is disabled.
+
+**Connection refused**: Verify the server is running (green indicator in Settings). Check that your AI tool's MCP config URL matches the port shown in Settings.
+
+**Query blocked by Safe Mode**: The MCP server respects the same Safe Mode levels as manual queries. Check the connection's safe mode setting if queries are being rejected.

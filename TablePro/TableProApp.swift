@@ -141,12 +141,14 @@ struct AppMenuCommands: Commands {
     }
 
     var body: some Commands {
-        // Custom About window + Check for Updates
+        // Custom About window + Check for Updates + MCP status
         CommandGroup(replacing: .appInfo) {
             Button(String(localized: "About TablePro")) {
                 AboutWindowController.shared.showAboutPanel()
             }
             CheckForUpdatesView(updaterBridge: updaterBridge)
+            Divider()
+            MCPServerMenuItem()
         }
 
         // MARK: - Keyboard Shortcut Architecture
@@ -664,6 +666,35 @@ struct CheckForUpdatesView: View {
             updaterBridge.checkForUpdates()
         }
         .disabled(!updaterBridge.canCheckForUpdates)
+    }
+}
+
+// MARK: - MCP Server Menu Item
+
+private struct MCPServerMenuItem: View {
+    @State private var manager = MCPServerManager.shared
+
+    var body: some View {
+        Button(menuTitle) {
+            NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
+        }
+    }
+
+    private var menuTitle: String {
+        switch manager.state {
+        case .running:
+            let count = manager.connectedClients.count
+            if count == 0 {
+                return String(localized: "MCP Server: Running")
+            }
+            return String(format: String(localized: "MCP Server: Running (%d clients)"), count)
+        case .failed:
+            return String(localized: "MCP Server: Failed")
+        case .stopped:
+            return String(localized: "MCP Server: Stopped")
+        case .starting:
+            return String(localized: "MCP Server: Starting...")
+        }
     }
 }
 

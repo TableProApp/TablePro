@@ -31,6 +31,7 @@ final class AppSettingsStorage {
         static let ai = "com.TablePro.settings.ai"
         static let sync = "com.TablePro.settings.sync"
         static let terminal = "com.TablePro.settings.terminal"
+        static let mcp = "com.TablePro.settings.mcp"
         static let lastConnectionId = "com.TablePro.settings.lastConnectionId"
         static let lastOpenConnectionIds = "com.TablePro.settings.lastOpenConnectionIds"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
@@ -139,6 +140,16 @@ final class AppSettingsStorage {
         save(settings, key: Keys.terminal)
     }
 
+    // MARK: - MCP Settings
+
+    func loadMCP() -> MCPSettings {
+        load(key: Keys.mcp, default: .default)
+    }
+
+    func saveMCP(_ settings: MCPSettings) {
+        save(settings, key: Keys.mcp)
+    }
+
     // MARK: - Last Connection (for Reopen Last Session)
 
     /// Load the last used connection ID
@@ -231,6 +242,7 @@ final class AppSettingsStorage {
         saveAI(.default)
         saveSync(.default)
         saveTerminal(.default)
+        saveMCP(.default)
     }
 
     // MARK: - Helpers
