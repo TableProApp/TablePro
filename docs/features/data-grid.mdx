@@ -191,19 +191,11 @@ If ENUM/SET metadata is unavailable (e.g., from a complex query), the cell falls
 
 ### JSON Viewer
 
-JSON/JSONB cells open a dedicated viewer with two modes:
+Double-click a JSON cell to open the viewer. Switch between **Text** and **Tree** modes with the toggle at the top.
 
-- **Text mode**: syntax-highlighted JSON with brace matching. Auto-formatted on open. Click the format button to re-indent after edits.
-- **Tree mode**: hierarchical tree with expand/collapse disclosure triangles. Each node shows the key name, value preview, and type badge. Right-click a node to copy its value or key path (e.g., `$.users[0].email`).
+Text mode shows syntax-highlighted JSON with brace matching. Tree mode shows a collapsible outline you can search, expand/collapse all, and right-click to copy values or key paths like `$.users[0].email`.
 
-Toggle between modes with the segmented control at the top. Your preferred mode is saved in **Settings > Editor > JSON Viewer**.
-
-Tree mode features:
-- **Search**: filter nodes by key or value
-- **Expand/Collapse All**: toolbar buttons to open or close the entire tree
-- **Copy Key Path**: right-click any node to copy its JSON path
-
-Invalid JSON still opens in text mode for editing. Values are compacted on save.
+Values are compacted on save. Invalid JSON falls back to text mode.
 
 {/* Screenshot: JSON editor with validation */}
 <Frame caption="JSON viewer with Text/Tree toggle">
@@ -297,7 +289,7 @@ When a row is selected, the inspector shows all column values with full content:
 
 - Search columns by name
 - TEXT/VARCHAR columns get a multi-line editor
-- JSON/JSONB columns show a compact preview. Click the expand button to open a full-height JSON viewer with Text/Tree toggle, search, and expand/collapse
+- JSON/JSONB columns show a compact preview with an expand button for the full JSON viewer
 - Edits here are queued like inline edits
 
 ### Table Info Mode
