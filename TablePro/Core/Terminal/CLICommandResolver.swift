@@ -170,6 +170,8 @@ enum CLICommandResolver {
 
         switch type {
         case .mysql, .mariadb:
+            // Use "mysql" for SSH — universally available on both MySQL and MariaDB servers
+            cmd = "mysql"
             if let password, !password.isEmpty {
                 envPrefix = "MYSQL_PWD=\(shellEscape(password)) "
             }
