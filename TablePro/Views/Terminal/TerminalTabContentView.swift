@@ -158,7 +158,7 @@ private final class TerminalFocusHelperView: NSView {
         menu.addItem(selectAll)
 
         terminalView.menu = menu
-        logger.info("menu installed, items=\(menu.items.count), menu identity=\(ObjectIdentifier(menu))")
+        logger.info("menu installed, items=\(menu.items.count)")
         logger.info("terminalView.menu after set: \(String(describing: terminalView.menu), privacy: .public)")
     }
 
