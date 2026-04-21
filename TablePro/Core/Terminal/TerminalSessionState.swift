@@ -119,9 +119,12 @@ final class TerminalSessionState: Identifiable {
             builder.withWindowPaddingX(4)
             builder.withWindowPaddingY(4)
 
-            // Clear Ghostty's default keybindings to prevent interference
-            // with raw terminal key handling (e.g. ' mapped to TAB)
+            // libghostty-spm embedded mode has broken key mapping for
+            // apostrophe (sends TAB instead of 0x27). Clear default
+            // keybindings and explicitly remap affected keys.
             builder.withCustom("keybind", "clear")
+            builder.withCustom("keybind", "apostrophe=text:\\x27")
+            builder.withCustom("keybind", "shift+apostrophe=text:\\x22")
         }
     }
 
