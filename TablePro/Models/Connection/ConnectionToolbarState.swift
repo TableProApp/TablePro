@@ -133,9 +133,6 @@ final class ConnectionToolbarState {
     /// Current connection state
     var connectionState: ToolbarConnectionState = .disconnected
 
-    /// Whether the sidebar is currently visible (synced from NSSplitViewItem)
-    var isSidebarVisible: Bool = true
-
     // MARK: - Query Execution
 
     /// Whether a query is currently executing.

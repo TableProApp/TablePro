@@ -115,8 +115,8 @@ final class MainContentCoordinator {
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
 
-    /// Proxy for toggling the sidebar NSSplitViewItem from toolbar buttons
-    @ObservationIgnored weak var sidebarProxy: SidebarVisibilityProxy?
+    /// Direct reference to split view controller for sidebar toggle
+    @ObservationIgnored weak var splitViewController: MainSplitViewController?
 
     /// Direct reference to this coordinator's content window, used for presenting alerts.
     /// Avoids NSApp.keyWindow which may return a sheet window, causing stuck dialogs.

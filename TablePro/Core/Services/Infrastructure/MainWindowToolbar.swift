@@ -38,6 +38,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
     private var sidebarButtons: [NSButton] = []
     private var sidebarObservationTask: Task<Void, Never>?
+    private var splitViewObserver: NSObjectProtocol?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -69,6 +70,10 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     func invalidate() {
         sidebarObservationTask?.cancel()
         sidebarObservationTask = nil
+        if let observer = splitViewObserver {
+            NotificationCenter.default.removeObserver(observer)
+            splitViewObserver = nil
+        }
         sidebarButtons = []
         hostingControllers.removeAll()
         coordinator = nil
@@ -521,7 +526,7 @@ extension MainWindowToolbar {
         container.spacing = 2
 
         let tablesButton = makeSidebarNSButton(
-            icon: "tablecells",
+            icon: "list.bullet",
             label: String(localized: "Tables"),
             tag: 0
         )
@@ -546,7 +551,7 @@ extension MainWindowToolbar {
     private func makeSidebarNSButton(icon: String, label: String, tag: Int) -> NSButton {
         let button = NSButton()
         button.bezelStyle = .recessed
-        button.setButtonType(.pushOnPushOff)
+        button.setButtonType(.momentaryPushIn)
         button.showsBorderOnlyWhileMouseInside = true
         button.isBordered = true
         button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
@@ -561,21 +566,9 @@ extension MainWindowToolbar {
 
     @objc fileprivate func sidebarButtonClicked(_ sender: NSButton) {
         guard let coordinator else { return }
-        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let tabs: [SidebarTab] = [.tables, .favorites]
         guard sender.tag >= 0, sender.tag < tabs.count else { return }
-        let tab = tabs[sender.tag]
-
-        if coordinator.toolbarState.isSidebarVisible {
-            if sidebarState.selectedSidebarTab == tab {
-                coordinator.sidebarProxy?.hideSidebar()
-            } else {
-                sidebarState.selectedSidebarTab = tab
-            }
-        } else {
-            sidebarState.selectedSidebarTab = tab
-            coordinator.sidebarProxy?.showSidebar()
-        }
+        coordinator.splitViewController?.setSidebarTab(tabs[sender.tag])
     }
 
     fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
@@ -583,27 +576,30 @@ extension MainWindowToolbar {
         let state = coordinator.toolbarState
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let isConnected = state.connectionState == .connected || state.connectionState == .executing
-        let icons = ["tablecells", "star"]
+        let sidebarVisible = !(coordinator.splitViewController?.isSidebarCollapsed ?? true)
+        let icons = ["list.bullet", "star"]
+        let activeIcons = ["list.bullet", "star.fill"]
 
         for (index, button) in sidebarButtons.enumerated() {
-            let isActive = state.isSidebarVisible && isConnected
+            let isActive = sidebarVisible && isConnected
                 && (index == 0 ? sidebarState.selectedSidebarTab == .tables : sidebarState.selectedSidebarTab == .favorites)
             button.isEnabled = isConnected
-            button.state = isActive ? .on : .off
             button.showsBorderOnlyWhileMouseInside = !isActive
-            button.image = NSImage(systemSymbolName: icons[index], accessibilityDescription: button.accessibilityLabel())
+            let icon = isActive ? activeIcons[index] : icons[index]
+            button.image = NSImage(systemSymbolName: icon, accessibilityDescription: button.accessibilityLabel())
         }
     }
 
     fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
         sidebarObservationTask?.cancel()
+
+        // Observe @Observable state changes (selected tab, connection state)
         sidebarObservationTask = Task { [weak self, weak coordinator] in
             guard let coordinator else { return }
             while !Task.isCancelled {
                 let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
                 await withCheckedContinuation { continuation in
                     withObservationTracking {
-                        _ = coordinator.toolbarState.isSidebarVisible
                         _ = coordinator.toolbarState.connectionState
                         _ = sidebarState.selectedSidebarTab
                     } onChange: {
@@ -614,6 +610,19 @@ extension MainWindowToolbar {
                 await MainActor.run {
                     self.syncSidebarButtonState(coordinator: coordinator)
                 }
+            }
+        }
+
+        // Observe NSSplitView resize to catch sidebar collapse/expand from
+        // keyboard shortcut, drag, or any non-button path.
+        splitViewObserver = NotificationCenter.default.addObserver(
+            forName: NSSplitView.didResizeSubviewsNotification,
+            object: coordinator.splitViewController?.splitView,
+            queue: .main
+        ) { [weak self, weak coordinator] _ in
+            MainActor.assumeIsolated {
+                guard let self, let coordinator else { return }
+                self.syncSidebarButtonState(coordinator: coordinator)
             }
         }
     }
