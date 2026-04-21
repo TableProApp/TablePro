@@ -120,6 +120,7 @@ final class MCPResourceHandler: Sendable {
         guard let data = try? encoder.encode(value),
               let string = String(data: data, encoding: .utf8)
         else {
+            Self.logger.warning("Failed to encode JSON value")
             return "{}"
         }
         return string

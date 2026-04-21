@@ -65,7 +65,7 @@ final class MCPRouter: Sendable {
             return encodeError(MCPError.invalidRequest("Missing or invalid Mcp-Session-Id"), id: nil)
         }
 
-        session.markActive()
+        await session.markActive()
         return .sseStream(sessionId: session.id)
     }
 
@@ -124,12 +124,12 @@ final class MCPRouter: Sendable {
             return handlePing(request)
         }
 
-        // Notifications: best-effort, no session validation failure
+        // Notifications: best-effort, return 202 with empty body
         if request.method == "notifications/initialized" {
-            if let sid = headerSessionId {
-                await server.session(for: sid)?.markActive()
+            if let sid = headerSessionId, let session = await server.session(for: sid) {
+                await session.markActive()
             }
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
 
         if request.method == "notifications/cancelled" {
@@ -143,7 +143,7 @@ final class MCPRouter: Sendable {
             return encodeError(MCPError.invalidRequest("Missing or invalid Mcp-Session-Id"), id: request.id)
         }
 
-        session.markActive()
+        await session.markActive()
 
         switch request.method {
         case "tools/list":
@@ -175,9 +175,9 @@ final class MCPRouter: Sendable {
            let name = clientInfo["name"]?.stringValue
         {
             let version = clientInfo["version"]?.stringValue
-            session.clientInfo = MCPClientInfo(name: name, version: version)
+            await session.setClientInfo(MCPClientInfo(name: name, version: version))
         }
-        session.isInitialized = true
+        await session.setInitialized(true)
 
         let result = MCPInitializeResult(
             protocolVersion: "2025-03-26",
@@ -195,7 +195,7 @@ final class MCPRouter: Sendable {
 
     private func handlePing(_ request: JSONRPCRequest) -> RouteResult {
         guard let id = request.id else {
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
         return encodeRawResult(.object([:]), id: id, sessionId: nil)
     }
@@ -212,7 +212,7 @@ final class MCPRouter: Sendable {
               let params = request.params,
               let requestIdValue = params["requestId"]
         else {
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
 
         let cancelId: JSONRPCId?
@@ -225,20 +225,19 @@ final class MCPRouter: Sendable {
             cancelId = nil
         }
 
-        if let cancelId, let task = session.runningTasks[cancelId] {
+        if let cancelId, let task = await session.removeRunningTask(cancelId) {
             task.cancel()
-            session.runningTasks.removeValue(forKey: cancelId)
             Self.logger.info("Cancelled request \(String(describing: cancelId)) in session \(sessionId)")
         }
 
-        return .httpError(status: 202, message: "Accepted")
+        return .noContent(headers: [])
     }
 
     // MARK: - tools/list
 
     private func handleToolsList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
 
         let tools = Self.toolDefinitions()
@@ -287,7 +286,7 @@ final class MCPRouter: Sendable {
 
     private func handleResourcesList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
 
         let resources = Self.resourceDefinitions()
@@ -334,7 +333,7 @@ final class MCPRouter: Sendable {
 
     private func encodeResult<T: Encodable>(_ result: T, id: JSONRPCId?, sessionId: String?) -> RouteResult {
         guard let id else {
-            return .httpError(status: 202, message: "Accepted")
+            return .noContent(headers: [])
         }
 
         do {

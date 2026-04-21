@@ -21,6 +21,7 @@ enum HTTPParseError: Error, Sendable {
     case malformedHeaders
     case unsupportedMethod(String)
     case bodyTooLarge
+    case malformedChunkedEncoding
 }
 
 enum MCPHTTPParser {
@@ -90,7 +91,16 @@ enum MCPHTTPParser {
             if let transferEncoding = headers["transfer-encoding"],
                transferEncoding.lowercased().contains("chunked")
             {
-                logger.warning("Chunked transfer encoding not supported, treating body as empty")
+                let bodyData = data[bodyStartIndex...]
+                switch decodeChunkedBody(bodyData) {
+                case .success(let decoded):
+                    if decoded.count > maxBodySize {
+                        return .failure(.bodyTooLarge)
+                    }
+                    body = decoded
+                case .failure(let error):
+                    return .failure(error)
+                }
             } else if let contentLengthStr = headers["content-length"],
                       let contentLength = Int(contentLengthStr)
             {
@@ -114,6 +124,70 @@ enum MCPHTTPParser {
             body: body
         ))
     }
+
+    // MARK: - Chunked Transfer Encoding
+
+    /// Decode chunked transfer encoding body.
+    /// Format: <chunk-size-hex>\r\n<chunk-data>\r\n ... 0\r\n\r\n
+    private static func decodeChunkedBody(_ data: Data) -> Result<Data, HTTPParseError> {
+        var result = Data()
+        var offset = data.startIndex
+
+        while offset < data.endIndex {
+            // Find the end of the chunk size line
+            guard let lineEnd = findCRLF(in: data, from: offset) else {
+                return .failure(.incomplete)
+            }
+
+            let sizeData = data[offset..<lineEnd]
+            guard let sizeString = String(data: sizeData, encoding: .ascii)?.trimmingCharacters(in: .whitespaces),
+                  let chunkSize = UInt(sizeString, radix: 16)
+            else {
+                return .failure(.malformedChunkedEncoding)
+            }
+
+            // Move past the \r\n after chunk size
+            let chunkDataStart = lineEnd + 2
+
+            // Terminal chunk
+            if chunkSize == 0 {
+                return .success(result)
+            }
+
+            let chunkDataEnd = chunkDataStart + Int(chunkSize)
+
+            // Check we have enough data for the chunk + trailing \r\n
+            guard chunkDataEnd + 2 <= data.endIndex else {
+                return .failure(.incomplete)
+            }
+
+            // Check accumulated size
+            if result.count + Int(chunkSize) > maxBodySize {
+                return .failure(.bodyTooLarge)
+            }
+
+            result.append(data[chunkDataStart..<chunkDataEnd])
+
+            // Skip past the trailing \r\n after chunk data
+            offset = chunkDataEnd + 2
+        }
+
+        return .failure(.incomplete)
+    }
+
+    /// Find \r\n in data starting from given offset
+    private static func findCRLF(in data: Data, from start: Data.Index) -> Data.Index? {
+        var i = start
+        while i < data.endIndex - 1 {
+            if data[i] == 0x0D, data[i + 1] == 0x0A {
+                return i
+            }
+            i += 1
+        }
+        return nil
+    }
+
+    // MARK: - Response Building
 
     static func buildResponse(
         status: Int,
@@ -161,6 +235,7 @@ enum MCPHTTPParser {
         case 400: return "Bad Request"
         case 404: return "Not Found"
         case 405: return "Method Not Allowed"
+        case 413: return "Content Too Large"
         case 500: return "Internal Server Error"
         default: return "Unknown"
         }

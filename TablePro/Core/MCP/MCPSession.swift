@@ -1,20 +1,15 @@
 import Foundation
 import Network
 
-final class MCPSession: Sendable {
-
+actor MCPSession {
     let id: String
     let createdAt: ContinuousClock.Instant
 
-    // All mutable state is protected by MCPServer actor isolation.
-    // Using nonisolated(unsafe) because MCPSession is only mutated
-    // from within the MCPServer actor.
-    nonisolated(unsafe) var lastActivityAt: ContinuousClock.Instant
-    nonisolated(unsafe) var isInitialized: Bool = false
-    nonisolated(unsafe) var clientInfo: MCPClientInfo?
-    nonisolated(unsafe) var sseConnection: NWConnection?
-    nonisolated(unsafe) var approvedConnectionIds: Set<UUID> = []
-    nonisolated(unsafe) var runningTasks: [JSONRPCId: Task<Void, Never>] = [:]
+    var lastActivityAt: ContinuousClock.Instant
+    var isInitialized: Bool = false
+    var clientInfo: MCPClientInfo?
+    var sseConnection: NWConnection?
+    var runningTasks: [JSONRPCId: Task<Void, Never>] = [:]
 
     init() {
         self.id = UUID().uuidString
@@ -32,5 +27,29 @@ final class MCPSession: Sendable {
             task.cancel()
         }
         runningTasks.removeAll()
+    }
+
+    func setInitialized(_ value: Bool) {
+        isInitialized = value
+    }
+
+    func setClientInfo(_ info: MCPClientInfo?) {
+        clientInfo = info
+    }
+
+    func setSSEConnection(_ connection: NWConnection?) {
+        sseConnection = connection
+    }
+
+    func cancelSSEConnection() {
+        sseConnection?.cancel()
+    }
+
+    func addRunningTask(_ id: JSONRPCId, task: Task<Void, Never>) {
+        runningTasks[id] = task
+    }
+
+    func removeRunningTask(_ id: JSONRPCId) -> Task<Void, Never>? {
+        runningTasks.removeValue(forKey: id)
     }
 }

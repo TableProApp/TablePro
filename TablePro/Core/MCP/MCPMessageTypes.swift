@@ -282,8 +282,8 @@ enum MCPError: Error, Sendable {
     case invalidParams(String)
     case internalError(String)
     case notConnected(UUID)
-    case forbidden(String)
-    case timeout(String)
+    case forbidden(String, context: [String: String]? = nil)
+    case timeout(String, context: [String: String]? = nil)
     case resultTooLarge
     case serverDisabled
 
@@ -294,11 +294,11 @@ enum MCPError: Error, Sendable {
         case .methodNotFound: -32_601
         case .invalidParams: -32_602
         case .internalError: -32_603
-        case .notConnected: -32_001
-        case .forbidden: -32_002
-        case .timeout: -32_003
-        case .resultTooLarge: -32_004
-        case .serverDisabled: -32_005
+        case .notConnected: -32_000
+        case .forbidden: -32_001
+        case .timeout: -32_002
+        case .resultTooLarge: -32_003
+        case .serverDisabled: -32_004
         }
     }
 
@@ -316,9 +316,9 @@ enum MCPError: Error, Sendable {
             "Internal error: \(detail)"
         case .notConnected(let connectionId):
             "Not connected: \(connectionId)"
-        case .forbidden(let detail):
+        case .forbidden(let detail, _):
             "Forbidden: \(detail)"
-        case .timeout(let detail):
+        case .timeout(let detail, _):
             "Timeout: \(detail)"
         case .resultTooLarge:
             "Result too large"
@@ -327,10 +327,26 @@ enum MCPError: Error, Sendable {
         }
     }
 
+    private var contextData: JSONValue? {
+        switch self {
+        case .forbidden(_, let context), .timeout(_, let context):
+            guard let context, !context.isEmpty else { return nil }
+            var dict: [String: JSONValue] = [:]
+            for (key, value) in context {
+                dict[key] = .string(value)
+            }
+            return .object(dict)
+        case .notConnected(let connectionId):
+            return .object(["connection_id": .string(connectionId.uuidString)])
+        default:
+            return nil
+        }
+    }
+
     func toJsonRpcError(id: JSONRPCId?) -> JSONRPCErrorResponse {
         JSONRPCErrorResponse(
             id: id,
-            error: JSONRPCErrorDetail(code: code, message: message, data: nil)
+            error: JSONRPCErrorDetail(code: code, message: message, data: contextData)
         )
     }
 }

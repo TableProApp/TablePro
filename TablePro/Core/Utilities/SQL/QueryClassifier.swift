@@ -10,6 +10,7 @@ enum QueryClassifier {
         "INSERT ", "UPDATE ", "DELETE ", "REPLACE ",
         "DROP ", "TRUNCATE ", "ALTER ", "CREATE ",
         "RENAME ", "GRANT ", "REVOKE ",
+        "MERGE ", "UPSERT ", "CALL ", "EXEC ", "EXECUTE ", "LOAD ",
     ]
 
     private static let redisWriteCommands: Set<String> = [

@@ -14,6 +14,7 @@ actor MCPServer {
     private static let idleTimeout: TimeInterval = 300
     private static let cleanupInterval: TimeInterval = 60
     private static let maxReadSize = 1_048_576
+    private static let maxBufferSize = 10 * 1_024 * 1_024
 
     // MARK: - State
 
@@ -25,6 +26,7 @@ actor MCPServer {
 
     private(set) var toolCallHandler: (@Sendable (String, JSONValue?, String) async throws -> MCPToolResult)?
     private(set) var resourceReadHandler: (@Sendable (String, String) async throws -> MCPResourceReadResult)?
+    private(set) var sessionCleanupHandler: (@Sendable (String) async -> Void)?
 
     // MARK: - Initialization
 
@@ -41,6 +43,10 @@ actor MCPServer {
 
     func setResourceReadHandler(_ handler: @escaping @Sendable (String, String) async throws -> MCPResourceReadResult) {
         self.resourceReadHandler = handler
+    }
+
+    func setSessionCleanupHandler(_ handler: @escaping @Sendable (String) async -> Void) {
+        self.sessionCleanupHandler = handler
     }
 
     // MARK: - Lifecycle
@@ -85,8 +91,10 @@ actor MCPServer {
         cleanupTask = nil
 
         for (_, session) in sessions {
-            session.cancelAllTasks()
-            session.sseConnection?.cancel()
+            Task {
+                await session.cancelAllTasks()
+                await session.cancelSSEConnection()
+            }
         }
         sessions.removeAll()
 
@@ -178,6 +186,13 @@ actor MCPServer {
             buffer.append(content)
         }
 
+        // DoS prevention: reject requests with accumulated buffer exceeding max body size
+        if buffer.count > Self.maxBufferSize {
+            Self.logger.warning("Request buffer exceeds \(Self.maxBufferSize) bytes, rejecting")
+            sendHTTPError(connection: connection, status: 413, message: "Request entity too large")
+            return
+        }
+
         let parseResult = MCPHTTPParser.parse(buffer)
 
         switch parseResult {
@@ -213,8 +228,8 @@ actor MCPServer {
 
         case .sseStream(let sessionId):
             if let session = sessions[sessionId] {
-                session.sseConnection?.cancel()
-                session.sseConnection = connection
+                await session.cancelSSEConnection()
+                await session.setSSEConnection(connection)
             }
             sendSseHeaders(connection: connection, sessionId: sessionId)
 
@@ -244,10 +259,16 @@ actor MCPServer {
         sessions[sessionId]
     }
 
-    func removeSession(_ sessionId: String) {
+    func removeSession(_ sessionId: String) async {
         guard let session = sessions.removeValue(forKey: sessionId) else { return }
-        session.cancelAllTasks()
-        session.sseConnection?.cancel()
+        await session.cancelAllTasks()
+        await session.cancelSSEConnection()
+
+        // Notify external cleanup (e.g. MCPAuthGuard session approvals)
+        if let cleanupHandler = sessionCleanupHandler {
+            await cleanupHandler(sessionId)
+        }
+
         Self.logger.info("Removed session \(sessionId) (total: \(self.sessions.count))")
     }
 
@@ -264,16 +285,22 @@ actor MCPServer {
         }
     }
 
-    private func cleanupIdleSessions() {
+    private func cleanupIdleSessions() async {
         let now = ContinuousClock.now
         var removed: [String] = []
 
         for (id, session) in sessions {
-            let idle = now - session.lastActivityAt
+            let lastActivity = await session.lastActivityAt
+            let idle = now - lastActivity
             if idle > .seconds(Self.idleTimeout) {
-                session.cancelAllTasks()
-                session.sseConnection?.cancel()
+                await session.cancelAllTasks()
+                await session.cancelSSEConnection()
                 sessions.removeValue(forKey: id)
+
+                if let cleanupHandler = sessionCleanupHandler {
+                    await cleanupHandler(id)
+                }
+
                 removed.append(id)
             }
         }

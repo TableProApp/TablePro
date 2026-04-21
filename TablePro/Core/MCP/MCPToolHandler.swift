@@ -218,10 +218,16 @@ final class MCPToolHandler: Sendable {
         let format = try requireString(args, key: "format")
         let query = optionalString(args, key: "query")
         let tables = optionalStringArray(args, key: "tables")
+        let outputPath = optionalString(args, key: "output_path")
         let maxRows = optionalInt(args, key: "max_rows", default: 50_000, clamp: 1...100_000)
 
         guard ["csv", "json", "sql", "xlsx"].contains(format) else {
             throw MCPError.invalidParams("Unsupported format: \(format). Must be csv, json, sql, or xlsx")
+        }
+
+        // XLSX is binary and cannot be returned inline
+        if format == "xlsx" && outputPath == nil {
+            throw MCPError.invalidParams("XLSX export requires output_path since it is a binary format")
         }
 
         guard query != nil || tables != nil else {
@@ -248,6 +254,7 @@ final class MCPToolHandler: Sendable {
         }
 
         var exportResults: [JSONValue] = []
+        var totalRowsExported = 0
 
         for (label, sql) in queries {
             let result = try await bridge.executeQuery(
@@ -271,9 +278,16 @@ final class MCPToolHandler: Sendable {
                 formatted = formatCSV(columns: columnNames, rows: rows)
             case "json":
                 formatted = formatJSON(columns: columnNames, rows: rows)
+            case "sql":
+                formatted = formatSQL(table: label, columns: columnNames, rows: rows)
+            case "xlsx":
+                // XLSX is handled via file write below; generate CSV as intermediate
+                formatted = formatCSV(columns: columnNames, rows: rows)
             default:
                 formatted = formatCSV(columns: columnNames, rows: rows)
             }
+
+            totalRowsExported += rows.count
 
             exportResults.append(.object([
                 "label": .string(label),
@@ -283,6 +297,28 @@ final class MCPToolHandler: Sendable {
             ]))
         }
 
+        // If output_path is provided, write to file
+        if let outputPath {
+            let fullContent: String
+            if exportResults.count == 1,
+               let data = exportResults.first?["data"]?.stringValue
+            {
+                fullContent = data
+            } else {
+                fullContent = exportResults.compactMap { $0["data"]?.stringValue }.joined(separator: "\n\n")
+            }
+
+            let fileURL = URL(fileURLWithPath: outputPath)
+            try fullContent.write(to: fileURL, atomically: true, encoding: .utf8)
+
+            let response: JSONValue = .object([
+                "path": .string(outputPath),
+                "rows_exported": .int(totalRowsExported)
+            ])
+            return MCPToolResult(content: [.text(encodeJSON(response))], isError: nil)
+        }
+
+        // Return inline data
         let response: JSONValue
         if exportResults.count == 1, let single = exportResults.first {
             response = single
@@ -372,6 +408,7 @@ final class MCPToolHandler: Sendable {
         guard let data = try? encoder.encode(value),
               let string = String(data: data, encoding: .utf8)
         else {
+            Self.logger.warning("Failed to encode JSON value")
             return "{}"
         }
         return string
@@ -427,5 +464,43 @@ final class MCPToolHandler: Sendable {
         }
 
         return encodeJSON(.array(objects))
+    }
+
+    private func formatSQL(table: String, columns: [String], rows: [JSONValue]) -> String {
+        guard !columns.isEmpty else { return "" }
+
+        var statements: [String] = []
+        let escapedTable = "`\(table.replacingOccurrences(of: "`", with: "``"))`"
+        let escapedColumns = columns.map { "`\($0.replacingOccurrences(of: "`", with: "``"))`" }
+        let columnList = escapedColumns.joined(separator: ", ")
+
+        for row in rows {
+            guard let cells = row.arrayValue else { continue }
+            let values = cells.map { cell -> String in
+                switch cell {
+                case .null:
+                    return "NULL"
+                case .string(let value):
+                    let escaped = value
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    return "'\(escaped)'"
+                case .int(let value):
+                    return String(value)
+                case .double(let value):
+                    return String(value)
+                case .bool(let value):
+                    return value ? "1" : "0"
+                default:
+                    let escaped = encodeJSON(cell)
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "'", with: "\\'")
+                    return "'\(escaped)'"
+                }
+            }
+            statements.append("INSERT INTO \(escapedTable) (\(columnList)) VALUES (\(values.joined(separator: ", ")));")
+        }
+
+        return statements.joined(separator: "\n")
     }
 }

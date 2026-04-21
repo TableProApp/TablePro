@@ -61,6 +61,9 @@ final class MCPServerManager {
         await newServer.setResourceReadHandler { uri, sessionId in
             try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
         }
+        await newServer.setSessionCleanupHandler { sessionId in
+            await authGuard.clearSession(sessionId)
+        }
 
         do {
             try await newServer.start(port: port)
