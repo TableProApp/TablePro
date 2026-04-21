@@ -518,20 +518,13 @@ private struct SidebarToggleToolbarButtons: View {
             sidebarButton(
                 tab: .tables,
                 icon: "tablecells",
-                activeIcon: "tablecells.fill",
                 label: String(localized: "Tables"),
                 isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
                 sidebarState: sidebarState
             )
-            if !state.isSidebarVisible {
-                Divider()
-                    .frame(height: 14)
-                    .padding(.horizontal, 1)
-            }
             sidebarButton(
                 tab: .favorites,
                 icon: "star",
-                activeIcon: "star.fill",
                 label: String(localized: "Favorites"),
                 isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites,
                 sidebarState: sidebarState
@@ -543,34 +536,26 @@ private struct SidebarToggleToolbarButtons: View {
     private func sidebarButton(
         tab: SidebarTab,
         icon: String,
-        activeIcon: String,
         label: String,
         isActive: Bool,
         sidebarState: SharedSidebarState
     ) -> some View {
-        Button {
-            if coordinator.toolbarState.isSidebarVisible {
-                if sidebarState.selectedSidebarTab == tab {
-                    coordinator.sidebarProxy?.hideSidebar()
-                } else {
+        Toggle(isOn: Binding(
+            get: { isActive },
+            set: { newValue in
+                if newValue {
                     sidebarState.selectedSidebarTab = tab
+                    if !coordinator.toolbarState.isSidebarVisible {
+                        coordinator.sidebarProxy?.showSidebar()
+                    }
+                } else {
+                    coordinator.sidebarProxy?.hideSidebar()
                 }
-            } else {
-                sidebarState.selectedSidebarTab = tab
-                coordinator.sidebarProxy?.showSidebar()
             }
-        } label: {
-            Image(systemName: isActive ? activeIcon : icon)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
+        )) {
+            Label(label, systemImage: icon)
         }
-        .buttonStyle(.plain)
-        .background(
-            isActive
-                ? RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(.quaternary)
-                : nil
-        )
+        .toggleStyle(.button)
         .help(label)
     }
 }
