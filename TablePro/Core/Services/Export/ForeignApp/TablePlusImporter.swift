@@ -189,7 +189,7 @@ struct TablePlusImporter: ForeignAppImporter {
             username: username,
             authMethod: useKey ? "Private Key" : "Password",
             privateKeyPath: useKey ? keyPath : "",
-            useSSHConfig: false,
+            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,

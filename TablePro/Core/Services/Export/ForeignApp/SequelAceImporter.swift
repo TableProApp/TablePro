@@ -207,7 +207,7 @@ struct SequelAceImporter: ForeignAppImporter {
             username: user,
             authMethod: keyEnabled ? "Private Key" : "Password",
             privateKeyPath: keyEnabled ? keyPath : "",
-            useSSHConfig: false,
+            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,

@@ -221,7 +221,7 @@ struct DBeaverImporter: ForeignAppImporter {
             username: username,
             authMethod: authMethod,
             privateKeyPath: authType == "PUBLIC_KEY" ? keyPath : "",
-            useSSHConfig: false,
+            useSSHConfig: true,
             agentSocketPath: "",
             jumpHosts: nil,
             totpMode: nil,
