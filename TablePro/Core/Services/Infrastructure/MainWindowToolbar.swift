@@ -36,6 +36,8 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// deallocs immediately and its view becomes orphaned, producing zero-size
     /// items that get pushed right by flexibleSpace.
     private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
+    private var sidebarSegmentedControl: NSSegmentedControl?
+    private var sidebarObservationTask: Task<Void, Never>?
 
     internal init(coordinator: MainContentCoordinator) {
         self.coordinator = coordinator
@@ -65,6 +67,9 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// Release all hosted toolbar views and sever the coordinator reference.
     /// Called by TabWindowController.windowWillClose before coordinator teardown.
     func invalidate() {
+        sidebarObservationTask?.cancel()
+        sidebarObservationTask = nil
+        sidebarSegmentedControl = nil
         hostingControllers.removeAll()
         coordinator = nil
     }
@@ -139,8 +144,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
         switch itemIdentifier {
         case Self.sidebarToggle:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Sidebar"),
-                               content: SidebarToggleToolbarButtons(coordinator: coordinator))
+            return makeSidebarToggleItem(coordinator: coordinator)
         case Self.connection:
             return hostingItem(id: itemIdentifier, label: String(localized: "Connection"),
                                content: ConnectionToolbarButton(coordinator: coordinator))
@@ -504,64 +508,98 @@ private struct ImportToolbarButton: View {
     }
 }
 
-// MARK: - Sidebar Toggle Buttons
+// MARK: - Sidebar Toggle (Pure AppKit)
 
-private struct SidebarToggleToolbarButtons: View {
-    let coordinator: MainContentCoordinator
+extension MainWindowToolbar {
+    fileprivate func makeSidebarToggleItem(coordinator: MainContentCoordinator) -> NSToolbarItem {
+        let item = NSToolbarItem(itemIdentifier: Self.sidebarToggle)
+        item.label = String(localized: "Sidebar")
+        item.paletteLabel = String(localized: "Sidebar")
 
-    var body: some View {
-        let state = coordinator.toolbarState
-        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-        let isDisabled = state.connectionState != .connected
+        let segmented = NSSegmentedControl()
+        segmented.segmentCount = 2
+        segmented.trackingMode = .selectAny
+        segmented.segmentStyle = .separated
+        segmented.target = self
+        segmented.action = #selector(sidebarSegmentClicked(_:))
 
-        HStack(spacing: 2) {
-            sidebarButton(
-                tab: .tables,
-                icon: "tablecells",
-                label: String(localized: "Tables"),
-                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
-                sidebarState: sidebarState
-            )
-            sidebarButton(
-                tab: .favorites,
-                icon: "star",
-                label: String(localized: "Favorites"),
-                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites,
-                sidebarState: sidebarState
-            )
-        }
-        .disabled(isDisabled)
+        let tablesImage = NSImage(systemSymbolName: "tablecells", accessibilityDescription: String(localized: "Tables"))
+        let favoritesImage = NSImage(systemSymbolName: "star", accessibilityDescription: String(localized: "Favorites"))
+        segmented.setImage(tablesImage, forSegment: 0)
+        segmented.setImage(favoritesImage, forSegment: 1)
+        segmented.setWidth(0, forSegment: 0)
+        segmented.setWidth(0, forSegment: 1)
+        segmented.segmentDistribution = .fit
+
+        sidebarSegmentedControl = segmented
+        item.view = segmented
+
+        syncSidebarSegmentedState(coordinator: coordinator)
+        startSidebarObservation(coordinator: coordinator)
+
+        return item
     }
 
-    private func sidebarButton(
-        tab: SidebarTab,
-        icon: String,
-        label: String,
-        isActive: Bool,
-        sidebarState: SharedSidebarState
-    ) -> some View {
-        Button {
-            if coordinator.toolbarState.isSidebarVisible {
-                if sidebarState.selectedSidebarTab == tab {
-                    coordinator.sidebarProxy?.hideSidebar()
-                } else {
-                    sidebarState.selectedSidebarTab = tab
-                }
-            } else {
-                sidebarState.selectedSidebarTab = tab
+    @objc fileprivate func sidebarSegmentClicked(_ sender: NSSegmentedControl) {
+        guard let coordinator else { return }
+        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+        let clickedSegment = sender.selectedSegment
+        let tabs: [SidebarTab] = [.tables, .favorites]
+
+        guard clickedSegment >= 0, clickedSegment < tabs.count else { return }
+        let tab = tabs[clickedSegment]
+        let isSelected = sender.isSelected(forSegment: clickedSegment)
+
+        if !isSelected {
+            coordinator.sidebarProxy?.hideSidebar()
+        } else {
+            let otherSegment = clickedSegment == 0 ? 1 : 0
+            sender.setSelected(false, forSegment: otherSegment)
+            sidebarState.selectedSidebarTab = tab
+            if !coordinator.toolbarState.isSidebarVisible {
                 coordinator.sidebarProxy?.showSidebar()
             }
-        } label: {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 28, height: 22)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(Color.primary.opacity(isActive ? 0.12 : 0))
-                )
         }
-        .buttonStyle(.plain)
-        .help(label)
-        .accessibilityLabel(label)
+    }
+
+    fileprivate func syncSidebarSegmentedState(coordinator: MainContentCoordinator) {
+        guard let segmented = sidebarSegmentedControl else { return }
+        let state = coordinator.toolbarState
+        let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+        let isConnected = state.connectionState == .connected || state.connectionState == .executing
+
+        segmented.isEnabled = isConnected
+
+        if state.isSidebarVisible && isConnected {
+            let activeIndex = sidebarState.selectedSidebarTab == .tables ? 0 : 1
+            segmented.setSelected(true, forSegment: activeIndex)
+            segmented.setSelected(false, forSegment: activeIndex == 0 ? 1 : 0)
+        } else {
+            segmented.setSelected(false, forSegment: 0)
+            segmented.setSelected(false, forSegment: 1)
+        }
+    }
+
+    fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
+        sidebarObservationTask?.cancel()
+        sidebarObservationTask = Task { [weak self, weak coordinator] in
+            guard let coordinator else { return }
+            while !Task.isCancelled {
+                let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        _ = coordinator.toolbarState.isSidebarVisible
+                        _ = coordinator.toolbarState.connectionState
+                        _ = sidebarState.selectedSidebarTab
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                guard !Task.isCancelled, let self else { return }
+                await MainActor.run {
+                    self.syncSidebarSegmentedState(coordinator: coordinator)
+                }
+            }
+        }
     }
 }
