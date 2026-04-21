@@ -52,30 +52,20 @@ struct TerminalTabContentView: View {
     }
 
     private func disconnectedView(state: TerminalSessionState) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "terminal")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-
-            Text("Disconnected")
-                .font(.title2)
-                .fontWeight(.semibold)
-
+        ContentUnavailableView {
+            Label("Disconnected", systemImage: "terminal")
+        } description: {
             if state.exitCode != 0 {
                 Text(String(format: String(localized: "Process exited with code %d"), state.exitCode))
-                    .font(.body)
-                    .foregroundStyle(.secondary)
             }
-
+        } actions: {
             Button {
                 reconnect(state: state)
             } label: {
                 Label("Reconnect", systemImage: "arrow.clockwise")
             }
             .keyboardShortcut(.return, modifiers: [])
-            .controlSize(.large)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var connectingView: some View {

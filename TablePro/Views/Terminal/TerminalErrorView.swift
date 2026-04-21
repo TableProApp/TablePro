@@ -10,35 +10,15 @@ struct TerminalErrorView: View {
     let databaseType: DatabaseType
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "terminal")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-
-            Text("Terminal Unavailable")
-                .font(.title2)
-                .fontWeight(.semibold)
-
+        ContentUnavailableView {
+            Label("Terminal Unavailable", systemImage: "terminal")
+        } description: {
             Text(error)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            VStack(spacing: 8) {
-                Text("Install with:")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                let instructions = CLICommandResolver.installInstructions(for: databaseType)
-                Text(instructions)
-                    .font(.system(.body, design: .monospaced))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
-                    .textSelection(.enabled)
-            }
+        } actions: {
+            let instructions = CLICommandResolver.installInstructions(for: databaseType)
+            Text(instructions)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
     }
 }
