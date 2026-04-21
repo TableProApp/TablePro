@@ -175,11 +175,6 @@ final class TerminalSessionState: Identifiable {
 
         let inMemorySession = InMemoryTerminalSession(
             write: { [weak manager] data in
-                let bytes = [UInt8](data)
-                let hex = bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
-                let ascii = bytes.map { (0x20...0x7E).contains($0) ? String(UnicodeScalar($0)) : "." }.joined()
-                Logger(subsystem: "com.TablePro", category: "TerminalIO")
-                    .debug("WRITE \(bytes.count) bytes: [\(hex, privacy: .public)] ascii=[\(ascii, privacy: .public)]")
                 manager?.write(data)
             },
             resize: { [weak manager] viewport in
