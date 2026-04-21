@@ -9,10 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Import connections from TablePlus, Sequel Ace, and DBeaver with one-click migration
 - Structure tab: modify existing tables (add, modify, drop columns, indexes, foreign keys, primary keys)
 
 ### Changed
 
+- Sidebar toggle: Tables and Favorites buttons next to traffic lights replace the segmented picker, matching Xcode's navigator toggle pattern
 - Sidebar and inspector panels now use native macOS split view controls with standard resize dividers
 - Theme system: UI colors now adapt to system appearance, accent color, and high contrast settings by default. Custom themes can still override with hex values.
 - Theme system: removed Layout tab from theme editor. Font sizes now follow system text styles for better accessibility support.

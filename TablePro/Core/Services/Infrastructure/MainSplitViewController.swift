@@ -13,7 +13,7 @@ import os
 import SwiftUI
 
 @MainActor
-internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy {
+internal final class MainSplitViewController: NSSplitViewController, InspectorVisibilityProxy, SidebarVisibilityProxy {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
     // MARK: - Payload & Session
@@ -34,7 +34,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     private var detailSplitItem: NSSplitViewItem!
     private var inspectorSplitItem: NSSplitViewItem!
 
-    private var sidebarHosting: NSHostingController<AnyView>!
+    private var sidebarContainer: SidebarContainerViewController!
     private var detailHosting: NSHostingController<AnyView>!
     private var inspectorHosting: NSHostingController<AnyView>!
 
@@ -116,8 +116,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         splitView.isVertical = true
         splitView.autosaveName = "com.TablePro.mainSplit"
 
-        sidebarHosting = NSHostingController(rootView: AnyView(buildSidebarView()))
-        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarHosting)
+        sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
+        sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
         sidebarSplitItem.canCollapse = true
         sidebarSplitItem.minimumThickness = 200
         sidebarSplitItem.maximumThickness = 600
@@ -138,6 +138,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         if currentSession == nil {
             sidebarSplitItem.isCollapsed = true
+        } else {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession!.connection.id) // swiftlint:disable:this force_unwrapping
+            )
         }
         inspectorSplitItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
     }
@@ -153,7 +157,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         if let sessionState {
             sessionState.coordinator.inspectorProxy = self
+            sessionState.coordinator.sidebarProxy = self
+            syncSidebarVisibility()
             installToolbar(coordinator: sessionState.coordinator)
+        }
+
+        if let currentSession {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession.connection.id)
+            )
         }
 
         installObservers()
@@ -241,11 +253,13 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 sessionState?.coordinator.teardown()
                 sessionState = nil
                 currentSession = nil
+                sidebarContainer.updateSidebarState(nil)
                 if view.window?.isVisible == true {
                     sidebarSplitItem.animator().isCollapsed = true
                 } else {
                     sidebarSplitItem.isCollapsed = true
                 }
+                syncSidebarVisibility()
             }
             return
         }
@@ -268,6 +282,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             let state = SessionStateFactory.create(connection: newSession.connection, payload: payload)
             sessionState = state
             state.coordinator.inspectorProxy = self
+            state.coordinator.sidebarProxy = self
             installToolbar(coordinator: state.coordinator)
         }
 
@@ -276,13 +291,19 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         } else {
             sidebarSplitItem.isCollapsed = false
         }
+        syncSidebarVisibility()
         rebuildPanes()
     }
 
     // MARK: - Pane Construction
 
     private func rebuildPanes() {
-        sidebarHosting.rootView = AnyView(buildSidebarView())
+        sidebarContainer.rootView = AnyView(buildSidebarView())
+        if let currentSession {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession.connection.id)
+            )
+        }
         detailHosting.rootView = AnyView(buildDetailView())
         inspectorHosting.rootView = AnyView(buildInspectorView())
     }
@@ -429,6 +450,40 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
         UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
+    }
+
+    // MARK: - SidebarVisibilityProxy
+
+    var isSidebarVisible: Bool {
+        guard let sidebarSplitItem else { return false }
+        return !sidebarSplitItem.isCollapsed
+    }
+
+    func showSidebar() {
+        sidebarSplitItem?.animator().isCollapsed = false
+        syncSidebarVisibility()
+    }
+
+    func hideSidebar() {
+        sidebarSplitItem?.animator().isCollapsed = true
+        syncSidebarVisibility()
+    }
+
+    override func toggleSidebar(_ sender: Any?) {
+        super.toggleSidebar(sender)
+        syncSidebarVisibility()
+    }
+
+    override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        syncSidebarVisibility()
+    }
+
+    private func syncSidebarVisibility() {
+        let visible = isSidebarVisible
+        if sessionState?.coordinator.toolbarState.isSidebarVisible != visible {
+            sessionState?.coordinator.toolbarState.isSidebarVisible = visible
+        }
     }
 
     // MARK: - Constants

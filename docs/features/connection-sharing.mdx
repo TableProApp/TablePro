@@ -1,6 +1,6 @@
 ---
 title: Connection Sharing
-description: Export and import database connections as .tablepro files
+description: Share connections with your team or import from other apps
 ---
 
 # Connection Sharing
@@ -55,6 +55,35 @@ Duplicates are unchecked. Check to import, then pick **As Copy**, **Replace**, o
     alt="Import preview"
   />
 </Frame>
+
+## Import from Other Apps
+
+Bring your connections over from TablePlus, Sequel Ace, or DBeaver. Passwords can be imported too. The source app doesn't need to be running.
+
+1. **File** > **Import from Other App...**
+2. Pick the source app and click **Continue**.
+3. Review the list, uncheck anything you don't want, then click **Import**.
+
+<Frame caption="Pick the source app">
+  <img
+    className="block dark:hidden"
+    src="/images/import-from-app-picker.png"
+    alt="Import from other app - source picker"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/import-from-app-picker-dark.png"
+    alt="Import from other app - source picker"
+  />
+</Frame>
+
+Groups and folders carry over.
+
+| App | Databases | Passwords |
+|-----|-----------|-----------|
+| TablePlus | MySQL, PostgreSQL, MongoDB, SQLite, Redis, and more | From Keychain |
+| Sequel Ace | MySQL | From Keychain |
+| DBeaver | MySQL, PostgreSQL, SQLite, SQL Server, Oracle, and more | Decrypted from config file |
 
 ## Share via Link
 
