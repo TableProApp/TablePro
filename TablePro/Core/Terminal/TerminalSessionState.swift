@@ -120,7 +120,9 @@ final class TerminalSessionState: Identifiable {
                 builder.withCustom("macos-option-as-alt", "true")
             }
 
-            builder.withCustom("bell-feature", settings.bellEnabled ? "system" : "ignore")
+            if !settings.bellEnabled {
+                builder.withCustom("bell-features", "no-bell")
+            }
 
             builder.withWindowPaddingX(4)
             builder.withWindowPaddingY(4)
