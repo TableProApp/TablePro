@@ -106,7 +106,7 @@ struct TerminalSettingsView: View {
     @ViewBuilder
     private func colorSwatch(hex: String) -> some View {
         RoundedRectangle(cornerRadius: 2)
-            .fill(Color(hex: hex))
+            .fill(hex.swiftUIColor)
             .frame(width: 12, height: 12)
             .overlay(
                 RoundedRectangle(cornerRadius: 2)
@@ -165,26 +165,6 @@ struct TerminalSettingsView: View {
     }
 }
 
-// MARK: - Color Extension
-
-private extension Color {
-    init(hex: String) {
-        let cleaned = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
-        guard cleaned.count >= 6,
-              let r = UInt8(cleaned.prefix(2), radix: 16),
-              let g = UInt8(cleaned.dropFirst(2).prefix(2), radix: 16),
-              let b = UInt8(cleaned.dropFirst(4).prefix(2), radix: 16)
-        else {
-            self.init(.gray)
-            return
-        }
-        self.init(
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255
-        )
-    }
-}
 
 #Preview {
     TerminalSettingsView(settings: .constant(.default))
