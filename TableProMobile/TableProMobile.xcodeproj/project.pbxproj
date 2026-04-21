@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */; };
+		5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEED2F7F893000D028D1 /* TableProAnalytics */; };
 		5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEC2F7F893000D028D0 /* TableProSync */; };
 		5AA136062F82610F00ADCD58 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136052F82610F00ADCD58 /* WidgetKit.framework */; };
 		5AA136082F82610F00ADCD58 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136072F82610F00ADCD58 /* SwiftUI.framework */; };
@@ -49,6 +51,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		5A87ECDD2F7F88F200D028D0 /* AIPromptTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIPromptTemplates.swift; sourceTree = "<group>"; };
 		5A87ECDE2F7F88F200D028D0 /* AIPromptTemplates+InlineSuggest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIPromptTemplates+InlineSuggest.swift"; sourceTree = "<group>"; };
 		5A87ECDF2F7F88F200D028D0 /* AIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProvider.swift; sourceTree = "<group>"; };
@@ -580,6 +583,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */,
 				5AA3133A2F7EA5B4008EBA97 /* LibPQ.xcframework in Frameworks */,
 				5AB9F3EF2F7C1D03001F3337 /* TableProQuery in Frameworks */,
 				5AA313402F7EA5B4008EBA97 /* MariaDB.xcframework in Frameworks */,
@@ -1634,6 +1638,7 @@
 				5AA136092F82610F00ADCD58 /* TableProWidget */,
 				5AA313332F7EA5B4008EBA97 /* Frameworks */,
 				5AB9F3DA2F7C1C12001F3337 /* Products */,
+				5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1695,6 +1700,7 @@
 				5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */,
 				5AB9F3EE2F7C1D03001F3337 /* TableProQuery */,
 				5A87EEEC2F7F893000D028D0 /* TableProSync */,
+				5A87EEED2F7F893000D028D1 /* TableProAnalytics */,
 			);
 			productName = TableProMobile;
 			productReference = 5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */;
@@ -1753,6 +1759,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1850,6 +1857,7 @@
 		};
 		5AB9F3E22F7C1C13001F3337 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -2016,6 +2024,7 @@
 		};
 		5AB9F3E62F7C1C13001F3337 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -2101,6 +2110,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProSync;
+		};
+		5A87EEED2F7F893000D028D1 /* TableProAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TableProAnalytics;
 		};
 		5AB9F3E82F7C1D03001F3337 /* TableProDatabase */ = {
 			isa = XCSwiftPackageProductDependency;

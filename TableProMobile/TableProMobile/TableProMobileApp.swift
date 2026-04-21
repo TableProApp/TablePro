@@ -5,6 +5,7 @@
 
 import CoreSpotlight
 import SwiftUI
+import TableProAnalytics
 import TableProDatabase
 import TableProModels
 
@@ -12,6 +13,8 @@ import TableProModels
 struct TableProMobileApp: App {
     @State private var appState = AppState()
     @State private var syncTask: Task<Void, Never>?
+    @State private var heartbeatService: AnalyticsHeartbeatService?
+    @State private var heartbeatTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -59,7 +62,16 @@ struct TableProMobileApp: App {
                         localTags: appState.tags
                     )
                 }
+                if heartbeatTask == nil {
+                    let provider = IOSAnalyticsProvider(appState: appState)
+                    let service = AnalyticsHeartbeatService(provider: provider)
+                    heartbeatService = service
+                    heartbeatTask = service.startPeriodicHeartbeat()
+                }
             case .background:
+                heartbeatTask?.cancel()
+                heartbeatTask = nil
+                heartbeatService = nil
                 Task { await appState.connectionManager.disconnectAll() }
             default:
                 break
