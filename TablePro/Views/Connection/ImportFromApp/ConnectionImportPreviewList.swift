@@ -16,7 +16,7 @@ struct ConnectionImportPreviewList: View {
                 importItemRow(item)
             }
         }
-        .listStyle(.inset)
+        .listStyle(.bordered(alternatesRowBackgrounds: true))
     }
 
     @ViewBuilder
@@ -109,7 +109,7 @@ struct ConnectionImportPreviewList: View {
     private func warningText(for status: ImportItemStatus) -> some View {
         if case .warnings(let messages) = status, let first = messages.first {
             Text(" — \(first)")
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color(nsColor: .systemOrange))
         }
     }
 }

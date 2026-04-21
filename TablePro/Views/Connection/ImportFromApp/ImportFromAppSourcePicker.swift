@@ -56,9 +56,10 @@ struct ImportFromAppSourcePicker: View {
                     ForEach(importerStates, id: \.importer.id) { state in
                         sourceRow(state)
                             .tag(state.importer.id)
+                            .disabled(!state.available)
                     }
                 }
-                .listStyle(.inset)
+                .listStyle(.bordered)
             }
         }
     }
@@ -82,22 +83,15 @@ struct ImportFromAppSourcePicker: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 } else {
-                    Text("Not installed or no data found")
+                    Text(String(localized: "Not installed"))
                         .font(.subheadline)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             Spacer()
-
-            if !state.available {
-                Image(systemName: "minus.circle")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-            }
         }
         .padding(.vertical, 4)
-        .opacity(state.available ? 1 : 0.5)
     }
 
     @ViewBuilder
