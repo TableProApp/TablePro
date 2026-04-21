@@ -44,7 +44,7 @@ struct TerminalTabContentView: View {
     private func terminalView(state: TerminalSessionState) -> some View {
         TerminalSurfaceView(context: state.terminalViewState)
             .background {
-                TerminalFocusHelper()
+                TerminalFocusHelper(processManager: state.processManager)
             }
             .onAppear {
                 if let session = state.session {
@@ -105,15 +105,22 @@ struct TerminalTabContentView: View {
 /// Makes the terminal surface first responder when it appears.
 /// Follows the same pattern as SQLEditorCoordinator's auto-focus (50ms delay + makeFirstResponder).
 private struct TerminalFocusHelper: NSViewRepresentable {
+    weak var processManager: TerminalProcessManager?
+
     func makeNSView(context: Context) -> TerminalFocusHelperView {
-        TerminalFocusHelperView()
+        let view = TerminalFocusHelperView()
+        view.processManager = processManager
+        return view
     }
 
-    func updateNSView(_ nsView: TerminalFocusHelperView, context: Context) {}
+    func updateNSView(_ nsView: TerminalFocusHelperView, context: Context) {
+        nsView.processManager = processManager
+    }
 }
 
 private final class TerminalFocusHelperView: NSView {
     private weak var terminalView: NSView?
+    weak var processManager: TerminalProcessManager?
     private var rightClickMonitor: Any?
 
     override func viewDidMoveToWindow() {
@@ -166,16 +173,59 @@ private final class TerminalFocusHelperView: NSView {
 
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
 
-        // Use standard responder chain actions — no custom targets.
-        // AppTerminalView inherits NSResponder which handles copy:/paste:/selectAll:
-        // via the responder chain. autoenablesItems (default true) validates each item.
-        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: ""))
+        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(handleCopy), keyEquivalent: "")
+        copy.target = self
+        copy.isEnabled = true
+        menu.addItem(copy)
+
+        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(handlePaste), keyEquivalent: "")
+        paste.target = self
+        paste.isEnabled = NSPasteboard.general.string(forType: .string) != nil
+        menu.addItem(paste)
+
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: String(localized: "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: ""))
+
+        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(handleSelectAll), keyEquivalent: "")
+        selectAll.target = self
+        selectAll.isEnabled = true
+        menu.addItem(selectAll)
 
         return menu
+    }
+
+    // Ghostty handles clipboard through key events, not NSResponder actions.
+    // Cmd+C copies selected text (no-op if nothing selected).
+    // Paste writes clipboard content directly to PTY input.
+
+    @objc private func handleCopy() {
+        guard let terminal = terminalView, let window = terminal.window else { return }
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil,
+            characters: "c", charactersIgnoringModifiers: "c",
+            isARepeat: false, keyCode: 8
+        ) else { return }
+        terminal.keyDown(with: event)
+    }
+
+    @objc private func handlePaste() {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        processManager?.write(Data(text.utf8))
+    }
+
+    @objc private func handleSelectAll() {
+        guard let terminal = terminalView, let window = terminal.window else { return }
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil,
+            characters: "a", charactersIgnoringModifiers: "a",
+            isARepeat: false, keyCode: 0
+        ) else { return }
+        terminal.keyDown(with: event)
     }
 
     // MARK: - Key View Discovery
