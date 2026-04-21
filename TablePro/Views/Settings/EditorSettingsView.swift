@@ -28,6 +28,13 @@ struct EditorSettingsView: View {
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
                 Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
             }
+
+            Section("JSON Viewer") {
+                Picker("Default view:", selection: $settings.jsonViewerPreferredMode) {
+                    Text("Text").tag(JSONViewMode.text)
+                    Text("Tree").tag(JSONViewMode.tree)
+                }
+            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
