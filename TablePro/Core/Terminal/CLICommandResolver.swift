@@ -149,9 +149,10 @@ enum CLICommandResolver {
             : "\(sshConfig.username)@\(sshConfig.host)"
         sshArgs.append(userHost)
 
-        // Wrap in login shell so the remote user's PATH is loaded
-        // (non-login SSH commands don't source .bashrc/.profile)
-        sshArgs += ["bash", "-l", "-c", remoteCommand]
+        // Wrap in login shell so the remote user's PATH is loaded.
+        // Must be a single argument — bash -c takes one string.
+        let bashEscaped = remoteCommand.replacingOccurrences(of: "'", with: "'\\''")
+        sshArgs.append("bash -l -c '\(bashEscaped)'")
 
         return CLILaunchSpec(executablePath: sshPath, arguments: sshArgs, environment: [:])
     }
