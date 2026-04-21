@@ -131,6 +131,9 @@ final class TerminalSessionState: Identifiable {
             builder.withCustom("keybind", "clear")
             builder.withCustom("keybind", "apostrophe=text:\\x27")
             builder.withCustom("keybind", "shift+apostrophe=text:\\x22")
+            builder.withCustom("keybind", "super+f=search_open")
+            builder.withCustom("keybind", "super+shift+g=search_navigate:previous")
+            builder.withCustom("keybind", "super+g=search_navigate:next")
         }
     }
 
