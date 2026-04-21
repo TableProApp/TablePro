@@ -138,6 +138,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
 
         if currentSession == nil {
             sidebarSplitItem.isCollapsed = true
+        } else {
+            sidebarContainer.updateSidebarState(
+                SharedSidebarState.forConnection(currentSession!.connection.id) // swiftlint:disable:this force_unwrapping
+            )
         }
         inspectorSplitItem.isCollapsed = !UserDefaults.standard.bool(forKey: Self.inspectorPresentedKey)
     }
@@ -470,8 +474,16 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         syncSidebarVisibility()
     }
 
+    override func splitViewDidResizeSubviews(_ notification: Notification) {
+        super.splitViewDidResizeSubviews(notification)
+        syncSidebarVisibility()
+    }
+
     private func syncSidebarVisibility() {
-        sessionState?.coordinator.toolbarState.isSidebarVisible = isSidebarVisible
+        let visible = isSidebarVisible
+        if sessionState?.coordinator.toolbarState.isSidebarVisible != visible {
+            sessionState?.coordinator.toolbarState.isSidebarVisible = visible
+        }
     }
 
     // MARK: - Constants

@@ -563,6 +563,7 @@ extension MainWindowToolbar {
         guard let coordinator else { return }
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let tabs: [SidebarTab] = [.tables, .favorites]
+        guard sender.tag >= 0, sender.tag < tabs.count else { return }
         let tab = tabs[sender.tag]
 
         if coordinator.toolbarState.isSidebarVisible {

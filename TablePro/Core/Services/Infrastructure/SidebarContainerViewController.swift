@@ -14,6 +14,7 @@ internal final class SidebarContainerViewController: NSViewController {
     private let searchField = NSSearchField()
     private var hostingController: NSHostingController<AnyView>
     private var sidebarState: SharedSidebarState?
+    private var observationGeneration = 0
 
     var rootView: AnyView {
         get { hostingController.rootView }
@@ -58,17 +59,10 @@ internal final class SidebarContainerViewController: NSViewController {
         ])
     }
 
-    // MARK: - Cmd+F Support
-
-    @objc func focusSearchField(_ sender: Any?) {
-        view.window?.makeFirstResponder(searchField)
-    }
-
-    override var acceptsFirstResponder: Bool { true }
-
     // MARK: - State Management
 
     func updateSidebarState(_ state: SharedSidebarState?) {
+        observationGeneration += 1
         sidebarState = state
         guard let state else {
             searchField.isHidden = true
@@ -76,18 +70,19 @@ internal final class SidebarContainerViewController: NSViewController {
         }
         searchField.isHidden = false
         syncFromState(state)
-        startObserving(state)
+        startObserving(state, generation: observationGeneration)
     }
 
-    private func startObserving(_ state: SharedSidebarState) {
+    private func startObserving(_ state: SharedSidebarState, generation: Int) {
         withObservationTracking {
             _ = state.searchText
             _ = state.selectedSidebarTab
         } onChange: { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, let sidebarState = self.sidebarState else { return }
+                guard let self, generation == self.observationGeneration,
+                      let sidebarState = self.sidebarState else { return }
                 self.syncFromState(sidebarState)
-                self.startObserving(sidebarState)
+                self.startObserving(sidebarState, generation: generation)
             }
         }
     }

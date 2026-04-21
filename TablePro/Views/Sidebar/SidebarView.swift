@@ -182,60 +182,60 @@ struct SidebarView: View {
         let showAllLabel = String(format: String(localized: "Show All %@"), entityLabel)
         return List(selection: selectedTablesBinding) {
             Section(isExpanded: $viewModel.isTablesExpanded) {
-                    ForEach(filteredTables) { table in
-                        TableRow(
-                            table: table,
-                            isPendingTruncate: pendingTruncates.contains(table.name),
-                            isPendingDelete: pendingDeletes.contains(table.name)
-                        )
-                        .tag(table)
-                        .overlay {
-                            DoubleClickDetector {
-                                onDoubleClick?(table)
-                            }
-                        }
-                        .contextMenu {
-                            SidebarContextMenu(
-                                clickedTable: table,
-                                selectedTables: sidebarState.selectedTables,
-                                isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
-                                onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
-                                onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
-                                coordinator: coordinator
-                            )
+                ForEach(filteredTables) { table in
+                    TableRow(
+                        table: table,
+                        isPendingTruncate: pendingTruncates.contains(table.name),
+                        isPendingDelete: pendingDeletes.contains(table.name)
+                    )
+                    .tag(table)
+                    .overlay {
+                        DoubleClickDetector {
+                            onDoubleClick?(table)
                         }
                     }
-                } header: {
-                    Text(entityLabel)
-                        .help(helpLabel)
-                        .contextMenu {
-                            Button(showAllLabel) {
-                                coordinator?.showAllTablesMetadata()
-                            }
-                        }
+                    .contextMenu {
+                        SidebarContextMenu(
+                            clickedTable: table,
+                            selectedTables: sidebarState.selectedTables,
+                            isReadOnly: coordinator?.safeModeLevel.blocksAllWrites ?? false,
+                            onBatchToggleTruncate: { viewModel.batchToggleTruncate(tableNames: $0) },
+                            onBatchToggleDelete: { viewModel.batchToggleDelete(tableNames: $0) },
+                            coordinator: coordinator
+                        )
+                    }
                 }
+            } header: {
+                Text(entityLabel)
+                    .help(helpLabel)
+                    .contextMenu {
+                        Button(showAllLabel) {
+                            coordinator?.showAllTablesMetadata()
+                        }
+                    }
+            }
 
-                if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
-                    Section(isExpanded: $viewModel.isRedisKeysExpanded) {
-                        RedisKeyTreeView(
-                            nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
-                            expandedPrefixes: Binding(
-                                get: { keyTreeVM.expandedPrefixes },
-                                set: { keyTreeVM.expandedPrefixes = $0 }
-                            ),
-                            isLoading: keyTreeVM.isLoading,
-                            isTruncated: keyTreeVM.isTruncated,
-                            onSelectNamespace: { prefix in
-                                coordinator?.browseRedisNamespace(prefix)
-                            },
-                            onSelectKey: { key, keyType in
-                                coordinator?.openRedisKey(key, keyType: keyType)
-                            }
-                        )
-                    } header: {
-                        Text("Keys")
-                    }
+            if viewModel.databaseType == .redis, let keyTreeVM = sidebarState.redisKeyTreeViewModel {
+                Section(isExpanded: $viewModel.isRedisKeysExpanded) {
+                    RedisKeyTreeView(
+                        nodes: keyTreeVM.displayNodes(searchText: viewModel.searchText),
+                        expandedPrefixes: Binding(
+                            get: { keyTreeVM.expandedPrefixes },
+                            set: { keyTreeVM.expandedPrefixes = $0 }
+                        ),
+                        isLoading: keyTreeVM.isLoading,
+                        isTruncated: keyTreeVM.isTruncated,
+                        onSelectNamespace: { prefix in
+                            coordinator?.browseRedisNamespace(prefix)
+                        },
+                        onSelectKey: { key, keyType in
+                            coordinator?.openRedisKey(key, keyType: keyType)
+                        }
+                    )
+                } header: {
+                    Text("Keys")
                 }
+            }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
