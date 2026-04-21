@@ -4,7 +4,6 @@
 //
 
 import GhosttyTerminal
-import os
 import SwiftUI
 
 struct TerminalTabContentView: View {
@@ -113,24 +112,19 @@ private struct TerminalFocusHelper: NSViewRepresentable {
 }
 
 private final class TerminalFocusHelperView: NSView {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalFocus")
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
-        Self.logger.info("viewDidMoveToWindow fired")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             var ancestor: NSView? = self.superview?.superview
             while let current = ancestor {
                 if let keyView = Self.firstKeyView(in: current, excluding: self) {
-                    let result = window.makeFirstResponder(keyView)
-                    Self.logger.info("makeFirstResponder → \(keyView.className, privacy: .public) result=\(result)")
+                    window.makeFirstResponder(keyView)
                     return
                 }
                 ancestor = current.superview
             }
-            Self.logger.warning("no focusable view found in ancestor chain")
         }
     }
 
