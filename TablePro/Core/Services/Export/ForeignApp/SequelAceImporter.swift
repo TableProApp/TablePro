@@ -157,7 +157,7 @@ struct SequelAceImporter: ForeignAppImporter {
         } else if let strPort = entry["port"] as? String, let parsed = Int(strPort) {
             port = parsed
         } else {
-            port = 3306
+            port = 3_306
         }
         let username = entry["user"] as? String ?? ""
         let database = entry["database"] as? String ?? ""

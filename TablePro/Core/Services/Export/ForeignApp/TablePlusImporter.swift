@@ -206,7 +206,7 @@ struct TablePlusImporter: ForeignAppImporter {
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
         return ExportableSSLConfig(
             mode: "Required",
-            caCertificatePath: paths.count > 0 ? paths[0] : nil,
+            caCertificatePath: !paths.isEmpty ? paths[0] : nil,
             clientCertificatePath: paths.count > 1 ? paths[1] : nil,
             clientKeyPath: paths.count > 2 ? paths[2] : nil
         )
@@ -247,11 +247,11 @@ struct TablePlusImporter: ForeignAppImporter {
 
     private func defaultPort(for dbType: String) -> Int {
         switch dbType {
-        case "MySQL", "MariaDB": return 3306
-        case "PostgreSQL", "Redshift": return 5432
+        case "MySQL", "MariaDB": return 3_306
+        case "PostgreSQL", "Redshift": return 5_432
         case "MongoDB": return 27_017
-        case "Redis": return 6379
-        case "SQL Server": return 1433
+        case "Redis": return 6_379
+        case "SQL Server": return 1_433
         default: return 0
         }
     }

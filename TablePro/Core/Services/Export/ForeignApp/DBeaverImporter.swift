@@ -327,14 +327,14 @@ struct DBeaverImporter: ForeignAppImporter {
 
     private func defaultPort(for dbType: String) -> Int {
         switch dbType {
-        case "MySQL", "MariaDB": return 3306
-        case "PostgreSQL": return 5432
+        case "MySQL", "MariaDB": return 3_306
+        case "PostgreSQL": return 5_432
         case "MongoDB": return 27_017
-        case "Redis": return 6379
-        case "SQL Server": return 1433
-        case "Oracle": return 1521
-        case "ClickHouse": return 8123
-        case "Cassandra": return 9042
+        case "Redis": return 6_379
+        case "SQL Server": return 1_433
+        case "Oracle": return 1_521
+        case "ClickHouse": return 8_123
+        case "Cassandra": return 9_042
         default: return 0
         }
     }
