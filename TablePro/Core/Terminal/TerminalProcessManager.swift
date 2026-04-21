@@ -48,7 +48,8 @@ final class TerminalProcessManager {
         env["TERM"] = "xterm-256color"
 
         let cArgs: [UnsafeMutablePointer<CChar>?] = allArgs.map { strdup($0) } + [nil]
-        let cEnv: [UnsafeMutablePointer<CChar>?] = env.map { "\($0.key)=\($0.value)" }.map { strdup($0) } + [nil]
+        let envStrings = env.map { "\($0.key)=\($0.value)" }
+        let cEnv: [UnsafeMutablePointer<CChar>?] = envStrings.map { strdup($0) } + [nil]
 
         var ptyFDValue: Int32 = -1
         var winSize = winsize(ws_row: 24, ws_col: 80, ws_xpixel: 0, ws_ypixel: 0)
