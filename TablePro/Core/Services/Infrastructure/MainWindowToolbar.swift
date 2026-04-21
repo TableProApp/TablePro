@@ -520,7 +520,7 @@ extension MainWindowToolbar {
         segmented.segmentCount = 2
         segmented.trackingMode = .selectAny
         segmented.segmentStyle = .separated
-        segmented.selectedSegmentBezelColor = .labelColor.withAlphaComponent(0.08)
+        segmented.selectedSegmentBezelColor = .white.withAlphaComponent(0.05)
         segmented.target = self
         segmented.action = #selector(sidebarSegmentClicked(_:))
 
@@ -571,14 +571,16 @@ extension MainWindowToolbar {
 
         segmented.isEnabled = isConnected
 
-        if state.isSidebarVisible && isConnected {
-            let activeIndex = sidebarState.selectedSidebarTab == .tables ? 0 : 1
-            segmented.setSelected(true, forSegment: activeIndex)
-            segmented.setSelected(false, forSegment: activeIndex == 0 ? 1 : 0)
-        } else {
-            segmented.setSelected(false, forSegment: 0)
-            segmented.setSelected(false, forSegment: 1)
-        }
+        let tablesActive = state.isSidebarVisible && isConnected && sidebarState.selectedSidebarTab == .tables
+        let favoritesActive = state.isSidebarVisible && isConnected && sidebarState.selectedSidebarTab == .favorites
+
+        segmented.setSelected(tablesActive, forSegment: 0)
+        segmented.setSelected(favoritesActive, forSegment: 1)
+
+        let tablesIcon = tablesActive ? "tablecells.fill" : "tablecells"
+        let favoritesIcon = favoritesActive ? "star.fill" : "star"
+        segmented.setImage(NSImage(systemSymbolName: tablesIcon, accessibilityDescription: String(localized: "Tables")), forSegment: 0)
+        segmented.setImage(NSImage(systemSymbolName: favoritesIcon, accessibilityDescription: String(localized: "Favorites")), forSegment: 1)
     }
 
     fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
