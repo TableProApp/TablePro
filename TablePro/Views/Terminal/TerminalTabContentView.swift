@@ -4,6 +4,7 @@
 //
 
 import GhosttyTerminal
+import os
 import SwiftUI
 
 struct TerminalTabContentView: View {
@@ -130,8 +131,16 @@ private final class TerminalFocusHelperView: NSView {
         }
     }
 
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalContextMenu")
+
     private static func installContextMenu(on terminalView: NSView) {
-        guard terminalView.menu == nil else { return }
+        logger.info("installContextMenu on \(terminalView.className, privacy: .public) menu=\(String(describing: terminalView.menu), privacy: .public)")
+
+        // Check if the terminal view overrides menu(for:) which would prevent our NSMenu from showing
+        let existingMenu = terminalView.menu
+        logger.info("existing menu: \(String(describing: existingMenu), privacy: .public), menuClass: \(String(describing: type(of: terminalView)), privacy: .public)")
+        logger.info("responds to menuForEvent: \(terminalView.responds(to: #selector(NSView.menu(for:))), privacy: .public)")
+
         let menu = NSMenu()
 
         let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -149,6 +158,8 @@ private final class TerminalFocusHelperView: NSView {
         menu.addItem(selectAll)
 
         terminalView.menu = menu
+        logger.info("menu installed, items=\(menu.items.count), menu identity=\(ObjectIdentifier(menu))")
+        logger.info("terminalView.menu after set: \(String(describing: terminalView.menu), privacy: .public)")
     }
 
     private static func firstKeyView(in view: NSView, excluding: NSView) -> NSView? {
