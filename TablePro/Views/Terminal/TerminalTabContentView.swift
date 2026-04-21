@@ -166,55 +166,16 @@ private final class TerminalFocusHelperView: NSView {
 
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.autoenablesItems = false
 
-        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(handleCopy), keyEquivalent: "")
-        copy.target = self
-        copy.isEnabled = true
-        menu.addItem(copy)
-
-        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(handlePaste), keyEquivalent: "")
-        paste.target = self
-        paste.isEnabled = true
-        menu.addItem(paste)
-
+        // Use standard responder chain actions — no custom targets.
+        // AppTerminalView inherits NSResponder which handles copy:/paste:/selectAll:
+        // via the responder chain. autoenablesItems (default true) validates each item.
+        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSResponder.copy(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSResponder.paste(_:)), keyEquivalent: ""))
         menu.addItem(.separator())
-
-        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(handleSelectAll), keyEquivalent: "")
-        selectAll.target = self
-        selectAll.isEnabled = true
-        menu.addItem(selectAll)
+        menu.addItem(NSMenuItem(title: String(localized: "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: ""))
 
         return menu
-    }
-
-    @objc private func handleCopy() {
-        simulateKeyEvent(characters: "c", modifiers: .command)
-    }
-
-    @objc private func handlePaste() {
-        simulateKeyEvent(characters: "v", modifiers: .command)
-    }
-
-    @objc private func handleSelectAll() {
-        simulateKeyEvent(characters: "a", modifiers: .command)
-    }
-
-    private func simulateKeyEvent(characters: String, modifiers: NSEvent.ModifierFlags) {
-        guard let terminal = terminalView, let window = terminal.window else { return }
-        guard let event = NSEvent.keyEvent(
-            with: .keyDown,
-            location: .zero,
-            modifierFlags: modifiers,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber,
-            context: nil,
-            characters: characters,
-            charactersIgnoringModifiers: characters,
-            isARepeat: false,
-            keyCode: 0
-        ) else { return }
-        terminal.keyDown(with: event)
     }
 
     // MARK: - Key View Discovery
