@@ -2,8 +2,6 @@
 //  TerminalTabContentView.swift
 //  TablePro
 //
-//  SwiftUI view hosting the libghostty terminal surface for a database CLI session.
-//
 
 import GhosttyTerminal
 import SwiftUI
@@ -22,12 +20,17 @@ struct TerminalTabContentView: View {
             } else if let error = sessionState?.error {
                 TerminalErrorView(error: error, databaseType: connection.type)
             } else {
-                ProgressView("Connecting...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                connectingView
             }
         }
         .onAppear { startTerminal() }
-        .onDisappear { sessionState?.disconnect() }
+        .onDisappear {
+            let state = sessionState
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                state?.disconnect()
+            }
+        }
     }
 
     @ViewBuilder
@@ -40,9 +43,13 @@ struct TerminalTabContentView: View {
                     )
                 }
         } else {
-            ProgressView("Connecting...")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            connectingView
         }
+    }
+
+    private var connectingView: some View {
+        ProgressView("Connecting...")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func startTerminal() {

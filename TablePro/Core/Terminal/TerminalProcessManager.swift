@@ -2,10 +2,6 @@
 //  TerminalProcessManager.swift
 //  TablePro
 //
-//  PTY lifecycle management for the embedded terminal.
-//  Uses forkpty() to create a pseudo-terminal and manages
-//  the child process I/O via DispatchSource.
-//
 
 import Darwin
 import Foundation
@@ -18,7 +14,7 @@ final class TerminalProcessManager {
     /// File descriptor for the PTY. Set once during launch, read from any thread
     /// (POSIX fd operations are thread-safe). Stored separately for nonisolated access.
     private let fdLock = NSLock()
-    private var _ptyFD: Int32 = -1
+    private nonisolated(unsafe) var _ptyFD: Int32 = -1
 
     private var ptyFD: Int32 {
         get { fdLock.withLock { _ptyFD } }
@@ -134,14 +130,8 @@ final class TerminalProcessManager {
     }
 
     deinit {
-        let fd = _ptyFD
-        let pid = childPID
-        if fd >= 0 {
-            close(fd)
-        }
-        if pid > 0 {
-            kill(pid, SIGHUP)
-        }
+        let fd = fdLock.withLock { _ptyFD }
+        if fd >= 0 { close(fd) }
     }
 
     // MARK: - Private
@@ -158,14 +148,8 @@ final class TerminalProcessManager {
                 Task { @MainActor [weak self] in
                     self?.onData?(data)
                 }
-            } else if bytesRead <= 0 {
+            } else {
                 source.cancel()
-            }
-        }
-
-        source.setCancelHandler { [weak self] in
-            Task { @MainActor [weak self] in
-                self?.handleProcessExit()
             }
         }
 
@@ -175,12 +159,19 @@ final class TerminalProcessManager {
 
     private func monitorChildExit() {
         let pid = childPID
-        let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .main)
+        let source = DispatchSource.makeProcessSource(
+            identifier: pid,
+            eventMask: .exit,
+            queue: .global(qos: .utility)
+        )
 
         source.setEventHandler { [weak self] in
             var status: Int32 = 0
-            waitpid(pid, &status, 0)
-            self?.handleProcessExit(status: status)
+            waitpid(pid, &status, WNOHANG)
+            let exitStatus = status
+            Task { @MainActor [weak self] in
+                self?.handleProcessExit(status: exitStatus)
+            }
         }
 
         source.resume()
@@ -189,10 +180,10 @@ final class TerminalProcessManager {
 
     private func handleProcessExit(status: Int32 = 0) {
         guard childPID > 0 else { return }
-        let exitStatus = WIFEXITED(status) ? WEXITSTATUS(status) : -1
-        Self.logger.info("Child process exited status=\(exitStatus)")
+        let exitCode = (status & 0x7F) == 0 ? (status >> 8) & 0xFF : -1
+        Self.logger.info("Child process exited status=\(exitCode)")
         childPID = 0
-        onExit?(exitStatus)
+        onExit?(exitCode)
     }
 }
 

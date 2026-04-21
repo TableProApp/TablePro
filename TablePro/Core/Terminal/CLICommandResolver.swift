@@ -2,9 +2,6 @@
 //  CLICommandResolver.swift
 //  TablePro
 //
-//  Maps DatabaseType to CLI binary, arguments, and environment variables
-//  for launching an interactive database shell in the terminal tab.
-//
 
 import Foundation
 import os
@@ -73,6 +70,20 @@ enum CLICommandResolver {
         }
 
         return nil
+    }
+
+    static func binaryName(for databaseType: DatabaseType) -> String {
+        switch databaseType {
+        case .mysql, .mariadb: return "mysql"
+        case .postgresql, .redshift: return "psql"
+        case .redis: return "redis-cli"
+        case .mongodb: return "mongosh"
+        case .sqlite: return "sqlite3"
+        case .mssql: return "sqlcmd"
+        case .clickhouse: return "clickhouse-client"
+        case .duckdb: return "duckdb"
+        default: return databaseType.rawValue.lowercased()
+        }
     }
 
     static func installInstructions(for databaseType: DatabaseType) -> String {
@@ -240,11 +251,12 @@ enum CLICommandResolver {
         if !database.isEmpty {
             args += ["--database", database]
         }
+        var env: [String: String] = [:]
         if let password, !password.isEmpty {
-            args += ["--password", password]
+            env["CLICKHOUSE_PASSWORD"] = password
         }
 
-        return CLILaunchSpec(executablePath: path, arguments: args, environment: [:])
+        return CLILaunchSpec(executablePath: path, arguments: args, environment: env)
     }
 
     private static func resolveDuckdb(connection: DatabaseConnection) -> CLILaunchSpec? {

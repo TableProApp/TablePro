@@ -2,9 +2,6 @@
 //  TerminalSessionState.swift
 //  TablePro
 //
-//  Observable state per terminal session, bridging PTY I/O
-//  to the libghostty terminal renderer.
-//
 
 import Foundation
 import GhosttyTerminal
@@ -33,14 +30,33 @@ final class TerminalSessionState: Identifiable {
     // MARK: - Connect
 
     func connect(connection: DatabaseConnection, password: String?, activeDatabase: String?) {
-        let spec = CLICommandResolver.resolve(
-            connection: connection,
-            password: password,
-            activeDatabase: activeDatabase
-        )
+        let dbType = connection.type
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let spec = CLICommandResolver.resolve(
+                connection: connection,
+                password: password,
+                activeDatabase: activeDatabase
+            )
+            await MainActor.run { [weak self] in
+                self?.launchProcess(spec: spec, connection: connection)
+            }
+        }
+    }
 
+    // MARK: - Disconnect
+
+    func disconnect() {
+        processManager?.terminate()
+        processManager = nil
+        session = nil
+        isConnected = false
+    }
+
+    // MARK: - Private
+
+    private func launchProcess(spec: CLILaunchSpec?, connection: DatabaseConnection) {
         guard let spec else {
-            let binaryName = cliBinaryName(for: connection.type)
+            let binaryName = CLICommandResolver.binaryName(for: connection.type)
             error = String(
                 format: String(localized: "CLI tool \"%@\" not found in PATH"),
                 binaryName
@@ -57,7 +73,7 @@ final class TerminalSessionState: Identifiable {
                 manager?.write(data)
             },
             resize: { [weak manager] viewport in
-                manager?.resize(cols: viewport.columns, rows: viewport.rows)
+                manager?.resize(cols: Int(viewport.columns), rows: Int(viewport.rows))
             }
         )
         self.session = inMemorySession
@@ -83,31 +99,6 @@ final class TerminalSessionState: Identifiable {
         } catch {
             self.error = error.localizedDescription
             Self.logger.error("Failed to launch terminal: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    // MARK: - Disconnect
-
-    func disconnect() {
-        processManager?.terminate()
-        processManager = nil
-        session = nil
-        isConnected = false
-    }
-
-    // MARK: - Private
-
-    private func cliBinaryName(for type: DatabaseType) -> String {
-        switch type {
-        case .mysql, .mariadb: return "mysql"
-        case .postgresql, .redshift: return "psql"
-        case .redis: return "redis-cli"
-        case .mongodb: return "mongosh"
-        case .sqlite: return "sqlite3"
-        case .mssql: return "sqlcmd"
-        case .clickhouse: return "clickhouse-client"
-        case .duckdb: return "duckdb"
-        default: return type.rawValue.lowercased()
         }
     }
 }

@@ -2,11 +2,8 @@
 //  MainContentCoordinator+Terminal.swift
 //  TablePro
 //
-//  Opens an embedded terminal tab for the current connection.
-//
 
 import AppKit
-import Foundation
 
 extension MainContentCoordinator {
     func openTerminal() {

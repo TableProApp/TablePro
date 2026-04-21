@@ -2,9 +2,6 @@
 //  TerminalErrorView.swift
 //  TablePro
 //
-//  Displayed when the CLI binary for a database connection cannot be found.
-//  Shows the error message and installation instructions.
-//
 
 import SwiftUI
 
