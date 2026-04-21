@@ -22,16 +22,32 @@ enum CLICommandResolver {
         password: String?,
         activeDatabase: String?,
         databaseType: DatabaseType? = nil,
-        customCliPath: String? = nil
+        customCliPath: String? = nil,
+        effectiveConnection: DatabaseConnection? = nil
     ) -> CLILaunchSpec? {
         let sshConfig = extractSSHConfig(from: connection)
-        if let sshConfig {
-            return resolveViaSSH(
-                connection: connection,
-                password: password,
-                activeDatabase: activeDatabase,
-                sshConfig: sshConfig
-            )
+        if sshConfig != nil {
+            // For SSH-tunneled connections, prefer local CLI via the existing tunnel.
+            // This handles Docker/container setups where CLI isn't on the remote host.
+            if let effective = effectiveConnection {
+                let localSpec = resolveLocal(
+                    connection: effective,
+                    password: password,
+                    activeDatabase: activeDatabase,
+                    customCliPath: customCliPath
+                )
+                if localSpec != nil { return localSpec }
+            }
+
+            // Fall back to SSH remote if local CLI not available
+            if let sshConfig {
+                return resolveViaSSH(
+                    connection: connection,
+                    password: password,
+                    activeDatabase: activeDatabase,
+                    sshConfig: sshConfig
+                )
+            }
         }
         return resolveLocal(
             connection: connection,

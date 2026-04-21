@@ -45,6 +45,7 @@ final class TerminalSessionState: Identifiable {
 
     func connect(connection: DatabaseConnection, password: String?, activeDatabase: String?) {
         let customCliPath = CLICommandResolver.userConfiguredPath(for: databaseType)
+        let effectiveConnection = DatabaseManager.shared.session(for: connectionId)?.effectiveConnection
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             let dbType = await self.databaseType
@@ -53,7 +54,8 @@ final class TerminalSessionState: Identifiable {
                 password: password,
                 activeDatabase: activeDatabase,
                 databaseType: dbType,
-                customCliPath: customCliPath
+                customCliPath: customCliPath,
+                effectiveConnection: effectiveConnection
             )
             await MainActor.run { [weak self] in
                 self?.launchProcess(spec: spec, connection: connection)
