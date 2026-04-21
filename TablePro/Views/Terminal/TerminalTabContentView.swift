@@ -43,6 +43,9 @@ struct TerminalTabContentView: View {
     @ViewBuilder
     private func terminalView(state: TerminalSessionState) -> some View {
         TerminalSurfaceView(context: state.terminalViewState)
+            .background {
+                TerminalFocusHelper()
+            }
             .onAppear {
                 if let session = state.session {
                     state.terminalViewState.configuration = TerminalSurfaceOptions(
@@ -93,5 +96,42 @@ struct TerminalTabContentView: View {
             ?? connection.database
 
         state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
+    }
+}
+
+// MARK: - Focus Helper
+
+/// Makes the terminal surface first responder when it appears.
+/// Follows the same pattern as SQLEditorCoordinator's auto-focus (50ms delay + makeFirstResponder).
+private struct TerminalFocusHelper: NSViewRepresentable {
+    func makeNSView(context: Context) -> TerminalFocusHelperView {
+        TerminalFocusHelperView()
+    }
+
+    func updateNSView(_ nsView: TerminalFocusHelperView, context: Context) {}
+}
+
+private final class TerminalFocusHelperView: NSView {
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let window else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, let parent = self.superview else { return }
+            if let keyView = Self.firstKeyView(in: parent, excluding: self) {
+                window.makeFirstResponder(keyView)
+            }
+        }
+    }
+
+    private static func firstKeyView(in view: NSView, excluding: NSView) -> NSView? {
+        for subview in view.subviews where subview !== excluding {
+            if subview.canBecomeKeyView {
+                return subview
+            }
+            if let found = firstKeyView(in: subview, excluding: excluding) {
+                return found
+            }
+        }
+        return nil
     }
 }
