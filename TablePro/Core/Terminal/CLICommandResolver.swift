@@ -130,9 +130,6 @@ enum CLICommandResolver {
             sshArgs += ["-J", jumpSpec]
         }
 
-        // Disable strict host key checking for non-interactive use
-        sshArgs += ["-o", "StrictHostKeyChecking=accept-new"]
-
         // Request TTY for interactive CLI
         sshArgs.append("-t")
 
@@ -189,11 +186,15 @@ enum CLICommandResolver {
 
         case .mongodb:
             let db = database.isEmpty ? "test" : database
+            var uri: String
             if !connection.username.isEmpty, let password, !password.isEmpty {
-                cmd += " 'mongodb://\(connection.username):\(password)@\(host):\(connection.port)/\(db)'"
+                let encodedUser = connection.username.addingPercentEncoding(withAllowedCharacters: .urlUserAllowed) ?? connection.username
+                let encodedPass = password.addingPercentEncoding(withAllowedCharacters: .urlPasswordAllowed) ?? password
+                uri = "mongodb://\(encodedUser):\(encodedPass)@\(host):\(connection.port)/\(db)"
             } else {
-                cmd += " 'mongodb://\(host):\(connection.port)/\(db)'"
+                uri = "mongodb://\(host):\(connection.port)/\(db)"
             }
+            cmd += " \(shellEscape(uri))"
 
         case .mssql:
             if let password, !password.isEmpty {
@@ -214,11 +215,13 @@ enum CLICommandResolver {
         case .oracle:
             let serviceName = connection.additionalFields["oracleServiceName"] ?? database
             let pass = password ?? ""
+            var connectString: String
             if !connection.username.isEmpty {
-                cmd += " \(shellEscape(connection.username))/\(shellEscape(pass))@\(host):\(connection.port)/\(serviceName)"
+                connectString = "\(connection.username)/\(pass)@\(host):\(connection.port)/\(serviceName)"
             } else {
-                cmd += " @\(host):\(connection.port)/\(serviceName)"
+                connectString = "@\(host):\(connection.port)/\(serviceName)"
             }
+            cmd += " \(shellEscape(connectString))"
 
         default:
             return ""
