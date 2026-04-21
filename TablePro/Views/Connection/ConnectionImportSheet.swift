@@ -33,9 +33,7 @@ struct ConnectionImportSheet: View {
                 passphraseView
             } else if let preview {
                 header(preview)
-                Divider()
                 previewList(preview)
-                Divider()
                 footer(preview)
             }
         }

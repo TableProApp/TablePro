@@ -18,11 +18,9 @@ struct ImportFromAppSourcePicker: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             sourceList
             Divider()
             passwordToggle
-            Divider()
             footer
         }
         .onAppear { loadStates() }

@@ -18,13 +18,11 @@ struct ImportFromAppPreviewStep: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ConnectionImportPreviewList(
                 items: preview.items,
                 selectedIds: $selectedIds,
                 duplicateResolutions: $duplicateResolutions
             )
-            Divider()
             footer
         }
         .onAppear { selectReadyItems() }
