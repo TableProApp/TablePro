@@ -119,6 +119,10 @@ final class TerminalSessionState: Identifiable {
 
             builder.withWindowPaddingX(4)
             builder.withWindowPaddingY(4)
+
+            // Clear Ghostty's default keybindings to prevent interference
+            // with raw terminal key handling (e.g. ' mapped to TAB)
+            builder.withCustom("keybind", "clear")
         }
     }
 
