@@ -154,6 +154,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         if let sessionState {
             sessionState.coordinator.inspectorProxy = self
             sessionState.coordinator.sidebarProxy = self
+            syncSidebarVisibility()
             installToolbar(coordinator: sessionState.coordinator)
         }
 
