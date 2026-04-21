@@ -42,6 +42,8 @@ enum CLICommandResolver {
             return resolveClickhouseClient(connection: connection, password: password, database: dbName)
         case .duckdb:
             return resolveDuckdb(connection: connection)
+        case .oracle:
+            return resolveSqlplus(connection: connection, password: password, database: dbName)
         default:
             logger.warning("No CLI mapping for database type: \(type.rawValue, privacy: .public)")
             return nil
@@ -82,6 +84,7 @@ enum CLICommandResolver {
         case .mssql: return "sqlcmd"
         case .clickhouse: return "clickhouse-client"
         case .duckdb: return "duckdb"
+        case .oracle: return "sqlplus"
         default: return databaseType.rawValue.lowercased()
         }
     }
@@ -104,6 +107,8 @@ enum CLICommandResolver {
             return "brew install clickhouse"
         case .duckdb:
             return "brew install duckdb"
+        case .oracle:
+            return "brew install instantclient-sqlplus"
         default:
             return "Install the CLI client for \(databaseType.displayName)"
         }
@@ -257,6 +262,28 @@ enum CLICommandResolver {
         }
 
         return CLILaunchSpec(executablePath: path, arguments: args, environment: env)
+    }
+
+    private static func resolveSqlplus(
+        connection: DatabaseConnection,
+        password: String?,
+        database: String
+    ) -> CLILaunchSpec? {
+        guard let path = findExecutable("sqlplus") else { return nil }
+
+        let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
+        let serviceName = connection.additionalFields["oracleServiceName"] ?? database
+
+        // sqlplus user/password@host:port/service_name
+        var connectString: String
+        if !connection.username.isEmpty {
+            let pass = password ?? ""
+            connectString = "\(connection.username)/\(pass)@\(host):\(connection.port)/\(serviceName)"
+        } else {
+            connectString = "@\(host):\(connection.port)/\(serviceName)"
+        }
+
+        return CLILaunchSpec(executablePath: path, arguments: [connectString], environment: [:])
     }
 
     private static func resolveDuckdb(connection: DatabaseConnection) -> CLILaunchSpec? {

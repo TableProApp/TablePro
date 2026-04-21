@@ -30,7 +30,6 @@ final class TerminalSessionState: Identifiable {
     // MARK: - Connect
 
     func connect(connection: DatabaseConnection, password: String?, activeDatabase: String?) {
-        let dbType = connection.type
         Task.detached(priority: .userInitiated) { [weak self] in
             let spec = CLICommandResolver.resolve(
                 connection: connection,

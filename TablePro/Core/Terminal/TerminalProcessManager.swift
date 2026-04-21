@@ -191,14 +191,11 @@ final class TerminalProcessManager {
 
 enum TerminalError: LocalizedError {
     case forkFailed(errno: Int32)
-    case executableNotFound(String)
 
     var errorDescription: String? {
         switch self {
         case .forkFailed(let code):
             return String(format: String(localized: "Failed to create terminal process (errno: %d)"), code)
-        case .executableNotFound(let name):
-            return String(format: String(localized: "CLI tool not found: %@"), name)
         }
     }
 }
