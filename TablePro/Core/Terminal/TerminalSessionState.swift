@@ -88,7 +88,6 @@ final class TerminalSessionState: Identifiable {
         let config = buildTerminalConfiguration(from: settings)
         let theme = buildTerminalTheme(from: settings)
         return TerminalViewState(
-            configSource: .none,
             theme: theme,
             terminalConfiguration: config
         )
