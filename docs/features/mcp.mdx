@@ -42,7 +42,7 @@ Add the snippet above to your `claude_desktop_config.json` file. On macOS this i
 Run:
 
 ```bash
-claude mcp add tablepro --transport sse http://127.0.0.1:23508/mcp
+claude mcp add tablepro --transport http http://127.0.0.1:23508/mcp
 ```
 
 ### Cursor
@@ -63,7 +63,7 @@ Add the snippet to your `.cursor/mcp.json` file in the project root, or to the g
 | `describe_table` | Get columns, indexes, foreign keys, and DDL |
 | `get_table_ddl` | Get the CREATE TABLE statement |
 | `execute_query` | Run a SQL or NoSQL query |
-| `export_data` | Export results as CSV, JSON, SQL, or XLSX |
+| `export_data` | Export results as CSV, JSON, or SQL |
 | `switch_database` | Switch the active database |
 | `switch_schema` | Switch the active schema |
 
