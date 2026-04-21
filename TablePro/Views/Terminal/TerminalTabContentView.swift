@@ -170,8 +170,8 @@ private final class TerminalFocusHelperView: NSView {
         // Use standard responder chain actions — no custom targets.
         // AppTerminalView inherits NSResponder which handles copy:/paste:/selectAll:
         // via the responder chain. autoenablesItems (default true) validates each item.
-        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSResponder.copy(_:)), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSResponder.paste(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: ""))
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: String(localized: "Select All"), action: #selector(NSResponder.selectAll(_:)), keyEquivalent: ""))
 
