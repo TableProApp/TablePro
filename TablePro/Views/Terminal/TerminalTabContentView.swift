@@ -77,7 +77,43 @@ struct TerminalTabContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    @State private var connectionObserver: NSObjectProtocol?
+
     private func startTerminal() {
+        guard sessionState == nil else { return }
+
+        let session = DatabaseManager.shared.session(for: connectionId)
+        let hasSSH = connection.sshTunnelMode != .disabled
+        let tunnelReady = session?.effectiveConnection != nil
+
+        // For SSH connections, wait for the tunnel to be established before connecting.
+        // On app restore, the terminal tab loads before the SSH tunnel is created.
+        if hasSSH, !tunnelReady {
+            waitForTunnel()
+            return
+        }
+
+        launchTerminalSession()
+    }
+
+    private func waitForTunnel() {
+        guard connectionObserver == nil else { return }
+        connectionObserver = NotificationCenter.default.addObserver(
+            forName: .databaseDidConnect,
+            object: nil,
+            queue: .main
+        ) { [self] _ in
+            let session = DatabaseManager.shared.session(for: connectionId)
+            guard session?.effectiveConnection != nil else { return }
+            if let observer = connectionObserver {
+                NotificationCenter.default.removeObserver(observer)
+                connectionObserver = nil
+            }
+            launchTerminalSession()
+        }
+    }
+
+    private func launchTerminalSession() {
         guard sessionState == nil else { return }
 
         let state = TerminalSessionState(connectionId: connectionId, databaseType: connection.type)
