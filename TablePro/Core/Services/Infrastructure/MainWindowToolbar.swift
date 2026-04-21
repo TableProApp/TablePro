@@ -515,7 +515,7 @@ private struct SidebarToggleToolbarButtons: View {
         let isDisabled = state.connectionState != .connected
 
         HStack(spacing: 0) {
-            sidebarButton(
+            sidebarToggle(
                 tab: .tables,
                 icon: "tablecells",
                 label: String(localized: "Tables"),
@@ -527,7 +527,7 @@ private struct SidebarToggleToolbarButtons: View {
                     .frame(height: 14)
                     .padding(.horizontal, 1)
             }
-            sidebarButton(
+            sidebarToggle(
                 tab: .favorites,
                 icon: "star",
                 label: String(localized: "Favorites"),
@@ -535,64 +535,32 @@ private struct SidebarToggleToolbarButtons: View {
                 sidebarState: sidebarState
             )
         }
+        .buttonStyle(.accessoryBar)
         .disabled(isDisabled)
     }
 
-    private func sidebarButton(
+    private func sidebarToggle(
         tab: SidebarTab,
         icon: String,
         label: String,
         isActive: Bool,
         sidebarState: SharedSidebarState
     ) -> some View {
-        ToolbarToggleButton(
-            icon: icon,
-            accessibilityLabel: label,
-            isOn: isActive
-        ) {
-            if isActive {
-                coordinator.sidebarProxy?.hideSidebar()
-            } else {
-                sidebarState.selectedSidebarTab = tab
-                if !coordinator.toolbarState.isSidebarVisible {
-                    coordinator.sidebarProxy?.showSidebar()
+        Toggle(isOn: Binding(
+            get: { isActive },
+            set: { newValue in
+                if newValue {
+                    sidebarState.selectedSidebarTab = tab
+                    if !coordinator.toolbarState.isSidebarVisible {
+                        coordinator.sidebarProxy?.showSidebar()
+                    }
+                } else {
+                    coordinator.sidebarProxy?.hideSidebar()
                 }
             }
+        )) {
+            Label(label, systemImage: icon)
         }
-        .help(label)
-    }
-}
-
-private struct ToolbarToggleButton: NSViewRepresentable {
-    let icon: String
-    let accessibilityLabel: String
-    let isOn: Bool
-    let action: () -> Void
-
-    func makeNSView(context: Context) -> NSButton {
-        let button = NSButton()
-        button.bezelStyle = .accessoryBarAction
-        button.setButtonType(.toggle)
-        button.isBordered = true
-        button.imagePosition = .imageOnly
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.clicked)
-        return button
-    }
-
-    func updateNSView(_ button: NSButton, context: Context) {
-        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: accessibilityLabel)
-        button.state = isOn ? .on : .off
-        context.coordinator.action = action
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    final class Coordinator: NSObject {
-        var action: () -> Void
-        init(action: @escaping () -> Void) { self.action = action }
-        @objc func clicked() { action() }
+        .toggleStyle(.button)
     }
 }
