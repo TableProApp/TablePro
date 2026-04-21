@@ -110,7 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if AppSettingsManager.shared.mcp.enabled {
             Task {
-                await MCPServerManager.shared.start(port: UInt16(AppSettingsManager.shared.mcp.port))
+                await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
             }
         }
 
