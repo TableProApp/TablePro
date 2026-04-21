@@ -41,7 +41,10 @@ struct DBeaverImporterTests {
     }
 
     private func encryptWithDBeaverKey(_ data: Data) -> Data {
-        let key = DBeaverImporter.aesKey
+        let key: [UInt8] = [
+            0xBA, 0xBB, 0x4A, 0x9F, 0x77, 0x4A, 0xB8, 0x53,
+            0xC9, 0x6C, 0x2D, 0x65, 0x3D, 0xFE, 0x54, 0x4A
+        ]
         var iv = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, 16, &iv)
 
@@ -502,47 +505,6 @@ struct DBeaverImporterTests {
 
         let result = try importer.importConnections(includePasswords: false)
         #expect(result.envelope.connections[0].sshConfig?.port == 2222)
-    }
-
-    // MARK: - decryptCredentials
-
-    @Test("decryptCredentials with valid data returns decrypted")
-    func testDecryptCredentials_validData_returnsDecrypted() {
-        let payload: [String: Any] = ["test-conn": ["#connection": ["password": "hello123"]]]
-        let plaintext = try! JSONSerialization.data(withJSONObject: payload)
-        let encrypted = encryptWithDBeaverKey(plaintext)
-
-        let decrypted = importer.decryptCredentials(encrypted)
-        #expect(decrypted != nil)
-
-        let parsed = try? JSONSerialization.jsonObject(with: decrypted!) as? [String: Any]
-        #expect(parsed != nil)
-
-        let connBlock = parsed?["test-conn"] as? [String: Any]
-        let connection = connBlock?["#connection"] as? [String: Any]
-        #expect(connection?["password"] as? String == "hello123")
-    }
-
-    @Test("decryptCredentials with invalid data returns nil")
-    func testDecryptCredentials_invalidData_returnsNil() {
-        // Data too short (less than 16 bytes for IV)
-        let shortData = Data([0x01, 0x02, 0x03])
-        #expect(importer.decryptCredentials(shortData) == nil)
-    }
-
-    @Test("decryptCredentials with corrupted ciphertext returns nil or garbage")
-    func testDecryptCredentials_corruptedData() {
-        // 16 bytes IV + random garbage that won't decrypt to valid JSON
-        var data = Data(repeating: 0xAA, count: 16) // IV
-        data.append(Data(repeating: 0xBB, count: 32)) // corrupted ciphertext
-
-        let result = importer.decryptCredentials(data)
-        // Either returns nil (decryption fails) or returns data that isn't valid JSON
-        if let result = result {
-            let json = try? JSONSerialization.jsonObject(with: result)
-            // Even if decryption "succeeds" with garbage, JSON parse should fail
-            #expect(json == nil)
-        }
     }
 
     @Test("importConnections unknown provider passes through")

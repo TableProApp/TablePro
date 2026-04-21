@@ -249,7 +249,7 @@ struct DBeaverImporter: ForeignAppImporter {
 
     // MARK: - Credentials
 
-    static let aesKey: [UInt8] = [
+    private static let aesKey: [UInt8] = [
         0xBA, 0xBB, 0x4A, 0x9F, 0x77, 0x4A, 0xB8, 0x53,
         0xC9, 0x6C, 0x2D, 0x65, 0x3D, 0xFE, 0x54, 0x4A
     ]
@@ -262,7 +262,7 @@ struct DBeaverImporter: ForeignAppImporter {
         return json.compactMapValues { $0 as? [String: Any] }
     }
 
-    func decryptCredentials(_ data: Data) -> Data? {
+    private func decryptCredentials(_ data: Data) -> Data? {
         guard data.count > 16 else { return nil }
 
         let iv = Array(data.prefix(16))
