@@ -218,7 +218,14 @@ private final class TerminalFocusHelperView: NSView {
 
     @objc private func handlePaste() {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
-        processManager?.write(Data(text.utf8))
+        // Bracket paste mode: wrap pasted text so the shell knows it's pasted content
+        // and doesn't execute commands on newlines
+        let bracketStart = Data([0x1B, 0x5B, 0x32, 0x30, 0x30, 0x7E]) // \e[200~
+        let bracketEnd = Data([0x1B, 0x5B, 0x32, 0x30, 0x31, 0x7E])   // \e[201~
+        var pasteData = bracketStart
+        pasteData.append(Data(text.utf8))
+        pasteData.append(bracketEnd)
+        processManager?.write(pasteData)
     }
 
     @objc private func handleSelectAll() {

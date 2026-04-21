@@ -151,15 +151,24 @@ struct TerminalSettingsView: View {
     }
 
     private func resolveAllCliPaths() async {
-        var paths: [String: String] = [:]
-        for dbType in Self.terminalDatabaseTypes {
-            let name = CLICommandResolver.binaryName(for: dbType)
-            let resolved = await Task.detached(priority: .utility) {
-                CLICommandResolver.findExecutable(name)
-            }.value
-            paths[dbType.rawValue] = resolved ?? name
+        let dbTypes = Self.terminalDatabaseTypes
+        let results = await withTaskGroup(of: (String, String).self) { group in
+            for dbType in dbTypes {
+                group.addTask {
+                    let name = CLICommandResolver.binaryName(for: dbType)
+                    let resolved = await Task.detached(priority: .utility) {
+                        CLICommandResolver.findExecutable(name)
+                    }.value
+                    return (dbType.rawValue, resolved ?? name)
+                }
+            }
+            var paths: [String: String] = [:]
+            for await (key, value) in group {
+                paths[key] = value
+            }
+            return paths
         }
-        resolvedPaths = paths
+        resolvedPaths = results
     }
 
     // MARK: - Notifications
