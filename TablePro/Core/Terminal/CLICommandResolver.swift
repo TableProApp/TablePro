@@ -53,8 +53,10 @@ enum CLICommandResolver {
         let type = connection.type
 
         switch type {
-        case .mysql, .mariadb:
+        case .mysql:
             return resolveMysql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
+        case .mariadb:
+            return resolveMariadbOrMysql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .postgresql, .redshift:
             return resolvePsql(connection: connection, password: password, database: dbName, customCliPath: customCliPath)
         case .redis:
@@ -285,7 +287,8 @@ enum CLICommandResolver {
 
     static func binaryName(for databaseType: DatabaseType) -> String {
         switch databaseType {
-        case .mysql, .mariadb: return "mysql"
+        case .mysql: return "mysql"
+        case .mariadb: return "mariadb"
         case .postgresql, .redshift: return "psql"
         case .redis: return "redis-cli"
         case .mongodb: return "mongosh"
@@ -300,8 +303,10 @@ enum CLICommandResolver {
 
     static func installInstructions(for databaseType: DatabaseType) -> String {
         switch databaseType {
-        case .mysql, .mariadb:
-            return "brew install mysql"
+        case .mysql:
+            return "brew install mysql-client"
+        case .mariadb:
+            return "brew install mariadb"
         case .postgresql, .redshift:
             return "brew install libpq"
         case .redis:
@@ -332,6 +337,34 @@ enum CLICommandResolver {
         customCliPath: String? = nil
     ) -> CLILaunchSpec? {
         guard let path = findExecutable("mysql", customPath: customCliPath) else { return nil }
+
+        var args: [String] = []
+        if !connection.username.isEmpty {
+            args += ["-u", connection.username]
+        }
+        args += ["-h", connection.host.isEmpty ? "127.0.0.1" : connection.host]
+        args += ["-P", String(connection.port)]
+        if !database.isEmpty {
+            args.append(database)
+        }
+
+        var env: [String: String] = [:]
+        if let password, !password.isEmpty {
+            env["MYSQL_PWD"] = password
+        }
+
+        return CLILaunchSpec(executablePath: path, arguments: args, environment: env)
+    }
+
+    private static func resolveMariadbOrMysql(
+        connection: DatabaseConnection,
+        password: String?,
+        database: String,
+        customCliPath: String? = nil
+    ) -> CLILaunchSpec? {
+        let path = findExecutable("mariadb", customPath: customCliPath)
+            ?? findExecutable("mysql", customPath: nil)
+        guard let path else { return nil }
 
         var args: [String] = []
         if !connection.username.isEmpty {
