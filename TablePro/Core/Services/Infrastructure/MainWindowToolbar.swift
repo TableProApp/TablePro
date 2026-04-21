@@ -515,52 +515,75 @@ private struct SidebarToggleToolbarButtons: View {
         let isDisabled = state.connectionState != .connected
 
         HStack(spacing: 0) {
-            sidebarToggle(
-                tab: .tables,
+            SidebarToggleNSButton(
                 icon: "tablecells",
                 label: String(localized: "Tables"),
-                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables,
-                sidebarState: sidebarState
-            )
+                isOn: state.isSidebarVisible && sidebarState.selectedSidebarTab == .tables
+            ) {
+                handleToggle(tab: .tables, sidebarState: sidebarState)
+            }
             if !state.isSidebarVisible {
                 Divider()
                     .frame(height: 14)
                     .padding(.horizontal, 1)
             }
-            sidebarToggle(
-                tab: .favorites,
+            SidebarToggleNSButton(
                 icon: "star",
                 label: String(localized: "Favorites"),
-                isActive: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites,
-                sidebarState: sidebarState
-            )
+                isOn: state.isSidebarVisible && sidebarState.selectedSidebarTab == .favorites
+            ) {
+                handleToggle(tab: .favorites, sidebarState: sidebarState)
+            }
         }
-        .buttonStyle(.accessoryBar)
         .disabled(isDisabled)
     }
 
-    private func sidebarToggle(
-        tab: SidebarTab,
-        icon: String,
-        label: String,
-        isActive: Bool,
-        sidebarState: SharedSidebarState
-    ) -> some View {
-        Toggle(isOn: Binding(
-            get: { isActive },
-            set: { newValue in
-                if newValue {
-                    sidebarState.selectedSidebarTab = tab
-                    if !coordinator.toolbarState.isSidebarVisible {
-                        coordinator.sidebarProxy?.showSidebar()
-                    }
-                } else {
-                    coordinator.sidebarProxy?.hideSidebar()
-                }
+    private func handleToggle(tab: SidebarTab, sidebarState: SharedSidebarState) {
+        if coordinator.toolbarState.isSidebarVisible {
+            if sidebarState.selectedSidebarTab == tab {
+                coordinator.sidebarProxy?.hideSidebar()
+            } else {
+                sidebarState.selectedSidebarTab = tab
             }
-        )) {
-            Label(label, systemImage: icon)
+        } else {
+            sidebarState.selectedSidebarTab = tab
+            coordinator.sidebarProxy?.showSidebar()
         }
-        .toggleStyle(.button)
+    }
+}
+
+private struct SidebarToggleNSButton: NSViewRepresentable {
+    let icon: String
+    let label: String
+    let isOn: Bool
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+        button.bezelStyle = .accessoryBar
+        button.setButtonType(.pushOnPushOff)
+        button.isBordered = true
+        button.imagePosition = .imageOnly
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.clicked)
+        button.setAccessibilityLabel(label)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
+        button.state = isOn ? .on : .off
+        button.isEnabled = button.superview?.isDescendant(of: button.window?.contentView ?? NSView()) ?? true
+        context.coordinator.action = action
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+        @objc func clicked() { action() }
     }
 }
