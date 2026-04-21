@@ -46,9 +46,6 @@ struct TerminalTabContentView: View {
             .background {
                 TerminalFocusHelper()
             }
-            .contextMenu {
-                terminalContextMenu(state: state)
-            }
             .onAppear {
                 if let session = state.session {
                     state.terminalViewState.configuration = TerminalSurfaceOptions(
@@ -56,36 +53,6 @@ struct TerminalTabContentView: View {
                     )
                 }
             }
-    }
-
-    @ViewBuilder
-    private func terminalContextMenu(state: TerminalSessionState) -> some View {
-        Button("Copy") {
-            NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-        }
-        .keyboardShortcut("c", modifiers: .command)
-
-        Button("Paste") {
-            NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-        }
-        .keyboardShortcut("v", modifiers: .command)
-
-        Divider()
-
-        Button("Select All") {
-            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
-        }
-        .keyboardShortcut("a", modifiers: .command)
-
-        Button("Clear Terminal") {
-            clearTerminal(state: state)
-        }
-
-        Divider()
-
-        Button("Search") {}
-            .disabled(true)
-            .help("Coming soon")
     }
 
     private func disconnectedView(state: TerminalSessionState) -> some View {
@@ -131,11 +98,6 @@ struct TerminalTabContentView: View {
         state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
 
-    private func clearTerminal(state: TerminalSessionState) {
-        // Send Ctrl+L (form feed) to clear the terminal screen
-        let ctrlL = Data([0x0C])
-        state.processManager?.write(ctrlL)
-    }
 }
 
 // MARK: - Focus Helper
