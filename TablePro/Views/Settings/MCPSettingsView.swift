@@ -277,7 +277,7 @@ private struct MCPSetupInstructions: View {
     private var command: String? {
         switch tool {
         case .claudeCode:
-            "claude mcp add tablepro --transport sse \(url)"
+            "claude mcp add tablepro --transport http \(url)"
         default:
             nil
         }

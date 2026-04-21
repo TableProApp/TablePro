@@ -29,6 +29,12 @@ final class MCPRouter: Sendable {
     // MARK: - Main Entry
 
     func route(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
+        // OAuth discovery probes from Claude Code / MCP SDK.
+        // Return 404 with no auth requirement so the SDK skips authentication.
+        if request.path.hasPrefix("/.well-known/") {
+            return .httpError(status: 404, message: "Not found")
+        }
+
         guard request.path == "/mcp" || request.path.hasPrefix("/mcp?") else {
             return .httpError(status: 404, message: "Not found")
         }
