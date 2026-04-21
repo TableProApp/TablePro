@@ -7,6 +7,7 @@ import SwiftUI
 
 struct MCPSettingsView: View {
     @Bindable var settingsManager: AppSettingsManager
+    @State private var manager = MCPServerManager.shared
 
     var body: some View {
         Form {
@@ -25,6 +26,7 @@ struct MCPSettingsView: View {
             if settingsManager.mcp.enabled {
                 configurationSection
                 clientConfigurationSection
+                connectedClientsSection
 
                 Section {
                     Text("AI access policies are configured per-connection in each connection's settings.")
@@ -103,6 +105,41 @@ struct MCPSettingsView: View {
                         Image(systemName: "doc.on.doc")
                     }
                     .help(String(localized: "Copy to clipboard"))
+                }
+            }
+        }
+    }
+
+    // MARK: - Connected Clients
+
+    private var connectedClientsSection: some View {
+        Section("Connected Clients") {
+            if manager.connectedClients.isEmpty {
+                Text("No clients connected")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(manager.connectedClients) { client in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text(client.clientName)
+                                if let version = client.clientVersion {
+                                    Text(version)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Text(client.connectedSince, style: .relative)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Disconnect") {
+                            Task {
+                                await manager.disconnectClient(client.id)
+                            }
+                        }
+                        .controlSize(.small)
+                    }
                 }
             }
         }

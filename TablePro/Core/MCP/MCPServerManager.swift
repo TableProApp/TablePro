@@ -21,7 +21,9 @@ final class MCPServerManager {
     static let shared = MCPServerManager()
 
     private(set) var state: MCPServerState = .stopped
+    private(set) var connectedClients: [MCPServer.SessionSnapshot] = []
     private var server: MCPServer?
+    private var clientRefreshTask: Task<Void, Never>?
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -67,6 +69,7 @@ final class MCPServerManager {
 
         do {
             try await newServer.start(port: port)
+            startClientRefresh()
         } catch {
             Self.logger.error("Failed to start MCP server: \(error.localizedDescription)")
             state = .failed(error.localizedDescription)
@@ -75,6 +78,7 @@ final class MCPServerManager {
     }
 
     func stop() async {
+        stopClientRefresh()
         guard let server else { return }
         await server.stop()
         self.server = nil
@@ -84,5 +88,35 @@ final class MCPServerManager {
     func restart(port: UInt16) async {
         await stop()
         await start(port: port)
+    }
+
+    func disconnectClient(_ sessionId: String) async {
+        await server?.removeSession(sessionId)
+        await refreshClients()
+    }
+
+    // MARK: - Client Refresh
+
+    private func startClientRefresh() {
+        clientRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshClients()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    private func stopClientRefresh() {
+        clientRefreshTask?.cancel()
+        clientRefreshTask = nil
+        connectedClients = []
+    }
+
+    private func refreshClients() async {
+        guard let server else {
+            connectedClients = []
+            return
+        }
+        connectedClients = await server.sessionSnapshots()
     }
 }

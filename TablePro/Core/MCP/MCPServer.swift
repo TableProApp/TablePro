@@ -8,6 +8,14 @@ import Network
 import os
 
 actor MCPServer {
+    struct SessionSnapshot: Sendable, Identifiable {
+        let id: String
+        let clientName: String
+        let clientVersion: String?
+        let connectedSince: Date
+        let lastActivityAt: Date
+    }
+
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServer")
 
     private static let maxSessions = 10
@@ -107,6 +115,26 @@ actor MCPServer {
 
     var sessionCount: Int {
         sessions.count
+    }
+
+    func sessionSnapshots() async -> [SessionSnapshot] {
+        let now = ContinuousClock.now
+        var snapshots: [SessionSnapshot] = []
+        for (_, session) in sessions {
+            let info = await session.clientInfo
+            let created = await session.createdAt
+            let lastActive = await session.lastActivityAt
+            let connectedElapsed = now - created
+            let activeElapsed = now - lastActive
+            snapshots.append(SessionSnapshot(
+                id: session.id,
+                clientName: info?.name ?? String(localized: "Unknown"),
+                clientVersion: info?.version,
+                connectedSince: Date.now - TimeInterval(connectedElapsed.components.seconds),
+                lastActivityAt: Date.now - TimeInterval(activeElapsed.components.seconds)
+            ))
+        }
+        return snapshots
     }
 
     // MARK: - Listener State
