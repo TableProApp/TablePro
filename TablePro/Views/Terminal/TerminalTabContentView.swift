@@ -14,7 +14,7 @@ struct TerminalTabContentView: View {
     @State private var sessionState: TerminalSessionState?
 
     var body: some View {
-        Group {
+        ZStack {
             if let state = sessionState {
                 if state.error != nil {
                     TerminalErrorView(error: state.error!, databaseType: connection.type)
@@ -29,6 +29,7 @@ struct TerminalTabContentView: View {
                 connectingView
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { startTerminal() }
         .onDisappear {
             let state = sessionState
