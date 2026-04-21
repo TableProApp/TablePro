@@ -18,9 +18,11 @@ struct ImportFromAppSourcePicker: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            Divider()
             sourceList
             Divider()
             passwordToggle
+            Divider()
             footer
         }
         .onAppear { loadStates() }
@@ -57,7 +59,7 @@ struct ImportFromAppSourcePicker: View {
                             .disabled(!state.available)
                     }
                 }
-                .listStyle(.bordered)
+                .listStyle(.inset)
             }
         }
     }

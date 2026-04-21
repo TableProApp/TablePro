@@ -16,7 +16,7 @@ struct ConnectionImportPreviewList: View {
                 importItemRow(item)
             }
         }
-        .listStyle(.bordered(alternatesRowBackgrounds: true))
+        .listStyle(.inset)
     }
 
     @ViewBuilder
