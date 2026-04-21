@@ -112,8 +112,6 @@ private struct TerminalFocusHelper: NSViewRepresentable {
 }
 
 private final class TerminalFocusHelperView: NSView {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalFocus")
-
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else { return }
