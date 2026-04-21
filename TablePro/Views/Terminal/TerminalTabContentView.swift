@@ -4,6 +4,7 @@
 //
 
 import GhosttyTerminal
+import os
 import SwiftUI
 
 struct TerminalTabContentView: View {
@@ -112,13 +113,31 @@ private struct TerminalFocusHelper: NSViewRepresentable {
 }
 
 private final class TerminalFocusHelperView: NSView {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalFocus")
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard let window else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self, let parent = self.superview else { return }
-            if let keyView = Self.firstKeyView(in: parent, excluding: self) {
-                window.makeFirstResponder(keyView)
+        guard let window else {
+            Self.logger.debug("viewDidMoveToWindow: no window")
+            return
+        }
+        Self.logger.debug("viewDidMoveToWindow: window=\(window.title, privacy: .public)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else {
+                Self.logger.debug("focus: self deallocated")
+                return
+            }
+            Self.logger.debug("focus: superview=\(String(describing: self.superview?.className), privacy: .public)")
+            Self.dumpViewHierarchy(self.superview, depth: 0)
+
+            if let parent = self.superview,
+               let keyView = Self.firstKeyView(in: parent, excluding: self) {
+                Self.logger.info("focus: making firstResponder → \(keyView.className, privacy: .public)")
+                let success = window.makeFirstResponder(keyView)
+                Self.logger.info("focus: makeFirstResponder result=\(success)")
+            } else {
+                Self.logger.warning("focus: no keyView found, trying window.contentView")
+                Self.dumpViewHierarchy(window.contentView, depth: 0)
             }
         }
     }
@@ -133,5 +152,17 @@ private final class TerminalFocusHelperView: NSView {
             }
         }
         return nil
+    }
+
+    private static func dumpViewHierarchy(_ view: NSView?, depth: Int) {
+        guard let view, depth < 6 else { return }
+        let indent = String(repeating: "  ", count: depth)
+        let accepts = view.acceptsFirstResponder ? "✓FR" : ""
+        let canKey = view.canBecomeKeyView ? "✓KV" : ""
+        let frame = "(\(Int(view.frame.width))×\(Int(view.frame.height)))"
+        logger.debug("\(indent, privacy: .public)\(view.className, privacy: .public) \(frame, privacy: .public) \(accepts, privacy: .public) \(canKey, privacy: .public)")
+        for subview in view.subviews {
+            dumpViewHierarchy(subview, depth: depth + 1)
+        }
     }
 }
