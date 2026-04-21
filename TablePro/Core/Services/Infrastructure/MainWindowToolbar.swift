@@ -545,22 +545,54 @@ private struct SidebarToggleToolbarButtons: View {
         isActive: Bool,
         sidebarState: SharedSidebarState
     ) -> some View {
-        Toggle(isOn: Binding(
-            get: { isActive },
-            set: { newValue in
-                if newValue {
-                    sidebarState.selectedSidebarTab = tab
-                    if !coordinator.toolbarState.isSidebarVisible {
-                        coordinator.sidebarProxy?.showSidebar()
-                    }
-                } else {
-                    coordinator.sidebarProxy?.hideSidebar()
+        ToolbarToggleButton(
+            icon: icon,
+            accessibilityLabel: label,
+            isOn: isActive
+        ) {
+            if isActive {
+                coordinator.sidebarProxy?.hideSidebar()
+            } else {
+                sidebarState.selectedSidebarTab = tab
+                if !coordinator.toolbarState.isSidebarVisible {
+                    coordinator.sidebarProxy?.showSidebar()
                 }
             }
-        )) {
-            Label(label, systemImage: icon)
         }
-        .toggleStyle(.button)
         .help(label)
+    }
+}
+
+private struct ToolbarToggleButton: NSViewRepresentable {
+    let icon: String
+    let accessibilityLabel: String
+    let isOn: Bool
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> NSButton {
+        let button = NSButton()
+        button.bezelStyle = .accessoryBarAction
+        button.setButtonType(.toggle)
+        button.isBordered = true
+        button.imagePosition = .imageOnly
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.clicked)
+        return button
+    }
+
+    func updateNSView(_ button: NSButton, context: Context) {
+        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: accessibilityLabel)
+        button.state = isOn ? .on : .off
+        context.coordinator.action = action
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(action: action)
+    }
+
+    final class Coordinator: NSObject {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+        @objc func clicked() { action() }
     }
 }
