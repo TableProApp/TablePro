@@ -36,7 +36,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     /// deallocs immediately and its view becomes orphaned, producing zero-size
     /// items that get pushed right by flexibleSpace.
     private var hostingControllers: [NSToolbarItem.Identifier: NSHostingController<AnyView>] = [:]
-    private var sidebarSegmentedControl: NSSegmentedControl?
+    private var sidebarButtons: [NSButton] = []
     private var sidebarObservationTask: Task<Void, Never>?
 
     internal init(coordinator: MainContentCoordinator) {
@@ -69,7 +69,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     func invalidate() {
         sidebarObservationTask?.cancel()
         sidebarObservationTask = nil
-        sidebarSegmentedControl = nil
+        sidebarButtons = []
         hostingControllers.removeAll()
         coordinator = nil
     }
@@ -516,71 +516,82 @@ extension MainWindowToolbar {
         item.label = String(localized: "Sidebar")
         item.paletteLabel = String(localized: "Sidebar")
 
-        let segmented = NSSegmentedControl()
-        segmented.segmentCount = 2
-        segmented.trackingMode = .selectAny
-        segmented.segmentStyle = .separated
-        segmented.selectedSegmentBezelColor = .white.withAlphaComponent(0.05)
-        segmented.target = self
-        segmented.action = #selector(sidebarSegmentClicked(_:))
+        let container = NSStackView()
+        container.orientation = .horizontal
+        container.spacing = 2
 
-        let tablesImage = NSImage(systemSymbolName: "tablecells", accessibilityDescription: String(localized: "Tables"))
-        let favoritesImage = NSImage(systemSymbolName: "star", accessibilityDescription: String(localized: "Favorites"))
-        segmented.setImage(tablesImage, forSegment: 0)
-        segmented.setImage(favoritesImage, forSegment: 1)
-        segmented.setWidth(0, forSegment: 0)
-        segmented.setWidth(0, forSegment: 1)
-        segmented.segmentDistribution = .fit
+        let tablesButton = makeSidebarNSButton(
+            icon: "tablecells",
+            label: String(localized: "Tables"),
+            tag: 0
+        )
+        let favoritesButton = makeSidebarNSButton(
+            icon: "star",
+            label: String(localized: "Favorites"),
+            tag: 1
+        )
 
-        sidebarSegmentedControl = segmented
-        item.view = segmented
+        container.addArrangedSubview(tablesButton)
+        container.addArrangedSubview(favoritesButton)
 
-        syncSidebarSegmentedState(coordinator: coordinator)
+        sidebarButtons = [tablesButton, favoritesButton]
+        item.view = container
+
+        syncSidebarButtonState(coordinator: coordinator)
         startSidebarObservation(coordinator: coordinator)
 
         return item
     }
 
-    @objc fileprivate func sidebarSegmentClicked(_ sender: NSSegmentedControl) {
+    private func makeSidebarNSButton(icon: String, label: String, tag: Int) -> NSButton {
+        let button = NSButton()
+        button.bezelStyle = .recessed
+        button.setButtonType(.pushOnPushOff)
+        button.showsBorderOnlyWhileMouseInside = true
+        button.isBordered = true
+        button.image = NSImage(systemSymbolName: icon, accessibilityDescription: label)
+        button.imagePosition = .imageOnly
+        button.tag = tag
+        button.target = self
+        button.action = #selector(sidebarButtonClicked(_:))
+        button.setAccessibilityLabel(label)
+        button.toolTip = label
+        return button
+    }
+
+    @objc fileprivate func sidebarButtonClicked(_ sender: NSButton) {
         guard let coordinator else { return }
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
-        let clickedSegment = sender.selectedSegment
         let tabs: [SidebarTab] = [.tables, .favorites]
+        let tab = tabs[sender.tag]
 
-        guard clickedSegment >= 0, clickedSegment < tabs.count else { return }
-        let tab = tabs[clickedSegment]
-        let isSelected = sender.isSelected(forSegment: clickedSegment)
-
-        if !isSelected {
-            coordinator.sidebarProxy?.hideSidebar()
-        } else {
-            let otherSegment = clickedSegment == 0 ? 1 : 0
-            sender.setSelected(false, forSegment: otherSegment)
-            sidebarState.selectedSidebarTab = tab
-            if !coordinator.toolbarState.isSidebarVisible {
-                coordinator.sidebarProxy?.showSidebar()
+        if coordinator.toolbarState.isSidebarVisible {
+            if sidebarState.selectedSidebarTab == tab {
+                coordinator.sidebarProxy?.hideSidebar()
+            } else {
+                sidebarState.selectedSidebarTab = tab
             }
+        } else {
+            sidebarState.selectedSidebarTab = tab
+            coordinator.sidebarProxy?.showSidebar()
         }
     }
 
-    fileprivate func syncSidebarSegmentedState(coordinator: MainContentCoordinator) {
-        guard let segmented = sidebarSegmentedControl else { return }
+    fileprivate func syncSidebarButtonState(coordinator: MainContentCoordinator) {
+        guard sidebarButtons.count == 2 else { return }
         let state = coordinator.toolbarState
         let sidebarState = SharedSidebarState.forConnection(coordinator.connectionId)
         let isConnected = state.connectionState == .connected || state.connectionState == .executing
+        let icons = ["tablecells", "star"]
 
-        segmented.isEnabled = isConnected
-
-        let tablesActive = state.isSidebarVisible && isConnected && sidebarState.selectedSidebarTab == .tables
-        let favoritesActive = state.isSidebarVisible && isConnected && sidebarState.selectedSidebarTab == .favorites
-
-        segmented.setSelected(tablesActive, forSegment: 0)
-        segmented.setSelected(favoritesActive, forSegment: 1)
-
-        let tablesIcon = tablesActive ? "tablecells.fill" : "tablecells"
-        let favoritesIcon = favoritesActive ? "star.fill" : "star"
-        segmented.setImage(NSImage(systemSymbolName: tablesIcon, accessibilityDescription: String(localized: "Tables")), forSegment: 0)
-        segmented.setImage(NSImage(systemSymbolName: favoritesIcon, accessibilityDescription: String(localized: "Favorites")), forSegment: 1)
+        for (index, button) in sidebarButtons.enumerated() {
+            let isActive = state.isSidebarVisible && isConnected
+                && (index == 0 ? sidebarState.selectedSidebarTab == .tables : sidebarState.selectedSidebarTab == .favorites)
+            button.isEnabled = isConnected
+            button.state = isActive ? .on : .off
+            button.showsBorderOnlyWhileMouseInside = !isActive
+            button.image = NSImage(systemSymbolName: icons[index], accessibilityDescription: button.accessibilityLabel())
+        }
     }
 
     fileprivate func startSidebarObservation(coordinator: MainContentCoordinator) {
@@ -600,7 +611,7 @@ extension MainWindowToolbar {
                 }
                 guard !Task.isCancelled, let self else { return }
                 await MainActor.run {
-                    self.syncSidebarSegmentedState(coordinator: coordinator)
+                    self.syncSidebarButtonState(coordinator: coordinator)
                 }
             }
         }
