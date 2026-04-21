@@ -142,6 +142,13 @@ final class AppSettingsManager {
         }
     }
 
+    var mcp: MCPSettings {
+        didSet {
+            storage.saveMCP(mcp)
+            SyncChangeTracker.shared.markDirty(.settings, id: "mcp")
+        }
+    }
+
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     /// Reentrancy guard for didSet validation that re-assigns the property.
     @ObservationIgnored private var isValidating = false
@@ -165,6 +172,7 @@ final class AppSettingsManager {
         self.ai = storage.loadAI()
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
+        self.mcp = storage.loadMCP()
 
         // Apply language immediately
         general.language.apply()
@@ -242,6 +250,7 @@ final class AppSettingsManager {
         ai = .default
         sync = .default
         terminal = .default
+        mcp = .default
         storage.resetToDefaults()
     }
 }
