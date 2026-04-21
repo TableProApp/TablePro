@@ -560,8 +560,17 @@ private struct SidebarToggleToolbarButtons: View {
                 coordinator.sidebarProxy?.showSidebar()
             }
         } label: {
-            Label(label, systemImage: isActive ? activeIcon : icon)
+            Image(systemName: isActive ? activeIcon : icon)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .background(
+            isActive
+                ? RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(.quaternary)
+                : nil
+        )
         .help(label)
     }
 }
