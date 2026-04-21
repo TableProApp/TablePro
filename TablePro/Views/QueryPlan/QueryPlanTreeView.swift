@@ -51,7 +51,6 @@ struct QueryPlanTreeView: View {
 // MARK: - Row View
 
 private struct QueryPlanRowView: View {
-
     let node: QueryPlanNode
 
     var body: some View {

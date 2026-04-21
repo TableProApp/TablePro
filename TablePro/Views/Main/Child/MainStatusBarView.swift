@@ -9,7 +9,6 @@ import SwiftUI
 
 /// Status bar at the bottom of the results section
 struct MainStatusBarView: View {
-
     let tab: QueryTab?
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager

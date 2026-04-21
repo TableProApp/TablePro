@@ -125,10 +125,12 @@ struct MainContentView: View {
     private func sheetContent(for sheet: ActiveSheet) -> some View {
         let dismissBinding = Binding<Bool>(
             get: { coordinator.activeSheet != nil },
-            set: { if !$0 {
-                coordinator.activeSheet = nil
-                coordinator.exportPreselectedTableNames = nil
-            } }
+            set: {
+                if !$0 {
+                    coordinator.activeSheet = nil
+                    coordinator.exportPreselectedTableNames = nil
+                }
+            }
         )
 
         switch sheet {
