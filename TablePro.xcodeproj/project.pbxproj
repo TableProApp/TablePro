@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
 		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
+		5A3B10292F97DE8B00611C1F /* LibSQLDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000010 /* TableProAnalytics */; };
 		5A860000A00000000 /* TableProPluginKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A861000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -207,6 +209,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				5A3B10292F97DE8B00611C1F /* LibSQLDriverPlugin.tableplugin in Copy Plug-Ins */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins */,
@@ -237,6 +240,7 @@
 
 /* Begin PBXFileReference section */
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A860000100000000 /* TableProPluginKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TableProPluginKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A861000100000000 /* OracleDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OracleDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A862000100000000 /* SQLiteDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQLiteDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -284,6 +288,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5A3BE6FD2F97DB0100611C1F /* Exceptions for "Plugins/LibSQLDriverPlugin" folder in "LibSQLDriverPlugin" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */;
+		};
 		5A860000900000000 /* Exceptions for "Plugins/TableProPluginKit" folder in "TableProPluginKit" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -426,6 +437,14 @@
 				5AF312BE2F36FF7500E86682 /* Exceptions for "TablePro" folder in "TablePro" target */,
 			);
 			path = TablePro;
+			sourceTree = "<group>";
+		};
+		5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5A3BE6FD2F97DB0100611C1F /* Exceptions for "Plugins/LibSQLDriverPlugin" folder in "LibSQLDriverPlugin" target */,
+			);
+			path = Plugins/LibSQLDriverPlugin;
 			sourceTree = "<group>";
 		};
 		5A860000500000000 /* Plugins/TableProPluginKit */ = {
@@ -592,6 +611,14 @@
 				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
 				5ACE00012F4F00000000000A /* Sparkle in Frameworks */,
 				5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A3BE6F52F97DA8100611C1F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -788,6 +815,7 @@
 				5ABQR00500000000000000B0 /* Plugins/BigQueryDriverPlugin */,
 				5AEA8B412F6808CA0040461A /* Plugins/EtcdDriverPlugin */,
 				5AE4F4812F6BC0640097AC5B /* Plugins/CloudflareD1DriverPlugin */,
+				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
 				5A1091C92EF17EDC0055EA7C /* TablePro */,
 				5A860000500000000 /* Plugins/TableProPluginKit */,
 				5A861000500000000 /* Plugins/OracleDriverPlugin */,
@@ -839,6 +867,7 @@
 				5ADDB00300000000000000A0 /* DynamoDBDriverPlugin.tableplugin */,
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
+				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -953,6 +982,28 @@
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A3BE6FB2F97DA8100611C1F /* Build configuration list for PBXNativeTarget "LibSQLDriverPlugin" */;
+			buildPhases = (
+				5A3BE6F42F97DA8100611C1F /* Sources */,
+				5A3BE6F52F97DA8100611C1F /* Frameworks */,
+				5A3BE6F62F97DA8100611C1F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */,
+			);
+			name = LibSQLDriverPlugin;
+			packageProductDependencies = (
+			);
+			productName = LibSQLDriverPlugin;
+			productReference = 5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */;
+			productType = "com.apple.product-type.bundle";
 		};
 		5A860000000000000 /* TableProPluginKit */ = {
 			isa = PBXNativeTarget;
@@ -1411,6 +1462,9 @@
 					5A1091C62EF17EDC0055EA7C = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					5A3BE6F72F97DA8100611C1F = {
+						CreatedOnToolsVersion = 26.5;
+					};
 					5A860000000000000 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -1519,12 +1573,20 @@
 				5AE4F4732F6BC0640097AC5B /* CloudflareD1DriverPlugin */,
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
 				5ABQR00600000000000000B0 /* BigQueryDriverPlugin */,
+				5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		5A1091C52EF17EDC0055EA7C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A3BE6F62F97DA8100611C1F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1689,6 +1751,13 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		5A1091C32EF17EDC0055EA7C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A3BE6F42F97DA8100611C1F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2231,6 +2300,58 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.9;
 				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		5A3BE6F92F97DA8100611C1F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/LibSQLDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).LibSQLPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.LibSQLDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
+			};
+			name = Debug;
+		};
+		5A3BE6FA2F97DA8100611C1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Plugins/LibSQLDriverPlugin/Info.plist;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).LibSQLPlugin";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Bundles";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.LibSQLDriverPlugin;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				WRAPPER_EXTENSION = tableplugin;
 			};
 			name = Release;
 		};
@@ -3448,6 +3569,15 @@
 			buildConfigurations = (
 				5A1091D32EF17EDD0055EA7C /* Debug */,
 				5A1091D42EF17EDD0055EA7C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A3BE6FB2F97DA8100611C1F /* Build configuration list for PBXNativeTarget "LibSQLDriverPlugin" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A3BE6F92F97DA8100611C1F /* Debug */,
+				5A3BE6FA2F97DA8100611C1F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

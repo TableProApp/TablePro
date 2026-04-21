@@ -36,7 +36,9 @@ extension ConnectionFormView {
                 .filter(\.isRequired)
                 .allSatisfy { !(additionalFieldValues[$0.id] ?? "").isEmpty }
             basicValid = basicValid && hasRequiredFields
-            if !hidePasswordField && !promptForPassword {
+            if !hidePasswordField && !promptForPassword
+                && PluginManager.shared.requiresAuthentication(for: type)
+            {
                 basicValid = basicValid && !password.isEmpty
             }
             for field in authSectionFields where field.isRequired && isFieldVisible(field) {

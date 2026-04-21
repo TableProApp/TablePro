@@ -1,0 +1,202 @@
+---
+title: libSQL / Turso
+description: Connect to libSQL and Turso databases with TablePro
+---
+
+# libSQL / Turso Connections
+
+TablePro supports libSQL and Turso databases via the Hrana HTTP protocol. Works with Turso cloud databases and self-hosted sqld instances.
+
+## Install Plugin
+
+The libSQL / Turso driver is available as a downloadable plugin. When you select libSQL / Turso in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
+
+1. Open **Settings** > **Plugins** > **Browse**
+2. Find **libSQL / Turso Driver** and click **Install**
+3. The plugin downloads and loads immediately - no restart needed
+
+## Quick Setup
+
+<Steps>
+  <Step title="Open Connection Form">
+    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  </Step>
+  <Step title="Select libSQL / Turso">
+    Choose **libSQL / Turso** from the database type selector
+  </Step>
+  <Step title="Enter Connection Details">
+    Fill in your Database URL and Auth Token
+  </Step>
+  <Step title="Test and Connect">
+    Click **Test Connection**, then **Create**
+  </Step>
+</Steps>
+
+## Connection Settings
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Connection identifier |
+| **Database URL** | Full URL to your libSQL database (e.g., `https://your-db-name.turso.io` or `http://localhost:8080`) |
+| **Auth Token** | Bearer token for authentication (optional for self-hosted sqld without auth) |
+
+<Tip>
+The Auth Token field is optional. Self-hosted sqld instances can run without authentication, in which case you can leave this field empty.
+</Tip>
+
+## Getting Your Credentials
+
+### Turso Cloud
+
+**Database URL**: Find it on the [Turso dashboard](https://turso.tech/app) or run:
+
+```bash
+turso db show <database-name> --url
+```
+
+This returns a URL like `libsql://your-db-name-your-org.turso.io`. TablePro automatically rewrites `libsql://` to `https://` for the HTTP connection.
+
+**Auth Token**: Generate a token with the Turso CLI:
+
+```bash
+turso db tokens create <database-name>
+```
+
+<Warning>
+Store your auth token securely. TablePro saves it in the macOS Keychain, but the token grants full access to your database.
+</Warning>
+
+### Self-hosted sqld
+
+**Database URL**: The default sqld HTTP endpoint is `http://localhost:8080`. Adjust the host and port to match your sqld configuration.
+
+**Auth Token**: Depends on your sqld setup. If you started sqld without `--auth-jwt-key-file`, no token is needed. If JWT authentication is enabled, generate a token matching your configured key.
+
+## Example Configuration
+
+### Turso Cloud
+
+```
+Name:          My Turso DB
+Database URL:  libsql://my-app-db-myorg.turso.io
+Auth Token:    (your Turso auth token)
+```
+
+### Self-hosted sqld
+
+```
+Name:          Local sqld
+Database URL:  http://localhost:8080
+Auth Token:    (leave empty if no auth configured)
+```
+
+## Features
+
+### Database Browsing
+
+After connecting, the sidebar shows tables and views in the database. libSQL databases have a single "main" schema, similar to SQLite.
+
+### Table Browsing
+
+For each table, TablePro shows:
+
+- **Structure**: Columns with SQLite data types, nullability, default values, and primary key info
+- **Indexes**: B-tree indexes with column details
+- **Foreign Keys**: Foreign key constraints with referenced tables
+- **DDL**: The full CREATE TABLE statement
+
+### Query Editor
+
+Write and execute SQL queries using SQLite syntax:
+
+```sql
+-- Query data
+SELECT name, email FROM users WHERE id > 10 ORDER BY name;
+
+-- Create tables
+CREATE TABLE posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES users(id),
+    title TEXT NOT NULL,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Aggregations
+SELECT user_id, COUNT(*) as post_count
+FROM posts
+GROUP BY user_id
+HAVING post_count > 5;
+```
+
+### EXPLAIN Query Plan
+
+Analyze query execution plans using the Explain button in the query editor. TablePro uses `EXPLAIN QUERY PLAN` to show how SQLite processes your queries.
+
+### Data Editing
+
+Edit cell values, insert rows, and delete rows directly in the data grid. Changes are submitted as standard INSERT, UPDATE, and DELETE statements via the Hrana HTTP API.
+
+### Export
+
+Export query results or table data to CSV, JSON, SQL, and other formats.
+
+## SQL Dialect
+
+libSQL uses SQLite syntax. See [SQLite](/databases/sqlite) for details.
+
+## Troubleshooting
+
+### Authentication Failed
+
+**Symptoms**: "Authentication failed" or HTTP 401 response
+
+**Solutions**:
+
+1. Verify your auth token is correct and has not expired
+2. For Turso Cloud, generate a new token: `turso db tokens create <name>`
+3. For self-hosted sqld, check that your JWT matches the configured key
+4. Ensure you have not accidentally included extra whitespace in the token
+
+### Invalid URL
+
+**Symptoms**: "Invalid database URL" or connection fails immediately
+
+**Solutions**:
+
+1. Check the URL format: `https://your-db.turso.io` for Turso, `http://localhost:8080` for sqld
+2. Do not include a trailing slash or path components
+3. `libsql://` URLs are accepted and automatically rewritten to `https://`
+4. Verify the database exists: `turso db list`
+
+### Connection Timeout
+
+**Symptoms**: Queries take too long or time out
+
+**Solutions**:
+
+1. Check your internet connection (for Turso Cloud)
+2. Verify sqld is running (for self-hosted): `curl http://localhost:8080/health`
+3. Simplify queries that scan large amounts of data
+
+### Rate Limited
+
+**Symptoms**: HTTP 429 response or "rate limited" error
+
+**Solutions**:
+
+1. Wait for the retry period and try again
+2. Reduce query frequency
+3. Use pagination for large result sets instead of fetching all rows
+4. Check your Turso plan limits at [Turso Pricing](https://turso.tech/pricing)
+
+## Known Limitations
+
+- No persistent connections: each query is an independent HTTP request via the Hrana protocol
+- No multi-statement transactions: each SQL statement auto-commits independently
+- No database creation or management via TablePro (use Turso CLI or sqld admin tools)
+- No bulk import through the plugin: use the Turso CLI or direct sqld import
+- No custom SSL/SSH tunnels: connections use HTTPS (Turso Cloud) or HTTP (local sqld)
+- No database switching: libSQL connections target a single database

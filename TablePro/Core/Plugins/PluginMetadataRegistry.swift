@@ -586,6 +586,7 @@ final class PluginMetadataRegistry: @unchecked Sendable {
         reverseTypeIndex["MariaDB"] = "MySQL"
         reverseTypeIndex["Redshift"] = "PostgreSQL"
         reverseTypeIndex["ScyllaDB"] = "Cassandra"
+        reverseTypeIndex["Turso"] = "libSQL"
     }
 
     func register(snapshot: PluginMetadataSnapshot, forTypeId typeId: String, preserveIcon: Bool = false) {

@@ -160,6 +160,11 @@ jobs:
                 DISPLAY_NAME="Cloudflare D1 Driver"; SUMMARY="Cloudflare D1 serverless SQLite-compatible database driver via REST API"
                 DB_TYPE_IDS='["Cloudflare D1"]'; ICON="cloudflare-d1-icon"; BUNDLE_NAME="CloudflareD1DriverPlugin"
                 CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/cloudflare-d1" ;;
+              libsql)
+                TARGET="LibSQLDriverPlugin"; BUNDLE_ID="com.TablePro.LibSQLDriverPlugin"
+                DISPLAY_NAME="libSQL / Turso Driver"; SUMMARY="libSQL and Turso database support via Hrana HTTP protocol"
+                DB_TYPE_IDS='["libSQL","Turso"]'; ICON="libsql-icon"; BUNDLE_NAME="LibSQLDriverPlugin"
+                CATEGORY="database-driver"; HOMEPAGE="https://docs.tablepro.app/databases/libsql" ;;
               dynamodb)
                 TARGET="DynamoDBDriverPlugin"; BUNDLE_ID="com.TablePro.DynamoDBDriverPlugin"
                 DISPLAY_NAME="DynamoDB Driver"; SUMMARY="Amazon DynamoDB driver with PartiQL queries and AWS IAM/Profile/SSO authentication"

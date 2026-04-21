@@ -49,6 +49,7 @@
               "databases/mssql",
               "databases/duckdb",
               "databases/cloudflare-d1",
+              "databases/libsql",
               "databases/bigquery",
               "databases/ssh-tunneling"
             ]
