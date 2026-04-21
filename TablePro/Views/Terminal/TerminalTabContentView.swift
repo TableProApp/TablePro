@@ -15,10 +15,16 @@ struct TerminalTabContentView: View {
 
     var body: some View {
         Group {
-            if let state = sessionState, state.error == nil {
-                terminalView(state: state)
-            } else if let error = sessionState?.error {
-                TerminalErrorView(error: error, databaseType: connection.type)
+            if let state = sessionState {
+                if state.error != nil {
+                    TerminalErrorView(error: state.error!, databaseType: connection.type)
+                } else if state.isDisconnected {
+                    disconnectedView(state: state)
+                } else if state.session != nil {
+                    terminalView(state: state)
+                } else {
+                    connectingView
+                }
             } else {
                 connectingView
             }
@@ -35,16 +41,41 @@ struct TerminalTabContentView: View {
 
     @ViewBuilder
     private func terminalView(state: TerminalSessionState) -> some View {
-        if let session = state.session {
-            TerminalSurfaceView(context: state.terminalViewState)
-                .onAppear {
+        TerminalSurfaceView(context: state.terminalViewState)
+            .onAppear {
+                if let session = state.session {
                     state.terminalViewState.configuration = TerminalSurfaceOptions(
                         backend: .inMemory(session)
                     )
                 }
-        } else {
-            connectingView
+            }
+    }
+
+    private func disconnectedView(state: TerminalSessionState) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "terminal")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+
+            Text("Disconnected")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            if state.exitCode != 0 {
+                Text(String(format: String(localized: "Process exited with code %d"), state.exitCode))
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button {
+                reconnect(state: state)
+            } label: {
+                Label("Reconnect", systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut(.return, modifiers: [])
+            .controlSize(.large)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var connectingView: some View {
@@ -63,5 +94,13 @@ struct TerminalTabContentView: View {
             ?? connection.database
 
         state.connect(connection: connection, password: password, activeDatabase: activeDatabase)
+    }
+
+    private func reconnect(state: TerminalSessionState) {
+        let password = ConnectionStorage.shared.loadPassword(for: connectionId)
+        let activeDatabase = DatabaseManager.shared.session(for: connectionId)?.activeDatabase
+            ?? connection.database
+
+        state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
 }

@@ -19,6 +19,8 @@ final class TerminalSessionState: Identifiable {
     var session: InMemoryTerminalSession?
     var processManager: TerminalProcessManager?
     var isConnected: Bool = false
+    var isDisconnected: Bool = false
+    var exitCode: Int32 = 0
     var error: String?
 
     init(connectionId: UUID, databaseType: DatabaseType) {
@@ -40,6 +42,17 @@ final class TerminalSessionState: Identifiable {
                 self?.launchProcess(spec: spec, connection: connection)
             }
         }
+    }
+
+    // MARK: - Reconnect
+
+    func reconnect(connection: DatabaseConnection, password: String?, activeDatabase: String?) {
+        disconnect()
+        isDisconnected = false
+        exitCode = 0
+        error = nil
+        terminalViewState = TerminalViewState()
+        connect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
 
     // MARK: - Disconnect
@@ -85,9 +98,9 @@ final class TerminalSessionState: Identifiable {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isConnected = false
-                if status != 0 {
-                    Self.logger.info("Terminal process exited with status \(status)")
-                }
+                self.isDisconnected = true
+                self.exitCode = status
+                Self.logger.info("Terminal process exited with status \(status)")
             }
         }
 
