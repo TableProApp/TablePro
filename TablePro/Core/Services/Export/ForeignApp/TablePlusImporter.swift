@@ -173,7 +173,8 @@ struct TablePlusImporter: ForeignAppImporter {
         let port = Int(portString) ?? 22
         let username = entry["ServerUser"] as? String ?? ""
         let useKey = entry["isUsePrivateKey"] as? Bool ?? false
-        let keyPath = entry["ServerPrivateKeyName"] as? String ?? ""
+        let rawKeyPath = entry["ServerPrivateKeyName"] as? String ?? ""
+        let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
 
         return ExportableSSHConfig(
             enabled: true,

@@ -191,7 +191,8 @@ struct SequelAceImporter: ForeignAppImporter {
         let portString = entry["sshPort"] as? String ?? "22"
         let port = Int(portString) ?? 22
         let keyEnabled = (entry["sshKeyLocationEnabled"] as? Int ?? 0) != 0
-        let keyPath = entry["sshKeyLocation"] as? String ?? ""
+        let rawKeyPath = entry["sshKeyLocation"] as? String ?? ""
+        let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
 
         return ExportableSSHConfig(
             enabled: true,

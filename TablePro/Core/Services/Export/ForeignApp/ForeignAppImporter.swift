@@ -58,6 +58,16 @@ enum ForeignAppImporterRegistry {
     ]
 }
 
+// MARK: - Path Helpers
+
+enum ForeignAppPathHelper {
+    static func resolveKeyPath(_ path: String) -> String {
+        guard !path.isEmpty else { return "" }
+        if path.hasPrefix("/") || path.hasPrefix("~/") { return path }
+        return "~/.ssh/\(path)"
+    }
+}
+
 // MARK: - Keychain Reader
 
 enum ForeignKeychainReader {

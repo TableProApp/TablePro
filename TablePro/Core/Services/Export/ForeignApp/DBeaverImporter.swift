@@ -204,7 +204,8 @@ struct DBeaverImporter: ForeignAppImporter {
         }
         let username = properties["username"] as? String ?? ""
         let authType = properties["authType"] as? String ?? "PASSWORD"
-        let keyPath = properties["keyPath"] as? String ?? ""
+        let rawKeyPath = properties["keyPath"] as? String ?? ""
+        let keyPath = ForeignAppPathHelper.resolveKeyPath(rawKeyPath)
 
         let authMethod: String
         switch authType {
