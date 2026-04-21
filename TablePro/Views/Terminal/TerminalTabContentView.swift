@@ -122,11 +122,33 @@ private final class TerminalFocusHelperView: NSView {
             while let current = ancestor {
                 if let keyView = Self.firstKeyView(in: current, excluding: self) {
                     window.makeFirstResponder(keyView)
+                    Self.installContextMenu(on: keyView)
                     return
                 }
                 ancestor = current.superview
             }
         }
+    }
+
+    private static func installContextMenu(on terminalView: NSView) {
+        guard terminalView.menu == nil else { return }
+        let menu = NSMenu()
+
+        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        copy.keyEquivalentModifierMask = .command
+        menu.addItem(copy)
+
+        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        paste.keyEquivalentModifierMask = .command
+        menu.addItem(paste)
+
+        menu.addItem(.separator())
+
+        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        selectAll.keyEquivalentModifierMask = .command
+        menu.addItem(selectAll)
+
+        terminalView.menu = menu
     }
 
     private static func firstKeyView(in view: NSView, excluding: NSView) -> NSView? {
