@@ -186,7 +186,6 @@ final class TerminalSessionState: Identifiable {
                 manager?.write(data)
             },
             resize: { [weak manager] viewport in
-                Self.logger.debug("PTY resize: \(viewport.columns)×\(viewport.rows)")
                 manager?.resize(cols: Int(viewport.columns), rows: Int(viewport.rows))
             }
         )

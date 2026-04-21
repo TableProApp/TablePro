@@ -103,7 +103,19 @@ final class TerminalProcessManager {
 
     // MARK: - Resize (called from libghostty threads)
 
+    private nonisolated(unsafe) var lastCols: Int = 0
+    private nonisolated(unsafe) var lastRows: Int = 0
+    private let resizeLock = NSLock()
+
     nonisolated func resize(cols: Int, rows: Int) {
+        let shouldResize = resizeLock.withLock {
+            guard cols != lastCols || rows != lastRows else { return false }
+            lastCols = cols
+            lastRows = rows
+            return true
+        }
+        guard shouldResize else { return }
+
         let fd = fdLock.withLock { _ptyFD }
         guard fd >= 0 else { return }
         var size = winsize(
