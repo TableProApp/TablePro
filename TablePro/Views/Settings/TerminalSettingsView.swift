@@ -116,6 +116,8 @@ struct TerminalSettingsView: View {
 
     // MARK: - CLI Paths
 
+    @State private var resolvedPaths: [String: String] = [:]
+
     @ViewBuilder
     private var cliPathsSection: some View {
         Section {
@@ -127,6 +129,9 @@ struct TerminalSettingsView: View {
         } footer: {
             Text("Leave empty to auto-detect from system PATH.")
         }
+        .task {
+            await resolveAllCliPaths()
+        }
     }
 
     @ViewBuilder
@@ -135,15 +140,26 @@ struct TerminalSettingsView: View {
             get: { settings.cliPaths[dbType.rawValue] ?? "" },
             set: { settings.cliPaths[dbType.rawValue] = $0.isEmpty ? nil : $0 }
         )
-        let placeholder = CLICommandResolver.findExecutable(
-            CLICommandResolver.binaryName(for: dbType)
-        ) ?? CLICommandResolver.binaryName(for: dbType)
+        let binaryName = CLICommandResolver.binaryName(for: dbType)
+        let placeholder = resolvedPaths[dbType.rawValue] ?? binaryName
 
         LabeledContent(dbType.displayName) {
             TextField(placeholder, text: binding)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 300)
         }
+    }
+
+    private func resolveAllCliPaths() async {
+        var paths: [String: String] = [:]
+        for dbType in Self.terminalDatabaseTypes {
+            let name = CLICommandResolver.binaryName(for: dbType)
+            let resolved = await Task.detached(priority: .utility) {
+                CLICommandResolver.findExecutable(name)
+            }.value
+            paths[dbType.rawValue] = resolved ?? name
+        }
+        resolvedPaths = paths
     }
 
     // MARK: - Notifications
