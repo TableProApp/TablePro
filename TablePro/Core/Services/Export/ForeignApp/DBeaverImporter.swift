@@ -239,12 +239,12 @@ struct DBeaverImporter: ForeignAppImporter {
         guard components.count >= 3 else { return nil }
         let (r, g, b) = (components[0], components[1], components[2])
 
-        if r > 200 && g < 100 && b < 100 { return "red" }
-        if r > 200 && g > 100 && g < 200 && b < 100 { return "orange" }
-        if r > 200 && g > 200 && b < 100 { return "yellow" }
-        if r < 100 && g > 150 && b < 100 { return "green" }
-        if r < 100 && g < 100 && b > 200 { return "blue" }
-        if r > 100 && g < 100 && b > 150 { return "purple" }
+        if r > 200 && g < 100 && b < 100 { return "Red" }
+        if r > 200 && g > 100 && g < 200 && b < 100 { return "Orange" }
+        if r > 200 && g > 200 && b < 100 { return "Yellow" }
+        if r < 100 && g > 150 && b < 100 { return "Green" }
+        if r < 100 && g < 100 && b > 200 { return "Blue" }
+        if r > 100 && g < 100 && b > 150 { return "Purple" }
         return nil
     }
 

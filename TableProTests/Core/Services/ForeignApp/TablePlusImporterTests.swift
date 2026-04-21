@@ -231,7 +231,7 @@ struct TablePlusImporterTests {
         let ssl = conn.sslConfig
 
         #expect(ssl != nil)
-        #expect(ssl?.mode == "required")
+        #expect(ssl?.mode == "Required")
         #expect(ssl?.caCertificatePath == "/path/to/ca.pem")
         #expect(ssl?.clientCertificatePath == "/path/to/client-cert.pem")
         #expect(ssl?.clientKeyPath == "/path/to/client-key.pem")
@@ -369,10 +369,10 @@ struct TablePlusImporterTests {
         let result = try importer.importConnections(includePasswords: false)
         let connections = result.envelope.connections
 
-        #expect(connections[0].color == "yellow")
-        #expect(connections[1].color == "red")
-        #expect(connections[2].color == "blue")
-        #expect(connections[3].color == "green")
+        #expect(connections[0].color == "Yellow")
+        #expect(connections[1].color == "Red")
+        #expect(connections[2].color == "Blue")
+        #expect(connections[3].color == "Green")
         #expect(connections[4].color == nil)
     }
 

@@ -214,7 +214,7 @@ struct SequelAceImporterTests {
         let ssl = result.envelope.connections[0].sslConfig
 
         #expect(ssl != nil)
-        #expect(ssl?.mode == "required")
+        #expect(ssl?.mode == "Required")
         #expect(ssl?.caCertificatePath == "/path/to/ca.pem")
         #expect(ssl?.clientCertificatePath == "/path/to/client-cert.pem")
         #expect(ssl?.clientKeyPath == "/path/to/client-key.pem")
@@ -264,14 +264,14 @@ struct SequelAceImporterTests {
     @Test("importConnections color index mapping")
     func testImportConnections_colorIndexMapping() throws {
         let colorMappings: [(Int, String?)] = [
-            (0, "red"),
-            (1, "orange"),
-            (2, "yellow"),
-            (3, "green"),
-            (4, "blue"),
-            (5, "purple"),
-            (6, "pink"),
-            (7, "gray"),
+            (0, "Red"),
+            (1, "Orange"),
+            (2, "Yellow"),
+            (3, "Green"),
+            (4, "Blue"),
+            (5, "Purple"),
+            (6, "Pink"),
+            (7, "Gray"),
             (-1, nil),
             (99, nil)
         ]

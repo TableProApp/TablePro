@@ -457,12 +457,12 @@ struct DBeaverImporterTests {
         let result = try importer.importConnections(includePasswords: false)
         let colorMap = Dictionary(uniqueKeysWithValues: result.envelope.connections.map { ($0.name, $0.color) })
 
-        #expect(colorMap["Red"] == "red")
-        #expect(colorMap["Orange"] == "orange")
-        #expect(colorMap["Yellow"] == "yellow")
-        #expect(colorMap["Green"] == "green")
-        #expect(colorMap["Blue"] == "blue")
-        #expect(colorMap["Purple"] == "purple")
+        #expect(colorMap["Red"] == "Red")
+        #expect(colorMap["Orange"] == "Orange")
+        #expect(colorMap["Yellow"] == "Yellow")
+        #expect(colorMap["Green"] == "Green")
+        #expect(colorMap["Blue"] == "Blue")
+        #expect(colorMap["Purple"] == "Purple")
         #expect(colorMap["No Color"] == Optional<String>.none)
     }
 

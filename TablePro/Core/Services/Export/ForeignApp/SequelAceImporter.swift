@@ -151,8 +151,14 @@ struct SequelAceImporter: ForeignAppImporter {
     ) throws -> ExportableConnection {
         let name = entry["name"] as? String ?? "Untitled"
         let host = entry["host"] as? String ?? "localhost"
-        let portString = entry["port"] as? String ?? ""
-        let port = Int(portString) ?? 3306
+        let port: Int
+        if let intPort = entry["port"] as? Int {
+            port = intPort
+        } else if let strPort = entry["port"] as? String, let parsed = Int(strPort) {
+            port = parsed
+        } else {
+            port = 3306
+        }
         let username = entry["user"] as? String ?? ""
         let database = entry["database"] as? String ?? ""
 
@@ -223,7 +229,7 @@ struct SequelAceImporter: ForeignAppImporter {
         guard useSSL else { return nil }
 
         return ExportableSSLConfig(
-            mode: "required",
+            mode: "Required",
             caCertificatePath: entry["sslCACertFileLocation"] as? String,
             clientCertificatePath: entry["sslCertificateFileLocation"] as? String,
             clientKeyPath: entry["sslKeyFileLocation"] as? String
@@ -263,14 +269,14 @@ struct SequelAceImporter: ForeignAppImporter {
 
     private func mapColorIndex(_ index: Int) -> String? {
         switch index {
-        case 0: return "red"
-        case 1: return "orange"
-        case 2: return "yellow"
-        case 3: return "green"
-        case 4: return "blue"
-        case 5: return "purple"
-        case 6: return "pink"
-        case 7: return "gray"
+        case 0: return "Red"
+        case 1: return "Orange"
+        case 2: return "Yellow"
+        case 3: return "Green"
+        case 4: return "Blue"
+        case 5: return "Purple"
+        case 6: return "Pink"
+        case 7: return "Gray"
         default: return nil
         }
     }
