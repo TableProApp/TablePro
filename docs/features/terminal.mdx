@@ -9,11 +9,8 @@ TablePro includes an embedded terminal that auto-launches the appropriate databa
 
 ## Opening the Terminal
 
-There are three ways to open a terminal:
-
 - **Menu**: View > Open Terminal
 - **Keyboard shortcut**: `Ctrl+Cmd+``
-- **Context menu**: Right-click a connection in the sidebar
 
 The terminal automatically detects which CLI tool to use based on the connection type and launches it with the correct host, port, username, and database arguments.
 
@@ -21,7 +18,8 @@ The terminal automatically detects which CLI tool to use based on the connection
 
 | Database | CLI Tool | Install Command |
 |----------|----------|-----------------|
-| MySQL / MariaDB | `mysql` | `brew install mysql` |
+| MySQL | `mysql` | `brew install mysql-client` |
+| MariaDB | `mariadb` (falls back to `mysql`) | `brew install mariadb` |
 | PostgreSQL / Redshift | `psql` | `brew install libpq` |
 | Redis | `redis-cli` | `brew install redis` |
 | MongoDB | `mongosh` | `brew install mongosh` |
@@ -35,13 +33,25 @@ If the CLI tool is not installed, TablePro shows an error with the install comma
 
 ## SSH Tunnel Support
 
-When your connection uses an SSH tunnel, the terminal launches `ssh` with the correct parameters (host, port, key, jump hosts) and runs the database CLI on the remote host. This works with:
+For SSH-tunneled connections, TablePro uses a two-step strategy:
+
+1. **Local CLI via tunnel** (preferred): Runs the CLI on your Mac, connecting through the existing SSH tunnel (`localhost:tunnelPort`). Works with Docker and containerized databases where the CLI isn't installed on the remote host.
+2. **Remote CLI via SSH** (fallback): If the CLI isn't installed locally, SSHs into the remote host and runs the CLI there.
+
+SSH remote mode supports:
 
 - Inline SSH configuration
 - SSH profiles (uses the resolved snapshot)
+- Private key authentication
 - Jump hosts (multi-hop tunnels)
 
 Password-based authentication for the database is passed through environment variables, keeping it out of the process argument list.
+
+## Docker and Container Support
+
+When the database runs inside a Docker container on the SSH host, the local CLI approach works automatically. The SSH tunnel forwards to the container's exposed port, and the CLI on your Mac connects through it. No need for `docker exec` or installing CLI tools on the Docker host.
+
+**Requirement**: The CLI tool must be installed on your Mac (e.g., `brew install mariadb` for MariaDB).
 
 ## Settings
 
@@ -58,7 +68,7 @@ Open **Settings > Terminal** to customize:
 
 ### Theme
 
-Pick from 300+ built-in Ghostty terminal themes. Color swatches preview the background, foreground, and cursor colors for each theme. The default theme follows system appearance (Alabaster for light, Afterglow for dark).
+Pick from 300+ built-in terminal themes. Color swatches preview the background, foreground, and cursor colors for each theme.
 
 ### CLI Paths
 
@@ -82,6 +92,7 @@ Right-click inside the terminal for:
 - If the CLI process exits, a "Disconnected" view appears with the exit code and a Reconnect button
 - Pressing Enter on the disconnected view reconnects
 - The terminal uses the active database from your current session, not just the connection default
+- Terminal tabs persist across app restarts and auto-reconnect on launch
 
 ## Keyboard Shortcuts
 
@@ -91,5 +102,11 @@ Right-click inside the terminal for:
 | Copy | `Cmd+C` |
 | Paste | `Cmd+V` |
 | Clear screen | `Ctrl+L` (in terminal) |
+| Reverse search history | `Ctrl+R` (readline) |
 
 Settings changes (font, theme, cursor style) apply immediately to all open terminals without reconnecting.
+
+## Known Limitations
+
+- **No Cmd+F search**: Scrollback search is not available in the embedded terminal. Use `Ctrl+R` for readline reverse search or pipe output through `grep`.
+- **Oracle passwords**: Oracle's `sqlplus` requires the password in the connect string (no environment variable support). The password may be visible in process listings.
