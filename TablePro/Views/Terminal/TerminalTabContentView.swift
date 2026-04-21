@@ -151,7 +151,7 @@ private final class TerminalFocusHelperView: NSView {
             let locationInTerminal = terminal.convert(event.locationInWindow, from: nil)
             guard terminal.bounds.contains(locationInTerminal) else { return event }
 
-            let menu = Self.buildContextMenu()
+            let menu = self.buildContextMenu()
             NSMenu.popUpContextMenu(menu, with: event, for: terminal)
             return nil
         }
@@ -164,15 +164,57 @@ private final class TerminalFocusHelperView: NSView {
         }
     }
 
-    private static func buildContextMenu() -> NSMenu {
+    private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
 
-        menu.addItem(NSMenuItem(title: String(localized: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: String(localized: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: ""))
+        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(handleCopy), keyEquivalent: "")
+        copy.target = self
+        copy.isEnabled = true
+        menu.addItem(copy)
+
+        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(handlePaste), keyEquivalent: "")
+        paste.target = self
+        paste.isEnabled = true
+        menu.addItem(paste)
+
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: String(localized: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: ""))
+
+        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(handleSelectAll), keyEquivalent: "")
+        selectAll.target = self
+        selectAll.isEnabled = true
+        menu.addItem(selectAll)
 
         return menu
+    }
+
+    @objc private func handleCopy() {
+        simulateKeyEvent(characters: "c", modifiers: .command)
+    }
+
+    @objc private func handlePaste() {
+        simulateKeyEvent(characters: "v", modifiers: .command)
+    }
+
+    @objc private func handleSelectAll() {
+        simulateKeyEvent(characters: "a", modifiers: .command)
+    }
+
+    private func simulateKeyEvent(characters: String, modifiers: NSEvent.ModifierFlags) {
+        guard let terminal = terminalView, let window = terminal.window else { return }
+        guard let event = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: 0
+        ) else { return }
+        terminal.keyDown(with: event)
     }
 
     // MARK: - Key View Discovery
