@@ -126,7 +126,7 @@ struct LinkedFoldersSection: View {
 
 // MARK: - Pro Badge
 
-private struct ProBadge: View {
+struct ProBadge: View {
     var body: some View {
         Text("PRO")
             .font(.system(size: 9, weight: .bold))

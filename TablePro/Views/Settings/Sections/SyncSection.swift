@@ -9,8 +9,12 @@ struct SyncSection: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Bindable private var syncCoordinator = SyncCoordinator.shared
 
+    private var isProAvailable: Bool {
+        LicenseManager.shared.isFeatureAvailable(.iCloudSync)
+    }
+
     var body: some View {
-        Section("iCloud Sync") {
+        Section {
             Toggle("iCloud Sync:", isOn: $settingsManager.sync.enabled)
                 .onChange(of: settingsManager.sync.enabled) { _, newValue in
                     updatePasswordSyncFlag()
@@ -21,10 +25,17 @@ struct SyncSection: View {
                     }
                 }
                 .help("Syncs connections, settings, and SSH profiles across your Macs via iCloud.")
+                .disabled(!isProAvailable)
+        } header: {
+            HStack(spacing: 6) {
+                Text("iCloud Sync")
+                if !isProAvailable {
+                    ProBadge()
+                }
+            }
         }
-        .requiresPro(.iCloudSync)
 
-        if settingsManager.sync.enabled {
+        if settingsManager.sync.enabled && isProAvailable {
             statusSection
             categoriesSection
         }
