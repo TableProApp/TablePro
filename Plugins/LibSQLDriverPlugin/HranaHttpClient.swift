@@ -22,7 +22,7 @@ enum HranaValue: Decodable {
         case .integer(let s):
             return s
         case .float(let d):
-            if d.truncatingRemainder(dividingBy: 1) == 0 && d.isFinite {
+            if d.isFinite && d == d.rounded() && abs(d) <= 9_007_199_254_740_992 {
                 return String(Int64(d))
             }
             return String(d)
@@ -194,6 +194,9 @@ final class HranaHttpClient: @unchecked Sendable {
         }
         if Int64(value) != nil {
             return ["type": "integer", "value": value]
+        }
+        if let d = Double(value), Int64(value) == nil {
+            return ["type": "float", "value": d]
         }
         return ["type": "text", "value": value]
     }

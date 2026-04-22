@@ -60,8 +60,11 @@ final class LibSQLPluginDriver: PluginDatabaseDriver, @unchecked Sendable {
         client.createSession()
 
         do {
-            let result = try await client.execute(sql: "SELECT sqlite_version()")
-            let version = result.rows.first?.first?.stringValue ?? "libSQL"
+            let libsqlVersion = try? await client.execute(sql: "SELECT libsql_version()")
+            let sqliteVersion = try await client.execute(sql: "SELECT sqlite_version()")
+            let version = libsqlVersion?.rows.first?.first?.stringValue
+                ?? sqliteVersion.rows.first?.first?.stringValue
+                ?? "libSQL"
 
             lock.lock()
             _serverVersion = version
