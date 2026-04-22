@@ -274,9 +274,9 @@ struct SQLFormatterServiceTests {
         """)
     }
 
-    @Test("Multiple statements — preserves multiple blank lines from input")
-    func multipleStatementsWithMultipleBlankLines() throws {
-        let result = try format("select 1;\n\n\nselect 2;")
+    @Test("Multiple statements — caps excessive blank lines to 2")
+    func multipleStatementsCapped() throws {
+        let result = try format("select 1;\n\n\n\n\nselect 2;")
         #expect(result == """
         SELECT 1;
 

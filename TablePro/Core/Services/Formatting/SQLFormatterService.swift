@@ -126,13 +126,12 @@ internal struct SQLTokenFormatter {
     /// True after BETWEEN keyword — suppresses the next AND from being a clause break
     private var afterBetween = false
 
-    /// Newline counts after each semicolon, keyed by index in the meaningful token array
     private var newlinesAfterSemicolon: [Int: Int] = [:]
 
     // MARK: - Public
 
     mutating func format(_ tokens: [SQLToken]) -> String {
-        // Pre-scan: record original newline counts after each semicolon
+        newlinesAfterSemicolon.removeAll()
         var meaningfulIndex = -1
         for (i, token) in tokens.enumerated() {
             if token.type == .whitespace { continue }
@@ -207,7 +206,7 @@ internal struct SQLTokenFormatter {
         case ";":
             output += ";"
             let originalNewlines = newlinesAfterSemicolon[mi] ?? 0
-            let newlineCount = max(originalNewlines, 1)
+            let newlineCount = min(max(originalNewlines, 1), 3)
             output += String(repeating: "\n", count: newlineCount)
             afterNewline = true
             isFirstClause = true
