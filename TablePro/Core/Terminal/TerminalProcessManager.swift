@@ -132,28 +132,8 @@ final class TerminalProcessManager {
     // MARK: - Terminate
 
     func terminate() {
-        let pid = stateLock.withLock {
-            let p = _childPID
-            _childPID = 0
-            return p
-        }
-
-        if pid > 0 {
-            kill(pid, SIGHUP)
-            var status: Int32 = 0
-            if waitpid(pid, &status, WNOHANG) == 0 {
-                kill(pid, SIGKILL)
-                waitpid(pid, &status, 0)
-            }
-            Self.logger.info("Terminated child pid=\(pid)")
-        }
-
-        stateLock.withLock {
-            _readSource?.cancel()
-            _readSource = nil
-            _processMonitor?.cancel()
-            _processMonitor = nil
-        }
+        killAndReap()
+        cancelSources()
 
         if ptyFD >= 0 {
             close(ptyFD)
@@ -164,32 +144,37 @@ final class TerminalProcessManager {
     }
 
     nonisolated func terminateSync() {
-        let pid = stateLock.withLock {
-            let p = _childPID
-            _childPID = 0
-            return p
-        }
-
-        if pid > 0 {
-            kill(pid, SIGHUP)
-            var status: Int32 = 0
-            if waitpid(pid, &status, WNOHANG) == 0 {
-                kill(pid, SIGKILL)
-                waitpid(pid, &status, 0)
-            }
-        }
-
-        stateLock.withLock {
-            _readSource?.cancel()
-            _readSource = nil
-            _processMonitor?.cancel()
-            _processMonitor = nil
-        }
+        killAndReap()
+        cancelSources()
 
         let fd = fdLock.withLock { _ptyFD }
         if fd >= 0 {
             Darwin.close(fd)
             fdLock.withLock { _ptyFD = -1 }
+        }
+    }
+
+    private nonisolated func killAndReap() {
+        let pid = stateLock.withLock {
+            let p = _childPID
+            _childPID = 0
+            return p
+        }
+        guard pid > 0 else { return }
+        kill(pid, SIGHUP)
+        var status: Int32 = 0
+        if waitpid(pid, &status, WNOHANG) == 0 {
+            kill(pid, SIGKILL)
+            waitpid(pid, &status, 0)
+        }
+    }
+
+    private nonisolated func cancelSources() {
+        stateLock.withLock {
+            _readSource?.cancel()
+            _readSource = nil
+            _processMonitor?.cancel()
+            _processMonitor = nil
         }
     }
 
