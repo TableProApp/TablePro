@@ -67,15 +67,19 @@ internal struct JSONTreeView: View {
             let valueMatches = node.displayValue.localizedCaseInsensitiveContains(query)
             let filteredChildren = filterNodes(node.children, matching: query)
 
-            if keyMatches || valueMatches || !filteredChildren.isEmpty {
-                if !node.children.isEmpty && !filteredChildren.isEmpty {
-                    return JSONTreeNode(
-                        key: node.key, keyPath: node.keyPath, valueType: node.valueType,
-                        displayValue: node.displayValue, rawValue: node.rawValue,
-                        children: filteredChildren
-                    )
-                }
-                if keyMatches || valueMatches { return node }
+            if !filteredChildren.isEmpty {
+                return JSONTreeNode(
+                    key: node.key, keyPath: node.keyPath, valueType: node.valueType,
+                    displayValue: node.displayValue, rawValue: node.rawValue,
+                    children: filteredChildren
+                )
+            }
+            if keyMatches || valueMatches {
+                return JSONTreeNode(
+                    key: node.key, keyPath: node.keyPath, valueType: node.valueType,
+                    displayValue: node.displayValue, rawValue: node.rawValue,
+                    children: []
+                )
             }
             return nil
         }
