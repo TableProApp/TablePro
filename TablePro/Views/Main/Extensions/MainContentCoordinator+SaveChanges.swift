@@ -187,9 +187,7 @@ extension MainContentCoordinator {
                     throw DatabaseError.notConnected
                 }
 
-                // Redis MULTI/EXEC is not a true transaction (no rollback on failure),
-                // so execute statements individually without wrapping.
-                let useTransaction = dbType != .redis
+                let useTransaction = driver.supportsTransactions
 
                 if useTransaction {
                     try await driver.beginTransaction()

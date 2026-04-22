@@ -35,7 +35,11 @@ extension MainContentCoordinator {
             throw DatabaseError.notConnected
         }
 
-        try await driver.beginTransaction()
+        let useTransaction = driver.supportsTransactions
+
+        if useTransaction {
+            try await driver.beginTransaction()
+        }
 
         do {
             for stmt in statements {
@@ -45,12 +49,16 @@ extension MainContentCoordinator {
                     _ = try await driver.executeParameterized(query: stmt.sql, parameters: stmt.parameters)
                 }
             }
-            try await driver.commitTransaction()
+            if useTransaction {
+                try await driver.commitTransaction()
+            }
         } catch {
-            do {
-                try await driver.rollbackTransaction()
-            } catch {
-                discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+            if useTransaction {
+                do {
+                    try await driver.rollbackTransaction()
+                } catch {
+                    discardLogger.error("Rollback failed: \(error.localizedDescription, privacy: .public)")
+                }
             }
             throw error
         }

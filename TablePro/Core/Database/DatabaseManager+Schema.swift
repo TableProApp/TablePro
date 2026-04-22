@@ -60,15 +60,20 @@ extension DatabaseManager {
             )
             let statements = try generator.generate(changes: changes)
 
-            // Execute in transaction
-            try await driver.beginTransaction()
+            let useTransaction = driver.supportsTransactions
+
+            if useTransaction {
+                try await driver.beginTransaction()
+            }
 
             do {
                 for stmt in statements {
                     _ = try await driver.execute(query: stmt.sql)
                 }
 
-                try await driver.commitTransaction()
+                if useTransaction {
+                    try await driver.commitTransaction()
+                }
 
                 // Record each statement in query history
                 let connId = connectionId
@@ -87,10 +92,12 @@ extension DatabaseManager {
                 // Post notification to refresh UI
                 NotificationCenter.default.post(name: .refreshData, object: nil)
             } catch {
-                do {
-                    try await driver.rollbackTransaction()
-                } catch {
-                    Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                if useTransaction {
+                    do {
+                        try await driver.rollbackTransaction()
+                    } catch {
+                        Self.logger.error("Rollback failed after schema change error: \(error.localizedDescription)")
+                    }
                 }
                 throw DatabaseError.queryFailed("Schema change failed: \(error.localizedDescription)")
             }
