@@ -49,7 +49,7 @@ final class SchemaProviderRegistry {
         count -= 1
         if count <= 0 {
             refCounts.removeValue(forKey: connectionId)
-            removalTasks[connectionId] = Task { @MainActor in
+            removalTasks[connectionId] = Task {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard !Task.isCancelled else { return }
                 self.providers.removeValue(forKey: connectionId)

@@ -26,16 +26,7 @@ internal final class PromptPassphraseProvider: @unchecked Sendable {
         if Thread.isMainThread {
             return showAlert()
         }
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: PassphrasePromptResult?
-        DispatchQueue.main.async {
-            result = self.showAlert()
-            semaphore.signal()
-        }
-        let waitResult = semaphore.wait(timeout: .now() + 120)
-        guard waitResult == .success else { return nil }
-        return result
+        return DispatchQueue.main.sync { showAlert() }
     }
 
     private func showAlert() -> PassphrasePromptResult? {

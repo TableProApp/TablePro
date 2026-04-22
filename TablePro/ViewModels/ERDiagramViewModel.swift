@@ -320,7 +320,7 @@ final class ERDiagramViewModel {
 
         autoPanVelocity = v
         if v != .zero && autoPanTask == nil {
-            autoPanTask = Task { @MainActor [weak self] in
+            autoPanTask = Task { [weak self] in
                 while !Task.isCancelled {
                     self?.autoPanTick()
                     try? await Task.sleep(for: .milliseconds(16))

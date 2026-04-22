@@ -24,6 +24,13 @@ struct EditorSettingsView: View {
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
             }
 
+            Section("JSON Viewer") {
+                Picker("Default view:", selection: $settings.jsonViewerPreferredMode) {
+                    Text("Text").tag(JSONViewMode.text)
+                    Text("Tree").tag(JSONViewMode.tree)
+                }
+            }
+
             DataGridSection(settings: $dataGridSettings)
         }
         .formStyle(.grouped)

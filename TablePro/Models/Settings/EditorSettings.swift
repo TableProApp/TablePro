@@ -61,6 +61,11 @@ internal enum EditorFontResolver {
     }
 }
 
+internal enum JSONViewMode: String, Codable, CaseIterable {
+    case text
+    case tree
+}
+
 /// Editor settings
 struct EditorSettings: Codable, Equatable {
     var showLineNumbers: Bool
@@ -69,6 +74,7 @@ struct EditorSettings: Codable, Equatable {
     var wordWrap: Bool
     var vimModeEnabled: Bool
     var uppercaseKeywords: Bool
+    var jsonViewerPreferredMode: JSONViewMode
 
     static let `default` = EditorSettings(
         showLineNumbers: true,
@@ -76,7 +82,8 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: 4,
         wordWrap: false,
         vimModeEnabled: false,
-        uppercaseKeywords: false
+        uppercaseKeywords: false,
+        jsonViewerPreferredMode: .text
     )
 
     init(
@@ -85,7 +92,8 @@ struct EditorSettings: Codable, Equatable {
         tabWidth: Int = 4,
         wordWrap: Bool = false,
         vimModeEnabled: Bool = false,
-        uppercaseKeywords: Bool = false
+        uppercaseKeywords: Bool = false,
+        jsonViewerPreferredMode: JSONViewMode = .text
     ) {
         self.showLineNumbers = showLineNumbers
         self.highlightCurrentLine = highlightCurrentLine
@@ -93,17 +101,18 @@ struct EditorSettings: Codable, Equatable {
         self.wordWrap = wordWrap
         self.vimModeEnabled = vimModeEnabled
         self.uppercaseKeywords = uppercaseKeywords
+        self.jsonViewerPreferredMode = jsonViewerPreferredMode
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        // Old fontFamily/fontSize keys are ignored (moved to ThemeFonts)
         showLineNumbers = try container.decodeIfPresent(Bool.self, forKey: .showLineNumbers) ?? true
         highlightCurrentLine = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentLine) ?? true
         tabWidth = try container.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
         wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
+        jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
     }
 
     /// Clamped tab width (1-16)

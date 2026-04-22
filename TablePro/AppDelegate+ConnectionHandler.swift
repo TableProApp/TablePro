@@ -84,7 +84,7 @@ extension AppDelegate {
         connectingURLConnectionIds.insert(connection.id)
         connectingURLParamKeys.insert(paramKey)
 
-        Task { @MainActor in
+        Task {
             defer {
                 self.connectingURLConnectionIds.remove(connection.id)
                 self.connectingURLParamKeys.remove(paramKey)
@@ -136,7 +136,7 @@ extension AppDelegate {
         guard !connectingFilePaths.contains(filePath) else { return }
         connectingFilePaths.insert(filePath)
 
-        Task { @MainActor in
+        Task {
             defer {
                 self.connectingFilePaths.remove(filePath)
             }
@@ -186,7 +186,7 @@ extension AppDelegate {
         guard !connectingFilePaths.contains(filePath) else { return }
         connectingFilePaths.insert(filePath)
 
-        Task { @MainActor in
+        Task {
             defer {
                 self.connectingFilePaths.remove(filePath)
             }
@@ -236,7 +236,7 @@ extension AppDelegate {
         guard !connectingFilePaths.contains(filePath) else { return }
         connectingFilePaths.insert(filePath)
 
-        Task { @MainActor in
+        Task {
             defer {
                 self.connectingFilePaths.remove(filePath)
             }
@@ -311,7 +311,7 @@ extension AppDelegate {
     }
 
     private func postSQLFilesWhenReady(urls: [URL]) {
-        Task { @MainActor in
+        Task {
             await waitForConnection(timeout: .seconds(3))
             NotificationCenter.default.post(name: .openSQLFiles, object: urls)
         }
@@ -331,7 +331,7 @@ extension AppDelegate {
     // MARK: - Post-Connect Actions
 
     private func handlePostConnectionActions(_ parsed: ParsedConnectionURL, connectionId: UUID) {
-        Task { @MainActor in
+        Task {
             await waitForConnection(timeout: .seconds(5))
 
             if let schema = parsed.schema {
@@ -409,7 +409,7 @@ extension AppDelegate {
                 continuation.resume()
             }
 
-            let timeoutTask = Task { @MainActor in
+            let timeoutTask = Task {
                 try? await Task.sleep(for: timeout)
                 resumeOnce()
             }
@@ -438,7 +438,7 @@ extension AppDelegate {
                 continuation.resume()
             }
 
-            let timeoutTask = Task { @MainActor in
+            let timeoutTask = Task {
                 try? await Task.sleep(for: timeout)
                 resumeOnce()
             }

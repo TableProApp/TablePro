@@ -424,7 +424,7 @@ final class MainContentCoordinator {
             pluginDriverObserver = NotificationCenter.default.addObserver(
                 forName: .databaseDidConnect, object: nil, queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in
+                Task {
                     self?.setupPluginDriver()
                 }
             }
@@ -772,7 +772,7 @@ final class MainContentCoordinator {
         {
             guard !isShowingSafeModePrompt else { return }
             isShowingSafeModePrompt = true
-            Task { @MainActor in
+            Task {
                 defer { isShowingSafeModePrompt = false }
                 let window = NSApp.keyWindow
                 let permission = await SafeModeGuard.checkPermission(
@@ -882,7 +882,7 @@ final class MainContentCoordinator {
 
         if !explainVariants.isEmpty {
             if needsConfirmation {
-                Task { @MainActor in
+                Task {
                     let window = NSApp.keyWindow
                     let permission = await SafeModeGuard.checkPermission(
                         level: level,
@@ -911,7 +911,7 @@ final class MainContentCoordinator {
         }
 
         if needsConfirmation {
-            Task { @MainActor in
+            Task {
                 let window = NSApp.keyWindow
                 let permission = await SafeModeGuard.checkPermission(
                     level: level,
@@ -926,7 +926,7 @@ final class MainContentCoordinator {
                 }
             }
         } else {
-            Task { @MainActor in
+            Task {
                 executeQueryInternal(explainSQL)
             }
         }

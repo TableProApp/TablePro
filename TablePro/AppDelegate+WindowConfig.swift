@@ -86,7 +86,7 @@ extension AppDelegate {
         let payload = EditorTabPayload(connectionId: connection.id, intent: .restoreOrDefault)
         WindowManager.shared.openTab(payload: payload)
 
-        Task { @MainActor in
+        Task {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
 

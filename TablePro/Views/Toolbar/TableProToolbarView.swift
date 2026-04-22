@@ -78,20 +78,18 @@ struct TableProToolbar: ViewModifier {
                     }
                 }
 
-                ToolbarItem(placement: .navigation) {
-                    let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
-                    Button {
-                        actions?.openDatabaseSwitcher()
-                    } label: {
-                        Label("Database", systemImage: "cylinder")
+                if PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType) {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            actions?.openDatabaseSwitcher()
+                        } label: {
+                            Label("Database", systemImage: "cylinder")
+                        }
+                        .help(String(localized: "Open Database (⌘K)"))
+                        .disabled(
+                            state.connectionState != .connected
+                                || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
                     }
-                    .help(String(localized: "Open Database (⌘K)"))
-                    .disabled(
-                        !supportsSwitch
-                            || state.connectionState != .connected
-                            || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased)
-                    .opacity(supportsSwitch ? 1 : 0)
-                    .allowsHitTesting(supportsSwitch)
                 }
 
                 ToolbarItemGroup(placement: .navigation) {

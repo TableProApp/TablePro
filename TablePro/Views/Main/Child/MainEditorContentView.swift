@@ -837,19 +837,21 @@ struct MainEditorContentView: View {
                         .foregroundStyle(.quaternary)
                 }
 
-                HStack(spacing: 6) {
-                    Text("⌘K")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        )
-                    Text("Switch Database")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
+                if PluginManager.shared.supportsDatabaseSwitching(for: connection.type) {
+                    HStack(spacing: 6) {
+                        Text("⌘K")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color(nsColor: .quaternaryLabelColor))
+                            )
+                        Text("Switch Database")
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
         }

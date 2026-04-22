@@ -15,18 +15,7 @@ internal final class PromptTOTPProvider: TOTPProvider, @unchecked Sendable {
         if Thread.isMainThread {
             return try handleResult(showAlert())
         }
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var code: String?
-        DispatchQueue.main.async {
-            code = self.showAlert()
-            semaphore.signal()
-        }
-        let result = semaphore.wait(timeout: .now() + 120)
-        guard result == .success else {
-            throw SSHTunnelError.connectionTimeout
-        }
-        return try handleResult(code)
+        return try handleResult(DispatchQueue.main.sync { showAlert() })
     }
 
     // Note: runModal() is intentional here. This method runs on the main thread

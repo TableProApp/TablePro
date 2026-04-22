@@ -577,7 +577,7 @@ final class WelcomeViewModel {
             if let observer { NotificationCenter.default.removeObserver(observer) }
         }
 
-        Task { @MainActor in
+        Task {
             try? await Task.sleep(for: .milliseconds(500))
             if let observer { NotificationCenter.default.removeObserver(observer) }
         }

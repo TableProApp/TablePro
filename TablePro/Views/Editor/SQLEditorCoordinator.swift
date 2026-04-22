@@ -93,7 +93,7 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         // Deferred to next run loop because prepareCoordinator runs during
         // TextViewController.init, before the view hierarchy is fully loaded.
-        Task { @MainActor [weak self] in
+        Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(50))
             guard let self else { return }
             self.fixFindPanelHitTesting(controller: controller)

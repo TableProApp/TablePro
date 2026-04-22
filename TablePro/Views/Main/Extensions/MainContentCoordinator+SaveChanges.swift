@@ -78,7 +78,7 @@ extension MainContentCoordinator {
                 }
             }
             let connId = connection.id
-            Task { @MainActor in
+            Task {
                 let window = NSApp.keyWindow
                 let permission = await SafeModeGuard.checkPermission(
                     level: level,
@@ -176,7 +176,7 @@ extension MainContentCoordinator {
             }
         }
 
-        Task { @MainActor in
+        Task {
             let overallStartTime = Date()
 
             do {

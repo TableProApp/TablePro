@@ -20,6 +20,7 @@ struct RightSidebarView: View {
     let databaseType: DatabaseType
 
     @State private var searchText: String = ""
+    @State private var expandedJsonFieldId: UUID?
 
     // MARK: - Inspector Mode
 
@@ -126,7 +127,65 @@ struct RightSidebarView: View {
 
     // MARK: - Row Detail Form
 
+    @ViewBuilder
     private func rowDetailForm(
+        _ rowData: [(column: String, value: String?, type: String)]
+    ) -> some View {
+        if let expandedId = expandedJsonFieldId,
+           let field = editState.fields.first(where: { $0.id == expandedId }) {
+            expandedJsonViewer(field: field, isEditable: contentMode == .editRow)
+                .onChange(of: selectedRowData?.count) { expandedJsonFieldId = nil }
+        } else {
+            fieldListForm(rowData)
+        }
+    }
+
+    // MARK: - Expanded JSON Viewer
+
+    private func expandedJsonViewer(field: FieldEditState, isEditable: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { expandedJsonFieldId = nil } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Fields")
+                    }
+                }
+                .buttonStyle(.borderless)
+
+                Spacer()
+
+                Text(field.columnName)
+                    .font(.headline)
+
+                Spacer()
+
+                Text(field.columnTypeEnum.badgeLabel)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.quaternary)
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+            Divider()
+
+            JSONViewerView(
+                text: isEditable ? Binding(
+                    get: { field.pendingValue ?? field.originalValue ?? "" },
+                    set: { editState.updateField(at: field.columnIndex, value: $0) }
+                ) : .constant(field.originalValue ?? ""),
+                isEditable: isEditable
+            )
+        }
+    }
+
+    // MARK: - Field List
+
+    private func fieldListForm(
         _ rowData: [(column: String, value: String?, type: String)]
     ) -> some View {
         let filtered =
@@ -138,7 +197,6 @@ struct RightSidebarView: View {
             }
 
         return VStack(spacing: 0) {
-            // Inline search field
             NativeSearchField(
                 text: $searchText,
                 placeholder: String(localized: "Search for field..."),
@@ -189,6 +247,12 @@ struct RightSidebarView: View {
 
     @ViewBuilder
     private func fieldDetailRow(_ field: FieldEditState, at index: Int, isEditable: Bool) -> some View {
+        let isJsonField = FieldEditorResolver.resolve(
+            for: field.columnTypeEnum,
+            isLongText: field.isLongText,
+            originalValue: field.originalValue
+        ) == .json
+
         FieldDetailView(
             context: FieldEditorContext(
                 columnName: field.columnName,
@@ -211,7 +275,8 @@ struct RightSidebarView: View {
             onSetNull: { editState.setFieldToNull(at: index) },
             onSetDefault: { editState.setFieldToDefault(at: index) },
             onSetEmpty: { editState.setFieldToEmpty(at: index) },
-            onSetFunction: { editState.setFieldToFunction(at: index, function: $0) }
+            onSetFunction: { editState.setFieldToFunction(at: index, function: $0) },
+            onExpand: isJsonField ? { expandedJsonFieldId = field.id } : nil
         )
     }
 }

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - libSQL / Turso database support via downloadable plugin
+- JSON viewer with Text/Tree toggle for query results — tree view with expand/collapse, search, copy key path
 - MCP server: built-in Model Context Protocol server lets AI tools (Claude Desktop, Claude Code, Cursor) browse schemas, run queries, and export data through TablePro's connections
 - MCP server: connected clients list in Settings and status menu item showing server state
 - Import connections from TablePlus, Sequel Ace, and DBeaver with one-click migration

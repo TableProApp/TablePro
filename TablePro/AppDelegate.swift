@@ -99,7 +99,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         PluginManager.shared.loadPlugins()
         ConnectionStorage.shared.migratePluginSecureFieldsIfNeeded()
 
-        Task { @MainActor in
+        Task {
             LicenseManager.shared.startPeriodicValidation()
         }
 
@@ -176,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let rejected = notification.object as? [(name: String, reason: String)],
               !rejected.isEmpty else { return }
         let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
-        Task { @MainActor in
+        Task {
             let alert = NSAlert()
             alert.messageText = String(
                 format: String(localized: "%d plugin(s) could not be loaded"),

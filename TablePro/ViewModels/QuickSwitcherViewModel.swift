@@ -133,7 +133,7 @@ internal final class QuickSwitcherViewModel {
     /// Debounced filter update
     func updateFilter() {
         filterTask?.cancel()
-        filterTask = Task { @MainActor in
+        filterTask = Task {
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
             applyFilter()

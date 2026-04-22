@@ -189,21 +189,25 @@ If ENUM/SET metadata is unavailable (e.g., from a complex query), the cell falls
   />
 </Frame>
 
-### JSON Editor
+### JSON Viewer
 
-JSON/JSONB cells open a dedicated editor popover with real-time validation. Invalid JSON triggers a confirmation before saving. Values are minified on save.
+Double-click a JSON cell to open the viewer. Switch between **Text** and **Tree** modes with the toggle at the top.
+
+Text mode shows syntax-highlighted JSON with brace matching. Tree mode shows a collapsible outline you can search, expand/collapse all, and right-click to copy values or key paths like `$.users[0].email`.
+
+Values are compacted on save. Invalid JSON falls back to text mode.
 
 {/* Screenshot: JSON editor with validation */}
-<Frame caption="JSON editor with validation">
+<Frame caption="JSON viewer with Text/Tree toggle">
   <img
     className="block dark:hidden"
     src="/images/json-editor-popover.png"
-    alt="JSON editor with validation"
+    alt="JSON viewer"
   />
   <img
     className="hidden dark:block"
     src="/images/json-editor-popover-dark.png"
-    alt="JSON editor with validation"
+    alt="JSON viewer"
   />
 </Frame>
 
@@ -285,7 +289,7 @@ When a row is selected, the inspector shows all column values with full content:
 
 - Search columns by name
 - TEXT/VARCHAR columns get a multi-line editor
-- JSON/JSONB columns display syntax-highlighted JSON with brace matching
+- JSON/JSONB columns show a compact preview with an expand button for the full JSON viewer
 - Edits here are queued like inline edits
 
 ### Table Info Mode
