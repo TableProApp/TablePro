@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */; };
+		5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEED2F7F893000D028D1 /* TableProAnalytics */; };
 		5A87EEED2F7F893000D028D0 /* TableProSync in Frameworks */ = {isa = PBXBuildFile; productRef = 5A87EEEC2F7F893000D028D0 /* TableProSync */; };
 		5AA136062F82610F00ADCD58 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136052F82610F00ADCD58 /* WidgetKit.framework */; };
 		5AA136082F82610F00ADCD58 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5AA136072F82610F00ADCD58 /* SwiftUI.framework */; };
@@ -49,6 +51,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		5A87ECDD2F7F88F200D028D0 /* AIPromptTemplates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIPromptTemplates.swift; sourceTree = "<group>"; };
 		5A87ECDE2F7F88F200D028D0 /* AIPromptTemplates+InlineSuggest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AIPromptTemplates+InlineSuggest.swift"; sourceTree = "<group>"; };
 		5A87ECDF2F7F88F200D028D0 /* AIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIProvider.swift; sourceTree = "<group>"; };
@@ -455,18 +458,18 @@
 		5A87EEAD2F7F88F200D028D0 /* RegistryPluginDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegistryPluginDetailView.swift; sourceTree = "<group>"; };
 		5A87EEAF2F7F88F200D028D0 /* AISettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AISettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB02F7F88F200D028D0 /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
-		5A87EEB12F7F88F200D028D0 /* DataGridSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataGridSettingsView.swift; sourceTree = "<group>"; };
+
 		5A87EEB22F7F88F200D028D0 /* EditorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB32F7F88F200D028D0 /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
-		5A87EEB42F7F88F200D028D0 /* HistorySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistorySettingsView.swift; sourceTree = "<group>"; };
+
 		5A87EEB52F7F88F200D028D0 /* KeyboardSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEB62F7F88F200D028D0 /* LicenseActivationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseActivationSheet.swift; sourceTree = "<group>"; };
-		5A87EEB72F7F88F200D028D0 /* LicenseSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseSettingsView.swift; sourceTree = "<group>"; };
+
 		5A87EEB82F7F88F200D028D0 /* LinkedFoldersSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedFoldersSection.swift; sourceTree = "<group>"; };
 		5A87EEB92F7F88F200D028D0 /* PluginsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginsSettingsView.swift; sourceTree = "<group>"; };
 		5A87EEBA2F7F88F200D028D0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5A87EEBB2F7F88F200D028D0 /* ShortcutRecorderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutRecorderView.swift; sourceTree = "<group>"; };
-		5A87EEBC2F7F88F200D028D0 /* SyncSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSettingsView.swift; sourceTree = "<group>"; };
+
 		5A87EEBD2F7F88F200D028D0 /* ThemePreviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePreviewCard.swift; sourceTree = "<group>"; };
 		5A87EEBF2F7F88F200D028D0 /* DoubleClickDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleClickDetector.swift; sourceTree = "<group>"; };
 		5A87EEC02F7F88F200D028D0 /* FavoriteEditDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteEditDialog.swift; sourceTree = "<group>"; };
@@ -580,6 +583,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7E81B12F95F23600EEF236 /* TableProAnalytics in Frameworks */,
 				5AA3133A2F7EA5B4008EBA97 /* LibPQ.xcframework in Frameworks */,
 				5AB9F3EF2F7C1D03001F3337 /* TableProQuery in Frameworks */,
 				5AA313402F7EA5B4008EBA97 /* MariaDB.xcframework in Frameworks */,
@@ -1484,18 +1488,18 @@
 				5A87EEAE2F7F88F200D028D0 /* Plugins */,
 				5A87EEAF2F7F88F200D028D0 /* AISettingsView.swift */,
 				5A87EEB02F7F88F200D028D0 /* AppearanceSettingsView.swift */,
-				5A87EEB12F7F88F200D028D0 /* DataGridSettingsView.swift */,
+
 				5A87EEB22F7F88F200D028D0 /* EditorSettingsView.swift */,
 				5A87EEB32F7F88F200D028D0 /* GeneralSettingsView.swift */,
-				5A87EEB42F7F88F200D028D0 /* HistorySettingsView.swift */,
+
 				5A87EEB52F7F88F200D028D0 /* KeyboardSettingsView.swift */,
 				5A87EEB62F7F88F200D028D0 /* LicenseActivationSheet.swift */,
-				5A87EEB72F7F88F200D028D0 /* LicenseSettingsView.swift */,
+
 				5A87EEB82F7F88F200D028D0 /* LinkedFoldersSection.swift */,
 				5A87EEB92F7F88F200D028D0 /* PluginsSettingsView.swift */,
 				5A87EEBA2F7F88F200D028D0 /* SettingsView.swift */,
 				5A87EEBB2F7F88F200D028D0 /* ShortcutRecorderView.swift */,
-				5A87EEBC2F7F88F200D028D0 /* SyncSettingsView.swift */,
+
 				5A87EEBD2F7F88F200D028D0 /* ThemePreviewCard.swift */,
 			);
 			path = Settings;
@@ -1634,6 +1638,7 @@
 				5AA136092F82610F00ADCD58 /* TableProWidget */,
 				5AA313332F7EA5B4008EBA97 /* Frameworks */,
 				5AB9F3DA2F7C1C12001F3337 /* Products */,
+				5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1695,6 +1700,7 @@
 				5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */,
 				5AB9F3EE2F7C1D03001F3337 /* TableProQuery */,
 				5A87EEEC2F7F893000D028D0 /* TableProSync */,
+				5A87EEED2F7F893000D028D1 /* TableProAnalytics */,
 			);
 			productName = TableProMobile;
 			productReference = 5AB9F3D92F7C1C12001F3337 /* TableProMobile.app */;
@@ -1753,6 +1759,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A72D6232F97A69500E2ADE0 /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1791,7 +1798,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
@@ -1823,7 +1830,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
@@ -1850,6 +1857,7 @@
 		};
 		5AB9F3E22F7C1C13001F3337 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1979,7 +1987,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -2016,13 +2024,14 @@
 		};
 		5AB9F3E62F7C1C13001F3337 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = D7HJ5TFYCU;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -2102,20 +2111,29 @@
 			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProSync;
 		};
+		5A87EEED2F7F893000D028D1 /* TableProAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
+			productName = TableProAnalytics;
+		};
 		5AB9F3E82F7C1D03001F3337 /* TableProDatabase */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProDatabase;
 		};
 		5AB9F3EA2F7C1D03001F3337 /* TableProModels */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProModels;
 		};
 		5AB9F3EC2F7C1D03001F3337 /* TableProPluginKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProPluginKit;
 		};
 		5AB9F3EE2F7C1D03001F3337 /* TableProQuery */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 5AB9F3E72F7C1D03001F3337 /* XCLocalSwiftPackageReference "../Packages/TableProCore" */;
 			productName = TableProQuery;
 		};
 /* End XCSwiftPackageProductDependency section */

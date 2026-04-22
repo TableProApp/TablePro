@@ -76,6 +76,7 @@
               "features/safe-mode",
               "features/connection-sharing",
               "features/terminal",
+              "features/mcp",
               "features/icloud-sync",
               "features/ssh-profiles"
             ]

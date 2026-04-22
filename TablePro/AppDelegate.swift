@@ -108,6 +108,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SyncCoordinator.shared.start()
         LinkedFolderWatcher.shared.start()
 
+        if AppSettingsManager.shared.mcp.enabled {
+            Task {
+                await MCPServerManager.shared.start(port: UInt16(clamping: AppSettingsManager.shared.mcp.port))
+            }
+        }
+
         Task.detached(priority: .background) {
             _ = QueryHistoryStorage.shared
         }
@@ -205,6 +211,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Task {
+            await MCPServerManager.shared.stop()
+        }
         LinkedFolderWatcher.shared.stop()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }

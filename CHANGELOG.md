@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - JSON viewer with Text/Tree toggle for query results — tree view with expand/collapse, search, copy key path
+- MCP server: built-in Model Context Protocol server lets AI tools (Claude Desktop, Claude Code, Cursor) browse schemas, run queries, and export data through TablePro's connections
+- MCP server: connected clients list in Settings and status menu item showing server state
 - Import connections from TablePlus, Sequel Ace, and DBeaver with one-click migration
 - Embedded database CLI terminal (View > Open Terminal or Ctrl+Cmd+`) auto-launches mysql, psql, redis-cli, etc. for the active connection
 - Structure tab: modify existing tables (add, modify, drop columns, indexes, foreign keys, primary keys)

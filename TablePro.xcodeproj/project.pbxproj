@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
 		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
+		5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000010 /* TableProAnalytics */; };
 		5A860000A00000000 /* TableProPluginKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A861000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A862000A00000000 /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -584,6 +585,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */,
+				5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */,
 				5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */,
 				5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */,
 				5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */,
@@ -946,6 +948,7 @@
 				5ACE00012F4F00000000000C /* MarkdownUI */,
 				5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */,
 				5A3A69B92F976F38000AC5B2 /* GhosttyTheme */,
+				5ACE00012F4F000000000010 /* TableProAnalytics */,
 			);
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
@@ -1486,6 +1489,7 @@
 				5A0000012F4F000000000100 /* XCLocalSwiftPackageReference "LocalPackages/CodeEditLanguages" */,
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
 				5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
+				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A1091C82EF17EDC0055EA7C /* Products */;
@@ -3657,6 +3661,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = LocalPackages/CodeEditSourceEditor;
 		};
+		5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TableProCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -3731,6 +3739,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */;
 			productName = OracleNIO;
+		};
+		5ACE00012F4F000000000010 /* TableProAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TableProAnalytics;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

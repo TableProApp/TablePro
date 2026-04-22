@@ -53,7 +53,7 @@ final class AppSettingsManager {
                 highlightCurrentLine: editor.highlightCurrentLine,
                 showLineNumbers: editor.showLineNumbers,
                 tabWidth: editor.clampedTabWidth,
-                autoIndent: editor.autoIndent,
+
                 wordWrap: editor.wordWrap
             )
             notifyChange(.editorSettingsDidChange)
@@ -142,6 +142,25 @@ final class AppSettingsManager {
         }
     }
 
+    var mcp: MCPSettings {
+        didSet {
+            storage.saveMCP(mcp)
+            SyncChangeTracker.shared.markDirty(.settings, id: "mcp")
+            let enabledChanged = mcp.enabled != oldValue.enabled
+            let portChanged = mcp.port != oldValue.port
+            if enabledChanged || portChanged {
+                let settings = mcp
+                Task {
+                    if settings.enabled {
+                        await MCPServerManager.shared.restart(port: UInt16(clamping: settings.port))
+                    } else {
+                        await MCPServerManager.shared.stop()
+                    }
+                }
+            }
+        }
+    }
+
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     /// Reentrancy guard for didSet validation that re-assigns the property.
     @ObservationIgnored private var isValidating = false
@@ -165,6 +184,7 @@ final class AppSettingsManager {
         self.ai = storage.loadAI()
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
+        self.mcp = storage.loadMCP()
 
         // Apply language immediately
         general.language.apply()
@@ -181,7 +201,6 @@ final class AppSettingsManager {
             highlightCurrentLine: editor.highlightCurrentLine,
             showLineNumbers: editor.showLineNumbers,
             tabWidth: editor.clampedTabWidth,
-            autoIndent: editor.autoIndent,
             wordWrap: editor.wordWrap
         )
 
@@ -242,6 +261,7 @@ final class AppSettingsManager {
         ai = .default
         sync = .default
         terminal = .default
+        mcp = .default
         storage.resetToDefaults()
     }
 }

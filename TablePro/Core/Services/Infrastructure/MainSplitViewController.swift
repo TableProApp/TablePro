@@ -152,6 +152,15 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         super.viewWillAppear()
         guard let window = view.window else { return }
 
+        let defaultSize = NSSize(width: 1_200, height: 800)
+        if window.frame.width < defaultSize.width || window.frame.height < defaultSize.height {
+            window.setContentSize(NSSize(
+                width: max(window.frame.width, defaultSize.width),
+                height: max(window.frame.height, defaultSize.height)
+            ))
+            window.center()
+        }
+
         window.title = windowTitle
         if let session = currentSession {
             window.subtitle = session.connection.name

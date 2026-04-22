@@ -20,6 +20,7 @@ struct ConnectionListView: View {
     @AppStorage("groupByGroup") private var groupByGroup = false
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
+    @State private var showingSettings = false
 
     private var showDeleteConfirmation: Binding<Bool> {
         Binding(
@@ -145,6 +146,18 @@ struct ConnectionListView: View {
         }
         .sheet(isPresented: $showingTagManagement) {
             TagManagementView()
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(String(localized: "Done")) {
+                                showingSettings = false
+                            }
+                        }
+                    }
+            }
         }
     }
 
@@ -274,6 +287,11 @@ struct ConnectionListView: View {
                     showingTagManagement = true
                 } label: {
                     Label("Manage Tags", systemImage: "tag")
+                }
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
                 }
             }
         } label: {

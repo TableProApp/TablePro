@@ -1922,6 +1922,9 @@
         }
       }
     },
+    "%lld." : {
+
+    },
     "%lld%%" : {
       "localizations" : {
         "tr" : {
@@ -3097,6 +3100,9 @@
         }
       }
     },
+    "Account" : {
+
+    },
     "Account ID" : {
       "localizations" : {
         "en" : {
@@ -3871,6 +3877,12 @@
         }
       }
     },
+    "AI access is disabled for this connection" : {
+
+    },
+    "AI access policies are configured per-connection in each connection's settings." : {
+
+    },
     "AI Chat" : {
       "localizations" : {
         "tr" : {
@@ -4535,6 +4547,9 @@
           }
         }
       }
+    },
+    "An MCP client wants to access '%@' (%@). Allow?" : {
+
     },
     "An unknown sync error occurred: %@" : {
       "localizations" : {
@@ -5581,6 +5596,7 @@
       }
     },
     "Auto-indent" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7334,6 +7350,9 @@
         }
       }
     },
+    "Client:" : {
+
+    },
     "Clipboard is empty or contains no text data." : {
       "localizations" : {
         "tr" : {
@@ -8359,6 +8378,9 @@
         }
       }
     },
+    "Connected Clients" : {
+
+    },
     "Connected Threads" : {
 
     },
@@ -9353,6 +9375,9 @@
           }
         }
       }
+    },
+    "Copy to clipboard" : {
+
     },
     "Copy Value" : {
       "localizations" : {
@@ -11291,6 +11316,9 @@
         }
       }
     },
+    "Default row limit" : {
+
+    },
     "Default value" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11902,6 +11930,9 @@
           }
         }
       }
+    },
+    "Deny" : {
+
     },
     "Destructive Changes" : {
 
@@ -13091,6 +13122,7 @@
       }
     },
     "Editing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -13288,6 +13320,9 @@
           }
         }
       }
+    },
+    "Enable MCP Server" : {
+
     },
     "Enable preview tabs" : {
       "localizations" : {
@@ -15869,6 +15904,9 @@
           }
         }
       }
+    },
+    "Failed: %@" : {
+
     },
     "false" : {
       "localizations" : {
@@ -21016,6 +21054,9 @@
         }
       }
     },
+    "Log MCP queries in history" : {
+
+    },
     "Maintenance" : {
       "localizations" : {
         "tr" : {
@@ -21377,6 +21418,9 @@
         }
       }
     },
+    "Maximum row limit" : {
+
+    },
     "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections." : {
       "localizations" : {
         "tr" : {
@@ -21398,6 +21442,36 @@
           }
         }
       }
+    },
+    "MCP Access Request" : {
+
+    },
+    "MCP Configuration" : {
+
+    },
+    "MCP query execution" : {
+
+    },
+    "MCP Server" : {
+
+    },
+    "MCP Server: Failed" : {
+
+    },
+    "MCP Server: Running" : {
+
+    },
+    "MCP Server: Running (%d clients)" : {
+
+    },
+    "MCP Server: Starting..." : {
+
+    },
+    "MCP Server: Stopped" : {
+
+    },
+    "MCP Setup" : {
+
     },
     "Medium" : {
       "extractionState" : "stale",
@@ -22822,6 +22896,9 @@
           }
         }
       }
+    },
+    "No clients connected" : {
+
     },
     "No Columns Defined" : {
       "localizations" : {
@@ -26383,6 +26460,9 @@
         }
       }
     },
+    "Port is already in use. Try a different port or close the other process." : {
+
+    },
     "postgresql://user:password@host:5432/database" : {
       "localizations" : {
         "tr" : {
@@ -27811,6 +27891,9 @@
         }
       }
     },
+    "Query History" : {
+
+    },
     "Query History:" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27848,6 +27931,9 @@
       }
     },
     "Query results exceeding this limit show Load More / Fetch All buttons" : {
+
+    },
+    "Query timeout" : {
 
     },
     "Query timeout:" : {
@@ -29520,6 +29606,7 @@
 
     },
     "Retention" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30075,6 +30162,9 @@
           }
         }
       }
+    },
+    "Running on port %d" : {
+
     },
     "Running Threads" : {
 
@@ -31139,6 +31229,9 @@
           }
         }
       }
+    },
+    "seconds" : {
+
     },
     "Secret Access Key" : {
       "localizations" : {
@@ -33164,6 +33257,9 @@
         }
       }
     },
+    "SQL Editor" : {
+
+    },
     "SQL Functions" : {
       "localizations" : {
         "tr" : {
@@ -33739,6 +33835,9 @@
         }
       }
     },
+    "Starting..." : {
+
+    },
     "starts with" : {
       "localizations" : {
         "tr" : {
@@ -34064,6 +34163,9 @@
           }
         }
       }
+    },
+    "Stopped" : {
+
     },
     "Streaming failed: %@" : {
       "localizations" : {
@@ -34406,6 +34508,7 @@
       }
     },
     "Sync (Pro)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34580,6 +34683,9 @@
           }
         }
       }
+    },
+    "Sync Status" : {
+
     },
     "Sync zone not found. A full sync will be performed." : {
       "localizations" : {
@@ -37792,6 +37898,9 @@
         }
       }
     },
+    "Unknown" : {
+
+    },
     "Unknown error" : {
       "localizations" : {
         "tr" : {
@@ -38284,6 +38393,12 @@
           }
         }
       }
+    },
+    "User approval timed out after 30 seconds" : {
+
+    },
+    "User denied MCP access to this connection" : {
+
     },
     "User Sessions" : {
 

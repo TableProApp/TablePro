@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>AnalyticsHMACSecret</key>
+	<string>$(ANALYTICS_HMAC_SECRET)</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>com.TablePro.viewConnection</string>

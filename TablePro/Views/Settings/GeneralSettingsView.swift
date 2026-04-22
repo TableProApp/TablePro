@@ -2,8 +2,6 @@
 //  GeneralSettingsView.swift
 //  TablePro
 //
-//  Settings for startup behavior and confirmations
-//
 
 import Sparkle
 import SwiftUI
@@ -11,14 +9,15 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @Binding var settings: GeneralSettings
     @Binding var tabSettings: TabSettings
+    @Binding var historySettings: HistorySettings
     var updaterBridge: UpdaterBridge
     var onResetAll: () -> Void
+
     @State private var initialLanguage: AppLanguage?
     @State private var showResetConfirmation = false
 
     private static let standardTimeouts = [10, 20, 30, 40, 50, 60, 90, 120, 180, 300, 600]
 
-    /// Timeout options including the current value if it's non-standard
     private var queryTimeoutOptions: [Int] {
         let current = settings.queryTimeoutSeconds
         if current > 0, !Self.standardTimeouts.contains(current) {
@@ -47,6 +46,14 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Tabs") {
+                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
+                    .help("Single-clicking a table opens a temporary tab that gets replaced on next click.")
+
+                Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
+                    .help("When enabled, tabs from different connections share the same window instead of opening separate windows.")
+            }
+
             Section("Query Execution") {
                 Picker("Query timeout:", selection: $settings.queryTimeoutSeconds) {
                     Text("No limit").tag(0)
@@ -56,6 +63,8 @@ struct GeneralSettingsView: View {
                 }
                 .help(String(localized: "Maximum time to wait for a query to complete. Set to 0 for no limit. Applied to new connections."))
             }
+
+            HistorySection(settings: $historySettings)
 
             Section("Software Update") {
                 Toggle("Automatically check for updates", isOn: $settings.automaticallyCheckForUpdates)
@@ -69,26 +78,12 @@ struct GeneralSettingsView: View {
                 .disabled(!updaterBridge.canCheckForUpdates)
             }
 
-            Section("Privacy") {
+            Section {
                 Toggle("Share anonymous usage data", isOn: $settings.shareAnalytics)
-
+            } header: {
+                Text("Privacy")
+            } footer: {
                 Text("Help improve TablePro by sharing anonymous usage statistics (no personal data or queries).")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Tabs") {
-                Toggle("Enable preview tabs", isOn: $tabSettings.enablePreviewTabs)
-
-                Text("Single-clicking a table opens a temporary tab that gets replaced on next click.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Group all connections in one window", isOn: $tabSettings.groupAllConnectionTabs)
-
-                Text("When enabled, tabs from different connections share the same window instead of opening separate windows.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -100,17 +95,13 @@ struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .alert(String(localized: "Reset All Settings"), isPresented: $showResetConfirmation) {
-            Button(String(localized: "Reset"), role: .destructive) {
-                onResetAll()
-            }
+            Button(String(localized: "Reset"), role: .destructive) { onResetAll() }
             Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
             Text("This will reset all settings across every section to their default values.")
         }
         .onAppear {
-            if initialLanguage == nil {
-                initialLanguage = settings.language
-            }
+            if initialLanguage == nil { initialLanguage = settings.language }
             updaterBridge.updater.automaticallyChecksForUpdates = settings.automaticallyCheckForUpdates
         }
     }
@@ -120,8 +111,9 @@ struct GeneralSettingsView: View {
     GeneralSettingsView(
         settings: .constant(.default),
         tabSettings: .constant(.default),
+        historySettings: .constant(.default),
         updaterBridge: UpdaterBridge(),
         onResetAll: {}
     )
-    .frame(width: 450, height: 300)
+    .frame(width: 450, height: 500)
 }
