@@ -1138,63 +1138,6 @@ extension PluginMetadataRegistry {
                     ]
                 )
             )),
-            ("libSQL", PluginMetadataSnapshot(
-                displayName: "libSQL / Turso", iconName: "libsql-icon", defaultPort: 0,
-                requiresAuthentication: false, supportsForeignKeys: true, supportsSchemaEditing: true,
-                isDownloadable: true, primaryUrlScheme: "libsql", parameterStyle: .questionMark,
-                navigationModel: .standard, explainVariants: [
-                    ExplainVariant(id: "plan", label: "Query Plan", sqlPrefix: "EXPLAIN QUERY PLAN")
-                ],
-                pathFieldRole: .database,
-                supportsHealthMonitor: true, urlSchemes: ["libsql"], postConnectActions: [],
-                brandColorHex: "#4FF8D2",
-                queryLanguageName: "SQL", editorLanguage: .sql,
-                connectionMode: .apiOnly, supportsDatabaseSwitching: false,
-                supportsColumnReorder: false,
-                capabilities: PluginMetadataSnapshot.CapabilityFlags(
-                    supportsSchemaSwitching: false,
-                    supportsImport: false,
-                    supportsExport: true,
-                    supportsSSH: false,
-                    supportsSSL: false,
-                    supportsCascadeDrop: false,
-                    supportsForeignKeyDisable: true,
-                    supportsReadOnlyMode: true,
-                    supportsQueryProgress: false,
-                    requiresReconnectForDatabaseSwitch: false,
-                    supportsDropDatabase: false,
-                    supportsModifyColumn: false,
-                    supportsRenameColumn: true
-                ),
-                schema: PluginMetadataSnapshot.SchemaInfo(
-                    defaultSchemaName: "main",
-                    defaultGroupName: "main",
-                    tableEntityName: "Tables",
-                    defaultPrimaryKeyColumn: nil,
-                    immutableColumns: [],
-                    systemDatabaseNames: [],
-                    systemSchemaNames: [],
-                    fileExtensions: [],
-                    databaseGroupingStrategy: .flat,
-                    structureColumnFields: [.name, .type, .nullable, .defaultValue]
-                ),
-                editor: PluginMetadataSnapshot.EditorConfig(
-                    sqlDialect: d1Dialect,
-                    statementCompletions: [],
-                    columnTypesByCategory: d1ColumnTypes
-                ),
-                connection: PluginMetadataSnapshot.ConnectionConfig(
-                    additionalConnectionFields: [
-                        ConnectionField(
-                            id: "databaseUrl",
-                            label: String(localized: "Database URL"),
-                            placeholder: "https://your-db.turso.io",
-                            required: true,
-                            section: .authentication
-                        )
-                    ]
-                )
-            ))
         ] + cloudPluginDefaults()
     }
     // swiftlint:enable function_body_length

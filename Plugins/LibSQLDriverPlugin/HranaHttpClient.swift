@@ -278,7 +278,7 @@ final class HranaHttpClient: @unchecked Sendable {
             Self.logger.warning("Hrana rate limited. Retry-After: \(retryAfter ?? "not specified")")
             if let seconds = retryAfter {
                 throw HranaHttpError(
-                    message: String(localized: "Rate limited. Retry after \(seconds) seconds.")
+                    message: String(format: String(localized: "Rate limited. Retry after %@ seconds."), seconds)
                 )
             } else {
                 throw HranaHttpError(

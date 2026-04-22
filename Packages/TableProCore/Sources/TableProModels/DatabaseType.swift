@@ -25,11 +25,12 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
     public static let cloudflareD1 = DatabaseType(rawValue: "Cloudflare D1")
     public static let dynamodb = DatabaseType(rawValue: "DynamoDB")
     public static let bigquery = DatabaseType(rawValue: "BigQuery")
+    public static let libsql = DatabaseType(rawValue: "libSQL")
 
     public static let allKnownTypes: [DatabaseType] = [
         .mysql, .mariadb, .postgresql, .sqlite, .redis, .mongodb,
         .clickhouse, .mssql, .oracle, .duckdb, .cassandra, .redshift,
-        .etcd, .cloudflareD1, .dynamodb, .bigquery
+        .etcd, .cloudflareD1, .dynamodb, .bigquery, .libsql
     ]
 
     /// Icon name for this database type — asset catalog name (e.g. "mysql-icon") or SF Symbol fallback
@@ -51,6 +52,7 @@ public struct DatabaseType: Hashable, Codable, Sendable, RawRepresentable {
         case .cloudflareD1: return "cloudflare-d1-icon"
         case .dynamodb: return "dynamodb-icon"
         case .bigquery: return "bigquery-icon"
+        case .libsql: return "libsql-icon"
         default: return "externaldrive"
         }
     }
