@@ -26,7 +26,7 @@ extension MainContentCoordinator {
             return
         }
 
-        Task { @MainActor in
+        Task {
             let window = NSApp.keyWindow
             let confirmed = await confirmDiscardChanges(action: action, window: window)
             if confirmed {

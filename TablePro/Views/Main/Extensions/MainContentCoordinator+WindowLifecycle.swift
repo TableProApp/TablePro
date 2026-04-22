@@ -80,7 +80,7 @@ extension MainContentCoordinator {
         lastResignKeyDate = Date()
 
         evictionTask?.cancel()
-        evictionTask = Task { @MainActor [weak self] in
+        evictionTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             guard let self, !Task.isCancelled else { return }
             Self.lifecycleLogger.debug(

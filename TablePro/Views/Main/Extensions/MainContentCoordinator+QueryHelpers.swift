@@ -527,7 +527,7 @@ extension MainContentCoordinator {
         // Show error alert (with AI fix option when AI is enabled)
         let errorMessage = error.localizedDescription
         let queryCopy = sql
-        Task { @MainActor in
+        Task {
             if AppSettingsManager.shared.ai.enabled {
                 let wantsAIFix = await AlertHelper.showQueryErrorWithAIOption(
                     title: String(localized: "Query Execution Failed"),

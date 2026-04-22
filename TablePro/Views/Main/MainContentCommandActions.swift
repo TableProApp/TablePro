@@ -118,7 +118,7 @@ final class MainContentCommandActions {
     private func setupSaveAction() {
         rightPanelState.onSave = { [weak self] in
             guard let self else { return }
-            Task { @MainActor in
+            Task {
                 do {
                     try await self.coordinator?.saveSidebarEdits(
                         selectedRowIndices: self.selectedRowIndices.wrappedValue,
@@ -363,7 +363,7 @@ final class MainContentCommandActions {
         let seq = MainContentCoordinator.nextSwitchSeq()
         Self.logger.info("[close] closeTab seq=\(seq) hasUnsavedChanges=\(self.hasUnsavedChanges)")
         if hasUnsavedChanges {
-            Task { @MainActor in
+            Task {
                 let keyWindow = NSApp.keyWindow
                 let result = await AlertHelper.confirmSaveChanges(
                     message: String(localized: "Your changes will be lost if you don't save them."),
@@ -454,7 +454,7 @@ final class MainContentCommandActions {
         guard let tab = coordinator?.tabManager.selectedTab,
               let url = tab.sourceFileURL else { return }
         let content = tab.query
-        Task { @MainActor in
+        Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
                 if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
@@ -573,7 +573,7 @@ final class MainContentCommandActions {
               tab.tabType == .query else { return }
         let content = tab.query
         let suggestedName = tab.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
-        Task { @MainActor in
+        Task {
             guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
@@ -589,7 +589,7 @@ final class MainContentCommandActions {
     }
 
     func openSQLFile() {
-        Task { @MainActor in
+        Task {
             guard let urls = await SQLFileService.showOpenPanel() else { return }
             NotificationCenter.default.post(name: .openSQLFiles, object: urls)
         }
@@ -786,7 +786,7 @@ final class MainContentCommandActions {
     }
 
     private func handleDatabaseDidConnect() {
-        Task { @MainActor in
+        Task {
             if let driver = DatabaseManager.shared.driver(for: self.connection.id) {
                 coordinator?.toolbarState.databaseVersion = driver.serverVersion
             }
@@ -820,7 +820,7 @@ final class MainContentCommandActions {
     private func handleOpenSQLFiles(_ notification: Notification) {
         guard let urls = notification.object as? [URL] else { return }
 
-        Task { @MainActor in
+        Task {
             for url in urls {
                 if let existingWindow = WindowLifecycleMonitor.shared.window(forSourceFile: url) {
                     existingWindow.makeKeyAndOrderFront(nil)

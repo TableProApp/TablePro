@@ -191,7 +191,7 @@ final class InlineSuggestionManager {
         generationID &+= 1
         let myGeneration = generationID
 
-        currentTask = Task { [weak self] in
+        currentTask = Task { @MainActor [weak self] in
             guard let self else { return }
             self.suggestionOffset = cursorOffset
 

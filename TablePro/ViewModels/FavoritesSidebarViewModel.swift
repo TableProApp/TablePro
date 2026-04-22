@@ -103,7 +103,7 @@ internal final class FavoritesSidebarViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+            Task { [weak self] in
                 await self?.loadFavorites()
             }
         }
@@ -213,10 +213,8 @@ internal final class FavoritesSidebarViewModel {
             let success = await manager.addFolder(folder)
             if success {
                 expandedFolderIds.insert(folder.id)
-                // The notification observer triggers reload; schedule rename after it settles
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                    self?.startRenameFolder(folder)
-                }
+                try? await Task.sleep(for: .milliseconds(100))
+                startRenameFolder(folder)
             }
         }
     }

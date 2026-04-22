@@ -114,7 +114,7 @@ internal final class SQLFavoriteManager: @unchecked Sendable {
     // MARK: - Notifications
 
     private func postUpdateNotification() {
-        Task { @MainActor in
+        Task {
             NotificationCenter.default.post(name: .sqlFavoritesDidUpdate, object: nil)
         }
     }

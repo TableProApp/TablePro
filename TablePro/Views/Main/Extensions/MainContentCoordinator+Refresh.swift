@@ -24,7 +24,7 @@ extension MainContentCoordinator {
         let hasEditedCells = changeManager.hasChanges
 
         if hasEditedCells || hasPendingTableOps {
-            Task { @MainActor in
+            Task {
                 let window = NSApp.keyWindow
                 let confirmed = await confirmDiscardChanges(action: .refresh, window: window)
                 if confirmed {

@@ -38,13 +38,13 @@ extension MainContentCoordinator {
 
         if level == .silent {
             if statements.count == 1 {
-                Task { @MainActor in
+                Task {
                     let window = NSApp.keyWindow
                     guard await confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
                     executeQueryInternal(statements[0])
                 }
             } else {
-                Task { @MainActor in
+                Task {
                     let window = NSApp.keyWindow
                     let dangerousStatements = statements.filter { isDangerousQuery($0) }
                     if !dangerousStatements.isEmpty {
@@ -56,7 +56,7 @@ extension MainContentCoordinator {
         } else if level.requiresConfirmation {
             guard !isShowingSafeModePrompt else { return }
             isShowingSafeModePrompt = true
-            Task { @MainActor in
+            Task {
                 defer { isShowingSafeModePrompt = false }
                 let window = NSApp.keyWindow
                 let combinedSQL = statements.joined(separator: "\n")

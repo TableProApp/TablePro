@@ -72,7 +72,7 @@ extension MainContentCoordinator {
     }
 
     func editViewDefinition(_ viewName: String) {
-        Task { @MainActor in
+        Task {
             do {
                 guard let driver = DatabaseManager.shared.driver(for: self.connection.id) else { return }
                 let definition = try await driver.fetchViewDefinition(view: viewName)
@@ -164,7 +164,7 @@ extension MainContentCoordinator {
             operation: operation, table: tableName, options: options
         ) else { return }
 
-        Task { @MainActor [weak self] in
+        Task { [weak self] in
             guard let self else { return }
             do {
                 var lastResult: QueryResult?

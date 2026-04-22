@@ -21,7 +21,7 @@ extension MainContentCoordinator {
             let column = userInfo["column"] as? String
             let operation = userInfo["operation"] as? String
             let value = userInfo["value"] as? String
-            Task { @MainActor [weak self] in
+            Task { [weak self] in
                 self?.applyURLFilterValues(
                     condition: condition, column: column,
                     operation: operation, value: value
@@ -39,7 +39,7 @@ extension MainContentCoordinator {
                   targetId == connId,
                   let schema = userInfo["schema"] as? String else { return }
 
-            Task { @MainActor [weak self] in
+            Task { [weak self] in
                 guard let self else { return }
 
                 if PluginManager.shared.supportsSchemaSwitching(for: self.connection.type) {

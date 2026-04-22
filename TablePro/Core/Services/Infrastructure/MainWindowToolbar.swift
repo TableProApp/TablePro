@@ -81,8 +81,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
 
     // MARK: - Identifiers
 
-    private static let connection = NSToolbarItem.Identifier("com.TablePro.toolbar.connection")
-    private static let database = NSToolbarItem.Identifier("com.TablePro.toolbar.database")
+    private static let connectionGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.connectionGroup")
     private static let refresh = NSToolbarItem.Identifier("com.TablePro.toolbar.refresh")
     private static let saveChanges = NSToolbarItem.Identifier("com.TablePro.toolbar.saveChanges")
     private static let principal = NSToolbarItem.Identifier("com.TablePro.toolbar.principal")
@@ -106,8 +105,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         [
             Self.sidebarToggle,
             .sidebarTrackingSeparator,
-            Self.connection,
-            Self.database,
+            Self.connectionGroup,
             Self.refreshSaveGroup,
             .flexibleSpace,
             Self.principal,
@@ -150,12 +148,12 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         switch itemIdentifier {
         case Self.sidebarToggle:
             return makeSidebarToggleItem(coordinator: coordinator)
-        case Self.connection:
+        case Self.connectionGroup:
             return hostingItem(id: itemIdentifier, label: String(localized: "Connection"),
-                               content: ConnectionToolbarButton(coordinator: coordinator))
-        case Self.database:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Database"),
-                               content: DatabaseToolbarButton(coordinator: coordinator))
+                               content: HStack(spacing: 4) {
+                                   ConnectionToolbarButton(coordinator: coordinator)
+                                   DatabaseToolbarButton(coordinator: coordinator)
+                               })
         case Self.refresh:
             return hostingItem(id: itemIdentifier, label: String(localized: "Refresh"),
                                content: RefreshToolbarButton(coordinator: coordinator))
@@ -283,19 +281,18 @@ private struct DatabaseToolbarButton: View {
     var body: some View {
         let state = coordinator.toolbarState
         let supportsSwitch = PluginManager.shared.supportsDatabaseSwitching(for: state.databaseType)
-        Button {
-            coordinator.commandActions?.openDatabaseSwitcher()
-        } label: {
-            Label("Database", systemImage: "cylinder")
+        if supportsSwitch {
+            Button {
+                coordinator.commandActions?.openDatabaseSwitcher()
+            } label: {
+                Label("Database", systemImage: "cylinder")
+            }
+            .help(String(localized: "Open Database (⌘K)"))
+            .disabled(
+                state.connectionState != .connected
+                    || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
+            )
         }
-        .help(String(localized: "Open Database (⌘K)"))
-        .disabled(
-            !supportsSwitch
-                || state.connectionState != .connected
-                || PluginManager.shared.connectionMode(for: state.databaseType) == .fileBased
-        )
-        .opacity(supportsSwitch ? 1 : 0)
-        .allowsHitTesting(supportsSwitch)
     }
 }
 
@@ -415,20 +412,20 @@ private struct ResultsToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        Button {
-            coordinator.commandActions?.toggleResults()
-        } label: {
-            Label(
-                "Results",
-                systemImage: state.isResultsCollapsed
-                    ? "rectangle.bottomhalf.inset.filled"
-                    : "rectangle.inset.filled"
-            )
+        if !state.isTableTab {
+            Button {
+                coordinator.commandActions?.toggleResults()
+            } label: {
+                Label(
+                    "Results",
+                    systemImage: state.isResultsCollapsed
+                        ? "rectangle.bottomhalf.inset.filled"
+                        : "rectangle.inset.filled"
+                )
+            }
+            .help(String(localized: "Toggle Results (⌘⌥R)"))
+            .disabled(state.connectionState != .connected)
         }
-        .help(String(localized: "Toggle Results (⌘⌥R)"))
-        .disabled(state.connectionState != .connected)
-        .opacity(state.isTableTab ? 0 : 1)
-        .allowsHitTesting(!state.isTableTab)
     }
 }
 
@@ -496,20 +493,18 @@ private struct ImportToolbarButton: View {
 
     var body: some View {
         let state = coordinator.toolbarState
-        let supportsImport = PluginManager.shared.supportsImport(for: state.databaseType)
-        Button {
-            coordinator.commandActions?.importTables()
-        } label: {
-            Label("Import", systemImage: "square.and.arrow.down")
+        if PluginManager.shared.supportsImport(for: state.databaseType) {
+            Button {
+                coordinator.commandActions?.importTables()
+            } label: {
+                Label("Import", systemImage: "square.and.arrow.down")
+            }
+            .help(String(localized: "Import Data (⌘⇧I)"))
+            .disabled(
+                state.connectionState != .connected
+                    || state.safeModeLevel.blocksAllWrites
+            )
         }
-        .help(String(localized: "Import Data (⌘⇧I)"))
-        .disabled(
-            state.connectionState != .connected
-                || state.safeModeLevel.blocksAllWrites
-                || !supportsImport
-        )
-        .opacity(supportsImport ? 1 : 0)
-        .allowsHitTesting(supportsImport)
     }
 }
 

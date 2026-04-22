@@ -104,7 +104,7 @@ extension MainContentCoordinator {
                         "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.databaseName, privacy: .public)"
                     )
                     changeManager.reloadVersion += 1
-                    Task { @MainActor in
+                    Task {
                         await switchDatabase(to: newTab.databaseName)
                     }
                     return  // switchDatabase will re-execute the query
@@ -116,7 +116,7 @@ extension MainContentCoordinator {
             // flag so the lazy-load check below can re-execute the query.
             if newTab.isExecuting && newTab.resultRows.isEmpty && newTab.lastExecutedAt == nil {
                 let tabId = newId
-                Task { @MainActor [weak self] in
+                Task { [weak self] in
                     guard let self,
                           let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
                           self.tabManager.tabs[idx].isExecuting else { return }

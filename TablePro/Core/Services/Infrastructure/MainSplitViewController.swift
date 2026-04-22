@@ -411,7 +411,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
             },
             set: { [weak self] newValue in
                 guard let sessionId = self?.payload?.connectionId ?? self?.currentSession?.id else { return }
-                Task { @MainActor in
+                Task {
                     DatabaseManager.shared.updateSession(sessionId) { session in
                         set(&session, newValue)
                     }

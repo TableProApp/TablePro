@@ -449,7 +449,7 @@ extension MainContentCoordinator {
 
         let connId = connectionId
         let database = String(dbIndex)
-        redisDatabaseSwitchTask = Task { @MainActor [weak self] in
+        redisDatabaseSwitchTask = Task { [weak self] in
             guard let self else { return }
             do {
                 if let adapter = DatabaseManager.shared.driver(for: connId) as? PluginDriverAdapter {

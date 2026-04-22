@@ -39,7 +39,7 @@ final class VimKeyInterceptor {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor in
+            Task {
                 guard let self,
                       let closingWindow = notification.object as? NSWindow,
                       closingWindow.windowController is SuggestionController,

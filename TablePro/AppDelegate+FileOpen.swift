@@ -48,7 +48,7 @@ extension AppDelegate {
         let initialPayload = EditorTabPayload(connectionId: connectionId)
         WindowManager.shared.openTab(payload: initialPayload)
 
-        Task { @MainActor in
+        Task {
             do {
                 try await DatabaseManager.shared.connectToSession(connection)
                 for window in NSApp.windows where self.isWelcomeWindow(window) {
@@ -88,14 +88,14 @@ extension AppDelegate {
     func handleOpenURLs(_ urls: [URL]) {
         let deeplinks = urls.filter { $0.scheme == "tablepro" }
         if !deeplinks.isEmpty {
-            Task { @MainActor in
+            Task {
                 for url in deeplinks { await self.handleDeeplink(url) }
             }
         }
 
         let plugins = urls.filter { $0.pathExtension == "tableplugin" }
         if !plugins.isEmpty {
-            Task { @MainActor in
+            Task {
                 for url in plugins { await self.handlePluginInstall(url) }
             }
         }
@@ -103,7 +103,7 @@ extension AppDelegate {
         let databaseURLs = urls.filter { isDatabaseURL($0) }
         if !databaseURLs.isEmpty {
             suppressWelcomeWindow()
-            Task { @MainActor in
+            Task {
                 for url in databaseURLs { self.handleDatabaseURL(url) }
                 // endFileOpenSuppression is called here to match suppressWelcomeWindow above.
                 // Individual handlers no longer manage this flag.
@@ -114,7 +114,7 @@ extension AppDelegate {
         let databaseFiles = urls.filter { isDatabaseFile($0) }
         if !databaseFiles.isEmpty {
             suppressWelcomeWindow()
-            Task { @MainActor in
+            Task {
                 for url in databaseFiles {
                     guard let dbType = self.databaseTypeForFile(url) else { continue }
                     switch dbType {
@@ -245,7 +245,7 @@ extension AppDelegate {
         let deeplinkPayload = EditorTabPayload(connectionId: connection.id)
         WindowManager.shared.openTab(payload: deeplinkPayload)
 
-        Task { @MainActor in
+        Task {
             do {
                 // Confirm pre-connect script if present (deep links are external, so always confirm)
                 if let script = connection.preConnectScript,

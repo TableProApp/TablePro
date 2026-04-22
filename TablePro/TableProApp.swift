@@ -577,7 +577,7 @@ struct TableProApp: App {
 
     init() {
         // Perform startup cleanup of query history if auto-cleanup is enabled
-        Task { @MainActor in
+        Task {
             QueryHistoryManager.shared.performStartupCleanup()
         }
     }

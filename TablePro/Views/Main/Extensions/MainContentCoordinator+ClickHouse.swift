@@ -58,7 +58,7 @@ extension MainContentCoordinator {
         let explainSQL = "\(variant.sqlPrefix) \(stmt)"
         let tabId = tabManager.tabs[index].id
 
-        Task { @MainActor in
+        Task {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
             if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {

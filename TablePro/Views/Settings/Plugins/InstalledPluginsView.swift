@@ -46,7 +46,7 @@ struct InstalledPluginsView: View {
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 let ext = url.pathExtension.lowercased()
                 guard ext == "zip" || ext == "tableplugin" else { return }
-                Task { @MainActor in
+                Task {
                     installPlugin(from: url)
                 }
             }
@@ -318,7 +318,7 @@ struct InstalledPluginsView: View {
     }
 
     private func uninstallPlugin(_ plugin: PluginEntry) {
-        Task { @MainActor in
+        Task {
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(localized: "Uninstall Plugin?"),
                 message: String(format: String(localized: "\"%@\" will be removed from your system. This action cannot be undone."), plugin.name),
