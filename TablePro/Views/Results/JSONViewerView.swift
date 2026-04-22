@@ -63,7 +63,7 @@ internal struct JSONViewerView: View {
                 Text("Tree").tag(JSONViewMode.tree)
             }
             .pickerStyle(.segmented)
-            .frame(width: 140)
+            .fixedSize()
             Spacer()
             if viewMode == .text && isEditable {
                 Button {
@@ -183,7 +183,7 @@ internal struct JSONViewerView: View {
               let jsonObject = try? JSONSerialization.jsonObject(with: data),
               let compactData = try? JSONSerialization.data(
                   withJSONObject: jsonObject,
-                  options: [.withoutEscapingSlashes]
+                  options: [.sortedKeys, .withoutEscapingSlashes]
               ),
               let compactString = String(data: compactData, encoding: .utf8) else {
             return nil

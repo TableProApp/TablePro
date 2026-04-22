@@ -29,7 +29,8 @@ struct JSONEditorContentView: View {
             isEditable: true,
             onDismiss: onDismiss,
             onCommit: { newValue in
-                if newValue != initialValue {
+                let effective = newValue.isEmpty ? nil : newValue
+                if effective != initialValue {
                     onCommit(newValue)
                 }
             }

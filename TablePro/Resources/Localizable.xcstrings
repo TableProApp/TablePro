@@ -92,6 +92,9 @@
         }
       }
     },
+    ":" : {
+
+    },
     ".%@" : {
       "localizations" : {
         "tr" : {
@@ -7579,6 +7582,9 @@
         }
       }
     },
+    "Collapse All" : {
+
+    },
     "Collation" : {
       "localizations" : {
         "tr" : {
@@ -9285,6 +9291,12 @@
           }
         }
       }
+    },
+    "Copy Key" : {
+
+    },
+    "Copy Key Path" : {
+
     },
     "Copy Name" : {
       "localizations" : {
@@ -11364,6 +11376,9 @@
           }
         }
       }
+    },
+    "Default view:" : {
+
     },
     "Default:" : {
       "extractionState" : "stale",
@@ -14221,6 +14236,9 @@
         }
       }
     },
+    "Expand All" : {
+
+    },
     "Expired" : {
       "localizations" : {
         "tr" : {
@@ -16070,6 +16088,9 @@
     "Fetch All Rows" : {
 
     },
+    "Fields" : {
+
+    },
     "FIELDS" : {
       "localizations" : {
         "tr" : {
@@ -16304,6 +16325,9 @@
           }
         }
       }
+    },
+    "Filter keys or values..." : {
+
     },
     "Filter logic mode" : {
       "localizations" : {
@@ -16799,6 +16823,9 @@
           }
         }
       }
+    },
+    "Format JSON" : {
+
     },
     "Format Query" : {
 
@@ -19668,6 +19695,12 @@
           }
         }
       }
+    },
+    "JSON Too Large" : {
+
+    },
+    "JSON Viewer" : {
+
     },
     "Jump Hosts" : {
       "localizations" : {
@@ -25047,6 +25080,9 @@
       }
     },
     "Open in Editor" : {
+
+    },
+    "Open JSON Viewer" : {
 
     },
     "Open MQL Editor" : {
@@ -35773,6 +35809,9 @@
         }
       }
     },
+    "The text could not be parsed as JSON. Use text mode to view or edit." : {
+
+    },
     "The text is not valid JSON. Save anyway?" : {
       "localizations" : {
         "tr" : {
@@ -36066,6 +36105,9 @@
           }
         }
       }
+    },
+    "This JSON document is too large for tree view. Use text mode instead." : {
+
     },
     "This keyword is already in use" : {
       "localizations" : {

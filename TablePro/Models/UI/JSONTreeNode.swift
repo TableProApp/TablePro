@@ -110,11 +110,14 @@ internal enum JSONTreeParser {
         }
 
         if let str = value as? String {
+            let escaped = str.replacingOccurrences(of: "\"", with: "\\\"")
             let display: String
-            if (str as NSString).length > 80 {
-                display = "\"\(str.prefix(80))...\""
+            let nsLen = (escaped as NSString).length
+            if nsLen > 80 {
+                let truncated = (escaped as NSString).substring(to: 80)
+                display = "\"\(truncated)...\""
             } else {
-                display = "\"\(str)\""
+                display = "\"\(escaped)\""
             }
             return JSONTreeNode(
                 key: key, keyPath: keyPath, valueType: .string,

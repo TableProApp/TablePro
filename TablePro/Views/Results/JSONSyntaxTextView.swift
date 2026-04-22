@@ -60,7 +60,16 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         if textView.string != text, !context.coordinator.isUpdating {
-            textView.string = text
+            let fullRange = NSRange(location: 0, length: (textView.string as NSString).length)
+            if isEditable,
+               textView.shouldChangeText(in: fullRange, replacementString: text) {
+                context.coordinator.isUpdating = true
+                textView.textStorage?.replaceCharacters(in: fullRange, with: text)
+                textView.didChangeText()
+                context.coordinator.isUpdating = false
+            } else {
+                textView.string = text
+            }
             Self.applyHighlighting(to: textView)
         }
     }

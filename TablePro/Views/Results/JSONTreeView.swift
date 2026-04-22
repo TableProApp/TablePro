@@ -83,7 +83,8 @@ internal struct JSONTreeView: View {
 
     private func expandMatchingNodes() {
         if searchText.isEmpty {
-            expandedNodeIDs = [rootNode.id]
+            expandedNodeIDs.removeAll()
+            expandRootLevel()
             return
         }
         expandedNodeIDs.formUnion(collectMatchingContainerIDs(filteredRootNodes))
@@ -109,7 +110,9 @@ internal struct JSONTreeView: View {
     }
 
     private func expandRootLevel() {
-        expandedNodeIDs.insert(rootNode.id)
+        for child in rootNode.children where !child.children.isEmpty {
+            expandedNodeIDs.insert(child.id)
+        }
     }
 
     private func collectAllContainerIDs(_ node: JSONTreeNode) -> Set<UUID> {
