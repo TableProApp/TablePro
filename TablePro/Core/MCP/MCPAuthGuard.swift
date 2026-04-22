@@ -116,7 +116,7 @@ actor MCPAuthGuard {
         // Use a task group so the actor suspends (freeing it for other requests)
         // while the approval dialog is shown on the main thread.
         // Race the dialog against a 30-second timeout.
-        let approvalTask = Task {
+        let approvalTask = Task { @MainActor in
             NSApp.requestUserAttention(.criticalRequest)
             NSApp.activate(ignoringOtherApps: true)
             return await AlertHelper.confirmDestructive(

@@ -103,7 +103,7 @@ internal final class FavoritesSidebarViewModel {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { [weak self] in
+            Task { @MainActor [weak self] in
                 await self?.loadFavorites()
             }
         }
