@@ -53,7 +53,7 @@ final class AppSettingsManager {
                 highlightCurrentLine: editor.highlightCurrentLine,
                 showLineNumbers: editor.showLineNumbers,
                 tabWidth: editor.clampedTabWidth,
-                autoIndent: editor.autoIndent,
+
                 wordWrap: editor.wordWrap
             )
             notifyChange(.editorSettingsDidChange)
@@ -201,7 +201,6 @@ final class AppSettingsManager {
             highlightCurrentLine: editor.highlightCurrentLine,
             showLineNumbers: editor.showLineNumbers,
             tabWidth: editor.clampedTabWidth,
-            autoIndent: editor.autoIndent,
             wordWrap: editor.wordWrap
         )
 

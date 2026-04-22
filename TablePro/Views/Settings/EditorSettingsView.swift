@@ -2,32 +2,29 @@
 //  EditorSettingsView.swift
 //  TablePro
 //
-//  Settings for SQL editor behavior (fonts moved to theme)
-//
 
 import SwiftUI
 
 struct EditorSettingsView: View {
     @Binding var settings: EditorSettings
+    @Binding var dataGridSettings: DataGridSettings
 
     var body: some View {
         Form {
-            Section("Display") {
+            Section("SQL Editor") {
                 Toggle("Show line numbers", isOn: $settings.showLineNumbers)
                 Toggle("Highlight current line", isOn: $settings.highlightCurrentLine)
-                Toggle("Auto-indent", isOn: $settings.autoIndent)
                 Toggle("Word wrap", isOn: $settings.wordWrap)
-            }
-
-            Section("Editing") {
                 Picker("Tab width:", selection: $settings.tabWidth) {
                     Text("2 spaces").tag(2)
                     Text("4 spaces").tag(4)
                     Text("8 spaces").tag(8)
                 }
-                Toggle("Vim mode", isOn: $settings.vimModeEnabled)
                 Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
+                Toggle("Vim mode", isOn: $settings.vimModeEnabled)
             }
+
+            DataGridSection(settings: $dataGridSettings)
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -35,6 +32,6 @@ struct EditorSettingsView: View {
 }
 
 #Preview {
-    EditorSettingsView(settings: .constant(.default))
-        .frame(width: 450, height: 250)
+    EditorSettingsView(settings: .constant(.default), dataGridSettings: .constant(.default))
+        .frame(width: 450, height: 500)
 }

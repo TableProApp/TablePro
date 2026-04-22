@@ -2,100 +2,63 @@
 //  SettingsView.swift
 //  TablePro
 //
-//  Main settings view using macOS native TabView style
-//
 
 import SwiftUI
 
-/// Settings tab identifiers for programmatic navigation
 enum SettingsTab: String {
-    case general, appearance, editor, dataGrid, keyboard, history, ai, terminal, mcp, plugins, sync, license
+    case general, appearance, editor, keyboard, ai, terminal, plugins, account
 }
 
-/// Main settings view with tab-based navigation (macOS Settings style)
 struct SettingsView: View {
     @Bindable private var settingsManager = AppSettingsManager.shared
     @Environment(UpdaterBridge.self) var updaterBridge
     @AppStorage("selectedSettingsTab") private var selectedTab: String = SettingsTab.general.rawValue
+
     var body: some View {
         TabView(selection: $selectedTab) {
             GeneralSettingsView(
                 settings: $settingsManager.general,
                 tabSettings: $settingsManager.tabs,
+                historySettings: $settingsManager.history,
                 updaterBridge: updaterBridge,
                 onResetAll: { settingsManager.resetToDefaults() }
             )
-            .tabItem {
-                Label("General", systemImage: "gearshape")
-            }
+            .tabItem { Label("General", systemImage: "gearshape") }
             .tag(SettingsTab.general.rawValue)
 
             AppearanceSettingsView(settings: $settingsManager.appearance)
-                .tabItem {
-                    Label("Appearance", systemImage: "paintbrush")
-                }
+                .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(SettingsTab.appearance.rawValue)
 
-            EditorSettingsView(settings: $settingsManager.editor)
-                .tabItem {
-                    Label("Editor", systemImage: "doc.text")
-                }
-                .tag(SettingsTab.editor.rawValue)
-
-            DataGridSettingsView(settings: $settingsManager.dataGrid)
-                .tabItem {
-                    Label("Data Grid", systemImage: "tablecells")
-                }
-                .tag(SettingsTab.dataGrid.rawValue)
+            EditorSettingsView(
+                settings: $settingsManager.editor,
+                dataGridSettings: $settingsManager.dataGrid
+            )
+            .tabItem { Label("Editor", systemImage: "doc.text") }
+            .tag(SettingsTab.editor.rawValue)
 
             KeyboardSettingsView(settings: $settingsManager.keyboard)
-                .tabItem {
-                    Label("Keyboard", systemImage: "keyboard")
-                }
+                .tabItem { Label("Keyboard", systemImage: "keyboard") }
                 .tag(SettingsTab.keyboard.rawValue)
 
-            HistorySettingsView(settings: $settingsManager.history)
-                .tabItem {
-                    Label("History", systemImage: "clock")
-                }
-                .tag(SettingsTab.history.rawValue)
-
             AISettingsView(settings: $settingsManager.ai)
-                .tabItem {
-                    Label("AI", systemImage: "sparkles")
-                }
+                .tabItem { Label("AI", systemImage: "sparkles") }
                 .tag(SettingsTab.ai.rawValue)
 
-            TerminalSettingsView(settings: $settingsManager.terminal)
-                .tabItem {
-                    Label("Terminal", systemImage: "terminal")
-                }
-                .tag(SettingsTab.terminal.rawValue)
-
-            MCPSettingsView(settingsManager: settingsManager)
-                .tabItem {
-                    Label("MCP", systemImage: "network")
-                }
-                .tag(SettingsTab.mcp.rawValue)
+            TerminalSettingsView(
+                settings: $settingsManager.terminal,
+                mcpSettings: $settingsManager.mcp
+            )
+            .tabItem { Label("Terminal", systemImage: "terminal") }
+            .tag(SettingsTab.terminal.rawValue)
 
             PluginsSettingsView()
-                .tabItem {
-                    Label("Plugins", systemImage: "puzzlepiece.extension")
-                }
+                .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
                 .tag(SettingsTab.plugins.rawValue)
 
-            SyncSettingsView()
-                .tabItem {
-                    Label("Sync (Pro)", systemImage: "icloud")
-                }
-                .tag(SettingsTab.sync.rawValue)
-                .requiresPro(.iCloudSync)
-
-            LicenseSettingsView()
-                .tabItem {
-                    Label("License", systemImage: "key")
-                }
-                .tag(SettingsTab.license.rawValue)
+            AccountSettingsView()
+                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                .tag(SettingsTab.account.rawValue)
         }
         .frame(width: 720, height: 500)
     }

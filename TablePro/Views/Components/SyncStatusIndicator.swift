@@ -124,7 +124,7 @@ struct SyncStatusIndicator: View {
         case .disabled(.licenseRequired), .disabled(.licenseExpired):
             showActivationSheet = true
         default:
-            UserDefaults.standard.set(SettingsTab.sync.rawValue, forKey: "selectedSettingsTab")
+            UserDefaults.standard.set(SettingsTab.account.rawValue, forKey: "selectedSettingsTab")
             openSettings()
         }
     }

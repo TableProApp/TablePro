@@ -172,6 +172,9 @@
         }
       }
     },
+    "About" : {
+
+    },
     "Add a database connection to get started." : {
       "localizations" : {
         "vi" : {
@@ -412,6 +415,9 @@
           }
         }
       }
+    },
+    "Build" : {
+
     },
     "Cancel" : {
       "localizations" : {
@@ -1762,6 +1768,9 @@
         }
       }
     },
+    "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
+
+    },
     "History" : {
       "localizations" : {
         "vi" : {
@@ -2663,6 +2672,9 @@
         }
       }
     },
+    "Privacy" : {
+
+    },
     "Private Key" : {
       "localizations" : {
         "vi" : {
@@ -3080,6 +3092,9 @@
         }
       }
     },
+    "Settings" : {
+
+    },
     "Share" : {
       "localizations" : {
         "vi" : {
@@ -3095,6 +3110,9 @@
           }
         }
       }
+    },
+    "Share anonymous usage data" : {
+
     },
     "Share Results" : {
       "localizations" : {
@@ -3785,6 +3803,9 @@
           }
         }
       }
+    },
+    "Version" : {
+
     },
     "Views" : {
       "extractionState" : "stale",

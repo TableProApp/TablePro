@@ -1922,6 +1922,9 @@
         }
       }
     },
+    "%lld." : {
+
+    },
     "%lld%%" : {
       "localizations" : {
         "tr" : {
@@ -3097,6 +3100,9 @@
         }
       }
     },
+    "Account" : {
+
+    },
     "Account ID" : {
       "localizations" : {
         "en" : {
@@ -3782,9 +3788,6 @@
           }
         }
       }
-    },
-    "Add this to your AI tool's MCP configuration:" : {
-
     },
     "Add validation rules to ensure data integrity" : {
       "localizations" : {
@@ -5593,6 +5596,7 @@
       }
     },
     "Auto-indent" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7324,9 +7328,6 @@
         }
       }
     },
-    "Client Configuration" : {
-
-    },
     "Client Key" : {
       "localizations" : {
         "tr" : {
@@ -7348,6 +7349,9 @@
           }
         }
       }
+    },
+    "Client:" : {
+
     },
     "Clipboard is empty or contains no text data." : {
       "localizations" : {
@@ -8151,9 +8155,6 @@
         }
       }
     },
-    "Configuration" : {
-
-    },
     "Configure an AI provider in Settings to start chatting." : {
       "localizations" : {
         "tr" : {
@@ -8376,6 +8377,9 @@
           }
         }
       }
+    },
+    "Connected Clients" : {
+
     },
     "Connected Threads" : {
 
@@ -13118,6 +13122,7 @@
       }
     },
     "Editing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21438,13 +21443,34 @@
         }
       }
     },
-    "MCP" : {
-
-    },
     "MCP Access Request" : {
 
     },
+    "MCP Configuration" : {
+
+    },
     "MCP query execution" : {
+
+    },
+    "MCP Server" : {
+
+    },
+    "MCP Server: Failed" : {
+
+    },
+    "MCP Server: Running" : {
+
+    },
+    "MCP Server: Running (%d clients)" : {
+
+    },
+    "MCP Server: Starting..." : {
+
+    },
+    "MCP Server: Stopped" : {
+
+    },
+    "MCP Setup" : {
 
     },
     "Medium" : {
@@ -22870,6 +22896,9 @@
           }
         }
       }
+    },
+    "No clients connected" : {
+
     },
     "No Columns Defined" : {
       "localizations" : {
@@ -26431,6 +26460,9 @@
         }
       }
     },
+    "Port is already in use. Try a different port or close the other process." : {
+
+    },
     "postgresql://user:password@host:5432/database" : {
       "localizations" : {
         "tr" : {
@@ -27858,6 +27890,9 @@
           }
         }
       }
+    },
+    "Query History" : {
+
     },
     "Query History:" : {
       "extractionState" : "stale",
@@ -29571,6 +29606,7 @@
 
     },
     "Retention" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33221,6 +33257,9 @@
         }
       }
     },
+    "SQL Editor" : {
+
+    },
     "SQL Functions" : {
       "localizations" : {
         "tr" : {
@@ -34469,6 +34508,7 @@
       }
     },
     "Sync (Pro)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -34643,6 +34683,9 @@
           }
         }
       }
+    },
+    "Sync Status" : {
+
     },
     "Sync zone not found. A full sync will be performed." : {
       "localizations" : {
@@ -37854,6 +37897,9 @@
           }
         }
       }
+    },
+    "Unknown" : {
+
     },
     "Unknown error" : {
       "localizations" : {

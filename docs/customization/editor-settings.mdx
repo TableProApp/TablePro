@@ -158,34 +158,6 @@ Falls back to System Mono if a saved font is unavailable.
   />
 </Frame>
 
-### Auto Indent
-
-| Option | Description |
-|--------|-------------|
-| **On** | New lines match previous indentation (default) |
-| **Off** | New lines start at column 1 |
-
-```sql
-SELECT
-    u.id,
-    u.name,
-    |  -- Cursor here, next line auto-indents
-```
-
-{/* Screenshot: Auto-indent */}
-<Frame caption="Auto-indent after SQL clauses">
-  <img
-    className="block dark:hidden"
-    src="/images/editor-auto-indent.png"
-    alt="Auto-indent in editor"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/editor-auto-indent-dark.png"
-    alt="Auto-indent in editor"
-  />
-</Frame>
-
 ## Editor Behavior
 
 ### Auto-Uppercase Keywords

@@ -194,11 +194,10 @@ struct AISettingsView: View {
     private var inlineSuggestionsSection: some View {
         Section {
             Toggle(String(localized: "Enable inline suggestions"), isOn: $settings.inlineSuggestEnabled)
-            Text(String(localized: "AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
         } header: {
             Text("Inline Suggestions")
+        } footer: {
+            Text("AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss.")
         }
     }
 

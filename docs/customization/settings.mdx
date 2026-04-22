@@ -1,6 +1,6 @@
 ---
 title: Settings Overview
-description: All settings categories - General, Appearance, Editor, Data Grid, Tabs, Keyboard, AI, Terminal, History, Plugins, Sync, and License
+description: All settings categories - General, Appearance, Editor, Keyboard, AI, Terminal, Plugins, and Account
 ---
 
 # Settings Overview
@@ -25,19 +25,13 @@ Open settings via **TablePro** > **Settings** or `Cmd+,`.
 
 <CardGroup cols={2}>
   <Card title="General" icon="gear">
-    Language, startup behavior, updates
+    Language, startup, tabs, query history, updates, privacy
   </Card>
   <Card title="Appearance" icon="palette" href="/customization/appearance">
     Themes, colors, and fonts
   </Card>
   <Card title="Editor" icon="code" href="/customization/editor-settings">
-    SQL editor configuration
-  </Card>
-  <Card title="Data Grid" icon="table">
-    Row height, date format, display
-  </Card>
-  <Card title="Tabs" icon="rectangle-on-rectangle">
-    Tab reuse behavior
+    SQL editor, data grid, pagination
   </Card>
   <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">
     Custom shortcuts
@@ -46,19 +40,13 @@ Open settings via **TablePro** > **Settings** or `Cmd+,`.
     AI provider setup
   </Card>
   <Card title="Terminal" icon="terminal" href="/features/terminal#settings">
-    Terminal font, theme, CLI paths
-  </Card>
-  <Card title="History" icon="clock-rotate-left">
-    History retention
+    Terminal font, theme, CLI paths, MCP server
   </Card>
   <Card title="Plugins" icon="puzzle-piece">
     Manage drivers
   </Card>
-  <Card title="Sync" icon="cloud" href="/features/icloud-sync">
-    iCloud sync (Pro)
-  </Card>
-  <Card title="License" icon="key">
-    License activation
+  <Card title="Account" icon="user" href="/features/icloud-sync">
+    License, iCloud sync, linked folders
   </Card>
 </CardGroup>
 
@@ -152,7 +140,7 @@ No personal information, queries, or database content is transmitted. Toggle off
   />
 </Frame>
 
-## Data Grid Settings
+## Data Grid Settings (Editor Tab)
 
 ### Font
 
@@ -284,7 +272,7 @@ See [Data Grid - Smart Value Detection](/features/data-grid#smart-value-detectio
   />
 </Frame>
 
-## Tab Settings
+## Tab Settings (General Tab)
 
 ### Reuse Clean Table Tab
 
@@ -372,7 +360,7 @@ Click **Reset to Defaults** to restore all shortcuts.
   />
 </Frame>
 
-## History Settings
+## History Settings (General Tab)
 
 ### Maximum Entries
 
@@ -403,7 +391,7 @@ Disabling auto cleanup with unlimited entries may cause the history database to 
 
 ### Clear History
 
-1. Open Settings > History
+1. Open Settings > General
 2. Click **Clear All History**
 3. Confirm the action
 
@@ -499,9 +487,9 @@ Some settings are available via `defaults write` for advanced users:
 | Custom plugin registry | `defaults write com.TablePro com.TablePro.customRegistryURL <url>` | Use a private plugin registry |
 | Clear custom registry | `defaults delete com.TablePro com.TablePro.customRegistryURL` | Revert to default registry |
 
-## Sync settings
+## Sync Settings (Account Tab)
 
-Manage iCloud sync from the **Sync** tab in Settings. This is a Pro feature.
+Manage iCloud sync from the **Account** tab in Settings. This is a Pro feature.
 
 ### iCloud Sync toggle
 
@@ -555,13 +543,13 @@ See [iCloud Sync](/features/icloud-sync) for full details on conflict resolution
   />
 </Frame>
 
-## License Settings
+## License Settings (Account Tab)
 
-Manage your license from the **License** tab in Settings.
+Manage your license from the **Account** tab in Settings.
 
 ### Activating a License
 
-1. Open **Settings** (`Cmd+,`) and select the **License** tab
+1. Open **Settings** (`Cmd+,`) and select the **Account** tab
 2. Enter your license key
 3. Click **Activate**
 
@@ -569,7 +557,7 @@ Once activated, the tab shows your registered email and license key.
 
 ### Deactivating a License
 
-1. Open **Settings** > **License**
+1. Open **Settings** > **Account**
 2. Click **Deactivate...**
 3. Confirm
 
