@@ -12,6 +12,7 @@ struct TerminalTabContentView: View {
     let connectionId: UUID
 
     @State private var sessionState: TerminalSessionState?
+    @State private var configuredSessionId: ObjectIdentifier?
 
     var body: some View {
         ZStack {
@@ -30,12 +31,16 @@ struct TerminalTabContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task { await connectWhenReady() }
-        .onDisappear {
-            let state = sessionState
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(300))
-                state?.disconnect()
+        .task {
+            await connectWhenReady()
+            await withTaskCancellationHandler {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(86_400))
+                }
+            } onCancel: { [sessionState] in
+                Task { @MainActor in
+                    sessionState?.disconnect()
+                }
             }
         }
     }
@@ -47,11 +52,13 @@ struct TerminalTabContentView: View {
                 TerminalFocusHelper(processManager: state.processManager)
             }
             .onAppear {
-                if let session = state.session {
-                    state.terminalViewState.configuration = TerminalSurfaceOptions(
-                        backend: .inMemory(session)
-                    )
-                }
+                guard let session = state.session else { return }
+                let sessionId = ObjectIdentifier(session)
+                guard configuredSessionId != sessionId else { return }
+                state.terminalViewState.configuration = TerminalSurfaceOptions(
+                    backend: .inMemory(session)
+                )
+                configuredSessionId = sessionId
             }
     }
 
@@ -77,6 +84,8 @@ struct TerminalTabContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // MARK: - Connection Lifecycle
+
     private func connectWhenReady() async {
         guard sessionState == nil else { return }
 
@@ -84,13 +93,36 @@ struct TerminalTabContentView: View {
         let tunnelReady = DatabaseManager.shared.session(for: connectionId)?.effectiveConnection != nil
 
         if hasSSH, !tunnelReady {
-            for await _ in NotificationCenter.default.notifications(named: .databaseDidConnect) {
-                guard DatabaseManager.shared.session(for: connectionId)?.effectiveConnection != nil else { continue }
-                break
+            let connected = await waitForSSHTunnel(timeout: .seconds(30))
+            guard connected else {
+                let state = TerminalSessionState(connectionId: connectionId, databaseType: connection.type)
+                state.error = String(localized: "SSH tunnel did not connect within 30 seconds")
+                self.sessionState = state
+                return
             }
         }
 
         launchTerminalSession()
+    }
+
+    private func waitForSSHTunnel(timeout: Duration) async -> Bool {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in NotificationCenter.default.notifications(named: .databaseDidConnect) {
+                    if DatabaseManager.shared.session(for: self.connectionId)?.effectiveConnection != nil {
+                        return true
+                    }
+                }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
     }
 
     private func launchTerminalSession() {
@@ -113,13 +145,10 @@ struct TerminalTabContentView: View {
 
         state.reconnect(connection: connection, password: password, activeDatabase: activeDatabase)
     }
-
 }
 
-// MARK: - Focus Helper
+// MARK: - Focus & Input Helper
 
-/// Makes the terminal surface first responder when it appears.
-/// Follows the same pattern as SQLEditorCoordinator's auto-focus (50ms delay + makeFirstResponder).
 private struct TerminalFocusHelper: NSViewRepresentable {
     weak var processManager: TerminalProcessManager?
 
@@ -134,20 +163,25 @@ private struct TerminalFocusHelper: NSViewRepresentable {
     }
 }
 
+/// Bridges AppKit input handling for the embedded Ghostty terminal:
+/// - Auto-focuses the terminal surface on appear
+/// - Intercepts Cmd+V (paste) before AppKit's Edit menu captures it
+/// - Provides right-click context menu for copy/paste
+///
+/// Cmd+C copy works natively via Ghostty's responder chain.
+/// Cmd+A select-all is not supported by libghostty embedded mode.
 private final class TerminalFocusHelperView: NSView {
     private weak var terminalView: NSView?
     weak var processManager: TerminalProcessManager?
+    private var keyDownMonitor: Any?
     private var rightClickMonitor: Any?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else {
-            removeMonitor()
+            removeMonitors()
             return
         }
-        // Walk up from the .background {} NSView to find the terminal's key view.
-        // The superview chain (self -> hosting view -> TerminalSurfaceView container)
-        // is determined by SwiftUI's .background {} modifier — stable since macOS 14.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             guard let self else { return }
             var ancestor: NSView? = self.superview?.superview
@@ -155,7 +189,7 @@ private final class TerminalFocusHelperView: NSView {
                 if let keyView = Self.firstKeyView(in: current, excluding: self) {
                     window.makeFirstResponder(keyView)
                     self.terminalView = keyView
-                    self.installRightClickMonitor()
+                    self.installMonitors()
                     return
                 }
                 ancestor = current.superview
@@ -164,63 +198,72 @@ private final class TerminalFocusHelperView: NSView {
     }
 
     override func removeFromSuperview() {
-        removeMonitor()
+        removeMonitors()
         super.removeFromSuperview()
     }
 
-    // MARK: - Right-Click Context Menu
+    // MARK: - Event Monitors
 
-    private func installRightClickMonitor() {
-        removeMonitor()
+    private func installMonitors() {
+        removeMonitors()
+
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let terminal = self.terminalView,
+                  event.modifierFlags.contains(.command),
+                  !event.modifierFlags.contains(.shift),
+                  !event.modifierFlags.contains(.option),
+                  terminal.window?.firstResponder === terminal
+            else { return event }
+
+            if event.charactersIgnoringModifiers == "v" {
+                self.pasteFromClipboard()
+                return nil
+            }
+            return event
+        }
+
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
-            guard let self, let terminal = self.terminalView else { return event }
-            // Only handle right-clicks when this terminal's window is key (multi-terminal safety)
-            guard terminal.window?.isKeyWindow == true else { return event }
-            let locationInTerminal = terminal.convert(event.locationInWindow, from: nil)
-            guard terminal.bounds.contains(locationInTerminal) else { return event }
+            guard let self, let terminal = self.terminalView,
+                  terminal.window?.isKeyWindow == true
+            else { return event }
+            let point = terminal.convert(event.locationInWindow, from: nil)
+            guard terminal.bounds.contains(point) else { return event }
 
-            let menu = self.buildContextMenu()
-            NSMenu.popUpContextMenu(menu, with: event, for: terminal)
+            NSMenu.popUpContextMenu(self.buildContextMenu(), with: event, for: terminal)
             return nil
         }
     }
 
-    private func removeMonitor() {
+    private func removeMonitors() {
+        if let monitor = keyDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyDownMonitor = nil
+        }
         if let monitor = rightClickMonitor {
             NSEvent.removeMonitor(monitor)
             rightClickMonitor = nil
         }
     }
 
+    // MARK: - Context Menu
+
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(handleCopy), keyEquivalent: "")
+        let copy = NSMenuItem(title: String(localized: "Copy"), action: #selector(copySelection), keyEquivalent: "")
         copy.target = self
-        copy.isEnabled = true
         menu.addItem(copy)
 
-        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(handlePaste), keyEquivalent: "")
+        let paste = NSMenuItem(title: String(localized: "Paste"), action: #selector(pasteFromClipboard), keyEquivalent: "")
         paste.target = self
         paste.isEnabled = NSPasteboard.general.string(forType: .string) != nil
         menu.addItem(paste)
 
-        menu.addItem(.separator())
-
-        let selectAll = NSMenuItem(title: String(localized: "Select All"), action: #selector(handleSelectAll), keyEquivalent: "")
-        selectAll.target = self
-        selectAll.isEnabled = true
-        menu.addItem(selectAll)
-
         return menu
     }
 
-    // Ghostty handles clipboard through key events, not NSResponder actions.
-    // Cmd+C copies selected text (no-op if nothing selected).
-    // Paste writes clipboard content directly to PTY input.
-
-    @objc private func handleCopy() {
+    @objc private func copySelection() {
         guard let terminal = terminalView, let window = terminal.window else { return }
         guard let event = NSEvent.keyEvent(
             with: .keyDown, location: .zero, modifierFlags: .command,
@@ -232,28 +275,9 @@ private final class TerminalFocusHelperView: NSView {
         terminal.keyDown(with: event)
     }
 
-    @objc private func handlePaste() {
+    @objc private func pasteFromClipboard() {
         guard let text = NSPasteboard.general.string(forType: .string) else { return }
-        // Bracket paste mode: wrap pasted text so the shell knows it's pasted content
-        // and doesn't execute commands on newlines
-        let bracketStart = Data([0x1B, 0x5B, 0x32, 0x30, 0x30, 0x7E]) // \e[200~
-        let bracketEnd = Data([0x1B, 0x5B, 0x32, 0x30, 0x31, 0x7E])   // \e[201~
-        var pasteData = bracketStart
-        pasteData.append(Data(text.utf8))
-        pasteData.append(bracketEnd)
-        processManager?.write(pasteData)
-    }
-
-    @objc private func handleSelectAll() {
-        guard let terminal = terminalView, let window = terminal.window else { return }
-        guard let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: .command,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil,
-            characters: "a", charactersIgnoringModifiers: "a",
-            isARepeat: false, keyCode: 0
-        ) else { return }
-        terminal.keyDown(with: event)
+        processManager?.write(Data(text.utf8))
     }
 
     // MARK: - Key View Discovery

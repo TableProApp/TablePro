@@ -26,26 +26,26 @@ enum CLICommandResolver {
         effectiveConnection: DatabaseConnection? = nil
     ) -> CLILaunchSpec? {
         let sshConfig = extractSSHConfig(from: connection)
-        if sshConfig != nil {
-            // For SSH-tunneled connections, prefer local CLI via the existing tunnel.
-            // This handles Docker/container setups where CLI isn't on the remote host.
+        if let sshConfig {
+            // Prefer running the CLI on the remote host via SSH — the server
+            // that runs the database almost always has the CLI binary installed.
+            if let spec = resolveViaSSH(
+                connection: connection,
+                password: password,
+                activeDatabase: activeDatabase,
+                sshConfig: sshConfig
+            ) {
+                return spec
+            }
+
+            // Fall back to local CLI through the existing SSH tunnel
+            // (e.g. Docker setups where the SSH host doesn't have the CLI).
             if let effective = effectiveConnection {
-                let localSpec = resolveLocal(
+                return resolveLocal(
                     connection: effective,
                     password: password,
                     activeDatabase: activeDatabase,
                     customCliPath: customCliPath
-                )
-                if localSpec != nil { return localSpec }
-            }
-
-            // Fall back to SSH remote if local CLI not available
-            if let sshConfig {
-                return resolveViaSSH(
-                    connection: connection,
-                    password: password,
-                    activeDatabase: activeDatabase,
-                    sshConfig: sshConfig
                 )
             }
         }
@@ -165,10 +165,12 @@ enum CLICommandResolver {
             : "\(sshConfig.username)@\(sshConfig.host)"
         sshArgs.append(userHost)
 
-        // Source common profile files inline so the remote PATH is loaded.
-        // Avoids bash -l -c '...' which causes nested single-quote issues
-        // when remoteCommand already contains single-quoted shell-escaped values.
-        sshArgs.append(". ~/.profile 2>/dev/null; . ~/.bashrc 2>/dev/null; " + remoteCommand)
+        // Source common profile files so the remote PATH includes CLI binaries.
+        // Covers bash (.bash_profile, .bashrc, .profile) and zsh (.zshrc).
+        let sourceChain = [".profile", ".bash_profile", ".bashrc", ".zshrc"]
+            .map { ". ~/\($0) 2>/dev/null" }
+            .joined(separator: "; ")
+        sshArgs.append(sourceChain + "; " + remoteCommand)
 
         return CLILaunchSpec(executablePath: sshPath, arguments: sshArgs, environment: [:])
     }
@@ -243,13 +245,13 @@ enum CLICommandResolver {
             if !database.isEmpty { cmd += " --database \(shellEscape(database))" }
 
         case .oracle:
-            // sqlplus requires password in connect string (no env var support).
-            // Visible in ps output — accepted industry limitation for Oracle CLI.
             let serviceName = connection.additionalFields["oracleServiceName"] ?? database
             let pass = password ?? ""
             var connectString: String
             if !connection.username.isEmpty {
-                connectString = "\(connection.username)/\(pass)@\(host):\(connection.port)/\(serviceName)"
+                // Double-quote the password so sqlplus doesn't split on @ or /
+                let quotedPass = "\"" + pass.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+                connectString = "\(connection.username)/\(quotedPass)@\(host):\(connection.port)/\(serviceName)"
             } else {
                 connectString = "@\(host):\(connection.port)/\(serviceName)"
             }
@@ -263,11 +265,16 @@ enum CLICommandResolver {
     }
 
     /// Escapes a string for safe use in a shell command.
+    /// Strips null bytes and newlines which cannot be safely quoted in POSIX single-quote strings.
     private static func shellEscape(_ value: String) -> String {
-        if value.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." || $0 == "/" }) {
-            return value
+        let sanitized = value
+            .replacingOccurrences(of: "\0", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+        if sanitized.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" || $0 == "." || $0 == "/" }) {
+            return sanitized
         }
-        return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "'" + sanitized.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     @MainActor
@@ -546,12 +553,12 @@ enum CLICommandResolver {
         let host = connection.host.isEmpty ? "127.0.0.1" : connection.host
         let serviceName = connection.additionalFields["oracleServiceName"] ?? database
 
-        // sqlplus requires password in connect string (no env var support).
-        // Visible in ps output — accepted industry limitation for Oracle CLI.
         var connectString: String
         if !connection.username.isEmpty {
             let pass = password ?? ""
-            connectString = "\(connection.username)/\(pass)@\(host):\(connection.port)/\(serviceName)"
+            // Double-quote the password so sqlplus doesn't split on @ or /
+            let quotedPass = "\"" + pass.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+            connectString = "\(connection.username)/\(quotedPass)@\(host):\(connection.port)/\(serviceName)"
         } else {
             connectString = "@\(host):\(connection.port)/\(serviceName)"
         }

@@ -152,6 +152,10 @@ final class QueryTabManager {
     }
 
     func addTerminalTab(databaseName: String = "") {
+        if let existing = tabs.first(where: { $0.tabType == .terminal }) {
+            selectedTabId = existing.id
+            return
+        }
         let tabTitle = String(localized: "Terminal")
         var newTab = QueryTab(title: tabTitle, tabType: .terminal)
         newTab.databaseName = databaseName

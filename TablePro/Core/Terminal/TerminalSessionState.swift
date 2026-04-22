@@ -18,7 +18,7 @@ final class TerminalSessionState: Identifiable {
 
     var terminalViewState: TerminalViewState
     var session: InMemoryTerminalSession?
-    nonisolated(unsafe) var processManager: TerminalProcessManager?
+    private(set) var processManager: TerminalProcessManager?
     var isConnected: Bool = false
     var isDisconnected: Bool = false
     var exitCode: Int32 = 0
@@ -127,10 +127,7 @@ final class TerminalSessionState: Identifiable {
             builder.withWindowPaddingX(4)
             builder.withWindowPaddingY(4)
 
-            // libghostty-spm embedded mode has broken key mapping for
-            // apostrophe (sends TAB instead of 0x27). Clear default
-            // keybindings and explicitly remap affected keys.
-            builder.withCustom("keybind", "clear")
+            // libghostty-spm embedded mode sends TAB for apostrophe — override it.
             builder.withCustom("keybind", "apostrophe=text:\\x27")
             builder.withCustom("keybind", "shift+apostrophe=text:\\x22")
         }
@@ -159,9 +156,7 @@ final class TerminalSessionState: Identifiable {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.applySettingsToTerminal()
-            }
+            self?.applySettingsToTerminal()
         }
     }
 

@@ -11,8 +11,6 @@ import os
 final class TerminalProcessManager {
     private static let logger = Logger(subsystem: "com.TablePro", category: "TerminalProcessManager")
 
-    /// File descriptor for the PTY. Set once during launch, read from any thread
-    /// (POSIX fd operations are thread-safe). Stored separately for nonisolated access.
     private let fdLock = NSLock()
     private nonisolated(unsafe) var _ptyFD: Int32 = -1
 
@@ -21,14 +19,17 @@ final class TerminalProcessManager {
         set { fdLock.withLock { _ptyFD = newValue } }
     }
 
-    private var childPID: pid_t = 0
-    private nonisolated(unsafe) var readSource: DispatchSourceRead?
-    private nonisolated(unsafe) var processMonitor: DispatchSourceProcess?
+    private let stateLock = NSLock()
+    private nonisolated(unsafe) var _childPID: pid_t = 0
+    private nonisolated(unsafe) var _readSource: DispatchSourceRead?
+    private nonisolated(unsafe) var _processMonitor: DispatchSourceProcess?
 
     var onData: ((Data) -> Void)?
     var onExit: ((Int32) -> Void)?
 
-    private var isRunning: Bool { childPID > 0 }
+    private var isRunning: Bool { _childPID > 0 }
+
+    static let registry = TerminalProcessRegistry()
 
     // MARK: - Launch
 
@@ -73,11 +74,12 @@ final class TerminalProcessManager {
         for ptr in cArgs { ptr.map { free($0) } }
         for ptr in cEnv { ptr.map { free($0) } }
         self.ptyFD = ptyFDValue
-        self.childPID = pid
+        self._childPID = pid
 
         let fullCmd = ([spec.executablePath] + spec.arguments).joined(separator: " ")
         Self.logger.info("Launched: \(fullCmd, privacy: .public) pid=\(pid)")
 
+        Self.registry.register(self)
         startReadingOutput()
         monitorChildExit()
     }
@@ -119,8 +121,8 @@ final class TerminalProcessManager {
         let fd = fdLock.withLock { _ptyFD }
         guard fd >= 0 else { return }
         var size = winsize(
-            ws_row: UInt16(rows),
-            ws_col: UInt16(cols),
+            ws_row: UInt16(clamping: max(0, rows)),
+            ws_col: UInt16(clamping: max(0, cols)),
             ws_xpixel: 0,
             ws_ypixel: 0
         )
@@ -130,36 +132,76 @@ final class TerminalProcessManager {
     // MARK: - Terminate
 
     func terminate() {
-        // Kill and reap the child BEFORE cancelling sources so the monitor can still reap.
-        if childPID > 0 {
-            kill(childPID, SIGHUP)
-            var status: Int32 = 0
-            // Give the process a moment to exit, then force-kill
-            if waitpid(childPID, &status, WNOHANG) == 0 {
-                kill(childPID, SIGKILL)
-                waitpid(childPID, &status, 0) // blocking — child is SIGKILL'd, returns immediately
-            }
-            Self.logger.info("Terminated child pid=\(self.childPID)")
-            childPID = 0
+        let pid = stateLock.withLock {
+            let p = _childPID
+            _childPID = 0
+            return p
         }
 
-        readSource?.cancel()
-        readSource = nil
-        processMonitor?.cancel()
-        processMonitor = nil
+        if pid > 0 {
+            kill(pid, SIGHUP)
+            var status: Int32 = 0
+            if waitpid(pid, &status, WNOHANG) == 0 {
+                kill(pid, SIGKILL)
+                waitpid(pid, &status, 0)
+            }
+            Self.logger.info("Terminated child pid=\(pid)")
+        }
+
+        stateLock.withLock {
+            _readSource?.cancel()
+            _readSource = nil
+            _processMonitor?.cancel()
+            _processMonitor = nil
+        }
 
         if ptyFD >= 0 {
             close(ptyFD)
             ptyFD = -1
         }
+
+        Self.registry.unregister(self)
+    }
+
+    nonisolated func terminateSync() {
+        let pid = stateLock.withLock {
+            let p = _childPID
+            _childPID = 0
+            return p
+        }
+
+        if pid > 0 {
+            kill(pid, SIGHUP)
+            var status: Int32 = 0
+            if waitpid(pid, &status, WNOHANG) == 0 {
+                kill(pid, SIGKILL)
+                waitpid(pid, &status, 0)
+            }
+        }
+
+        stateLock.withLock {
+            _readSource?.cancel()
+            _readSource = nil
+            _processMonitor?.cancel()
+            _processMonitor = nil
+        }
+
+        let fd = fdLock.withLock { _ptyFD }
+        if fd >= 0 {
+            Darwin.close(fd)
+            fdLock.withLock { _ptyFD = -1 }
+        }
     }
 
     deinit {
-        readSource?.cancel()
-        processMonitor?.cancel()
+        stateLock.withLock {
+            _readSource?.cancel()
+            _processMonitor?.cancel()
+        }
         let fd = fdLock.withLock { _ptyFD }
-        if fd >= 0 { close(fd) }
-        if childPID > 0 { kill(childPID, SIGKILL) }
+        if fd >= 0 { Darwin.close(fd) }
+        let pid = stateLock.withLock { _childPID }
+        if pid > 0 { kill(pid, SIGKILL) }
     }
 
     // MARK: - Private
@@ -182,11 +224,11 @@ final class TerminalProcessManager {
         }
 
         source.resume()
-        self.readSource = source
+        stateLock.withLock { _readSource = source }
     }
 
     private func monitorChildExit() {
-        let pid = childPID
+        let pid = stateLock.withLock { _childPID }
         let source = DispatchSource.makeProcessSource(
             identifier: pid,
             eventMask: .exit,
@@ -195,23 +237,52 @@ final class TerminalProcessManager {
 
         source.setEventHandler { [weak self] in
             var status: Int32 = 0
-            waitpid(pid, &status, WNOHANG)
-            let exitStatus = status
+            // Process source guarantees exit — blocking waitpid returns immediately
+            let ret = waitpid(pid, &status, 0)
+            guard ret == pid else { return }
+            let exitCode: Int32 = (status & 0x7F) == 0 ? (status >> 8) & 0xFF : -1
             Task { @MainActor [weak self] in
-                self?.handleProcessExit(status: exitStatus)
+                self?.handleProcessExit(exitCode: exitCode)
             }
         }
 
         source.resume()
-        self.processMonitor = source
+        stateLock.withLock { _processMonitor = source }
     }
 
-    private func handleProcessExit(status: Int32 = 0) {
-        guard childPID > 0 else { return }
-        let exitCode = (status & 0x7F) == 0 ? (status >> 8) & 0xFF : -1
+    private func handleProcessExit(exitCode: Int32) {
+        let wasRunning = stateLock.withLock {
+            guard _childPID > 0 else { return false }
+            _childPID = 0
+            return true
+        }
+        guard wasRunning else { return }
         Self.logger.info("Child process exited status=\(exitCode)")
-        childPID = 0
+        Self.registry.unregister(self)
         onExit?(exitCode)
+    }
+}
+
+// MARK: - Registry
+
+final class TerminalProcessRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var managers: [ObjectIdentifier: TerminalProcessManager] = [:]
+
+    func register(_ manager: TerminalProcessManager) {
+        lock.withLock { managers[ObjectIdentifier(manager)] = manager }
+    }
+
+    func unregister(_ manager: TerminalProcessManager) {
+        lock.withLock { managers.removeValue(forKey: ObjectIdentifier(manager)) }
+    }
+
+    func terminateAllSync() {
+        let snapshot = lock.withLock { Array(managers.values) }
+        for manager in snapshot {
+            manager.terminateSync()
+        }
+        lock.withLock { managers.removeAll() }
     }
 }
 

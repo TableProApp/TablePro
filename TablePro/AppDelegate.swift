@@ -215,6 +215,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await MCPServerManager.shared.stop()
         }
         LinkedFolderWatcher.shared.stop()
+        TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }
 
