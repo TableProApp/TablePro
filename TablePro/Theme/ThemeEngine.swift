@@ -94,7 +94,6 @@ internal final class ThemeEngine {
     @ObservationIgnored var highlightCurrentLine: Bool = true
     @ObservationIgnored var showLineNumbers: Bool = true
     @ObservationIgnored var tabWidth: Int = 4
-    @ObservationIgnored var autoIndent: Bool = true
     @ObservationIgnored var wordWrap: Bool = false
 
     // MARK: - Private
@@ -251,13 +250,11 @@ internal final class ThemeEngine {
         highlightCurrentLine: Bool,
         showLineNumbers: Bool,
         tabWidth: Int,
-        autoIndent: Bool,
         wordWrap: Bool
     ) {
         self.highlightCurrentLine = highlightCurrentLine
         self.showLineNumbers = showLineNumbers
         self.tabWidth = tabWidth
-        self.autoIndent = autoIndent
         self.wordWrap = wordWrap
     }
 

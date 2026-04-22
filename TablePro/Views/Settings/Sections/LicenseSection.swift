@@ -1,16 +1,14 @@
 //
-//  LicenseSettingsView.swift
+//  LicenseSection.swift
 //  TablePro
-//
-//  License settings tab: status display, activation form, and deactivation
 //
 
 import AppKit
 import os
 import SwiftUI
 
-struct LicenseSettingsView: View {
-    private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseSettingsView")
+struct LicenseSection: View {
+    private static let logger = Logger(subsystem: "com.TablePro", category: "LicenseSection")
 
     private let licenseManager = LicenseManager.shared
 
@@ -23,40 +21,31 @@ struct LicenseSettingsView: View {
     @State private var activationLoadError: String?
 
     var body: some View {
-        Form {
-            if let license = licenseManager.license {
-                licensedSection(license)
-            } else {
-                unlicensedSection
-            }
-        }
-        .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
-        .task {
-            guard !hasLoadedActivations else { return }
-            await loadActivations()
-            hasLoadedActivations = true
+        if let license = licenseManager.license {
+            licensedView(license)
+        } else {
+            unlicensedView
         }
     }
 
-    // MARK: - Licensed State
+    // MARK: - Licensed
 
     @ViewBuilder
-    private func licensedSection(_ license: License) -> some View {
-        if licenseManager.isExpiringSoon, let days = licenseManager.daysUntilExpiry {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text("License expires in \(days) day(s)")
-                Spacer()
-                Link(String(localized: "Renew"), destination: LicenseConstants.pricingURL)
-                    .controlSize(.small)
-            }
-            .padding(12)
-            .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-        }
-
+    private func licensedView(_ license: License) -> some View {
         Section("License") {
+            if licenseManager.isExpiringSoon, let days = licenseManager.daysUntilExpiry {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("License expires in \(days) day(s)")
+                    Spacer()
+                    Link(String(localized: "Renew"), destination: LicenseConstants.pricingURL)
+                        .controlSize(.small)
+                }
+                .padding(6)
+                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+            }
+
             LabeledContent("Email:", value: license.email)
 
             LabeledContent("License Key:") {
@@ -86,19 +75,20 @@ struct LicenseSettingsView: View {
             if isLoadingActivations {
                 HStack {
                     Spacer()
-                    ProgressView()
-                        .controlSize(.small)
+                    ProgressView().controlSize(.small)
                     Spacer()
                 }
             } else if activations.isEmpty && activationLoadError == nil {
                 Text("No activations found")
                     .foregroundStyle(.secondary)
             }
+
             if let error = activationLoadError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemRed))
             }
+
             if !activations.isEmpty {
                 ForEach(activations) { activation in
                     HStack {
@@ -132,20 +122,21 @@ struct LicenseSettingsView: View {
                 .disabled(isLoadingActivations)
             }
         }
+        .task {
+            guard !hasLoadedActivations else { return }
+            await loadActivations()
+            hasLoadedActivations = true
+        }
 
-        Section("Maintenance") {
-            HStack {
-                Text("Refresh license status from server")
-                Spacer()
+        Section {
+            LabeledContent("Refresh license status from server") {
                 Button("Check Status") {
                     Task { await licenseManager.revalidate() }
                 }
                 .disabled(licenseManager.isValidating)
             }
 
-            HStack {
-                Text("Remove license from this machine")
-                Spacer()
+            LabeledContent("Remove license from this machine") {
                 Button("Deactivate...") {
                     Task { @MainActor in
                         let confirmed = await AlertHelper.confirmDestructive(
@@ -154,10 +145,7 @@ struct LicenseSettingsView: View {
                             confirmButton: String(localized: "Deactivate"),
                             cancelButton: String(localized: "Cancel")
                         )
-
-                        if confirmed {
-                            await deactivate()
-                        }
+                        if confirmed { await deactivate() }
                     }
                 }
                 .disabled(licenseManager.isValidating)
@@ -165,9 +153,9 @@ struct LicenseSettingsView: View {
         }
     }
 
-    // MARK: - Unlicensed State
+    // MARK: - Unlicensed
 
-    private var unlicensedSection: some View {
+    private var unlicensedView: some View {
         Section("License") {
             TextField("License Key:", text: $licenseKeyInput)
                 .font(.system(.body, design: .monospaced))
@@ -177,8 +165,7 @@ struct LicenseSettingsView: View {
             HStack {
                 Spacer()
                 if isActivating {
-                    ProgressView()
-                        .controlSize(.small)
+                    ProgressView().controlSize(.small)
                 } else {
                     Button("Activate") {
                         Task { await activate() }
@@ -195,7 +182,7 @@ struct LicenseSettingsView: View {
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Actions
 
     private func maskedKey(_ key: String) -> String {
         let parts = key.split(separator: "-")
@@ -204,8 +191,6 @@ struct LicenseSettingsView: View {
         let masked = Array(repeating: "*****", count: 4).joined(separator: "-")
         return "\(first)-\(masked)"
     }
-
-    // MARK: - Actions
 
     private func loadActivations() async {
         guard let license = licenseManager.license else { return }
@@ -251,9 +236,4 @@ struct LicenseSettingsView: View {
             )
         }
     }
-}
-
-#Preview("Unlicensed") {
-    LicenseSettingsView()
-        .frame(width: 450, height: 300)
 }

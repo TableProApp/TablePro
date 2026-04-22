@@ -84,8 +84,9 @@ final class MCPToolHandler: Sendable {
     private func handleExecuteQuery(_ args: JSONValue?, sessionId: String) async throws -> MCPToolResult {
         let connectionId = try requireUUID(args, key: "connection_id")
         let query = try requireString(args, key: "query")
-        let maxRows = optionalInt(args, key: "max_rows", default: 500, clamp: 1...10_000)
-        let timeoutSeconds = optionalInt(args, key: "timeout_seconds", default: 30, clamp: 1...300)
+        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
+        let maxRows = optionalInt(args, key: "max_rows", default: mcpSettings.defaultRowLimit, clamp: 1...mcpSettings.maxRowLimit)
+        let timeoutSeconds = optionalInt(args, key: "timeout_seconds", default: mcpSettings.queryTimeoutSeconds, clamp: 1...300)
         let database = optionalString(args, key: "database")
         let schema = optionalString(args, key: "schema")
 

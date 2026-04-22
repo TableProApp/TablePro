@@ -66,7 +66,6 @@ struct EditorSettings: Codable, Equatable {
     var showLineNumbers: Bool
     var highlightCurrentLine: Bool
     var tabWidth: Int // 2, 4, or 8 spaces
-    var autoIndent: Bool
     var wordWrap: Bool
     var vimModeEnabled: Bool
     var uppercaseKeywords: Bool
@@ -75,7 +74,6 @@ struct EditorSettings: Codable, Equatable {
         showLineNumbers: true,
         highlightCurrentLine: true,
         tabWidth: 4,
-        autoIndent: true,
         wordWrap: false,
         vimModeEnabled: false,
         uppercaseKeywords: false
@@ -85,7 +83,6 @@ struct EditorSettings: Codable, Equatable {
         showLineNumbers: Bool = true,
         highlightCurrentLine: Bool = true,
         tabWidth: Int = 4,
-        autoIndent: Bool = true,
         wordWrap: Bool = false,
         vimModeEnabled: Bool = false,
         uppercaseKeywords: Bool = false
@@ -93,7 +90,6 @@ struct EditorSettings: Codable, Equatable {
         self.showLineNumbers = showLineNumbers
         self.highlightCurrentLine = highlightCurrentLine
         self.tabWidth = tabWidth
-        self.autoIndent = autoIndent
         self.wordWrap = wordWrap
         self.vimModeEnabled = vimModeEnabled
         self.uppercaseKeywords = uppercaseKeywords
@@ -105,7 +101,6 @@ struct EditorSettings: Codable, Equatable {
         showLineNumbers = try container.decodeIfPresent(Bool.self, forKey: .showLineNumbers) ?? true
         highlightCurrentLine = try container.decodeIfPresent(Bool.self, forKey: .highlightCurrentLine) ?? true
         tabWidth = try container.decodeIfPresent(Int.self, forKey: .tabWidth) ?? 4
-        autoIndent = try container.decodeIfPresent(Bool.self, forKey: .autoIndent) ?? true
         wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
