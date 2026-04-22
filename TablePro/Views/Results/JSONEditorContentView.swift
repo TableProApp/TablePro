@@ -37,6 +37,7 @@ struct JSONEditorContentView: View {
                 }
             }
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: 560)
+        .frame(minHeight: 200, maxHeight: 480)
     }
 }

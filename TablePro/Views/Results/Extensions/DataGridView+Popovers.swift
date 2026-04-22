@@ -122,7 +122,7 @@ extension TableViewCoordinator {
         PopoverPresenter.show(
             relativeTo: cellRect,
             of: tableView,
-            contentSize: NSSize(width: 560, height: 480)
+            contentSize: nil
         ) { [weak self] dismiss in
             JSONEditorContentView(
                 initialValue: currentValue,
