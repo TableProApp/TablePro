@@ -57,7 +57,7 @@ struct SQLFormatterServiceTests {
         #expect(result == """
         SELECT *
         FROM users
-        WHERE active = true
+        WHERE active = TRUE
         """)
     }
 
@@ -67,7 +67,7 @@ struct SQLFormatterServiceTests {
         #expect(result == """
         SELECT *
         FROM users
-        WHERE active = true
+        WHERE active = TRUE
           AND role = 'admin'
           OR age > 18
         """)
@@ -82,7 +82,7 @@ struct SQLFormatterServiceTests {
         SELECT *
         FROM users
         WHERE id > 1
-        ORDER BY name asc
+        ORDER BY name ASC
         LIMIT 10
         """)
     }
@@ -137,8 +137,8 @@ struct SQLFormatterServiceTests {
           SELECT id,
                  name
           FROM users
-          WHERE active = true
-        ) as active_users
+          WHERE active = TRUE
+        ) AS active_users
         """)
     }
 
@@ -148,7 +148,7 @@ struct SQLFormatterServiceTests {
         #expect(result == """
         SELECT *
         FROM users
-        WHERE id in (
+        WHERE id IN (
           SELECT user_id
           FROM orders
         )
@@ -166,7 +166,7 @@ struct SQLFormatterServiceTests {
                  WHEN status = 'active' THEN 'yes'
                  WHEN status = 'inactive' THEN 'no'
                  ELSE 'unknown'
-               END as label
+               END AS label
         FROM users
         """)
     }
@@ -180,7 +180,7 @@ struct SQLFormatterServiceTests {
         WITH active_users AS (
           SELECT *
           FROM users
-          WHERE active = true
+          WHERE active = TRUE
         )
         SELECT *
         FROM active_users
@@ -235,7 +235,7 @@ struct SQLFormatterServiceTests {
         #expect(result == """
         DELETE
         FROM users
-        WHERE active = false
+        WHERE active = FALSE
         """)
     }
 
@@ -255,11 +255,31 @@ struct SQLFormatterServiceTests {
 
     // MARK: - Multiple Statements
 
-    @Test("Multiple statements separated by semicolons")
-    func multipleStatements() throws {
+    @Test("Multiple statements — no blank line when input has none")
+    func multipleStatementsCompact() throws {
         let result = try format("select 1; select 2;")
         #expect(result == """
         SELECT 1;
+        SELECT 2;
+        """)
+    }
+
+    @Test("Multiple statements — preserves blank line from input")
+    func multipleStatementsWithBlankLine() throws {
+        let result = try format("select 1;\n\nselect 2;")
+        #expect(result == """
+        SELECT 1;
+
+        SELECT 2;
+        """)
+    }
+
+    @Test("Multiple statements — preserves multiple blank lines from input")
+    func multipleStatementsWithMultipleBlankLines() throws {
+        let result = try format("select 1;\n\n\nselect 2;")
+        #expect(result == """
+        SELECT 1;
+
 
         SELECT 2;
         """)
@@ -350,7 +370,7 @@ struct SQLFormatterServiceTests {
 
     @Test("Size limit throws")
     func sizeLimitThrows() {
-        let large = String(repeating: "select 1; ", count: 600_000)
+        let large = String(repeating: "select 1; ", count: 1_100_000)
         #expect(throws: SQLFormatterError.self) {
             try format(large)
         }

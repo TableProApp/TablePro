@@ -51,7 +51,11 @@ struct SQLFormatterService: SQLFormatterProtocol {
 
         let tokenizer = SQLTokenizer(dialectKeywords: dialectKeywords)
         let tokens = tokenizer.tokenize(sql)
-        var tokenFormatter = SQLTokenFormatter(options: options)
+        var tokenFormatter = SQLTokenFormatter(
+            options: options,
+            dialectFunctions: dialectProvider.functions,
+            dialectDataTypes: dialectProvider.dataTypes
+        )
         let formatted = tokenFormatter.format(tokens)
 
         let newCursor = cursorOffset.map { original in
@@ -75,8 +79,28 @@ struct SQLFormatterService: SQLFormatterProtocol {
 internal struct SQLTokenFormatter {
     let options: SQLFormatterOptions
 
-    init(options: SQLFormatterOptions) {
+    private static let builtinFunctions: Set<String> = [
+        "COUNT", "SUM", "AVG", "MIN", "MAX",
+    ]
+
+    private static let builtinDataTypes: Set<String> = [
+        "INT", "INTEGER", "BIGINT", "SMALLINT", "TINYINT",
+        "VARCHAR", "CHAR", "TEXT", "NVARCHAR", "NCHAR",
+        "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL",
+        "BOOLEAN", "BOOL", "BIT",
+        "DATE", "TIME", "TIMESTAMP", "DATETIME", "INTERVAL",
+        "BLOB", "CLOB", "BINARY", "VARBINARY",
+        "JSON", "JSONB", "XML", "UUID",
+        "SERIAL", "BIGSERIAL",
+    ]
+
+    private let functions: Set<String>
+    private let dataTypes: Set<String>
+
+    init(options: SQLFormatterOptions, dialectFunctions: Set<String> = [], dialectDataTypes: Set<String> = []) {
         self.options = options
+        self.functions = Self.builtinFunctions.union(dialectFunctions)
+        self.dataTypes = Self.builtinDataTypes.union(dialectDataTypes)
     }
 
     // Mutable state
@@ -102,9 +126,27 @@ internal struct SQLTokenFormatter {
     /// True after BETWEEN keyword — suppresses the next AND from being a clause break
     private var afterBetween = false
 
+    /// Newline counts after each semicolon, keyed by index in the meaningful token array
+    private var newlinesAfterSemicolon: [Int: Int] = [:]
+
     // MARK: - Public
 
     mutating func format(_ tokens: [SQLToken]) -> String {
+        // Pre-scan: record original newline counts after each semicolon
+        var meaningfulIndex = -1
+        for (i, token) in tokens.enumerated() {
+            if token.type == .whitespace { continue }
+            meaningfulIndex += 1
+            if token.type == .punctuation && token.value == ";" {
+                var nlCount = 0
+                for j in (i + 1)..<tokens.count {
+                    guard tokens[j].type == .whitespace else { break }
+                    for c in tokens[j].value where c == "\n" { nlCount += 1 }
+                }
+                newlinesAfterSemicolon[meaningfulIndex] = nlCount
+            }
+        }
+
         let meaningful = tokens.compactMap { t -> SQLToken? in
             t.type == .whitespace ? nil : t
         }
@@ -120,7 +162,7 @@ internal struct SQLTokenFormatter {
             let prev: SQLToken? = mi > 0 ? meaningful[mi - 1] : nil
             let next2: SQLToken? = mi + 2 < meaningful.count ? meaningful[mi + 2] : nil
 
-            processToken(token, prev: prev, next: next, next2: next2)
+            processToken(token, mi: mi, prev: prev, next: next, next2: next2)
         }
 
         return output.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,14 +170,14 @@ internal struct SQLTokenFormatter {
 
     // MARK: - Token Processing
 
-    private mutating func processToken(_ token: SQLToken, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
+    private mutating func processToken(_ token: SQLToken, mi: Int, prev: SQLToken?, next: SQLToken?, next2: SQLToken?) {
         if token.type == .comment {
             handleComment(token)
             return
         }
 
         if token.type == .punctuation {
-            handlePunctuation(token, prev: prev, next: next)
+            handlePunctuation(token, mi: mi, prev: prev, next: next)
             return
         }
 
@@ -160,11 +202,13 @@ internal struct SQLTokenFormatter {
 
     // MARK: - Punctuation Handling
 
-    private mutating func handlePunctuation(_ token: SQLToken, prev: SQLToken?, next: SQLToken?) {
+    private mutating func handlePunctuation(_ token: SQLToken, mi: Int, prev: SQLToken?, next: SQLToken?) {
         switch token.value {
         case ";":
             output += ";"
-            output += "\n"
+            let originalNewlines = newlinesAfterSemicolon[mi] ?? 0
+            let newlineCount = max(originalNewlines, 1)
+            output += String(repeating: "\n", count: newlineCount)
             afterNewline = true
             isFirstClause = true
             indent = 0
@@ -250,8 +294,16 @@ internal struct SQLTokenFormatter {
             clauseStack.append(.windowParen)
             return
         }
-        // Inline parenthesized expression: COUNT(*), VARCHAR(255), etc.
-        output += "("
+        // Structural keyword before paren needs space: VALUES (...), IN (...)
+        // Function calls and data type parens get no space: COUNT(*), VARCHAR(255)
+        if let prevUpper = prev?.upperValue, prev?.type == .keyword,
+           !functions.contains(prevUpper), !dataTypes.contains(prevUpper) {
+            output += suppressNextSpace ? "(" : " ("
+        } else if currentContext == .insert && prev?.type == .identifier {
+            output += " ("
+        } else {
+            output += "("
+        }
         afterNewline = false
         suppressNextSpace = true
         clauseStack.append(.inlineParen)
@@ -359,7 +411,11 @@ internal struct SQLTokenFormatter {
         case "TABLE", "AS":
             appendToken(kw)
         default:
-            appendToken(kw)
+            if options.uppercaseKeywords && (functions.contains(upper) || dataTypes.contains(upper)) {
+                appendToken(token.value)
+            } else {
+                appendToken(kw)
+            }
         }
     }
 
@@ -477,10 +533,10 @@ internal struct SQLTokenFormatter {
         clauseStack.removeAll()
         if upper == "UNION" && next?.upperValue == "ALL" {
             let allKw = options.uppercaseKeywords ? "ALL" : "all"
-            output += "\n\n" + kw + " " + allKw + "\n"
+            output += "\n\n" + kw + " " + allKw + "\n\n"
             skipCount = 1 // skip ALL
         } else {
-            output += "\n\n" + kw + "\n"
+            output += "\n\n" + kw + "\n\n"
         }
         afterNewline = true
         isFirstClause = true

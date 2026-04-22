@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
 		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
-		5A3B10292F97DE8B00611C1F /* LibSQLDriverPlugin.tableplugin in Copy Plug-Ins */ = {isa = PBXBuildFile; fileRef = 5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
 		5A7E78A02F95F02A00EEF236 /* TableProAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 5ACE00012F4F000000000010 /* TableProAnalytics */; };
 		5A860000A00000000 /* TableProPluginKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -209,7 +208,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				5A3B10292F97DE8B00611C1F /* LibSQLDriverPlugin.tableplugin in Copy Plug-Ins */,
 				5A865000D00000000 /* MySQLDriver.tableplugin in Copy Plug-Ins */,
 				5A868000D00000000 /* PostgreSQLDriver.tableplugin in Copy Plug-Ins */,
 				5A862000D00000000 /* SQLiteDriver.tableplugin in Copy Plug-Ins */,
