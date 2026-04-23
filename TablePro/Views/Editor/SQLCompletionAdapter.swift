@@ -127,6 +127,8 @@ final class SQLCompletionAdapter: CodeSuggestionDelegate {
             case .from, .join, .into, .set, .insertColumns, .on,
                  .alterTableColumn, .returning, .using, .dropObject, .createIndex:
                 break // Allow empty-prefix completions for these browseable contexts
+            case .select where !context.sqlContext.isAfterComma:
+                break // Allow after SELECT keyword, but not after each comma
             default:
                 return nil
             }

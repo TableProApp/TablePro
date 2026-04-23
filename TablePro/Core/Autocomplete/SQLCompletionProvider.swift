@@ -166,7 +166,7 @@ final class SQLCompletionProvider {
                     items.append(distinctItem)
                 }
                 // Function-arg items: columns, functions, value keywords
-                items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+                items += await columnItems(for: context.tableReferences)
                 items += SQLKeywords.functionItems()
                 items += filterKeywords(["NULL", "TRUE", "FALSE"])
                 if funcName.uppercased() != "COUNT" {
@@ -192,7 +192,7 @@ final class SQLCompletionProvider {
                         sortPriority: 60
                     ))
                 }
-                items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+                items += await columnItems(for: context.tableReferences)
                 items += SQLKeywords.functionItems()
                 items += filterKeywords([
                     "DISTINCT", "ALL", "AS", "FROM", "CASE", "WHEN",
@@ -202,7 +202,7 @@ final class SQLCompletionProvider {
 
         case .on:
             // HP-3: ON clause — prioritize columns from joined tables
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             // Add qualified column suggestions (table.column) for join conditions
             for ref in context.tableReferences {
                 let qualifier = ref.alias ?? ref.tableName
@@ -225,7 +225,7 @@ final class SQLCompletionProvider {
 
         case .where_, .and, .having:
             // HP-8: Columns, operators, logical keywords + clause transitions
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.operatorItems()
             items += filterKeywords([
                 "AND", "OR", "NOT", "IN", "LIKE", "ILIKE", "BETWEEN", "IS",
@@ -242,7 +242,7 @@ final class SQLCompletionProvider {
 
         case .groupBy:
             // Columns + clause transitions
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "HAVING", "ORDER BY", "LIMIT",
                 "UNION", "INTERSECT", "EXCEPT"
@@ -250,7 +250,7 @@ final class SQLCompletionProvider {
 
         case .orderBy:
             // Columns + sort direction + clause transitions
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "ASC", "DESC", "NULLS FIRST", "NULLS LAST",
                 "LIMIT", "OFFSET",
@@ -297,7 +297,7 @@ final class SQLCompletionProvider {
                 distinctItem.sortPriority = 20
                 items.append(distinctItem)
             }
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += SQLKeywords.functionItems()
             if isCountFunction {
                 // DISTINCT already added above with boosted priority
@@ -308,14 +308,14 @@ final class SQLCompletionProvider {
 
         case .caseExpression:
             // Inside CASE expression
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["WHEN", "THEN", "ELSE", "END", "AND", "OR", "IS", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.operatorItems()
             items += SQLKeywords.functionItems()
 
         case .inList:
             // Inside IN (...) list - suggest values, subqueries, columns
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["SELECT", "NULL", "TRUE", "FALSE"])
             items += SQLKeywords.functionItems()
 
@@ -378,7 +378,7 @@ final class SQLCompletionProvider {
 
         case .returning:
             // After RETURNING (PostgreSQL) - suggest columns
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords(["*"])
 
         case .union:
@@ -387,11 +387,11 @@ final class SQLCompletionProvider {
 
         case .using:
             // After USING in JOIN - suggest columns
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
 
         case .window:
             // After OVER/PARTITION BY - suggest columns and window keywords
-            items += await schemaProvider.allColumnsInScope(for: context.tableReferences)
+            items += await columnItems(for: context.tableReferences)
             items += filterKeywords([
                 "PARTITION BY", "ORDER BY", "ASC", "DESC",
                 "ROWS", "RANGE", "GROUPS", "BETWEEN", "UNBOUNDED",
@@ -410,7 +410,7 @@ final class SQLCompletionProvider {
                 items += filterKeywords(["ON"])
             } else {
                 // After ON tablename (inside parens) — suggest columns
-                items = await schemaProvider.allColumnsInScope(for: context.tableReferences)
+                items = await columnItems(for: context.tableReferences)
                 items += filterKeywords(["USING", "BTREE", "HASH", "GIN", "GIST"])
             }
 
@@ -477,6 +477,14 @@ final class SQLCompletionProvider {
             item.sortPriority = 380
             return item
         }
+    }
+
+    /// Columns from explicit table references, or all cached schema columns as fallback
+    private func columnItems(for references: [TableReference]) async -> [SQLCompletionItem] {
+        if references.isEmpty {
+            return await schemaProvider.allColumnsFromCachedTables()
+        }
+        return await schemaProvider.allColumnsInScope(for: references)
     }
 
     /// Filter to specific keywords

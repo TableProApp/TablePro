@@ -23,6 +23,7 @@ actor SQLSchemaProvider {
     private var lastRetryAttempt: Date?
     private let retryCooldown: TimeInterval = 30
     private var loadTask: Task<Void, Never>?
+    private var eagerColumnTask: Task<Void, Never>?
 
     // Store a weak driver reference to avoid retaining it after disconnect (MEM-9)
     private weak var cachedDriver: (any DatabaseDriver)?
@@ -67,6 +68,7 @@ actor SQLSchemaProvider {
     private func setLoadedTables(_ newTables: [TableInfo]) {
         tables = newTables
         isLoading = false
+        startEagerColumnLoad()
     }
 
     private func setLoadError(_ error: Error) {
@@ -136,12 +138,45 @@ actor SQLSchemaProvider {
     }
 
     func resetForDatabase(_ database: String?, tables newTables: [TableInfo], driver: DatabaseDriver) {
+        eagerColumnTask?.cancel()
+        eagerColumnTask = nil
         self.tables = newTables
         self.columnCache.removeAll()
         self.columnAccessOrder.removeAll()
         self.cachedDriver = driver
         self.isLoading = false
         self.lastLoadError = nil
+        startEagerColumnLoad()
+    }
+
+    // MARK: - Eager Column Loading
+
+    private func startEagerColumnLoad() {
+        guard !tables.isEmpty, let driver = cachedDriver else { return }
+        eagerColumnTask?.cancel()
+        let tableCount = tables.count
+        eagerColumnTask = Task {
+            Self.logger.info("[schema] eager column load starting tableCount=\(tableCount)")
+            do {
+                let allColumns = try await driver.fetchAllColumns()
+                guard !Task.isCancelled else { return }
+                self.populateColumnCache(allColumns)
+                Self.logger.info("[schema] eager column load complete cachedCount=\(self.columnCache.count)")
+            } catch {
+                guard !Task.isCancelled else { return }
+                Self.logger.debug("[schema] eager column load failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func populateColumnCache(_ allColumns: [String: [ColumnInfo]]) {
+        for (tableName, columns) in allColumns {
+            let key = tableName.lowercased()
+            guard columnCache[key] == nil else { continue }
+            guard columnAccessOrder.count < maxCachedTables else { break }
+            columnCache[key] = columns
+            columnAccessOrder.append(key)
+        }
     }
 
     /// Find table name from alias
@@ -275,6 +310,61 @@ actor SQLSchemaProvider {
                     isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
                     defaultValue: $0.defaultValue, comment: $0.comment
                 )
+            }
+        }
+    }
+
+    /// Get completion items for all columns from cached tables (zero network).
+    /// Used as fallback when no table references exist in the current statement.
+    func allColumnsFromCachedTables() async -> [SQLCompletionItem] {
+        guard !columnCache.isEmpty else { return [] }
+
+        let canonicalNames = Dictionary(
+            tables.map { ($0.name.lowercased(), $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var allEntries: [(table: String, col: ColumnInfo)] = []
+        var nameCount: [String: Int] = [:]
+
+        for (key, columns) in columnCache {
+            let tableName = canonicalNames[key] ?? key
+            for col in columns {
+                allEntries.append((table: tableName, col: col))
+                nameCount[col.name.lowercased(), default: 0] += 1
+            }
+        }
+
+        // swiftlint:disable:next large_tuple
+        var itemDataBuilder: [(
+            label: String, insertText: String, type: String, table: String,
+            isPK: Bool, isNullable: Bool, defaultValue: String?, comment: String?
+        )] = []
+
+        for entry in allEntries {
+            let isAmbiguous = (nameCount[entry.col.name.lowercased()] ?? 0) > 1
+            let label = isAmbiguous ? "\(entry.table).\(entry.col.name)" : entry.col.name
+            let insertText = isAmbiguous ? "\(entry.table).\(entry.col.name)" : entry.col.name
+
+            itemDataBuilder.append((
+                label: label, insertText: insertText, type: entry.col.dataType,
+                table: entry.table, isPK: entry.col.isPrimaryKey,
+                isNullable: entry.col.isNullable, defaultValue: entry.col.defaultValue,
+                comment: entry.col.comment
+            ))
+        }
+
+        let itemData = itemDataBuilder
+
+        return await MainActor.run {
+            itemData.map {
+                var item = SQLCompletionItem.column(
+                    $0.label, dataType: $0.type, tableName: $0.table,
+                    isPrimaryKey: $0.isPK, isNullable: $0.isNullable,
+                    defaultValue: $0.defaultValue, comment: $0.comment
+                )
+                item.sortPriority = 150
+                return item
             }
         }
     }

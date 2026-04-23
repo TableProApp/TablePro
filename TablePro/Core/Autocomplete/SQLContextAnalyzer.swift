@@ -265,14 +265,14 @@ final class SQLContextAnalyzer {
 
     private static let tableRefRegexes: [NSRegularExpression] = {
         let patterns = [
-            "(?i)\\bFROM\\s+[`\"']?([\\w]+)[`\"']?" +
+            "(?i)\\bFROM\\s+[`\"']?([\\w.]+)[`\"']?" +
             "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
             "(?i)(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\\s*(?:OUTER)?\\s*JOIN\\s+" +
-            "[`\"']?([\\w]+)[`\"']?(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bUPDATE\\s+[`\"']?([\\w]+)[`\"']?" +
+            "[`\"']?([\\w.]+)[`\"']?(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
+            "(?i)\\bUPDATE\\s+[`\"']?([\\w.]+)[`\"']?" +
             "(?:\\s+(?:AS\\s+)?[`\"']?([\\w]+)[`\"']?)?",
-            "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w]+)[`\"']?",
-            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w]+)[`\"']?"
+            "(?i)\\bINSERT\\s+INTO\\s+[`\"']?([\\w.]+)[`\"']?",
+            "(?i)\\bCREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+\\w+\\s+ON\\s+[`\"']?([\\w.]+)[`\"']?"
         ]
         return patterns.compactMap { try? NSRegularExpression(pattern: $0) }
     }()
@@ -780,20 +780,28 @@ final class SQLContextAnalyzer {
         }
     }
 
+    private static let tableRefKeywords: Set<String> = [
+        "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "NATURAL",
+        "JOIN", "ON", "AND", "OR", "WHERE", "SELECT", "FROM", "AS"
+    ]
+
+    /// Strip schema prefix from a potentially schema-qualified name
+    private static func stripSchemaPrefix(_ raw: String) -> String {
+        let ns = raw as NSString
+        let dotRange = ns.range(of: ".", options: .backwards)
+        guard dotRange.location != NSNotFound else { return raw }
+        let start = dotRange.location + 1
+        guard start < ns.length else { return raw }
+        return ns.substring(from: start)
+    }
+
     /// Extract all table references (table names and aliases) from the query
     private func extractTableReferences(from query: String) -> [TableReference] {
         var references: [TableReference] = []
         var seen = Set<TableReference>()
 
-        // SQL keywords that should NOT be treated as table names
-        let sqlKeywords: Set<String> = [
-            "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "NATURAL",
-            "JOIN", "ON", "AND", "OR", "WHERE", "SELECT", "FROM", "AS"
-        ]
-
         let nsRange = NSRange(location: 0, length: (query as NSString).length)
 
-        // Uses pre-compiled static regexes for performance
         for regex in Self.tableRefRegexes {
             regex.enumerateMatches(in: query, range: nsRange) { match, _, _ in
                 guard let match = match else { return }
@@ -801,8 +809,9 @@ final class SQLContextAnalyzer {
                 let tableNSRange = match.range(at: 1)
                 guard tableNSRange.location != NSNotFound else { return }
 
-                let tableName = (query as NSString).substring(with: tableNSRange)
-                guard !sqlKeywords.contains(tableName.uppercased()) else { return }
+                let rawName = (query as NSString).substring(with: tableNSRange)
+                let tableName = Self.stripSchemaPrefix(rawName)
+                guard !Self.tableRefKeywords.contains(tableName.uppercased()) else { return }
 
                 var alias: String?
                 if match.numberOfRanges > 2 {
@@ -811,7 +820,7 @@ final class SQLContextAnalyzer {
                         let aliasCandidate = (query as NSString).substring(
                             with: aliasNSRange
                         )
-                        if !sqlKeywords.contains(aliasCandidate.uppercased()) {
+                        if !Self.tableRefKeywords.contains(aliasCandidate.uppercased()) {
                             alias = aliasCandidate
                         }
                     }
