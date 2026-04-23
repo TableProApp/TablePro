@@ -647,7 +647,6 @@ extension MCPRouter {
             MCPToolDefinition(
                 name: "execute_query",
                 description: "Execute a SQL query. All queries are subject to the connection's safe mode policy. "
-                    + "UPDATE/DELETE queries always require user confirmation via a native dialog. "
                     + "DROP/TRUNCATE/ALTER...DROP must use the confirm_destructive_operation tool.",
                 inputSchema: .object([
                     "type": "object",
