@@ -9,7 +9,7 @@ TablePro includes a built-in [Model Context Protocol](https://modelcontextprotoc
 
 ## Enabling the Server
 
-Open **Settings > Terminal** and toggle **Enable MCP Server**. The server starts on port `23508` by default. A green status indicator confirms it is running.
+Open **Settings > MCP** and toggle **Enable MCP Server**. The server starts on port `23508` by default. A green status indicator confirms it is running.
 
 <Frame caption="MCP server settings">
   <img
@@ -64,28 +64,51 @@ Add the snippet to your `.cursor/mcp.json` file in the project root, or to the g
 
 ## Available Tools
 
+### Connection tools
+
 | Tool | Description |
 |------|-------------|
 | `list_connections` | List all saved connections with status |
 | `connect` | Connect to a saved database |
 | `disconnect` | Disconnect from a database |
 | `get_connection_status` | Get connection details (version, uptime) |
-| `list_databases` | List databases on the server |
-| `list_schemas` | List schemas in a database |
-| `list_tables` | List tables and views |
-| `describe_table` | Get columns, indexes, foreign keys, and DDL |
-| `get_table_ddl` | Get the CREATE TABLE statement |
-| `execute_query` | Run a SQL or NoSQL query (safe mode applies) |
-| `confirm_destructive_operation` | Execute DROP/TRUNCATE after explicit confirmation |
-| `export_data` | Export results as CSV, JSON, or SQL |
-| `switch_database` | Switch the active database |
-| `switch_schema` | Switch the active schema |
 
-The server also exposes three resources that AI tools can read directly:
+### Schema tools
 
-- `tablepro://connections` - all saved connections with metadata
-- `tablepro://connections/{id}/schema` - full schema for a connected database
-- `tablepro://connections/{id}/history` - recent query history (supports `?limit=`, `?search=`, `?date_filter=`)
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `list_databases` | `connection_id` | List databases on the server |
+| `list_schemas` | `connection_id`, `database`? | List schemas in a database |
+| `list_tables` | `connection_id`, `database`?, `schema`?, `include_row_counts`? | List tables and views |
+| `describe_table` | `connection_id`, `table_name`, `schema`? | Get columns, indexes, foreign keys, and DDL |
+| `get_table_ddl` | `connection_id`, `table_name`, `schema`? | Get the CREATE TABLE statement |
+
+### Query tools
+
+| Tool | Parameters | Description |
+|------|-----------|-------------|
+| `execute_query` | `connection_id`, `query`, `max_rows`?, `timeout_seconds`?, `database`?, `schema`? | Run a SQL query (safe mode applies) |
+| `confirm_destructive_operation` | `connection_id`, `query`, `confirmation_phrase` | Execute DROP/TRUNCATE after explicit confirmation |
+| `export_data` | `connection_id`, `format` (csv/json/sql), `tables`?, `query`?, `max_rows`? | Export results to file. `max_rows` default 50,000, max 100,000. |
+| `switch_database` | `connection_id`, `database` | Switch the active database |
+| `switch_schema` | `connection_id`, `schema` | Switch the active schema |
+
+Parameters marked with `?` are optional.
+
+### Resources
+
+The server exposes three resources that AI tools can read directly:
+
+| Resource | Description |
+|----------|-------------|
+| `tablepro://connections` | All saved connections with metadata |
+| `tablepro://connections/{id}/schema` | Full schema for a connected database. Truncated at 100 tables. |
+| `tablepro://connections/{id}/history` | Recent query history |
+
+History resource supports query parameters:
+- `?limit=N` - number of entries (1-500, default 50)
+- `?search=text` - filter by query text
+- `?date_filter=` - `today`, `thisWeek`, `thisMonth`, or omit for all
 
 ## Security & Privacy
 
@@ -93,9 +116,10 @@ The server also exposes three resources that AI tools can read directly:
 All safety controls run server-side in TablePro. AI clients cannot bypass them.
 </Note>
 
-### Localhost only
+### Network
 
-The server binds to `127.0.0.1`. It is not exposed to the network.
+- Binds to `127.0.0.1` only. Never exposed to the network.
+- Origin header validated to prevent DNS rebinding attacks. Only `localhost`, `127.0.0.1`, `[::1]` allowed.
 
 ### Connection access
 
@@ -107,7 +131,7 @@ Each connection has an AI Policy:
 | Ask Each Time (default) | Approval dialog on first access per session (30s timeout) |
 | Never | Blocked |
 
-Set per connection or change the default in **Settings > AI**.
+Set per connection or change the default in **Settings > AI**. Approvals are cleared when the session ends, times out, or the app restarts.
 
 ### Query tiers
 
@@ -148,10 +172,14 @@ If denied, the query returns an error to the MCP client. Nothing is executed.
 
 ### Limits
 
-- Row limit: 500 default, 10,000 max
-- Query timeout: 30s default, 300s max
+- Row limit: 500 default, 10,000 max (per query via `max_rows`)
+- Export row limit: 50,000 default, 100,000 max
+- Query timeout: 30s default, 300s max (per query via `timeout_seconds`)
 - Single statements only (multi-statement blocked)
 - Query size: 100 KB max
+- HTTP body: 10 MB max
+- Max concurrent sessions: 10
+- Session idle timeout: 5 minutes
 
 ### Logging
 
@@ -165,12 +193,12 @@ MCP clients **cannot** access: passwords, SSH keys, license data, app settings, 
 
 ## Troubleshooting
 
-**Port conflict**: If the server fails to start, another process may be using port 23508. Change the port in **Settings > Terminal**.
+**Port conflict**: If the server fails to start, another process may be using port 23508. Change the port in **Settings > MCP**.
 
-**"Server not fully initialized"**: Restart the MCP server from **Settings > Terminal**. If the issue persists, quit and relaunch TablePro.
+**"Server not fully initialized"**: Restart the MCP server from **Settings > MCP**. If the issue persists, quit and relaunch TablePro.
 
 **App must be running**: The MCP server only runs while TablePro is open. AI tools cannot connect if the app is quit or the server is disabled.
 
 **Connection refused**: Verify the server is running (green indicator in Settings). Check that your AI tool's MCP config URL matches the port shown in Settings.
 
-**Query blocked by Safe Mode**: The MCP server respects the same Safe Mode levels as manual queries. Check the connection's safe mode setting if queries are being rejected.
+**Query blocked by Safe Mode**: Check the connection's safe mode setting if queries are being rejected.

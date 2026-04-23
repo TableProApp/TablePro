@@ -681,7 +681,7 @@ extension MCPRouter {
             ),
             MCPToolDefinition(
                 name: "export_data",
-                description: "Export query results or table data to CSV, JSON, SQL, or XLSX",
+                description: "Export query results or table data to CSV, JSON, or SQL",
                 inputSchema: .object([
                     "type": "object",
                     "properties": .object([
