@@ -15,7 +15,7 @@ private let navigationLogger = Logger(subsystem: "com.TablePro", category: "Main
 extension MainContentCoordinator {
     // MARK: - Table Tab Opening
 
-    func openTableTab(_ tableName: String, showStructure: Bool = false, isView: Bool = false) {
+    func openTableTab(_ tableName: String, showStructure: Bool = false, isView: Bool = false, asPreview: Bool? = nil) {
         let navigationModel = PluginMetadataRegistry.shared.snapshot(
             forTypeId: connection.type.pluginTypeId
         )?.navigationModel ?? .standard
@@ -73,8 +73,9 @@ extension MainContentCoordinator {
 
         // If no tabs exist (empty state), add a table tab directly.
         // In preview mode, mark it as preview so subsequent clicks replace it.
+        let usePreview = asPreview ?? AppSettingsManager.shared.tabs.enablePreviewTabs
         if tabManager.tabs.isEmpty {
-            if AppSettingsManager.shared.tabs.enablePreviewTabs {
+            if usePreview {
                 tabManager.addPreviewTableTab(
                     tableName: tableName,
                     databaseType: connection.type,
@@ -155,7 +156,7 @@ extension MainContentCoordinator {
         }
 
         // Preview tab mode: reuse or create a preview tab instead of a new native window
-        if AppSettingsManager.shared.tabs.enablePreviewTabs {
+        if usePreview {
             openPreviewTab(tableName, isView: isView, databaseName: currentDatabase, schemaName: currentSchema, showStructure: showStructure)
             return
         }

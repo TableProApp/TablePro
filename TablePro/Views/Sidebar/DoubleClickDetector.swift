@@ -84,13 +84,22 @@ private final class SharedDoubleClickMonitor {
     private func handleMouseDown(_ event: NSEvent) {
         guard event.clickCount == 2 else { return }
 
-        for view in registeredViews.allObjects {
+        let views = registeredViews.allObjects
+        guard !views.isEmpty else { return }
+
+        for view in views {
             guard let viewWindow = view.window,
                   event.window === viewWindow else { continue }
-            let locationInView = view.convert(event.locationInWindow, from: nil)
-            if view.bounds.contains(locationInView) {
+
+            var ancestor: NSView? = view.superview
+            while let current = ancestor, !(current is NSTableRowView) {
+                ancestor = current.superview
+            }
+            let hitView = ancestor ?? view
+            let locationInHitView = hitView.convert(event.locationInWindow, from: nil)
+            if hitView.bounds.contains(locationInHitView) {
                 view.onDoubleClick?()
-                break
+                return
             }
         }
     }

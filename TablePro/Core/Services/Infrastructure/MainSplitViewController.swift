@@ -332,11 +332,11 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                             previewCoordinator.promotePreviewTab()
                         } else {
                             previewCoordinator.promotePreviewTab()
-                            coordinator.openTableTab(table.name, isView: isView)
+                            coordinator.openTableTab(table.name, isView: isView, asPreview: false)
                         }
                     } else {
                         coordinator.promotePreviewTab()
-                        coordinator.openTableTab(table.name, isView: isView)
+                        coordinator.openTableTab(table.name, isView: isView, asPreview: false)
                     }
                 },
                 pendingTruncates: sessionPendingTruncatesBinding,
