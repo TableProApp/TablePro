@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- MCP query safety: SELECT runs immediately, UPDATE/DELETE require server-side confirmation via native macOS dialog, DROP/TRUNCATE require explicit confirmation tool with native dialog
+- MCP query safety: three-tier classification with server-side confirmation for write and destructive queries
 
 ## [0.34.0] - 2026-04-22
 
