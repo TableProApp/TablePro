@@ -15779,6 +15779,9 @@
         }
       }
     },
+    "Exclude from iCloud Sync" : {
+
+    },
     "Execute" : {
       "localizations" : {
         "tr" : {
@@ -20800,6 +20803,9 @@
         }
       }
     },
+    "Include in iCloud Sync" : {
+
+    },
     "Include NULL values" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -23625,6 +23631,12 @@
         }
       }
     },
+    "Local only" : {
+
+    },
+    "Local only - not synced to iCloud" : {
+
+    },
     "localhost" : {
       "localizations" : {
         "tr" : {
@@ -24133,6 +24145,9 @@
           }
         }
       }
+    },
+    "MCP" : {
+
     },
     "MCP Access Request" : {
       "localizations" : {
@@ -40136,6 +40151,9 @@
           }
         }
       }
+    },
+    "This connection won't sync to other devices via iCloud." : {
+
     },
     "This database has no %@ yet." : {
       "localizations" : {
