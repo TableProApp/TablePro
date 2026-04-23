@@ -171,8 +171,7 @@ actor MCPConnectionBridge {
     ) async throws -> JSONValue {
         let (driver, databaseType) = try await resolveDriver(connectionId)
         let isWrite = QueryClassifier.isWriteQuery(query, databaseType: databaseType)
-        let uppercased = query.uppercased()
-        let hasReturning = uppercased.range(of: #"\bRETURNING\b"#, options: .regularExpression) != nil
+        let hasReturning = query.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
         let shouldUseFetchRows = !isWrite || hasReturning
         let effectiveLimit = maxRows + 1
 

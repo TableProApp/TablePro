@@ -127,20 +127,7 @@ enum QueryClassifier {
         return .safe
     }
 
-    static func isInsertQuery(_ sql: String) -> Bool {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.uppercased().hasPrefix("INSERT ")
-    }
-
     static func isMultiStatement(_ sql: String) -> Bool {
         SQLStatementScanner.allStatements(in: sql).count > 1
-    }
-
-    private static let whereKeywordRegex = try? NSRegularExpression(pattern: "\\bWHERE\\b", options: .caseInsensitive)
-
-    static func hasWhereClause(_ sql: String) -> Bool {
-        let uppercased = sql.uppercased()
-        let range = NSRange(uppercased.startIndex..., in: uppercased)
-        return whereKeywordRegex?.firstMatch(in: uppercased, options: [], range: range) != nil
     }
 }
