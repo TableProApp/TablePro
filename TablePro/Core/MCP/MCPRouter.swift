@@ -646,7 +646,8 @@ extension MCPRouter {
         [
             MCPToolDefinition(
                 name: "execute_query",
-                description: "Execute a SQL or NoSQL query on a connected database",
+                description: "Execute a SQL query. All queries are subject to the connection's safe mode policy. "
+                    + "DROP/TRUNCATE/ALTER...DROP must use the confirm_destructive_operation tool.",
                 inputSchema: .object([
                     "type": "object",
                     "properties": .object([
@@ -680,7 +681,7 @@ extension MCPRouter {
             ),
             MCPToolDefinition(
                 name: "export_data",
-                description: "Export query results or table data to CSV, JSON, SQL, or XLSX",
+                description: "Export query results or table data to CSV, JSON, or SQL",
                 inputSchema: .object([
                     "type": "object",
                     "properties": .object([
@@ -712,6 +713,32 @@ extension MCPRouter {
                         ])
                     ]),
                     "required": .array([.string("connection_id"), .string("format")])
+                ])
+            ),
+            MCPToolDefinition(
+                name: "confirm_destructive_operation",
+                description: "Execute a destructive DDL query (DROP, TRUNCATE, ALTER...DROP) after explicit confirmation.",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "connection_id": .object([
+                            "type": "string",
+                            "description": "UUID of the active connection"
+                        ]),
+                        "query": .object([
+                            "type": "string",
+                            "description": "The destructive query to execute"
+                        ]),
+                        "confirmation_phrase": .object([
+                            "type": "string",
+                            "description": "Must be exactly: I understand this is irreversible"
+                        ])
+                    ]),
+                    "required": .array([
+                        .string("connection_id"),
+                        .string("query"),
+                        .string("confirmation_phrase")
+                    ])
                 ])
             )
         ]

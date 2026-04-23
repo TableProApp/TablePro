@@ -5,6 +5,12 @@
 
 import Foundation
 
+enum QueryTier {
+    case safe
+    case write
+    case destructive
+}
+
 enum QueryClassifier {
     private static let writeQueryPrefixes: [String] = [
         "INSERT ", "UPDATE ", "DELETE ", "REPLACE ",
@@ -40,7 +46,18 @@ enum QueryClassifier {
         }
 
         let uppercased = trimmed.uppercased()
-        return writeQueryPrefixes.contains { uppercased.hasPrefix($0) }
+        if writeQueryPrefixes.contains(where: { uppercased.hasPrefix($0) }) {
+            return true
+        }
+
+        if uppercased.hasPrefix("WITH ") {
+            let dmlKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
+            for keyword in dmlKeywords where uppercased.contains(keyword) {
+                return true
+            }
+        }
+
+        return false
     }
 
     static func isDangerousQuery(_ sql: String, databaseType: DatabaseType) -> Bool {
@@ -72,5 +89,45 @@ enum QueryClassifier {
         }
 
         return false
+    }
+
+    static func classifyTier(_ sql: String, databaseType: DatabaseType) -> QueryTier {
+        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
+        let uppercased = trimmed.uppercased()
+
+        if databaseType == .redis {
+            let firstToken = trimmed.prefix(while: { !$0.isWhitespace }).uppercased()
+            if firstToken == "FLUSHDB" || firstToken == "FLUSHALL" {
+                return .destructive
+            }
+        } else {
+            if uppercased.hasPrefix("DROP ") || uppercased.hasPrefix("TRUNCATE ") {
+                return .destructive
+            }
+            if uppercased.hasPrefix("ALTER ") && uppercased.range(of: " DROP ", options: .literal) != nil {
+                return .destructive
+            }
+
+            if uppercased.hasPrefix("WITH ") {
+                let destructiveKeywords = ["DROP ", "TRUNCATE "]
+                for keyword in destructiveKeywords where uppercased.contains(keyword) {
+                    return .destructive
+                }
+                let writeKeywords = ["INSERT ", "UPDATE ", "DELETE ", "MERGE "]
+                for keyword in writeKeywords where uppercased.contains(keyword) {
+                    return .write
+                }
+            }
+        }
+
+        if isWriteQuery(sql, databaseType: databaseType) {
+            return .write
+        }
+
+        return .safe
+    }
+
+    static func isMultiStatement(_ sql: String) -> Bool {
+        SQLStatementScanner.allStatements(in: sql).count > 1
     }
 }

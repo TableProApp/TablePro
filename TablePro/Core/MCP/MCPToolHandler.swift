@@ -43,6 +43,8 @@ final class MCPToolHandler: Sendable {
             return try await handleGetTableDDL(arguments, sessionId: sessionId)
         case "export_data":
             return try await handleExportData(arguments, sessionId: sessionId)
+        case "confirm_destructive_operation":
+            return try await handleConfirmDestructiveOperation(arguments, sessionId: sessionId)
         case "switch_database":
             return try await handleSwitchDatabase(arguments, sessionId: sessionId)
         case "switch_schema":
@@ -94,6 +96,10 @@ final class MCPToolHandler: Sendable {
             throw MCPError.invalidParams("Query exceeds 100KB limit")
         }
 
+        guard !QueryClassifier.isMultiStatement(query) else {
+            throw MCPError.invalidParams("Multi-statement queries are not supported. Send one statement at a time.")
+        }
+
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
 
         let (databaseType, safeModeLevel, databaseName) = try await resolveConnectionMeta(connectionId)
@@ -105,6 +111,69 @@ final class MCPToolHandler: Sendable {
             _ = try await bridge.switchSchema(connectionId: connectionId, schema: schema)
         }
 
+        let tier = QueryClassifier.classifyTier(query, databaseType: databaseType)
+
+        switch tier {
+        case .destructive:
+            throw MCPError.forbidden(
+                "Destructive queries (DROP, TRUNCATE, ALTER...DROP) cannot be executed via execute_query. "
+                    + "Use the confirm_destructive_operation tool instead."
+            )
+
+        case .write, .safe:
+            try await authGuard.checkQueryPermission(
+                sql: query,
+                connectionId: connectionId,
+                databaseType: databaseType,
+                safeModeLevel: safeModeLevel
+            )
+        }
+
+        let result = try await executeAndLog(
+            query: query,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            maxRows: maxRows,
+            timeoutSeconds: timeoutSeconds
+        )
+
+        return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
+    }
+
+    // MARK: - Destructive Confirmation
+
+    private func handleConfirmDestructiveOperation(
+        _ args: JSONValue?,
+        sessionId: String
+    ) async throws -> MCPToolResult {
+        let connectionId = try requireUUID(args, key: "connection_id")
+        let query = try requireString(args, key: "query")
+        let confirmationPhrase = try requireString(args, key: "confirmation_phrase")
+
+        guard confirmationPhrase == "I understand this is irreversible" else {
+            throw MCPError.invalidParams(
+                "confirmation_phrase must be exactly: I understand this is irreversible"
+            )
+        }
+
+        guard !QueryClassifier.isMultiStatement(query) else {
+            throw MCPError.invalidParams(
+                "Multi-statement queries are not supported. Send one statement at a time."
+            )
+        }
+
+        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+
+        let (databaseType, safeModeLevel, databaseName) = try await resolveConnectionMeta(connectionId)
+
+        let tier = QueryClassifier.classifyTier(query, databaseType: databaseType)
+        guard tier == .destructive else {
+            throw MCPError.invalidParams(
+                "This tool only accepts destructive queries (DROP, TRUNCATE, ALTER...DROP). "
+                    + "Use execute_query for other queries."
+            )
+        }
+
         try await authGuard.checkQueryPermission(
             sql: query,
             connectionId: connectionId,
@@ -112,38 +181,16 @@ final class MCPToolHandler: Sendable {
             safeModeLevel: safeModeLevel
         )
 
-        let startTime = Date()
-        let result: JSONValue
-        do {
-            result = try await bridge.executeQuery(
-                connectionId: connectionId,
-                query: query,
-                maxRows: maxRows,
-                timeoutSeconds: timeoutSeconds
-            )
-            let elapsed = Date().timeIntervalSince(startTime)
-            await authGuard.logQuery(
-                sql: query,
-                connectionId: connectionId,
-                databaseName: databaseName,
-                executionTime: elapsed,
-                rowCount: result["row_count"]?.intValue ?? 0,
-                wasSuccessful: true,
-                errorMessage: nil
-            )
-        } catch {
-            let elapsed = Date().timeIntervalSince(startTime)
-            await authGuard.logQuery(
-                sql: query,
-                connectionId: connectionId,
-                databaseName: databaseName,
-                executionTime: elapsed,
-                rowCount: 0,
-                wasSuccessful: false,
-                errorMessage: error.localizedDescription
-            )
-            throw error
-        }
+        let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
+        let timeoutSeconds = mcpSettings.queryTimeoutSeconds
+
+        let result = try await executeAndLog(
+            query: query,
+            connectionId: connectionId,
+            databaseName: databaseName,
+            maxRows: 0,
+            timeoutSeconds: timeoutSeconds
+        )
 
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
     }
@@ -342,6 +389,49 @@ final class MCPToolHandler: Sendable {
 
         let result = try await bridge.switchSchema(connectionId: connectionId, schema: schema)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
+    }
+
+    // MARK: - Execute and Log
+
+    private func executeAndLog(
+        query: String,
+        connectionId: UUID,
+        databaseName: String,
+        maxRows: Int,
+        timeoutSeconds: Int
+    ) async throws -> JSONValue {
+        let startTime = Date()
+        do {
+            let result = try await bridge.executeQuery(
+                connectionId: connectionId,
+                query: query,
+                maxRows: maxRows,
+                timeoutSeconds: timeoutSeconds
+            )
+            let elapsed = Date().timeIntervalSince(startTime)
+            await authGuard.logQuery(
+                sql: query,
+                connectionId: connectionId,
+                databaseName: databaseName,
+                executionTime: elapsed,
+                rowCount: result["row_count"]?.intValue ?? 0,
+                wasSuccessful: true,
+                errorMessage: nil
+            )
+            return result
+        } catch {
+            let elapsed = Date().timeIntervalSince(startTime)
+            await authGuard.logQuery(
+                sql: query,
+                connectionId: connectionId,
+                databaseName: databaseName,
+                executionTime: elapsed,
+                rowCount: 0,
+                wasSuccessful: false,
+                errorMessage: error.localizedDescription
+            )
+            throw error
+        }
     }
 
     // MARK: - Parameter Helpers

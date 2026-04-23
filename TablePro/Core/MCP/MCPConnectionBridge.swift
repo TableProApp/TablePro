@@ -169,19 +169,24 @@ actor MCPConnectionBridge {
         maxRows: Int,
         timeoutSeconds: Int
     ) async throws -> JSONValue {
-        let (driver, _) = try await resolveDriver(connectionId)
+        let (driver, databaseType) = try await resolveDriver(connectionId)
+        let isWrite = QueryClassifier.isWriteQuery(query, databaseType: databaseType)
+        let hasReturning = query.range(of: #"\bRETURNING\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        let shouldUseFetchRows = !isWrite || hasReturning
         let effectiveLimit = maxRows + 1
 
         let startTime = CFAbsoluteTimeGetCurrent()
 
-        // trackOperation is @MainActor; Swift hops automatically.
-        // The driver.fetchRows call inside runs on the cooperative pool.
         let result: QueryResult = try await DatabaseManager.shared.trackOperation(
             sessionId: connectionId
         ) {
             try await withThrowingTaskGroup(of: QueryResult.self) { group in
                 group.addTask {
-                    try await driver.fetchRows(query: query, offset: 0, limit: effectiveLimit)
+                    if shouldUseFetchRows {
+                        try await driver.fetchRows(query: query, offset: 0, limit: effectiveLimit)
+                    } else {
+                        try await driver.execute(query: query)
+                    }
                 }
                 group.addTask {
                     try await Task.sleep(for: .seconds(timeoutSeconds))

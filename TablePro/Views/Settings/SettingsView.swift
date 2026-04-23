@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SettingsTab: String {
-    case general, appearance, editor, keyboard, ai, terminal, plugins, account
+    case general, appearance, editor, keyboard, ai, terminal, mcp, plugins, account
 }
 
 struct SettingsView: View {
@@ -45,12 +45,13 @@ struct SettingsView: View {
                 .tabItem { Label("AI", systemImage: "sparkles") }
                 .tag(SettingsTab.ai.rawValue)
 
-            TerminalSettingsView(
-                settings: $settingsManager.terminal,
-                mcpSettings: $settingsManager.mcp
-            )
-            .tabItem { Label("Terminal", systemImage: "terminal") }
-            .tag(SettingsTab.terminal.rawValue)
+            TerminalSettingsView(settings: $settingsManager.terminal)
+                .tabItem { Label("Terminal", systemImage: "terminal") }
+                .tag(SettingsTab.terminal.rawValue)
+
+            MCPSettingsView(settings: $settingsManager.mcp)
+                .tabItem { Label("MCP", systemImage: "network") }
+                .tag(SettingsTab.mcp.rawValue)
 
             PluginsSettingsView()
                 .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - SQL autocomplete now suggests column names before a FROM clause is written, using all cached schema columns as fallback
 - Eager column cache warming after schema load for faster autocomplete
+- MCP query safety: three-tier classification with server-side confirmation for write and destructive queries
 
 ### Fixed
 

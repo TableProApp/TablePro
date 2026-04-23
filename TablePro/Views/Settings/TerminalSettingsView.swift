@@ -8,7 +8,6 @@ import SwiftUI
 
 struct TerminalSettingsView: View {
     @Binding var settings: TerminalSettings
-    @Binding var mcpSettings: MCPSettings
 
     private static let monospaceFonts = [
         "Menlo", "SF Mono", "Monaco", "Courier New", "JetBrains Mono",
@@ -33,7 +32,6 @@ struct TerminalSettingsView: View {
             displaySection
             themeSection
             cliPathsSection
-            MCPSection(settings: $mcpSettings)
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
@@ -179,6 +177,6 @@ struct TerminalSettingsView: View {
 }
 
 #Preview {
-    TerminalSettingsView(settings: .constant(.default), mcpSettings: .constant(.default))
+    TerminalSettingsView(settings: .constant(.default))
         .frame(width: 450, height: 500)
 }
