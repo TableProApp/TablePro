@@ -387,20 +387,27 @@ final class SyncCoordinator {
         var actualConnectionChanges = false
         var groupsOrTagsChanged = false
 
+        let connectionTombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
+        let groupTombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
+        let tagTombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
+        let sshTombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
+
         for record in result.changedRecords {
             switch record.recordType {
             case SyncRecordType.connection.rawValue where settings.syncConnections:
-                if applyRemoteConnection(record) {
+                if applyRemoteConnection(record, tombstoneIds: connectionTombstoneIds) {
                     actualConnectionChanges = true
                 }
             case SyncRecordType.group.rawValue where settings.syncGroupsAndTags:
-                applyRemoteGroup(record)
-                groupsOrTagsChanged = true
+                if applyRemoteGroup(record, tombstoneIds: groupTombstoneIds) {
+                    groupsOrTagsChanged = true
+                }
             case SyncRecordType.tag.rawValue where settings.syncGroupsAndTags:
-                applyRemoteTag(record)
-                groupsOrTagsChanged = true
+                if applyRemoteTag(record, tombstoneIds: tagTombstoneIds) {
+                    groupsOrTagsChanged = true
+                }
             case SyncRecordType.sshProfile.rawValue where settings.syncSSHProfiles:
-                applyRemoteSSHProfile(record)
+                applyRemoteSSHProfile(record, tombstoneIds: sshTombstoneIds)
             case SyncRecordType.settings.rawValue where settings.syncSettings:
                 applyRemoteSettings(record)
             default:
@@ -460,10 +467,9 @@ final class SyncCoordinator {
     }
 
     @discardableResult
-    private func applyRemoteConnection(_ record: CKRecord) -> Bool {
+    private func applyRemoteConnection(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
         guard let remoteConnection = SyncRecordMapper.toConnection(record) else { return false }
 
-        let tombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
         if tombstoneIds.contains(remoteConnection.id.uuidString) {
             return false
         }
@@ -499,11 +505,10 @@ final class SyncCoordinator {
         return true
     }
 
-    private func applyRemoteGroup(_ record: CKRecord) {
-        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return }
-
-        let tombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
-        if tombstoneIds.contains(remoteGroup.id.uuidString) { return }
+    @discardableResult
+    private func applyRemoteGroup(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+        guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return false }
+        if tombstoneIds.contains(remoteGroup.id.uuidString) { return false }
 
         var groups = GroupStorage.shared.loadGroups()
         if let index = groups.firstIndex(where: { $0.id == remoteGroup.id }) {
@@ -512,13 +517,13 @@ final class SyncCoordinator {
             groups.append(remoteGroup)
         }
         GroupStorage.shared.saveGroups(groups)
+        return true
     }
 
-    private func applyRemoteTag(_ record: CKRecord) {
-        guard let remoteTag = SyncRecordMapper.toTag(record) else { return }
-
-        let tombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
-        if tombstoneIds.contains(remoteTag.id.uuidString) { return }
+    @discardableResult
+    private func applyRemoteTag(_ record: CKRecord, tombstoneIds: Set<String>) -> Bool {
+        guard let remoteTag = SyncRecordMapper.toTag(record) else { return false }
+        if tombstoneIds.contains(remoteTag.id.uuidString) { return false }
 
         var tags = TagStorage.shared.loadTags()
         if let index = tags.firstIndex(where: { $0.id == remoteTag.id }) {
@@ -527,12 +532,11 @@ final class SyncCoordinator {
             tags.append(remoteTag)
         }
         TagStorage.shared.saveTags(tags)
+        return true
     }
 
-    private func applyRemoteSSHProfile(_ record: CKRecord) {
+    private func applyRemoteSSHProfile(_ record: CKRecord, tombstoneIds: Set<String>) {
         guard let remoteProfile = SyncRecordMapper.toSSHProfile(record) else { return }
-
-        let tombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
         if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
 
         var profiles = SSHProfileStorage.shared.loadProfiles()
