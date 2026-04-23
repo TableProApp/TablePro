@@ -433,9 +433,13 @@ final class SyncCoordinator {
     private func applyRemoteConnection(_ record: CKRecord) {
         guard let remoteConnection = SyncRecordMapper.toConnection(record) else { return }
 
+        let tombstoneIds = Set(metadataStorage.tombstones(for: .connection).map(\.id))
+        if tombstoneIds.contains(remoteConnection.id.uuidString) {
+            return
+        }
+
         var connections = ConnectionStorage.shared.loadConnections()
         if let index = connections.firstIndex(where: { $0.id == remoteConnection.id }) {
-            // Check for conflict: if local is also dirty, queue conflict
             if changeTracker.dirtyRecords(for: .connection).contains(remoteConnection.id.uuidString) {
                 let localRecord = SyncRecordMapper.toCKRecord(
                     connections[index],
@@ -467,6 +471,9 @@ final class SyncCoordinator {
     private func applyRemoteGroup(_ record: CKRecord) {
         guard let remoteGroup = SyncRecordMapper.toGroup(record) else { return }
 
+        let tombstoneIds = Set(metadataStorage.tombstones(for: .group).map(\.id))
+        if tombstoneIds.contains(remoteGroup.id.uuidString) { return }
+
         var groups = GroupStorage.shared.loadGroups()
         if let index = groups.firstIndex(where: { $0.id == remoteGroup.id }) {
             groups[index] = remoteGroup
@@ -479,6 +486,9 @@ final class SyncCoordinator {
     private func applyRemoteTag(_ record: CKRecord) {
         guard let remoteTag = SyncRecordMapper.toTag(record) else { return }
 
+        let tombstoneIds = Set(metadataStorage.tombstones(for: .tag).map(\.id))
+        if tombstoneIds.contains(remoteTag.id.uuidString) { return }
+
         var tags = TagStorage.shared.loadTags()
         if let index = tags.firstIndex(where: { $0.id == remoteTag.id }) {
             tags[index] = remoteTag
@@ -490,6 +500,9 @@ final class SyncCoordinator {
 
     private func applyRemoteSSHProfile(_ record: CKRecord) {
         guard let remoteProfile = SyncRecordMapper.toSSHProfile(record) else { return }
+
+        let tombstoneIds = Set(metadataStorage.tombstones(for: .sshProfile).map(\.id))
+        if tombstoneIds.contains(remoteProfile.id.uuidString) { return }
 
         var profiles = SSHProfileStorage.shared.loadProfiles()
         if let index = profiles.firstIndex(where: { $0.id == remoteProfile.id }) {
