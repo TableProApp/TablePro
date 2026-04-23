@@ -5,7 +5,7 @@ description: Schema-aware SQL autocomplete with alias resolution, 50ms debounce,
 
 # SQL Autocomplete
 
-Autocomplete analyzes your cursor position, the SQL syntax context, referenced tables and aliases, and your database schema to suggest only relevant completions at each point in the query.
+Autocomplete suggests keywords, tables, columns, and functions based on where your cursor is and what tables are in scope.
 
 {/* Screenshot: Autocomplete popup showing mixed suggestions */}
 <Frame caption="Context-aware autocomplete">
@@ -21,18 +21,18 @@ Autocomplete analyzes your cursor position, the SQL syntax context, referenced t
   />
 </Frame>
 
-Suggestions appear after 2 characters, after `.` for column access, or after keywords like SELECT/FROM/JOIN. 50ms debounce keeps typing smooth. Press `Escape` to dismiss.
+Suggestions appear after 2 characters, after `.`, or after keywords like SELECT/FROM/JOIN. 50ms debounce. Press `Escape` to dismiss.
 
 ## Completion Types
 
 ### SQL Keywords
 
-Keywords are suggested based on SQL syntax context:
+Context-aware keyword suggestions:
 
 ```sql
-SEL|  -- Suggests: SELECT
-FROM users WH|  -- Suggests: WHERE
-SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Suggests: ORDER
+SEL|  -- SELECT
+FROM users WH|  -- WHERE
+SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- ORDER BY
 ```
 
 {/* Screenshot: Keyword suggestions */}
@@ -51,12 +51,12 @@ SELECT * FROM users WHERE name LIKE '%test%' ORD|  -- Suggests: ORDER
 
 ### Table Names
 
-Tables are suggested after keywords that expect table references:
+Tables appear after FROM, JOIN, INSERT INTO, and similar keywords:
 
 ```sql
-SELECT * FROM |  -- Suggests all tables
-SELECT * FROM us|  -- Suggests tables starting with "us": users, user_roles
-SELECT * FROM users JOIN |  -- Suggests all tables
+SELECT * FROM |  -- All tables
+SELECT * FROM us|  -- Tables starting with "us": users, user_roles
+SELECT * FROM users JOIN |  -- All tables
 ```
 
 {/* Screenshot: Table name suggestions */}
@@ -75,26 +75,28 @@ SELECT * FROM users JOIN |  -- Suggests all tables
 
 ### Column Names
 
-Columns are suggested based on referenced tables. When a FROM clause exists (even after the cursor), columns from those tables appear. When no FROM clause exists yet, columns from all cached schema tables are suggested as a fallback.
+Columns are suggested in SELECT, WHERE, ORDER BY, GROUP BY, and other column contexts.
+
+If a FROM clause exists anywhere in the statement (even after the cursor), columns come from those tables. If no FROM clause exists yet, columns from all cached tables appear as fallback.
 
 ```sql
-SELECT na|  -- Suggests columns matching "na" from all cached tables
-SELECT | FROM users  -- Suggests columns from users table
-SELECT u.| FROM users u  -- Suggests columns with "u." prefix
-SELECT * FROM users WHERE |  -- Suggests columns from users
+SELECT na|  -- Columns matching "na" from all cached tables
+SELECT | FROM users  -- Columns from users
+SELECT u.| FROM users u  -- Columns from users via alias
+SELECT * FROM users WHERE |  -- Columns from users
 ```
 
-When multiple tables have a column with the same name, the fallback shows qualified names (e.g. `users.id`, `orders.id`) to disambiguate.
+If the same column name exists in multiple tables, the fallback qualifies them: `users.id`, `orders.id`.
 
-#### After Table Alias
+#### Alias Resolution
 
-Typing an alias followed by `.` shows that table's columns:
+Type an alias followed by `.` to see that table's columns:
 
 ```sql
 SELECT
-    u.|  -- Shows: id, name, email, created_at (from users)
+    u.|  -- id, name, email, created_at (from users)
 FROM users u
-JOIN orders o ON u.id = o.|  -- Shows: id, user_id, total (from orders)
+JOIN orders o ON u.id = o.|  -- id, user_id, total (from orders)
 ```
 
 {/* Screenshot: Column suggestions after alias */}
@@ -113,12 +115,12 @@ JOIN orders o ON u.id = o.|  -- Shows: id, user_id, total (from orders)
 
 ### Functions
 
-SQL functions are suggested in appropriate contexts:
+SQL functions appear in SELECT, WHERE, and expression contexts:
 
 ```sql
-SELECT |  -- Suggests: COUNT, SUM, AVG, MAX, MIN, etc.
-SELECT COUNT(|  -- Suggests columns and *
-WHERE date_column > |  -- Suggests: NOW(), CURRENT_DATE, etc.
+SELECT |  -- COUNT, SUM, AVG, MAX, MIN, etc.
+SELECT COUNT(|  -- Columns and *
+WHERE date_column > |  -- NOW(), CURRENT_DATE, etc.
 ```
 
 {/* Screenshot: SQL function suggestions */}
@@ -140,20 +142,30 @@ WHERE date_column > |  -- Suggests: NOW(), CURRENT_DATE, etc.
 For databases with multiple schemas (PostgreSQL):
 
 ```sql
-SELECT * FROM |  -- Suggests: public, schema1, schema2
-SELECT * FROM public.|  -- Suggests tables in public schema
+SELECT * FROM |  -- public, schema1, schema2
+SELECT * FROM public.|  -- Tables in public schema
 ```
+
+Schema-qualified names like `public.users` resolve correctly in FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
 
 ## Context-Aware Suggestions
 
-Suggestions adapt to SQL context: after SELECT, shows columns and aggregate functions; after FROM/JOIN, shows table names; after WHERE, shows columns and operators; after ON (JOIN), shows columns from both tables; after GROUP BY/ORDER BY, shows relevant columns and modifiers.
+What appears depends on where your cursor is:
+
+| Context | Suggestions |
+|---------|-------------|
+| After SELECT | Columns, `*`, aggregate functions |
+| After FROM / JOIN | Table names |
+| After WHERE | Columns, operators, AND/OR |
+| After ON (JOIN) | Columns from both tables |
+| After GROUP BY / ORDER BY | Columns, ASC/DESC |
 
 ## Schema Caching
 
-On connection, TablePro fetches all table names and eagerly loads column information for up to 50 tables in the background. This means column suggestions are available immediately, even before you write a FROM clause. If you make schema changes externally, right-click the connection and select **Refresh**, or disconnect and reconnect.
+On connection, TablePro fetches table names and loads columns for up to 50 tables in the background. Column suggestions work right away, even before you write a FROM clause.
 
-Schema-qualified table names (`public.users`, `schema.table`) are resolved correctly in all contexts: FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
+After external schema changes, right-click the connection and select **Refresh**.
 
 ## Performance
 
-Autocomplete works on files of any size, including multi-megabyte dumps. For files >500 KB, it analyzes only a ~10 KB window around the cursor. For large schemas (100+ tables), initial loading may take a moment, but remains responsive after caching. The column cache holds up to 50 tables and evicts least-recently-used entries. Use aliases to narrow suggestions faster and let the cache work.
+Works on files of any size, including multi-megabyte dumps. For files over 500 KB, only a ~10 KB window around the cursor is analyzed. The column cache holds up to 50 tables with LRU eviction.
