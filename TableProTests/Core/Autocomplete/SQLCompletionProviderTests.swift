@@ -963,4 +963,89 @@ struct SQLCompletionProviderTests {
             #expect(inIdx < insertIdx, "IN should rank above INSERT for prefix 'IN'")
         }
     }
+
+    // MARK: - Column Fallback Without FROM
+
+    @Test("SELECT without FROM returns keywords and functions")
+    func testSelectWithoutFromReturnsItems() async {
+        let text = "SELECT "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        #expect(!items.isEmpty)
+        let hasStar = items.contains { $0.label == "*" }
+        #expect(hasStar, "SELECT without FROM should include * wildcard")
+    }
+
+    @Test("SELECT with prefix without FROM returns filtered items")
+    func testSelectWithPrefixNoFrom() async {
+        let text = "SELECT DIS"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasDistinct = items.contains { $0.label == "DISTINCT" }
+        #expect(hasDistinct)
+    }
+
+    @Test("WHERE clause without FROM returns operators and keywords")
+    func testWhereWithoutFrom() async {
+        let text = "SELECT * WHERE AN"
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasAnd = items.contains { $0.label == "AND" }
+        #expect(hasAnd, "WHERE without FROM should include AND when filtered by prefix")
+    }
+
+    @Test("FROM clause still returns table and keyword items")
+    func testFromClauseStillWorks() async {
+        let text = "SELECT * FROM "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        #expect(!items.isEmpty)
+        let hasJoin = items.contains { $0.label == "JOIN" || $0.label == "LEFT JOIN" }
+        #expect(hasJoin)
+    }
+
+    @Test("ORDER BY without explicit FROM returns keywords")
+    func testOrderByWithoutFrom() async {
+        let text = "SELECT * ORDER BY "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasAsc = items.contains { $0.label == "ASC" }
+        let hasDesc = items.contains { $0.label == "DESC" }
+        #expect(hasAsc, "ORDER BY should include ASC")
+        #expect(hasDesc, "ORDER BY should include DESC")
+    }
+
+    @Test("GROUP BY without FROM returns transition keywords")
+    func testGroupByWithoutFrom() async {
+        let text = "SELECT * GROUP BY "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasHaving = items.contains { $0.label == "HAVING" }
+        #expect(hasHaving)
+    }
+
+    @Test("SELECT with FROM preserves explicit table column resolution")
+    func testSelectWithFromPreservesExplicit() async {
+        let text = "SELECT * FROM users WHERE "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        #expect(!items.isEmpty)
+    }
+
+    @Test("CASE expression without FROM returns CASE keywords")
+    func testCaseWithoutFrom() async {
+        let text = "SELECT CASE "
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        #expect(!items.isEmpty)
+    }
+
+    @Test("Parse-ahead: cursor before FROM still detects table references")
+    func testParseAheadCursorBeforeFrom() async {
+        let text = "SELECT  FROM users"
+        // Cursor at position 7 (after "SELECT ")
+        let (items, context) = await provider.getCompletions(text: text, cursorPosition: 7)
+        #expect(context.clauseType == .select)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("Function arg without FROM returns function items")
+    func testFunctionArgWithoutFrom() async {
+        let text = "SELECT COUNT("
+        let (items, _) = await provider.getCompletions(text: text, cursorPosition: text.count)
+        let hasStar = items.contains { $0.label == "*" }
+        #expect(hasStar, "COUNT( should suggest *")
+    }
 }

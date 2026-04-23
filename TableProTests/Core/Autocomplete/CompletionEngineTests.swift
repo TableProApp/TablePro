@@ -143,13 +143,13 @@ struct CompletionEngineTests {
         #expect(result == nil)
     }
 
-    @Test("Completions are limited")
+    @Test("Completions are limited to maxSuggestions for the clause type")
     func testCompletionsLimited() async {
-        let text = "SELECT "
+        let text = "SEL"
         let result = await engine.getCompletions(text: text, cursorPosition: text.count)
         #expect(result != nil)
         if let result = result {
-            #expect(result.items.count <= 20)
+            #expect(result.items.count <= 40)
         }
     }
 

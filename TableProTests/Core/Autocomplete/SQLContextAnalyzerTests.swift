@@ -846,4 +846,91 @@ struct SQLContextAnalyzerTests {
         #expect(context.clauseType == .select)
         #expect(context.nestingLevel > 0)
     }
+
+    // MARK: - Schema-Qualified Table Name Tests
+
+    @Test("FROM with schema-qualified table strips schema prefix")
+    func testFromSchemaQualifiedTable() {
+        let query = "SELECT * FROM public.users"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+        #expect(!context.tableReferences.contains { $0.tableName == "public" })
+        #expect(!context.tableReferences.contains { $0.tableName == "public.users" })
+    }
+
+    @Test("FROM with multi-level schema strips to last component")
+    func testFromMultiLevelSchemaQualifiedTable() {
+        let query = "SELECT * FROM catalog.schema.users"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("JOIN with schema-qualified table strips schema prefix")
+    func testJoinSchemaQualifiedTable() {
+        let query = "SELECT * FROM users JOIN public.orders ON orders.id = users.order_id"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "orders" })
+    }
+
+    @Test("UPDATE with schema-qualified table strips schema prefix")
+    func testUpdateSchemaQualifiedTable() {
+        let query = "UPDATE public.users SET name = 'test'"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("INSERT INTO with schema-qualified table strips schema prefix")
+    func testInsertIntoSchemaQualifiedTable() {
+        let query = "INSERT INTO public.users (name) VALUES ('test')"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("FROM without schema prefix still works normally")
+    func testFromWithoutSchemaPrefix() {
+        let query = "SELECT * FROM users"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("Backtick-quoted schema-qualified table extracts reference")
+    func testBacktickQuotedSchemaQualifiedTable() {
+        let query = "SELECT * FROM `public.users`"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("Schema-qualified table with alias extracts both correctly")
+    func testSchemaQualifiedTableWithAlias() {
+        let query = "SELECT * FROM public.users u"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" && $0.alias == "u" })
+    }
+
+    @Test("Multiple schema-qualified tables in FROM and JOIN both extracted")
+    func testMultipleSchemaQualifiedTables() {
+        let query = "SELECT * FROM public.users JOIN schema2.orders ON orders.user_id = users.id"
+        let context = analyzer.analyze(query: query, cursorPosition: query.count)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+        #expect(context.tableReferences.contains { $0.tableName == "orders" })
+    }
+
+    // MARK: - Parse-Ahead Table Reference Tests
+
+    @Test("Table references extracted from full statement even when cursor is before FROM")
+    func testTableRefsExtractedAheadOfCursor() {
+        let query = "SELECT  FROM users"
+        // Cursor at position 7 (after "SELECT ")
+        let context = analyzer.analyze(query: query, cursorPosition: 7)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+    }
+
+    @Test("All table references extracted from full statement regardless of cursor position")
+    func testAllTableRefsExtractedAheadOfCursor() {
+        let query = "SELECT na FROM users JOIN orders"
+        // Cursor at position 9 (after "SELECT na")
+        let context = analyzer.analyze(query: query, cursorPosition: 9)
+        #expect(context.tableReferences.contains { $0.tableName == "users" })
+        #expect(context.tableReferences.contains { $0.tableName == "orders" })
+    }
 }
