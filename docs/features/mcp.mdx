@@ -104,7 +104,7 @@ Each connection has an AI Policy:
 | Policy | Behavior |
 |--------|----------|
 | Always Allow | No prompt |
-| Ask Each Time (default) | Approval dialog on first access per session |
+| Ask Each Time (default) | Approval dialog on first access per session (30s timeout) |
 | Never | Blocked |
 
 Set per connection or change the default in **Settings > AI**.
@@ -115,16 +115,36 @@ Set per connection or change the default in **Settings > AI**.
 |------|----------|-------------|
 | Safe | SELECT, SHOW, EXPLAIN | Runs immediately |
 | Write | UPDATE, DELETE, INSERT | Uses the connection's [Safe Mode](/features/safe-mode) |
-| Destructive | DROP, TRUNCATE | Blocked. Use `confirm_destructive_operation` tool |
+| Destructive | DROP, TRUNCATE, ALTER...DROP | Blocked in `execute_query`. Must use `confirm_destructive_operation` |
+
+CTE-prefixed writes like `WITH ... DELETE FROM` are detected and classified correctly.
+
+#### Destructive queries
+
+`execute_query` rejects destructive queries with an error. Use `confirm_destructive_operation` instead:
+
+```json
+{
+  "connection_id": "uuid",
+  "query": "DROP TABLE temp_data",
+  "confirmation_phrase": "I understand this is irreversible"
+}
+```
+
+The confirmation phrase must match exactly. The connection's Safe Mode still applies on top of this.
 
 ### Safe Mode
 
-MCP queries follow the same Safe Mode as manual queries:
+MCP queries follow the same [Safe Mode](/features/safe-mode) as manual queries:
 
 - **Silent** - no confirmation
-- **Read-Only** - writes blocked
+- **Read-Only** - all writes blocked
 - **Alert** - confirmation dialog for writes
-- **Safe Mode** - confirmation + Touch ID
+- **Alert (Full)** - confirmation dialog for all queries including reads
+- **Safe Mode** - confirmation + Touch ID for writes
+- **Safe Mode (Full)** - confirmation + Touch ID for all queries
+
+If denied, the query returns an error to the MCP client. Nothing is executed.
 
 ### Limits
 
