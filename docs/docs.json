@@ -51,6 +51,7 @@
               "databases/cloudflare-d1",
               "databases/libsql",
               "databases/bigquery",
+              "databases/etcd",
               "databases/ssh-tunneling"
             ]
           },

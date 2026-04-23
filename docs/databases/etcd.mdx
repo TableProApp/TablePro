@@ -1,0 +1,79 @@
+---
+title: etcd
+description: Connect to etcd key-value stores with TablePro
+---
+
+# etcd Connections
+
+TablePro supports etcd, a distributed key-value store used for shared configuration and service discovery. TablePro connects via the gRPC/HTTP API.
+
+## Install Plugin
+
+The etcd driver is available as a downloadable plugin. When you select etcd in the connection form, TablePro will prompt you to install it automatically. You can also install it manually:
+
+1. Open **Settings** > **Plugins** > **Browse**
+2. Find **etcd Driver** and click **Install**
+3. The plugin downloads and loads immediately - no restart needed
+
+## Quick Setup
+
+<Steps>
+  <Step title="Open Connection Form">
+    Click **New Connection** from the Welcome screen or **File** > **New Connection**
+  </Step>
+  <Step title="Select etcd">
+    Choose **etcd** from the database type selector
+  </Step>
+  <Step title="Enter Connection Details">
+    Fill in the host (default `127.0.0.1`) and port (default `2379`)
+  </Step>
+  <Step title="Test and Connect">
+    Click **Test Connection**, then **Create**
+  </Step>
+</Steps>
+
+## Connection Settings
+
+### Required Fields
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Connection identifier |
+| **Host** | etcd server hostname or IP (default `127.0.0.1`) |
+| **Port** | etcd client port (default `2379`) |
+
+### Optional Fields
+
+| Field | Description |
+|-------|-------------|
+| **Username** | For authentication (if enabled) |
+| **Password** | For authentication (if enabled) |
+
+## Connection URL
+
+```
+etcd://127.0.0.1:2379
+etcds://127.0.0.1:2379
+```
+
+Use `etcds://` for TLS-encrypted connections.
+
+## SSH Tunnel
+
+etcd connections support [SSH tunneling](/databases/ssh-tunneling) for accessing remote clusters through a bastion host.
+
+## Features
+
+- Browse keys with prefix-based navigation
+- View and edit key values
+- Key metadata (version, create/mod revision, lease)
+- Put, delete, and watch keys
+- Range queries with prefix and limit
+
+## Troubleshooting
+
+**Connection refused**: Verify etcd is running and the client port (default 2379) is accessible. Check firewall rules.
+
+**Authentication failed**: If etcd has authentication enabled, provide the correct username and password. Check that the user has the required roles.
+
+**TLS errors**: Use `etcds://` scheme and ensure your certificates are valid. For self-signed certificates, you may need to add them to your macOS Keychain.
