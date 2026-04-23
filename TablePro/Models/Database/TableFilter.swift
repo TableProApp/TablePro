@@ -68,6 +68,27 @@ enum FilterOperator: String, CaseIterable, Identifiable, Codable {
         case .regex: return String(localized: "matches regex")
         }
     }
+
+    /// SQL operator symbol for visual recognition in menus
+    var symbol: String {
+        switch self {
+        case .equal: return "="
+        case .notEqual: return "!="
+        case .greaterThan: return ">"
+        case .greaterOrEqual: return ">="
+        case .lessThan: return "<"
+        case .lessOrEqual: return "<="
+        case .contains: return "LIKE %..%"
+        case .notContains: return "NOT LIKE %..%"
+        case .startsWith: return "LIKE ..%"
+        case .endsWith: return "LIKE %.."
+        case .inList: return "IN (..)"
+        case .notInList: return "NOT IN (..)"
+        case .between: return "BETWEEN"
+        case .regex: return "~"
+        case .isNull, .isNotNull, .isEmpty, .isNotEmpty: return ""
+        }
+    }
 }
 
 /// Represents a single table filter condition

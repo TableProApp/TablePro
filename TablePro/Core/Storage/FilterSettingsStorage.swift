@@ -33,10 +33,9 @@ enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {
     var id: String { rawValue }
 
     var displayName: String {
-        switch self {
-        case .equal: return "Equal (=)"
-        case .contains: return "Contains"
-        }
+        let op = toFilterOperator()
+        if op.symbol.isEmpty { return op.displayName }
+        return "\(op.symbol)  \(op.displayName)"
     }
 
     func toFilterOperator() -> FilterOperator {

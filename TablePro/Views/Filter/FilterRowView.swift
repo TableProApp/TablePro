@@ -71,7 +71,7 @@ struct FilterRowView: View {
     private var operatorPicker: some View {
         Picker("", selection: $filter.filterOperator) {
             ForEach(FilterOperator.allCases) { op in
-                Text(op.displayName).tag(op)
+                OperatorMenuLabel(op: op).tag(op)
             }
         }
         .pickerStyle(.menu)
@@ -130,7 +130,7 @@ struct FilterRowView: View {
             Text("—")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
-                .frame(minWidth: 80, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -180,6 +180,17 @@ struct FilterRowView: View {
             onRemove()
         } label: {
             Label(String(localized: "Remove Filter"), systemImage: "trash")
+        }
+    }
+
+    // MARK: - Operator Menu Label
+
+    private struct OperatorMenuLabel: View {
+        let op: FilterOperator
+
+        var body: some View {
+            Text(op.symbol.isEmpty ? op.displayName : "\(op.symbol)  \(op.displayName)")
+                .accessibilityLabel(op.displayName)
         }
     }
 }
