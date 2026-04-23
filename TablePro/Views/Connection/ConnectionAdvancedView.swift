@@ -13,6 +13,7 @@ struct ConnectionAdvancedView: View {
     @Binding var startupCommands: String
     @Binding var preConnectScript: String
     @Binding var aiPolicy: AIConnectionPolicy?
+    @Binding var localOnly: Bool
 
     let databaseType: DatabaseType
     let additionalConnectionFields: [ConnectionField]
@@ -81,6 +82,15 @@ struct ConnectionAdvancedView: View {
                                 .tag(AIConnectionPolicy?.some(policy) as AIConnectionPolicy?)
                         }
                     }
+                }
+            }
+
+            if AppSettingsManager.shared.sync.enabled {
+                Section(String(localized: "iCloud Sync")) {
+                    Toggle(String(localized: "Local only"), isOn: $localOnly)
+                    Text("This connection won't sync to other devices via iCloud.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }

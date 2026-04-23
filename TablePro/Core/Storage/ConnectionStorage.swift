@@ -112,7 +112,9 @@ final class ConnectionStorage {
         var connections = loadConnections()
         connections.append(connection)
         saveConnections(connections)
-        SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+        if !connection.localOnly {
+            SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+        }
 
         if let password = password, !password.isEmpty {
             savePassword(password, for: connection.id)
@@ -125,7 +127,9 @@ final class ConnectionStorage {
         if let index = connections.firstIndex(where: { $0.id == connection.id }) {
             connections[index] = connection
             saveConnections(connections)
-            SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+            if !connection.localOnly {
+                SyncChangeTracker.shared.markDirty(.connection, id: connection.id.uuidString)
+            }
 
             if let password = password {
                 if password.isEmpty {
@@ -139,7 +143,9 @@ final class ConnectionStorage {
 
     /// Delete a connection
     func deleteConnection(_ connection: DatabaseConnection) {
-        SyncChangeTracker.shared.markDeleted(.connection, id: connection.id.uuidString)
+        if !connection.localOnly {
+            SyncChangeTracker.shared.markDeleted(.connection, id: connection.id.uuidString)
+        }
         var connections = loadConnections()
         connections.removeAll { $0.id == connection.id }
         saveConnections(connections)
@@ -157,7 +163,7 @@ final class ConnectionStorage {
 
     /// Batch-delete multiple connections and clean up their Keychain entries
     func deleteConnections(_ connectionsToDelete: [DatabaseConnection]) {
-        for conn in connectionsToDelete {
+        for conn in connectionsToDelete where !conn.localOnly {
             SyncChangeTracker.shared.markDeleted(.connection, id: conn.id.uuidString)
         }
         let idsToDelete = Set(connectionsToDelete.map(\.id))
@@ -202,6 +208,7 @@ final class ConnectionStorage {
             redisDatabase: connection.redisDatabase,
             startupCommands: connection.startupCommands,
             sortOrder: connection.sortOrder,
+            localOnly: connection.localOnly,
             additionalFields: connection.additionalFields.isEmpty ? nil : connection.additionalFields
         )
 
@@ -209,7 +216,9 @@ final class ConnectionStorage {
         var connections = loadConnections()
         connections.append(duplicate)
         saveConnections(connections)
-        SyncChangeTracker.shared.markDirty(.connection, id: duplicate.id.uuidString)
+        if !duplicate.localOnly {
+            SyncChangeTracker.shared.markDirty(.connection, id: duplicate.id.uuidString)
+        }
 
         // Copy all passwords from source to duplicate (skip DB password in prompt mode)
         if !connection.promptForPassword, let password = loadPassword(for: connection.id) {
@@ -433,6 +442,9 @@ private struct StoredConnection: Codable {
     // Sort order for sync
     let sortOrder: Int
 
+    // Local-only (excluded from iCloud sync)
+    let localOnly: Bool
+
     // TOTP configuration
     let totpMode: String
     let totpAlgorithm: String
@@ -508,6 +520,9 @@ private struct StoredConnection: Codable {
         // Sort order
         self.sortOrder = connection.sortOrder
 
+        // Local-only
+        self.localOnly = connection.localOnly
+
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
         self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
 
@@ -529,6 +544,7 @@ private struct StoredConnection: Codable {
         case mssqlSchema, oracleServiceName, startupCommands, sortOrder
         case sshTunnelModeJson
         case additionalFields
+        case localOnly
     }
 
     func encode(to encoder: Encoder) throws {
@@ -567,6 +583,7 @@ private struct StoredConnection: Codable {
         try container.encode(sortOrder, forKey: .sortOrder)
         try container.encodeIfPresent(sshTunnelModeJson, forKey: .sshTunnelModeJson)
         try container.encodeIfPresent(additionalFields, forKey: .additionalFields)
+        try container.encode(localOnly, forKey: .localOnly)
     }
 
     // Custom decoder to handle migration from old format
@@ -631,6 +648,7 @@ private struct StoredConnection: Codable {
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         sshTunnelModeJson = try container.decodeIfPresent(Data.self, forKey: .sshTunnelModeJson)
         additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
+        localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
     }
 
     func toConnection() -> DatabaseConnection {
@@ -716,6 +734,7 @@ private struct StoredConnection: Codable {
             redisDatabase: redisDatabase,
             startupCommands: startupCommands,
             sortOrder: sortOrder,
+            localOnly: localOnly,
             additionalFields: mergedFields
         )
     }

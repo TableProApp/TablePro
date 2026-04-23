@@ -240,7 +240,8 @@ final class SyncCoordinator {
             if !dirtyConnectionIds.isEmpty {
                 let connections = ConnectionStorage.shared.loadConnections()
                 for id in dirtyConnectionIds {
-                    if let connection = connections.first(where: { $0.id.uuidString == id }) {
+                    if let connection = connections.first(where: { $0.id.uuidString == id }),
+                       !connection.localOnly {
                         recordsToSave.append(
                             SyncRecordMapper.toCKRecord(connection, in: zoneID)
                         )
@@ -454,7 +455,9 @@ final class SyncCoordinator {
                 conflictResolver.addConflict(conflict)
                 return
             }
-            connections[index] = remoteConnection
+            var merged = remoteConnection
+            merged.localOnly = connections[index].localOnly
+            connections[index] = merged
         } else {
             connections.append(remoteConnection)
         }

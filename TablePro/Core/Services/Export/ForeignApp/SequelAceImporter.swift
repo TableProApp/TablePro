@@ -186,7 +186,8 @@ struct SequelAceImporter: ForeignAppImporter {
             aiPolicy: nil,
             additionalFields: nil,
             redisDatabase: nil,
-            startupCommands: nil
+            startupCommands: nil,
+            localOnly: nil
         )
     }
 

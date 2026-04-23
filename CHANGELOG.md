@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Per-connection "Local only" option to exclude individual connections from iCloud sync
 - Filter operator picker shows SQL symbols alongside names for quick visual recognition
 - SQL autocomplete now suggests column names before a FROM clause is written, using all cached schema columns as fallback
 - Eager column cache warming after schema load for faster autocomplete

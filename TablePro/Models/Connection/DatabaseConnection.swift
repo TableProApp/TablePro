@@ -217,6 +217,7 @@ struct DatabaseConnection: Identifiable, Hashable {
     var redisDatabase: Int?
     var startupCommands: String?
     var sortOrder: Int
+    var localOnly: Bool = false
 
     var mongoAuthSource: String? {
         get { additionalFields["mongoAuthSource"]?.nilIfEmpty }
@@ -301,6 +302,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         oracleServiceName: String? = nil,
         startupCommands: String? = nil,
         sortOrder: Int = 0,
+        localOnly: Bool = false,
         additionalFields: [String: String]? = nil
     ) {
         self.id = id
@@ -336,6 +338,7 @@ struct DatabaseConnection: Identifiable, Hashable {
         self.redisDatabase = redisDatabase
         self.startupCommands = startupCommands
         self.sortOrder = sortOrder
+        self.localOnly = localOnly
         if let additionalFields {
             self.additionalFields = additionalFields
         } else {
@@ -371,7 +374,7 @@ extension DatabaseConnection: Codable {
         case id, name, host, port, database, username, type
         case sshConfig, sslConfig, color, tagId, groupId, sshProfileId
         case sshTunnelMode, safeModeLevel, aiPolicy, additionalFields
-        case redisDatabase, startupCommands, sortOrder
+        case redisDatabase, startupCommands, sortOrder, localOnly
     }
 
     init(from decoder: Decoder) throws {
@@ -395,6 +398,7 @@ extension DatabaseConnection: Codable {
         redisDatabase = try container.decodeIfPresent(Int.self, forKey: .redisDatabase)
         startupCommands = try container.decodeIfPresent(String.self, forKey: .startupCommands)
         sortOrder = try container.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        localOnly = try container.decodeIfPresent(Bool.self, forKey: .localOnly) ?? false
 
         // Migrate from legacy fields if sshTunnelMode is not present
         if let tunnelMode = try container.decodeIfPresent(SSHTunnelMode.self, forKey: .sshTunnelMode) {
@@ -434,6 +438,7 @@ extension DatabaseConnection: Codable {
         try container.encodeIfPresent(redisDatabase, forKey: .redisDatabase)
         try container.encodeIfPresent(startupCommands, forKey: .startupCommands)
         try container.encode(sortOrder, forKey: .sortOrder)
+        try container.encode(localOnly, forKey: .localOnly)
     }
 }
 

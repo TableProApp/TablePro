@@ -106,6 +106,9 @@ struct ConnectionFormView: View {
     // Pre-connect script
     @State var preConnectScript: String = ""
 
+    // Local only (exclude from iCloud sync)
+    @State var localOnly: Bool = false
+
     @State var isTesting: Bool = false
     @State var testSucceeded: Bool = false
 
@@ -224,6 +227,7 @@ struct ConnectionFormView: View {
                 startupCommands: $startupCommands,
                 preConnectScript: $preConnectScript,
                 aiPolicy: $aiPolicy,
+                localOnly: $localOnly,
                 databaseType: type,
                 additionalConnectionFields: additionalConnectionFields
             )

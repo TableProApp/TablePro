@@ -193,7 +193,8 @@ enum ConnectionExportService {
                 aiPolicy: aiPolicy,
                 additionalFields: additionalFields,
                 redisDatabase: connection.redisDatabase,
-                startupCommands: connection.startupCommands
+                startupCommands: connection.startupCommands,
+                localOnly: connection.localOnly ? true : nil
             )
 
             exportableConnections.append(exportable)
@@ -679,6 +680,7 @@ enum ConnectionExportService {
             aiPolicy: exportable.aiPolicy.flatMap { AIConnectionPolicy(rawValue: $0) },
             redisDatabase: exportable.redisDatabase,
             startupCommands: exportable.startupCommands,
+            localOnly: exportable.localOnly ?? false,
             additionalFields: exportable.additionalFields
         )
     }

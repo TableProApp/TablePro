@@ -119,6 +119,7 @@ extension ConnectionFormView {
             selectedGroupId = existing.groupId
             safeModeLevel = existing.safeModeLevel
             aiPolicy = existing.aiPolicy
+            localOnly = existing.localOnly
 
             // Load additional fields from connection
             additionalFieldValues = existing.additionalFields
@@ -219,6 +220,7 @@ extension ConnectionFormView {
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,
+            localOnly: localOnly,
             additionalFields: finalAdditionalFields.isEmpty ? nil : finalAdditionalFields
         )
 

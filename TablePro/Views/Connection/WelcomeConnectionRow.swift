@@ -43,6 +43,13 @@ struct WelcomeConnectionRow: View {
                                 RoundedRectangle(cornerRadius: 4).fill(
                                     tag.color.color.opacity(0.15)))
                     }
+
+                    if connection.localOnly {
+                        Image(systemName: "icloud.slash")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .help(String(localized: "Local only — not synced to iCloud"))
+                    }
                 }
 
                 Text(connectionSubtitle)

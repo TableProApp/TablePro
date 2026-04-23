@@ -46,6 +46,27 @@ extension WelcomeWindowView {
             }
         }
 
+        if AppSettingsManager.shared.sync.enabled {
+            Divider()
+
+            let allLocalOnly = vm.selectedConnections.allSatisfy(\.localOnly)
+            Button {
+                for conn in vm.selectedConnections {
+                    var updated = conn
+                    updated.localOnly = !allLocalOnly
+                    ConnectionStorage.shared.updateConnection(updated)
+                }
+                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            } label: {
+                Label(
+                    allLocalOnly
+                        ? String(localized: "Include in iCloud Sync")
+                        : String(localized: "Exclude from iCloud Sync"),
+                    systemImage: allLocalOnly ? "icloud" : "icloud.slash"
+                )
+            }
+        }
+
         Divider()
 
         Button(role: .destructive) {
@@ -122,6 +143,24 @@ extension WelcomeWindowView {
         if let groupId = connection.groupId, vm.groups.contains(where: { $0.id == groupId }) {
             Button { vm.removeFromGroup([connection]) } label: {
                 Label(String(localized: "Remove from Group"), systemImage: "folder.badge.minus")
+            }
+        }
+
+        if AppSettingsManager.shared.sync.enabled {
+            Divider()
+
+            Button {
+                var updated = connection
+                updated.localOnly.toggle()
+                ConnectionStorage.shared.updateConnection(updated)
+                NotificationCenter.default.post(name: .connectionUpdated, object: nil)
+            } label: {
+                Label(
+                    connection.localOnly
+                        ? String(localized: "Include in iCloud Sync")
+                        : String(localized: "Exclude from iCloud Sync"),
+                    systemImage: connection.localOnly ? "icloud" : "icloud.slash"
+                )
             }
         }
 

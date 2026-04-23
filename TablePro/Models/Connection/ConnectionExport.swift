@@ -57,6 +57,7 @@ struct ExportableConnection: Codable {
     let additionalFields: [String: String]?
     let redisDatabase: Int?
     let startupCommands: String?
+    let localOnly: Bool?
 }
 
 // MARK: - SSH Config
