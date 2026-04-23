@@ -75,13 +75,16 @@ SELECT * FROM users JOIN |  -- Suggests all tables
 
 ### Column Names
 
-Columns are suggested based on referenced tables:
+Columns are suggested based on referenced tables. When a FROM clause exists (even after the cursor), columns from those tables appear. When no FROM clause exists yet, columns from all cached schema tables are suggested as a fallback.
 
 ```sql
+SELECT na|  -- Suggests columns matching "na" from all cached tables
 SELECT | FROM users  -- Suggests columns from users table
 SELECT u.| FROM users u  -- Suggests columns with "u." prefix
 SELECT * FROM users WHERE |  -- Suggests columns from users
 ```
+
+When multiple tables have a column with the same name, the fallback shows qualified names (e.g. `users.id`, `orders.id`) to disambiguate.
 
 #### After Table Alias
 
@@ -147,8 +150,10 @@ Suggestions adapt to SQL context: after SELECT, shows columns and aggregate func
 
 ## Schema Caching
 
-On connection, TablePro fetches and caches all table and column information. If you make schema changes externally, right-click the connection and select **Refresh**, or disconnect and reconnect.
+On connection, TablePro fetches all table names and eagerly loads column information for up to 50 tables in the background. This means column suggestions are available immediately, even before you write a FROM clause. If you make schema changes externally, right-click the connection and select **Refresh**, or disconnect and reconnect.
+
+Schema-qualified table names (`public.users`, `schema.table`) are resolved correctly in all contexts: FROM, JOIN, UPDATE, INSERT INTO, and CREATE INDEX.
 
 ## Performance
 
-Autocomplete works on files of any size, including multi-megabyte dumps. For files >500 KB, it analyzes only a ~10 KB window around the cursor. For large schemas (100+ tables), initial loading may take a moment, but remains responsive after caching. Use aliases to narrow suggestions faster and let the cache work.
+Autocomplete works on files of any size, including multi-megabyte dumps. For files >500 KB, it analyzes only a ~10 KB window around the cursor. For large schemas (100+ tables), initial loading may take a moment, but remains responsive after caching. The column cache holds up to 50 tables and evicts least-recently-used entries. Use aliases to narrow suggestions faster and let the cache work.
