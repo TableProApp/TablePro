@@ -310,6 +310,7 @@ final class WelcomeViewModel {
         connections.removeAll { idsToDelete.contains($0.id) }
         selectedConnectionIds.subtract(idsToDelete)
         connectionsToDelete = []
+        rebuildTree()
     }
 
     // MARK: - Groups
