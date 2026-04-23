@@ -67,12 +67,16 @@ actor MCPAuthGuard {
         let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
 
         // SafeModeGuard.checkPermission is @MainActor async; Swift hops automatically
+        let window = await MainActor.run {
+            NSApp.activate(ignoringOtherApps: true)
+            return NSApp.keyWindow ?? NSApp.mainWindow
+        }
         let permission = await SafeModeGuard.checkPermission(
             level: safeModeLevel,
             isWriteOperation: isWrite,
             sql: sql,
             operationDescription: String(localized: "MCP query execution"),
-            window: nil,
+            window: window,
             databaseType: databaseType
         )
 
