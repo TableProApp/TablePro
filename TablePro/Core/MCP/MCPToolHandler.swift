@@ -120,15 +120,7 @@ final class MCPToolHandler: Sendable {
                     + "Use the confirm_destructive_operation tool instead."
             )
 
-        case .write where !QueryClassifier.isInsertQuery(query):
-            try await authGuard.checkQueryPermission(
-                sql: query,
-                connectionId: connectionId,
-                databaseType: databaseType,
-                safeModeLevel: .alert
-            )
-
-        case .safe, .write:
+        case .write, .safe:
             try await authGuard.checkQueryPermission(
                 sql: query,
                 connectionId: connectionId,
@@ -172,7 +164,7 @@ final class MCPToolHandler: Sendable {
 
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
 
-        let (databaseType, _, databaseName) = try await resolveConnectionMeta(connectionId)
+        let (databaseType, safeModeLevel, databaseName) = try await resolveConnectionMeta(connectionId)
 
         let tier = QueryClassifier.classifyTier(query, databaseType: databaseType)
         guard tier == .destructive else {
@@ -186,7 +178,7 @@ final class MCPToolHandler: Sendable {
             sql: query,
             connectionId: connectionId,
             databaseType: databaseType,
-            safeModeLevel: .alert
+            safeModeLevel: safeModeLevel
         )
 
         let mcpSettings = await MainActor.run { AppSettingsManager.shared.mcp }
