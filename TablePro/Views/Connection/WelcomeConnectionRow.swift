@@ -48,7 +48,7 @@ struct WelcomeConnectionRow: View {
                         Image(systemName: "icloud.slash")
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
-                            .help(String(localized: "Local only — not synced to iCloud"))
+                            .help(String(localized: "Local only - not synced to iCloud"))
                     }
                 }
 

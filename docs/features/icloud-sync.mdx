@@ -40,6 +40,15 @@ Open **Settings** (`Cmd+,`) > **Account**, toggle iCloud Sync on, choose which c
 
 Each data type has its own toggle: Connections, Groups & Tags, SSH Profiles, and App Settings.
 
+## Excluding individual connections
+
+Some connections (e.g., localhost, dev databases) don't make sense on other devices. Mark them as **Local only** to keep them off iCloud:
+
+- **Connection form**: open the **Advanced** tab and toggle **Local only**
+- **Context menu**: right-click a connection and choose **Exclude from iCloud Sync**
+
+Local-only connections show an `icloud.slash` icon in the sidebar. The flag is preserved when duplicating or exporting connections.
+
 TablePro auto-syncs on app launch, when you switch back to it, and 2 seconds after you modify synced data.
 
 When the same record changes on two Macs, you choose to keep the local or remote version. Conflicts are per-record, not per-category.

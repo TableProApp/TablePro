@@ -135,7 +135,7 @@ final class SyncCoordinator {
     /// Called when sync is first enabled to upload existing connections/groups/tags/settings.
     private func markAllLocalDataDirty() {
         let connections = ConnectionStorage.shared.loadConnections()
-        for connection in connections {
+        for connection in connections where !connection.localOnly {
             changeTracker.markDirty(.connection, id: connection.id.uuidString)
         }
 
