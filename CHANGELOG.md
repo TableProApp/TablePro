@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Connection form can overflow with SSH jump hosts and TOTP fields due to fixed height
+- Group deletion has no confirmation dialog
 - Crash when scrolling AI Chat during streaming on macOS 15.x
 - Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
 - Schema-qualified table names (e.g. `public.users`) now correctly resolve in autocomplete
