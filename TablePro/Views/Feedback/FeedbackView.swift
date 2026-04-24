@@ -9,12 +9,12 @@ import UniformTypeIdentifiers
 struct FeedbackView: View {
     @Bindable var viewModel: FeedbackViewModel
 
+    @FocusState private var focusedField: FocusField?
+    @State private var isDropTargeted = false
+
     enum FocusField {
         case title, description, steps, expected
     }
-
-    @FocusState private var focusedField: FocusField?
-    @State private var isDropTargeted = false
 
     var body: some View {
         Group {
@@ -24,97 +24,47 @@ struct FeedbackView: View {
                 formView
             }
         }
-        .frame(width: 520, height: 580)
+        .frame(width: 480)
     }
 
     // MARK: - Form
 
     private var formView: some View {
         VStack(spacing: 0) {
-            Form {
-                Section {
-                    Picker("Type", selection: $viewModel.feedbackType) {
-                        ForEach(FeedbackType.allCases, id: \.self) { type in
-                            Label(type.displayName, systemImage: type.iconName)
-                                .tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-
-                Section {
-                    TextField("Title", text: $viewModel.title, prompt: Text(String(localized: "Brief summary of the issue")))
-                        .focused($focusedField, equals: .title)
-
-                    LabeledContent("Description") {
-                        TextEditor(text: $viewModel.description)
-                            .font(.system(.body))
-                            .frame(minHeight: 60)
-                            .scrollContentBackground(.hidden)
-                            .padding(4)
-                            .background(Color(nsColor: .textBackgroundColor))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                            )
-                            .focused($focusedField, equals: .description)
-                    }
-                }
-
-                if viewModel.feedbackType == .bugReport {
-                    Section {
-                        LabeledContent("Steps to Reproduce") {
-                            TextEditor(text: $viewModel.stepsToReproduce)
-                                .font(.system(.body))
-                                .frame(minHeight: 44)
-                                .scrollContentBackground(.hidden)
-                                .padding(4)
-                                .background(Color(nsColor: .textBackgroundColor))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                                )
-                                .focused($focusedField, equals: .steps)
-                        }
-
-                        LabeledContent("Expected Behavior") {
-                            TextEditor(text: $viewModel.expectedBehavior)
-                                .font(.system(.body))
-                                .frame(minHeight: 44)
-                                .scrollContentBackground(.hidden)
-                                .padding(4)
-                                .background(Color(nsColor: .textBackgroundColor))
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                                )
-                                .focused($focusedField, equals: .expected)
-                        }
-                    }
-                }
-
-                Section("Attachments") {
-                    attachmentsContent
-                }
-
-                Section {
-                    Toggle("Include diagnostics", isOn: $viewModel.includeDiagnostics)
-
-                    if viewModel.includeDiagnostics {
-                        Text(viewModel.diagnostics.formattedSummary)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                } footer: {
-                    Text("Includes app version, macOS version, and installed plugins only.")
+            Picker("", selection: $viewModel.feedbackType) {
+                ForEach(FeedbackType.allCases, id: \.self) { type in
+                    Text(type.displayName).tag(type)
                 }
             }
-            .formStyle(.grouped)
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    textField("Title", text: $viewModel.title, prompt: "Brief summary of the issue")
+                        .focused($focusedField, equals: .title)
+
+                    textArea("Description", text: $viewModel.description, minHeight: 72)
+                        .focused($focusedField, equals: .description)
+
+                    if viewModel.feedbackType == .bugReport {
+                        textArea("Steps to Reproduce", text: $viewModel.stepsToReproduce, minHeight: 48)
+                            .focused($focusedField, equals: .steps)
+
+                        textArea("Expected Behavior", text: $viewModel.expectedBehavior, minHeight: 48)
+                            .focused($focusedField, equals: .expected)
+                    }
+
+                    attachmentsSection
+
+                    diagnosticsSection
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+            }
 
             Divider()
 
@@ -127,49 +77,91 @@ struct FeedbackView: View {
         }
     }
 
+    // MARK: - Reusable Fields
+
+    private func textField(_ label: String, text: Binding<String>, prompt: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            TextField("", text: text, prompt: Text(prompt))
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private func textArea(_ label: String, text: Binding<String>, minHeight: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            TextEditor(text: text)
+                .font(.body)
+                .frame(minHeight: minHeight)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                )
+        }
+    }
+
     // MARK: - Attachments
 
-    private var attachmentsContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var attachmentsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Attachments")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
             if !viewModel.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         ForEach(viewModel.attachments) { attachment in
                             attachmentThumbnail(attachment)
                         }
                     }
                 }
-                .frame(height: 72)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Button {
                     viewModel.pasteFromClipboard()
                 } label: {
                     Label("Paste", systemImage: "doc.on.clipboard")
+                        .font(.callout)
                 }
+                .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
 
                 Button {
                     viewModel.captureWindow()
                 } label: {
                     Label("Capture Window", systemImage: "camera.viewfinder")
+                        .font(.callout)
                 }
+                .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
 
                 Button {
                     Task { await viewModel.browseFiles() }
                 } label: {
                     Label("Browse...", systemImage: "folder")
+                        .font(.callout)
                 }
+                .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
 
                 Spacer()
 
                 if !viewModel.attachments.isEmpty {
-                    Text("\(viewModel.attachments.count)/\(5)")
+                    Text("\(viewModel.attachments.count)/5")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -180,7 +172,7 @@ struct FeedbackView: View {
             Image(nsImage: attachment.image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 80, height: 64)
+                .frame(width: 72, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
@@ -192,6 +184,7 @@ struct FeedbackView: View {
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .font(.caption)
+                    .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, Color(nsColor: .systemGray))
             }
             .buttonStyle(.plain)
@@ -230,17 +223,35 @@ struct FeedbackView: View {
         return handled
     }
 
+    // MARK: - Diagnostics
+
+    private var diagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: $viewModel.includeDiagnostics) {
+                Text("Include diagnostics")
+                    .font(.callout)
+            }
+
+            if viewModel.includeDiagnostics {
+                Text(viewModel.diagnostics.formattedSummary)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
     // MARK: - Footer
 
     private var footerView: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             if case .failure(let error) = viewModel.submissionResult {
                 Text(error.localizedDescription)
                     .font(.caption)
                     .foregroundStyle(Color(nsColor: .systemRed))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 6)
             }
 
             HStack {
@@ -265,10 +276,9 @@ struct FeedbackView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(!viewModel.canSubmit)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     // MARK: - Success
@@ -278,23 +288,21 @@ struct FeedbackView: View {
             Spacer()
 
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 48))
+                .font(.system(size: 44))
                 .foregroundStyle(Color(nsColor: .systemGreen))
 
             Text("Feedback submitted!")
-                .font(.title2)
+                .font(.title3)
                 .fontWeight(.semibold)
 
             Text(String(format: String(localized: "Created as GitHub issue #%d"), issueNumber))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                Link(destination: issueUrl) {
-                    Label("View on GitHub", systemImage: "arrow.up.right")
-                }
-                .buttonStyle(.borderedProminent)
+            Link(destination: issueUrl) {
+                Label("View on GitHub", systemImage: "arrow.up.right")
             }
+            .buttonStyle(.borderedProminent)
 
             HStack(spacing: 16) {
                 Button("Submit Another") {
@@ -312,5 +320,6 @@ struct FeedbackView: View {
 
             Spacer()
         }
+        .frame(minHeight: 300)
     }
 }

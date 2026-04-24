@@ -24,7 +24,7 @@ final class FeedbackWindowController {
         viewModel.captureTargetWindow = NSApp.keyWindow ?? NSApp.mainWindow
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 580),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 540),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
