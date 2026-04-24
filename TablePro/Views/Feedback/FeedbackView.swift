@@ -99,7 +99,7 @@ struct FeedbackView: View {
                             DisclosureGroup(isExpanded: $showDiagnosticsDetail) {
                                 Text(viewModel.diagnostics.installedPlugins.joined(separator: ", "))
                                     .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.quaternary)
+                                    .foregroundStyle(.tertiary)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             } label: {
