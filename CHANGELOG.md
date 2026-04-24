@@ -9,11 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Import URL auto-pastes from clipboard
-- Import URL shows parsed field preview before importing
-- Import URL applies statusColor and env tag from URL query parameters
-- Basic URL import for libSQL and Cloudflare D1
-- Registered URL schemes for Oracle, ClickHouse, etcd, D1, and libSQL
+- Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1 support, URL schemes for Oracle/ClickHouse/etcd/D1/libSQL
 - In-app feedback form for bug reports and feature requests via Help > Report an Issue
 - Per-connection "Local only" option to exclude individual connections from iCloud sync
 - Filter operator picker shows SQL symbols alongside names for quick visual recognition
