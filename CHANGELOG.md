@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- iOS: replace segmented Picker with TabView(.sidebarAdaptable) for 4-tab navigation (Tables, Query, History, Settings) with per-tab NavigationStack and iPad sidebar support
+- iOS: extract ConnectionCoordinator from ConnectedView, eliminating prop drilling across table and query views
+- iOS: minimum deployment target raised to iOS 18
 - Native macOS UI patterns: Picker(.menu) for cell editors, native alerts, native List selection, .navigationTitle for sheets, NSSearchField for welcome search, borderless toolbar buttons, chevron indicator on SET picker
 - Quit dialog defaults to Cancel on Return key
 - Connection form delete button moved to far left
@@ -24,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Crash when scrolling AI Chat during streaming on macOS 15.x
 - Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
 - Schema-qualified table names (e.g. `public.users`) now correctly resolve in autocomplete
 - Alert dialogs use sheet attachment instead of bare modal

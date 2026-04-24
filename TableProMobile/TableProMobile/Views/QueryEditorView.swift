@@ -9,11 +9,7 @@ import TableProDatabase
 import TableProModels
 
 struct QueryEditorView: View {
-    let session: ConnectionSession?
-    var tables: [TableInfo] = []
-    var initialQuery: String = ""
-    var databaseType: DatabaseType = .sqlite
-    var safeModeLevel: SafeModeLevel = .off
+    @Environment(ConnectionCoordinator.self) private var coordinator
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryEditorView")
 
@@ -25,11 +21,6 @@ struct QueryEditorView: View {
     @State private var executeTask: Task<Void, Never>?
     @State private var saveQueryTask: Task<Void, Never>?
     @State private var executionStartTime: Date?
-    @Binding var queryHistory: [QueryHistoryItem]
-    let connectionId: UUID
-    let historyStorage: QueryHistoryStorage
-    @State private var showHistory = false
-    @State private var showClearHistoryConfirmation = false
     @State private var showWriteConfirmation = false
     @State private var showWriteBlockedAlert = false
     @State private var pendingWriteQuery = ""
@@ -38,16 +29,26 @@ struct QueryEditorView: View {
     @State private var shareText = ""
     @State private var hapticSuccess = false
     @State private var hapticError = false
+
+    private var session: ConnectionSession? { coordinator.session }
+    private var tables: [TableInfo] { coordinator.tables }
+    private var databaseType: DatabaseType { coordinator.connection.type }
+    private var safeModeLevel: SafeModeLevel { coordinator.connection.safeModeLevel }
+    private var connectionId: UUID { coordinator.connection.id }
+
     var body: some View {
         VStack(spacing: 0) {
             editorSection
             Divider()
             resultSection
         }
+        .navigationTitle("Query")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .onAppear {
-            if !initialQuery.isEmpty {
-                query = initialQuery
+            if let pending = coordinator.pendingQuery {
+                query = pending
+                coordinator.pendingQuery = nil
             } else if query.isEmpty {
                 query = UserDefaults.standard.string(forKey: "lastQuery.\(connectionId.uuidString)") ?? ""
             }
@@ -58,6 +59,12 @@ struct QueryEditorView: View {
                 try? await Task.sleep(for: .milliseconds(300))
                 guard !Task.isCancelled else { return }
                 UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
+            }
+        }
+        .onChange(of: coordinator.pendingQuery) { _, newQuery in
+            if let newQuery {
+                query = newQuery
+                coordinator.pendingQuery = nil
             }
         }
         .alert("Write Query Blocked", isPresented: $showWriteBlockedAlert) {
@@ -77,7 +84,6 @@ struct QueryEditorView: View {
         .sheet(isPresented: $showShareSheet) {
             ActivityViewController(items: [shareText])
         }
-        .sheet(isPresented: $showHistory) { historySheet }
         .confirmationDialog(
             String(localized: "Clear Query"),
             isPresented: $showClearConfirmation,
@@ -275,11 +281,10 @@ struct QueryEditorView: View {
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
                 Button {
-                    showHistory = true
+                    coordinator.selectedTab = .history
                 } label: {
                     Label("History", systemImage: "clock")
                 }
-                .disabled(queryHistory.isEmpty)
 
                 if !tables.isEmpty {
                     Menu {
@@ -336,69 +341,6 @@ struct QueryEditorView: View {
         }
     }
 
-    // MARK: - History
-
-    private var historySheet: some View {
-        NavigationStack {
-            List {
-                ForEach(queryHistory.reversed()) { item in
-                    Button {
-                        query = item.query
-                        showHistory = false
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(verbatim: item.query)
-                                .font(.system(.footnote, design: .monospaced))
-                                .lineLimit(3)
-                                .foregroundStyle(.primary)
-                            Text(item.timestamp, style: .relative)
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-                .onDelete { indexSet in
-                    let reversed = queryHistory.reversed().map(\.id)
-                    for index in indexSet {
-                        historyStorage.delete(reversed[index])
-                    }
-                    queryHistory = historyStorage.load(for: connectionId)
-                }
-
-                if !queryHistory.isEmpty {
-                    Section {
-                        Button("Clear All History", role: .destructive) {
-                            showClearHistoryConfirmation = true
-                        }
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle("Query History")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { showHistory = false }
-                }
-            }
-            .confirmationDialog("Clear History", isPresented: $showClearHistoryConfirmation) {
-                Button("Clear All", role: .destructive) {
-                    historyStorage.clearAll(for: connectionId)
-                    queryHistory = []
-                }
-            }
-            .overlay {
-                if queryHistory.isEmpty {
-                    ContentUnavailableView(
-                        "No History",
-                        systemImage: "clock",
-                        description: Text("Executed queries will appear here.")
-                    )
-                }
-            }
-        }
-    }
-
     // MARK: - Execution
 
     private func isWriteQuery(_ sql: String) -> Bool {
@@ -446,8 +388,7 @@ struct QueryEditorView: View {
             hapticSuccess.toggle()
 
             let item = QueryHistoryItem(query: trimmed, connectionId: connectionId)
-            historyStorage.save(item)
-            queryHistory = historyStorage.load(for: connectionId)
+            coordinator.addHistoryItem(item)
         } catch {
             let context = ErrorContext(operation: "executeQuery")
             self.appError = ErrorClassifier.classify(error, context: context)

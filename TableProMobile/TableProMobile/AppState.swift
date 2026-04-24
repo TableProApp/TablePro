@@ -16,6 +16,7 @@ final class AppState {
     var groups: [ConnectionGroup] = []
     var tags: [ConnectionTag] = []
     var pendingConnectionId: UUID?
+    var pendingTableName: String?
     let connectionManager: ConnectionManager
     let syncCoordinator = IOSSyncCoordinator()
     let sshProvider: IOSSSHProvider

@@ -8,10 +8,11 @@ import TableProDatabase
 import TableProModels
 
 struct TableListView: View {
-    let connection: DatabaseConnection
-    let tables: [TableInfo]
-    let session: ConnectionSession?
-    var onRefresh: (() async -> Void)?
+    @Environment(ConnectionCoordinator.self) private var coordinator
+
+    private var connection: DatabaseConnection { coordinator.connection }
+    private var tables: [TableInfo] { coordinator.tables }
+    private var session: ConnectionSession? { coordinator.session }
 
     @State private var searchText = ""
     @State private var tableToTruncate: TableInfo?
@@ -101,16 +102,13 @@ struct TableListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
+        .toolbar { connectionToolbar }
         .textInputAutocapitalization(.never)
         .refreshable {
-            await onRefresh?()
+            await coordinator.refreshTables()
         }
         .navigationDestination(for: TableInfo.self) { table in
-            DataBrowserView(
-                connection: connection,
-                table: table,
-                session: session
-            )
+            DataBrowserView(table: table)
         }
         .overlay {
             if tables.isEmpty {
@@ -134,7 +132,7 @@ struct TableListView: View {
                         do {
                             let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
                             _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
-                            await onRefresh?()
+                            await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
                             showError = true
@@ -158,7 +156,7 @@ struct TableListView: View {
                         do {
                             let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
                             _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
-                            await onRefresh?()
+                            await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
                             showError = true
@@ -175,6 +173,71 @@ struct TableListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage)
+        }
+    }
+
+    // MARK: - Connection Toolbar
+
+    @ToolbarContentBuilder
+    private var connectionToolbar: some ToolbarContent {
+        if connection.safeModeLevel != .off {
+            ToolbarItem(placement: .topBarTrailing) {
+                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+                    .font(.caption)
+            }
+        }
+        if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    ForEach(coordinator.databases, id: \.self) { db in
+                        Button {
+                            Task { await coordinator.switchDatabase(to: db) }
+                        } label: {
+                            if db == coordinator.activeDatabase {
+                                Label(db, systemImage: "checkmark")
+                            } else {
+                                Text(db)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(coordinator.activeDatabase)
+                            .font(.subheadline)
+                        if coordinator.isSwitching {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .disabled(coordinator.isSwitching)
+            }
+        }
+        if coordinator.supportsSchemas && coordinator.schemas.count > 1 {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ForEach(coordinator.schemas, id: \.self) { schema in
+                        Button {
+                            Task { await coordinator.switchSchema(to: schema) }
+                        } label: {
+                            if schema == coordinator.activeSchema {
+                                Label(schema, systemImage: "checkmark")
+                            } else {
+                                Text(schema)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(coordinator.activeSchema, systemImage: "square.3.layers.3d")
+                        .font(.subheadline)
+                }
+                .disabled(coordinator.isSwitching)
+            }
         }
     }
 }
