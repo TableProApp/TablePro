@@ -169,18 +169,22 @@ struct AIChatPanelView: View {
     // MARK: - Message List
 
     private var messageList: some View {
-        ZStack(alignment: .bottom) {
+        let spacedMessageIDs: Set<UUID> = {
+            var ids = Set<UUID>()
+            let msgs = viewModel.messages
+            for i in 1..<msgs.count where msgs[i].role == .user && msgs[i - 1].role == .assistant {
+                ids.insert(msgs[i].id)
+            }
+            return ids
+        }()
+
+        return ZStack(alignment: .bottom) {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(viewModel.messages) { message in
                         if message.role != .system {
-                            // Extra spacing before user messages to separate conversation turns
-                            if message.role == .user,
-                               let msgIndex = viewModel.messages.firstIndex(where: { $0.id == message.id }),
-                               msgIndex > 0,
-                               viewModel.messages[msgIndex - 1].role == .assistant
-                            {
+                            if spacedMessageIDs.contains(message.id) {
                                 Spacer()
                                     .frame(height: 16)
                             }
@@ -213,10 +217,11 @@ struct AIChatPanelView: View {
             }
             .onChange(of: viewModel.messages.count) {
                 isUserScrolledUp = false
-                scrollToBottom(proxy: proxy)
+                scrollToBottom(proxy: proxy, animated: true)
             }
             .onChange(of: viewModel.activeConversationID) {
-                scrollToBottom(proxy: proxy)
+                isUserScrolledUp = false
+                scrollToBottom(proxy: proxy, animated: true)
             }
             .onChange(of: viewModel.messages.last?.content) {
                 guard !isUserScrolledUp else { return }
@@ -227,7 +232,7 @@ struct AIChatPanelView: View {
             }
             .onChange(of: viewModel.isStreaming) { _, newValue in
                 if !newValue, !isUserScrolledUp {
-                    scrollToBottom(proxy: proxy)
+                    scrollToBottom(proxy: proxy, animated: true)
                 }
             }
         }
@@ -235,7 +240,7 @@ struct AIChatPanelView: View {
         if isUserScrolledUp, let proxy = scrollProxy {
             Button {
                 isUserScrolledUp = false
-                scrollToBottom(proxy: proxy)
+                scrollToBottom(proxy: proxy, animated: true)
             } label: {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.title2)
@@ -327,10 +332,13 @@ struct AIChatPanelView: View {
 
     // MARK: - Helpers
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        guard let lastID = viewModel.messages.last?.id else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo(lastID, anchor: .bottom)
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = false) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo("bottomAnchor", anchor: .bottom)
+            }
+        } else {
+            proxy.scrollTo("bottomAnchor", anchor: .bottom)
         }
     }
 
