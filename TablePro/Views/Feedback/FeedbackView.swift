@@ -118,7 +118,6 @@ struct FeedbackView: View {
 
             footerView
         }
-        .animation(.default, value: viewModel.feedbackType)
         .onAppear { focusedField = .title }
         .onDrop(of: [.image, .fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers: providers)
