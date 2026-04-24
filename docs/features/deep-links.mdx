@@ -21,6 +21,15 @@ Open any database connection directly using its standard URL. Works from the ter
 | `redis://`, `rediss://` | Redis |
 | `mssql://`, `sqlserver://` | SQL Server |
 | `sqlite://` | SQLite (local file path) |
+| `redshift://` | Amazon Redshift |
+| `oracle://` | Oracle |
+| `clickhouse://` | ClickHouse |
+| `cassandra://` | Cassandra |
+| `scylladb://` | ScyllaDB |
+| `duckdb://` | DuckDB |
+| `etcd://` | etcd |
+| `d1://` | Cloudflare D1 |
+| `libsql://` | libSQL / Turso |
 
 ### URL Format
 
@@ -56,13 +65,13 @@ Pass additional options as query parameters:
 | Parameter | Description |
 |-----------|-------------|
 | `table` | Open a specific table after connecting |
-| `filter_column`, `filter_operation`, `filter_value` | Apply a filter on the opened table |
+| `column`, `operation`, `value` | Apply a filter on the opened table |
 | `condition` | Apply a raw SQL WHERE condition |
 | `schema` | Switch to a specific schema (PostgreSQL) or database (MySQL) after connecting |
 
 ```bash
 # Open a table with a filter
-open "mysql://root@localhost/mydb?table=users&filter_column=status&filter_operation=equal&filter_value=active" -a TablePro
+open "mysql://root@localhost/mydb?table=users&column=status&operation==&value=active" -a TablePro
 
 # Open with a raw SQL condition
 open "postgresql://admin@localhost/mydb?table=orders&condition=total%20%3E%20100" -a TablePro
@@ -132,6 +141,6 @@ open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgres
 **Required parameters:** `name`, `host`, `type`
 **Optional parameters:** `port` (defaults to the database type's standard port), `username`, `database`
 
-Supported `type` values: `MySQL`, `MariaDB`, `PostgreSQL`, `SQLite`, `MongoDB` (case-insensitive).
+Supported `type` values: any registered database type name (case-insensitive). Examples: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`, `Cassandra`.
 
 
