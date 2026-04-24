@@ -97,7 +97,6 @@ final class FeedbackAPIClient {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
-        config.waitsForConnectivity = true
         self.session = URLSession(configuration: config)
     }
 

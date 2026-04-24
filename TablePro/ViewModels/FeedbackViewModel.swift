@@ -189,6 +189,10 @@ final class FeedbackViewModel {
         }
     }
 
+    func clearSubmissionResult() {
+        submissionResult = nil
+    }
+
     func resetForNewSubmission() {
         feedbackType = .bugReport
         title = ""
@@ -250,10 +254,7 @@ final class FeedbackViewModel {
             pngData = currentImage.representation(using: .png, properties: [:])
         }
 
-        guard let finalData = pngData, finalData.count <= Self.maxScreenshotBytes else {
-            return nil
-        }
-        return finalData.base64EncodedString()
+        return pngData?.base64EncodedString()
     }
 
     private func scheduleDraftSave() {

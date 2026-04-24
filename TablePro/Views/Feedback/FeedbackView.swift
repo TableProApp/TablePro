@@ -246,7 +246,7 @@ struct FeedbackView: View {
 
             HStack {
                 Button("Cancel") {
-                    NSApp.windows.first { $0.identifier?.rawValue == "feedback" }?.close()
+                    NSApp.keyWindow?.close()
                 }
                 .keyboardShortcut(.cancelAction)
 
@@ -301,7 +301,7 @@ struct FeedbackView: View {
                 .font(.subheadline)
 
                 Button("Close") {
-                    NSApp.windows.first { $0.identifier?.rawValue == "feedback" }?.close()
+                    NSApp.keyWindow?.close()
                 }
                 .font(.subheadline)
                 .buttonStyle(.plain)

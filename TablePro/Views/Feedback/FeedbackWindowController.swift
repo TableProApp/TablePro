@@ -54,6 +54,7 @@ final class FeedbackWindowController {
             Task { @MainActor in
                 self?.panel = nil
                 self?.viewModel.captureTargetWindow = nil
+                self?.viewModel.clearSubmissionResult()
                 if let observer = self?.closeObserver {
                     NotificationCenter.default.removeObserver(observer)
                 }
