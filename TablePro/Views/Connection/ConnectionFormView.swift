@@ -165,7 +165,7 @@ struct ConnectionFormView: View {
 
             footer
         }
-        .frame(width: 480, height: 520)
+        .frame(width: 480, minHeight: 520, idealHeight: 520)
         .navigationTitle(
             isNew ? String(localized: "New Connection") : String(localized: "Edit Connection")
         )
