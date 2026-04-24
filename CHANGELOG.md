@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - MongoDB replica set support with multi-host connections
+- Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1 support, URL schemes for Oracle/ClickHouse/etcd/D1/libSQL
 - In-app feedback form for bug reports and feature requests via Help > Report an Issue
 - Per-connection "Local only" option to exclude individual connections from iCloud sync
 - Filter operator picker shows SQL symbols alongside names for quick visual recognition
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Crash when scrolling AI Chat during streaming on macOS 15.x
 - Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
 - Schema-qualified table names (e.g. `public.users`) now correctly resolve in autocomplete
 - Alert dialogs use sheet attachment instead of bare modal

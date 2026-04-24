@@ -859,6 +859,62 @@ struct ConnectionURLParserTests {
         #expect(parsed.sshPort == 2222)
     }
 
+    // MARK: - DuckDB (file-based)
+
+    @Test("DuckDB absolute file path")
+    func testDuckDBAbsolutePath() {
+        let result = ConnectionURLParser.parse("duckdb:///Users/me/analytics.duckdb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.database == "/Users/me/analytics.duckdb")
+        #expect(parsed.host == "")
+    }
+
+    @Test("DuckDB relative file path")
+    func testDuckDBRelativePath() {
+        let result = ConnectionURLParser.parse("duckdb://data.duckdb")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .duckdb)
+        #expect(parsed.database == "data.duckdb")
+    }
+
+    // MARK: - etcds TLS
+
+    @Test("etcds scheme enables SSL")
+    func testEtcdsSchemeEnablesSSL() {
+        let result = ConnectionURLParser.parse("etcds://host:2379")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.sslMode == .required)
+    }
+
+    @Test("etcd scheme does not enable SSL")
+    func testEtcdSchemeNoSSL() {
+        let result = ConnectionURLParser.parse("etcd://host:2379")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.sslMode == nil)
+    }
+
+    // MARK: - Oracle service name
+
+    @Test("Oracle URL extracts service name")
+    func testOracleServiceName() {
+        let result = ConnectionURLParser.parse("oracle://user:pass@host:1521/ORCL")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .oracle)
+        #expect(parsed.oracleServiceName == "ORCL")
+        #expect(parsed.database == "")
+    }
+
     @Test("SSH URL with both usePrivateKey and useSSHAgent prefers last")
     func testSSHURLWithBothPrivateKeyAndAgent() {
         let result = ConnectionURLParser.parse(

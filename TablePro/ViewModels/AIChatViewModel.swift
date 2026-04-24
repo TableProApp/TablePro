@@ -428,7 +428,7 @@ final class AIChatViewModel {
                 // Batch tokens off the main actor, flush on interval
                 var pendingContent = ""
                 var pendingUsage: AITokenUsage?
-                let flushInterval: ContinuousClock.Duration = .milliseconds(80)
+                let flushInterval: ContinuousClock.Duration = .milliseconds(150)
                 var lastFlushTime: ContinuousClock.Instant = .now
 
                 for try await event in stream {

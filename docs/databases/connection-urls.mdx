@@ -26,7 +26,16 @@ TablePro parses standard database connection URLs for importing connections, ope
 | `oracle://` | Oracle Database |
 | `jdbc:oracle:thin:@//` | Oracle Database (JDBC thin) |
 | `cassandra://` | Cassandra |
+| `cql://` | Cassandra (alias) |
 | `scylladb://` | ScyllaDB |
+| `scylla://` | ScyllaDB (alias) |
+| `clickhouse://` | ClickHouse |
+| `ch://` | ClickHouse (alias) |
+| `duckdb://` | DuckDB |
+| `etcd://` | etcd |
+| `etcds://` | etcd with TLS |
+| `d1://` | Cloudflare D1 |
+| `libsql://` | libSQL / Turso |
 
 Append `+ssh` to any scheme (except SQLite) to use an SSH tunnel:
 
@@ -150,6 +159,8 @@ postgresql://user:pass@host/db?statusColor=FF3B30&env=production
 | Parameter | Description |
 |-----------|-------------|
 | `authSource` | Authentication database (defaults to `admin`) |
+| `authMechanism` | Authentication mechanism (e.g. `SCRAM-SHA-256`) |
+| `replicaSet` | Replica set name |
 
 **Example:**
 
@@ -176,11 +187,56 @@ scylladb://user:pass@host:9042/my_keyspace
 cassandra://host:9042                        # no auth, no default keyspace
 ```
 
+### DuckDB
+
+DuckDB uses file-based connections. The path after `://` is the file path, same as SQLite.
+
+```text
+duckdb:///Users/me/data/analytics.duckdb
+duckdb:///path/to/database.db
+```
+
+### ClickHouse
+
+ClickHouse uses HTTP on port 8123 by default. `ch://` is accepted as an alias.
+
+```text
+clickhouse://user:password@host:8123/mydb
+ch://default@localhost/analytics
+```
+
+### etcd
+
+The `etcds://` scheme automatically enables TLS. Default port is 2379.
+
+```text
+etcd://host:2379
+etcds://host:2379
+```
+
+### libSQL / Turso
+
+The URL host maps to the database URL. The auth token goes in the password field of the connection form.
+
+```text
+libsql://your-database.turso.io
+```
+
+### Cloudflare D1
+
+The host maps to the Cloudflare Account ID. The path sets the database name or UUID.
+
+```text
+d1://account-id/database-name
+```
+
 ### SSH Tunnel
 
 | Parameter | Description |
 |-----------|-------------|
 | `usePrivateKey` | `true` to use key-based SSH authentication instead of password |
+| `useSSHAgent` | `true` to use SSH agent for authentication |
+| `agentSocket` | Custom SSH agent socket path |
 
 **Example:**
 

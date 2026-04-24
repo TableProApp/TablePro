@@ -75,6 +75,15 @@ SSH tunneling only forwards the first host. Other replica set members must be re
 
 Configure in **SSL/TLS** section. MongoDB Atlas requires SSL/TLS - use **Required** or **Verify CA**. For unencrypted alternatives, use [SSH tunneling](/databases/ssh-tunneling).
 
+## Connection URL
+
+```text
+mongodb://user:password@host:27017/database?authSource=admin
+mongodb+srv://user:password@cluster.mongodb.net/database
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
 ## Features
 
 **Collection Browsing**: Sidebar shows all collections. Click to view documents in data grid.
