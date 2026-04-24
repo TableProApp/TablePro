@@ -7,19 +7,25 @@ import SwiftUI
 
 struct JSONEditorContentView: View {
     let initialValue: String?
+    let columnName: String?
     let onCommit: (String) -> Void
     let onDismiss: () -> Void
+    var onPopOut: ((String) -> Void)?
 
     @State private var text: String
 
     init(
         initialValue: String?,
+        columnName: String? = nil,
         onCommit: @escaping (String) -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onPopOut: ((String) -> Void)? = nil
     ) {
         self.initialValue = initialValue
+        self.columnName = columnName
         self.onCommit = onCommit
         self.onDismiss = onDismiss
+        self.onPopOut = onPopOut
         self._text = State(initialValue: initialValue?.prettyPrintedAsJson() ?? initialValue ?? "")
     }
 
@@ -35,7 +41,8 @@ struct JSONEditorContentView: View {
                 if normalizedNew != normalizedOld {
                     onCommit(newValue)
                 }
-            }
+            },
+            onPopOut: onPopOut
         )
         .frame(width: 560)
         .frame(minHeight: 200, maxHeight: 480)
