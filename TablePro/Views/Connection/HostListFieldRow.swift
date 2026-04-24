@@ -20,42 +20,37 @@ struct HostListFieldRow: View {
     @State private var entries: [HostEntry] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach($entries) { $entry in
-                HStack(spacing: 4) {
-                    TextField(
-                        "Host",
-                        text: $entry.host,
-                        prompt: Text("localhost")
-                    )
-                    .onChange(of: entry.host) { syncValue() }
+        LabeledContent {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach($entries) { $entry in
+                    HStack(spacing: 6) {
+                        TextField("", text: $entry.host, prompt: Text("hostname"))
+                            .onChange(of: entry.host) { syncValue() }
 
-                    TextField(
-                        "Port",
-                        text: $entry.port,
-                        prompt: Text(String(defaultPort))
-                    )
-                    .frame(width: 64)
-                    .onChange(of: entry.port) { syncValue() }
+                        TextField("", text: $entry.port, prompt: Text(String(defaultPort)))
+                            .frame(width: 60)
+                            .onChange(of: entry.port) { syncValue() }
 
-                    Button {
-                        removeEntry(entry)
-                    } label: {
-                        Image(systemName: "minus.circle")
+                        Button {
+                            removeEntry(entry)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(entries.count <= 1)
+                        .opacity(entries.count <= 1 ? 0.3 : 1)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(entries.count <= 1)
-                    .opacity(entries.count <= 1 ? 0.3 : 1)
+                }
+
+                Button {
+                    addEntry()
+                } label: {
+                    Label("Add Host", systemImage: "plus")
                 }
             }
-
-            Button {
-                addEntry()
-            } label: {
-                Label("Add Host", systemImage: "plus.circle")
-                    .font(.caption)
-            }
-            .buttonStyle(.plain)
+        } label: {
+            Text(label)
         }
         .onAppear { parseValue() }
         .onChange(of: value) { parseValue() }
