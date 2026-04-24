@@ -176,26 +176,19 @@ final class PluginManager {
     }
 
     /// Holds the result of loading a single plugin bundle off the main thread.
-    /// Bundle is not formally Sendable but is thread-safe for property reads after load().
+    /// Only stores the loaded Bundle and its origin. Protocol property reads
+    /// (principalClass, static vars) happen later on @MainActor in registerLoadedPlugins
+    /// to avoid ObjC runtime thread-safety issues during initial class resolution.
     private struct LoadedBundle: @unchecked Sendable {
         let url: URL
         let source: PluginSource
         let bundle: Bundle
-        let principalClassName: String
-
-        // These are extracted off-main since they're static protocol properties
-        let pluginName: String
-        let pluginVersion: String
-        let pluginDescription: String
-        let capabilities: [PluginCapability]
-        let databaseTypeId: String?
-        let additionalTypeIds: [String]
-        let pluginIconName: String
-        let defaultPort: Int?
     }
 
-    /// Perform the expensive bundle.load() and principalClass resolution off MainActor.
-    /// Returns successfully loaded bundles with their metadata extracted.
+    /// Perform the expensive bundle.load() off MainActor (dynamic linker I/O).
+    /// Does NOT access bundle.principalClass — that triggers ObjC runtime dispatch
+    /// that is not thread-safe during initial resolution. Version checks use Info.plist
+    /// which is safe after load().
     nonisolated private static func loadBundlesOffMain(
         _ pending: [(url: URL, source: PluginSource)]
     ) async -> [LoadedBundle] {
@@ -234,62 +227,48 @@ final class PluginManager {
                 continue
             }
 
-            guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {
-                logger.error("Principal class does not conform to TableProPlugin: \(entry.url.lastPathComponent)")
-                continue
-            }
-
-            let driverType = principalClass as? any DriverPlugin.Type
-            let version = readRegistryVersion(for: entry.url) ?? principalClass.pluginVersion
-            let loaded = LoadedBundle(
-                url: entry.url,
-                source: entry.source,
-                bundle: bundle,
-                principalClassName: NSStringFromClass(principalClass),
-                pluginName: principalClass.pluginName,
-                pluginVersion: version,
-                pluginDescription: principalClass.pluginDescription,
-                capabilities: principalClass.capabilities,
-                databaseTypeId: driverType?.databaseTypeId,
-                additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
-                pluginIconName: driverType?.iconName ?? "puzzlepiece",
-                defaultPort: driverType?.defaultPort
-            )
-            results.append(loaded)
+            results.append(LoadedBundle(url: entry.url, source: entry.source, bundle: bundle))
         }
         return results
     }
 
     /// Register pre-loaded bundles into the plugin dictionaries. Must be called on MainActor.
+    /// Resolves principalClass and reads all static protocol properties here (safe on main thread)
+    /// rather than in loadBundlesOffMain where ObjC runtime dispatch is not thread-safe.
     private func registerLoadedPlugins(_ loaded: [LoadedBundle]) {
         let disabled = disabledPluginIds
 
         for item in loaded {
+            guard let principalClass = item.bundle.principalClass as? any TableProPlugin.Type else {
+                Self.logger.error("Principal class does not conform to TableProPlugin: \(item.url.lastPathComponent)")
+                continue
+            }
+
             let bundleId = item.bundle.bundleIdentifier ?? item.url.lastPathComponent
+            let driverType = principalClass as? any DriverPlugin.Type
+            let version = Self.readRegistryVersion(for: item.url) ?? principalClass.pluginVersion
             let entry = PluginEntry(
                 id: bundleId,
                 bundle: item.bundle,
                 url: item.url,
                 source: item.source,
-                name: item.pluginName,
-                version: item.pluginVersion,
-                pluginDescription: item.pluginDescription,
-                capabilities: item.capabilities,
+                name: principalClass.pluginName,
+                version: version,
+                pluginDescription: principalClass.pluginDescription,
+                capabilities: principalClass.capabilities,
                 isEnabled: !disabled.contains(bundleId),
-                databaseTypeId: item.databaseTypeId,
-                additionalTypeIds: item.additionalTypeIds,
-                pluginIconName: item.pluginIconName,
-                defaultPort: item.defaultPort
+                databaseTypeId: driverType?.databaseTypeId,
+                additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
+                pluginIconName: driverType?.iconName ?? "puzzlepiece",
+                defaultPort: driverType?.defaultPort
             )
 
             plugins.append(entry)
+            validateCapabilityDeclarations(principalClass, pluginId: bundleId)
 
-            if let principalClass = item.bundle.principalClass as? any TableProPlugin.Type {
-                validateCapabilityDeclarations(principalClass, pluginId: bundleId)
-                if entry.isEnabled {
-                    let instance = principalClass.init()
-                    registerCapabilities(instance, pluginId: bundleId)
-                }
+            if entry.isEnabled {
+                let instance = principalClass.init()
+                registerCapabilities(instance, pluginId: bundleId)
             }
 
             Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(item.source == .builtIn ? "built-in" : "user")]")
