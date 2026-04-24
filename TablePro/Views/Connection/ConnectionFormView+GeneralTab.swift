@@ -145,7 +145,6 @@ extension ConnectionFormView {
                         )
                     }
                 }
-                .id(type)
 
                 if sshState.enabled && hasHostListField {
                     let hostListFieldId = connectionSectionFields.first {
@@ -244,6 +243,7 @@ extension ConnectionFormView {
                 }
             }
         }
+        .id(type)
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .sheet(isPresented: $showURLImport) {
