@@ -34,9 +34,7 @@ struct TerminalTabContentView: View {
         .task {
             await connectWhenReady()
             await withTaskCancellationHandler {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(86_400))
-                }
+                try? await Task.sleep(for: .seconds(86_400))
             } onCancel: { [sessionState] in
                 Task { @MainActor in
                     sessionState?.disconnect()
@@ -264,15 +262,8 @@ private final class TerminalFocusHelperView: NSView {
     }
 
     @objc private func copySelection() {
-        guard let terminal = terminalView, let window = terminal.window else { return }
-        guard let event = NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: .command,
-            timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil,
-            characters: "c", charactersIgnoringModifiers: "c",
-            isARepeat: false, keyCode: 8
-        ) else { return }
-        terminal.keyDown(with: event)
+        guard let terminal = terminalView else { return }
+        NSApp.sendAction(#selector(NSText.copy(_:)), to: terminal, from: nil)
     }
 
     @objc private func pasteFromClipboard() {

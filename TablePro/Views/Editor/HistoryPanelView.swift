@@ -11,6 +11,8 @@ import SwiftUI
 
 /// Query history panel with master-detail layout
 struct HistoryPanelView: View {
+    private static let dateFilterKey = "HistoryPanel.dateFilter"
+
     let connectionId: UUID
     // MARK: - State
 
@@ -283,7 +285,7 @@ private extension HistoryPanelView {
 
     func buildPrimaryMetadata(_ entry: QueryHistoryEntry) -> String {
         var parts: [String] = []
-        parts.append("Database: \(entry.databaseName)")
+        parts.append(String(format: String(localized: "Database: %@"), entry.databaseName))
         parts.append(entry.formattedExecutionTime)
 
         if entry.rowCount >= 0 {
@@ -298,7 +300,7 @@ private extension HistoryPanelView {
         var text = String(format: String(localized: "Executed: %@"), executedAt)
 
         if !entry.wasSuccessful, let error = entry.errorMessage {
-            text += "\nError: \(error)"
+            text += "\n" + String(format: String(localized: "Error: %@"), error)
         }
 
         return text
@@ -386,14 +388,14 @@ private extension HistoryPanelView {
     // MARK: - Filter State Persistence
 
     func restoreFilterState() {
-        let savedFilter = UserDefaults.standard.integer(forKey: "HistoryPanel.dateFilter")
+        let savedFilter = UserDefaults.standard.integer(forKey: Self.dateFilterKey)
         if let filter = UIDateFilter(rawValue: savedFilter) {
             dateFilter = filter
         }
     }
 
     func saveFilterState() {
-        UserDefaults.standard.set(dateFilter.rawValue, forKey: "HistoryPanel.dateFilter")
+        UserDefaults.standard.set(dateFilter.rawValue, forKey: Self.dateFilterKey)
     }
 }
 

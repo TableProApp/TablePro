@@ -108,24 +108,12 @@ struct SQLEditorView: View {
                 editorConfiguration = Self.makeConfiguration()
             }
             .onAppear {
-                if coordinator.isDestroyed {
-                    coordinator.revive()
-                }
-                if completionAdapter == nil {
-                    completionAdapter = SQLCompletionAdapter(schemaProvider: schemaProvider, databaseType: databaseType)
-                }
-                setupFavoritesObserver()
+                initializeEditor()
             }
         } else {
             Color(nsColor: .textBackgroundColor)
                 .onAppear {
-                    if coordinator.isDestroyed {
-                        coordinator.revive()
-                    }
-                    if completionAdapter == nil {
-                        completionAdapter = SQLCompletionAdapter(schemaProvider: schemaProvider, databaseType: databaseType)
-                    }
-                    setupFavoritesObserver()
+                    initializeEditor()
                     editorReady = true
                 }
             }
@@ -138,6 +126,18 @@ struct SQLEditorView: View {
         .onChange(of: coordinator.vimMode) { _, newMode in
             vimMode = newMode
         }
+    }
+
+    // MARK: - Initialization
+
+    private func initializeEditor() {
+        if coordinator.isDestroyed {
+            coordinator.revive()
+        }
+        if completionAdapter == nil {
+            completionAdapter = SQLCompletionAdapter(schemaProvider: schemaProvider, databaseType: databaseType)
+        }
+        setupFavoritesObserver()
     }
 
     // MARK: - Favorites
