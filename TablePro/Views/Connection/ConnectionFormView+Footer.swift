@@ -167,9 +167,10 @@ extension ConnectionFormView {
         .onAppear {
             if connectionURL.isEmpty,
                let clipString = NSPasteboard.general.string(forType: .string),
-               clipString.contains("://")
+               let firstLine = clipString.components(separatedBy: .newlines).first,
+               firstLine.contains("://")
             {
-                connectionURL = clipString.trimmingCharacters(in: .whitespacesAndNewlines)
+                connectionURL = firstLine.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
     }
@@ -227,7 +228,7 @@ extension ConnectionFormView {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
-                .frame(width: 50, alignment: .trailing)
+                .frame(width: 58, alignment: .trailing)
             Text(value)
                 .font(.caption)
                 .foregroundStyle(.secondary)
