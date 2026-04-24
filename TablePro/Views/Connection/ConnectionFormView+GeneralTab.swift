@@ -145,6 +145,7 @@ extension ConnectionFormView {
                         )
                     }
                 }
+                .id(type)
 
                 if sshState.enabled && hasHostListField {
                     let hostListFieldId = connectionSectionFields.first {
