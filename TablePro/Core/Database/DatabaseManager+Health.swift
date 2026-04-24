@@ -144,10 +144,16 @@ extension DatabaseManager {
             throw error
         }
 
-        // Apply timeout
+        // Apply timeout (best-effort)
         let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
         if timeoutSeconds > 0 {
-            try await driver.applyQueryTimeout(timeoutSeconds)
+            do {
+                try await driver.applyQueryTimeout(timeoutSeconds)
+            } catch {
+                Self.logger.warning(
+                    "Query timeout not supported for \(session.connection.name): \(error.localizedDescription)"
+                )
+            }
         }
 
         await executeStartupCommands(
@@ -234,10 +240,16 @@ extension DatabaseManager {
             )
             try await driver.connect()
 
-            // Apply timeout
+            // Apply timeout (best-effort)
             let timeoutSeconds = AppSettingsManager.shared.general.queryTimeoutSeconds
             if timeoutSeconds > 0 {
-                try await driver.applyQueryTimeout(timeoutSeconds)
+                do {
+                    try await driver.applyQueryTimeout(timeoutSeconds)
+                } catch {
+                    Self.logger.warning(
+                        "Query timeout not supported for \(session.connection.name): \(error.localizedDescription)"
+                    )
+                }
             }
 
             await executeStartupCommands(
