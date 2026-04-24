@@ -176,28 +176,27 @@ struct FeedbackView: View {
     }
 
     private func attachmentThumbnail(_ attachment: FeedbackAttachment) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Image(nsImage: attachment.image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: 72, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
-                )
-
-            Button {
-                viewModel.removeAttachment(attachment)
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, Color(nsColor: .systemGray))
+        Image(nsImage: attachment.image)
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 72, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    viewModel.removeAttachment(attachment)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .black.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+                .padding(2)
             }
-            .buttonStyle(.plain)
-            .offset(x: 4, y: -4)
-        }
     }
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
