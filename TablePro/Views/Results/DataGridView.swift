@@ -264,6 +264,7 @@ struct DataGridView: NSViewRepresentable {
         }
 
         let versionChanged = coordinator.lastReloadVersion != changeManager.reloadVersion
+        var pendingChangedRows: Set<Int>?
         let metadataChanged = previousIdentity.map { $0.metadataVersion != metadataVersion } ?? false
         let oldRowCount = coordinator.cachedRowCount
         let oldColumnCount = coordinator.cachedColumnCount
@@ -281,6 +282,12 @@ struct DataGridView: NSViewRepresentable {
         // Re-apply pending cell edits only when changes have been modified
         if changeManager.reloadVersion != coordinator.lastReapplyVersion {
             coordinator.lastReapplyVersion = changeManager.reloadVersion
+
+            pendingChangedRows = changeManager.consumeChangedRowIndices()
+            for rowIndex in pendingChangedRows! {
+                coordinator.rowProvider.invalidateDisplayCache(for: rowIndex)
+            }
+
             for change in changeManager.changes {
                 guard let rowChange = change as? RowChange else { continue }
                 for cellChange in rowChange.cellChanges {
@@ -352,7 +359,8 @@ struct DataGridView: NSViewRepresentable {
             needsFullReload: needsFullReload,
             versionChanged: versionChanged,
             metadataChanged: metadataChanged,
-            paginationChanged: paginationChanged
+            paginationChanged: paginationChanged,
+            pendingChangedRows: pendingChangedRows
         )
     }
 
@@ -539,7 +547,8 @@ struct DataGridView: NSViewRepresentable {
         needsFullReload: Bool,
         versionChanged: Bool,
         metadataChanged: Bool = false,
-        paginationChanged: Bool = false
+        paginationChanged: Bool = false,
+        pendingChangedRows: Set<Int>? = nil
     ) {
         if needsFullReload {
             tableView.reloadData()
@@ -566,7 +575,7 @@ struct DataGridView: NSViewRepresentable {
             }
         } else if versionChanged {
             // Granular reload: only reload rows that changed
-            let changedRows = changeManager.consumeChangedRowIndices()
+            let changedRows = pendingChangedRows ?? changeManager.consumeChangedRowIndices()
             if changedRows.count > 500 {
                 // Too many changed rows — full reload is faster than granular
                 tableView.reloadData()

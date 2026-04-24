@@ -161,6 +161,15 @@ final class InMemoryRowProvider: RowProvider {
         displayCache.removeAll()
     }
 
+    func invalidateDisplayCache(for rowIndex: Int) {
+        let sourceIndex = resolveSourceIndex(rowIndex)
+        if let bufferIdx = sourceIndex.bufferIndex {
+            displayCache.removeValue(forKey: bufferIdx)
+        } else if let appendedIdx = sourceIndex.appendedIndex {
+            displayCache.removeValue(forKey: bufferRowCount + appendedIdx)
+        }
+    }
+
     /// Update a cell value
     func updateValue(_ value: String?, at rowIndex: Int, columnIndex: Int) {
         guard rowIndex < totalRowCount else { return }
