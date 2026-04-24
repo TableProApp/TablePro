@@ -132,6 +132,14 @@ extension ConnectionFormView {
                 additionalFieldValues["redisDatabase"] = String(rdb)
             }
 
+            // Synthesize mongoHosts from host:port for existing MongoDB connections
+            if existing.type.pluginTypeId == "MongoDB",
+               additionalFieldValues["mongoHosts"]?.isEmpty != false
+            {
+                let existingHost = existing.host.isEmpty ? "localhost" : existing.host
+                additionalFieldValues["mongoHosts"] = "\(existingHost):\(existing.port)"
+            }
+
             for field in PluginManager.shared.additionalConnectionFields(for: existing.type) {
                 if additionalFieldValues[field.id] == nil, let defaultValue = field.defaultValue {
                     additionalFieldValues[field.id] = defaultValue
@@ -170,8 +178,8 @@ extension ConnectionFormView {
             clientKeyPath: sslClientKeyPath
         )
 
-        let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
-        let finalPort = Int(port) ?? type.defaultPort
+        var finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+        var finalPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
             trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
@@ -180,6 +188,22 @@ extension ConnectionFormView {
         let finalId = connectionId ?? UUID()
 
         var finalAdditionalFields = additionalFieldValues
+
+        // Derive primary host/port from mongoHosts for display and storage
+        if type.pluginTypeId == "MongoDB",
+           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           !mongoHosts.isEmpty
+        {
+            let firstSegment = mongoHosts.split(separator: ",").first.map(String.init) ?? mongoHosts
+            let parts = firstSegment.split(separator: ":", maxSplits: 1)
+            if !parts.isEmpty {
+                let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
+                finalHost = derived.isEmpty ? "localhost" : derived
+            }
+            if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+                finalPort = p
+            }
+        }
         let trimmedScript = preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedScript.isEmpty {
             finalAdditionalFields["preConnectScript"] = preConnectScript
@@ -361,8 +385,8 @@ extension ConnectionFormView {
             clientKeyPath: sslClientKeyPath
         )
 
-        let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
-        let finalPort = Int(port) ?? type.defaultPort
+        var testHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+        var testPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
             trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
@@ -376,11 +400,26 @@ extension ConnectionFormView {
             finalAdditionalFields.removeValue(forKey: "preConnectScript")
         }
 
+        if type.pluginTypeId == "MongoDB",
+           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           !mongoHosts.isEmpty
+        {
+            let firstSegment = mongoHosts.split(separator: ",").first.map(String.init) ?? mongoHosts
+            let parts = firstSegment.split(separator: ":", maxSplits: 1)
+            if !parts.isEmpty {
+                let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
+                testHost = derived.isEmpty ? "localhost" : derived
+            }
+            if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+                testPort = p
+            }
+        }
+
         let testTunnelMode = sshState.buildTunnelMode()
         let testConn = DatabaseConnection(
             name: name,
-            host: finalHost,
-            port: finalPort,
+            host: testHost,
+            port: testPort,
             database: database,
             username: finalUsername,
             type: type,
@@ -544,9 +583,16 @@ extension ConnectionFormView {
                     sshState.applyAgentSocketPath(parsed.agentSocket ?? "")
                 }
             }
+            // Multi-host MongoDB support
+            if let multiHost = parsed.multiHost, !multiHost.isEmpty {
+                additionalFieldValues["mongoHosts"] = multiHost
+            } else if parsed.type.pluginTypeId == "MongoDB" {
+                let portStr = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
+                additionalFieldValues["mongoHosts"] = "\(parsed.host):\(portStr)"
+            }
             // Clear stale MongoDB fields before applying new import
             let mongoKeys = additionalFieldValues.keys.filter {
-                $0.hasPrefix("mongo") || $0.hasPrefix("mongoParam_")
+                ($0.hasPrefix("mongo") || $0.hasPrefix("mongoParam_")) && $0 != "mongoHosts"
             }
             for key in mongoKeys {
                 additionalFieldValues.removeValue(forKey: key)

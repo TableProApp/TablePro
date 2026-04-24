@@ -108,22 +108,53 @@ extension ConnectionFormView {
                 }
             } else {
                 Section(String(localized: "Connection")) {
-                    TextField(
-                        String(localized: "Host"),
-                        text: $host,
-                        prompt: Text("localhost")
-                    )
-                    TextField(
-                        String(localized: "Port"),
-                        text: $port,
-                        prompt: Text(defaultPort)
-                    )
+                    if hasHostListField {
+                        ForEach(connectionSectionFields, id: \.id) { field in
+                            if case .hostList = field.fieldType {
+                                ConnectionFieldRow(
+                                    field: field,
+                                    value: Binding(
+                                        get: {
+                                            additionalFieldValues[field.id]
+                                                ?? field.defaultValue ?? ""
+                                        },
+                                        set: { additionalFieldValues[field.id] = $0 }
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        TextField(
+                            String(localized: "Host"),
+                            text: $host,
+                            prompt: Text("localhost")
+                        )
+                        TextField(
+                            String(localized: "Port"),
+                            text: $port,
+                            prompt: Text(defaultPort)
+                        )
+                    }
                     if PluginManager.shared.requiresAuthentication(for: type) {
                         TextField(
                             String(localized: "Database"),
                             text: $database,
                             prompt: Text("database_name")
                         )
+                    }
+                }
+
+                if sshState.enabled && hasHostListField {
+                    let hostsValue = additionalFieldValues["mongoHosts"] ?? ""
+                    if hostsValue.contains(",") {
+                        Section {
+                            Label(
+                                String(localized: "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server."),
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }

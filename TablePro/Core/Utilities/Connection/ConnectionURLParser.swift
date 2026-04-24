@@ -34,18 +34,20 @@ struct ParsedConnectionURL {
     let oracleServiceName: String?
     let useSrv: Bool
     let mongoQueryParams: [String: String]
+    let multiHost: String?
 
     var suggestedName: String {
         if let connectionName, !connectionName.isEmpty {
             return connectionName
         }
         let typeName = type.rawValue
+        let displayHost = multiHost?.split(separator: ",").first.map(String.init) ?? host
         let displayDatabase = database.isEmpty ? (oracleServiceName ?? "") : database
         if !displayDatabase.isEmpty {
-            return "\(typeName) \(host)/\(displayDatabase)"
+            return "\(typeName) \(displayHost)/\(displayDatabase)"
         }
-        if !host.isEmpty {
-            return "\(typeName) \(host)"
+        if !displayHost.isEmpty {
+            return "\(typeName) \(displayHost)"
         }
         return typeName
     }
@@ -159,12 +161,21 @@ struct ConnectionURLParser {
                 filterCondition: nil,
                 oracleServiceName: nil,
                 useSrv: false,
-                mongoQueryParams: [:]
+                mongoQueryParams: [:],
+                multiHost: nil
             ))
         }
 
         if isSSH {
             return parseSSHURL(trimmed, schemeEnd: schemeEnd, dbType: dbType)
+        }
+
+        // Multi-host MongoDB URI: URLComponents can't parse comma-separated hosts
+        if dbType == .mongodb && !isSrv {
+            let afterScheme = String(trimmed[schemeEnd.upperBound...])
+            if let multiHostResult = parseMultiHostMongoDB(afterScheme, dbType: dbType, isSrv: isSrv) {
+                return .success(multiHostResult)
+            }
         }
 
         let httpURL = "http://" + String(trimmed[schemeEnd.upperBound...])
@@ -249,7 +260,8 @@ struct ConnectionURLParser {
             filterCondition: ext.filterCondition,
             oracleServiceName: oracleServiceName,
             useSrv: ext.useSrv,
-            mongoQueryParams: ext.mongoQueryParams
+            mongoQueryParams: ext.mongoQueryParams,
+            multiHost: nil
         ))
     }
 
@@ -382,8 +394,105 @@ struct ConnectionURLParser {
             filterCondition: ext.filterCondition,
             oracleServiceName: oracleServiceName,
             useSrv: ext.useSrv,
-            mongoQueryParams: ext.mongoQueryParams
+            mongoQueryParams: ext.mongoQueryParams,
+            multiHost: nil
         ))
+    }
+
+    // MARK: - Multi-Host MongoDB Parsing
+
+    private static func parseMultiHostMongoDB(
+        _ afterScheme: String,
+        dbType: DatabaseType,
+        isSrv: Bool
+    ) -> ParsedConnectionURL? {
+        var mainPart = afterScheme
+        var queryString: String?
+        if let questionIndex = afterScheme.firstIndex(of: "?") {
+            mainPart = String(afterScheme[afterScheme.startIndex..<questionIndex])
+            queryString = String(afterScheme[afterScheme.index(after: questionIndex)...])
+        }
+
+        var authority = mainPart
+        var database = ""
+        if let slashIndex = mainPart.firstIndex(of: "/") {
+            authority = String(mainPart[mainPart.startIndex..<slashIndex])
+            database = String(mainPart[mainPart.index(after: slashIndex)...])
+                .removingPercentEncoding ?? String(mainPart[mainPart.index(after: slashIndex)...])
+        }
+
+        var credentials = ""
+        var hostPortion = authority
+        if let atIndex = authority.lastIndex(of: "@") {
+            credentials = String(authority[authority.startIndex..<atIndex])
+            hostPortion = String(authority[authority.index(after: atIndex)...])
+        }
+
+        guard hostPortion.contains(",") else { return nil }
+
+        var username = ""
+        var password = ""
+        if !credentials.isEmpty {
+            if let colonIndex = credentials.firstIndex(of: ":") {
+                username = String(credentials[credentials.startIndex..<colonIndex])
+                    .removingPercentEncoding ?? ""
+                password = String(credentials[credentials.index(after: colonIndex)...])
+                    .removingPercentEncoding ?? ""
+            } else {
+                username = credentials.removingPercentEncoding ?? ""
+            }
+        }
+
+        let multiHost = hostPortion
+
+        let firstSegment = hostPortion.split(separator: ",").first.map(String.init) ?? hostPortion
+        let hostParts = firstSegment.split(separator: ":", maxSplits: 1)
+        let firstHost = String(hostParts[0]).removingPercentEncoding ?? String(hostParts[0])
+        let firstPort: Int? = hostParts.count > 1 ? Int(hostParts[1]) : nil
+
+        var queryItems: [URLQueryItem]?
+        if let qs = queryString {
+            queryItems = qs.split(separator: "&").map { param in
+                let kv = param.split(separator: "=", maxSplits: 1)
+                let key = String(kv[0])
+                let val = kv.count > 1 ? (String(kv[1]).removingPercentEncoding ?? String(kv[1])) : ""
+                return URLQueryItem(name: key, value: val)
+            }
+        }
+
+        let ext = parseQueryItems(queryItems, dbType: dbType)
+
+        return ParsedConnectionURL(
+            type: dbType,
+            host: firstHost,
+            port: firstPort,
+            database: database,
+            username: username,
+            password: password,
+            sslMode: ext.sslMode,
+            authSource: ext.authSource,
+            sshHost: nil,
+            sshPort: nil,
+            sshUsername: nil,
+            usePrivateKey: nil,
+            useSSHAgent: nil,
+            agentSocket: nil,
+            connectionName: ext.connectionName,
+            redisDatabase: nil,
+            statusColor: ext.statusColor,
+            envTag: ext.envTag,
+            schema: ext.schema,
+            tableName: ext.tableName,
+            isView: ext.isView,
+            filterColumn: ext.filterColumn,
+            filterOperation: ext.filterOperation,
+            filterValue: ext.filterValue,
+            filterCondition: ext.filterCondition,
+            oracleServiceName: nil,
+            useSrv: isSrv,
+            mongoQueryParams: ext.mongoQueryParams,
+            multiHost: multiHost
+        )
     }
 
     // MARK: - Query Parameter Helpers

@@ -58,6 +58,15 @@ struct ExportableConnection: Codable {
     let redisDatabase: Int?
     let startupCommands: String?
     let localOnly: Bool?
+
+    var hostDisplayString: String {
+        if let mongoHosts = additionalFields?["mongoHosts"], mongoHosts.contains(",") {
+            let count = mongoHosts.split(separator: ",").count
+            let firstHost = mongoHosts.split(separator: ",").first.map(String.init) ?? host
+            return String(format: String(localized: "%@ (+%d more)"), firstHost, count - 1)
+        }
+        return "\(host):\(port)"
+    }
 }
 
 // MARK: - SSH Config

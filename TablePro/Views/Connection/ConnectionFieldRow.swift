@@ -61,6 +61,13 @@ struct ConnectionFieldRow: View {
             ) {
                 Text("\(field.label): \(Int(value) ?? range.lowerBound)")
             }
+        case .hostList:
+            HostListFieldRow(
+                label: field.label,
+                placeholder: field.placeholder,
+                defaultPort: Int(field.defaultValue ?? "27017") ?? 27_017,
+                value: $value
+            )
         }
     }
 }
