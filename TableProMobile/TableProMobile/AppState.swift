@@ -40,8 +40,10 @@ final class AppState {
         groups = groupStorage.load()
         tags = tagStorage.load()
         secureStore.cleanOrphanedCredentials(validConnectionIds: Set(connections.map(\.id)))
-        updateWidgetData()
-        updateSpotlightIndex()
+        Task {
+            updateWidgetData()
+            updateSpotlightIndex()
+        }
 
         syncCoordinator.onConnectionsChanged = { [weak self] merged in
             guard let self else { return }

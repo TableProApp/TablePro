@@ -83,7 +83,7 @@ struct ConnectionListView: View {
                         }
                         .keyboardShortcut("n", modifiers: .command)
                     }
-                    ToolbarItem(placement: .topBarLeading) {
+                    ToolbarItemGroup(placement: .topBarLeading) {
                         Button {
                             Task {
                                 await appState.syncCoordinator.sync(
@@ -101,6 +101,12 @@ struct ConnectionListView: View {
                             }
                         }
                         .disabled(isSyncing)
+
+                        Button {
+                            showingSettings = true
+                        } label: {
+                            Image(systemName: "gear")
+                        }
                     }
                 }
             .onChange(of: appState.pendingConnectionId) { _, newId in
@@ -288,11 +294,6 @@ struct ConnectionListView: View {
                 } label: {
                     Label("Manage Tags", systemImage: "tag")
                 }
-                Button {
-                    showingSettings = true
-                } label: {
-                    Label("Settings", systemImage: "gear")
-                }
             }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
@@ -312,20 +313,7 @@ struct ConnectionListView: View {
                         connectionRow(connection)
                     }
                     .onMove { source, destination in
-                        var items = groupConnections
-                        items.move(fromOffsets: source, toOffset: destination)
-                        var all = appState.connections
-                        for (i, item) in items.enumerated() {
-                            if let idx = all.firstIndex(where: { $0.id == item.id }) {
-                                all[idx].sortOrder = i
-                            }
-                        }
-                        all.sort {
-                            if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
-                            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                        }
-                        for index in all.indices { all[index].sortOrder = index }
-                        appState.reorderConnections(all)
+                        reorderSection(groupConnections, source: source, destination: destination)
                     }
                 } header: {
                     HStack(spacing: 6) {
@@ -350,23 +338,31 @@ struct ConnectionListView: View {
                     connectionRow(connection)
                 }
                 .onMove { source, destination in
-                    var items = ungrouped
-                    items.move(fromOffsets: source, toOffset: destination)
-                    var all = appState.connections
-                    for (i, item) in items.enumerated() {
-                        if let idx = all.firstIndex(where: { $0.id == item.id }) {
-                            all[idx].sortOrder = i
-                        }
-                    }
-                    all.sort {
-                        if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
-                        return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                    }
-                    for index in all.indices { all[index].sortOrder = index }
-                    appState.reorderConnections(all)
+                    reorderSection(ungrouped, source: source, destination: destination)
                 }
             }
         }
+    }
+
+    private func reorderSection(
+        _ sectionItems: [DatabaseConnection],
+        source: IndexSet,
+        destination: Int
+    ) {
+        var items = sectionItems
+        items.move(fromOffsets: source, toOffset: destination)
+        var all = appState.connections
+        for (i, item) in items.enumerated() {
+            if let idx = all.firstIndex(where: { $0.id == item.id }) {
+                all[idx].sortOrder = i
+            }
+        }
+        all.sort {
+            if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        for index in all.indices { all[index].sortOrder = index }
+        appState.reorderConnections(all)
     }
 
     private func navigateToPendingConnection(_ id: UUID?) {
@@ -450,14 +446,15 @@ private struct ConnectionRow: View {
             Spacer()
 
             if let tag {
+                let tagColor = ConnectionColorPicker.swiftUIColor(for: tag.color)
                 Text(tag.name)
                     .font(.caption)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(tagColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(
                         Capsule()
-                            .fill(ConnectionColorPicker.swiftUIColor(for: tag.color))
+                            .fill(tagColor.opacity(0.15))
                     )
             }
         }

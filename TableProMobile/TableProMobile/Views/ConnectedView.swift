@@ -18,11 +18,10 @@ struct ConnectedView: View {
     @State private var session: ConnectionSession?
     @State private var tables: [TableInfo] = []
     @State private var isConnecting = true
-    @State private var isConnectInProgress = false
     @State private var appError: AppError?
     @State private var failureAlertMessage: String?
     @State private var showFailureAlert = false
-    @AppStorage("lastSelectedTab") private var selectedTabRaw: String = ConnectedTab.tables.rawValue
+    @State private var selectedTab: ConnectedTab = .tables
     @State private var queryHistory: [QueryHistoryItem] = []
     @State private var historyStorage = QueryHistoryStorage()
     @State private var databases: [String] = []
@@ -39,18 +38,6 @@ struct ConnectedView: View {
     enum ConnectedTab: String, CaseIterable {
         case tables = "Tables"
         case query = "Query"
-    }
-
-    private var selectedTab: ConnectedTab {
-        get { ConnectedTab(rawValue: selectedTabRaw) ?? .tables }
-        set { selectedTabRaw = newValue.rawValue }
-    }
-
-    private var selectedTabBinding: Binding<ConnectedTab> {
-        Binding(
-            get: { ConnectedTab(rawValue: selectedTabRaw) ?? .tables },
-            set: { selectedTabRaw = $0.rawValue }
-        )
     }
 
     private var displayName: String {
@@ -132,7 +119,7 @@ struct ConnectedView: View {
         .navigationTitle(supportsDatabaseSwitching && databases.count > 1 ? "" : displayName)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top) {
-            Picker("Tab", selection: selectedTabBinding) {
+            Picker("Tab", selection: $selectedTab) {
                 Text("Tables").tag(ConnectedTab.tables)
                 Text("Query").tag(ConnectedTab.query)
             }
@@ -141,10 +128,10 @@ struct ConnectedView: View {
             .padding(.vertical, 8)
         }
         .background {
-            Button("") { selectedTabRaw = ConnectedTab.tables.rawValue }
+            Button("") { selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
                 .hidden()
-            Button("") { selectedTabRaw = ConnectedTab.query.rawValue }
+            Button("") { selectedTab = .query }
                 .keyboardShortcut("2", modifiers: .command)
                 .hidden()
         }
@@ -210,20 +197,14 @@ struct ConnectedView: View {
             }
         }
         .task {
+            restorePersistedState()
             await connect()
             if !Task.isCancelled {
                 queryHistory = historyStorage.load(for: connection.id)
             }
         }
-        .onAppear {
-            let key = connection.id.uuidString
-            activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
-            activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
-
-            let hasDriver = appState.connectionManager.session(for: connection.id)?.driver != nil
-            if !hasDriver, !isConnecting, appError == nil {
-                Task { await connect() }
-            }
+        .onChange(of: selectedTab) { _, newValue in
+            UserDefaults.standard.set(newValue.rawValue, forKey: "lastTab.\(connection.id.uuidString)")
         }
         .onChange(of: activeDatabase) { _, newValue in
             guard !newValue.isEmpty else { return }
@@ -263,15 +244,24 @@ struct ConnectedView: View {
         }
     }
 
+    private func restorePersistedState() {
+        let key = connection.id.uuidString
+        if let savedTab = UserDefaults.standard.string(forKey: "lastTab.\(key)"),
+           let tab = ConnectedTab(rawValue: savedTab) {
+            selectedTab = tab
+        }
+        activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
+        activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
+    }
+
     private func connect() async {
-        guard !isConnectInProgress else { return }
         guard session == nil else {
             isConnecting = false
             return
         }
 
-        isConnectInProgress = true
-        defer { isConnectInProgress = false }
+        isConnecting = true
+        appError = nil
 
         if let existing = appState.connectionManager.session(for: connection.id) {
             self.session = existing
@@ -288,8 +278,6 @@ struct ConnectedView: View {
             return
         }
 
-        isConnecting = true
-        appError = nil
         await connectFresh()
     }
 

@@ -69,6 +69,8 @@ struct TableProMobileApp: App {
                     heartbeatTask = service.startPeriodicHeartbeat()
                 }
             case .background:
+                syncTask?.cancel()
+                syncTask = nil
                 heartbeatTask?.cancel()
                 heartbeatTask = nil
                 heartbeatService = nil

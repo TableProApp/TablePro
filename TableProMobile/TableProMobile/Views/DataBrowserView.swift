@@ -117,6 +117,7 @@ struct DataBrowserView: View {
             .toolbar(rows.isEmpty && !hasActiveSearch && !hasActiveFilters ? .hidden : .visible, for: .bottomBar)
             .toolbar { paginationToolbar }
             .task { await loadData(isInitial: true) }
+            .onDisappear { searchTask?.cancel() }
             .sheet(isPresented: $showInsertSheet) { insertSheet }
             .sheet(isPresented: $showFilterSheet) {
                 FilterSheetView(

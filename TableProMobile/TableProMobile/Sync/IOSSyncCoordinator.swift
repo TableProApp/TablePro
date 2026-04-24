@@ -30,6 +30,7 @@ final class IOSSyncCoordinator {
         return newEngine
     }
     private var debounceTask: Task<Void, Never>?
+    private var needsResync = false
 
     var onConnectionsChanged: (([DatabaseConnection]) -> Void)?
     var onGroupsChanged: (([ConnectionGroup]) -> Void)?
@@ -44,7 +45,10 @@ final class IOSSyncCoordinator {
         localTags: [ConnectionTag] = [],
         isRetry: Bool = false
     ) async {
-        guard isRetry || status != .syncing else { return }
+        guard isRetry || status != .syncing else {
+            needsResync = true
+            return
+        }
         status = .syncing
 
         do {
@@ -92,6 +96,16 @@ final class IOSSyncCoordinator {
             )
         } catch {
             status = .error(error.localizedDescription)
+        }
+
+        if needsResync, status == .idle {
+            needsResync = false
+            guard let state = getCurrentState?() else { return }
+            await sync(
+                localConnections: state.connections,
+                localGroups: state.groups,
+                localTags: state.tags
+            )
         }
     }
 

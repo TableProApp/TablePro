@@ -30,6 +30,7 @@ struct RowDetailView: View {
     @State private var hapticSuccess = false
     @State private var hapticError = false
     @State private var hapticSelection = 0
+    @State private var dismissSuccessTask: Task<Void, Never>?
     @State private var showShareSheet = false
     @State private var shareText = ""
 
@@ -415,8 +416,10 @@ struct RowDetailView: View {
             showSaveSuccess = true
             hapticSuccess.toggle()
             onSaved?()
-            Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            dismissSuccessTask?.cancel()
+            dismissSuccessTask = Task {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
                 withAnimation { showSaveSuccess = false }
             }
         } catch {

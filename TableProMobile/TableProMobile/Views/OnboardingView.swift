@@ -11,6 +11,7 @@ struct OnboardingView: View {
     @State private var showAddConnection = false
     @State private var didAddConnection = false
     @State private var isSyncing = false
+    @State private var syncTask: Task<Void, Never>?
 
     var body: some View {
         TabView(selection: $currentPage) {
@@ -171,12 +172,13 @@ struct OnboardingView: View {
 
     private func syncFromiCloud() {
         isSyncing = true
-        Task {
+        syncTask = Task {
             await appState.syncCoordinator.sync(
                 localConnections: appState.connections,
                 localGroups: appState.groups,
                 localTags: appState.tags
             )
+            guard !Task.isCancelled else { return }
             isSyncing = false
             completeOnboarding()
         }

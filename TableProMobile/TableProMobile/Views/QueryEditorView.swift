@@ -23,6 +23,7 @@ struct QueryEditorView: View {
     @State private var isExecuting = false
     @State private var executionTime: TimeInterval?
     @State private var executeTask: Task<Void, Never>?
+    @State private var saveQueryTask: Task<Void, Never>?
     @State private var executionStartTime: Date?
     @Binding var queryHistory: [QueryHistoryItem]
     let connectionId: UUID
@@ -52,7 +53,12 @@ struct QueryEditorView: View {
             }
         }
         .onChange(of: query) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
+            saveQueryTask?.cancel()
+            saveQueryTask = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
+            }
         }
         .alert("Write Query Blocked", isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}

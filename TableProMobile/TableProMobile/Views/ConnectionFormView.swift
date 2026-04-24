@@ -232,7 +232,7 @@ struct ConnectionFormView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .onAppear {
+            .task {
                 if let conn = existingConnection {
                     let connKey = "com.TablePro.password.\(conn.id.uuidString)"
                     if let stored = try? appState.secureStore.retrieve(forKey: connKey), !stored.isEmpty {
