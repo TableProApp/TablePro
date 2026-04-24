@@ -50,6 +50,7 @@ final class IOSSyncCoordinator {
             return
         }
         status = .syncing
+        defer { drainResyncIfNeeded() }
 
         do {
             let accountStatus = try await getEngine().accountStatus()
@@ -97,16 +98,6 @@ final class IOSSyncCoordinator {
         } catch {
             status = .error(error.localizedDescription)
         }
-
-        if needsResync, status == .idle {
-            needsResync = false
-            guard let state = getCurrentState?() else { return }
-            await sync(
-                localConnections: state.connections,
-                localGroups: state.groups,
-                localTags: state.tags
-            )
-        }
     }
 
     // MARK: - Dirty / Tombstone Tracking
@@ -133,6 +124,15 @@ final class IOSSyncCoordinator {
 
     func markDeletedTag(_ tagId: UUID) {
         metadata.addTombstone(tagId.uuidString, type: .tag)
+    }
+
+    private func drainResyncIfNeeded() {
+        guard needsResync, status == .idle else {
+            needsResync = false
+            return
+        }
+        needsResync = false
+        scheduleSyncAfterChange()
     }
 
     func scheduleSyncAfterChange() {
