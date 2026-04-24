@@ -42,7 +42,7 @@ struct QueryEditorView: View {
             Divider()
             resultSection
         }
-        .navigationTitle("Query")
+        .navigationTitle(coordinator.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .onAppear {
@@ -263,6 +263,14 @@ struct QueryEditorView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        if safeModeLevel != .off {
+            ToolbarItem(placement: .topBarLeading) {
+                Image(systemName: safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                    .foregroundStyle(safeModeLevel == .readOnly ? .red : .orange)
+                    .font(.caption)
+            }
+        }
+
         ToolbarItem(placement: .primaryAction) {
             Button {
                 if isExecuting {
