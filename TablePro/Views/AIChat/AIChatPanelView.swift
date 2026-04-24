@@ -17,7 +17,6 @@ struct AIChatPanelView: View {
     @Bindable var viewModel: AIChatViewModel
     private let settingsManager = AppSettingsManager.shared
     @State private var isUserScrolledUp = false
-    @State private var scrollProxy: ScrollViewProxy?
     @State private var lastAutoScrollTime: Date = .distantPast
 
     private var hasConfiguredProvider: Bool {
@@ -171,87 +170,86 @@ struct AIChatPanelView: View {
     private var messageList: some View {
         let spacedMessageIDs: Set<UUID> = {
             var ids = Set<UUID>()
-            let msgs = viewModel.messages
-            for i in 1..<msgs.count where msgs[i].role == .user && msgs[i - 1].role == .assistant {
-                ids.insert(msgs[i].id)
+            let visible = viewModel.messages.filter { $0.role != .system }
+            for i in 1..<visible.count where visible[i].role == .user && visible[i - 1].role == .assistant {
+                ids.insert(visible[i].id)
             }
             return ids
         }()
 
-        return ZStack(alignment: .bottom) {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(viewModel.messages) { message in
-                        if message.role != .system {
-                            if spacedMessageIDs.contains(message.id) {
-                                Spacer()
-                                    .frame(height: 16)
+        return ScrollViewReader { proxy in
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewModel.messages) { message in
+                            if message.role != .system {
+                                if spacedMessageIDs.contains(message.id) {
+                                    Spacer()
+                                        .frame(height: 16)
+                                }
+                                AIChatMessageView(
+                                    message: message,
+                                    onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
+                                    onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
+                                    onEdit: message.role == .user && !viewModel.isStreaming
+                                        ? { viewModel.editMessage(message) } : nil
+                                )
+                                .padding(.vertical, 4)
+                                .id(message.id)
                             }
-                            AIChatMessageView(
-                                message: message,
-                                onRetry: shouldShowRetry(for: message) ? { viewModel.retry() } : nil,
-                                onRegenerate: shouldShowRegenerate(for: message) ? { viewModel.regenerate() } : nil,
-                                onEdit: message.role == .user && !viewModel.isStreaming
-                                    ? { viewModel.editMessage(message) } : nil
-                            )
-                            .padding(.vertical, 4)
-                            .id(message.id)
                         }
-                    }
 
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottomAnchor")
-                        .onAppear { isUserScrolledUp = false }
-                        .onDisappear { isUserScrolledUp = true }
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottomAnchor")
+                            .onAppear { isUserScrolledUp = false }
+                            .onDisappear { isUserScrolledUp = true }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-            }
-            .defaultScrollAnchor(.bottom)
-            .scrollIndicators(.hidden)
-            .onAppear {
-                scrollProxy = proxy
-                scrollToBottom(proxy: proxy)
-            }
-            .onChange(of: viewModel.messages.count) {
-                isUserScrolledUp = false
-                scrollToBottom(proxy: proxy, animated: true)
-            }
-            .onChange(of: viewModel.activeConversationID) {
-                isUserScrolledUp = false
-                scrollToBottom(proxy: proxy, animated: true)
-            }
-            .onChange(of: viewModel.messages.last?.content) {
-                guard !isUserScrolledUp else { return }
-                let now = Date()
-                guard now.timeIntervalSince(lastAutoScrollTime) >= 0.1 else { return }
-                lastAutoScrollTime = now
-                scrollToBottom(proxy: proxy)
-            }
-            .onChange(of: viewModel.isStreaming) { _, newValue in
-                if !newValue, !isUserScrolledUp {
+                .defaultScrollAnchor(.bottom)
+                .scrollIndicators(.hidden)
+                .onAppear {
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: viewModel.messages.count) {
+                    isUserScrolledUp = false
                     scrollToBottom(proxy: proxy, animated: true)
                 }
-            }
-        }
+                .onChange(of: viewModel.activeConversationID) {
+                    isUserScrolledUp = false
+                    scrollToBottom(proxy: proxy, animated: true)
+                }
+                .onChange(of: viewModel.messages.last?.content) {
+                    guard !isUserScrolledUp else { return }
+                    let now = Date()
+                    guard now.timeIntervalSince(lastAutoScrollTime) >= 0.1 else { return }
+                    lastAutoScrollTime = now
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: viewModel.isStreaming) { _, newValue in
+                    if !newValue, !isUserScrolledUp {
+                        scrollToBottom(proxy: proxy, animated: true)
+                    }
+                }
 
-        if isUserScrolledUp, let proxy = scrollProxy {
-            Button {
-                isUserScrolledUp = false
-                scrollToBottom(proxy: proxy, animated: true)
-            } label: {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.title2)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.secondary)
+                if isUserScrolledUp {
+                    Button {
+                        isUserScrolledUp = false
+                        scrollToBottom(proxy: proxy, animated: true)
+                    } label: {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.title2)
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.bottom, 8)
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.2), value: isUserScrolledUp)
-        }
         }
     }
 
