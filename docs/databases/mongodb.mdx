@@ -44,24 +44,20 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
   />
 </Frame>
 
-## Replica Set / Multi-Host
+## Replica Sets
 
-For replica set connections with multiple hosts, use the **Hosts** field in the connection form. Click **Add Host** to add additional members.
+The **Hosts** field supports multiple entries. Click **Add Host** to add replica set members, each with its own port.
 
-Each entry has its own host and port. The first host is used as the primary display name and for SSH tunnel forwarding.
+Set the replica set name in the **Advanced** tab.
 
-To import a multi-host URI, paste it in the URL import field:
+You can also paste a multi-host URI directly:
 
 ```
-mongodb://host1:27017,host2:27018,host3:27019/mydb?replicaSet=myrs
+mongodb://host1:27017,host2:27017,host3:27017/mydb?replicaSet=myrs
 ```
-
-TablePro parses all hosts and populates the Hosts field automatically.
-
-Set the **Replica Set** name in the **Advanced** tab. Read Preference and Write Concern are also available there for tuning replica set read/write behavior.
 
 <Note>
-SSH tunneling only forwards the first host. Other replica set members must be reachable directly from the SSH server.
+SSH tunneling only forwards the first host. Other members must be reachable from the SSH server.
 </Note>
 
 ## Example Configurations
