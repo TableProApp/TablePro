@@ -23,8 +23,14 @@ final class FeedbackWindowController {
 
         viewModel.captureTargetWindow = NSApp.keyWindow ?? NSApp.mainWindow
 
+        let rootView = FeedbackView(viewModel: viewModel)
+            .fixedSize(horizontal: false, vertical: true)
+
+        let hostingView = NSHostingView(rootView: rootView)
+        let size = hostingView.fittingSize
+
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 100),
+            contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -35,11 +41,7 @@ final class FeedbackWindowController {
         panel.collectionBehavior = [.fullScreenNone]
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
-
-        let hostingView = NSHostingView(rootView: FeedbackView(viewModel: viewModel))
         panel.contentView = hostingView
-        hostingView.setFrameSize(hostingView.fittingSize)
-        panel.setContentSize(hostingView.fittingSize)
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         self.panel = panel
