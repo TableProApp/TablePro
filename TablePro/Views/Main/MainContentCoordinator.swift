@@ -621,7 +621,10 @@ final class MainContentCoordinator {
         // Never-activated coordinators are throwaway instances created by SwiftUI
         // during body re-evaluation — @State only keeps the first, rest are discarded
         guard _didActivate.withLock({ $0 }) else {
-            MainActor.assumeIsolated { unregisterFromPersistence() }
+            let id = ObjectIdentifier(self)
+            Task { @MainActor in
+                Self.activeCoordinators.removeValue(forKey: id)
+            }
             if !alreadyHandled {
                 Task { @MainActor in
                     SchemaProviderRegistry.shared.release(for: connectionId)
