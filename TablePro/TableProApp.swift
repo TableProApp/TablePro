@@ -559,6 +559,12 @@ struct AppMenuCommands: Commands {
             Button("GitHub Repository") {
                 if let url = URL(string: "https://github.com/TableProApp/TablePro") { NSWorkspace.shared.open(url) }
             }
+
+            Divider()
+
+            Button(String(localized: "Report an Issue...")) {
+                FeedbackWindowController.shared.showFeedbackPanel()
+            }
         }
     }
 }

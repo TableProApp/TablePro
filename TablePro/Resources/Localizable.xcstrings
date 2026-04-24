@@ -2153,6 +2153,16 @@
         }
       }
     },
+    "%lld/%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld/%2$lld"
+          }
+        }
+      }
+    },
     "%lld%%" : {
       "localizations" : {
         "tr" : {
@@ -5827,6 +5837,9 @@
         }
       }
     },
+    "Attachments" : {
+
+    },
     "Auth" : {
       "localizations" : {
         "tr" : {
@@ -6663,6 +6676,9 @@
         }
       }
     },
+    "Brief summary of the issue" : {
+
+    },
     "Bring All to Front" : {
       "localizations" : {
         "tr" : {
@@ -6750,6 +6766,9 @@
           }
         }
       }
+    },
+    "Bug Report" : {
+
     },
     "Built-in" : {
       "localizations" : {
@@ -7215,6 +7234,9 @@
           }
         }
       }
+    },
+    "Capture Window" : {
+
     },
     "Card Background" : {
       "localizations" : {
@@ -11119,6 +11141,9 @@
         }
       }
     },
+    "Created as GitHub issue #%d" : {
+
+    },
     "Creating..." : {
       "localizations" : {
         "tr" : {
@@ -13344,6 +13369,9 @@
           }
         }
       }
+    },
+    "Description" : {
+
     },
     "Destructive Changes" : {
       "localizations" : {
@@ -16056,6 +16084,9 @@
         }
       }
     },
+    "Expected Behavior" : {
+
+    },
     "Expired" : {
       "localizations" : {
         "tr" : {
@@ -17990,6 +18021,9 @@
         }
       }
     },
+    "Feature Request" : {
+
+    },
     "Feature Routing" : {
       "localizations" : {
         "tr" : {
@@ -18011,6 +18045,9 @@
           }
         }
       }
+    },
+    "Feedback submitted!" : {
+
     },
     "Fetch All" : {
       "localizations" : {
@@ -19186,6 +19223,9 @@
           }
         }
       }
+    },
+    "General Feedback" : {
+
     },
     "Generated WHERE Clause" : {
       "localizations" : {
@@ -20812,6 +20852,9 @@
         }
       }
     },
+    "Include diagnostics" : {
+
+    },
     "Include in iCloud Sync" : {
 
     },
@@ -20881,6 +20924,9 @@
           }
         }
       }
+    },
+    "Includes app version, macOS version, and installed plugins only." : {
+
     },
     "Incorrect passphrase" : {
       "localizations" : {
@@ -25099,6 +25145,9 @@
           }
         }
       }
+    },
+    "Network error. Check your connection and try again." : {
+
     },
     "Network is unavailable. Changes will sync when connectivity is restored." : {
       "localizations" : {
@@ -32999,6 +33048,12 @@
         }
       }
     },
+    "Report an Issue" : {
+
+    },
+    "Report an Issue..." : {
+
+    },
     "Require confirmation or Touch ID before executing queries." : {
       "localizations" : {
         "tr" : {
@@ -35406,6 +35461,9 @@
           }
         }
       }
+    },
+    "Select images to attach" : {
+
     },
     "Select Plugin" : {
       "localizations" : {
@@ -38208,6 +38266,9 @@
         }
       }
     },
+    "Steps to Reproduce" : {
+
+    },
     "Stop" : {
       "localizations" : {
         "tr" : {
@@ -38384,6 +38445,18 @@
           }
         }
       }
+    },
+    "Submission too large. Try removing the screenshot." : {
+
+    },
+    "Submit" : {
+
+    },
+    "Submit Another" : {
+
+    },
+    "Submitting..." : {
+
     },
     "Success" : {
       "localizations" : {
@@ -41095,6 +41168,9 @@
         }
       }
     },
+    "Title" : {
+
+    },
     "Title 2" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -41610,6 +41686,9 @@
           }
         }
       }
+    },
+    "Too many submissions. Please try again later." : {
+
     },
     "Toolbar" : {
       "localizations" : {
@@ -42251,6 +42330,9 @@
           }
         }
       }
+    },
+    "Unexpected server response." : {
+
     },
     "Uninstall" : {
       "localizations" : {
@@ -43700,6 +43782,9 @@
           }
         }
       }
+    },
+    "View on GitHub" : {
+
     },
     "View: %@" : {
       "localizations" : {
