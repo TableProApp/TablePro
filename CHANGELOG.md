@@ -17,9 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- iOS: replace segmented Picker with TabView(.sidebarAdaptable) for 4-tab navigation (Tables, Query, History, Settings) with per-tab NavigationStack and iPad sidebar support
-- iOS: extract ConnectionCoordinator from ConnectedView, eliminating prop drilling across table and query views
-- iOS: minimum deployment target raised to iOS 18
+- iOS: TabView with sidebar-adaptable navigation (Tables, Query, History, Settings), per-tab state preservation, iPad sidebar support (requires iOS 18)
 - Native macOS UI patterns: Picker(.menu) for cell editors, native alerts, native List selection, .navigationTitle for sheets, NSSearchField for welcome search, borderless toolbar buttons, chevron indicator on SET picker
 - Quit dialog defaults to Cancel on Return key
 - Connection form delete button moved to far left
