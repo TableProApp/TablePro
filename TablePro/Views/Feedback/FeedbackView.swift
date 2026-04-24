@@ -57,6 +57,7 @@ struct FeedbackView: View {
                     TextEditor(text: $viewModel.description)
                         .font(.body)
                         .frame(minHeight: 72)
+                        .scrollContentBackground(.hidden)
                         .focused($focusedField, equals: .description)
                 } header: {
                     Text("Description")
@@ -67,6 +68,7 @@ struct FeedbackView: View {
                         TextEditor(text: $viewModel.stepsToReproduce)
                             .font(.body)
                             .frame(minHeight: 48)
+                            .scrollContentBackground(.hidden)
                             .focused($focusedField, equals: .steps)
                     } header: {
                         Text("Steps to Reproduce")
@@ -76,6 +78,7 @@ struct FeedbackView: View {
                         TextEditor(text: $viewModel.expectedBehavior)
                             .font(.body)
                             .frame(minHeight: 48)
+                            .scrollContentBackground(.hidden)
                             .focused($focusedField, equals: .expected)
                     } header: {
                         Text("Expected Behavior")
