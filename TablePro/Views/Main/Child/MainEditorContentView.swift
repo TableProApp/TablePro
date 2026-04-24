@@ -367,74 +367,87 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func resultsSection(tab: QueryTab) -> some View {
         VStack(spacing: 0) {
-            if tab.showStructure, let tableName = tab.tableName {
-                TableStructureView(
-                    tableName: tableName, connection: connection,
-                    toolbarState: coordinator.toolbarState, coordinator: coordinator
+            switch tab.resultsViewMode {
+            case .structure:
+                if let tableName = tab.tableName {
+                    TableStructureView(
+                        tableName: tableName, connection: connection,
+                        toolbarState: coordinator.toolbarState, coordinator: coordinator
+                    )
+                    .id(tableName)
+                    .frame(maxHeight: .infinity)
+                }
+            case .json:
+                ResultsJsonView(
+                    columns: tab.resultColumns,
+                    columnTypes: tab.columnTypes,
+                    rows: tab.resultRows,
+                    selectedRowIndices: selectedRowIndices
                 )
-                .id(tableName)
-                .frame(maxHeight: .infinity)
-            } else if let explainText = tab.explainText {
-                ExplainResultView(text: explainText, executionTime: tab.explainExecutionTime, plan: tab.explainPlan)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                // Result tab bar (when multiple result sets)
-                if tab.resultSets.count > 1 {
-                    resultTabBar(tab: tab)
-                    Divider()
-                }
-
-                // Inline error banner (when active result set has error)
-                if let error = tab.activeResultSet?.errorMessage {
-                    InlineErrorBanner(
-                        message: error,
-                        onDismiss: { tab.activeResultSet?.errorMessage = nil }
-                    )
-                    Divider()
-                }
-
-                // Content: success view OR filter+grid
-                if let rs = tab.activeResultSet, rs.resultColumns.isEmpty,
-                   rs.errorMessage == nil, tab.lastExecutedAt != nil, !tab.isExecuting
-                {
-                    ResultSuccessView(
-                        rowsAffected: rs.rowsAffected,
-                        executionTime: rs.executionTime,
-                        statusMessage: rs.statusMessage
-                    )
-                } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
-                    && tab.lastExecutedAt != nil && !tab.isExecuting
-                {
-                    if tab.resultSets.isEmpty {
-                        Spacer()
-                    } else {
-                        ResultSuccessView(
-                            rowsAffected: tab.rowsAffected,
-                            executionTime: tab.executionTime,
-                            statusMessage: tab.statusMessage
-                        )
-                    }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .data:
+                if let explainText = tab.explainText {
+                    ExplainResultView(text: explainText, executionTime: tab.explainExecutionTime, plan: tab.explainPlan)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    // Filter panel (collapsible, above data grid)
-                    if filterStateManager.isVisible && tab.tabType == .table {
-                        FilterPanelView(
-                            filterState: filterStateManager,
-                            columns: tab.resultColumns,
-                            primaryKeyColumn: changeManager.primaryKeyColumn,
-                            databaseType: connection.type,
-                            onApply: onApplyFilters,
-                            onUnset: onClearFilters
+                    // Result tab bar (when multiple result sets)
+                    if tab.resultSets.count > 1 {
+                        resultTabBar(tab: tab)
+                        Divider()
+                    }
+
+                    // Inline error banner (when active result set has error)
+                    if let error = tab.activeResultSet?.errorMessage {
+                        InlineErrorBanner(
+                            message: error,
+                            onDismiss: { tab.activeResultSet?.errorMessage = nil }
                         )
                         Divider()
                     }
 
-                    if tab.tabType == .query && !tab.resultColumns.isEmpty
-                        && tab.resultRows.isEmpty && tab.lastExecutedAt != nil
-                        && !tab.isExecuting && !filterStateManager.hasAppliedFilters
+                    // Content: success view OR filter+grid
+                    if let rs = tab.activeResultSet, rs.resultColumns.isEmpty,
+                       rs.errorMessage == nil, tab.lastExecutedAt != nil, !tab.isExecuting
                     {
-                        emptyResultView(executionTime: tab.activeResultSet?.executionTime ?? tab.executionTime)
+                        ResultSuccessView(
+                            rowsAffected: rs.rowsAffected,
+                            executionTime: rs.executionTime,
+                            statusMessage: rs.statusMessage
+                        )
+                    } else if tab.resultColumns.isEmpty && tab.errorMessage == nil
+                        && tab.lastExecutedAt != nil && !tab.isExecuting
+                    {
+                        if tab.resultSets.isEmpty {
+                            Spacer()
+                        } else {
+                            ResultSuccessView(
+                                rowsAffected: tab.rowsAffected,
+                                executionTime: tab.executionTime,
+                                statusMessage: tab.statusMessage
+                            )
+                        }
                     } else {
-                        dataGridView(tab: tab)
+                        // Filter panel (collapsible, above data grid)
+                        if filterStateManager.isVisible && tab.tabType == .table {
+                            FilterPanelView(
+                                filterState: filterStateManager,
+                                columns: tab.resultColumns,
+                                primaryKeyColumn: changeManager.primaryKeyColumn,
+                                databaseType: connection.type,
+                                onApply: onApplyFilters,
+                                onUnset: onClearFilters
+                            )
+                            Divider()
+                        }
+
+                        if tab.tabType == .query && !tab.resultColumns.isEmpty
+                            && tab.resultRows.isEmpty && tab.lastExecutedAt != nil
+                            && !tab.isExecuting && !filterStateManager.hasAppliedFilters
+                        {
+                            emptyResultView(executionTime: tab.activeResultSet?.executionTime ?? tab.executionTime)
+                        } else {
+                            dataGridView(tab: tab)
+                        }
                     }
                 }
             }
@@ -768,7 +781,7 @@ struct MainEditorContentView: View {
             columnVisibilityManager: columnVisibilityManager,
             allColumns: tab.resultColumns,
             selectedRowIndices: selectedRowIndices,
-            showStructure: showStructureBinding(for: tab),
+            viewMode: resultsViewModeBinding(for: tab),
             onFirstPage: onFirstPage,
             onPreviousPage: onPreviousPage,
             onNextPage: onNextPage,
@@ -781,13 +794,13 @@ struct MainEditorContentView: View {
         )
     }
 
-    private func showStructureBinding(for tab: QueryTab) -> Binding<Bool> {
+    private func resultsViewModeBinding(for tab: QueryTab) -> Binding<ResultsViewMode> {
         Binding(
-            get: { tab.showStructure },
+            get: { tab.resultsViewMode },
             set: { newValue in
                 Task { @MainActor in
                     if let index = tabManager.selectedTabIndex {
-                        tabManager.tabs[index].showStructure = newValue
+                        tabManager.tabs[index].resultsViewMode = newValue
                     }
                 }
             }

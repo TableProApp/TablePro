@@ -234,7 +234,7 @@ final class MainContentCommandActions {
     }
 
     func copySelectedRows() {
-        if coordinator?.tabManager.selectedTab?.showStructure == true {
+        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
             let indices = selectedRowIndices.wrappedValue
@@ -253,7 +253,7 @@ final class MainContentCommandActions {
     }
 
     func pasteRows() {
-        if coordinator?.tabManager.selectedTab?.showStructure == true {
+        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
             var indices = selectedRowIndices.wrappedValue
@@ -412,7 +412,7 @@ final class MainContentCommandActions {
         }
 
         // Structure view saves via direct coordinator call
-        if coordinator.tabManager.selectedTab?.showStructure == true {
+        if coordinator.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
             performClose()
             return
@@ -532,7 +532,7 @@ final class MainContentCommandActions {
 
     func saveChanges() {
         // Check if we're in structure view mode
-        if coordinator?.tabManager.selectedTab?.showStructure == true {
+        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()
         } else if coordinator?.changeManager.hasChanges == true
             || !pendingTruncates.wrappedValue.isEmpty
@@ -733,7 +733,7 @@ final class MainContentCommandActions {
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
-        if coordinator?.tabManager.selectedTab?.showStructure == true {
+        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
             var indices = selectedRowIndices.wrappedValue
@@ -743,7 +743,7 @@ final class MainContentCommandActions {
     }
 
     func redoChange() {
-        if coordinator?.tabManager.selectedTab?.showStructure == true {
+        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
         } else {
             coordinator?.redoLastChange()

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- JSON results view mode with Data/Structure/JSON toggle in status bar
 - Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1 support, URL schemes for Oracle/ClickHouse/etcd/D1/libSQL
 - In-app feedback form for bug reports and feature requests via Help > Report an Issue
 - Per-connection "Local only" option to exclude individual connections from iCloud sync
