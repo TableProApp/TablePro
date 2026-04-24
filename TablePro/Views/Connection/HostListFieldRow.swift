@@ -100,14 +100,7 @@ struct HostListFieldRow: View {
 
     private func syncValue() {
         let result = entries.map { entry -> String in
-            let trimmed = entry.value.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty {
-                return "localhost:\(defaultPort)"
-            }
-            if !trimmed.contains(":") {
-                return "\(trimmed):\(defaultPort)"
-            }
-            return trimmed
+            entry.value.trimmingCharacters(in: .whitespaces)
         }.joined(separator: ",")
         if value != result {
             value = result

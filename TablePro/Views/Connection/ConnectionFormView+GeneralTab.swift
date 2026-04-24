@@ -111,8 +111,10 @@ extension ConnectionFormView {
                     if hasHostListField {
                         ForEach(connectionSectionFields, id: \.id) { field in
                             if case .hostList = field.fieldType {
-                                ConnectionFieldRow(
-                                    field: field,
+                                HostListFieldRow(
+                                    label: field.label,
+                                    placeholder: field.placeholder,
+                                    defaultPort: type.defaultPort,
                                     value: Binding(
                                         get: {
                                             additionalFieldValues[field.id]
@@ -145,7 +147,11 @@ extension ConnectionFormView {
                 }
 
                 if sshState.enabled && hasHostListField {
-                    let hostsValue = additionalFieldValues["mongoHosts"] ?? ""
+                    let hostListFieldId = connectionSectionFields.first {
+                        if case .hostList = $0.fieldType { return true }
+                        return false
+                    }?.id
+                    let hostsValue = hostListFieldId.flatMap { additionalFieldValues[$0] } ?? ""
                     if hostsValue.contains(",") {
                         Section {
                             Label(

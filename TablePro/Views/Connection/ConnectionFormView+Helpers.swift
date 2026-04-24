@@ -189,12 +189,21 @@ extension ConnectionFormView {
 
         var finalAdditionalFields = additionalFieldValues
 
-        // Derive primary host/port from mongoHosts for display and storage
+        // Normalize and derive primary host/port from mongoHosts
         if type.pluginTypeId == "MongoDB",
            let mongoHosts = finalAdditionalFields["mongoHosts"],
            !mongoHosts.isEmpty
         {
-            let firstSegment = mongoHosts.split(separator: ",").first.map(String.init) ?? mongoHosts
+            let normalized = mongoHosts.split(separator: ",", omittingEmptySubsequences: false)
+                .map { segment -> String in
+                    let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                    if trimmed.isEmpty { return "localhost:\(type.defaultPort)" }
+                    if !trimmed.contains(":") { return "\(trimmed):\(type.defaultPort)" }
+                    return trimmed
+                }
+                .joined(separator: ",")
+            finalAdditionalFields["mongoHosts"] = normalized
+            let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
             let parts = firstSegment.split(separator: ":", maxSplits: 1)
             if !parts.isEmpty {
                 let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
@@ -404,7 +413,16 @@ extension ConnectionFormView {
            let mongoHosts = finalAdditionalFields["mongoHosts"],
            !mongoHosts.isEmpty
         {
-            let firstSegment = mongoHosts.split(separator: ",").first.map(String.init) ?? mongoHosts
+            let normalized = mongoHosts.split(separator: ",", omittingEmptySubsequences: false)
+                .map { segment -> String in
+                    let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                    if trimmed.isEmpty { return "localhost:\(type.defaultPort)" }
+                    if !trimmed.contains(":") { return "\(trimmed):\(type.defaultPort)" }
+                    return trimmed
+                }
+                .joined(separator: ",")
+            finalAdditionalFields["mongoHosts"] = normalized
+            let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
             let parts = firstSegment.split(separator: ":", maxSplits: 1)
             if !parts.isEmpty {
                 let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
