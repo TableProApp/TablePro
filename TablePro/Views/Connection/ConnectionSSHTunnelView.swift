@@ -342,6 +342,7 @@ struct ConnectionSSHTunnelView: View {
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
             ".ssh")
         panel.showsHiddenFiles = true
+        panel.message = String(localized: "Choose a private key file")
 
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url {
@@ -358,6 +359,7 @@ struct ConnectionSSHTunnelView: View {
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
             ".ssh")
         panel.showsHiddenFiles = true
+        panel.message = String(localized: "Choose a private key file for the jump host")
 
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url {

@@ -82,6 +82,7 @@ struct ConnectionSSLView: View {
         panel.canChooseDirectories = false
         panel.allowedContentTypes = [.data]
         panel.showsHiddenFiles = true
+        panel.message = String(localized: "Choose a certificate or key file")
 
         panel.beginSheetModal(for: window) { response in
             if response == .OK, let url = panel.url {

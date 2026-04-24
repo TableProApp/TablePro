@@ -87,7 +87,6 @@ struct SidebarView: View {
                 )
             }
         }
-        .frame(minWidth: 280)
         .onChange(of: sidebarState.searchText) { _, newValue in
             viewModel.searchText = newValue
         }

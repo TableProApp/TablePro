@@ -19,10 +19,16 @@ internal struct SetPickerView: View {
         Button {
             isSetPopoverPresented = true
         } label: {
-            Text(displayLabel)
-                .font(.subheadline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
+            HStack(spacing: 4) {
+                Text(displayLabel)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 4)

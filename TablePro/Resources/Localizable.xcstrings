@@ -7600,6 +7600,9 @@
         }
       }
     },
+    "Choose a certificate or key file" : {
+
+    },
     "Choose a folder to watch for .tablepro connection files" : {
       "localizations" : {
         "tr" : {
@@ -7643,6 +7646,12 @@
           }
         }
       }
+    },
+    "Choose a private key file" : {
+
+    },
+    "Choose a private key file for the jump host" : {
+
     },
     "Choose a query from the list\nto see its full content here." : {
       "localizations" : {

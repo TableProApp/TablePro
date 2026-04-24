@@ -133,12 +133,8 @@ struct WelcomeWindowView: View {
                             width: 24,
                             height: 24
                         )
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .help(String(localized: "New Connection (⌘N)"))
 
                 Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
@@ -149,12 +145,8 @@ struct WelcomeWindowView: View {
                             width: 24,
                             height: 24
                         )
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color(nsColor: .quaternaryLabelColor))
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
                 .help(String(localized: "New Group"))
 
                 NativeSearchField(

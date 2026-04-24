@@ -188,7 +188,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             alert.alertStyle = .warning
             alert.addButton(withTitle: String(localized: "OK"))
-            alert.runModal()
+            if let window = AlertHelper.resolveWindow(nil) {
+                alert.beginSheetModal(for: window)
+            } else {
+                alert.runModal()
+            }
         }
     }
 

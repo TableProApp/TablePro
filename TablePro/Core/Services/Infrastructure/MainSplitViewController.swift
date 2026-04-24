@@ -121,7 +121,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         sidebarContainer = SidebarContainerViewController(rootView: AnyView(buildSidebarView()))
         sidebarSplitItem = NSSplitViewItem(sidebarWithViewController: sidebarContainer)
         sidebarSplitItem.canCollapse = true
-        sidebarSplitItem.minimumThickness = 200
+        sidebarSplitItem.minimumThickness = 280
         sidebarSplitItem.maximumThickness = 600
         addSplitViewItem(sidebarSplitItem)
 

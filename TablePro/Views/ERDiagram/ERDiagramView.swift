@@ -271,7 +271,11 @@ struct ERDiagramView: View {
             alert.messageText = String(localized: "Export Failed")
             alert.informativeText = String(localized: "Failed to render the diagram image.")
             alert.alertStyle = .warning
-            alert.runModal()
+            if let window = AlertHelper.resolveWindow(nil) {
+                alert.beginSheetModal(for: window)
+            } else {
+                alert.runModal()
+            }
             return
         }
 

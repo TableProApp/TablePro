@@ -32,9 +32,6 @@ extension ConnectionFormView {
                 }
                 .disabled(isTesting || isInstallingPlugin || !isValid)
 
-                Spacer()
-
-                // Delete button (edit mode only)
                 if !isNew {
                     Button("Delete", role: .destructive) {
                         Task {
@@ -50,6 +47,8 @@ extension ConnectionFormView {
                         }
                     }
                 }
+
+                Spacer()
 
                 // Cancel
                 Button("Cancel") {
@@ -89,9 +88,6 @@ extension ConnectionFormView {
 
     var connectionURLImportSheet: some View {
         VStack(spacing: 16) {
-            Text(String(localized: "Import from URL"))
-                .font(.headline)
-
             Text(String(localized: "Paste a connection URL to auto-fill the form fields."))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -129,6 +125,7 @@ extension ConnectionFormView {
                 .disabled(connectionURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+        .navigationTitle(String(localized: "Import from URL"))
         .padding(20)
         .frame(width: 420)
     }

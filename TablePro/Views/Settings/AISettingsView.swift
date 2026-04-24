@@ -345,12 +345,11 @@ private struct AIProviderEditorSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            sheetHeader
-            Divider()
             sheetForm
             Divider()
             sheetFooter
         }
+        .navigationTitle(isNew ? String(localized: "Add Provider") : String(localized: "Edit Provider"))
         .frame(minWidth: 420, minHeight: 400)
         .onAppear {
             fetchModels()
@@ -359,14 +358,6 @@ private struct AIProviderEditorSheet: View {
             modelFetchTask?.cancel()
             testTask?.cancel()
         }
-    }
-
-    // MARK: - Header
-
-    private var sheetHeader: some View {
-        Text(isNew ? String(localized: "Add Provider") : String(localized: "Edit Provider"))
-            .font(.headline)
-            .padding()
     }
 
     // MARK: - Form

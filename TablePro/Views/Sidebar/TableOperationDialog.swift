@@ -172,9 +172,6 @@ struct TableOperationDialog: View {
             ignoreForeignKeys = false
             cascade = false
         }
-        .onExitCommand {
-            isPresented = false
-        }
     }
 
     private func confirmAndDismiss() {
