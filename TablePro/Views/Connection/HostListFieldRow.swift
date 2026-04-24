@@ -22,7 +22,7 @@ struct HostListFieldRow: View {
     var body: some View {
         LabeledContent {
             List(selection: $selectedId) {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                ForEach(entries) { entry in
                     TextField("", text: bindingForEntry(entry), prompt: Text("hostname:\(defaultPort)"))
                         .tag(entry.id)
                 }

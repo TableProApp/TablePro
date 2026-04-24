@@ -189,29 +189,14 @@ extension ConnectionFormView {
 
         var finalAdditionalFields = additionalFieldValues
 
-        // Normalize and derive primary host/port from mongoHosts
         if type.pluginTypeId == "MongoDB",
            let mongoHosts = finalAdditionalFields["mongoHosts"],
            !mongoHosts.isEmpty
         {
-            let normalized = mongoHosts.split(separator: ",", omittingEmptySubsequences: false)
-                .map { segment -> String in
-                    let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                    if trimmed.isEmpty { return "localhost:\(type.defaultPort)" }
-                    if !trimmed.contains(":") { return "\(trimmed):\(type.defaultPort)" }
-                    return trimmed
-                }
-                .joined(separator: ",")
-            finalAdditionalFields["mongoHosts"] = normalized
-            let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
-            let parts = firstSegment.split(separator: ":", maxSplits: 1)
-            if !parts.isEmpty {
-                let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
-                finalHost = derived.isEmpty ? "localhost" : derived
-            }
-            if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-                finalPort = p
-            }
+            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: type.defaultPort)
+            finalAdditionalFields["mongoHosts"] = result.hosts
+            finalHost = result.primaryHost
+            finalPort = result.primaryPort
         }
         let trimmedScript = preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedScript.isEmpty {
@@ -413,24 +398,10 @@ extension ConnectionFormView {
            let mongoHosts = finalAdditionalFields["mongoHosts"],
            !mongoHosts.isEmpty
         {
-            let normalized = mongoHosts.split(separator: ",", omittingEmptySubsequences: false)
-                .map { segment -> String in
-                    let trimmed = segment.trimmingCharacters(in: .whitespaces)
-                    if trimmed.isEmpty { return "localhost:\(type.defaultPort)" }
-                    if !trimmed.contains(":") { return "\(trimmed):\(type.defaultPort)" }
-                    return trimmed
-                }
-                .joined(separator: ",")
-            finalAdditionalFields["mongoHosts"] = normalized
-            let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
-            let parts = firstSegment.split(separator: ":", maxSplits: 1)
-            if !parts.isEmpty {
-                let derived = String(parts[0]).trimmingCharacters(in: .whitespaces)
-                testHost = derived.isEmpty ? "localhost" : derived
-            }
-            if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
-                testPort = p
-            }
+            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: type.defaultPort)
+            finalAdditionalFields["mongoHosts"] = result.hosts
+            testHost = result.primaryHost
+            testPort = result.primaryPort
         }
 
         let testTunnelMode = sshState.buildTunnelMode()
@@ -664,6 +635,39 @@ extension ConnectionFormView {
         case .failure(let error):
             urlParseError = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Multi-Host Helpers
+
+extension ConnectionFormView {
+    struct NormalizedHosts {
+        let hosts: String
+        let primaryHost: String
+        let primaryPort: Int
+    }
+
+    static func normalizeMongoHosts(_ raw: String, defaultPort: Int) -> NormalizedHosts {
+        let normalized = raw.split(separator: ",", omittingEmptySubsequences: false)
+            .map { segment -> String in
+                let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { return "localhost:\(defaultPort)" }
+                if !trimmed.contains(":") { return "\(trimmed):\(defaultPort)" }
+                return trimmed
+            }
+            .joined(separator: ",")
+        let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
+        let parts = firstSegment.split(separator: ":", maxSplits: 1)
+        var host = "localhost"
+        var port = defaultPort
+        if let first = parts.first {
+            let derived = String(first).trimmingCharacters(in: .whitespaces)
+            if !derived.isEmpty { host = derived }
+        }
+        if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+            port = p
+        }
+        return NormalizedHosts(hosts: normalized, primaryHost: host, primaryPort: port)
     }
 }
 
