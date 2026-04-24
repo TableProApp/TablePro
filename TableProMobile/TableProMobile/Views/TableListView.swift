@@ -110,6 +110,9 @@ struct TableListView: View {
         .navigationDestination(for: TableInfo.self) { table in
             DataBrowserView(table: table)
         }
+        .onAppear {
+            coordinator.navigateToPendingTable()
+        }
         .overlay {
             if tables.isEmpty {
                 ContentUnavailableView(

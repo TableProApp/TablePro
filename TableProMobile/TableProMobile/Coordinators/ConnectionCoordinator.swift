@@ -98,7 +98,6 @@ final class ConnectionCoordinator {
                 phase = .connected
                 await loadDatabases()
                 await loadSchemas()
-                navigateToPendingTable()
             } catch {
                 self.session = nil
                 await appState.connectionManager.disconnect(connection.id)
@@ -168,9 +167,14 @@ final class ConnectionCoordinator {
         } else {
             do {
                 try await appState.connectionManager.switchDatabase(connection.id, to: name)
+                if let freshSession = appState.connectionManager.session(for: connection.id) {
+                    self.session = freshSession
+                }
                 activeDatabase = name
                 UserDefaults.standard.set(name, forKey: "lastDB.\(connection.id.uuidString)")
-                self.tables = try await session.driver.fetchTables(schema: nil)
+                if let current = self.session {
+                    self.tables = try await current.driver.fetchTables(schema: nil)
+                }
             } catch {
                 failureAlertMessage = String(localized: "Failed to switch database")
                 showFailureAlert = true
@@ -267,7 +271,7 @@ final class ConnectionCoordinator {
         queryHistory = []
     }
 
-    private func navigateToPendingTable() {
+    func navigateToPendingTable() {
         guard let tableName = appState.pendingTableName,
               let table = tables.first(where: { $0.name == tableName }) else { return }
         appState.pendingTableName = nil
@@ -294,7 +298,7 @@ final class ConnectionCoordinator {
                 activeDatabase = connection.database
             }
         } catch {
-            // Silently fail
+            Self.logger.warning("Failed to load databases: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -311,7 +315,7 @@ final class ConnectionCoordinator {
                 activeSchema = currentSchema
             }
         } catch {
-            // Silently fail
+            Self.logger.warning("Failed to load schemas: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

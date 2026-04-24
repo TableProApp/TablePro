@@ -41,8 +41,12 @@ struct ConnectedView: View {
             c.restorePersistedState()
             await c.connect()
             if !Task.isCancelled {
-                c.loadHistory()
-                hapticSuccess.toggle()
+                if case .connected = c.phase {
+                    c.loadHistory()
+                    hapticSuccess.toggle()
+                } else if case .error = c.phase {
+                    hapticError.toggle()
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -99,7 +103,7 @@ struct ConnectedView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .environment(coordinator as ConnectionCoordinator)
+        .environment(coordinator)
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
