@@ -85,8 +85,8 @@ struct QueryTab: Identifiable, Equatable {
     var explainExecutionTime: TimeInterval?
     var explainPlan: QueryPlan?
 
-    // Per-tab change tracking (preserves changes when switching tabs)
-    var pendingChanges: TabPendingChanges
+    // Per-tab change tracking (owns its own DataChangeManager with undo history)
+    var changeManager: DataChangeManager
 
     // Per-tab row selection (preserves selection when switching tabs)
     var selectedRowIndices: Set<Int>
@@ -172,7 +172,7 @@ struct QueryTab: Identifiable, Equatable {
         self.databaseName = ""
         self.schemaName = nil
         self.resultsViewMode = .data
-        self.pendingChanges = TabPendingChanges()
+        self.changeManager = DataChangeManager()
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.hasUserInteraction = false
@@ -209,7 +209,7 @@ struct QueryTab: Identifiable, Equatable {
         self.schemaName = persisted.schemaName
         self.resultsViewMode = .data
         self.erDiagramSchemaKey = persisted.erDiagramSchemaKey
-        self.pendingChanges = TabPendingChanges()
+        self.changeManager = DataChangeManager()
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.hasUserInteraction = false

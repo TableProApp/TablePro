@@ -95,10 +95,6 @@ extension MainContentCoordinator {
         pendingDeletes.removeAll()
         changeManager.clearChangesAndUndoHistory()
 
-        if let index = tabManager.selectedTabIndex {
-            tabManager.tabs[index].pendingChanges = TabPendingChanges()
-        }
-
         Task { await refreshTables() }
     }
 }

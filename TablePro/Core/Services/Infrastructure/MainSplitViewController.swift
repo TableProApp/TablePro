@@ -365,7 +365,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 tableOperationOptions: sessionTableOperationOptionsBinding,
                 rightPanelState: rightPanelState,
                 tabManager: sessionState.tabManager,
-                changeManager: sessionState.changeManager,
                 filterStateManager: sessionState.filterStateManager,
                 toolbarState: sessionState.toolbarState,
                 coordinator: sessionState.coordinator

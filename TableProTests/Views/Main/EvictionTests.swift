@@ -14,14 +14,12 @@ import Testing
 struct EvictionTests {
     private func makeCoordinator() -> (MainContentCoordinator, QueryTabManager) {
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
         let connection = TestFixtures.makeConnection()
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
@@ -58,7 +56,7 @@ struct EvictionTests {
         addLoadedTab(to: tabManager, tableName: "users")
 
         // Add a pending change
-        tabManager.tabs[0].pendingChanges.deletedRowIndices = [0]
+        tabManager.tabs[0].changeManager.recordRowDeletion(rowIndex: 0, originalRow: ["value_0"])
 
         coordinator.evictInactiveRowData()
 

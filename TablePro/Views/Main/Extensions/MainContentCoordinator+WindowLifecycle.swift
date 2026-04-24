@@ -33,9 +33,7 @@ extension MainContentCoordinator {
         // Lazy-load: execute query for restored tabs that skipped auto-execute,
         // or re-query tabs whose row data was evicted while inactive.
         // Skip if the user has unsaved changes (in-memory or tab-level).
-        let hasPendingEdits =
-            changeManager.hasChanges
-            || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
+        let hasPendingEdits = changeManager.hasChanges
         let isConnected =
             DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
         let needsLazyLoad =

@@ -916,34 +916,6 @@ final class DataChangeManager {
         reloadVersion += 1
     }
 
-    // MARK: - Per-Tab State Management
-
-    func saveState() -> TabPendingChanges {
-        var state = TabPendingChanges()
-        state.changes = changes
-        state.deletedRowIndices = deletedRowIndices
-        state.insertedRowIndices = insertedRowIndices
-        state.modifiedCells = modifiedCells
-        state.insertedRowData = insertedRowData
-        state.primaryKeyColumns = primaryKeyColumns
-        state.columns = columns
-        return state
-    }
-
-    func restoreState(from state: TabPendingChanges, tableName: String, databaseType: DatabaseType) {
-        self.tableName = tableName
-        self.columns = state.columns
-        self.primaryKeyColumns = state.primaryKeyColumns
-        self.databaseType = databaseType
-        self.changes = state.changes
-        self.deletedRowIndices = state.deletedRowIndices
-        self.insertedRowIndices = state.insertedRowIndices
-        self.modifiedCells = state.modifiedCells
-        self.insertedRowData = state.insertedRowData
-        self.hasChanges = !state.changes.isEmpty
-        rebuildChangeIndex()
-    }
-
     // MARK: - O(1) Lookups
 
     func isRowDeleted(_ rowIndex: Int) -> Bool {

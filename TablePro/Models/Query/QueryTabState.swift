@@ -29,31 +29,6 @@ struct PersistedTab: Codable {
     var erDiagramSchemaKey: String?
 }
 
-/// Stores pending changes for a tab (used to preserve state when switching tabs)
-struct TabPendingChanges: Equatable {
-    var changes: [RowChange]
-    var deletedRowIndices: Set<Int>
-    var insertedRowIndices: Set<Int>
-    var modifiedCells: [Int: Set<Int>]
-    var insertedRowData: [Int: [String?]]  // Lazy storage for inserted row values
-    var primaryKeyColumns: [String]
-    var columns: [String]
-
-    init() {
-        self.changes = []
-        self.deletedRowIndices = []
-        self.insertedRowIndices = []
-        self.modifiedCells = [:]
-        self.insertedRowData = [:]
-        self.primaryKeyColumns = []
-        self.columns = []
-    }
-
-    var hasChanges: Bool {
-        !changes.isEmpty || !insertedRowIndices.isEmpty || !deletedRowIndices.isEmpty
-    }
-}
-
 /// Sort direction for column sorting
 enum SortDirection: Equatable {
     case ascending

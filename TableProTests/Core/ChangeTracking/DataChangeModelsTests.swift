@@ -116,54 +116,7 @@ struct DataChangeModelsTests {
         #expect(rowChange.type == .insert)
     }
 
-    @Test("TabPendingChanges initializes as empty")
-    func tabPendingChangesInit() {
-        let pending = TabPendingChanges()
 
-        #expect(pending.changes.isEmpty)
-        #expect(pending.deletedRowIndices.isEmpty)
-        #expect(pending.insertedRowIndices.isEmpty)
-        #expect(pending.modifiedCells.isEmpty)
-        #expect(pending.insertedRowData.isEmpty)
-        #expect(pending.primaryKeyColumns.isEmpty)
-        #expect(pending.columns.isEmpty)
-    }
-
-    @Test("TabPendingChanges hasChanges is false when empty")
-    func tabPendingChangesHasChangesEmpty() {
-        let pending = TabPendingChanges()
-
-        #expect(!pending.hasChanges)
-    }
-
-    @Test("TabPendingChanges hasChanges is true with changes")
-    func tabPendingChangesHasChangesWithChanges() {
-        let rowChange = RowChange(
-            rowIndex: 0,
-            type: .update
-        )
-
-        var pending = TabPendingChanges()
-        pending.changes = [rowChange]
-
-        #expect(pending.hasChanges)
-    }
-
-    @Test("TabPendingChanges hasChanges is true with deletedRowIndices")
-    func tabPendingChangesHasChangesWithDeleted() {
-        var pending = TabPendingChanges()
-        pending.deletedRowIndices = [1, 2, 3]
-
-        #expect(pending.hasChanges)
-    }
-
-    @Test("TabPendingChanges hasChanges is true with insertedRowIndices")
-    func tabPendingChangesHasChangesWithInserted() {
-        var pending = TabPendingChanges()
-        pending.insertedRowIndices = [0, 1]
-
-        #expect(pending.hasChanges)
-    }
 
     @Test("Array safe subscript with valid index")
     func arraySafeSubscriptValid() {

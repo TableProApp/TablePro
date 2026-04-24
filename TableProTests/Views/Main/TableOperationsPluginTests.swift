@@ -20,14 +20,12 @@ struct TableOperationsPluginTests {
     private func makeCoordinator(type: DatabaseType = .mysql) -> MainContentCoordinator {
         let connection = TestFixtures.makeConnection(database: "testdb", type: type)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         return MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState

@@ -179,14 +179,12 @@ struct CoordinatorConnectionIsolationTests {
         let connId = UUID()
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
@@ -206,7 +204,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator1 = MainContentCoordinator(
             connection: conn1,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
@@ -216,7 +213,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator2 = MainContentCoordinator(
             connection: conn2,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
@@ -236,7 +232,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator1 = MainContentCoordinator(
             connection: conn1,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
@@ -246,7 +241,6 @@ struct CoordinatorConnectionIsolationTests {
         let coordinator2 = MainContentCoordinator(
             connection: conn2,
             tabManager: QueryTabManager(),
-            changeManager: DataChangeManager(),
             filterStateManager: FilterStateManager(),
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: ConnectionToolbarState()
@@ -264,14 +258,12 @@ struct CoordinatorConnectionIsolationTests {
         let connId = UUID()
         let connection = TestFixtures.makeConnection(id: connId, name: "MySQL", database: "db_a", type: .mysql)
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState

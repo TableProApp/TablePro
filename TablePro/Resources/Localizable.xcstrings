@@ -10214,6 +10214,9 @@
         }
       }
     },
+    "Copilot" : {
+
+    },
     "Copilot language server binary not found" : {
 
     },
@@ -15211,6 +15214,9 @@
           }
         }
       }
+    },
+    "Enable GitHub Copilot" : {
+
     },
     "Enable inline suggestions" : {
       "extractionState" : "stale",
@@ -30442,6 +30448,9 @@
         }
       }
     },
+    "Preferences" : {
+
+    },
     "Preferred" : {
       "localizations" : {
         "tr" : {
@@ -34283,6 +34292,9 @@
           }
         }
       }
+    },
+    "Running" : {
+
     },
     "Running on port %d" : {
       "localizations" : {
@@ -43470,6 +43482,9 @@
           }
         }
       }
+    },
+    "Use for inline suggestions" : {
+
     },
     "Use SSL if available" : {
       "localizations" : {

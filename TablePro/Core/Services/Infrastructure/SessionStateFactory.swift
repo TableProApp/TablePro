@@ -12,7 +12,6 @@ import Foundation
 enum SessionStateFactory {
     struct SessionState {
         let tabManager: QueryTabManager
-        let changeManager: DataChangeManager
         let filterStateManager: FilterStateManager
         let columnVisibilityManager: ColumnVisibilityManager
         let toolbarState: ConnectionToolbarState
@@ -44,8 +43,6 @@ enum SessionStateFactory {
         payload: EditorTabPayload?
     ) -> SessionState {
         let tabMgr = QueryTabManager()
-        let changeMgr = DataChangeManager()
-        changeMgr.databaseType = connection.type
         let filterMgr = FilterStateManager()
         let colVisMgr = ColumnVisibilityManager()
         let toolbarSt = ConnectionToolbarState(connection: connection)
@@ -138,7 +135,6 @@ enum SessionStateFactory {
         let coord = MainContentCoordinator(
             connection: connection,
             tabManager: tabMgr,
-            changeManager: changeMgr,
             filterStateManager: filterMgr,
             columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt
@@ -146,7 +142,6 @@ enum SessionStateFactory {
 
         return SessionState(
             tabManager: tabMgr,
-            changeManager: changeMgr,
             filterStateManager: filterMgr,
             columnVisibilityManager: colVisMgr,
             toolbarState: toolbarSt,

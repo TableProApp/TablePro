@@ -18,14 +18,12 @@ struct CoordinatorRefreshTablesTests {
     func setsErrorWhenNoDriver() async {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState
@@ -44,14 +42,12 @@ struct CoordinatorRefreshTablesTests {
     func defaultsToIdle() {
         let connection = TestFixtures.makeConnection(database: "db_a")
         let tabManager = QueryTabManager()
-        let changeManager = DataChangeManager()
         let filterStateManager = FilterStateManager()
         let toolbarState = ConnectionToolbarState()
 
         let coordinator = MainContentCoordinator(
             connection: connection,
             tabManager: tabManager,
-            changeManager: changeManager,
             filterStateManager: filterStateManager,
             columnVisibilityManager: ColumnVisibilityManager(),
             toolbarState: toolbarState

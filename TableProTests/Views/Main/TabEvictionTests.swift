@@ -44,7 +44,7 @@ struct TabEvictionTests {
         }
 
         if hasUnsavedChanges {
-            tab.pendingChanges.deletedRowIndices = [0]
+            tab.changeManager.recordRowDeletion(rowIndex: 0, originalRow: ["value_0"])
         }
 
         return tab
@@ -118,7 +118,7 @@ struct TabEvictionTests {
         let isCandidate = !tab.rowBuffer.isEvicted
             && !tab.resultRows.isEmpty
             && tab.lastExecutedAt != nil
-            && !tab.pendingChanges.hasChanges
+            && !tab.changeManager.hasChanges
 
         #expect(isCandidate == false)
     }
@@ -140,7 +140,7 @@ struct TabEvictionTests {
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
                 && $0.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+                && !$0.changeManager.hasChanges
         }
 
         #expect(candidates.count == 1)
@@ -165,7 +165,7 @@ struct TabEvictionTests {
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
                 && $0.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+                && !$0.changeManager.hasChanges
         }
 
         let sorted = candidates.sorted {
@@ -211,7 +211,7 @@ struct TabEvictionTests {
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
                 && $0.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+                && !$0.changeManager.hasChanges
         }
 
         let sorted = candidates.sorted {

@@ -33,9 +33,6 @@ extension MainContentCoordinator {
         if let oldId = oldTabId,
            let oldIndex = tabManager.tabs.firstIndex(where: { $0.id == oldId })
         {
-            if changeManager.hasChanges {
-                tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
-            }
             tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
             if let tableName = tabManager.tabs[oldIndex].tableName {
                 filterStateManager.saveLastFilters(for: tableName)
@@ -69,22 +66,8 @@ extension MainContentCoordinator {
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
 
-            // Configure change manager without triggering reload yet — we'll fire a single
-            // reloadVersion bump below after everything is set up.
-            let pendingState = newTab.pendingChanges
-            if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableName ?? "", databaseType: connection.type)
-            } else {
-                changeManager.configureForTable(
-                    tableName: newTab.tableName ?? "",
-                    columns: newTab.resultColumns,
-                    primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
-                        ? newTab.resultColumns.prefix(1).map { $0 }
-                        : newTab.primaryKeyColumns,
-                    databaseType: connection.type,
-                    triggerReload: false
-                )
-            }
+            // Per-tab change managers: the new tab's changeManager is automatically
+            // used via the computed property. No save/restore needed.
 
             let restoreMs = Int(Date().timeIntervalSince(restoreStart) * 1_000)
             Self.lifecycleLogger.debug(
@@ -161,7 +144,7 @@ extension MainContentCoordinator {
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
                 && $0.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+                && !$0.changeManager.hasChanges
         }
 
         // Sort by oldest first, breaking ties by largest estimated footprint first

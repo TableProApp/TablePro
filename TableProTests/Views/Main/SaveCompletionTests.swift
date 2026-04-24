@@ -18,18 +18,18 @@ struct SaveCompletionTests {
     private func makeCoordinator(
         safeModeLevel: SafeModeLevel = .silent,
         type: DatabaseType = .mysql
-    ) -> (MainContentCoordinator, QueryTabManager, DataChangeManager) {
+    ) -> (MainContentCoordinator, QueryTabManager) {
         var conn = TestFixtures.makeConnection(type: type)
         conn.safeModeLevel = safeModeLevel
         let state = SessionStateFactory.create(connection: conn, payload: nil)
-        return (state.coordinator, state.tabManager, state.changeManager)
+        return (state.coordinator, state.tabManager)
     }
 
     // MARK: - No Changes
 
     @Test("saveChanges with no changes returns immediately without error")
     func noChanges_returnsWithoutError() {
-        let (coordinator, tabManager, _) = makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = []
@@ -49,10 +49,10 @@ struct SaveCompletionTests {
 
     @Test("saveChanges on read-only connection sets error message")
     func readOnly_setsErrorMessage() {
-        let (coordinator, tabManager, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .readOnly)
         tabManager.addTab(databaseName: "testdb")
 
-        changeManager.hasChanges = true
+        coordinator.changeManager.hasChanges = true
 
         var truncates: Set<String> = []
         var deletes: Set<String> = []
@@ -71,9 +71,10 @@ struct SaveCompletionTests {
 
     @Test("saveChanges on read-only connection does not clear changes")
     func readOnly_doesNotClearChanges() {
-        let (coordinator, _, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .readOnly)
+        tabManager.addTab(databaseName: "testdb")
 
-        changeManager.hasChanges = true
+        coordinator.changeManager.hasChanges = true
 
         var truncates: Set<String> = []
         var deletes: Set<String> = []
@@ -85,17 +86,17 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        #expect(changeManager.hasChanges == true)
+        #expect(coordinator.changeManager.hasChanges == true)
     }
 
     // MARK: - Empty Generated Statements
 
     @Test("saveChanges with hasChanges true but no generated SQL sets error")
     func hasChangesButNoSQL_setsError() {
-        let (coordinator, tabManager, changeManager) = makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         tabManager.addTab(databaseName: "testdb")
 
-        changeManager.hasChanges = true
+        coordinator.changeManager.hasChanges = true
 
         var truncates: Set<String> = []
         var deletes: Set<String> = []
@@ -115,7 +116,7 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with pending truncates but read-only sets error")
     func pendingTruncatesReadOnly_setsError() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .readOnly)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .readOnly)
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = ["users"]
@@ -136,8 +137,8 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with no tab selected and read-only does not crash")
     func noTabSelected_readOnly_doesNotCrash() {
-        let (coordinator, _, changeManager) = makeCoordinator(safeModeLevel: .readOnly)
-        changeManager.hasChanges = true
+        let (coordinator, _) = makeCoordinator(safeModeLevel: .readOnly)
+        coordinator.changeManager.hasChanges = true
 
         var truncates: Set<String> = []
         var deletes: Set<String> = []
@@ -149,12 +150,12 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        #expect(changeManager.hasChanges == true)
+        #expect(coordinator.changeManager.hasChanges == true)
     }
 
     @Test("saveChanges with no changes and no pending ops does nothing")
     func noChangesNoPendingOps_noop() {
-        let (coordinator, tabManager, _) = makeCoordinator()
+        let (coordinator, tabManager) = makeCoordinator()
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = []
@@ -176,7 +177,7 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with alert level and pending truncates clears inout params immediately")
     func alertLevel_pendingTruncates_clearsParams() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = ["users"]
@@ -195,7 +196,7 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with safeMode level and pending deletes clears inout params")
     func safeModeLevel_pendingDeletes_clearsParams() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .safeMode)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .safeMode)
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = []
@@ -213,7 +214,7 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with alert level and no changes does nothing")
     func alertLevel_noChanges_noop() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = []
@@ -233,7 +234,7 @@ struct SaveCompletionTests {
 
     @Test("saveChanges with silent level and pending truncates clears via normal path")
     func silentLevel_pendingTruncates_clearsViaNormalPath() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .silent)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .silent)
         tabManager.addTab(databaseName: "testdb")
 
         var truncates: Set<String> = ["users"]
@@ -254,7 +255,7 @@ struct SaveCompletionTests {
 
     @Test("row operations blocked by readOnly level")
     func rowOperations_blockedByReadOnly() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .readOnly)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .readOnly)
         tabManager.addTab(databaseName: "testdb")
         if let index = tabManager.selectedTabIndex {
             tabManager.tabs[index].isEditable = true
@@ -280,7 +281,7 @@ struct SaveCompletionTests {
 
     @Test("row operations allowed by alert level")
     func rowOperations_allowedByAlertLevel() {
-        let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
+        let (coordinator, tabManager) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
         if let index = tabManager.selectedTabIndex {
             tabManager.tabs[index].isEditable = true

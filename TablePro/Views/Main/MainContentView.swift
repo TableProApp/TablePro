@@ -40,7 +40,7 @@ struct MainContentView: View {
     // MARK: - State Objects
 
     let tabManager: QueryTabManager
-    let changeManager: DataChangeManager
+    var changeManager: DataChangeManager { coordinator.changeManager }
     let filterStateManager: FilterStateManager
     let toolbarState: ConnectionToolbarState
     let coordinator: MainContentCoordinator
@@ -75,7 +75,6 @@ struct MainContentView: View {
         tableOperationOptions: Binding<[String: TableOperationOptions]>,
         rightPanelState: RightPanelState,
         tabManager: QueryTabManager,
-        changeManager: DataChangeManager,
         filterStateManager: FilterStateManager,
         toolbarState: ConnectionToolbarState,
         coordinator: MainContentCoordinator
@@ -90,7 +89,6 @@ struct MainContentView: View {
         self._tableOperationOptions = tableOperationOptions
         self.rightPanelState = rightPanelState
         self.tabManager = tabManager
-        self.changeManager = changeManager
         self.filterStateManager = filterStateManager
         self.toolbarState = toolbarState
         self.coordinator = coordinator

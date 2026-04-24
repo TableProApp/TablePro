@@ -22,9 +22,7 @@ extension MainContentView {
         let sessions = DatabaseManager.shared.activeSessions
         guard let session = sessions[connection.id] else { return }
         if session.isConnected && coordinator.needsLazyLoad {
-            let hasPendingEdits =
-                changeManager.hasChanges
-                || (tabManager.selectedTab?.pendingChanges.hasChanges ?? false)
+            let hasPendingEdits = changeManager.hasChanges
             guard !hasPendingEdits else { return }
             coordinator.needsLazyLoad = false
             if let selectedTab = tabManager.selectedTab,

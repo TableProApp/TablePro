@@ -84,7 +84,10 @@ final class MainContentCoordinator {
     /// not from the immutable connection snapshot.
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
     let tabManager: QueryTabManager
-    let changeManager: DataChangeManager
+    var changeManager: DataChangeManager {
+        tabManager.selectedTab?.changeManager ?? fallbackChangeManager
+    }
+    private let fallbackChangeManager = DataChangeManager()
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
@@ -93,9 +96,9 @@ final class MainContentCoordinator {
 
     internal var queryBuilder: TableQueryBuilder
     let persistence: TabPersistenceCoordinator
-    @ObservationIgnored internal lazy var rowOperationsManager: RowOperationsManager = {
+    @ObservationIgnored internal var rowOperationsManager: RowOperationsManager {
         RowOperationsManager(changeManager: changeManager)
-    }()
+    }
 
     /// Stable identifier for this coordinator's window (set by MainContentView on appear)
     var windowId: UUID?
@@ -253,8 +256,7 @@ final class MainContentCoordinator {
     /// Check whether any active coordinator has unsaved edits.
     static func hasAnyUnsavedChanges() -> Bool {
         activeCoordinators.values.contains { coordinator in
-            coordinator.changeManager.hasChanges
-                || coordinator.tabManager.tabs.contains { $0.pendingChanges.hasChanges }
+            coordinator.tabManager.tabs.contains { $0.changeManager.hasChanges }
         }
     }
 
@@ -335,7 +337,7 @@ final class MainContentCoordinator {
         let selectedId = tabManager.selectedTabId
         for tab in tabManager.tabs where !tab.rowBuffer.isEvicted
             && !tab.resultRows.isEmpty
-            && !tab.pendingChanges.hasChanges
+            && !tab.changeManager.hasChanges
             && tab.id != selectedId
         {
             tab.rowBuffer.evict()
@@ -358,7 +360,6 @@ final class MainContentCoordinator {
     init(
         connection: DatabaseConnection,
         tabManager: QueryTabManager,
-        changeManager: DataChangeManager,
         filterStateManager: FilterStateManager,
         columnVisibilityManager: ColumnVisibilityManager,
         toolbarState: ConnectionToolbarState
@@ -366,7 +367,6 @@ final class MainContentCoordinator {
         let initStart = Date()
         self.connection = connection
         self.tabManager = tabManager
-        self.changeManager = changeManager
         self.filterStateManager = filterStateManager
         self.columnVisibilityManager = columnVisibilityManager
         self.toolbarState = toolbarState
@@ -421,7 +421,7 @@ final class MainContentCoordinator {
         setupPluginDriver()
         startFileWatcherIfNeeded()
         // Retry when driver becomes available (connection may still be in progress)
-        if changeManager.pluginDriver == nil {
+        if DatabaseManager.shared.driver(for: connectionId)?.queryBuildingPluginDriver == nil {
             pluginDriverObserver = NotificationCenter.default.addObserver(
                 forName: .databaseDidConnect, object: nil, queue: .main
             ) { [weak self] _ in
@@ -477,7 +477,9 @@ final class MainContentCoordinator {
         guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
         let pluginDriver = driver.queryBuildingPluginDriver
         queryBuilder.setPluginDriver(pluginDriver)
-        changeManager.pluginDriver = pluginDriver
+        for tab in tabManager.tabs {
+            tab.changeManager.pluginDriver = pluginDriver
+        }
         // Remove observer once successfully set up
         if pluginDriver != nil, let observer = pluginDriverObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -594,8 +596,12 @@ final class MainContentCoordinator {
 
         // Release change manager state — pluginDriver holds a strong reference
         // to the entire database driver which prevents deallocation
-        changeManager.clearChanges()
-        changeManager.pluginDriver = nil
+        for tab in tabManager.tabs {
+            tab.changeManager.clearChanges()
+            tab.changeManager.pluginDriver = nil
+        }
+        fallbackChangeManager.clearChanges()
+        fallbackChangeManager.pluginDriver = nil
 
         // Release metadata and filter state
         tableMetadata = nil
