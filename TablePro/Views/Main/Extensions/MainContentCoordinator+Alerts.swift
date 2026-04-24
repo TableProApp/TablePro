@@ -59,9 +59,10 @@ extension MainContentCoordinator {
         }
 
         let queryList = querySummaries.joined(separator: "\n")
-        let message = String(
-            localized: "The following \(statements.count) queries may permanently modify or delete data. This action cannot be undone.\n\n\(queryList)"
+        let format = String(
+            localized: "The following %d queries may permanently modify or delete data. This action cannot be undone.\n\n%@"
         )
+        let message = String(format: format, statements.count, queryList)
 
         return await AlertHelper.confirmCritical(
             title: String(localized: "Potentially Dangerous Queries"),
