@@ -108,35 +108,7 @@ extension ConnectionFormView {
                 }
             } else {
                 Section(String(localized: "Connection")) {
-                    if hasHostListField {
-                        ForEach(connectionSectionFields, id: \.id) { field in
-                            if case .hostList = field.fieldType {
-                                HostListFieldRow(
-                                    label: field.label,
-                                    placeholder: field.placeholder,
-                                    defaultPort: type.defaultPort,
-                                    value: Binding(
-                                        get: {
-                                            additionalFieldValues[field.id]
-                                                ?? field.defaultValue ?? ""
-                                        },
-                                        set: { additionalFieldValues[field.id] = $0 }
-                                    )
-                                )
-                            }
-                        }
-                    } else {
-                        TextField(
-                            String(localized: "Host"),
-                            text: $host,
-                            prompt: Text("localhost")
-                        )
-                        TextField(
-                            String(localized: "Port"),
-                            text: $port,
-                            prompt: Text(defaultPort)
-                        )
-                    }
+                    hostFieldsView
                     if PluginManager.shared.requiresAuthentication(for: type) {
                         TextField(
                             String(localized: "Database"),
@@ -243,7 +215,6 @@ extension ConnectionFormView {
                 }
             }
         }
-        .id(type)
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .sheet(isPresented: $showURLImport) {
@@ -251,6 +222,39 @@ extension ConnectionFormView {
         }
         .sheet(isPresented: $showActivationSheet) {
             LicenseActivationSheet()
+        }
+    }
+
+    @ViewBuilder
+    private var hostFieldsView: some View {
+        if hasHostListField {
+            ForEach(connectionSectionFields, id: \.id) { field in
+                if case .hostList = field.fieldType {
+                    HostListFieldRow(
+                        label: field.label,
+                        placeholder: field.placeholder,
+                        defaultPort: type.defaultPort,
+                        value: Binding(
+                            get: {
+                                additionalFieldValues[field.id]
+                                    ?? field.defaultValue ?? ""
+                            },
+                            set: { additionalFieldValues[field.id] = $0 }
+                        )
+                    )
+                }
+            }
+        } else {
+            TextField(
+                String(localized: "Host"),
+                text: $host,
+                prompt: Text("localhost")
+            )
+            TextField(
+                String(localized: "Port"),
+                text: $port,
+                prompt: Text(defaultPort)
+            )
         }
     }
 }
