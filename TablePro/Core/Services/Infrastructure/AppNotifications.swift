@@ -45,4 +45,8 @@ extension Notification.Name {
     // MARK: - Settings Window
 
     static let openSettingsWindow = Notification.Name("com.TablePro.openSettingsWindow")
+
+    // MARK: - Feedback
+
+    static let showFeedbackWindow = Notification.Name("com.TablePro.showFeedbackWindow")
 }
