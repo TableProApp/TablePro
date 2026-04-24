@@ -14,18 +14,16 @@ struct FeedbackDiagnostics {
     let machineId: String
 
     var formattedSummary: String {
-        var lines = [
-            "TablePro \(appVersion)",
-            "\(osVersion) · \(architecture)"
-        ]
+        var parts = ["TablePro \(appVersion)", "\(osVersion) · \(architecture)"]
         if let db = activeDatabaseType {
-            lines.append("Database: \(db)")
+            parts.append("Database: \(db)")
         }
-        if !installedPlugins.isEmpty {
-            let count = installedPlugins.count
-            lines.append("\(count) plugin\(count == 1 ? "" : "s") installed")
-        }
-        return lines.joined(separator: "\n")
+        return parts.joined(separator: "\n")
+    }
+
+    var pluginsSummary: String {
+        let count = installedPlugins.count
+        return "\(count) plugin\(count == 1 ? "" : "s") installed"
     }
 }
 

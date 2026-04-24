@@ -90,18 +90,24 @@ struct FeedbackView: View {
                     Toggle("Include diagnostics", isOn: $viewModel.includeDiagnostics)
 
                     if viewModel.includeDiagnostics {
-                        DisclosureGroup(
-                            viewModel.diagnostics.formattedSummary,
-                            isExpanded: $showDiagnosticsDetail
-                        ) {
-                            Text(viewModel.diagnostics.installedPlugins.joined(separator: "\n"))
-                                .font(.system(.caption2, design: .monospaced))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(viewModel.diagnostics.formattedSummary)
+                                .font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(.tertiary)
                                 .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            DisclosureGroup(isExpanded: $showDiagnosticsDetail) {
+                                Text(viewModel.diagnostics.installedPlugins.joined(separator: ", "))
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.quaternary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } label: {
+                                Text(viewModel.diagnostics.pluginsSummary)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.tertiary)
                     }
                 }
             }
