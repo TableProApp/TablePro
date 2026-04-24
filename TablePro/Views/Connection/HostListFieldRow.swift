@@ -17,37 +17,21 @@ struct HostListFieldRow: View {
     @Binding var value: String
 
     @State private var entries: [HostEntry] = []
+    @State private var selectedId: UUID?
 
     var body: some View {
         LabeledContent {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach($entries) { $entry in
-                    HStack(spacing: 6) {
-                        TextField(
-                            "",
-                            text: $entry.value,
-                            prompt: Text("hostname:\(defaultPort)")
-                        )
-                        .onChange(of: entry.value) { syncValue() }
-
-                        Button {
-                            removeEntry(entry)
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .foregroundStyle(.red)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(entries.count <= 1)
-                        .opacity(entries.count <= 1 ? 0.3 : 1)
-                    }
-                }
-
-                Button {
-                    addEntry()
-                } label: {
-                    Label("Add Host", systemImage: "plus")
-                }
+            VStack(spacing: 0) {
+                list
+                Divider()
+                buttonBar
             }
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5)
+            )
         } label: {
             Text(label)
         }
@@ -55,10 +39,83 @@ struct HostListFieldRow: View {
         .onChange(of: value) { parseValue() }
     }
 
+    private var list: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                    entryRow(entry, index: index)
+                }
+            }
+        }
+        .frame(minHeight: 28, maxHeight: 88)
+    }
+
+    private func entryRow(_ entry: HostEntry, index: Int) -> some View {
+        let isSelected = selectedId == entry.id
+        return VStack(spacing: 0) {
+            if index > 0 {
+                Divider().padding(.horizontal, 1)
+            }
+            TextField(
+                "",
+                text: bindingForEntry(entry),
+                prompt: Text("hostname:\(defaultPort)")
+            )
+            .textFieldStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(isSelected ? Color.accentColor.opacity(0.2) : Color.clear)
+            .contentShape(Rectangle())
+            .onTapGesture { selectedId = entry.id }
+        }
+    }
+
+    private func bindingForEntry(_ entry: HostEntry) -> Binding<String> {
+        Binding(
+            get: {
+                entries.first { $0.id == entry.id }?.value ?? ""
+            },
+            set: { newValue in
+                if let idx = entries.firstIndex(where: { $0.id == entry.id }) {
+                    entries[idx].value = newValue
+                    syncValue()
+                }
+            }
+        )
+    }
+
+    private var buttonBar: some View {
+        HStack(spacing: 0) {
+            Button { addEntry() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 24, height: 20)
+            }
+            .buttonStyle(.borderless)
+
+            Divider().frame(height: 14)
+
+            Button { removeSelected() } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 24, height: 20)
+            }
+            .buttonStyle(.borderless)
+            .disabled(selectedId == nil || entries.count <= 1)
+
+            Spacer()
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 2)
+    }
+
     private func parseValue() {
         let parsed = Self.parseHosts(value, defaultPort: defaultPort)
         if !entriesMatch(parsed) {
             entries = parsed
+            if selectedId == nil, let first = parsed.first {
+                selectedId = first.id
+            }
         }
     }
 
@@ -87,15 +144,16 @@ struct HostListFieldRow: View {
     }
 
     private func addEntry() {
-        entries.append(HostEntry(value: ""))
+        let newEntry = HostEntry(value: "")
+        entries.append(newEntry)
+        selectedId = newEntry.id
         syncValue()
     }
 
-    private func removeEntry(_ entry: HostEntry) {
-        entries.removeAll { $0.id == entry.id }
-        if entries.isEmpty {
-            entries.append(HostEntry(value: ""))
-        }
+    private func removeSelected() {
+        guard let id = selectedId, entries.count > 1 else { return }
+        entries.removeAll { $0.id == id }
+        selectedId = entries.last?.id
         syncValue()
     }
 
