@@ -16,13 +16,14 @@ struct FeedbackDiagnostics {
     var formattedSummary: String {
         var lines = [
             "TablePro \(appVersion)",
-            "\(osVersion) - \(architecture)"
+            "\(osVersion) · \(architecture)"
         ]
         if let db = activeDatabaseType {
             lines.append("Database: \(db)")
         }
         if !installedPlugins.isEmpty {
-            lines.append("Plugins: \(installedPlugins.joined(separator: ", "))")
+            let count = installedPlugins.count
+            lines.append("\(count) plugin\(count == 1 ? "" : "s") installed")
         }
         return lines.joined(separator: "\n")
     }

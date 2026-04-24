@@ -11,6 +11,7 @@ struct FeedbackView: View {
 
     @FocusState private var focusedField: FocusField?
     @State private var isDropTargeted = false
+    @State private var showDiagnosticsDetail = false
 
     enum FocusField {
         case title, description, steps, expected
@@ -42,31 +43,69 @@ struct FeedbackView: View {
             .padding(.top, 12)
             .padding(.bottom, 4)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    textField("Title", text: $viewModel.title, prompt: "Brief summary of the issue")
-                        .focused($focusedField, equals: .title)
+            Form {
+                Section {
+                    TextField(
+                        "Title",
+                        text: $viewModel.title,
+                        prompt: Text(String(localized: "Brief summary of the issue"))
+                    )
+                    .focused($focusedField, equals: .title)
+                }
 
-                    textArea("Description", text: $viewModel.description, minHeight: 72)
+                Section {
+                    TextEditor(text: $viewModel.description)
+                        .font(.body)
+                        .frame(minHeight: 72)
                         .focused($focusedField, equals: .description)
+                } header: {
+                    Text("Description")
+                }
 
-                    if viewModel.feedbackType == .bugReport {
-                        textArea("Steps to Reproduce", text: $viewModel.stepsToReproduce, minHeight: 48)
+                if viewModel.feedbackType == .bugReport {
+                    Section {
+                        TextEditor(text: $viewModel.stepsToReproduce)
+                            .font(.body)
+                            .frame(minHeight: 48)
                             .focused($focusedField, equals: .steps)
-
-                        textArea("Expected Behavior", text: $viewModel.expectedBehavior, minHeight: 48)
-                            .focused($focusedField, equals: .expected)
+                    } header: {
+                        Text("Steps to Reproduce")
                     }
 
-                    attachmentsSection
-
-                    diagnosticsSection
+                    Section {
+                        TextEditor(text: $viewModel.expectedBehavior)
+                            .font(.body)
+                            .frame(minHeight: 48)
+                            .focused($focusedField, equals: .expected)
+                    } header: {
+                        Text("Expected Behavior")
+                    }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-            }
 
-            Divider()
+                Section("Attachments") {
+                    attachmentsContent
+                }
+
+                Section {
+                    Toggle("Include diagnostics", isOn: $viewModel.includeDiagnostics)
+
+                    if viewModel.includeDiagnostics {
+                        DisclosureGroup(
+                            viewModel.diagnostics.formattedSummary,
+                            isExpanded: $showDiagnosticsDetail
+                        ) {
+                            Text(viewModel.diagnostics.installedPlugins.joined(separator: "\n"))
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .formStyle(.grouped)
 
             footerView
         }
@@ -77,47 +116,10 @@ struct FeedbackView: View {
         }
     }
 
-    // MARK: - Reusable Fields
-
-    private func textField(_ label: String, text: Binding<String>, prompt: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            TextField("", text: text, prompt: Text(prompt))
-                .textFieldStyle(.roundedBorder)
-        }
-    }
-
-    private func textArea(_ label: String, text: Binding<String>, minHeight: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            TextEditor(text: text)
-                .font(.body)
-                .frame(minHeight: minHeight)
-                .scrollContentBackground(.hidden)
-                .padding(6)
-                .background(Color(nsColor: .controlBackgroundColor))
-                .clipShape(RoundedRectangle(cornerRadius: 5))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
-                )
-        }
-    }
-
     // MARK: - Attachments
 
-    private var attachmentsSection: some View {
+    private var attachmentsContent: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Attachments")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
             if !viewModel.attachments.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
@@ -126,6 +128,7 @@ struct FeedbackView: View {
                         }
                     }
                 }
+                .frame(height: 60)
             }
 
             HStack(spacing: 6) {
@@ -133,7 +136,6 @@ struct FeedbackView: View {
                     viewModel.pasteFromClipboard()
                 } label: {
                     Label("Paste", systemImage: "doc.on.clipboard")
-                        .font(.callout)
                 }
                 .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
@@ -142,7 +144,6 @@ struct FeedbackView: View {
                     viewModel.captureWindow()
                 } label: {
                     Label("Capture Window", systemImage: "camera.viewfinder")
-                        .font(.callout)
                 }
                 .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
@@ -151,7 +152,6 @@ struct FeedbackView: View {
                     Task { await viewModel.browseFiles() }
                 } label: {
                     Label("Browse...", systemImage: "folder")
-                        .font(.callout)
                 }
                 .controlSize(.small)
                 .disabled(!viewModel.canAddAttachment)
@@ -221,24 +221,6 @@ struct FeedbackView: View {
             }
         }
         return handled
-    }
-
-    // MARK: - Diagnostics
-
-    private var diagnosticsSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: $viewModel.includeDiagnostics) {
-                Text("Include diagnostics")
-                    .font(.callout)
-            }
-
-            if viewModel.includeDiagnostics {
-                Text(viewModel.diagnostics.formattedSummary)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-            }
-        }
     }
 
     // MARK: - Footer
