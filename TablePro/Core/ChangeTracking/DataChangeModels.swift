@@ -68,23 +68,6 @@ struct RowChangeKey: Hashable {
     let type: ChangeType
 }
 
-/// Represents an action that can be undone
-enum UndoAction {
-    case cellEdit(
-            rowIndex: Int,
-            columnIndex: Int,
-            columnName: String,
-            previousValue: String?,
-            newValue: String?
-         )
-    case rowInsertion(rowIndex: Int)
-    case rowDeletion(rowIndex: Int, originalRow: [String?])
-    /// Batch deletion of multiple rows (for undo as a single action)
-    case batchRowDeletion(rows: [(rowIndex: Int, originalRow: [String?])])
-    /// Batch insertion undo - when user deletes multiple inserted rows at once
-    case batchRowInsertion(rowIndices: [Int], rowValues: [[String?]])
-}
-
 // MARK: - Array Extension
 
 extension Array {

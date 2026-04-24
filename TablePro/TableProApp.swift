@@ -5,7 +5,6 @@
 //  Created by Ngo Quoc Dat on 16/12/25.
 //
 
-import CodeEditTextView
 import Observation
 import os
 import Sparkle
@@ -390,32 +389,15 @@ struct AppMenuCommands: Commands {
             .disabled(!(actions?.isConnected ?? false))
         }
 
-        // Edit menu - Undo/Redo (smart handling for both text editor and data grid)
+        // Edit menu - Undo/Redo (routes through responder chain for both editor and data grid)
         CommandGroup(replacing: .undoRedo) {
-            Button("Undo") {
-                // Check if first responder is a text view (SQL editor)
-                if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
-                    // Send undo: (with colon) through responder chain —
-                    // CodeEditTextView.TextView responds to undo: via @objc func undo(_:)
-                    NSApp.sendAction(#selector(TableProResponderActions.undo(_:)), to: nil, from: nil)
-                } else {
-                    // Data grid undo
-                    actions?.undoChange()
-                }
+            Button(actions?.undoActionName ?? String(localized: "Undo")) {
+                NSApp.sendAction(Selector("undo:"), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .undo))
 
-            Button("Redo") {
-                // Check if first responder is a text view (SQL editor)
-                if let firstResponder = NSApp.keyWindow?.firstResponder,
-                   firstResponder is NSTextView || firstResponder is TextView {
-                    // Send redo: (with colon) through responder chain
-                    NSApp.sendAction(#selector(TableProResponderActions.redo(_:)), to: nil, from: nil)
-                } else {
-                    // Data grid redo
-                    actions?.redoChange()
-                }
+            Button(actions?.redoActionName ?? String(localized: "Redo")) {
+                NSApp.sendAction(Selector("redo:"), to: nil, from: nil)
             }
             .optionalKeyboardShortcut(shortcut(for: .redo))
         }

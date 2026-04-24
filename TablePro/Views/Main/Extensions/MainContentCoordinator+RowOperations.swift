@@ -21,7 +21,7 @@ extension MainContentCoordinator {
         guard let result = rowOperationsManager.addNewRow(
             columns: tab.resultColumns,
             columnDefaults: tab.columnDefaults,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            rowBuffer: tabManager.tabs[tabIndex].rowBuffer
         ) else { return }
 
         selectedRowIndices = [result.rowIndex]
@@ -39,7 +39,7 @@ extension MainContentCoordinator {
 
         let nextRow = rowOperationsManager.deleteSelectedRows(
             selectedIndices: indices,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            rowBuffer: tabManager.tabs[tabIndex].rowBuffer
         )
 
         if nextRow >= 0 && nextRow < tabManager.tabs[tabIndex].resultRows.count {
@@ -64,7 +64,7 @@ extension MainContentCoordinator {
         guard let result = rowOperationsManager.duplicateRow(
             sourceRowIndex: index,
             columns: tab.resultColumns,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            rowBuffer: tabManager.tabs[tabIndex].rowBuffer
         ) else { return }
 
         selectedRowIndices = [result.rowIndex]
@@ -79,37 +79,9 @@ extension MainContentCoordinator {
 
         selectedRowIndices = rowOperationsManager.undoInsertRow(
             at: rowIndex,
-            resultRows: &tabManager.tabs[tabIndex].resultRows,
+            rowBuffer: tabManager.tabs[tabIndex].rowBuffer,
             selectedIndices: selectedRowIndices
         )
-        tabManager.tabs[tabIndex].resultVersion += 1
-    }
-
-    func undoLastChange(selectedRowIndices: inout Set<Int>) {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        if let adjustedSelection = rowOperationsManager.undoLastChange(
-            resultRows: &tabManager.tabs[tabIndex].resultRows
-        ) {
-            selectedRowIndices = adjustedSelection
-        }
-
-        tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
-    }
-
-    func redoLastChange() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tab = tabManager.tabs[tabIndex]
-        _ = rowOperationsManager.redoLastChange(
-            resultRows: &tabManager.tabs[tabIndex].resultRows,
-            columns: tab.resultColumns
-        )
-
-        tabManager.tabs[tabIndex].hasUserInteraction = true
         tabManager.tabs[tabIndex].resultVersion += 1
     }
 
@@ -157,33 +129,24 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites,
               let index = tabManager.selectedTabIndex else { return }
 
-        var tab = tabManager.tabs[index]
+        let tab = tabManager.tabs[index]
 
-        // Only paste in table tabs (not query tabs)
         guard tab.tabType == .table else { return }
 
         let pastedRows = rowOperationsManager.pasteRowsFromClipboard(
             columns: tab.resultColumns,
             primaryKeyColumns: changeManager.primaryKeyColumns,
-            resultRows: &tab.resultRows
+            rowBuffer: tabManager.tabs[index].rowBuffer
         )
 
-        tabManager.tabs[index].resultRows = tab.resultRows
         tabManager.tabs[index].resultVersion += 1
 
-        // Select pasted rows and scroll to first one
         if !pastedRows.isEmpty {
             let newIndices = Set(pastedRows.map { $0.rowIndex })
             selectedRowIndices = newIndices
 
             tabManager.tabs[index].selectedRowIndices = newIndices
             tabManager.tabs[index].hasUserInteraction = true
-
-            // Scroll to first pasted row
-            if pastedRows.first?.rowIndex != nil {
-                // Trigger scroll via notification if needed
-                // For now, selection change will handle visibility
-            }
         }
     }
 

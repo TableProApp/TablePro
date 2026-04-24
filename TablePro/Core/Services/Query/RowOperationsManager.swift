@@ -2,8 +2,8 @@
 //  RowOperationsManager.swift
 //  TablePro
 //
-//  Service responsible for row operations: add, delete, duplicate, undo/redo.
-//  Extracted from MainContentView for better separation of concerns.
+//  Service responsible for row operations: add, delete, duplicate.
+//  Undo/redo is handled entirely by DataChangeManager's UndoManager closures.
 //
 
 import AppKit
@@ -30,16 +30,10 @@ final class RowOperationsManager {
 
     // MARK: - Add Row
 
-    /// Add a new row to a table tab
-    /// - Parameters:
-    ///   - columns: Column names
-    ///   - columnDefaults: Column default values
-    ///   - resultRows: Current rows (will be mutated)
-    /// - Returns: Tuple of (newRowIndex, newRowValues) or nil if failed
     func addNewRow(
         columns: [String],
         columnDefaults: [String: String?],
-        resultRows: inout [[String?]]
+        rowBuffer: RowBuffer
     ) -> (rowIndex: Int, values: [String?])? {
         var newRowValues: [String?] = []
         for column in columns {
@@ -50,30 +44,24 @@ final class RowOperationsManager {
             }
         }
 
-        let newRowIndex = resultRows.count
-        resultRows.append(newRowValues)
+        let newRowIndex = rowBuffer.rows.count
+        rowBuffer.rows.append(newRowValues)
 
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newRowValues)
+        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newRowValues, rowBuffer: rowBuffer)
 
         return (newRowIndex, newRowValues)
     }
 
     // MARK: - Duplicate Row
 
-    /// Duplicate a row with new primary key
-    /// - Parameters:
-    ///   - sourceRowIndex: Index of row to duplicate
-    ///   - columns: Column names
-    ///   - resultRows: Current rows (will be mutated)
-    /// - Returns: Tuple of (newRowIndex, newRowValues) or nil if failed
     func duplicateRow(
         sourceRowIndex: Int,
         columns: [String],
-        resultRows: inout [[String?]]
+        rowBuffer: RowBuffer
     ) -> (rowIndex: Int, values: [String?])? {
-        guard sourceRowIndex < resultRows.count else { return nil }
+        guard sourceRowIndex < rowBuffer.rows.count else { return nil }
 
-        var newValues = resultRows[sourceRowIndex]
+        var newValues = rowBuffer.rows[sourceRowIndex]
 
         for pkColumn in changeManager.primaryKeyColumns {
             if let pkIndex = columns.firstIndex(of: pkColumn) {
@@ -81,24 +69,19 @@ final class RowOperationsManager {
             }
         }
 
-        let newRowIndex = resultRows.count
-        resultRows.append(newValues)
+        let newRowIndex = rowBuffer.rows.count
+        rowBuffer.rows.append(newValues)
 
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newValues)
+        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newValues, rowBuffer: rowBuffer)
 
         return (newRowIndex, newValues)
     }
 
     // MARK: - Delete Rows
 
-    /// Delete selected rows
-    /// - Parameters:
-    ///   - selectedIndices: Indices of rows to delete
-    ///   - resultRows: Current rows (will be mutated)
-    /// - Returns: Next row index to select after deletion, or -1 if no rows left
     func deleteSelectedRows(
         selectedIndices: Set<Int>,
-        resultRows: inout [[String?]]
+        rowBuffer: RowBuffer
     ) -> Int {
         guard !selectedIndices.isEmpty else { return -1 }
 
@@ -112,33 +95,28 @@ final class RowOperationsManager {
             if changeManager.isRowInserted(rowIndex) {
                 insertedRowsToDelete.append(rowIndex)
             } else if !changeManager.isRowDeleted(rowIndex) {
-                if rowIndex < resultRows.count {
-                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: resultRows[rowIndex]))
+                if rowIndex < rowBuffer.rows.count {
+                    existingRowsToDelete.append((rowIndex: rowIndex, originalRow: rowBuffer.rows[rowIndex]))
                 }
             }
         }
 
-        // Process inserted rows deletion
         if !insertedRowsToDelete.isEmpty {
             let sortedInsertedRows = insertedRowsToDelete.sorted(by: >)
 
-            // Remove from resultRows first (descending order)
             for rowIndex in sortedInsertedRows {
-                guard rowIndex < resultRows.count else { continue }
-                resultRows.remove(at: rowIndex)
+                guard rowIndex < rowBuffer.rows.count else { continue }
+                rowBuffer.rows.remove(at: rowIndex)
             }
 
-            // Update changeManager for ALL deleted inserted rows at once
-            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
+            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows, rowBuffer: rowBuffer)
         }
 
-        // Record batch deletion for existing rows (single undo action for all rows)
         if !existingRowsToDelete.isEmpty {
             changeManager.recordBatchRowDeletion(rows: existingRowsToDelete)
         }
 
-        // Calculate next row selection, accounting for deleted inserted rows
-        let totalRows = resultRows.count
+        let totalRows = rowBuffer.rows.count
         let rowsDeleted = insertedRowsToDelete.count
         let adjustedMaxRow = maxSelectedRow - rowsDeleted
         let adjustedMinRow = minSelectedRow - insertedRowsToDelete.count(where: { $0 < minSelectedRow })
@@ -154,93 +132,21 @@ final class RowOperationsManager {
         }
     }
 
-    // MARK: - Undo/Redo
-
-    /// Undo the last change
-    /// - Parameter resultRows: Current rows (will be mutated)
-    /// - Returns: Updated selection indices
-    func undoLastChange(resultRows: inout [[String?]]) -> Set<Int>? {
-        guard let result = changeManager.undoLastChange() else { return nil }
-        return applyUndoResult(result, resultRows: &resultRows)
-    }
-
-    /// Redo the last undone change
-    /// - Parameters:
-    ///   - resultRows: Current rows (will be mutated)
-    ///   - columns: Column names for new row creation
-    /// - Returns: Updated selection indices
-    func redoLastChange(resultRows: inout [[String?]], columns: [String]) -> Set<Int>? {
-        guard let result = changeManager.redoLastChange() else { return nil }
-        return applyUndoResult(result, resultRows: &resultRows)
-    }
-
-    private func applyUndoResult(_ result: UndoResult, resultRows: inout [[String?]]) -> Set<Int>? {
-        switch result.action {
-        case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _):
-            if rowIndex < resultRows.count {
-                resultRows[rowIndex][columnIndex] = previousValue
-            }
-
-        case .rowInsertion(let rowIndex):
-            if result.needsRowRemoval {
-                if rowIndex < resultRows.count {
-                    resultRows.remove(at: rowIndex)
-                    return Set<Int>()
-                }
-            } else if result.needsRowRestore {
-                let values = result.restoreRow ?? [String?](repeating: nil, count: resultRows.first?.count ?? 0)
-                if rowIndex <= resultRows.count {
-                    resultRows.insert(values, at: rowIndex)
-                }
-            }
-
-        case .rowDeletion:
-            break
-
-        case .batchRowDeletion:
-            break
-
-        case .batchRowInsertion(let rowIndices, let rowValues):
-            if result.needsRowRemoval {
-                for rowIndex in rowIndices.sorted(by: >) {
-                    guard rowIndex < resultRows.count else { continue }
-                    resultRows.remove(at: rowIndex)
-                }
-            } else if result.needsRowRestore {
-                for (index, rowIndex) in rowIndices.enumerated().reversed() {
-                    guard index < rowValues.count else { continue }
-                    guard rowIndex <= resultRows.count else { continue }
-                    resultRows.insert(rowValues[index], at: rowIndex)
-                }
-            }
-        }
-
-        return nil
-    }
-
     // MARK: - Undo Insert Row
 
-    /// Remove a row that was inserted (called by undo context menu)
-    /// - Parameters:
-    ///   - rowIndex: Index of the inserted row
-    ///   - resultRows: Current rows (will be mutated)
-    ///   - selectedIndices: Current selection (will be adjusted)
-    /// - Returns: Adjusted selection indices
     func undoInsertRow(
         at rowIndex: Int,
-        resultRows: inout [[String?]],
+        rowBuffer: RowBuffer,
         selectedIndices: Set<Int>
     ) -> Set<Int> {
-        guard rowIndex >= 0 && rowIndex < resultRows.count else { return selectedIndices }
+        guard rowIndex >= 0 && rowIndex < rowBuffer.rows.count else { return selectedIndices }
 
-        // Remove the row from resultRows
-        resultRows.remove(at: rowIndex)
+        rowBuffer.rows.remove(at: rowIndex)
 
-        // Adjust selection indices
         var adjustedSelection = Set<Int>()
         for idx in selectedIndices {
             if idx == rowIndex {
-                continue  // Skip the removed row
+                continue
             } else if idx > rowIndex {
                 adjustedSelection.insert(idx - 1)
             } else {
@@ -253,12 +159,6 @@ final class RowOperationsManager {
 
     // MARK: - Copy Rows
 
-    /// Copy selected rows to clipboard as tab-separated values
-    /// - Parameters:
-    ///   - selectedIndices: Indices of rows to copy
-    ///   - resultRows: Current rows
-    ///   - columns: Column names (used when includeHeaders is true)
-    ///   - includeHeaders: Whether to prepend column headers as the first TSV line
     func copySelectedRowsToClipboard(
         selectedIndices: Set<Int>,
         resultRows: [[String?]],
@@ -309,44 +209,32 @@ final class RowOperationsManager {
 
     // MARK: - Paste Rows
 
-    /// Paste rows from clipboard (TSV format) and insert into table
-    /// - Parameters:
-    ///   - columns: Column names for the table
-    ///   - primaryKeyColumns: Primary key column names (will be set to __DEFAULT__)
-    ///   - resultRows: Current rows (will be mutated)
-    ///   - clipboard: Clipboard provider (injectable for testing)
-    ///   - parser: Row data parser (injectable for testing)
-    /// - Returns: Array of (rowIndex, values) for pasted rows, or empty array on failure
     @MainActor
     func pasteRowsFromClipboard(
         columns: [String],
         primaryKeyColumns: [String],
-        resultRows: inout [[String?]],
+        rowBuffer: RowBuffer,
         clipboard: ClipboardProvider? = nil,
         parser: RowDataParser? = nil
     ) -> [(rowIndex: Int, values: [String?])] {
-        // Read from clipboard
         let clipboardProvider = clipboard ?? ClipboardService.shared
         guard let clipboardText = clipboardProvider.readText() else {
             return []
         }
 
-        // Create schema
         let schema = TableSchema(
             columns: columns,
             primaryKeyColumns: primaryKeyColumns
         )
 
-        // Parse clipboard text (auto-detect CSV vs TSV)
         let rowParser = parser ?? Self.detectParser(for: clipboardText)
         let parseResult = rowParser.parse(clipboardText, schema: schema)
 
         switch parseResult {
         case .success(let parsedRows):
-            return insertParsedRows(parsedRows, into: &resultRows)
+            return insertParsedRows(parsedRows, into: rowBuffer)
 
         case .failure(let error):
-            // Log error (in production, this could show a user-facing alert)
             Self.logger.warning("Paste failed: \(error.localizedDescription)")
             return []
         }
@@ -354,10 +242,7 @@ final class RowOperationsManager {
 
     // MARK: - Parser Detection
 
-    /// Auto-detect whether clipboard text is CSV or TSV
-    /// Heuristic: if tabs appear in most lines, use TSV; otherwise CSV
     static func detectParser(for text: String) -> RowDataParser {
-        // Single-pass scan: count non-empty lines containing tabs vs commas
         var tabLines = 0
         var commaLines = 0
         var nonEmptyLines = 0
@@ -381,7 +266,6 @@ final class RowOperationsManager {
                 if char == "," { lineHasComma = true }
             }
         }
-        // Handle last line (no trailing newline)
         if !lineIsEmpty {
             nonEmptyLines += 1
             if lineHasTab { tabLines += 1 }
@@ -390,13 +274,9 @@ final class RowOperationsManager {
 
         guard nonEmptyLines > 0 else { return TSVRowParser() }
 
-        let tabCount = tabLines
-        let commaCount = commaLines
-
-        // If majority of lines have tabs, use TSV; otherwise CSV
-        if tabCount > commaCount {
+        if tabLines > commaLines {
             return TSVRowParser()
-        } else if commaCount > 0 {
+        } else if commaLines > 0 {
             return CSVRowParser()
         }
         return TSVRowParser()
@@ -404,24 +284,19 @@ final class RowOperationsManager {
 
     // MARK: - Private Helpers
 
-    /// Insert parsed rows into the table
-    /// - Parameters:
-    ///   - parsedRows: Array of parsed rows from clipboard
-    ///   - resultRows: Current rows (will be mutated)
-    /// - Returns: Array of (rowIndex, values) for inserted rows
     private func insertParsedRows(
         _ parsedRows: [ParsedRow],
-        into resultRows: inout [[String?]]
+        into rowBuffer: RowBuffer
     ) -> [(rowIndex: Int, values: [String?])] {
         var pastedRowInfo: [(Int, [String?])] = []
 
         for parsedRow in parsedRows {
             let rowValues = parsedRow.values
 
-            resultRows.append(rowValues)
-            let newRowIndex = resultRows.count - 1
+            rowBuffer.rows.append(rowValues)
+            let newRowIndex = rowBuffer.rows.count - 1
 
-            changeManager.recordRowInsertion(rowIndex: newRowIndex, values: rowValues)
+            changeManager.recordRowInsertion(rowIndex: newRowIndex, values: rowValues, rowBuffer: rowBuffer)
 
             pastedRowInfo.append((newRowIndex, rowValues))
         }

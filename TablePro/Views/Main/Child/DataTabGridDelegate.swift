@@ -70,17 +70,6 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         NotificationCenter.default.post(name: .pasteRows, object: nil)
     }
 
-    func dataGridUndo() {
-        guard let selectedRowIndices else { return }
-        var indices = selectedRowIndices.wrappedValue
-        coordinator?.undoLastChange(selectedRowIndices: &indices)
-        selectedRowIndices.wrappedValue = indices
-    }
-
-    func dataGridRedo() {
-        coordinator?.redoLastChange()
-    }
-
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo)
     }

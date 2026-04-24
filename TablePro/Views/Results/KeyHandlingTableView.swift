@@ -23,6 +23,10 @@ final class KeyHandlingTableView: NSTableView {
         true
     }
 
+    override var undoManager: UndoManager? {
+        coordinator?.tabUndoManager
+    }
+
     /// Currently focused row index (-1 = no focus)
     var focusedRow: Int = -1 {
         didSet {
@@ -138,16 +142,12 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    /// Undo last change
     @objc func undo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridUndo()
+        undoManager?.undo()
     }
 
-    /// Redo last undone change
     @objc func redo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridRedo()
+        undoManager?.redo()
     }
 
     /// Validate menu items and shortcuts
@@ -160,9 +160,9 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
         case #selector(undo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canUndo() ?? false)
+            return coordinator?.isEditable == true && (undoManager?.canUndo ?? false)
         case #selector(redo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canRedo() ?? false)
+            return coordinator?.isEditable == true && (undoManager?.canRedo ?? false)
         case #selector(insertNewline(_:)):
             return selectedRow >= 0 && focusedColumn >= 1 && coordinator?.isEditable == true
         case #selector(cancelOperation(_:)):

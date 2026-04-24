@@ -65,8 +65,8 @@ struct DataChangeManagerTests {
 
         #expect(!manager.hasChanges)
         #expect(manager.changes.isEmpty)
-        #expect(!manager.canUndo)
-        #expect(!manager.canRedo)
+        #expect(!manager.undoManager.canUndo)
+        #expect(!manager.undoManager.canRedo)
     }
 
     // MARK: - Cell Change Recording Tests
@@ -408,8 +408,8 @@ struct DataChangeManagerTests {
         manager.clearChanges()
 
         #expect(manager.changes.isEmpty)
-        #expect(!manager.canUndo)
-        #expect(!manager.canRedo)
+        #expect(!manager.undoManager.canUndo)
+        #expect(!manager.undoManager.canRedo)
     }
 
     @Test("clearChanges makes hasChanges false")
@@ -454,7 +454,7 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        #expect(manager.canUndo)
+        #expect(manager.undoManager.canUndo)
     }
 
     @Test("After undo, the change is reversed")
@@ -475,7 +475,7 @@ struct DataChangeManagerTests {
         )
         #expect(manager.changes.count == 1)
 
-        _ = manager.undoLastChange()
+        _ = manager.undo()
 
         #expect(manager.changes.isEmpty)
         #expect(!manager.hasChanges)
@@ -498,9 +498,9 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        _ = manager.undoLastChange()
+        _ = manager.undo()
 
-        #expect(manager.canRedo)
+        #expect(manager.undoManager.canRedo)
     }
 
     @Test("New change clears redo stack")
@@ -520,8 +520,8 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        _ = manager.undoLastChange()
-        #expect(manager.canRedo)
+        _ = manager.undo()
+        #expect(manager.undoManager.canRedo)
 
         manager.recordCellChange(
             rowIndex: 1,
@@ -531,15 +531,15 @@ struct DataChangeManagerTests {
             newValue: "Dave"
         )
 
-        #expect(!manager.canRedo)
+        #expect(!manager.undoManager.canRedo)
     }
 
     @Test("Initial state has canUndo false and canRedo false")
     func initialUndoRedoState() async {
         let manager = DataChangeManager()
 
-        #expect(!manager.canUndo)
-        #expect(!manager.canRedo)
+        #expect(!manager.undoManager.canUndo)
+        #expect(!manager.undoManager.canRedo)
     }
 
     // MARK: - Reload Version Tests

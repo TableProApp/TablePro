@@ -13,8 +13,8 @@ import Observation
 @Observable
 @MainActor
 final class AnyChangeManager {
-    @ObservationIgnored private var dataManager: DataChangeManager?
-    @ObservationIgnored private var structureManager: StructureChangeManager?
+    @ObservationIgnored private(set) var dataManager: DataChangeManager?
+    @ObservationIgnored private(set) var structureManager: StructureChangeManager?
 
     var hasChanges: Bool {
         dataManager?.hasChanges ?? structureManager?.hasChanges ?? false
@@ -44,7 +44,7 @@ final class AnyChangeManager {
             dataManager.changes
         }
         self._canRedo = {
-            dataManager.canRedo
+            dataManager.undoManager.canRedo
         }
         self._recordCellChange = { rowIndex, columnIndex, columnName, oldValue, newValue, originalRow in
             dataManager.recordCellChange(
@@ -75,7 +75,7 @@ final class AnyChangeManager {
             Array(structureManager.pendingChanges.values)
         }
         self._canRedo = {
-            structureManager.canRedo
+            structureManager.undoManager.canRedo
         }
         self._recordCellChange = nil // Structure uses custom editing logic
         self._undoRowDeletion = nil
@@ -86,6 +86,12 @@ final class AnyChangeManager {
     }
 
     // MARK: - Public API
+
+    var undoManager: UndoManager? {
+        if let dataManager { return dataManager.undoManager }
+        if let structureManager { return structureManager.undoManager }
+        return nil
+    }
 
     var canRedo: Bool {
         _canRedo()

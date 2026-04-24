@@ -31,14 +31,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
 
-    /// Check if undo is available
-    func canUndo() -> Bool {
-        changeManager.hasChanges
-    }
-
-    /// Check if redo is available
-    func canRedo() -> Bool {
-        changeManager.canRedo
+    var tabUndoManager: UndoManager? {
+        changeManager.undoManager
     }
 
     /// Capture current column widths and order from the live NSTableView

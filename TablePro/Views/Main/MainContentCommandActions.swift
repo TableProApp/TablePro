@@ -730,22 +730,20 @@ final class MainContentCommandActions {
 
     // MARK: - Undo/Redo (Group A — Called Directly)
 
-    func undoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
-            coordinator?.structureActions?.undo?()
-        } else {
-            var indices = selectedRowIndices.wrappedValue
-            coordinator?.undoLastChange(selectedRowIndices: &indices)
-            selectedRowIndices.wrappedValue = indices
+    var undoActionName: String {
+        let um = coordinator?.changeManager.undoManager
+        if let name = um?.undoActionName, !name.isEmpty {
+            return String(format: String(localized: "Undo %@"), name)
         }
+        return String(localized: "Undo")
     }
 
-    func redoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
-            coordinator?.structureActions?.redo?()
-        } else {
-            coordinator?.redoLastChange()
+    var redoActionName: String {
+        let um = coordinator?.changeManager.undoManager
+        if let name = um?.redoActionName, !name.isEmpty {
+            return String(format: String(localized: "Redo %@"), name)
         }
+        return String(localized: "Redo")
     }
 
     // MARK: - Group B Broadcast Subscribers

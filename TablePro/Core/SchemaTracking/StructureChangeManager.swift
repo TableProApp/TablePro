@@ -38,7 +38,7 @@ final class StructureChangeManager {
 
     // MARK: - Undo/Redo Support
 
-    private let undoManager: UndoManager = {
+    let undoManager: UndoManager = {
         let manager = UndoManager()
         manager.levelsOfUndo = 100
         return manager

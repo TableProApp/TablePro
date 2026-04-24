@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the separate Copilot settings tab and the per-feature routing UI
 - Existing AI providers are preserved on upgrade; the first one is auto-set as active
 - Filter value field uses a native SwiftUI suggestion dropdown instead of the AppKit autocomplete popup
+- Undo/Redo routes through macOS responder chain, eliminating manual first-responder dispatch
+- Native macOS UI patterns: Picker(.menu) for cell editors, native alerts, native List selection, .navigationTitle for sheets, NSSearchField for welcome search, borderless toolbar buttons, chevron indicator on SET picker
+- Quit dialog defaults to Cancel on Return key
+- Connection form delete button moved to far left
+- SSH/SSL browse panels show descriptive message text
 
 ### Added
 
