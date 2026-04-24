@@ -34,7 +34,9 @@ struct TerminalTabContentView: View {
         .task {
             await connectWhenReady()
             await withTaskCancellationHandler {
-                try? await Task.sleep(for: .seconds(86_400))
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(86_400))
+                }
             } onCancel: { [sessionState] in
                 Task { @MainActor in
                     sessionState?.disconnect()
