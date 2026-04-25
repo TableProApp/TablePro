@@ -393,6 +393,12 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
     }
 
+    // MARK: - Find Panel
+
+    func showFindPanel() {
+        controller?.showFindPanel()
+    }
+
     // MARK: - CodeEditSourceEditor Workarounds
 
     /// Reorder FindViewController's subviews so the find panel is on top for hit testing.

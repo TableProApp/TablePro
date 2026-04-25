@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Edit > Find menu item (Cmd+F) for the SQL editor find panel
+
 ### Fixed
 
 - Export "Don't show again" preference lost when clicking "Open containing folder"

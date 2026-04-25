@@ -88,6 +88,13 @@ internal final class EditorEventRouter {
         editors[key]?.windowObserver = observer
     }
 
+    // MARK: - Public API
+
+    internal func showFindPanelForKeyWindow() {
+        guard let (coordinator, _) = editor(for: NSApp.keyWindow) else { return }
+        coordinator.showFindPanel()
+    }
+
     // MARK: - Lookup
 
     private func editor(for window: NSWindow?) -> (SQLEditorCoordinator, TextView)? {

@@ -29,3 +29,10 @@ extension TextViewController: FindPanelTarget {
         textView?.emphasisManager
     }
 }
+
+public extension TextViewController {
+    func showFindPanel() {
+        _ = textView.resignFirstResponder()
+        findViewController?.showFindPanel()
+    }
+}

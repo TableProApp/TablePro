@@ -423,8 +423,15 @@ struct AppMenuCommands: Commands {
         // Edit menu - pasteboard commands with FocusedValue support
         PasteboardCommands(settingsManager: settingsManager)
 
-        // Edit menu - row operations (after pasteboard)
+        // Edit menu - Find + row operations (after pasteboard)
         CommandGroup(after: .pasteboard) {
+            Divider()
+
+            Button(String(localized: "Find...")) {
+                EditorEventRouter.shared.showFindPanelForKeyWindow()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
             Divider()
 
             Button("Add Row") {
