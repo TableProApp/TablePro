@@ -34,7 +34,7 @@ struct WelcomeWindowView: View {
         }
         .background(.background)
         .ignoresSafeArea()
-        .frame(width: 700, height: 450)
+        .frame(minWidth: 600, idealWidth: 700, minHeight: 400, idealHeight: 450)
         .onAppear {
             vm.setUp(openWindow: openWindow)
             focus = .search

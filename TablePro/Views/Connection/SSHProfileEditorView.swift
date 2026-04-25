@@ -93,7 +93,7 @@ struct SSHProfileEditorView: View {
             Divider()
             bottomBar
         }
-        .frame(minWidth: 480, minHeight: 500)
+        .frame(minWidth: 480, idealHeight: 500)
         .onAppear {
             loadExistingProfile()
         }

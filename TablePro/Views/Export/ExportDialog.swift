@@ -76,7 +76,7 @@ struct ExportDialog: View {
                 if !isQueryResultsMode {
                     // Left: Table tree view
                     tableSelectionView
-                        .frame(width: leftPanelWidth)
+                        .frame(minWidth: leftPanelWidth)
 
                     Divider()
                 }
@@ -107,6 +107,9 @@ struct ExportDialog: View {
         }
         .onChange(of: config.formatId) {
             resetOptionValues()
+            if isProGatedFormat(config.formatId) {
+                showActivationSheet = true
+            }
         }
         .onExitCommand {
             if !isExporting {
@@ -276,9 +279,7 @@ struct ExportDialog: View {
                                 }
                             }
                         }
-                        .pickerStyle(.segmented)
                         .labelsHidden()
-                        .frame(width: 180)
 
                         Spacer()
                     }
