@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 5A32BBFA2F9D5EAB00BAEB5F /* X509 */; };
+		5A32BC0B2F9D659100BAEB5F /* mcp-server in CopyFiles */ = {isa = PBXBuildFile; fileRef = 5A32BC002F9D5F1300BAEB5F /* mcp-server */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */; };
 		5A3A69BA2F976F38000AC5B2 /* GhosttyTheme in Frameworks */ = {isa = PBXBuildFile; productRef = 5A3A69B92F976F38000AC5B2 /* GhosttyTheme */; };
 		5A3BE6FC2F97DB0000611C1F /* TableProPluginKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 5A860000100000000 /* TableProPluginKit.framework */; };
@@ -202,6 +204,25 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		5A32BBFE2F9D5F1300BAEB5F /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		5A32BC0A2F9D657A00BAEB5F /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				5A32BC0B2F9D659100BAEB5F /* mcp-server in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5A86FF0000000000 /* Copy Plug-Ins */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -238,6 +259,7 @@
 
 /* Begin PBXFileReference section */
 		5A1091C72EF17EDC0055EA7C /* TablePro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TablePro.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A32BC002F9D5F1300BAEB5F /* mcp-server */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "mcp-server"; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LibSQLDriverPlugin.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A860000100000000 /* TableProPluginKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TableProPluginKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A861000100000000 /* OracleDriver.tableplugin */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OracleDriver.tableplugin; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -286,6 +308,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				MCPBridge/main.swift,
+				MCPBridge/MCPBridgeProxy.swift,
+			);
+			target = 5A32BBFF2F9D5F1300BAEB5F /* mcp-server */;
+		};
 		5A3BE6FD2F97DB0100611C1F /* Exceptions for "Plugins/LibSQLDriverPlugin" folder in "LibSQLDriverPlugin" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -423,6 +453,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				MCPBridge/main.swift,
+				MCPBridge/MCPBridgeProxy.swift,
 			);
 			target = 5A1091C62EF17EDC0055EA7C /* TablePro */;
 		};
@@ -433,8 +465,14 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				5AF312BE2F36FF7500E86682 /* Exceptions for "TablePro" folder in "TablePro" target */,
+				5A32BC082F9D5FC900BAEB5F /* Exceptions for "TablePro" folder in "mcp-server" target */,
 			);
 			path = TablePro;
+			sourceTree = "<group>";
+		};
+		5A32BC012F9D5F1300BAEB5F /* mcp-server */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "mcp-server";
 			sourceTree = "<group>";
 		};
 		5A3BE6FE2F97DB0100611C1F /* Plugins/LibSQLDriverPlugin */ = {
@@ -606,9 +644,17 @@
 				5ACE00012F4F000000000004 /* CodeEditSourceEditor in Frameworks */,
 				5A3A69B82F976F38000AC5B2 /* GhosttyTerminal in Frameworks */,
 				5ACE00012F4F000000000005 /* CodeEditLanguages in Frameworks */,
+				5A32BBFB2F9D5EAB00BAEB5F /* X509 in Frameworks */,
 				5ACE00012F4F000000000006 /* CodeEditTextView in Frameworks */,
 				5ACE00012F4F00000000000A /* Sparkle in Frameworks */,
 				5ACE00012F4F00000000000D /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A32BBFD2F9D5F1300BAEB5F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -833,6 +879,7 @@
 				5A86E000500000000 /* Plugins/MQLExportPlugin */,
 				5A86F000500000000 /* Plugins/SQLImportPlugin */,
 				5ABCC5A82F43856700EAF3FC /* TableProTests */,
+				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
 				5A1091C82EF17EDC0055EA7C /* Products */,
 				5A05FBC72F3EDF7500819CD7 /* Recovered References */,
 				5AEA8B482F6808E90040461A /* Frameworks */,
@@ -866,6 +913,7 @@
 				5ABQR00300000000000000A0 /* BigQueryDriverPlugin.tableplugin */,
 				5AE4F4742F6BC0640097AC5B /* CloudflareD1DriverPlugin.tableplugin */,
 				5A3BE6F82F97DA8100611C1F /* LibSQLDriverPlugin.tableplugin */,
+				5A32BC002F9D5F1300BAEB5F /* mcp-server */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -941,6 +989,7 @@
 				5A1091C52EF17EDC0055EA7C /* Resources */,
 				5A86FF0100000000 /* Embed Frameworks */,
 				5A86FF0000000000 /* Copy Plug-Ins */,
+				5A32BC0A2F9D657A00BAEB5F /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -976,10 +1025,33 @@
 				5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */,
 				5A3A69B92F976F38000AC5B2 /* GhosttyTheme */,
 				5ACE00012F4F000000000010 /* TableProAnalytics */,
+				5A32BBFA2F9D5EAB00BAEB5F /* X509 */,
 			);
 			productName = TablePro;
 			productReference = 5A1091C72EF17EDC0055EA7C /* TablePro.app */;
 			productType = "com.apple.product-type.application";
+		};
+		5A32BBFF2F9D5F1300BAEB5F /* mcp-server */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A32BC042F9D5F1300BAEB5F /* Build configuration list for PBXNativeTarget "mcp-server" */;
+			buildPhases = (
+				5A32BBFC2F9D5F1300BAEB5F /* Sources */,
+				5A32BBFD2F9D5F1300BAEB5F /* Frameworks */,
+				5A32BBFE2F9D5F1300BAEB5F /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A32BC012F9D5F1300BAEB5F /* mcp-server */,
+			);
+			name = "mcp-server";
+			packageProductDependencies = (
+			);
+			productName = "mcp-server";
+			productReference = 5A32BC002F9D5F1300BAEB5F /* mcp-server */;
+			productType = "com.apple.product-type.tool";
 		};
 		5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */ = {
 			isa = PBXNativeTarget;
@@ -1454,11 +1526,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
+				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					5A1091C62EF17EDC0055EA7C = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					5A32BBFF2F9D5F1300BAEB5F = {
+						CreatedOnToolsVersion = 26.5;
 					};
 					5A3BE6F72F97DA8100611C1F = {
 						CreatedOnToolsVersion = 26.5;
@@ -1542,6 +1617,7 @@
 				5ACE00012F4F00000000000E /* XCRemoteSwiftPackageReference "oracle-nio" */,
 				5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */,
 				5A0000012F4F000000000102 /* XCLocalSwiftPackageReference "Packages/TableProCore" */,
+				5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A1091C82EF17EDC0055EA7C /* Products */;
@@ -1572,6 +1648,7 @@
 				5ADDB00600000000000000B0 /* DynamoDBDriverPlugin */,
 				5ABQR00600000000000000B0 /* BigQueryDriverPlugin */,
 				5A3BE6F72F97DA8100611C1F /* LibSQLDriverPlugin */,
+				5A32BBFF2F9D5F1300BAEB5F /* mcp-server */,
 			);
 		};
 /* End PBXProject section */
@@ -1749,6 +1826,13 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		5A1091C32EF17EDC0055EA7C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A32BBFC2F9D5F1300BAEB5F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -2298,6 +2382,36 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.9;
 				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		5A32BC052F9D5F1300BAEB5F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5A32BC062F9D5F1300BAEB5F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = D7HJ5TFYCU;
+				ENABLE_HARDENED_RUNTIME = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -3571,6 +3685,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A32BC042F9D5F1300BAEB5F /* Build configuration list for PBXNativeTarget "mcp-server" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A32BC052F9D5F1300BAEB5F /* Debug */,
+				5A32BC062F9D5F1300BAEB5F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		5A3BE6FB2F97DA8100611C1F /* Build configuration list for PBXNativeTarget "LibSQLDriverPlugin" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -3796,6 +3919,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-certificates";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.19.0;
+			};
+		};
 		5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/Lakr233/libghostty-spm.git";
@@ -3831,6 +3962,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		5A32BBFA2F9D5EAB00BAEB5F /* X509 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A32BBF92F9D5EAB00BAEB5F /* XCRemoteSwiftPackageReference "swift-certificates" */;
+			productName = X509;
+		};
 		5A3A69B72F976F38000AC5B2 /* GhosttyTerminal */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 5A3A69B62F976F38000AC5B2 /* XCRemoteSwiftPackageReference "libghostty-spm" */;

@@ -3,12 +3,18 @@
 //  TablePro
 //
 
+import AppKit
 import SwiftUI
 
 struct MCPSection: View {
     @Binding var settings: MCPSettings
     @State private var manager = MCPServerManager.shared
     @State private var selectedTool: MCPClientTool = .claudeDesktop
+    @State private var tokenList: [MCPAuthToken] = []
+    @State private var showCreateSheet = false
+    @State private var showRevealSheet = false
+    @State private var revealedToken: MCPAuthToken?
+    @State private var revealedPlaintext: String = ""
 
     var body: some View {
         Section("MCP Server") {
@@ -23,6 +29,8 @@ struct MCPSection: View {
 
         if settings.enabled {
             configurationSection
+            authenticationSection
+            networkSection
             setupSection
             connectedClientsSection
 
@@ -67,6 +75,55 @@ struct MCPSection: View {
             }
 
             Toggle("Log MCP queries in history", isOn: $settings.logQueriesInHistory)
+        }
+    }
+
+    // MARK: - Authentication
+
+    private var authenticationSection: some View {
+        Section("Authentication") {
+            Toggle("Require authentication", isOn: $settings.requireAuthentication)
+
+            if settings.requireAuthentication {
+                MCPTokenListView(
+                    tokens: tokenList,
+                    onGenerate: { showCreateSheet = true },
+                    onRevoke: { id in Task { await manager.tokenStore?.revoke(tokenId: id); await refreshTokens() } },
+                    onDelete: { id in Task { await manager.tokenStore?.delete(tokenId: id); await refreshTokens() } }
+                )
+            }
+        }
+        .task { await refreshTokens() }
+        .sheet(isPresented: $showCreateSheet) {
+            MCPTokenCreateSheet(onGenerate: handleGenerate)
+        }
+        .sheet(isPresented: $showRevealSheet) {
+            if let revealedToken {
+                MCPTokenRevealSheet(
+                    token: revealedToken,
+                    plaintext: revealedPlaintext,
+                    port: settings.port,
+                    allowRemoteConnections: settings.allowRemoteConnections
+                )
+            }
+        }
+    }
+
+    // MARK: - Network
+
+    private var networkSection: some View {
+        Section("Network") {
+            Toggle("Allow remote connections", isOn: $settings.allowRemoteConnections)
+
+            if settings.allowRemoteConnections {
+                Label {
+                    Text("The server will be accessible from other devices on your network. Authentication and TLS are enabled automatically.")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.callout)
+            }
         }
     }
 
@@ -115,6 +172,30 @@ struct MCPSection: View {
                 }
             }
         }
+    }
+
+    // MARK: - Token Management
+
+    private func handleGenerate(name: String, permissions: TokenPermissions, connectionIds: Set<UUID>?, expiresAt: Date?) {
+        Task {
+            guard let store = manager.tokenStore else { return }
+            let result = await store.generate(
+                name: name,
+                permissions: permissions,
+                allowedConnectionIds: connectionIds,
+                expiresAt: expiresAt
+            )
+            revealedToken = result.token
+            revealedPlaintext = result.plaintext
+            showCreateSheet = false
+            showRevealSheet = true
+            await refreshTokens()
+        }
+    }
+
+    private func refreshTokens() async {
+        guard let store = MCPServerManager.shared.tokenStore else { return }
+        tokenList = await store.list().filter { $0.name != "__stdio_bridge__" }
     }
 }
 

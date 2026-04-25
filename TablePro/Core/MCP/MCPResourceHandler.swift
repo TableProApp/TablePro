@@ -1,8 +1,3 @@
-//
-//  MCPResourceHandler.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -10,12 +5,12 @@ final class MCPResourceHandler: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPResourceHandler")
 
     private let bridge: MCPConnectionBridge
+    private let authGuard: MCPAuthGuard
 
-    init(bridge: MCPConnectionBridge) {
+    init(bridge: MCPConnectionBridge, authGuard: MCPAuthGuard) {
         self.bridge = bridge
+        self.authGuard = authGuard
     }
-
-    // MARK: - Dispatch
 
     func handleResourceRead(uri: String, sessionId: String) async throws -> MCPResourceReadResult {
         guard let components = URLComponents(string: uri) else {
@@ -39,7 +34,7 @@ final class MCPResourceHandler: Sendable {
             guard let connectionId = UUID(uuidString: pathSegments[1]) else {
                 throw MCPError.invalidParams("Invalid connection UUID in URI")
             }
-            return try await handleSchemaResource(uri: uri, connectionId: connectionId)
+            return try await handleSchemaResource(uri: uri, connectionId: connectionId, sessionId: sessionId)
         }
 
         if pathSegments.count == 3,
@@ -50,13 +45,16 @@ final class MCPResourceHandler: Sendable {
                 throw MCPError.invalidParams("Invalid connection UUID in URI")
             }
             let queryItems = components.queryItems ?? []
-            return try await handleHistoryResource(uri: uri, connectionId: connectionId, queryItems: queryItems)
+            return try await handleHistoryResource(
+                uri: uri,
+                connectionId: connectionId,
+                queryItems: queryItems,
+                sessionId: sessionId
+            )
         }
 
         throw MCPError.invalidParams("Unknown resource URI: \(uri)")
     }
-
-    // MARK: - Resource Handlers
 
     private func handleConnectionsList(uri: String) async throws -> MCPResourceReadResult {
         let result = await bridge.listConnections()
@@ -66,7 +64,8 @@ final class MCPResourceHandler: Sendable {
         ])
     }
 
-    private func handleSchemaResource(uri: String, connectionId: UUID) async throws -> MCPResourceReadResult {
+    private func handleSchemaResource(uri: String, connectionId: UUID, sessionId: String) async throws -> MCPResourceReadResult {
+        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
         let result = try await bridge.fetchSchemaResource(connectionId: connectionId)
         let jsonString = encodeJSON(result)
         return MCPResourceReadResult(contents: [
@@ -77,8 +76,10 @@ final class MCPResourceHandler: Sendable {
     private func handleHistoryResource(
         uri: String,
         connectionId: UUID,
-        queryItems: [URLQueryItem]
+        queryItems: [URLQueryItem],
+        sessionId: String
     ) async throws -> MCPResourceReadResult {
+        try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
         let limit = queryItems.first(where: { $0.name == "limit" })
             .flatMap { $0.value }
             .flatMap { Int($0) }
@@ -99,8 +100,6 @@ final class MCPResourceHandler: Sendable {
             MCPResourceContent(uri: uri, mimeType: "application/json", text: jsonString)
         ])
     }
-
-    // MARK: - Helpers
 
     private func parsePathSegments(from uri: String) -> [String] {
         guard let range = uri.range(of: "://") else { return [] }

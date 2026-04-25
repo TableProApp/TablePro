@@ -11,6 +11,9 @@ actor MCPSession {
     var sseConnection: NWConnection?
     var runningTasks: [JSONRPCId: Task<Void, Never>] = [:]
     private(set) var eventCounter: Int = 0
+    private(set) var authenticatedTokenId: UUID?
+    private(set) var tokenName: String?
+    private(set) var remoteAddress: String?
 
     init() {
         self.id = UUID().uuidString
@@ -36,6 +39,18 @@ actor MCPSession {
 
     func setClientInfo(_ info: MCPClientInfo?) {
         clientInfo = info
+    }
+
+    func setAuthenticatedTokenId(_ id: UUID?) {
+        authenticatedTokenId = id
+    }
+
+    func setTokenName(_ name: String?) {
+        tokenName = name
+    }
+
+    func setRemoteAddress(_ address: String?) {
+        remoteAddress = address
     }
 
     func setSSEConnection(_ connection: NWConnection?) {

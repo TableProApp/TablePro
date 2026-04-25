@@ -1,8 +1,3 @@
-//
-//  MCPRouter.swift
-//  TablePro
-//
-
 import Foundation
 import os
 
@@ -18,6 +13,7 @@ final class MCPRouter: Sendable {
         case accepted
         case noContent
         case httpError(status: Int, message: String)
+        case httpErrorWithHeaders(status: Int, message: String, extraHeaders: [(String, String)])
     }
 
     init() {
@@ -27,9 +23,13 @@ final class MCPRouter: Sendable {
         self.decoder = JSONDecoder()
     }
 
-    // MARK: - Main Entry
-
-    func route(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
+    func route(
+        _ request: HTTPRequest,
+        server: MCPServer,
+        remoteIP: String?,
+        tokenStore: MCPTokenStore?,
+        rateLimiter: MCPRateLimiter?
+    ) async -> RouteResult {
         if request.path.hasPrefix("/.well-known/") {
             return .httpError(status: 404, message: "Not found")
         }
@@ -38,20 +38,128 @@ final class MCPRouter: Sendable {
             return .httpError(status: 404, message: "Not found")
         }
 
-        if let origin = request.headers["origin"], !isAllowedOrigin(origin) {
-            return .httpError(status: 403, message: "Forbidden origin")
+        if let rateLimiter, let ip = remoteIP {
+            let lockoutCheck = await rateLimiter.isLockedOut(ip: ip)
+            if case .rateLimited(let retryAfter) = lockoutCheck {
+                let seconds = Int(retryAfter.components.seconds)
+                MCPAuditLogger.logRateLimited(ip: ip, retryAfterSeconds: seconds)
+                return .httpErrorWithHeaders(
+                    status: 429,
+                    message: "Too many failed attempts",
+                    extraHeaders: [("Retry-After", "\(seconds)")]
+                )
+            }
         }
 
-        switch request.method {
-        case .options:
-            return handleOptions()
-        case .post:
-            return await handlePost(request, server: server)
-        case .get:
-            return await handleGet(request, server: server)
-        case .delete:
-            return await handleDelete(request, server: server)
+        let authResult = await authenticateRequest(
+            request,
+            remoteIP: remoteIP,
+            tokenStore: tokenStore,
+            rateLimiter: rateLimiter
+        )
+
+        switch authResult {
+        case .failure(let result):
+            return result
+        case .success(let token):
+            if token == nil {
+                if let origin = request.headers["origin"], !isAllowedOrigin(origin) {
+                    return .httpError(status: 403, message: "Forbidden origin")
+                }
+            }
+
+            switch request.method {
+            case .options:
+                return handleOptions()
+            case .post:
+                return await handlePost(request, server: server, authenticatedToken: token)
+            case .get:
+                return await handleGet(request, server: server)
+            case .delete:
+                return await handleDelete(request, server: server)
+            }
         }
+    }
+
+    private enum AuthResult {
+        case success(MCPAuthToken?)
+        case failure(RouteResult)
+    }
+
+    private func authenticateRequest(
+        _ request: HTTPRequest,
+        remoteIP: String?,
+        tokenStore: MCPTokenStore?,
+        rateLimiter: MCPRateLimiter?
+    ) async -> AuthResult {
+        let authRequired = await MainActor.run { AppSettingsManager.shared.mcp.requireAuthentication }
+
+        guard let authHeader = request.headers["authorization"] else {
+            guard !authRequired else {
+                MCPAuditLogger.logAuthFailure(reason: "Missing authorization header", ip: remoteIP ?? "localhost")
+                return .failure(.httpErrorWithHeaders(
+                    status: 401,
+                    message: "Authentication required",
+                    extraHeaders: [("WWW-Authenticate", "Bearer realm=\"TablePro MCP\"")]
+                ))
+            }
+            return .success(nil)
+        }
+
+        guard authHeader.lowercased().hasPrefix("bearer "), let tokenStore else {
+            let rateLimitResult = await recordAuthFailure(ip: remoteIP, rateLimiter: rateLimiter)
+            if case .rateLimited(let retryAfter) = rateLimitResult {
+                let seconds = Int(retryAfter.components.seconds)
+                MCPAuditLogger.logRateLimited(ip: remoteIP ?? "localhost", retryAfterSeconds: seconds)
+                return .failure(.httpErrorWithHeaders(
+                    status: 429,
+                    message: "Too many failed attempts",
+                    extraHeaders: [("Retry-After", "\(seconds)")]
+                ))
+            }
+            MCPAuditLogger.logAuthFailure(reason: "Invalid authorization header format", ip: remoteIP ?? "localhost")
+            return .failure(.httpErrorWithHeaders(
+                status: 401,
+                message: "Invalid authorization header",
+                extraHeaders: [("WWW-Authenticate", "Bearer realm=\"TablePro MCP\"")]
+            ))
+        }
+
+        let bearerToken = String(authHeader.dropFirst(7))
+
+        guard let token = await tokenStore.validate(bearerToken: bearerToken) else {
+            let rateLimitResult = await recordAuthFailure(ip: remoteIP, rateLimiter: rateLimiter)
+            if case .rateLimited(let retryAfter) = rateLimitResult {
+                let seconds = Int(retryAfter.components.seconds)
+                MCPAuditLogger.logRateLimited(ip: remoteIP ?? "localhost", retryAfterSeconds: seconds)
+                return .failure(.httpErrorWithHeaders(
+                    status: 429,
+                    message: "Too many failed attempts",
+                    extraHeaders: [("Retry-After", "\(seconds)")]
+                ))
+            }
+            MCPAuditLogger.logAuthFailure(reason: "Invalid token", ip: remoteIP ?? "localhost")
+            return .failure(.httpErrorWithHeaders(
+                status: 401,
+                message: "Invalid or expired token",
+                extraHeaders: [("WWW-Authenticate", "Bearer realm=\"TablePro MCP\"")]
+            ))
+        }
+
+        if let rateLimiter, let ip = remoteIP {
+            _ = await rateLimiter.checkAndRecord(ip: ip, success: true)
+        }
+        MCPAuditLogger.logAuthSuccess(tokenName: token.name, ip: remoteIP ?? "localhost")
+        return .success(token)
+    }
+
+    @discardableResult
+    private func recordAuthFailure(
+        ip: String?,
+        rateLimiter: MCPRateLimiter?
+    ) async -> MCPRateLimiter.AuthRateResult? {
+        guard let rateLimiter, let ip else { return nil }
+        return await rateLimiter.checkAndRecord(ip: ip, success: false)
     }
 
     private func isAllowedOrigin(_ origin: String) -> Bool {
@@ -60,17 +168,13 @@ final class MCPRouter: Sendable {
         else {
             return false
         }
-        let allowedHosts: Set<String> = ["localhost", "127.0.0.1", "[::1]"]
+        let allowedHosts: Set<String> = ["localhost", "127.0.0.1", "::1"]
         return allowedHosts.contains(host)
     }
-
-    // MARK: - OPTIONS
 
     private func handleOptions() -> RouteResult {
         .noContent
     }
-
-    // MARK: - GET (SSE Stream)
 
     private func handleGet(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
         guard let sessionId = request.headers["mcp-session-id"] else {
@@ -84,8 +188,6 @@ final class MCPRouter: Sendable {
         await session.markActive()
         return .sseStream(sessionId: session.id)
     }
-
-    // MARK: - DELETE (Terminate Session)
 
     private func handleDelete(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
         guard let sessionId = request.headers["mcp-session-id"] else {
@@ -101,9 +203,11 @@ final class MCPRouter: Sendable {
         return .noContent
     }
 
-    // MARK: - POST (JSON-RPC)
-
-    private func handlePost(_ request: HTTPRequest, server: MCPServer) async -> RouteResult {
+    private func handlePost(
+        _ request: HTTPRequest,
+        server: MCPServer,
+        authenticatedToken: MCPAuthToken?
+    ) async -> RouteResult {
         if let accept = request.headers["accept"], !accept.contains("application/json") && !accept.contains("*/*") {
             return .httpError(status: 406, message: "Accept header must include application/json")
         }
@@ -130,25 +234,28 @@ final class MCPRouter: Sendable {
         }
 
         let headerSessionId = request.headers["mcp-session-id"]
-        return await dispatchMethod(rpcRequest, headerSessionId: headerSessionId, server: server)
+        return await dispatchMethod(
+            rpcRequest,
+            headerSessionId: headerSessionId,
+            server: server,
+            authenticatedToken: authenticatedToken
+        )
     }
-
-    // MARK: - Method Dispatch
 
     private func dispatchMethod(
         _ request: JSONRPCRequest,
         headerSessionId: String?,
-        server: MCPServer
+        server: MCPServer,
+        authenticatedToken: MCPAuthToken?
     ) async -> RouteResult {
         if request.method == "initialize" {
-            return await handleInitialize(request, server: server)
+            return await handleInitialize(request, server: server, authenticatedToken: authenticatedToken)
         }
 
         if request.method == "ping" {
             return handlePing(request)
         }
 
-        // Session-required methods: validate header and lookup
         guard let sessionId = headerSessionId else {
             return .httpError(status: 400, message: "Missing Mcp-Session-Id header")
         }
@@ -179,7 +286,12 @@ final class MCPRouter: Sendable {
             return handleToolsList(request, sessionId: sessionId)
 
         case "tools/call":
-            return await handleToolsCall(request, sessionId: sessionId, server: server)
+            return await handleToolsCall(
+                request,
+                sessionId: sessionId,
+                server: server,
+                authenticatedToken: authenticatedToken
+            )
 
         case "resources/list":
             return handleResourcesList(request, sessionId: sessionId)
@@ -192,9 +304,11 @@ final class MCPRouter: Sendable {
         }
     }
 
-    // MARK: - initialize
-
-    private func handleInitialize(_ request: JSONRPCRequest, server: MCPServer) async -> RouteResult {
+    private func handleInitialize(
+        _ request: JSONRPCRequest,
+        server: MCPServer,
+        authenticatedToken: MCPAuthToken?
+    ) async -> RouteResult {
         guard let session = await server.createSession() else {
             return encodeError(MCPError.internalError("Maximum sessions reached"), id: request.id)
         }
@@ -205,6 +319,11 @@ final class MCPRouter: Sendable {
         {
             let version = clientInfo["version"]?.stringValue
             await session.setClientInfo(MCPClientInfo(name: name, version: version))
+        }
+
+        if let token = authenticatedToken {
+            await session.setAuthenticatedTokenId(token.id)
+            await session.setTokenName(token.name)
         }
 
         let result = MCPInitializeResult(
@@ -219,16 +338,12 @@ final class MCPRouter: Sendable {
         return encodeResult(result, id: request.id, sessionId: session.id)
     }
 
-    // MARK: - ping
-
     private func handlePing(_ request: JSONRPCRequest) -> RouteResult {
         guard let id = request.id else {
             return .accepted
         }
         return encodeRawResult(.object([:]), id: id, sessionId: nil)
     }
-
-    // MARK: - notifications/cancelled
 
     private func handleCancellation(
         _ request: JSONRPCRequest,
@@ -258,8 +373,6 @@ final class MCPRouter: Sendable {
         return .accepted
     }
 
-    // MARK: - tools/list
-
     private func handleToolsList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
             return .accepted
@@ -270,12 +383,11 @@ final class MCPRouter: Sendable {
         return encodeRawResult(result, id: id, sessionId: sessionId)
     }
 
-    // MARK: - tools/call
-
     private func handleToolsCall(
         _ request: JSONRPCRequest,
         sessionId: String,
-        server: MCPServer
+        server: MCPServer,
+        authenticatedToken: MCPAuthToken?
     ) async -> RouteResult {
         guard let id = request.id else {
             return encodeError(MCPError.invalidRequest("tools/call requires an id"), id: nil)
@@ -295,10 +407,17 @@ final class MCPRouter: Sendable {
 
         let session = await server.session(for: sessionId)
         let toolTask = Task {
-            try await handler(name, arguments, sessionId)
+            try await handler(name, arguments, sessionId, authenticatedToken)
         }
         if let session {
-            await session.addRunningTask(id, task: Task { _ = try? await toolTask.value })
+            let cancelForwardingTask = Task<Void, Never> {
+                await withTaskCancellationHandler {
+                    _ = try? await toolTask.value
+                } onCancel: {
+                    toolTask.cancel()
+                }
+            }
+            await session.addRunningTask(id, task: cancelForwardingTask)
         }
 
         do {
@@ -321,8 +440,6 @@ final class MCPRouter: Sendable {
         }
     }
 
-    // MARK: - resources/list
-
     private func handleResourcesList(_ request: JSONRPCRequest, sessionId: String) -> RouteResult {
         guard let id = request.id else {
             return .accepted
@@ -332,8 +449,6 @@ final class MCPRouter: Sendable {
         let result: JSONValue = .object(["resources": encodeResourceDefinitions(resources)])
         return encodeRawResult(result, id: id, sessionId: sessionId)
     }
-
-    // MARK: - resources/read
 
     private func handleResourcesRead(
         _ request: JSONRPCRequest,
@@ -367,8 +482,6 @@ final class MCPRouter: Sendable {
             return encodeError(MCPError.internalError(error.localizedDescription), id: id)
         }
     }
-
-    // MARK: - Encoding Helpers
 
     private func encodeResult<T: Encodable>(_ result: T, id: JSONRPCId?, sessionId: String?) -> RouteResult {
         guard let id else {
@@ -435,8 +548,6 @@ final class MCPRouter: Sendable {
         })
     }
 }
-
-// MARK: - Tool Definitions
 
 extension MCPRouter {
     static func toolDefinitions() -> [MCPToolDefinition] {
@@ -744,8 +855,6 @@ extension MCPRouter {
         ]
     }
 }
-
-// MARK: - Resource Definitions
 
 extension MCPRouter {
     static func resourceDefinitions() -> [MCPResourceDefinition] {

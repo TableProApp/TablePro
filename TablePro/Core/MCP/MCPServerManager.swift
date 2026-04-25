@@ -1,12 +1,7 @@
-//
-//  MCPServerManager.swift
-//  TablePro
-//
-
 import Foundation
 import os
+import Security
 
-/// MCP server lifecycle state
 enum MCPServerState: Sendable, Equatable {
     case stopped
     case starting
@@ -25,6 +20,10 @@ final class MCPServerManager {
     private var server: MCPServer?
     private var clientRefreshTask: Task<Void, Never>?
     private var serverGeneration: Int = 0
+    private(set) var tokenStore: MCPTokenStore?
+    private var tlsManager: MCPTLSManager?
+    private var bridgeTokenId: UUID?
+    private var internalBridgeToken: String?
 
     var isRunning: Bool {
         if case .running = state { return true } else { return false }
@@ -55,14 +54,22 @@ final class MCPServerManager {
 
         self.server = newServer
 
-        // Wire tool and resource handlers
+        let newTokenStore = MCPTokenStore()
+        await newTokenStore.loadFromDisk()
+        self.tokenStore = newTokenStore
+
+        let rateLimiter = MCPRateLimiter()
+
         let bridge = MCPConnectionBridge()
         let authGuard = MCPAuthGuard()
         let toolHandler = MCPToolHandler(bridge: bridge, authGuard: authGuard)
-        let resourceHandler = MCPResourceHandler(bridge: bridge)
+        let resourceHandler = MCPResourceHandler(bridge: bridge, authGuard: authGuard)
 
-        await newServer.setToolCallHandler { name, arguments, sessionId in
-            try await toolHandler.handleToolCall(name: name, arguments: arguments, sessionId: sessionId)
+        await newServer.setTokenStore(newTokenStore)
+        await newServer.setRateLimiter(rateLimiter)
+
+        await newServer.setToolCallHandler { name, arguments, sessionId, token in
+            try await toolHandler.handleToolCall(name: name, arguments: arguments, sessionId: sessionId, token: token)
         }
         await newServer.setResourceReadHandler { uri, sessionId in
             try await resourceHandler.handleResourceRead(uri: uri, sessionId: sessionId)
@@ -71,21 +78,69 @@ final class MCPServerManager {
             await authGuard.clearSession(sessionId)
         }
 
+        let bridgeResult = await newTokenStore.generate(
+            name: "__stdio_bridge__",
+            permissions: .fullAccess
+        )
+        self.bridgeTokenId = bridgeResult.token.id
+        self.internalBridgeToken = bridgeResult.plaintext
+
         do {
-            try await newServer.start(port: port)
+            let settings = AppSettingsManager.shared.mcp
+
+            var tlsIdentity: SecIdentity?
+            if settings.allowRemoteConnections {
+                let manager = MCPTLSManager()
+                self.tlsManager = manager
+                do {
+                    tlsIdentity = try await manager.loadOrGenerate()
+                } catch {
+                    Self.logger.error("Failed to generate TLS certificate: \(error.localizedDescription)")
+                    state = .failed("TLS certificate generation failed")
+                    return
+                }
+            }
+
+            try await newServer.start(
+                port: port,
+                allowRemoteAccess: settings.allowRemoteConnections,
+                tlsIdentity: tlsIdentity
+            )
+            writeHandshakeFile(port: port)
             startClientRefresh()
+            MCPAuditLogger.logServerStarted(
+                port: port,
+                remoteAccess: settings.allowRemoteConnections,
+                tlsEnabled: tlsIdentity != nil
+            )
         } catch {
             Self.logger.error("Failed to start MCP server: \(error.localizedDescription)")
             state = .failed(error.localizedDescription)
+            if let bridgeId = bridgeTokenId {
+                await tokenStore?.delete(tokenId: bridgeId)
+                bridgeTokenId = nil
+            }
             server = nil
+            self.tokenStore = nil
+            self.tlsManager = nil
+            self.internalBridgeToken = nil
         }
     }
 
     func stop() async {
         stopClientRefresh()
+        deleteHandshakeFile()
+        MCPAuditLogger.logServerStopped()
         guard let server else { return }
         await server.stop()
+        if let bridgeId = bridgeTokenId {
+            await tokenStore?.delete(tokenId: bridgeId)
+            bridgeTokenId = nil
+        }
         self.server = nil
+        self.tokenStore = nil
+        self.tlsManager = nil
+        self.internalBridgeToken = nil
         state = .stopped
     }
 
@@ -98,8 +153,6 @@ final class MCPServerManager {
         await server?.removeSession(sessionId)
         await refreshClients()
     }
-
-    // MARK: - Client Refresh
 
     private func startClientRefresh() {
         clientRefreshTask = Task { [weak self] in
@@ -122,5 +175,67 @@ final class MCPServerManager {
             return
         }
         connectedClients = await server.sessionSnapshots()
+    }
+
+    private static let handshakeDirectoryPath: String = {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/Library/Application Support/com.TablePro"
+    }()
+
+    private static let handshakeFilePath: String = {
+        "\(handshakeDirectoryPath)/mcp-handshake.json"
+    }()
+
+    private func writeHandshakeFile(port: UInt16) {
+        guard let bridgeToken = internalBridgeToken else { return }
+
+        let settings = AppSettingsManager.shared.mcp
+        let handshake: [String: Any] = [
+            "port": Int(port),
+            "token": bridgeToken,
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "protocolVersion": "2025-03-26",
+            "tls": settings.allowRemoteConnections
+        ]
+
+        let fileManager = FileManager.default
+        let directory = Self.handshakeDirectoryPath
+
+        do {
+            if !fileManager.fileExists(atPath: directory) {
+                try fileManager.createDirectory(
+                    atPath: directory,
+                    withIntermediateDirectories: true
+                )
+                try fileManager.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: directory
+                )
+            }
+
+            let data = try JSONSerialization.data(withJSONObject: handshake, options: [.sortedKeys])
+            let url = URL(fileURLWithPath: Self.handshakeFilePath)
+            try data.write(to: url, options: [.atomic])
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: Self.handshakeFilePath
+            )
+
+            Self.logger.info("Wrote MCP handshake file at \(Self.handshakeFilePath)")
+        } catch {
+            Self.logger.error("Failed to write MCP handshake file: \(error.localizedDescription)")
+        }
+    }
+
+    private func deleteHandshakeFile() {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: Self.handshakeFilePath) else { return }
+
+        do {
+            try fileManager.removeItem(atPath: Self.handshakeFilePath)
+            Self.logger.info("Deleted MCP handshake file")
+        } catch {
+            Self.logger.error("Failed to delete MCP handshake file: \(error.localizedDescription)")
+        }
     }
 }

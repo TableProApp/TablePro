@@ -1,17 +1,8 @@
-//
-//  AppSettingsManager.swift
-//  TablePro
-//
-//  Observable settings manager for real-time UI updates.
-//  Uses @Published properties with didSet for immediate persistence.
-//
-
 import AppKit
 import Foundation
 import Observation
 import os
 
-/// Observable settings manager for immediate persistence and live updates
 @Observable
 @MainActor
 final class AppSettingsManager {
@@ -22,8 +13,6 @@ final class AppSettingsManager {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
     }
-
-    // MARK: - Published Settings
 
     var general: GeneralSettings {
         didSet {
@@ -48,7 +37,6 @@ final class AppSettingsManager {
     var editor: EditorSettings {
         didSet {
             storage.saveEditor(editor)
-            // Update behavioral settings in ThemeEngine
             ThemeEngine.shared.updateEditorSettings(
                 highlightCurrentLine: editor.highlightCurrentLine,
                 showLineNumbers: editor.showLineNumbers,
@@ -64,12 +52,10 @@ final class AppSettingsManager {
     var dataGrid: DataGridSettings {
         didSet {
             guard !isValidating else { return }
-            // Validate and sanitize before saving
             var validated = dataGrid
             validated.nullDisplay = dataGrid.validatedNullDisplay
             validated.defaultPageSize = dataGrid.validatedDefaultPageSize
 
-            // Store validated values back so in-memory state matches persisted state
             if validated != dataGrid {
                 isValidating = true
                 dataGrid = validated
@@ -77,7 +63,6 @@ final class AppSettingsManager {
             }
 
             storage.saveDataGrid(validated)
-            // Update date formatting service with new format
             DateFormattingService.shared.updateFormat(validated.dateFormat)
             notifyChange(.dataGridSettingsDidChange)
             SyncChangeTracker.shared.markDirty(.settings, id: "dataGrid")
@@ -87,12 +72,10 @@ final class AppSettingsManager {
     var history: HistorySettings {
         didSet {
             guard !isValidating else { return }
-            // Validate before saving
             var validated = history
             validated.maxEntries = history.validatedMaxEntries
             validated.maxDays = history.validatedMaxDays
 
-            // Store validated values back so in-memory state matches persisted state
             if validated != history {
                 isValidating = true
                 history = validated
@@ -100,7 +83,6 @@ final class AppSettingsManager {
             }
 
             storage.saveHistory(validated)
-            // Apply history settings immediately (cleanup if auto-cleanup enabled)
             Task { await applyHistorySettingsImmediately() }
             SyncChangeTracker.shared.markDirty(.settings, id: "history")
         }
@@ -144,11 +126,21 @@ final class AppSettingsManager {
 
     var mcp: MCPSettings {
         didSet {
+            guard !isValidating else { return }
+
+            if mcp.allowRemoteConnections, !mcp.requireAuthentication {
+                isValidating = true
+                mcp.requireAuthentication = true
+                isValidating = false
+            }
+
             storage.saveMCP(mcp)
             SyncChangeTracker.shared.markDirty(.settings, id: "mcp")
             let enabledChanged = mcp.enabled != oldValue.enabled
             let portChanged = mcp.port != oldValue.port
-            if enabledChanged || portChanged {
+            let remoteChanged = mcp.allowRemoteConnections != oldValue.allowRemoteConnections
+            let authChanged = mcp.requireAuthentication != oldValue.requireAuthentication
+            if enabledChanged || portChanged || remoteChanged || authChanged {
                 let settings = mcp
                 Task {
                     if settings.enabled {
@@ -162,18 +154,11 @@ final class AppSettingsManager {
     }
 
     @ObservationIgnored private let storage = AppSettingsStorage.shared
-    /// Reentrancy guard for didSet validation that re-assigns the property.
     @ObservationIgnored private var isValidating = false
     @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
-    /// Tracks the last-seen accessibility scale factor to avoid redundant reloads.
-    /// The accessibility display options notification fires for all display option changes
-    /// (contrast, motion, etc.), not just text size.
     @ObservationIgnored private var lastAccessibilityScale: CGFloat = 1.0
 
-    // MARK: - Initialization
-
     private init() {
-        // Load all settings on initialization
         self.general = storage.loadGeneral()
         self.appearance = storage.loadAppearance()
         self.editor = storage.loadEditor()
@@ -186,17 +171,14 @@ final class AppSettingsManager {
         self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
 
-        // Apply language immediately
         general.language.apply()
 
-        // Activate the correct theme based on appearance mode + preferred themes
         ThemeEngine.shared.updateAppearanceAndTheme(
             mode: appearance.appearanceMode,
             lightThemeId: appearance.preferredLightThemeId,
             darkThemeId: appearance.preferredDarkThemeId
         )
 
-        // Sync editor behavioral settings to ThemeEngine
         ThemeEngine.shared.updateEditorSettings(
             highlightCurrentLine: editor.highlightCurrentLine,
             showLineNumbers: editor.showLineNumbers,
@@ -204,26 +186,17 @@ final class AppSettingsManager {
             wordWrap: editor.wordWrap
         )
 
-        // Initialize DateFormattingService with current format
         DateFormattingService.shared.updateFormat(dataGrid.dateFormat)
 
-        // Observe system accessibility text size changes and re-apply editor fonts
         observeAccessibilityTextSizeChanges()
     }
-
-    // MARK: - Notification Propagation
 
     private func notifyChange(_ notification: Notification.Name) {
         NotificationCenter.default.post(name: notification, object: self)
     }
 
-    // MARK: - Accessibility Text Size
-
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")
 
-    /// Observe the system accessibility text size preference and reload editor fonts when it changes.
-    /// Uses NSWorkspace.accessibilityDisplayOptionsDidChangeNotification which fires when the user
-    /// changes settings in System Settings > Accessibility > Display (including the Text Size slider).
     private func observeAccessibilityTextSizeChanges() {
         lastAccessibilityScale = EditorFontCache.computeAccessibilityScale()
         accessibilityTextSizeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -247,9 +220,6 @@ final class AppSettingsManager {
         QueryHistoryManager.shared.applySettingsChange()
     }
 
-    // MARK: - Actions
-
-    /// Reset all settings to defaults
     func resetToDefaults() {
         general = .default
         appearance = .default

@@ -48,7 +48,6 @@ enum MCPHTTPParser {
             return .failure(.malformedHeaders)
         }
 
-        // Normalize \r\n to \n then split
         let normalized = headerString.replacingOccurrences(of: "\r\n", with: "\n")
         let headerLines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
 
@@ -125,16 +124,11 @@ enum MCPHTTPParser {
         ))
     }
 
-    // MARK: - Chunked Transfer Encoding
-
-    /// Decode chunked transfer encoding body.
-    /// Format: <chunk-size-hex>\r\n<chunk-data>\r\n ... 0\r\n\r\n
     private static func decodeChunkedBody(_ data: Data) -> Result<Data, HTTPParseError> {
         var result = Data()
         var offset = data.startIndex
 
         while offset < data.endIndex {
-            // Find the end of the chunk size line
             guard let lineEnd = findCRLF(in: data, from: offset) else {
                 return .failure(.incomplete)
             }
@@ -146,36 +140,30 @@ enum MCPHTTPParser {
                 return .failure(.malformedChunkedEncoding)
             }
 
-            // Move past the \r\n after chunk size
             let chunkDataStart = lineEnd + 2
 
-            // Terminal chunk
             if chunkSize == 0 {
                 return .success(result)
             }
 
             let chunkDataEnd = chunkDataStart + Int(chunkSize)
 
-            // Check we have enough data for the chunk + trailing \r\n
             guard chunkDataEnd + 2 <= data.endIndex else {
                 return .failure(.incomplete)
             }
 
-            // Check accumulated size
             if result.count + Int(chunkSize) > maxBodySize {
                 return .failure(.bodyTooLarge)
             }
 
             result.append(data[chunkDataStart..<chunkDataEnd])
 
-            // Skip past the trailing \r\n after chunk data
             offset = chunkDataEnd + 2
         }
 
         return .failure(.incomplete)
     }
 
-    /// Find \r\n in data starting from given offset
     private static func findCRLF(in data: Data, from start: Data.Index) -> Data.Index? {
         var i = start
         while i < data.endIndex - 1 {
@@ -186,8 +174,6 @@ enum MCPHTTPParser {
         }
         return nil
     }
-
-    // MARK: - Response Building
 
     static func buildResponse(
         status: Int,
@@ -240,11 +226,13 @@ enum MCPHTTPParser {
         case 202: return "Accepted"
         case 204: return "No Content"
         case 400: return "Bad Request"
+        case 401: return "Unauthorized"
         case 403: return "Forbidden"
         case 404: return "Not Found"
         case 405: return "Method Not Allowed"
         case 406: return "Not Acceptable"
         case 413: return "Content Too Large"
+        case 429: return "Too Many Requests"
         case 500: return "Internal Server Error"
         default: return "Unknown"
         }

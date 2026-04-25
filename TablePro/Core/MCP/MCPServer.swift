@@ -1,11 +1,7 @@
-//
-//  MCPServer.swift
-//  TablePro
-//
-
 import Foundation
 import Network
 import os
+import Security
 
 actor MCPServer {
     struct SessionSnapshot: Sendable, Identifiable {
@@ -14,6 +10,8 @@ actor MCPServer {
         let clientVersion: String?
         let connectedSince: Date
         let lastActivityAt: Date
+        let tokenName: String?
+        let remoteAddress: String?
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPServer")
@@ -24,28 +22,34 @@ actor MCPServer {
     private static let maxReadSize = 1_048_576
     private static let maxBufferSize = 10 * 1_024 * 1_024
 
-    // MARK: - State
-
+    private var allowRemoteAccess: Bool = false
     private var listener: NWListener?
     private var sessions: [String: MCPSession] = [:]
     private var cleanupTask: Task<Void, Never>?
     private let stateCallback: @Sendable (MCPServerState) -> Void
     private var router: MCPRouter!
 
-    private(set) var toolCallHandler: (@Sendable (String, JSONValue?, String) async throws -> MCPToolResult)?
+    private(set) var tokenStore: MCPTokenStore?
+    private(set) var rateLimiter: MCPRateLimiter?
+
+    private(set) var toolCallHandler: (@Sendable (String, JSONValue?, String, MCPAuthToken?) async throws -> MCPToolResult)?
     private(set) var resourceReadHandler: (@Sendable (String, String) async throws -> MCPResourceReadResult)?
     private(set) var sessionCleanupHandler: (@Sendable (String) async -> Void)?
-
-    // MARK: - Initialization
 
     init(stateCallback: @escaping @Sendable (MCPServerState) -> Void) {
         self.stateCallback = stateCallback
         self.router = MCPRouter()
     }
 
-    // MARK: - Handler Configuration
+    func setTokenStore(_ store: MCPTokenStore) {
+        self.tokenStore = store
+    }
 
-    func setToolCallHandler(_ handler: @escaping @Sendable (String, JSONValue?, String) async throws -> MCPToolResult) {
+    func setRateLimiter(_ limiter: MCPRateLimiter) {
+        self.rateLimiter = limiter
+    }
+
+    func setToolCallHandler(_ handler: @escaping @Sendable (String, JSONValue?, String, MCPAuthToken?) async throws -> MCPToolResult) {
         self.toolCallHandler = handler
     }
 
@@ -57,19 +61,46 @@ actor MCPServer {
         self.sessionCleanupHandler = handler
     }
 
-    // MARK: - Lifecycle
-
-    func start(port: UInt16) throws {
+    func start(port: UInt16, allowRemoteAccess: Bool = false, tlsIdentity: SecIdentity? = nil) throws {
         guard listener == nil else {
             Self.logger.warning("Server already running, ignoring start request")
             return
         }
 
         stateCallback(.starting)
+        self.allowRemoteAccess = allowRemoteAccess
 
-        let params = NWParameters.tcp
-        params.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: port) ?? 23_508)
-        params.allowLocalEndpointReuse = true
+        let params: NWParameters
+
+        if allowRemoteAccess, let identity = tlsIdentity {
+            let tlsOptions = NWProtocolTLS.Options()
+            guard let secIdentity = sec_identity_create(identity) else {
+                stateCallback(.failed("Failed to create TLS identity"))
+                return
+            }
+            sec_protocol_options_set_local_identity(tlsOptions.securityProtocolOptions, secIdentity)
+            sec_protocol_options_set_min_tls_protocol_version(tlsOptions.securityProtocolOptions, .TLSv12)
+            params = NWParameters(tls: tlsOptions, tcp: NWProtocolTCP.Options())
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(
+                host: .ipv4(.any),
+                port: NWEndpoint.Port(rawValue: port) ?? 23_508
+            )
+            params.allowLocalEndpointReuse = true
+        } else if allowRemoteAccess {
+            params = NWParameters.tcp
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(
+                host: .ipv4(.any),
+                port: NWEndpoint.Port(rawValue: port) ?? 23_508
+            )
+            params.allowLocalEndpointReuse = true
+        } else {
+            params = NWParameters.tcp
+            params.requiredLocalEndpoint = NWEndpoint.hostPort(
+                host: .ipv4(.loopback),
+                port: NWEndpoint.Port(rawValue: port) ?? 23_508
+            )
+            params.allowLocalEndpointReuse = true
+        }
 
         let newListener = try NWListener(using: params)
         self.listener = newListener
@@ -128,6 +159,8 @@ actor MCPServer {
             let info = await session.clientInfo
             let created = await session.createdAt
             let lastActive = await session.lastActivityAt
+            let sessionTokenName = await session.tokenName
+            let sessionRemoteAddress = await session.remoteAddress
             let connectedElapsed = now - created
             let activeElapsed = now - lastActive
             snapshots.append(SessionSnapshot(
@@ -135,19 +168,20 @@ actor MCPServer {
                 clientName: info?.name ?? String(localized: "Unknown"),
                 clientVersion: info?.version,
                 connectedSince: Date.now - TimeInterval(connectedElapsed.components.seconds),
-                lastActivityAt: Date.now - TimeInterval(activeElapsed.components.seconds)
+                lastActivityAt: Date.now - TimeInterval(activeElapsed.components.seconds),
+                tokenName: sessionTokenName,
+                remoteAddress: sessionRemoteAddress
             ))
         }
         return snapshots
     }
 
-    // MARK: - Listener State
-
     private func handleListenerState(_ state: NWListener.State, listener: NWListener) {
         switch state {
         case .ready:
             let port = listener.port?.rawValue ?? 0
-            Self.logger.info("MCP server listening on 127.0.0.1:\(port)")
+            let bindAddress = allowRemoteAccess ? "0.0.0.0" : "127.0.0.1"
+            Self.logger.info("MCP server listening on \(bindAddress):\(port)")
             stateCallback(.running(port: port))
 
         case .failed(let error):
@@ -163,8 +197,6 @@ actor MCPServer {
             break
         }
     }
-
-    // MARK: - Connection Handling
 
     private func handleNewConnection(_ connection: NWConnection) {
         connection.stateUpdateHandler = { [weak self] state in
@@ -218,7 +250,6 @@ actor MCPServer {
             buffer.append(content)
         }
 
-        // DoS prevention: reject requests with accumulated buffer exceeding max body size
         if buffer.count > Self.maxBufferSize {
             Self.logger.warning("Request buffer exceeds \(Self.maxBufferSize) bytes, rejecting")
             sendHTTPError(connection: connection, status: 413, message: "Request entity too large")
@@ -249,18 +280,22 @@ actor MCPServer {
         }
     }
 
-    // MARK: - HTTP Request Handling
-
     private static let corsHeaders: [(String, String)] = [
-        ("Access-Control-Allow-Origin", "*"),
+        ("Access-Control-Allow-Origin", "http://localhost"),
         ("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS"),
-        ("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, mcp-protocol-version"),
+        ("Access-Control-Allow-Headers", "Content-Type, Mcp-Session-Id, mcp-protocol-version, Authorization"),
         ("Access-Control-Expose-Headers", "Mcp-Session-Id"),
         ("Access-Control-Max-Age", "86400")
     ]
 
     private func handleHTTPRequest(_ request: HTTPRequest, connection: NWConnection) async {
-        let result = await router.route(request, server: self)
+        let remoteIP: String? = {
+            guard let endpoint = connection.currentPath?.remoteEndpoint,
+                  case .hostPort(let host, _) = endpoint else { return nil }
+            return "\(host)"
+        }()
+
+        let result = await router.route(request, server: self, remoteIP: remoteIP, tokenStore: tokenStore, rateLimiter: rateLimiter)
 
         switch result {
         case .json(let data, let sessionId):
@@ -281,10 +316,11 @@ actor MCPServer {
 
         case .httpError(let status, let message):
             sendHTTPError(connection: connection, status: status, message: message)
+
+        case .httpErrorWithHeaders(let status, let message, let extraHeaders):
+            sendHTTPErrorWithHeaders(connection: connection, status: status, message: message, extraHeaders: extraHeaders)
         }
     }
-
-    // MARK: - Session Management
 
     func createSession() -> MCPSession? {
         guard sessions.count < Self.maxSessions else {
@@ -307,15 +343,12 @@ actor MCPServer {
         await session.cancelAllTasks()
         await session.cancelSSEConnection()
 
-        // Notify external cleanup (e.g. MCPAuthGuard session approvals)
         if let cleanupHandler = sessionCleanupHandler {
             await cleanupHandler(sessionId)
         }
 
         Self.logger.info("Removed session \(sessionId) (total: \(self.sessions.count))")
     }
-
-    // MARK: - Cleanup
 
     private func startCleanupTimer() {
         cleanupTask?.cancel()
@@ -352,8 +385,6 @@ actor MCPServer {
             Self.logger.info("Cleaned up \(removed.count) idle session(s)")
         }
     }
-
-    // MARK: - HTTP Response Helpers
 
     func sendResponse(connection: NWConnection, status: Int, headers: [(String, String)], body: Data?) {
         let statusText = MCPHTTPParser.statusText(for: status)
@@ -413,6 +444,18 @@ actor MCPServer {
             ("Content-Type", "application/json"),
             ("Connection", "close")
         ]
+        headers.append(contentsOf: Self.corsHeaders)
+        sendResponse(connection: connection, status: status, headers: headers, body: data)
+    }
+
+    func sendHTTPErrorWithHeaders(connection: NWConnection, status: Int, message: String, extraHeaders: [(String, String)]) {
+        let body: [String: String] = ["error": message]
+        let data = (try? JSONEncoder().encode(body)) ?? Data()
+        var headers: [(String, String)] = [
+            ("Content-Type", "application/json"),
+            ("Connection", "close")
+        ]
+        headers.append(contentsOf: extraHeaders)
         headers.append(contentsOf: Self.corsHeaders)
         sendResponse(connection: connection, status: status, headers: headers, body: data)
     }

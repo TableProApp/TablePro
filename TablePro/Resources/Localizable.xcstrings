@@ -67,6 +67,9 @@
         }
       }
     },
+    " ago" : {
+
+    },
     "--" : {
       "localizations" : {
         "tr" : {
@@ -3108,6 +3111,9 @@
         }
       }
     },
+    "60 days" : {
+
+    },
     "60s" : {
       "localizations" : {
         "tr" : {
@@ -3306,6 +3312,9 @@
         }
       }
     },
+    "A connection with this name, host, and type already exists." : {
+
+    },
     "A fast, lightweight native macOS database client" : {
       "localizations" : {
         "tr" : {
@@ -3394,6 +3403,9 @@
           }
         }
       }
+    },
+    "Access" : {
+
     },
     "Access Key ID" : {
       "localizations" : {
@@ -3808,6 +3820,9 @@
           }
         }
       }
+    },
+    "Add as Copy" : {
+
     },
     "Add at least one column with a name and type" : {
       "localizations" : {
@@ -4649,6 +4664,9 @@
         }
       }
     },
+    "All Connections" : {
+
+    },
     "ALL DATABASES" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4850,6 +4868,9 @@
         }
       }
     },
+    "Allow remote connections" : {
+
+    },
     "Also handles" : {
       "localizations" : {
         "tr" : {
@@ -4985,6 +5006,7 @@
       }
     },
     "An external link wants to add a database connection:\n\nName: %@\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -7704,9 +7726,6 @@
     "Choose a private key file" : {
 
     },
-    "Choose a private key file for the jump host" : {
-
-    },
     "Choose a query from the list\nto see its full content here." : {
       "localizations" : {
         "tr" : {
@@ -8198,6 +8217,9 @@
           }
         }
       }
+    },
+    "Client" : {
+
     },
     "Client Cert" : {
       "localizations" : {
@@ -9551,6 +9573,9 @@
         }
       }
     },
+    "Connection Access" : {
+
+    },
     "Connection Failed" : {
       "localizations" : {
         "tr" : {
@@ -10241,6 +10266,7 @@
       }
     },
     "Copy as Import Link" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -10285,6 +10311,7 @@
       }
     },
     "Copy as URL" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -10327,6 +10354,9 @@
           }
         }
       }
+    },
+    "Copy Connection String" : {
+
     },
     "Copy Definition" : {
       "localizations" : {
@@ -10530,6 +10560,9 @@
         }
       }
     },
+    "Copy TablePro Link" : {
+
+    },
     "Copy this statement to clipboard" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10574,6 +10607,9 @@
           }
         }
       }
+    },
+    "Copy Token" : {
+
     },
     "Copy Value" : {
       "localizations" : {
@@ -13959,6 +13995,9 @@
         }
       }
     },
+    "Done" : {
+
+    },
     "Downloads" : {
       "localizations" : {
         "tr" : {
@@ -14535,6 +14574,9 @@
           }
         }
       }
+    },
+    "e.g., Claude Code on VPS" : {
+
     },
     "Each SQLite file is a separate database.\nTo open a different database, create a new connection." : {
       "localizations" : {
@@ -16128,6 +16170,12 @@
     "Expected Behavior" : {
 
     },
+    "Expiration" : {
+
+    },
+    "Expiration date" : {
+
+    },
     "Expired" : {
       "localizations" : {
         "tr" : {
@@ -16149,6 +16197,9 @@
           }
         }
       }
+    },
+    "Expires" : {
+
     },
     "Expires:" : {
       "localizations" : {
@@ -16355,7 +16406,11 @@
         }
       }
     },
+    "Export %d Connections to File..." : {
+
+    },
     "Export %d Connections..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -16956,6 +17011,9 @@
         }
       }
     },
+    "Export to File..." : {
+
+    },
     "Export..." : {
       "localizations" : {
         "tr" : {
@@ -17341,6 +17399,12 @@
         }
       }
     },
+    "Failed to generate TLS certificate" : {
+
+    },
+    "Failed to generate TLS private key" : {
+
+    },
     "Failed to import DDL: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17363,6 +17427,9 @@
           }
         }
       }
+    },
+    "Failed to import TLS identity into Keychain (error %d)" : {
+
     },
     "Failed to Load" : {
       "localizations" : {
@@ -18757,6 +18824,9 @@
         }
       }
     },
+    "Find..." : {
+
+    },
     "Fit to Window" : {
       "localizations" : {
         "tr" : {
@@ -19221,6 +19291,9 @@
         }
       }
     },
+    "Full Access" : {
+
+    },
     "Function" : {
       "localizations" : {
         "tr" : {
@@ -19266,6 +19339,12 @@
       }
     },
     "General Feedback" : {
+
+    },
+    "Generate" : {
+
+    },
+    "Generate New Token" : {
 
     },
     "Generated WHERE Clause" : {
@@ -19820,6 +19899,9 @@
         }
       }
     },
+    "Hide token" : {
+
+    },
     "Higher values create fewer INSERT statements, resulting in smaller files and faster imports" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20338,6 +20420,7 @@
       }
     },
     "Import Connection from Link" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -24624,6 +24707,9 @@
         }
       }
     },
+    "Mode" : {
+
+    },
     "Model" : {
       "localizations" : {
         "tr" : {
@@ -25168,6 +25254,9 @@
         }
       }
     },
+    "Network" : {
+
+    },
     "Network error: %@" : {
       "localizations" : {
         "tr" : {
@@ -25236,6 +25325,9 @@
           }
         }
       }
+    },
+    "Never used" : {
+
     },
     "New Chat" : {
       "localizations" : {
@@ -26887,6 +26979,9 @@
         }
       }
     },
+    "No saved connections" : {
+
+    },
     "No saved templates" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -27130,6 +27225,9 @@
           }
         }
       }
+    },
+    "No tokens created" : {
+
     },
     "No valid rows found in clipboard data." : {
       "localizations" : {
@@ -28797,6 +28895,9 @@
         }
       }
     },
+    "Page %d" : {
+
+    },
     "Page Count" : {
       "localizations" : {
         "tr" : {
@@ -29000,6 +29101,9 @@
           }
         }
       }
+    },
+    "Partial files may remain on disk." : {
+
     },
     "Partition" : {
       "localizations" : {
@@ -29384,6 +29488,12 @@
           }
         }
       }
+    },
+    "Permission" : {
+
+    },
+    "Permission Level" : {
+
     },
     "PID" : {
       "localizations" : {
@@ -31931,6 +32041,12 @@
         }
       }
     },
+    "Read & Write" : {
+
+    },
+    "Read Only" : {
+
+    },
     "Read Preference" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -33109,6 +33225,9 @@
     "Report an Issue..." : {
 
     },
+    "Require authentication" : {
+
+    },
     "Require confirmation or Touch ID before executing queries." : {
       "localizations" : {
         "tr" : {
@@ -33556,6 +33675,12 @@
           }
         }
       }
+    },
+    "Reveal token" : {
+
+    },
+    "Revoked" : {
+
     },
     "Right-click to show all %@" : {
       "localizations" : {
@@ -35450,6 +35575,9 @@
         }
       }
     },
+    "Select Connections" : {
+
+    },
     "Select filter column" : {
       "localizations" : {
         "tr" : {
@@ -36124,6 +36252,9 @@
         }
       }
     },
+    "Setup Instructions" : {
+
+    },
     "Shadows the SQL keyword '%@'" : {
       "localizations" : {
         "tr" : {
@@ -36145,6 +36276,9 @@
           }
         }
       }
+    },
+    "Share" : {
+
     },
     "Share anonymous usage data" : {
       "localizations" : {
@@ -37524,6 +37658,9 @@
         }
       }
     },
+    "SSH" : {
+
+    },
     "SSH Agent" : {
       "localizations" : {
         "tr" : {
@@ -37592,6 +37729,7 @@
       }
     },
     "SSH Connection Test Failed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37958,6 +38096,9 @@
           }
         }
       }
+    },
+    "SSL" : {
+
     },
     "SSL Mode" : {
       "localizations" : {
@@ -38351,6 +38492,9 @@
           }
         }
       }
+    },
+    "Stop Export?" : {
+
     },
     "Stop Generating" : {
       "localizations" : {
@@ -40196,6 +40340,9 @@
         }
       }
     },
+    "The server will be accessible from other devices on your network. Authentication and TLS are enabled automatically." : {
+
+    },
     "The text could not be parsed as JSON." : {
 
     },
@@ -40899,6 +41046,9 @@
         }
       }
     },
+    "This token will not be shown again" : {
+
+    },
     "This TRUNCATE query will permanently delete all rows in the table. This action cannot be undone." : {
       "localizations" : {
         "tr" : {
@@ -41291,6 +41441,12 @@
           }
         }
       }
+    },
+    "TLS certificate expired or near expiry" : {
+
+    },
+    "TLS identity not found in Keychain" : {
+
     },
     "TLS Mode" : {
       "localizations" : {
@@ -41761,6 +41917,12 @@
           }
         }
       }
+    },
+    "Token" : {
+
+    },
+    "Token Name" : {
+
     },
     "Too many submissions. Please try again later." : {
 

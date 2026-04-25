@@ -1,10 +1,3 @@
-//
-//  MCPSettings.swift
-//  TablePro
-//
-//  User-configurable MCP server preferences
-//
-
 import Foundation
 
 struct MCPSettings: Codable, Equatable {
@@ -14,6 +7,8 @@ struct MCPSettings: Codable, Equatable {
     var maxRowLimit: Int
     var queryTimeoutSeconds: Int
     var logQueriesInHistory: Bool
+    var requireAuthentication: Bool
+    var allowRemoteConnections: Bool
 
     static let `default` = MCPSettings(
         enabled: false,
@@ -21,7 +16,9 @@ struct MCPSettings: Codable, Equatable {
         defaultRowLimit: 500,
         maxRowLimit: 10_000,
         queryTimeoutSeconds: 30,
-        logQueriesInHistory: true
+        logQueriesInHistory: true,
+        requireAuthentication: false,
+        allowRemoteConnections: false
     )
 
     init(
@@ -30,7 +27,9 @@ struct MCPSettings: Codable, Equatable {
         defaultRowLimit: Int = 500,
         maxRowLimit: Int = 10_000,
         queryTimeoutSeconds: Int = 30,
-        logQueriesInHistory: Bool = true
+        logQueriesInHistory: Bool = true,
+        requireAuthentication: Bool = false,
+        allowRemoteConnections: Bool = false
     ) {
         self.enabled = enabled
         self.port = port
@@ -38,6 +37,8 @@ struct MCPSettings: Codable, Equatable {
         self.maxRowLimit = maxRowLimit
         self.queryTimeoutSeconds = queryTimeoutSeconds
         self.logQueriesInHistory = logQueriesInHistory
+        self.requireAuthentication = requireAuthentication
+        self.allowRemoteConnections = allowRemoteConnections
     }
 
     init(from decoder: Decoder) throws {
@@ -49,5 +50,7 @@ struct MCPSettings: Codable, Equatable {
         maxRowLimit = try container.decodeIfPresent(Int.self, forKey: .maxRowLimit) ?? 10_000
         queryTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .queryTimeoutSeconds) ?? 30
         logQueriesInHistory = try container.decodeIfPresent(Bool.self, forKey: .logQueriesInHistory) ?? true
+        requireAuthentication = try container.decodeIfPresent(Bool.self, forKey: .requireAuthentication) ?? false
+        allowRemoteConnections = try container.decodeIfPresent(Bool.self, forKey: .allowRemoteConnections) ?? false
     }
 }
