@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- About window uses standard macOS About panel
 - iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
 
 ## [0.35.0] - 2026-04-25

@@ -3,7 +3,6 @@
 //  TablePro
 //
 
-import AppKit
 import SwiftUI
 
 struct WelcomeConnectionRow: View {
@@ -64,7 +63,7 @@ struct WelcomeConnectionRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .overlay(
-            DoubleClickView { onConnect?() }
+            DoubleClickDetector { onConnect?() }
         )
     }
 
@@ -84,30 +83,5 @@ struct WelcomeConnectionRow: View {
             )
         }
         return connection.host
-    }
-}
-
-private struct DoubleClickView: NSViewRepresentable {
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = PassThroughDoubleClickView()
-        view.onDoubleClick = onDoubleClick
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? PassThroughDoubleClickView)?.onDoubleClick = onDoubleClick
-    }
-}
-
-private class PassThroughDoubleClickView: NSView {
-    var onDoubleClick: (() -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            onDoubleClick?()
-        }
-        super.mouseDown(with: event)
     }
 }

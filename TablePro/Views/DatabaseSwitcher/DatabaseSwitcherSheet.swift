@@ -260,7 +260,7 @@ struct DatabaseSwitcherSheet: View {
         .id(database.name)
         .tag(database.name)
         .overlay(
-            DoubleClickView {
+            DoubleClickDetector {
                 viewModel.selectedDatabase = database.name
                 openSelectedDatabase()
             }
@@ -425,35 +425,6 @@ struct DatabaseSwitcherSheet: View {
             onSelect(database)
         }
         dismiss()
-    }
-}
-
-// MARK: - DoubleClickView
-
-/// NSViewRepresentable that detects double-clicks without interfering with native List selection
-private struct DoubleClickView: NSViewRepresentable {
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = PassThroughDoubleClickView()
-        view.onDoubleClick = onDoubleClick
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? PassThroughDoubleClickView)?.onDoubleClick = onDoubleClick
-    }
-}
-
-private class PassThroughDoubleClickView: NSView {
-    var onDoubleClick: (() -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            onDoubleClick?()
-        }
-        // Always forward to next responder for List selection
-        super.mouseDown(with: event)
     }
 }
 

@@ -185,7 +185,7 @@ internal struct QuickSwitcherSheet: View {
         .id(item.id)
         .tag(item.id)
         .overlay(
-            DoubleClickOverlay {
+            DoubleClickDetector {
                 viewModel.selectedItemId = item.id
                 openSelectedItem()
             }
@@ -262,33 +262,5 @@ internal struct QuickSwitcherSheet: View {
         guard let item = viewModel.selectedItem else { return }
         onSelect(item)
         dismiss()
-    }
-}
-
-// MARK: - DoubleClickOverlay
-
-/// NSViewRepresentable that detects double-clicks without interfering with native List selection
-private struct DoubleClickOverlay: NSViewRepresentable {
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = PassThroughDoubleClickView()
-        view.onDoubleClick = onDoubleClick
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        (nsView as? PassThroughDoubleClickView)?.onDoubleClick = onDoubleClick
-    }
-}
-
-private class PassThroughDoubleClickView: NSView {
-    var onDoubleClick: (() -> Void)?
-
-    override func mouseDown(with event: NSEvent) {
-        if event.clickCount == 2 {
-            onDoubleClick?()
-        }
-        super.mouseDown(with: event)
     }
 }
