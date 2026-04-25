@@ -239,6 +239,7 @@ struct ConnectionListView: View {
                         if selectedConnectionUUID == connection.id {
                             selectedConnectionIdString = nil
                         }
+                        coordinatorCache.removeValue(forKey: connection.id)
                         appState.removeConnection(connection)
                     }
                 }

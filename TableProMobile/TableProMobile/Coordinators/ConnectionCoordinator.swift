@@ -276,7 +276,9 @@ final class ConnectionCoordinator {
               let table = tables.first(where: { $0.name == tableName }) else { return }
         appState.pendingTableName = nil
         selectedTab = .tables
-        tablesPath.append(table)
+        Task { @MainActor in
+            tablesPath.append(table)
+        }
     }
 
     // MARK: - Private Helpers
