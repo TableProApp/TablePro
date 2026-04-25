@@ -80,7 +80,6 @@ final class WelcomeViewModel {
     @ObservationIgnored private var importObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
     @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
-    @ObservationIgnored private var newConnectionObserver: NSObjectProtocol?
 
     // MARK: - Computed Properties
 
@@ -217,7 +216,7 @@ final class WelcomeViewModel {
 
     deinit {
         [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, importFromAppObserver, linkedFoldersObserver, newConnectionObserver].forEach {
+         importObserver, importFromAppObserver, linkedFoldersObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }
