@@ -27,6 +27,7 @@ struct SettingsView: View {
             .tag(SettingsTab.general.rawValue)
 
             AppearanceSettingsView(settings: $settingsManager.appearance)
+                .frame(minWidth: 620, minHeight: 400)
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
                 .tag(SettingsTab.appearance.rawValue)
 
@@ -38,6 +39,7 @@ struct SettingsView: View {
             .tag(SettingsTab.editor.rawValue)
 
             KeyboardSettingsView(settings: $settingsManager.keyboard)
+                .frame(minWidth: 500, minHeight: 400)
                 .tabItem { Label("Keyboard", systemImage: "keyboard") }
                 .tag(SettingsTab.keyboard.rawValue)
 
@@ -54,6 +56,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.mcp.rawValue)
 
             PluginsSettingsView()
+                .frame(minWidth: 550, minHeight: 400)
                 .tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
                 .tag(SettingsTab.plugins.rawValue)
 
@@ -61,7 +64,6 @@ struct SettingsView: View {
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account.rawValue)
         }
-        .frame(width: 720, height: 500)
     }
 }
 

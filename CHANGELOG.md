@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardcoded font sizes ignoring Accessibility text size settings
 - Window position and size not restored between launches
 - Toolbar customization not saved between launches
+- Settings window uses content-sized tabs instead of fixed frame
 
 ### Changed
 
