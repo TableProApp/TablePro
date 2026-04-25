@@ -6,15 +6,11 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct ConnectionSSHTunnelView: View {
     @Binding var sshState: SSHTunnelFormState
 
     let databaseType: DatabaseType
-
-    @State private var showKeyFilePicker = false
-    @State private var activeJumpHostKeyBinding: Binding<SSHJumpHost>?
 
     var body: some View {
         Form {
@@ -50,20 +46,6 @@ struct ConnectionSSHTunnelView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .fileImporter(
-            isPresented: $showKeyFilePicker,
-            allowedContentTypes: [.item],
-            allowsMultipleSelection: false
-        ) { result in
-            guard case let .success(urls) = result, let url = urls.first else { return }
-            let path = url.path(percentEncoded: false)
-            if let binding = activeJumpHostKeyBinding {
-                binding.wrappedValue.privateKeyPath = path
-                activeJumpHostKeyBinding = nil
-            } else {
-                sshState.privateKeyPath = path
-            }
-        }
     }
 
     // MARK: - SSH Profile Section
@@ -222,11 +204,8 @@ struct ConnectionSSHTunnelView: View {
                     LabeledContent(String(localized: "Key File")) {
                         HStack {
                             TextField("", text: $sshState.privateKeyPath, prompt: Text("~/.ssh/id_rsa"))
-                            Button(String(localized: "Browse")) {
-                                activeJumpHostKeyBinding = nil
-                                showKeyFilePicker = true
-                            }
-                            .controlSize(.small)
+                            Button(String(localized: "Browse")) { browseForKeyFile { sshState.privateKeyPath = $0 } }
+                                .controlSize(.small)
                         }
                     }
                     SecureField(String(localized: "Passphrase"), text: $sshState.keyPassphrase)
@@ -305,8 +284,7 @@ struct ConnectionSSHTunnelView: View {
                                             prompt: Text("~/.ssh/id_rsa")
                                         )
                                         Button(String(localized: "Browse")) {
-                                            activeJumpHostKeyBinding = jumpHostBinding
-                                            showKeyFilePicker = true
+                                            browseForKeyFile { jumpHostBinding.wrappedValue.privateKeyPath = $0 }
                                         }
                                         .controlSize(.small)
                                     }
@@ -355,6 +333,20 @@ struct ConnectionSSHTunnelView: View {
     }
 
     // MARK: - Helper Methods
+
+    private func browseForKeyFile(onSelect: @escaping (String) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        panel.showsHiddenFiles = true
+        panel.message = String(localized: "Choose a private key file")
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                onSelect(url.path(percentEncoded: false))
+            }
+        }
+    }
 
     private func applySSHConfigEntry(_ host: String) {
         guard let entry = sshState.configEntries.first(where: { $0.host == host }) else {

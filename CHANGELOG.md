@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection failure error not shown when returning to welcome screen
 - Hardcoded font sizes ignoring Accessibility text size settings
 - Window position and size not restored between launches
-- Toolbar customization not saved between launches
 - Onboarding page dots missing accessibility labels and button traits
 - Icon-only toolbar buttons (new connection, new group) missing VoiceOver labels
 - Linked connection rows not selectable with single click in welcome list
@@ -35,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - About window uses standard macOS About panel
 - Use system SF Pro font instead of SF Pro Rounded on onboarding and welcome screens
 - iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
-- SSH key file picker uses SwiftUI `.fileImporter` instead of imperative NSOpenPanel
+- SSH key file picker uses standalone NSOpenPanel for hidden file access
 - QuickSwitcher uses native List selection highlighting instead of manual overrides
 - Removed iOS-style drag gesture from onboarding (arrow keys and buttons remain)
 

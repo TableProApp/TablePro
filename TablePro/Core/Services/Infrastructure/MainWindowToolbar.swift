@@ -51,7 +51,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
         self.managedToolbar.delegate = self
         self.managedToolbar.displayMode = .iconOnly
         self.managedToolbar.allowsUserCustomization = true
-        self.managedToolbar.autosavesConfiguration = true
+        self.managedToolbar.autosavesConfiguration = false
         // Per WWDC 2023 / Apple Music pattern: do NOT use
         // `centeredItemIdentifiers` together with a right cluster that should
         // justify against `inspectorTrackingSeparator`. The centered API
