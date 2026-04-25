@@ -23,7 +23,7 @@ struct ConnectionSharingTests {
                 name: "Dev", host: "localhost", port: 3306,
                 database: "mydb", username: "root", type: .mysql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("name=Dev"))
             #expect(link.contains("host=localhost"))
             #expect(link.contains("port=3306"))
@@ -39,7 +39,7 @@ struct ConnectionSharingTests {
                 name: "Minimal", host: "db.com", port: 5432,
                 database: "", username: "", type: .postgresql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(!link.contains("username="))
             #expect(!link.contains("database="))
         }
@@ -59,7 +59,7 @@ struct ConnectionSharingTests {
                 database: "main", username: "app", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("ssh=1"))
             #expect(link.contains("sshHost=bastion.com"))
             #expect(link.contains("sshPort=2222"))
@@ -74,7 +74,7 @@ struct ConnectionSharingTests {
                 name: "NoSSH", host: "localhost", port: 3306,
                 database: "", username: "", type: .mysql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(!link.contains("ssh="))
             #expect(!link.contains("sshHost="))
         }
@@ -91,7 +91,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(!link.contains("sshPort="))
         }
 
@@ -109,7 +109,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 sslConfig: ssl
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("sslMode=required"))
             #expect(link.contains("sslCaCertPath="))
         }
@@ -121,7 +121,7 @@ struct ConnectionSharingTests {
                 name: "NoSSL", host: "localhost", port: 3306,
                 database: "", username: "", type: .mysql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(!link.contains("sslMode="))
         }
 
@@ -135,7 +135,7 @@ struct ConnectionSharingTests {
                 safeModeLevel: .readOnly,
                 aiPolicy: .never
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("color=red"))
             #expect(link.contains("safeModeLevel=readOnly"))
             #expect(link.contains("aiPolicy=never"))
@@ -148,7 +148,7 @@ struct ConnectionSharingTests {
                 name: "Default", host: "localhost", port: 3306,
                 database: "", username: "", type: .mysql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(!link.contains("color="))
             #expect(!link.contains("safeModeLevel="))
             #expect(!link.contains("aiPolicy="))
@@ -163,7 +163,7 @@ struct ConnectionSharingTests {
                 redisDatabase: 3,
                 additionalFields: ["customField": "customValue"]
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("redisDatabase=3"))
             #expect(link.contains("af_customField=customValue"))
         }
@@ -176,7 +176,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 startupCommands: "SET search_path TO myschema;"
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("startupCommands="))
         }
 
@@ -188,7 +188,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .postgresql,
                 localOnly: true
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             #expect(link.contains("localOnly=1"))
         }
 
@@ -199,7 +199,7 @@ struct ConnectionSharingTests {
                 name: "Dev & Staging", host: "db.example.com", port: 5432,
                 database: "my db", username: "user@domain", type: .postgresql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             let url = URL(string: link)
             #expect(url != nil)
             let components = URLComponents(url: url!, resolvingAgainstBaseURL: false)
@@ -223,7 +223,7 @@ struct ConnectionSharingTests {
                 safeModeLevel: .readOnly,
                 startupCommands: "SET timeout=30;"
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: conn)
+            let link = ConnectionExportService.buildImportDeeplink(for: conn)!
             let url = URL(string: link)
             #expect(url != nil)
             #expect(url?.scheme == "tablepro")

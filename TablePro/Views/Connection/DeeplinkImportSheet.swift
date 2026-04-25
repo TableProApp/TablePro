@@ -85,9 +85,11 @@ struct DeeplinkImportSheet: View {
                 Button(String(localized: "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(String(localized: "Add Connection")) { performImport() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(editableName.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button(isDuplicate ? String(localized: "Add as Copy") : String(localized: "Add Connection")) {
+                    performImport()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(editableName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding()
         }
@@ -207,7 +209,7 @@ struct DeeplinkImportSheet: View {
         let preview = ConnectionExportService.analyzeImport(envelope)
         var resolutions: [UUID: ImportResolution] = [:]
         for item in preview.items {
-            resolutions[item.id] = .importNew
+            resolutions[item.id] = isDuplicate ? .importAsCopy : .importNew
         }
         ConnectionExportService.performImport(preview, resolutions: resolutions)
         onImported()

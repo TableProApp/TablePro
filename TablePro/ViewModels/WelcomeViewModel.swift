@@ -22,7 +22,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
-        case .deeplinkImport(let c): "deeplinkImport-\(c.name)-\(c.host)-\(c.port)"
+        case .deeplinkImport(let c): "deeplinkImport-\(c.type)-\(c.name)-\(c.host)-\(c.port)"
         }
     }
 }

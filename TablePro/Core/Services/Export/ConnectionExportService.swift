@@ -575,9 +575,9 @@ enum ConnectionExportService {
 
     // MARK: - Deeplink Builder
 
-    static func buildImportDeeplink(for connection: DatabaseConnection) -> String {
+    static func buildImportDeeplink(for connection: DatabaseConnection) -> String? {
         let envelope = buildEnvelope(for: [connection])
-        guard let exportable = envelope.connections.first else { return "" }
+        guard let exportable = envelope.connections.first else { return nil }
 
         var components = URLComponents()
         components.scheme = "tablepro"
@@ -680,7 +680,11 @@ enum ConnectionExportService {
         }
 
         components.queryItems = queryItems
-        return components.url?.absoluteString ?? ""
+        guard let url = components.url?.absoluteString, !url.isEmpty else {
+            logger.warning("Failed to build import deeplink for '\(connection.name)'")
+            return nil
+        }
+        return url
     }
 
     static func buildCompactJSON(for connection: DatabaseConnection) -> String {

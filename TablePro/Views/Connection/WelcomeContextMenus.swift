@@ -127,8 +127,9 @@ extension WelcomeWindowView {
             }
 
             Button {
-                let link = ConnectionExportService.buildImportDeeplink(for: connection)
-                ClipboardService.shared.writeText(link)
+                if let link = ConnectionExportService.buildImportDeeplink(for: connection) {
+                    ClipboardService.shared.writeText(link)
+                }
             } label: {
                 Label(String(localized: "Copy TablePro Link"), systemImage: "link.badge.plus")
             }
