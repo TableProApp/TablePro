@@ -78,7 +78,10 @@ struct WelcomeConnectionRow: View {
         }
         if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
             let count = mongoHosts.split(separator: ",").count
-            return String(format: String(localized: "%@ (+%d more)"), connection.host, count - 1)
+            return String(
+                format: String(localized: "%@ (+%d more)"),
+                "\(connection.host):\(connection.port)", count - 1
+            )
         }
         return connection.host
     }
