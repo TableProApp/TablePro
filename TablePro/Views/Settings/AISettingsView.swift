@@ -406,6 +406,7 @@ private struct AIProviderEditorSheet: View {
         SecureField("API Key", text: $editingAPIKey)
             .textFieldStyle(.roundedBorder)
             .onChange(of: editingAPIKey) {
+                testResult = nil
                 scheduleFetchModels()
             }
     }
@@ -414,6 +415,7 @@ private struct AIProviderEditorSheet: View {
         TextField("Endpoint", text: $draft.endpoint)
             .textFieldStyle(.roundedBorder)
             .onChange(of: draft.endpoint) {
+                testResult = nil
                 AIProviderFactory.invalidateCache(for: draft.id)
                 fetchedModels = []
                 scheduleFetchModels()

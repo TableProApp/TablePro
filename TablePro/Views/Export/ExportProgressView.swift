@@ -18,6 +18,8 @@ struct ExportProgressView: View {
     let statusMessage: String
     let onStop: () -> Void
 
+    @State private var showStopConfirmation = false
+
     var body: some View {
         VStack(spacing: 20) {
             // Title
@@ -60,15 +62,20 @@ struct ExportProgressView: View {
                 }
             }
 
-            // Stop button
             Button("Stop") {
-                onStop()
+                showStopConfirmation = true
             }
             .frame(width: 80)
         }
         .padding(24)
         .frame(width: 400)
         .background(Color(nsColor: .windowBackgroundColor))
+        .alert(String(localized: "Stop Export?"), isPresented: $showStopConfirmation) {
+            Button(String(localized: "Continue"), role: .cancel) {}
+            Button(String(localized: "Stop"), role: .destructive) { onStop() }
+        } message: {
+            Text("Partial files may remain on disk.")
+        }
     }
 
     private var progressValue: Double {

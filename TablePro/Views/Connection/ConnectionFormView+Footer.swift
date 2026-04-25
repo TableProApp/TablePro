@@ -82,6 +82,7 @@ extension ConnectionFormView {
         .onChange(of: sshState.username) { _, _ in testSucceeded = false }
         .onChange(of: sshState.authMethod) { _, _ in testSucceeded = false }
         .onChange(of: sslMode) { _, _ in testSucceeded = false }
+        .onChange(of: additionalFieldValues) { _, _ in testSucceeded = false }
     }
 
     // MARK: - Import from URL Sheet

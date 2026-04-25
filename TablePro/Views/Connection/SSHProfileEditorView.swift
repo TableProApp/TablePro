@@ -50,6 +50,7 @@ struct SSHProfileEditorView: View {
     @State private var connectionsUsingProfile = 0
     @State private var isTesting = false
     @State private var testSucceeded = false
+    @State private var testError: String?
     @State private var testTask: Task<Void, Never>?
 
     private var isStoredProfile: Bool {
@@ -327,14 +328,32 @@ struct SSHProfileEditorView: View {
                     if isTesting {
                         ProgressView()
                             .controlSize(.small)
+                    } else if testSucceeded {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color(nsColor: .systemGreen))
+                    } else if testError != nil {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     } else {
-                        Image(systemName: testSucceeded ? "checkmark.circle.fill" : "antenna.radiowaves.left.and.right")
-                            .foregroundStyle(testSucceeded ? Color(nsColor: .systemGreen) : .secondary)
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundStyle(.secondary)
                     }
                     Text("Test Connection")
                 }
             }
             .disabled(isTesting || !isValid)
+
+            if testSucceeded {
+                Text(String(localized: "Connected"))
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemGreen))
+            } else if let testError {
+                Text(testError)
+                    .font(.caption)
+                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
 
             Spacer()
 
@@ -428,10 +447,8 @@ struct SSHProfileEditorView: View {
     func testSSHConnection() {
         isTesting = true
         testSucceeded = false
-        let window = NSApp.keyWindow
+        testError = nil
 
-        // Use .none for promptAtConnect during test — avoids showing an uncontextualized
-        // TOTP modal. The SSH connection is still tested (auth without TOTP).
         let testTotpMode: TOTPMode = totpMode == .promptAtConnect ? .none : totpMode
 
         let config = SSHConfiguration(
@@ -471,11 +488,7 @@ struct SSHProfileEditorView: View {
                 await MainActor.run {
                     isTesting = false
                     testSucceeded = false
-                    AlertHelper.showErrorSheet(
-                        title: String(localized: "SSH Connection Test Failed"),
-                        message: error.localizedDescription,
-                        window: window
-                    )
+                    testError = error.localizedDescription
                 }
             }
         }

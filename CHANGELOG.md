@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Icon-only toolbar buttons (new connection, new group) missing VoiceOver labels
 - Linked connection rows not selectable with single click in welcome list
 - Export progress sheet not handling Escape key
+- AI provider test result not cleared when endpoint or API key changes
+- Connection test success badge not reset when plugin-specific fields change
+- Export dialog shows empty tree with no message when no tables found
+- DDL results showing "0 row(s) affected" instead of "Query executed successfully"
+- Export stop button cancels immediately without confirmation
+- SSH profile test failure showing modal alert instead of inline error
 
 ### Changed
 

@@ -241,6 +241,18 @@ struct ExportDialog: View {
                         .padding(.top, 8)
                     Spacer()
                 }
+            } else if databaseItems.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "tray")
+                        .font(.largeTitle)
+                        .foregroundStyle(.tertiary)
+                    Text("No tables found")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .frame(minHeight: 300, maxHeight: .infinity)
             } else {
                 ExportTableTreeView(
                     databaseItems: $databaseItems,
