@@ -1413,6 +1413,16 @@
         }
       }
     },
+    "%d of %d rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d rows"
+          }
+        }
+      }
+    },
     "%d of %d rows selected" : {
       "localizations" : {
         "en" : {
@@ -1462,6 +1472,9 @@
           }
         }
       }
+    },
+    "%d rows" : {
+
     },
     "%d-%d of %@%@ rows" : {
       "localizations" : {
@@ -2153,15 +2166,8 @@
         }
       }
     },
-    "%lld/%lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld/%2$lld"
-          }
-        }
-      }
+    "%lld/5" : {
+
     },
     "%lld%%" : {
       "localizations" : {
@@ -10384,6 +10390,9 @@
         }
       }
     },
+    "Copy JSON" : {
+
+    },
     "Copy Key" : {
       "localizations" : {
         "tr" : {
@@ -15841,6 +15850,9 @@
         }
       }
     },
+    "Execute a query to view results as JSON" : {
+
+    },
     "Execute All" : {
       "localizations" : {
         "tr" : {
@@ -20924,9 +20936,6 @@
           }
         }
       }
-    },
-    "Includes app version, macOS version, and installed plugins only." : {
-
     },
     "Incorrect passphrase" : {
       "localizations" : {
@@ -26041,6 +26050,9 @@
         }
       }
     },
+    "No Data" : {
+
+    },
     "No database connection" : {
       "localizations" : {
         "tr" : {
@@ -29243,6 +29255,9 @@
         }
       }
     },
+    "Path" : {
+
+    },
     "Pause" : {
       "localizations" : {
         "tr" : {
@@ -29877,6 +29892,7 @@
       }
     },
     "postgresql://user:password@host:5432/database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35793,6 +35809,9 @@
         }
       }
     },
+    "Service" : {
+
+    },
     "Service Account Key" : {
       "localizations" : {
         "tr" : {
@@ -40123,6 +40142,9 @@
           }
         }
       }
+    },
+    "The text could not be parsed as JSON." : {
+
     },
     "The text could not be parsed as JSON. Use text mode to view or edit." : {
       "localizations" : {
