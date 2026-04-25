@@ -281,7 +281,7 @@ struct FilterSQLGenerator {
     }()
 
     private static let commentInjectionPattern: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: "--|\\/\\*", options: [])
+        try? NSRegularExpression(pattern: "(?:^|\\s)--|\\/\\*", options: [])
     }()
 
     private func isRawSQLSafe(_ sql: String) -> Bool {

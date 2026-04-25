@@ -648,7 +648,8 @@ struct FilterSQLGeneratorTests {
         ("age > 18 AND status = 'active'", "(age > 18 AND status = 'active')"),
         ("id IN (SELECT id FROM other)", "(id IN (SELECT id FROM other))"),
         ("YEAR(created_at) = 2024", "(YEAR(created_at) = 2024)"),
-        ("status = 'semi;colon'", "(status = 'semi;colon')")
+        ("status = 'semi;colon'", "(status = 'semi;colon')"),
+        ("data->>'key' = 'value'", "(data->>'key' = 'value')")
     ])
     func testRawSQLAllowsLegitimateConditions(input: String, expected: String) {
         let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)

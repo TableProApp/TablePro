@@ -421,14 +421,19 @@ final class PluginManager {
 
     @discardableResult
     func loadPlugin(at url: URL, source: PluginSource) throws -> PluginEntry {
-        if source == .userInstalled {
-            guard let signatureBundle = Bundle(url: url) else {
-                throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
-            }
-            try verifyCodeSignature(bundle: signatureBundle)
+        guard let bundle = Bundle(url: url) else {
+            throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        let bundle = try Self.validateAndLoadBundle(at: url, source: source)
+        try Self.validateBundleVersions(bundle, source: source)
+
+        if source == .userInstalled {
+            try verifyCodeSignature(bundle: bundle)
+        }
+
+        guard bundle.load() else {
+            throw PluginError.invalidBundle("Bundle failed to load executable")
+        }
 
         guard let entry = registerBundle(bundle, url: url, source: source) else {
             throw PluginError.invalidBundle("Principal class does not conform to TableProPlugin")
