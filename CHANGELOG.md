@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: sidebar-adaptable TabView navigation with per-tab state preservation
+
 ## [0.35.0] - 2026-04-25
 
 ### Added
@@ -23,7 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- iOS: TabView with sidebar-adaptable navigation (Tables, Query, History, Settings), per-tab state preservation, iPad sidebar support (requires iOS 18)
 - Native macOS UI: menu pickers, native alerts, native List selection, NSSearchField, borderless toolbar buttons
 - Quit dialog defaults to Cancel on Return key
 - Connection form delete button moved to far left
@@ -34,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Missing confirmation on group deletion
 - Plugin principalClass resolved off main thread
 - Crash when scrolling AI Chat during streaming on macOS 15.x
-- Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
+- Connection failure on PostgreSQL-compatible databases without `SET statement_timeout`
 - Schema-qualified table names resolve correctly in autocomplete
 - Alert dialogs use sheet attachment instead of bare modal
 
