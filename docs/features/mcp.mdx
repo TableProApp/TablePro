@@ -5,11 +5,11 @@ description: Built-in Model Context Protocol server for AI tool integration
 
 # MCP Server
 
-TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI tools query your databases, browse schemas, and export data through TablePro's saved connections. The server runs locally by default and can optionally be configured for remote access with authentication and TLS.
+TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI tools query your databases through TablePro's saved connections. Runs locally by default. Supports remote access with token auth and TLS.
 
 ## Enabling the Server
 
-Open **Settings > MCP** and toggle **Enable MCP Server**. The server starts on port `23508` by default. A green status indicator confirms it is running.
+Open **Settings > MCP** and toggle **Enable MCP Server**. Default port is `23508`.
 
 <Frame caption="MCP server settings">
   <img
@@ -24,19 +24,29 @@ Open **Settings > MCP** and toggle **Enable MCP Server**. The server starts on p
   />
 </Frame>
 
-You can also configure:
+Settings:
 
-- **Port** - TCP port for the MCP endpoint (default 23508)
-- **Default row limit** - maximum rows returned per query (default 500)
-- **Maximum row limit** - hard cap on rows (default 10,000)
-- **Query timeout** - seconds before a query is cancelled (default 30)
-- **Log MCP queries in history** - whether MCP-executed queries appear in Query History
-- **Authentication** - Bearer token auth with permission tiers (see [Authentication](#authentication))
-- **Remote access** - bind to all network interfaces with TLS (see [Remote Access](#remote-access))
+- **Port** - default 23508
+- **Default row limit** - default 500
+- **Maximum row limit** - default 10,000
+- **Query timeout** - default 30 seconds
+- **Log MCP queries in history** - show MCP queries in Query History
+- **Authentication** - token auth with permission tiers
+- **Remote access** - accept connections from other machines
 
 ## Client Configuration
 
-Add this JSON to your AI tool's MCP configuration file:
+### Auto-Setup (recommended)
+
+In **Settings > MCP**, click the setup button for your client. TablePro writes the config for you:
+
+- **Setup for Claude Code** - uses the stdio bridge, no token needed
+- **Setup for Claude Desktop** - writes to `claude_desktop_config.json`
+- **Setup for Cursor** - writes to `~/.cursor/mcp.json`
+
+### Manual Setup
+
+Add to your client's MCP config:
 
 ```json
 {
@@ -48,7 +58,7 @@ Add this JSON to your AI tool's MCP configuration file:
 }
 ```
 
-When authentication is enabled, include the token in the URL or headers per your client's configuration. For HTTP clients using Bearer auth:
+With authentication:
 
 ```json
 {
@@ -63,162 +73,23 @@ When authentication is enabled, include the token in the URL or headers per your
 }
 ```
 
-### Auto-Setup
-
-TablePro can write the MCP configuration for you. In **Settings > MCP**, click the setup button for your client:
-
-- **Setup for Claude Code** - adds TablePro to your Claude Code MCP config using the stdio bridge
-- **Setup for Claude Desktop** - writes to `claude_desktop_config.json`
-- **Setup for Cursor** - writes to the global `~/.cursor/mcp.json`
-
-Each button detects whether the client is installed and writes the correct config format. If authentication is enabled, the generated config includes a token automatically.
-
-### Claude Desktop
-
-Add the snippet above to your `claude_desktop_config.json` file. On macOS this is at `~/Library/Application Support/Claude/claude_desktop_config.json`.
-
-### Claude Code
-
-For local connections, the stdio bridge is the simplest option (see [Local Setup](#local-setup-stdio-bridge)). For HTTP:
+**Claude Code** (HTTP):
 
 ```bash
 claude mcp add tablepro --transport http http://127.0.0.1:23508/mcp
 ```
 
-For remote servers with auth:
+With auth:
 
 ```bash
-claude mcp add tablepro --transport http --header "Authorization: Bearer tp_your_token_here" https://192.168.1.x:23508/mcp
+claude mcp add tablepro --transport http --header "Authorization: Bearer tp_your_token" https://192.168.1.x:23508/mcp
 ```
-
-### Cursor
-
-Add the snippet to your `.cursor/mcp.json` file in the project root, or to the global MCP config at `~/.cursor/mcp.json`.
-
-## Authentication
-
-Token-based authentication controls who can access the MCP server and what they can do. When enabled, every request must include a valid Bearer token in the `Authorization` header.
-
-### Generating Tokens
-
-Open **Settings > MCP > Authentication** and click **Generate Token**. Each token has:
-
-- **Name** - label for identification (e.g., "Claude Code - laptop", "CI server")
-- **Permission tier** - what the token is allowed to do
-- **Connection access** - which saved connections the token can use (all or a specific allowlist)
-- **Expiry** - optional expiration date after which the token stops working
-
-You can generate multiple tokens with different permissions for different clients or team members.
-
-### Permission Tiers
-
-| Tier | Allowed operations |
-|------|--------------------|
-| Read Only | Schema browsing, SELECT queries, SHOW, EXPLAIN, query history, data export |
-| Read & Write | Everything in Read Only, plus INSERT, UPDATE, DELETE (subject to Safe Mode) |
-| Full Access | Everything in Read & Write, plus destructive operations (DROP, TRUNCATE, ALTER...DROP) via `confirm_destructive_operation` |
-
-A token with insufficient permissions receives a `403 Forbidden` response with a message indicating the required tier.
-
-### Connection Access Control
-
-Each token can be restricted to specific connections. A token with an allowlist cannot see, connect to, or query connections outside that list. Requests targeting a non-allowed connection receive a `403 Forbidden` response.
-
-### Error Responses
-
-| Status | Meaning |
-|--------|---------|
-| 401 Unauthorized | Missing or invalid token |
-| 403 Forbidden | Token lacks the required permission tier, or connection not in allowlist |
-
-### Rate Limiting
-
-Failed authentication attempts trigger escalating lockouts per IP address:
-
-| Consecutive failures | Lockout duration |
-|---------------------|-----------------|
-| 2 | 1 second |
-| 3 | 5 seconds |
-| 4 | 30 seconds |
-| 5+ | 5 minutes |
-
-The lockout resets after a successful authentication. During lockout, all requests from that IP receive `429 Too Many Requests`.
-
-## Remote Access
-
-By default the server binds to `127.0.0.1` (localhost only). To accept connections from other machines, enable remote access in **Settings > MCP > Network**.
-
-Enabling remote access automatically:
-- Enables TLS with a self-signed certificate (see [TLS](#tls))
-- Requires authentication (at least one token must exist)
-- Binds the server to `0.0.0.0` (all network interfaces)
-
-### Connection Methods
-
-**Tailscale** - the simplest option. Install Tailscale on both machines. Both devices see each other on the same tailnet. Connect using the Tailscale IP:
-
-```
-https://100.x.y.z:23508/mcp
-```
-
-**SSH tunnel** - forward the MCP port through an SSH connection. No TLS trust configuration needed on the client since traffic is encrypted by SSH:
-
-```bash
-ssh -R 23508:127.0.0.1:23508 user@remote-server
-```
-
-The remote machine connects to `http://127.0.0.1:23508/mcp` through the tunnel.
-
-**Direct LAN access** - the server binds to all interfaces when remote access is enabled. Connect using the Mac's LAN IP:
-
-```
-https://192.168.1.x:23508/mcp
-```
-
-Clients must trust the TLS certificate (see [TLS](#tls)).
-
-### macOS Firewall
-
-TablePro is Developer ID signed, so macOS automatically allows incoming connections. No manual firewall configuration is needed.
-
-## TLS
-
-When remote access is enabled, TablePro generates a self-signed TLS certificate to encrypt all traffic. The certificate is created automatically on first enable.
-
-### Certificate Details
-
-- Valid for 1 year from generation date
-- SHA-256 fingerprint displayed in **Settings > MCP > Network** for client-side verification
-- **Copy Certificate (PEM)** button exports the public certificate for adding to client trust stores
-- Certificate can be regenerated at any time from Settings (invalidates all existing client trust)
-
-### Client Connection
-
-To connect using the exported PEM certificate:
-
-```bash
-curl --cacert tablepro-mcp.pem https://192.168.1.x:23508/mcp
-```
-
-To connect using certificate pinning (no PEM file needed):
-
-```bash
-curl --pinnedpubkey "sha256//FINGERPRINT_FROM_SETTINGS" https://192.168.1.x:23508/mcp
-```
-
-Replace `FINGERPRINT_FROM_SETTINGS` with the SHA-256 fingerprint shown in Settings.
 
 ## Local Setup (Stdio Bridge)
 
-TablePro bundles a CLI tool at `Contents/MacOS/mcp-server` that connects to the running TablePro app via a local handshake file. This provides zero-config local access without tokens or network configuration.
+TablePro bundles a CLI at `Contents/MacOS/mcp-server` that connects to the running app via a local handshake file. No tokens or network config needed.
 
-### Auto-Setup
-
-Click **Setup for Claude Code** in **Settings > MCP** to write the config automatically. This is the fastest way to get started.
-
-### Manual Setup
-
-Add this to your MCP client configuration:
+Click **Setup for Claude Code** in Settings, or configure manually:
 
 ```json
 {
@@ -230,13 +101,105 @@ Add this to your MCP client configuration:
 }
 ```
 
-For Claude Code:
-
 ```bash
 claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/mcp-server
 ```
 
-The stdio bridge authenticates through an internal handshake file. No Bearer token is needed. TablePro must be running for the bridge to connect.
+TablePro must be running for the bridge to work.
+
+## Authentication
+
+When enabled, every request needs a `Authorization: Bearer <token>` header.
+
+### Generating Tokens
+
+**Settings > MCP > Authentication > Generate Token**. Each token has:
+
+- **Name** - label like "Claude Code on VPS" or "CI server"
+- **Permission tier** - Read Only, Read & Write, or Full Access
+- **Connection access** - all connections or a specific allowlist
+- **Expiry** - optional, default never
+
+You can create multiple tokens with different permissions.
+
+### Permission Tiers
+
+| Tier | What it can do |
+|------|----------------|
+| Read Only | Schema browsing, SELECT, SHOW, EXPLAIN, query history |
+| Read & Write | Above + INSERT, UPDATE, DELETE, data export |
+| Full Access | Above + DROP, TRUNCATE via `confirm_destructive_operation` |
+
+Wrong tier returns 403.
+
+### Connection Allowlist
+
+Each token can be restricted to specific connections. Requests to connections outside the allowlist get 403.
+
+### Rate Limiting
+
+Failed auth triggers escalating lockouts per IP:
+
+| Failures | Lockout |
+|----------|---------|
+| 2 | 1 second |
+| 3 | 5 seconds |
+| 4 | 30 seconds |
+| 5+ | 5 minutes |
+
+Success resets the counter. During lockout: 429 Too Many Requests.
+
+## Remote Access
+
+Default: localhost only. Enable remote access in **Settings > MCP > Network** to accept connections from other machines.
+
+This automatically enables TLS and requires authentication.
+
+### How to Connect
+
+**Tailscale** (easiest): install on both machines, connect via Tailscale IP:
+
+```
+https://100.x.y.z:23508/mcp
+```
+
+**SSH tunnel**: forward the port, no TLS trust needed:
+
+```bash
+ssh -R 23508:127.0.0.1:23508 user@remote-server
+```
+
+Remote side connects to `http://127.0.0.1:23508/mcp` through the tunnel.
+
+**Direct LAN**: connect using the Mac's IP:
+
+```
+https://192.168.1.x:23508/mcp
+```
+
+Client must trust the TLS certificate (see below).
+
+macOS firewall allows TablePro automatically (Developer ID signed).
+
+## TLS
+
+Auto-generated self-signed certificate when remote access is enabled. Valid 1 year.
+
+- SHA-256 fingerprint shown in **Settings > MCP > Network**
+- **Copy Certificate (PEM)** exports the cert for client trust stores
+- **Regenerate** creates a new cert (invalidates existing trust)
+
+Connect with PEM:
+
+```bash
+curl --cacert tablepro-mcp.pem https://192.168.1.x:23508/mcp
+```
+
+Connect with fingerprint pinning:
+
+```bash
+curl --pinnedpubkey "sha256//FINGERPRINT" https://192.168.1.x:23508/mcp
+```
 
 ## Available Tools
 
@@ -247,155 +210,96 @@ The stdio bridge authenticates through an internal handshake file. No Bearer tok
 | `list_connections` | List all saved connections with status |
 | `connect` | Connect to a saved database |
 | `disconnect` | Disconnect from a database |
-| `get_connection_status` | Get connection details (version, uptime) |
+| `get_connection_status` | Connection details (version, uptime) |
 
 ### Schema tools
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `list_databases` | `connection_id` | List databases on the server |
-| `list_schemas` | `connection_id`, `database`? | List schemas in a database |
+| `list_databases` | `connection_id` | List databases |
+| `list_schemas` | `connection_id`, `database`? | List schemas |
 | `list_tables` | `connection_id`, `database`?, `schema`?, `include_row_counts`? | List tables and views |
-| `describe_table` | `connection_id`, `table_name`, `schema`? | Get columns, indexes, foreign keys, and DDL |
-| `get_table_ddl` | `connection_id`, `table_name`, `schema`? | Get the CREATE TABLE statement |
+| `describe_table` | `connection_id`, `table_name`, `schema`? | Columns, indexes, foreign keys, DDL |
+| `get_table_ddl` | `connection_id`, `table_name`, `schema`? | CREATE TABLE statement |
 
 ### Query tools
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `execute_query` | `connection_id`, `query`, `max_rows`?, `timeout_seconds`?, `database`?, `schema`? | Run a SQL query (Safe Mode applies) |
-| `confirm_destructive_operation` | `connection_id`, `query`, `confirmation_phrase` | Execute DROP/TRUNCATE after explicit confirmation |
-| `export_data` | `connection_id`, `format` (csv/json/sql), `tables`?, `query`?, `max_rows`? | Export results to file. `max_rows` default 50,000, max 100,000. |
-| `switch_database` | `connection_id`, `database` | Switch the active database |
-| `switch_schema` | `connection_id`, `schema` | Switch the active schema |
+| `execute_query` | `connection_id`, `query`, `max_rows`?, `timeout_seconds`?, `database`?, `schema`? | Run a query (Safe Mode applies) |
+| `confirm_destructive_operation` | `connection_id`, `query`, `confirmation_phrase` | Run DROP/TRUNCATE after confirmation |
+| `export_data` | `connection_id`, `format` (csv/json/sql), `tables`?, `query`?, `max_rows`? | Export data. Default 50,000 rows, max 100,000. |
+| `switch_database` | `connection_id`, `database` | Switch active database |
+| `switch_schema` | `connection_id`, `schema` | Switch active schema |
 
-Parameters marked with `?` are optional.
+`?` = optional.
 
 ### Resources
-
-The server exposes three resources that AI tools can read directly:
 
 | Resource | Description |
 |----------|-------------|
 | `tablepro://connections` | All saved connections with metadata |
-| `tablepro://connections/{id}/schema` | Full schema for a connected database. Truncated at 100 tables. |
+| `tablepro://connections/{id}/schema` | Schema for a connected database (max 100 tables) |
 | `tablepro://connections/{id}/history` | Recent query history |
 
-History resource supports query parameters:
-- `?limit=N` - number of entries (1-500, default 50)
-- `?search=text` - filter by query text
-- `?date_filter=` - `today`, `thisWeek`, `thisMonth`, or omit for all
+History parameters: `?limit=N` (1-500), `?search=text`, `?date_filter=today|thisWeek|thisMonth`.
 
-Resources respect token-based connection access policies. A token restricted to specific connections cannot read schema or history for connections outside its allowlist.
+Resources respect token connection allowlists.
 
-## Security & Privacy
+## Security
 
-<Note>
-All safety controls run server-side in TablePro. AI clients cannot bypass them.
-</Note>
+All safety controls run server-side. AI clients cannot bypass them.
 
 ### Network
 
-- Binds to `127.0.0.1` by default. Only exposed to the network when remote access is explicitly enabled.
-- Remote access requires both authentication and TLS. The server will not bind to `0.0.0.0` without both active.
-- Origin header validated to prevent DNS rebinding attacks. Only `localhost`, `127.0.0.1`, `[::1]` allowed for local connections.
+- Localhost only by default
+- Remote access requires both auth and TLS
+- Origin validation prevents DNS rebinding (localhost, 127.0.0.1, ::1)
 
-### Authentication
+### Connection Access
 
-- Bearer token auth with three permission tiers (Read Only, Read & Write, Full Access)
-- Per-token connection allowlists restrict which databases a token can access
-- Optional token expiry for time-limited access
-- Escalating rate limiting on failed auth attempts (1s to 5 minutes)
-- Tokens are stored securely and can be revoked individually from Settings
+Each connection has an AI Policy (Always Allow / Ask Each Time / Never). Set per connection or change the default in **Settings > AI**.
 
-### Connection access
+Token allowlist is checked before AI Policy. Blocked at token level = rejected before the dialog.
 
-Each connection has an AI Policy:
+### Query Safety
 
-| Policy | Behavior |
-|--------|----------|
-| Always Allow | No prompt |
-| Ask Each Time (default) | Approval dialog on first access per session (30s timeout) |
-| Never | Blocked |
-
-Set per connection or change the default in **Settings > AI**. Approvals are cleared when the session ends, times out, or the app restarts.
-
-When token authentication is enabled, the token's connection allowlist is checked first. A blocked connection at the token level is rejected before the AI Policy check.
-
-### Query tiers
-
-| Tier | Examples | What happens |
-|------|----------|-------------|
+| Tier | Examples | Behavior |
+|------|----------|----------|
 | Safe | SELECT, SHOW, EXPLAIN | Runs immediately |
-| Write | UPDATE, DELETE, INSERT | Uses the connection's [Safe Mode](/features/safe-mode) |
-| Destructive | DROP, TRUNCATE, ALTER...DROP | Blocked in `execute_query`. Must use `confirm_destructive_operation` |
-
-CTE-prefixed writes like `WITH ... DELETE FROM` are detected and classified correctly.
-
-#### Destructive queries
-
-`execute_query` rejects destructive queries with an error. Use `confirm_destructive_operation` instead:
-
-```json
-{
-  "connection_id": "uuid",
-  "query": "DROP TABLE temp_data",
-  "confirmation_phrase": "I understand this is irreversible"
-}
-```
-
-The confirmation phrase must match exactly. The connection's Safe Mode still applies on top of this.
-
-### Safe Mode
-
-MCP queries follow the same [Safe Mode](/features/safe-mode) as manual queries:
-
-- **Silent** - no confirmation
-- **Read-Only** - all writes blocked
-- **Alert** - confirmation dialog for writes
-- **Alert (Full)** - confirmation dialog for all queries including reads
-- **Safe Mode** - confirmation + Touch ID for writes
-- **Safe Mode (Full)** - confirmation + Touch ID for all queries
-
-If denied, the query returns an error to the MCP client. Nothing is executed.
+| Write | INSERT, UPDATE, DELETE | Subject to [Safe Mode](/features/safe-mode) |
+| Destructive | DROP, TRUNCATE, ALTER...DROP | Blocked. Use `confirm_destructive_operation` with phrase "I understand this is irreversible" |
 
 ### Limits
 
-- Row limit: 500 default, 10,000 max (per query via `max_rows`)
-- Export row limit: 50,000 default, 100,000 max
-- Query timeout: 30s default, 300s max (per query via `timeout_seconds`)
-- Single statements only (multi-statement blocked)
-- Query size: 100 KB max
-- HTTP body: 10 MB max
-- Max concurrent sessions: 10
-- Session idle timeout: 5 minutes
+- Rows: 500 default, 10,000 max per query
+- Export: 50,000 default, 100,000 max
+- Timeout: 30s default, 300s max
+- Single statements only
+- Query size: 100 KB
+- HTTP body: 10 MB
+- Sessions: 10 max, 5 min idle timeout
 
-### Logging
+### Data Access
 
-MCP queries are logged to [Query History](/features/query-history) (can be disabled in Settings).
+Can access: connection metadata, schemas, query results, history.
 
-### Data access
-
-MCP clients **can** access: connection metadata, schemas, query results, query history.
-
-MCP clients **cannot** access: passwords, SSH keys, license data, app settings, files on your Mac.
+Cannot access: passwords, SSH keys, license data, app settings, local files.
 
 ## Troubleshooting
 
-**Port conflict**: If the server fails to start, another process may be using port 23508. Change the port in **Settings > MCP**.
+**Port conflict**: Change port in **Settings > MCP**.
 
-**"Server not fully initialized"**: Restart the MCP server from **Settings > MCP**. If the issue persists, quit and relaunch TablePro.
+**"Server not fully initialized"**: Restart MCP server from Settings. If it persists, relaunch TablePro.
 
-**App must be running**: The MCP server only runs while TablePro is open. AI tools cannot connect if the app is quit or the server is disabled.
+**App must be running**: MCP server only runs while TablePro is open.
 
-**Connection refused**: Verify the server is running (green indicator in Settings). Check that your AI tool's MCP config URL matches the port shown in Settings.
+**Connection refused**: Check server is running (green indicator). Verify the URL and port match.
 
-**Query blocked by Safe Mode**: Check the connection's Safe Mode setting if queries are being rejected.
+**401 Unauthorized**: Auth is enabled. Add a Bearer token to your config. Generate one in **Settings > MCP > Authentication**.
 
-**"Authentication required" (401)**: The server has authentication enabled. Add a Bearer token to your client's MCP configuration. Generate a token in **Settings > MCP > Authentication** if you haven't already.
+**403 Forbidden**: Token lacks permission for this operation, or connection not in the token's allowlist.
 
-**"Forbidden" (403)**: Your token does not have the required permission tier for the operation, or the target connection is not in the token's allowlist. Check the token's settings in **Settings > MCP > Authentication**.
+**Certificate trust error**: Export the PEM from **Settings > MCP > Network** and add it to your client's trust store. Or use fingerprint pinning.
 
-**Certificate trust errors**: When connecting to a remote TablePro instance over TLS, your client must trust the self-signed certificate. Export the PEM from **Settings > MCP > Network** on the server machine and add it to your client's trust store, or use certificate pinning with the SHA-256 fingerprint.
-
-**"Too Many Requests" (429)**: Too many failed authentication attempts from your IP. Wait for the lockout to expire (up to 5 minutes) and retry with the correct token. The lockout resets after one successful authentication.
+**429 Too Many Requests**: Too many failed auth attempts. Wait up to 5 minutes. The lockout resets after a successful auth.
