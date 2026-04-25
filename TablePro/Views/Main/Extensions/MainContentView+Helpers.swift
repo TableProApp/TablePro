@@ -118,7 +118,7 @@ extension MainContentView {
         }
 
         if rows.count > maxRows {
-            lines.append("(showing \(maxRows) of \(rows.count) rows)")
+            lines.append(String(format: String(localized: "(showing %d of %d rows)"), maxRows, rows.count))
         }
 
         return lines.joined(separator: "\n")
