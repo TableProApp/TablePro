@@ -184,7 +184,7 @@ struct OnboardingContentView: View {
                             .fill(i == currentPage ? Color.accentColor : Color(nsColor: .tertiaryLabelColor))
                             .frame(width: 8, height: 8)
                             .scaleEffect(i == currentPage ? 1.2 : 1.0)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 32, height: 32)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(String(format: String(localized: "Page %d"), i + 1))
