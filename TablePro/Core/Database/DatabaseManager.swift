@@ -38,9 +38,6 @@ final class DatabaseManager {
     /// counter to avoid cross-connection re-renders.
     internal(set) var connectionStatusVersions: [UUID: Int] = [:]
 
-    /// Backward-compatible alias for views not yet migrated to fine-grained counters.
-    var sessionVersion: Int { connectionStatusVersion }
-
     /// Currently selected session ID (displayed in UI)
     internal var currentSessionId: UUID?
 
