@@ -42,7 +42,7 @@ extension MainContentCoordinator {
            current.tableName == tableName,
            current.databaseName == currentDatabase {
             if showStructure, let idx = tabManager.selectedTabIndex {
-                tabManager.tabs[idx].showStructure = true
+                tabManager.tabs[idx].resultsViewMode = .structure
             }
             return
         }
@@ -204,7 +204,7 @@ extension MainContentCoordinator {
                 )
                 previewCoordinator.filterStateManager.clearAll()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
-                    previewCoordinator.tabManager.tabs[tabIndex].showStructure = showStructure
+                    previewCoordinator.tabManager.tabs[tabIndex].resultsViewMode = showStructure ? .structure : .data
                     previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
                     previewCoordinator.toolbarState.isTableTab = true
                 }
@@ -274,7 +274,7 @@ extension MainContentCoordinator {
             )
             filterStateManager.clearAll()
             if let tabIndex = tabManager.selectedTabIndex {
-                tabManager.tabs[tabIndex].showStructure = showStructure
+                tabManager.tabs[tabIndex].resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }

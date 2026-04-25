@@ -31,6 +31,15 @@ Run `scripts/build-freetds.sh` first. Click **New Connection**, select **SQL Ser
 **Remote**: Standard credentials
 **Azure SQL**: Host `server.database.windows.net`, user may need `user@servername` suffix
 
+## Connection URL
+
+```text
+mssql://user:password@host:1433/database
+sqlserver://user:password@host:1433/database
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
 ## Features
 
 **Schema Selection**: Default schema is `dbo`. Switch with **Cmd+K**. Shows accessible schemas and tables.

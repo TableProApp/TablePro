@@ -570,8 +570,27 @@ extension ConnectionFormView {
                     additionalFieldValues["mongoParam_\(key)"] = value
                 }
             }
-            if parsed.type.pluginTypeId == "Redis", !parsed.database.isEmpty {
-                additionalFieldValues["redisDatabase"] = parsed.database
+            if parsed.type.pluginTypeId == "Redis", let redisDb = parsed.redisDatabase {
+                additionalFieldValues["redisDatabase"] = String(redisDb)
+            }
+            if let svcName = parsed.oracleServiceName, !svcName.isEmpty {
+                additionalFieldValues["oracleServiceName"] = svcName
+            }
+            if let hex = parsed.statusColor, !hex.isEmpty {
+                connectionColor = ConnectionURLParser.connectionColor(fromHex: hex)
+            }
+            if let env = parsed.envTag, !env.isEmpty {
+                selectedTagId = ConnectionURLParser.tagId(fromEnvName: env)
+            }
+            if parsed.type.pluginTypeId == "libSQL", !parsed.host.isEmpty {
+                var urlString = "https://\(parsed.host)"
+                if let port = parsed.port {
+                    urlString += ":\(port)"
+                }
+                additionalFieldValues["databaseUrl"] = urlString
+            }
+            if parsed.type.pluginTypeId == "Cloudflare D1", !parsed.host.isEmpty {
+                additionalFieldValues["cfAccountId"] = parsed.host
             }
             if let connectionName = parsed.connectionName, !connectionName.isEmpty {
                 name = connectionName

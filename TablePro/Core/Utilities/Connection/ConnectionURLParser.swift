@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import TableProPluginKit
 
 struct ParsedConnectionURL {
     let type: DatabaseType
@@ -129,10 +130,12 @@ struct ConnectionURLParser {
 
         let isSrv = scheme == "mongodb+srv"
 
-        if dbType == .sqlite {
+        let isFileBased = dbType == .sqlite || dbType == .duckdb
+            || PluginMetadataRegistry.shared.snapshot(forTypeId: dbType.pluginTypeId)?.connectionMode == .fileBased
+        if isFileBased {
             let path = String(trimmed[schemeEnd.upperBound...])
             return .success(ParsedConnectionURL(
-                type: .sqlite,
+                type: dbType,
                 host: "",
                 port: nil,
                 database: path,
@@ -203,6 +206,10 @@ struct ConnectionURLParser {
             if scheme == "rediss" {
                 sslMode = sslMode ?? .required
             }
+        }
+
+        if scheme == "etcds" {
+            sslMode = sslMode ?? .required
         }
 
         // Oracle-specific: path component is the service name, not the database name

@@ -25,6 +25,14 @@ TablePro connects to Amazon Redshift, AWS's columnar data warehouse based on Pos
 
 Example: `my-cluster.abc123xyz.us-east-1.redshift.amazonaws.com:5439`
 
+## Connection URL
+
+```text
+redshift://user:password@cluster.region.redshift.amazonaws.com:5439/database
+```
+
+See [Connection URL Reference](/databases/connection-urls) for all parameters.
+
 ## Features
 
 **Schemas**: Like PostgreSQL. Switch with **Cmd+K**. Default schema is `public`. Tables show metadata from `svv_table_info`: distribution style, sort keys, table size.
