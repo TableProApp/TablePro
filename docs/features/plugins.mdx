@@ -1,0 +1,62 @@
+---
+title: Plugins & Themes
+description: Extend TablePro with database driver plugins and editor themes from the plugin registry
+---
+
+# Plugins & Themes
+
+TablePro uses a plugin system for database drivers and export formats. Each plugin is a `.tableplugin` bundle loaded at runtime.
+
+## Built-in Plugins
+
+These ship with the app and are always available:
+
+| Plugin | Databases |
+|--------|-----------|
+| MySQL | MySQL, MariaDB |
+| PostgreSQL | PostgreSQL, Redshift |
+| SQLite | SQLite |
+| ClickHouse | ClickHouse |
+| SQL Server | SQL Server |
+| Redis | Redis |
+
+Export plugins (CSV, JSON, SQL, MQL) are also built-in.
+
+## Registry Plugins
+
+Additional drivers are distributed separately through the plugin registry:
+
+| Plugin | Databases |
+|--------|-----------|
+| MongoDB | MongoDB |
+| Oracle | Oracle |
+| DuckDB | DuckDB |
+| Cassandra | Cassandra, ScyllaDB |
+| Etcd | etcd |
+| Cloudflare D1 | Cloudflare D1 |
+| DynamoDB | DynamoDB |
+| BigQuery | BigQuery |
+| libSQL | libSQL, Turso |
+
+## Installing Plugins
+
+Open **Settings** > **Plugins** > **Browse** to see available plugins. Click **Install** next to the plugin you need.
+
+If you select a database type that requires an uninstalled plugin, TablePro shows an install prompt automatically. The plugin downloads, installs, and is ready to use without restarting the app.
+
+## Managing Plugins
+
+In **Settings** > **Plugins** > **Installed**, you can:
+
+- **Disable** a plugin to unload it without deleting
+- **Enable** a disabled plugin to reload it
+- **Delete** a plugin to remove it from disk
+- **Check for Updates** to see if newer versions are available
+
+Disabling a plugin disconnects any active connections using it.
+
+## Themes
+
+Open **Settings** > **Appearance** to choose a theme. TablePro ships with built-in light and dark themes. Additional themes are available from the theme registry in **Settings** > **Appearance** > **Browse Themes**.
+
+Themes control the editor syntax colors, grid styling, and sidebar appearance. The app follows macOS system appearance (light/dark) by default, or you can pin a specific mode.

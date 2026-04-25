@@ -139,7 +139,44 @@ open "tablepro://import?name=Staging&host=db.example.com&port=5432&type=postgres
 ```
 
 **Required parameters:** `name`, `host`, `type`
-**Optional parameters:** `port` (defaults to the database type's standard port), `username`, `database`
+
+**Core parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `port` | Server port (defaults to the database type's standard port) |
+| `username` | Database username |
+| `database` | Default database name |
+| `color` | Connection color in the sidebar |
+| `tagName` | Tag to assign |
+| `groupName` | Group to place the connection in |
+| `safeModeLevel` | Safe mode level (e.g., `silent`, `alert`, `readOnly`) |
+| `aiPolicy` | MCP AI access policy |
+
+**SSH parameters** (set `ssh=1` to enable):
+
+| Parameter | Description |
+|-----------|-------------|
+| `sshHost` | SSH server hostname |
+| `sshPort` | SSH port (default 22) |
+| `sshUsername` | SSH username |
+| `sshAuthMethod` | `password`, `privateKey`, `agent`, or `keyboardInteractive` |
+| `sshPrivateKeyPath` | Path to private key file |
+| `sshUseSSHConfig` | Set to `1` to read `~/.ssh/config` |
+| `sshAgentSocketPath` | Custom SSH agent socket path |
+| `sshJumpHosts` | JSON array of jump hosts |
+| `sshTotpMode` | TOTP mode for two-factor SSH auth |
+
+**SSL parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `sslMode` | SSL mode (e.g., `require`, `verify-ca`, `verify-full`) |
+| `sslCaCertPath` | CA certificate file path |
+| `sslClientCertPath` | Client certificate file path |
+| `sslClientKeyPath` | Client key file path |
+
+**Plugin-specific fields:** Use the `af_` prefix for additional fields specific to a database plugin. For example, `af_replicaSet=myrs` passes `replicaSet` to the plugin.
 
 Supported `type` values: any registered database type name (case-insensitive). Examples: `MySQL`, `PostgreSQL`, `MongoDB`, `Redis`, `ClickHouse`, `Oracle`, `DuckDB`, `Cassandra`.
 
