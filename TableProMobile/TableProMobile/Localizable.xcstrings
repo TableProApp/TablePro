@@ -901,6 +901,9 @@
         }
       }
     },
+    "Copy Query" : {
+
+    },
     "Copy Results" : {
       "localizations" : {
         "vi" : {
@@ -2724,6 +2727,7 @@
       }
     },
     "Query History" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {
@@ -3388,6 +3392,7 @@
       }
     },
     "Tab" : {
+      "extractionState" : "stale",
       "localizations" : {
         "vi" : {
           "stringUnit" : {

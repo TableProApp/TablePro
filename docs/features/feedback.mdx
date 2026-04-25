@@ -1,0 +1,64 @@
+---
+title: Feedback Form
+description: Report bugs, request features, and send feedback directly from TablePro
+---
+
+# Feedback Form
+
+Report bugs, request features, or send general feedback without leaving the app. Submissions go straight to GitHub Issues.
+
+<Frame caption="In-app feedback form">
+  <img
+    className="block dark:hidden"
+    src="/images/feedback.png"
+    alt="TablePro feedback form with bug report fields and screenshot attachments"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/feedback-dark.png"
+    alt="TablePro feedback form with bug report fields and screenshot attachments"
+  />
+</Frame>
+
+Open it from **Help > Report an Issue** in the menu bar. No active database connection required.
+
+## Feedback Types
+
+The form has three modes, selectable via a segmented control at the top:
+
+- **Bug Report** - includes extra fields for steps to reproduce and expected behavior
+- **Feature Request** - title and description only
+- **General Feedback** - title and description only
+
+## Screenshots
+
+Attach up to 5 images per submission. Four ways to add them:
+
+| Method | How |
+|--------|-----|
+| Paste | Click **Paste** to grab an image from the clipboard |
+| Drag and drop | Drop image files anywhere on the form |
+| Capture Window | Click **Capture Window** to screenshot the current TablePro window |
+| Browse | Click **Browse** to pick files from Finder (PNG, JPEG, TIFF, BMP, GIF, HEIC) |
+
+Images over 2 MB are automatically scaled down before upload.
+
+## Diagnostics
+
+The form auto-collects system info and attaches it to the submission:
+
+- App version and build number
+- macOS version
+- Architecture (Apple Silicon / Intel)
+- Active database type (if connected)
+- Installed plugins
+
+Toggle **Include diagnostics** off to exclude this data. Expand the disclosure to review what gets sent.
+
+## Draft Persistence
+
+Closing the feedback panel saves your draft automatically. Reopening restores the title, description, feedback type, and all text fields. Drafts are cleared after a successful submission.
+
+## After Submission
+
+A success screen shows the created GitHub issue number with a link to view it. You can submit another report or close the panel.

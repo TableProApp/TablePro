@@ -607,6 +607,16 @@
         }
       }
     },
+    "%@ (+%d more)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (+%2$d more)"
+          }
+        }
+      }
+    },
     "%@ (Pro)" : {
       "localizations" : {
         "tr" : {
@@ -1197,6 +1207,7 @@
       }
     },
     "%@:%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1220,6 +1231,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@:%@"
+          }
+        }
+      }
+    },
+    "%@:%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@:%2$lld"
           }
         }
       }
@@ -5599,6 +5620,9 @@
           }
         }
       }
+    },
+    "Are you sure you want to delete the group \"%@\"? Connections in this group will be moved to the top level." : {
+
     },
     "Are you sure you want to delete this connection? This cannot be undone." : {
       "localizations" : {
@@ -16096,6 +16120,9 @@
         }
       }
     },
+    "Expand in Sidebar" : {
+
+    },
     "Expected Behavior" : {
 
     },
@@ -19968,6 +19995,12 @@
           }
         }
       }
+    },
+    "hostname:%lld" : {
+
+    },
+    "Hosts" : {
+
     },
     "Hover" : {
       "localizations" : {
@@ -28224,7 +28257,11 @@
         }
       }
     },
+    "Open in Window" : {
+
+    },
     "Open JSON Viewer" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -37873,6 +37910,9 @@
         }
       }
     },
+    "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server." : {
+
+    },
     "SSH User" : {
       "localizations" : {
         "tr" : {
@@ -40005,7 +40045,18 @@
         }
       }
     },
+    "The following %d queries may permanently modify or delete data. This action cannot be undone.\n\n%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The following %1$d queries may permanently modify or delete data. This action cannot be undone.\n\n%2$@"
+          }
+        }
+      }
+    },
     "The following %lld queries may permanently modify or delete data. This action cannot be undone.\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
