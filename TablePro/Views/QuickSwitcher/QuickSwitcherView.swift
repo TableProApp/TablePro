@@ -141,23 +141,20 @@ internal struct QuickSwitcherSheet: View {
     }
 
     private func itemRow(_ item: QuickSwitcherItem) -> some View {
-        let isSelected = item.id == viewModel.selectedItemId
-
-        return HStack(spacing: 10) {
+        HStack(spacing: 10) {
             Image(systemName: item.iconName)
                 .font(.system(size: 14))
-                .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .secondary)
+                .foregroundStyle(.secondary)
 
             Text(item.name)
                 .font(.body)
-                .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor) : .primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             if !item.subtitle.isEmpty {
                 Text(item.subtitle)
                     .font(.subheadline)
-                    .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : Color.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
@@ -165,22 +162,16 @@ internal struct QuickSwitcherSheet: View {
 
             Text(item.kindLabel)
                 .font(.caption.weight(.medium))
-                .foregroundStyle(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : .secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(isSelected ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.15) : Color(nsColor: .quaternaryLabelColor))
+                        .fill(Color(nsColor: .quaternaryLabelColor))
                 )
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .listRowBackground(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
-                .padding(.horizontal, 4)
-        )
-        .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .listRowSeparator(.hidden)
         .id(item.id)
         .tag(item.id)

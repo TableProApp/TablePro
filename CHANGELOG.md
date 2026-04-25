@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - About window uses standard macOS About panel
 - Use system SF Pro font instead of SF Pro Rounded on onboarding and welcome screens
 - iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
+- SSH key file picker uses SwiftUI `.fileImporter` instead of imperative NSOpenPanel
+- QuickSwitcher uses native List selection highlighting instead of manual overrides
+- Removed iOS-style drag gesture from onboarding (arrow keys and buttons remain)
 
 ## [0.35.0] - 2026-04-25
 

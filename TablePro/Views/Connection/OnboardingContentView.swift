@@ -39,17 +39,6 @@ struct OnboardingContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .gesture(
-                DragGesture(minimumDistance: 30)
-                    .onEnded { value in
-                        let horizontal = value.translation.width
-                        if horizontal < -30, currentPage < 2 {
-                            goToPage(currentPage + 1)
-                        } else if horizontal > 30, currentPage > 0 {
-                            goToPage(currentPage - 1)
-                        }
-                    }
-            )
 
             // Bottom navigation bar
             navigationBar
