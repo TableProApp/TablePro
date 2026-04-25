@@ -28,7 +28,7 @@ Native macOS client for every database. Built on SwiftUI and AppKit. Ships under
     Swift & Apple frameworks. No Electron. Pure macOS responsiveness.
   </Card>
   <Card title="Multiple Databases" icon="database">
-    18+ databases: MySQL, PostgreSQL, SQLite, MongoDB, Redis, Oracle, and more.
+    18 databases: MySQL, PostgreSQL, SQLite, MongoDB, Redis, Oracle, and more.
   </Card>
   <Card title="Smart Autocomplete" icon="wand-magic-sparkles">
     Context-aware autocomplete with schema and syntax awareness.
@@ -43,34 +43,38 @@ Native macOS client for every database. Built on SwiftUI and AppKit. Ships under
 
 ## Key Features
 
-**SQL Editor**: Syntax highlighting, autocomplete, line numbers.
-**Data Grid**: Spreadsheet-like interface with inline editing, sorting, filtering.
-**Table Structure**: Inspect and modify columns, indexes, foreign keys.
-**Import & Export**: CSV, JSON, SQL, XLSX, MQL. Streaming export, error handling modes for import.
-**Query History**: Full-text search across query history.
-**AI Assistant**: Explain, optimize, or write SQL with Claude, OpenAI, or Ollama.
+**SQL Editor**: Syntax highlighting, autocomplete, Vim mode, multi-statement execution.
+**Data Grid**: Inline editing, sorting, filtering, change tracking with undo/redo.
+**Import & Export**: CSV, JSON, SQL, XLSX, MQL. Streaming export for large datasets.
+**AI Assistant**: Chat, inline suggestions, and Explain/Optimize via Claude, OpenAI, or Ollama.
+**Terminal**: Built-in database CLI (mysql, psql, redis-cli, mongosh, etc.) with SSH and Docker support.
+**MCP Server**: Expose your connections to AI tools via the Model Context Protocol.
+**Plugin System**: 8 built-in drivers, 10 more via the plugin registry. Third-party plugins supported.
+**iCloud Sync**: Sync connections, groups, tags, settings, and SSH profiles across Macs.
+**Safe Mode**: 6 per-connection protection levels from silent alerts to Touch ID and read-only.
+**Themes**: Light, dark, and custom editor themes. Per-connection color labels.
 
 ## Supported Databases
 
-| Database | Status | Default Port |
-|----------|--------|--------------|
-| MySQL | Fully Supported | 3306 |
-| MariaDB | Fully Supported | 3306 |
-| PostgreSQL | Fully Supported | 5432 |
-| SQLite | Fully Supported | N/A (file-based) |
-| Amazon Redshift | Fully Supported | 5439 |
-| MongoDB | Fully Supported | 27017 |
-| Redis | Fully Supported | 6379 |
-| Microsoft SQL Server | Fully Supported | 1433 |
-| ClickHouse | Fully Supported | 8123 |
-| Oracle Database | Fully Supported | 1521 |
-| DuckDB | Fully Supported | N/A (file-based) |
-| Cassandra / ScyllaDB | Fully Supported | 9042 |
-| Etcd | Fully Supported | 2379 |
-| Cloudflare D1 | Fully Supported | N/A (API-based) |
-| libSQL / Turso | Fully Supported | N/A (API-based) |
-| DynamoDB | Fully Supported | N/A (API-based) |
-| BigQuery | Fully Supported | N/A (API-based) |
+| Database | Default Port | Distribution |
+|----------|--------------|--------------|
+| MySQL | 3306 | Built-in |
+| MariaDB | 3306 | Built-in |
+| PostgreSQL | 5432 | Built-in |
+| SQLite | N/A (file-based) | Built-in |
+| Amazon Redshift | 5439 | Built-in |
+| Microsoft SQL Server | 1433 | Built-in |
+| ClickHouse | 8123 | Built-in |
+| Redis | 6379 | Built-in |
+| MongoDB | 27017 | Plugin |
+| Oracle Database | 1521 | Plugin |
+| DuckDB | N/A (file-based) | Plugin |
+| Cassandra / ScyllaDB | 9042 | Plugin |
+| Etcd | 2379 | Plugin |
+| Cloudflare D1 | N/A (API-based) | Plugin |
+| DynamoDB | N/A (API-based) | Plugin |
+| BigQuery | N/A (API-based) | Plugin |
+| libSQL / Turso | N/A (API-based) | Plugin |
 
 ## System Requirements
 

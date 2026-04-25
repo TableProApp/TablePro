@@ -87,7 +87,7 @@ Add the snippet to your `.cursor/mcp.json` file in the project root, or to the g
 
 | Tool | Parameters | Description |
 |------|-----------|-------------|
-| `execute_query` | `connection_id`, `query`, `max_rows`?, `timeout_seconds`?, `database`?, `schema`? | Run a SQL query (safe mode applies) |
+| `execute_query` | `connection_id`, `query`, `max_rows`?, `timeout_seconds`?, `database`?, `schema`? | Run a SQL query (Safe Mode applies) |
 | `confirm_destructive_operation` | `connection_id`, `query`, `confirmation_phrase` | Execute DROP/TRUNCATE after explicit confirmation |
 | `export_data` | `connection_id`, `format` (csv/json/sql), `tables`?, `query`?, `max_rows`? | Export results to file. `max_rows` default 50,000, max 100,000. |
 | `switch_database` | `connection_id`, `database` | Switch the active database |
@@ -201,4 +201,4 @@ MCP clients **cannot** access: passwords, SSH keys, license data, app settings, 
 
 **Connection refused**: Verify the server is running (green indicator in Settings). Check that your AI tool's MCP config URL matches the port shown in Settings.
 
-**Query blocked by Safe Mode**: Check the connection's safe mode setting if queries are being rejected.
+**Query blocked by Safe Mode**: Check the connection's Safe Mode setting if queries are being rejected.
