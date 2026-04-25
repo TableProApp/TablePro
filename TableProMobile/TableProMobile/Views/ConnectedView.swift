@@ -85,16 +85,19 @@ struct ConnectedView: View {
                         .navigationTitle(coordinator.displayName)
                         .navigationBarTitleDisplayMode(.inline)
                 }
+                .environment(coordinator)
             }
             Tab("Query", systemImage: "terminal", value: .query) {
                 NavigationStack {
                     QueryEditorView()
                 }
+                .environment(coordinator)
             }
             Tab("History", systemImage: "clock", value: .history) {
                 NavigationStack {
                     QueryHistoryView()
                 }
+                .environment(coordinator)
             }
             Tab("Settings", systemImage: "gear", value: .settings) {
                 NavigationStack {
@@ -103,7 +106,6 @@ struct ConnectedView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
-        .environment(coordinator)
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
