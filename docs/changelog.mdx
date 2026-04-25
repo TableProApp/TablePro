@@ -4,6 +4,33 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="April 25, 2026" description="v0.35.0">
+  ### New Features
+
+  - **MongoDB Replica Sets**: Multi-host connections for replica set clusters
+  - **JSON Results View**: Data/Structure/JSON toggle in the status bar
+  - **JSON Window**: Pop out JSON viewer into a resizable, fullscreen-capable window
+  - **Feedback Form**: Bug reports and feature requests via Help > Report an Issue
+  - **Local Only Connections**: Exclude individual connections from iCloud sync
+  - **MCP Query Safety**: Server-side confirmation for write and destructive queries
+
+  ### Improvements
+
+  - Import URL supports libSQL, D1, Oracle, ClickHouse, etcd with dynamic placeholders and clipboard auto-paste
+  - Filter operator picker shows SQL symbols alongside names
+  - SQL autocomplete suggests columns before FROM using cached schema
+  - Native macOS UI across cell editors, alerts, search, and toolbar
+
+  ### Bug Fixes
+
+  - Connection form overflow with SSH jump hosts and TOTP fields
+  - Missing confirmation on group deletion
+  - Crash when scrolling AI Chat during streaming on macOS 15.x
+  - Connection failure on PostgreSQL-compatible databases without `SET statement_timeout`
+  - Schema-qualified table names resolve correctly in autocomplete
+  - Alert dialogs use sheet attachment instead of bare modal
+</Update>
+
 <Update label="April 22, 2026" description="v0.34.0">
   ### New Features
 

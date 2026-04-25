@@ -17,6 +17,13 @@ final class MongoDBPlugin: NSObject, TableProPlugin, DriverPlugin {
     static let iconName = "mongodb-icon"
     static let defaultPort = 27017
     static let additionalConnectionFields: [ConnectionField] = [
+        ConnectionField(
+            id: "mongoHosts",
+            label: "Hosts",
+            placeholder: "localhost:27017",
+            fieldType: .hostList,
+            section: .connection
+        ),
         ConnectionField(id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"),
         ConnectionField(
             id: "mongoReadPreference",

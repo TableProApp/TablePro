@@ -35,6 +35,18 @@ struct ConnectionFormView: View {
             .filter { $0.section == .authentication }
     }
 
+    var connectionSectionFields: [ConnectionField] {
+        PluginManager.shared.additionalConnectionFields(for: type)
+            .filter { $0.section == .connection }
+    }
+
+    var hasHostListField: Bool {
+        connectionSectionFields.contains { field in
+            if case .hostList = field.fieldType { return true }
+            return false
+        }
+    }
+
     func isFieldVisible(_ field: ConnectionField) -> Bool {
         guard let rule = field.visibleWhen else { return true }
         let currentValue = additionalFieldValues[rule.fieldId] ?? defaultFieldValue(rule.fieldId)

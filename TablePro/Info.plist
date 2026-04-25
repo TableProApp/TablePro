@@ -243,6 +243,13 @@
 				<string>cql</string>
 				<string>scylladb</string>
 				<string>scylla</string>
+				<string>oracle</string>
+				<string>clickhouse</string>
+				<string>ch</string>
+				<string>etcd</string>
+				<string>etcds</string>
+				<string>d1</string>
+				<string>libsql</string>
 			</array>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>

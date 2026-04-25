@@ -3,6 +3,7 @@ import Foundation
 public enum FieldSection: String, Codable, Sendable {
     case authentication
     case advanced
+    case connection
 }
 
 public struct FieldVisibilityRule: Codable, Sendable, Equatable {
@@ -67,6 +68,7 @@ public struct ConnectionField: Codable, Sendable {
         case number
         case toggle
         case stepper(range: IntRange)
+        case hostList
     }
 
     public struct DropdownOption: Codable, Sendable, Equatable {

@@ -76,6 +76,13 @@ struct WelcomeConnectionRow: View {
         if connection.host.isEmpty {
             return connection.database.isEmpty ? connection.type.rawValue : connection.database
         }
+        if let mongoHosts = connection.additionalFields["mongoHosts"], mongoHosts.contains(",") {
+            let count = mongoHosts.split(separator: ",").count
+            return String(
+                format: String(localized: "%@ (+%d more)"),
+                "\(connection.host):\(connection.port)", count - 1
+            )
+        }
         return connection.host
     }
 }

@@ -550,6 +550,13 @@ extension PluginMetadataRegistry {
                 connection: PluginMetadataSnapshot.ConnectionConfig(
                     additionalConnectionFields: [
                         ConnectionField(
+                            id: "mongoHosts",
+                            label: "Hosts",
+                            placeholder: "localhost:27017",
+                            fieldType: .hostList,
+                            section: .connection
+                        ),
+                        ConnectionField(
                             id: "mongoAuthSource", label: "Auth Database", placeholder: "admin"
                         ),
                         ConnectionField(

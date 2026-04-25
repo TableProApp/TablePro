@@ -43,6 +43,8 @@ final class WelcomeViewModel {
     var showOnboarding = !AppSettingsStorage.shared.hasCompletedOnboarding()
     var connectionsToDelete: [DatabaseConnection] = []
     var showDeleteConfirmation = false
+    var showDeleteGroupConfirmation = false
+    var groupToDelete: ConnectionGroup?
     var pendingMoveToNewGroup: [DatabaseConnection] = []
     var activeSheet: WelcomeActiveSheet?
     var pluginInstallConnection: DatabaseConnection?
@@ -315,8 +317,15 @@ final class WelcomeViewModel {
 
     // MARK: - Groups
 
-    func deleteGroup(_ group: ConnectionGroup) {
+    func requestDeleteGroup(_ group: ConnectionGroup) {
+        groupToDelete = group
+        showDeleteGroupConfirmation = true
+    }
+
+    func confirmDeleteGroup() {
+        guard let group = groupToDelete else { return }
         groupStorage.deleteGroup(group)
+        groupToDelete = nil
         loadConnections()
     }
 

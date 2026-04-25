@@ -21,6 +21,7 @@ internal struct FieldDetailView: View {
     let onSetEmpty: () -> Void
     let onSetFunction: (String) -> Void
     var onExpand: (() -> Void)?
+    var onPopOut: ((String) -> Void)?
 
     @State private var isHovered = false
 
@@ -118,7 +119,7 @@ internal struct FieldDetailView: View {
     private func resolvedEditor(for kind: FieldEditorKind) -> some View {
         switch kind {
         case .json:
-            JsonEditorView(context: context, onExpand: onExpand)
+            JsonEditorView(context: context, onExpand: onExpand, onPopOut: onPopOut)
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:

@@ -16,7 +16,7 @@ extension MainContentCoordinator {
         pendingDeletes: Set<String>,
         tableOperationOptions: [String: TableOperationOptions]
     ) {
-        if tabManager.selectedTab?.showStructure == true {
+        if tabManager.selectedTab?.resultsViewMode == .structure {
             // Structure view handles its own preview via direct call
             structureActions?.previewSQL?()
         } else {

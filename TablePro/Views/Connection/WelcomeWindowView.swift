@@ -58,6 +58,21 @@ struct WelcomeWindowView: View {
                 Text("Are you sure you want to delete \(vm.connectionsToDelete.count) connections? This cannot be undone.")
             }
         }
+        .alert(
+            String(localized: "Delete Group"),
+            isPresented: $vm.showDeleteGroupConfirmation
+        ) {
+            Button(String(localized: "Delete"), role: .destructive) {
+                vm.confirmDeleteGroup()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                vm.groupToDelete = nil
+            }
+        } message: {
+            if let group = vm.groupToDelete {
+                Text("Are you sure you want to delete the group \"\(group.name)\"? Connections in this group will be moved to the top level.")
+            }
+        }
         .sheet(item: $vm.activeSheet) { sheet in
             switch sheet {
             case .newGroup(let parentId):
@@ -357,7 +372,7 @@ struct WelcomeWindowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(linked.connection.name)
                     .lineLimit(1)
-                Text("\(linked.connection.host):\(String(linked.connection.port))")
+                Text("\(linked.connection.host):\(linked.connection.port)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -493,7 +508,7 @@ struct WelcomeWindowView: View {
         Divider()
 
         Button(role: .destructive) {
-            vm.deleteGroup(group)
+            vm.requestDeleteGroup(group)
         } label: {
             Label(String(localized: "Delete Group"), systemImage: "trash")
         }

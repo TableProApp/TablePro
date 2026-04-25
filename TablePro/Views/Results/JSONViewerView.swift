@@ -10,6 +10,7 @@ internal struct JSONViewerView: View {
     let isEditable: Bool
     var onDismiss: (() -> Void)?
     var onCommit: ((String) -> Void)?
+    var onPopOut: ((String) -> Void)?
 
     @State private var viewMode: JSONViewMode
     @State private var treeSearchText = ""
@@ -22,12 +23,14 @@ internal struct JSONViewerView: View {
         text: Binding<String>,
         isEditable: Bool,
         onDismiss: (() -> Void)? = nil,
-        onCommit: ((String) -> Void)? = nil
+        onCommit: ((String) -> Void)? = nil,
+        onPopOut: ((String) -> Void)? = nil
     ) {
         self._text = text
         self.isEditable = isEditable
         self.onDismiss = onDismiss
         self.onCommit = onCommit
+        self.onPopOut = onPopOut
         self._viewMode = State(initialValue: AppSettingsManager.shared.editor.jsonViewerPreferredMode)
     }
 
@@ -65,6 +68,13 @@ internal struct JSONViewerView: View {
             .pickerStyle(.segmented)
             .fixedSize()
             Spacer()
+            if let onPopOut {
+                Button { onPopOut(text) } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Open in Window"))
+            }
             if viewMode == .text && isEditable {
                 Button {
                     if let formatted = text.prettyPrintedAsJson() {

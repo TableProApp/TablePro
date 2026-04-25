@@ -57,7 +57,7 @@ struct ConnectionImportPreviewList: View {
                     }
                 }
                 HStack(spacing: 0) {
-                    Text("\(item.connection.host):\(String(item.connection.port))")
+                    Text("\(item.connection.host):\(item.connection.port)")
                     warningText(for: item.status)
                 }
                 .font(.subheadline)

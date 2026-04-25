@@ -160,6 +160,14 @@ struct RightSidebarView: View {
 
                 Spacer()
 
+                Button {
+                    popOutJsonField(field: field, isEditable: isEditable)
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Open in Window"))
+
                 Text(field.columnTypeEnum.badgeLabel)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
@@ -181,6 +189,20 @@ struct RightSidebarView: View {
                 isEditable: isEditable
             )
         }
+    }
+
+    private func popOutJsonField(text: String? = nil, field: FieldEditState, isEditable: Bool) {
+        let text = text ?? field.pendingValue ?? field.originalValue
+        let fieldId = field.id
+        JSONViewerWindowController.open(
+            text: text,
+            columnName: field.columnName,
+            isEditable: isEditable,
+            onCommit: isEditable ? { [editState] newValue in
+                guard let current = editState.fields.first(where: { $0.id == fieldId }) else { return }
+                editState.updateField(at: current.columnIndex, value: newValue)
+            } : nil
+        )
     }
 
     // MARK: - Field List
@@ -276,7 +298,10 @@ struct RightSidebarView: View {
             onSetDefault: { editState.setFieldToDefault(at: index) },
             onSetEmpty: { editState.setFieldToEmpty(at: index) },
             onSetFunction: { editState.setFieldToFunction(at: index, function: $0) },
-            onExpand: isJsonField ? { expandedJsonFieldId = field.id } : nil
+            onExpand: isJsonField ? { expandedJsonFieldId = field.id } : nil,
+            onPopOut: isJsonField ? { currentText in
+                popOutJsonField(text: currentText, field: field, isEditable: isEditable)
+            } : nil
         )
     }
 }
