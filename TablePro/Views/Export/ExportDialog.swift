@@ -107,9 +107,6 @@ struct ExportDialog: View {
         }
         .onChange(of: config.formatId) {
             resetOptionValues()
-            if isProGatedFormat(config.formatId) {
-                showActivationSheet = true
-            }
         }
         .onExitCommand {
             if !isExporting {
@@ -825,7 +822,6 @@ struct ExportDialog: View {
         )
         exportService = service
 
-        // Show progress dialog
         showProgressDialog = true
 
         do {

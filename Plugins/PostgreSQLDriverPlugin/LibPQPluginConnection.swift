@@ -485,6 +485,8 @@ final class LibPQPluginConnection: @unchecked Sendable {
                     return
                 }
 
+                while let res = PQgetResult(conn) { PQclear(res) }
+
                 let sendOk = queryToRun.withCString { queryPtr in
                     PQsendQuery(conn, queryPtr)
                 }
