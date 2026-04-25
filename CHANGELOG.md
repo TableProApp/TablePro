@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raw SQL filter accepting destructive statements and comment injection
 - Export "Don't show again" preference lost when clicking "Open Folder"
 - Connection failure error not shown on welcome screen
 - Window position not restored between launches
