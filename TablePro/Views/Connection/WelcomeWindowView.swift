@@ -119,6 +119,18 @@ struct WelcomeWindowView: View {
         } message: {
             Text("Enter a new name for the group.")
         }
+        .alert(
+            String(localized: "Connection Failed"),
+            isPresented: $vm.showConnectionError
+        ) {
+            Button(String(localized: "OK"), role: .cancel) {
+                vm.connectionError = nil
+            }
+        } message: {
+            if let error = vm.connectionError {
+                Text(error)
+            }
+        }
     }
 
     // MARK: - Layout

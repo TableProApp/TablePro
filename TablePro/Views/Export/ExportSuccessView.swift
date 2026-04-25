@@ -40,6 +40,9 @@ struct ExportSuccessView: View {
             // Buttons
             VStack(spacing: 10) {
                 Button("Open containing folder") {
+                    if localDontShowAgain {
+                        dontShowAgain = true
+                    }
                     onOpenFolder()
                 }
                 .buttonStyle(.borderedProminent)

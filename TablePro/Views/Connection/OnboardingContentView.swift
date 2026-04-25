@@ -92,7 +92,7 @@ struct OnboardingContentView: View {
                 .frame(width: 80, height: 80)
 
             Text("Welcome to TablePro")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.title.weight(.bold))
 
             Text("A fast, lightweight native macOS database client")
                 .font(.body)
@@ -142,7 +142,7 @@ struct OnboardingContentView: View {
     private func featureRow(icon: String, title: String, description: String) -> some View {
         HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 24))
+                .font(.title)
                 .foregroundStyle(.tint)
                 .frame(width: 40)
 
@@ -165,7 +165,7 @@ struct OnboardingContentView: View {
                 .foregroundStyle(Color(nsColor: .systemGreen))
 
             Text("You're all set!")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.title2.weight(.bold))
 
             Text("Create a connection to get started with\nyour databases.")
                 .font(.body)

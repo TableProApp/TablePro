@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Export "Don't show again" preference lost when clicking "Open containing folder"
+- Connection failure error not shown when returning to welcome screen
+- Hardcoded font sizes ignoring Accessibility text size settings
+
 ### Changed
 
 - iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching

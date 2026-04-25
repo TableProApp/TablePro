@@ -53,6 +53,9 @@ final class WelcomeViewModel {
     var renameGroupName = ""
     var showRenameGroupAlert = false
 
+    var connectionError: String?
+    var showConnectionError = false
+
     var expandedGroupIds: Set<UUID> = {
         let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
         if strings.isEmpty {
@@ -598,13 +601,9 @@ final class WelcomeViewModel {
     private func handleConnectionFailure(error: Error, connectionId: UUID) {
         guard let openWindow else { return }
         closeConnectionWindows(for: connectionId)
+        connectionError = error.localizedDescription
+        showConnectionError = true
         openWindow(id: "welcome")
-
-        AlertHelper.showErrorSheet(
-            title: String(localized: "Connection Failed"),
-            message: error.localizedDescription,
-            window: nil
-        )
     }
 
     private func handleMissingPlugin(connection: DatabaseConnection) {

@@ -818,14 +818,14 @@ struct MainEditorContentView: View {
 
             // Title
             Text("No tabs open")
-                .font(.system(size: 18, weight: .medium))
+                .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
 
             // Helpful instructions with keyboard shortcuts
             VStack(spacing: 8) {
                 HStack(spacing: 6) {
                     Text("⌘T")
-                        .font(.system(size: 13, design: .monospaced))
+                        .font(.callout.monospaced())
                         .foregroundStyle(.tertiary)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -852,7 +852,7 @@ struct MainEditorContentView: View {
                 if PluginManager.shared.supportsDatabaseSwitching(for: connection.type) {
                     HStack(spacing: 6) {
                         Text("⌘K")
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(.callout.monospaced())
                             .foregroundStyle(.tertiary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
