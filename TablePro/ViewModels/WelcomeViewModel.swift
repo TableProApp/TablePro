@@ -13,6 +13,7 @@ enum WelcomeActiveSheet: Identifiable {
     case importFile(URL)
     case exportConnections([DatabaseConnection])
     case importFromApp
+    case deeplinkImport(ExportableConnection)
 
     var id: String {
         switch self {
@@ -21,6 +22,7 @@ enum WelcomeActiveSheet: Identifiable {
         case .importFile(let u): "importFile-\(u.absoluteString)"
         case .exportConnections: "exportConnections"
         case .importFromApp: "importFromApp"
+        case .deeplinkImport(let c): "deeplinkImport-\(c.name)-\(c.host)-\(c.port)"
         }
     }
 }
@@ -80,6 +82,7 @@ final class WelcomeViewModel {
     @ObservationIgnored private var importObserver: NSObjectProtocol?
     @ObservationIgnored private var linkedFoldersObserver: NSObjectProtocol?
     @ObservationIgnored private var importFromAppObserver: NSObjectProtocol?
+    @ObservationIgnored private var deeplinkImportObserver: NSObjectProtocol?
 
     // MARK: - Computed Properties
 
@@ -204,6 +207,18 @@ final class WelcomeViewModel {
             }
         }
 
+        deeplinkImportObserver = NotificationCenter.default.addObserver(
+            forName: .deeplinkImportRequested, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self,
+                      let appDelegate = NSApp.delegate as? AppDelegate,
+                      let exportable = appDelegate.pendingDeeplinkImport else { return }
+                appDelegate.pendingDeeplinkImport = nil
+                self.activeSheet = .deeplinkImport(exportable)
+            }
+        }
+
         loadConnections()
         linkedConnections = LinkedFolderWatcher.shared.linkedConnections
 
@@ -212,11 +227,18 @@ final class WelcomeViewModel {
             appDelegate.pendingConnectionShareURL = nil
             activeSheet = .importFile(pendingURL)
         }
+
+        if let appDelegate = NSApp.delegate as? AppDelegate,
+           let pendingImport = appDelegate.pendingDeeplinkImport {
+            appDelegate.pendingDeeplinkImport = nil
+            activeSheet = .deeplinkImport(pendingImport)
+        }
     }
 
     deinit {
         [connectionUpdatedObserver, shareFileObserver, exportObserver,
-         importObserver, importFromAppObserver, linkedFoldersObserver].forEach {
+         importObserver, importFromAppObserver, linkedFoldersObserver,
+         deeplinkImportObserver].forEach {
             if let observer = $0 {
                 NotificationCenter.default.removeObserver(observer)
             }

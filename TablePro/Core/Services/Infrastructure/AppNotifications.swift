@@ -20,6 +20,7 @@ extension Notification.Name {
     static let connectionStatusDidChange = Notification.Name("connectionStatusDidChange")
     static let databaseDidConnect = Notification.Name("databaseDidConnect")
     static let connectionShareFileOpened = Notification.Name("connectionShareFileOpened")
+    static let deeplinkImportRequested = Notification.Name("deeplinkImportRequested")
     static let exportConnections = Notification.Name("exportConnections")
     static let importConnections = Notification.Name("importConnections")
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")

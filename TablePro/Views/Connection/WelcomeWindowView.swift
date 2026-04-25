@@ -107,6 +107,10 @@ struct WelcomeWindowView: View {
                         vm.showImportResultAlert(count: count)
                     }
                 }
+            case .deeplinkImport(let exportable):
+                DeeplinkImportSheet(connection: exportable) {
+                    vm.loadConnections()
+                }
             }
         }
         .pluginInstallPrompt(connection: $vm.pluginInstallConnection) { connection in

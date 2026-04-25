@@ -205,9 +205,10 @@ extension AppDelegate {
                                  initialQuery: sql)
             }
 
-        case .importConnection(let name, let host, let port, let type, let username, let database):
-            await handleImportDeeplink(name: name, host: host, port: port, type: type,
-                                       username: username, database: database)
+        case .importConnection(let exportable):
+            openWelcomeWindow()
+            pendingDeeplinkImport = exportable
+            NotificationCenter.default.post(name: .deeplinkImportRequested, object: nil)
         }
     }
 
@@ -272,33 +273,6 @@ extension AppDelegate {
                 fileOpenLogger.error("Deep link connect failed: \(error.localizedDescription)")
                 await self.handleConnectionFailure(error)
             }
-        }
-    }
-
-    private func handleImportDeeplink(
-        name: String, host: String, port: Int,
-        type: DatabaseType, username: String, database: String
-    ) async {
-        let userPart = username.isEmpty ? "" : "\(username)@"
-        let details = "\(type.rawValue)://\(userPart)\(host):\(port)/\(database)"
-        let confirmed = await AlertHelper.confirmDestructive(
-            title: String(localized: "Import Connection from Link"),
-            message: String(format: String(localized: "An external link wants to add a database connection:\n\nName: %@\n%@"), name, details),
-            confirmButton: String(localized: "Add Connection"),
-            cancelButton: String(localized: "Cancel"),
-            window: NSApp.keyWindow
-        )
-        guard confirmed else { return }
-
-        let connection = DatabaseConnection(
-            name: name, host: host, port: port,
-            database: database, username: username, type: type
-        )
-        ConnectionStorage.shared.addConnection(connection)
-        NotificationCenter.default.post(name: .connectionUpdated, object: nil)
-
-        if let openWindow = WindowOpener.shared.openWindow {
-            openWindow(id: "connection-form", value: connection.id)
         }
     }
 

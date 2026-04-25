@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connection sharing: Share submenu with Copy Connection String, Copy TablePro Link, Copy as JSON, and rich deep links carrying all connection fields
 - Edit > Find menu item (Cmd+F)
 
 ### Fixed
