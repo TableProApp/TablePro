@@ -39,7 +39,7 @@ struct ConnectedView: View {
         .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            if let cached = cachedCoordinator, cached.session != nil {
+            if let cached = cachedCoordinator {
                 coordinator = cached
                 if case .connected = cached.phase { return }
                 await cached.connect()
@@ -104,6 +104,7 @@ struct ConnectedView: View {
                 }
                 Tab("Settings", systemImage: "gear", value: .settings) {
                     SettingsView()
+                        .environment(coordinator)
                 }
             }
             .navigationTitle(tabTitle(coordinator))
@@ -117,15 +118,19 @@ struct ConnectedView: View {
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
+                .accessibilityLabel(Text("Tables"))
                 .hidden()
             Button("") { coordinator.selectedTab = .query }
                 .keyboardShortcut("2", modifiers: .command)
+                .accessibilityLabel(Text("Query"))
                 .hidden()
             Button("") { coordinator.selectedTab = .history }
                 .keyboardShortcut("3", modifiers: .command)
+                .accessibilityLabel(Text("History"))
                 .hidden()
             Button("") { coordinator.selectedTab = .settings }
                 .keyboardShortcut("4", modifiers: .command)
+                .accessibilityLabel(Text("Settings"))
                 .hidden()
         }
         .overlay(alignment: .top) {

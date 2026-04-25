@@ -529,10 +529,10 @@ struct DataBrowserView: View {
             if rows.count < pagination.pageSize, pagination.totalRows == nil {
                 pagination.totalRows = pagination.currentOffset + rows.count
             }
-            if columnDetails.isEmpty {
+            if columnDetails.isEmpty || isInitial {
                 columnDetails = try await session.driver.fetchColumns(table: table.name, schema: nil)
             }
-            if foreignKeys.isEmpty {
+            if foreignKeys.isEmpty || isInitial {
                 do {
                     foreignKeys = try await session.driver.fetchForeignKeys(table: table.name, schema: nil)
                 } catch {

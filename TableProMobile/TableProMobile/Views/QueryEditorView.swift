@@ -58,19 +58,22 @@ struct QueryEditorView: View {
                 UserDefaults.standard.set(newValue, forKey: "lastQuery.\(connectionId.uuidString)")
             }
         }
+        .onDisappear {
+            saveQueryTask?.cancel()
+        }
         .onChange(of: coordinator.pendingQuery) { _, newQuery in
             if let newQuery {
                 query = newQuery
                 coordinator.pendingQuery = nil
             }
         }
-        .alert("Write Query Blocked", isPresented: $showWriteBlockedAlert) {
+        .alert(String(localized: "Write Query Blocked"), isPresented: $showWriteBlockedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("This connection is in read-only mode. Write queries are not allowed.")
         }
-        .confirmationDialog("Execute Write Query?", isPresented: $showWriteConfirmation, titleVisibility: .visible) {
-            Button("Execute", role: .destructive) {
+        .confirmationDialog(String(localized: "Execute Write Query?"), isPresented: $showWriteConfirmation, titleVisibility: .visible) {
+            Button(String(localized: "Execute"), role: .destructive) {
                 executeTask = Task { await executeQueryDirect(pendingWriteQuery) }
             }
         } message: {
@@ -195,7 +198,7 @@ struct QueryEditorView: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.largeTitle)
                             .foregroundStyle(.green)
-                        Text(verbatim: "\(result.rowsAffected) row(s) affected")
+                        Text(String(format: String(localized: "%d row(s) affected"), result.rowsAffected))
                             .font(.body)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

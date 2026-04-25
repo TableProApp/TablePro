@@ -354,16 +354,14 @@ struct ConnectionListView: View {
         var items = sectionItems
         items.move(fromOffsets: source, toOffset: destination)
         var all = appState.connections
-        for (i, item) in items.enumerated() {
+        let baseOrder = items.compactMap { item in
+            all.firstIndex { $0.id == item.id }.map { all[$0].sortOrder }
+        }.sorted()
+        for (i, item) in items.enumerated() where i < baseOrder.count {
             if let idx = all.firstIndex(where: { $0.id == item.id }) {
-                all[idx].sortOrder = i
+                all[idx].sortOrder = baseOrder[i]
             }
         }
-        all.sort {
-            if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        for index in all.indices { all[index].sortOrder = index }
         appState.reorderConnections(all)
     }
 

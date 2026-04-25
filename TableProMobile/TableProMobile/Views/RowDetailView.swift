@@ -88,6 +88,10 @@ struct RowDetailView: View {
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
+        .background(Color(.systemGroupedBackground))
+        .onDisappear {
+            dismissSuccessTask?.cancel()
+        }
         .onChange(of: currentIndex) {
             hapticSelection += 1
         }
