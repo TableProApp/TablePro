@@ -27,6 +27,5 @@ struct SettingsView: View {
                 }
             }
         }
-        .navigationTitle(String(localized: "Settings"))
     }
 }

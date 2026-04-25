@@ -51,8 +51,6 @@ struct QueryHistoryView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("History")
-        .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Clear History", isPresented: $showClearConfirmation) {
             Button("Clear All", role: .destructive) {
                 coordinator.clearHistory()

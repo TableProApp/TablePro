@@ -33,7 +33,7 @@ final class ConnectionCoordinator {
         }
     }
     var pendingQuery: String?
-    var tablesPath = NavigationPath()
+    var navigationPath = NavigationPath()
 
     private(set) var queryHistory: [QueryHistoryItem] = []
     private let historyStorage = QueryHistoryStorage()
@@ -277,7 +277,7 @@ final class ConnectionCoordinator {
         appState.pendingTableName = nil
         selectedTab = .tables
         Task { @MainActor in
-            tablesPath.append(table)
+            navigationPath.append(table)
         }
     }
 

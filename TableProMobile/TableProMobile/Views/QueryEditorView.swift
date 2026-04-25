@@ -42,9 +42,6 @@ struct QueryEditorView: View {
             Divider()
             resultSection
         }
-        .navigationTitle(coordinator.displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar { toolbarContent }
         .onAppear {
             if let pending = coordinator.pendingQuery {
                 query = pending
@@ -107,31 +104,57 @@ struct QueryEditorView: View {
             SQLHighlightTextView(text: $query)
                 .frame(minHeight: 80, maxHeight: result != nil || appError != nil ? 120 : 250)
 
-            if isExecuting || executionTime != nil || result != nil {
-                HStack {
-                    if isExecuting, let startTime = executionStartTime {
-                        TimelineView(.periodic(from: startTime, by: 0.1)) { context in
-                            let elapsed = context.date.timeIntervalSince(startTime)
-                            Label(String(format: "%.1fs", elapsed), systemImage: "clock")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if let time = executionTime {
-                        Label(String(format: "%.1fms", time * 1000), systemImage: "clock")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let result, !result.rows.isEmpty {
-                        Text(verbatim: "\(result.rows.count) rows")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
-            }
+            actionBar
         }
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                if isExecuting {
+                    executeTask?.cancel()
+                    Task { try? await session?.driver.cancelCurrentQuery() }
+                } else {
+                    executeTask = Task { await executeQuery() }
+                }
+            } label: {
+                Label(
+                    isExecuting ? String(localized: "Stop") : String(localized: "Run"),
+                    systemImage: isExecuting ? "stop.fill" : "play.fill"
+                )
+                .font(.subheadline.weight(.medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(isExecuting ? .red : .accentColor)
+            .disabled(!isExecuting && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .keyboardShortcut(.return, modifiers: .command)
+
+            Spacer()
+
+            if isExecuting, let startTime = executionStartTime {
+                TimelineView(.periodic(from: startTime, by: 0.1)) { context in
+                    let elapsed = context.date.timeIntervalSince(startTime)
+                    Text(String(format: "%.1fs", elapsed))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            } else if let time = executionTime {
+                Text(String(format: "%.1fms", time * 1000))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let result, !result.rows.isEmpty {
+                Text(verbatim: "\(result.rows.count) rows")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            queryMenu
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Results
@@ -259,93 +282,69 @@ struct QueryEditorView: View {
         }
     }
 
-    // MARK: - Toolbar
+    // MARK: - Query Menu
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if safeModeLevel != .off {
-            ToolbarItem(placement: .topBarLeading) {
-                Image(systemName: safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                    .foregroundStyle(safeModeLevel == .readOnly ? .red : .orange)
-                    .font(.caption)
-            }
-        }
-
-        ToolbarItem(placement: .primaryAction) {
+    private var queryMenu: some View {
+        Menu {
             Button {
-                if isExecuting {
-                    executeTask?.cancel()
-                    Task { try? await session?.driver.cancelCurrentQuery() }
-                } else {
-                    executeTask = Task { await executeQuery() }
-                }
+                coordinator.selectedTab = .history
             } label: {
-                Image(systemName: isExecuting ? "stop.fill" : "play.fill")
+                Label("History", systemImage: "clock")
             }
-            .disabled(!isExecuting && query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .keyboardShortcut(.return, modifiers: .command)
-        }
 
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                Button {
-                    coordinator.selectedTab = .history
+            if !tables.isEmpty {
+                Menu {
+                    ForEach(tables) { table in
+                        Button(table.name) {
+                            let quoted = SQLBuilder.quoteIdentifier(table.name, for: databaseType)
+                            query = "SELECT * FROM \(quoted) LIMIT 100"
+                        }
+                    }
                 } label: {
-                    Label("History", systemImage: "clock")
+                    Label("SELECT * FROM ...", systemImage: "text.badge.star")
                 }
+            }
 
-                if !tables.isEmpty {
-                    Menu {
-                        ForEach(tables) { table in
-                            Button(table.name) {
-                                let quoted = SQLBuilder.quoteIdentifier(table.name, for: databaseType)
-                                query = "SELECT * FROM \(quoted) LIMIT 100"
-                            }
-                        }
-                    } label: {
-                        Label("SELECT * FROM ...", systemImage: "text.badge.star")
-                    }
-                }
-
-                if let result, !result.rows.isEmpty {
-                    Section("Share Results") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                shareText = ClipboardExporter.exportRows(
-                                    columns: result.columns, rows: result.rows,
-                                    format: format
-                                )
-                                showShareSheet = true
-                            } label: {
-                                Label(format.rawValue, systemImage: "square.and.arrow.up")
-                            }
-                        }
-                    }
-                    Section("Copy Results") {
-                        ForEach(ExportFormat.allCases) { format in
-                            Button {
-                                let text = ClipboardExporter.exportRows(
-                                    columns: result.columns, rows: result.rows,
-                                    format: format
-                                )
-                                ClipboardExporter.copyToClipboard(text)
-                            } label: {
-                                Label(format.rawValue, systemImage: "doc.on.clipboard")
-                            }
+            if let result, !result.rows.isEmpty {
+                Section("Share Results") {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            shareText = ClipboardExporter.exportRows(
+                                columns: result.columns, rows: result.rows,
+                                format: format
+                            )
+                            showShareSheet = true
+                        } label: {
+                            Label(format.rawValue, systemImage: "square.and.arrow.up")
                         }
                     }
                 }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    showClearConfirmation = true
-                } label: {
-                    Label("Clear", systemImage: "trash")
+                Section("Copy Results") {
+                    ForEach(ExportFormat.allCases) { format in
+                        Button {
+                            let text = ClipboardExporter.exportRows(
+                                columns: result.columns, rows: result.rows,
+                                format: format
+                            )
+                            ClipboardExporter.copyToClipboard(text)
+                        } label: {
+                            Label(format.rawValue, systemImage: "doc.on.clipboard")
+                        }
+                    }
                 }
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showClearConfirmation = true
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Label("Clear", systemImage: "trash")
             }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.body)
+                .foregroundStyle(.secondary)
         }
     }
 

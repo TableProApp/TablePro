@@ -36,6 +36,8 @@ struct ConnectedView: View {
                 connectingView
             }
         }
+        .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             if let cached = cachedCoordinator, cached.session != nil {
                 coordinator = cached
@@ -86,7 +88,7 @@ struct ConnectedView: View {
 
     private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
         @Bindable var coordinator = coordinator
-        return NavigationStack(path: $coordinator.tablesPath) {
+        return NavigationStack(path: $coordinator.navigationPath) {
             TabView(selection: $coordinator.selectedTab) {
                 Tab("Tables", systemImage: "tablecells", value: .tables) {
                     TableListView()
@@ -104,7 +106,7 @@ struct ConnectedView: View {
                     SettingsView()
                 }
             }
-            .navigationTitle(coordinator.displayName)
+            .navigationTitle(tabTitle(coordinator))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { connectionToolbar(coordinator) }
             .navigationDestination(for: TableInfo.self) { table in
@@ -165,6 +167,14 @@ struct ConnectedView: View {
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
+        }
+    }
+
+    private func tabTitle(_ coordinator: ConnectionCoordinator) -> String {
+        switch coordinator.selectedTab {
+        case .tables, .query: coordinator.displayName
+        case .history: String(localized: "History")
+        case .settings: String(localized: "Settings")
         }
     }
 
