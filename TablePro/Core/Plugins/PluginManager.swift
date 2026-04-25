@@ -297,9 +297,21 @@ final class PluginManager {
         Self.logger.info("Discovered \(self.pendingPluginURLs.count) plugin(s), will load on first use")
     }
 
-    /// Load all discovered but not-yet-loaded plugin bundles synchronously on MainActor.
-    /// Only used by install/uninstall paths that need immediate plugin availability.
-    /// Normal startup uses `loadPlugins()` which loads bundles off the main thread.
+    func loadPendingPluginsAsync(clearRestartFlag: Bool = false) async {
+        if clearRestartFlag {
+            needsRestartStorage = false
+        }
+        guard !pendingPluginURLs.isEmpty else { return }
+        let pending = pendingPluginURLs
+        pendingPluginURLs.removeAll()
+
+        let loaded = await Self.loadBundlesOffMain(pending)
+        registerLoadedPlugins(loaded)
+        hasFinishedInitialLoad = true
+        validateDependencies()
+        Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
+    }
+
     func loadPendingPlugins(clearRestartFlag: Bool = false) {
         if clearRestartFlag {
             needsRestartStorage = false

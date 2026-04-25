@@ -420,21 +420,6 @@ enum DatabaseDriverFactory {
         return try createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
     }
 
-    /// Sync variant — falls back to synchronous plugin loading if needed.
-    /// Only use when an async context is not available.
-    static func createDriver(
-        for connection: DatabaseConnection,
-        passwordOverride: String? = nil
-    ) throws -> DatabaseDriver {
-        let pluginId = connection.type.pluginTypeId
-        if PluginManager.shared.driverPlugins[pluginId] == nil,
-           !PluginManager.shared.hasFinishedInitialLoad {
-            logger.warning("Plugin '\(pluginId)' not loaded yet — performing synchronous load")
-            PluginManager.shared.loadPendingPlugins()
-        }
-        return try createDriverFromPlugin(for: connection, passwordOverride: passwordOverride)
-    }
-
     private static func createDriverFromPlugin(
         for connection: DatabaseConnection,
         passwordOverride: String? = nil

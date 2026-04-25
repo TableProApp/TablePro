@@ -421,7 +421,7 @@ extension PluginManager {
         }) {
             if !existingEntry.isEnabled {
                 setEnabled(true, pluginId: existingEntry.id)
-                loadPendingPlugins()
+                await loadPendingPluginsAsync()
             }
             if driverPlugins[pluginTypeId] != nil {
                 Self.logger.info("Re-enabled existing plugin '\(existingEntry.name)' for '\(databaseType.rawValue)'")

@@ -21,15 +21,16 @@ extension MainContentView {
         }
         hasInitialized = true
         let schemaTaskStart = Date()
-        Task {
+        async let schemaLoad: Void = {
             await coordinator.loadSchemaIfNeeded()
             MainContentView.lifecycleLogger.info(
                 "[open] loadSchemaIfNeeded done windowId=\(windowId, privacy: .public) elapsedMs=\(Int(Date().timeIntervalSince(schemaTaskStart) * 1_000))"
             )
-        }
+        }()
 
         guard let payload else {
             await handleRestoreOrDefault()
+            _ = await schemaLoad
             return
         }
 
@@ -39,7 +40,10 @@ extension MainContentView {
 
         switch payload.intent {
         case .openContent:
-            if payload.skipAutoExecute { return }
+            if payload.skipAutoExecute {
+                _ = await schemaLoad
+                return
+            }
             if let selectedTab = tabManager.selectedTab,
                 selectedTab.tabType == .table,
                 !selectedTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -50,9 +54,8 @@ extension MainContentView {
                     if !selectedTab.databaseName.isEmpty,
                         selectedTab.databaseName != session.activeDatabase
                     {
-                        Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
+                        await coordinator.switchDatabase(to: selectedTab.databaseName)
                     } else {
-                        // columns is [] on initial load — buildFilteredQuery uses SELECT *
                         if !selectedTab.filterState.appliedFilters.isEmpty,
                             let tableName = selectedTab.tableName,
                             let tabIndex = tabManager.selectedTabIndex
@@ -72,7 +75,6 @@ extension MainContentView {
                         coordinator.executeTableTabQueryDirectly()
                     }
                 } else {
-                    // Reactive path: fires via onChange(of: sessionVersion) when connection is ready
                     coordinator.needsLazyLoad = true
                 }
             }
@@ -81,11 +83,14 @@ extension MainContentView {
             }
 
         case .newEmptyTab:
+            _ = await schemaLoad
             return
 
         case .restoreOrDefault:
             await handleRestoreOrDefault()
         }
+
+        _ = await schemaLoad
     }
 
     private func handleRestoreOrDefault() async {

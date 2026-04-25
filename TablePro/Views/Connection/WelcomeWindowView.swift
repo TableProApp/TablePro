@@ -245,7 +245,9 @@ struct WelcomeWindowView: View {
     private var connectionList: some View {
         ScrollViewReader { proxy in
             List(selection: $vm.selectedConnectionIds) {
-                treeRows(vm.treeItems)
+                TreeRowsView(items: vm.treeItems, parentGroupId: nil, vm: vm) { conn in
+                    connectionRow(for: conn)
+                }
 
                 if !vm.linkedConnections.isEmpty, LicenseManager.shared.isFeatureAvailable(.linkedFolders) {
                     Section {
@@ -315,50 +317,9 @@ struct WelcomeWindowView: View {
         }
     }
 
-    // MARK: - Tree Rendering
-
-    private func treeRows(_ items: [ConnectionGroupTreeNode], parentGroupId: UUID? = nil) -> AnyView {
-        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
-        return AnyView(
-            ForEach(items) { item in
-                switch item {
-                case .connection(let conn):
-                    connectionRow(for: conn)
-                case .group(let group, let children):
-                    DisclosureGroup(isExpanded: expandedBinding(for: group.id)) {
-                        treeRows(children, parentGroupId: group.id)
-                    } label: {
-                        groupLabel(for: group)
-                    }
-                }
-            }
-            .onMove(perform: allConnections ? { from, to in
-                guard vm.searchText.isEmpty else { return }
-                if let parentGroupId, let group = vm.groups.first(where: { $0.id == parentGroupId }) {
-                    vm.moveGroupedConnections(in: group, from: from, to: to)
-                } else {
-                    vm.moveUngroupedConnections(from: from, to: to)
-                }
-            } : nil)
-        )
-    }
-
-    private func expandedBinding(for groupId: UUID) -> Binding<Bool> {
-        Binding(
-            get: { vm.expandedGroupIds.contains(groupId) },
-            set: { expanded in
-                if expanded {
-                    vm.expandedGroupIds.insert(groupId)
-                } else {
-                    vm.expandedGroupIds.remove(groupId)
-                }
-            }
-        )
-    }
-
     // MARK: - Rows
 
-    private func connectionRow(for connection: DatabaseConnection) -> some View {
+    func connectionRow(for connection: DatabaseConnection) -> some View {
         let sshProfile = connection.sshProfileId.flatMap { SSHProfileStorage.shared.profile(for: $0) }
         return WelcomeConnectionRow(
             connection: connection,
@@ -406,7 +367,108 @@ struct WelcomeWindowView: View {
         }
     }
 
-    // MARK: - Group Label
+    // MARK: - Empty State
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Spacer()
+
+            Image(systemName: "cylinder.split.1x2")
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
+
+            if vm.searchText.isEmpty {
+                Text("No Connections")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text("Create a connection to get started")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+
+                Button(action: { openWindow(id: "connection-form") }) {
+                    Label("New Connection", systemImage: "plus")
+                }
+                .controlSize(.large)
+                .padding(.top, 4)
+
+                Button(action: { vm.importConnectionsFromApp() }) {
+                    Label("Import from Other App...", systemImage: "square.and.arrow.down.on.square")
+                }
+                .controlSize(.large)
+            } else {
+                Text("No Matching Connections")
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text("Try a different search term")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Helpers
+
+    private func scrollToSelection(_ proxy: ScrollViewProxy) {
+        if let id = vm.selectedConnectionIds.first {
+            proxy.scrollTo(id, anchor: .center)
+        }
+    }
+}
+
+// MARK: - Tree Rendering
+
+private struct TreeRowsView<ConnectionContent: View>: View {
+    let items: [ConnectionGroupTreeNode]
+    let parentGroupId: UUID?
+    var vm: WelcomeViewModel
+    let connectionRowBuilder: (DatabaseConnection) -> ConnectionContent
+
+    var body: some View {
+        let allConnections = !items.contains { if case .group = $0 { return true } else { return false } }
+        ForEach(items) { item in
+            switch item {
+            case .connection(let conn):
+                connectionRowBuilder(conn)
+            case .group(let group, let children):
+                DisclosureGroup(isExpanded: expandedBinding(for: group.id)) {
+                    TreeRowsView(
+                        items: children,
+                        parentGroupId: group.id,
+                        vm: vm,
+                        connectionRowBuilder: connectionRowBuilder
+                    )
+                } label: {
+                    groupLabel(for: group)
+                }
+            }
+        }
+        .onMove(perform: allConnections ? { from, to in
+            guard vm.searchText.isEmpty else { return }
+            if let parentGroupId, let group = vm.groups.first(where: { $0.id == parentGroupId }) {
+                vm.moveGroupedConnections(in: group, from: from, to: to)
+            } else {
+                vm.moveUngroupedConnections(from: from, to: to)
+            }
+        } : nil)
+    }
+
+    private func expandedBinding(for groupId: UUID) -> Binding<Bool> {
+        Binding(
+            get: { vm.expandedGroupIds.contains(groupId) },
+            set: { expanded in
+                if expanded {
+                    vm.expandedGroupIds.insert(groupId)
+                } else {
+                    vm.expandedGroupIds.remove(groupId)
+                }
+            }
+        )
+    }
 
     private func groupLabel(for group: ConnectionGroup) -> some View {
         HStack(spacing: 6) {
@@ -431,8 +493,6 @@ struct WelcomeWindowView: View {
             groupContextMenu(for: group)
         }
     }
-
-    // MARK: - Group Context Menu
 
     @ViewBuilder
     private func groupContextMenu(for group: ConnectionGroup) -> some View {
@@ -523,58 +583,6 @@ struct WelcomeWindowView: View {
             vm.requestDeleteGroup(group)
         } label: {
             Label(String(localized: "Delete Group"), systemImage: "trash")
-        }
-    }
-
-    // MARK: - Empty State
-
-    private var emptyState: some View {
-        VStack(spacing: 12) {
-            Spacer()
-
-            Image(systemName: "cylinder.split.1x2")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-
-            if vm.searchText.isEmpty {
-                Text("No Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Create a connection to get started")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-
-                Button(action: { openWindow(id: "connection-form") }) {
-                    Label("New Connection", systemImage: "plus")
-                }
-                .controlSize(.large)
-                .padding(.top, 4)
-
-                Button(action: { vm.importConnectionsFromApp() }) {
-                    Label("Import from Other App...", systemImage: "square.and.arrow.down.on.square")
-                }
-                .controlSize(.large)
-            } else {
-                Text("No Matching Connections")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                Text("Try a different search term")
-                    .font(.callout)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Helpers
-
-    private func scrollToSelection(_ proxy: ScrollViewProxy) {
-        if let id = vm.selectedConnectionIds.first {
-            proxy.scrollTo(id, anchor: .center)
         }
     }
 }
