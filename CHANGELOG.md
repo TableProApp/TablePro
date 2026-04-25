@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- MongoDB replica set support with multi-host connections
+- MongoDB multi-host connections for replica sets
 - JSON results view mode with Data/Structure/JSON toggle in status bar
 - Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1 support, URL schemes for Oracle/ClickHouse/etcd/D1/libSQL
 - In-app feedback form for bug reports and feature requests via Help > Report an Issue
@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Connection form can overflow with SSH jump hosts and TOTP fields due to fixed height
-- Group deletion has no confirmation dialog
-- Thread-safety race in plugin system when resolving principalClass off the main thread
+- Connection form overflow with SSH jump hosts and TOTP fields
+- Missing confirmation dialog on group deletion
+- Plugin principalClass resolved off main thread
 - Crash when scrolling AI Chat during streaming on macOS 15.x
 - Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
 - Schema-qualified table names (e.g. `public.users`) now correctly resolve in autocomplete
