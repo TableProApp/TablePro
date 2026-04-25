@@ -175,26 +175,7 @@ struct DeeplinkImportSheet: View {
         let trimmed = editableName.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
 
-        let renamedConnection = ExportableConnection(
-            name: trimmed,
-            host: connection.host,
-            port: connection.port,
-            database: connection.database,
-            username: connection.username,
-            type: connection.type,
-            sshConfig: connection.sshConfig,
-            sslConfig: connection.sslConfig,
-            color: connection.color,
-            tagName: connection.tagName,
-            groupName: connection.groupName,
-            sshProfileId: connection.sshProfileId,
-            safeModeLevel: connection.safeModeLevel,
-            aiPolicy: connection.aiPolicy,
-            additionalFields: connection.additionalFields,
-            redisDatabase: connection.redisDatabase,
-            startupCommands: connection.startupCommands,
-            localOnly: connection.localOnly
-        )
+        let renamedConnection = connection.renamed(to: trimmed)
 
         let envelope = ConnectionExportEnvelope(
             formatVersion: 1,
