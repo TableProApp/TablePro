@@ -1,15 +1,7 @@
-//
-//  QueryHistoryStorage.swift
-//  TablePro
-//
-//  SQLite storage for query history with FTS5 full-text search
-//
-
 import Foundation
 import os
 import SQLite3
 
-/// Date filter options for history queries
 enum DateFilter {
     case today
     case thisWeek
@@ -33,22 +25,13 @@ enum DateFilter {
     }
 }
 
-/// Thread-safe SQLite storage for query history
-final class QueryHistoryStorage {
+actor QueryHistoryStorage {
     static let shared = QueryHistoryStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "QueryHistoryStorage")
 
-    // Thread-safe queue for all database operations
-    private let queue = DispatchQueue(label: "com.TablePro.queryhistory", qos: .utility)
     private var db: OpaquePointer?
-
-    // Configuration - cached from settings (to avoid MainActor issues on background queue)
-    // These are updated via updateSettingsCache() before cleanup runs
-    private let settingsLock = NSLock()
     private var cachedMaxHistoryEntries: Int = 10_000
     private var cachedMaxHistoryDays: Int = 90
-
-    // Throttle cleanup: only run every 100 inserts
     private var insertsSinceCleanup: Int = 0
 
     private static var isRunningTests: Bool {
@@ -56,21 +39,13 @@ final class QueryHistoryStorage {
     }
 
     private init() {
-        queue.async { [weak self] in
-            self?.setupDatabase()
-        }
+        setupDatabase()
     }
 
     #if DEBUG
-    /// Creates an isolated instance with a unique database file. For testing only.
     init(isolatedForTesting: Bool) {
         testDatabaseSuffix = isolatedForTesting ? "_\(UUID().uuidString)" : nil
-        let semaphore = DispatchSemaphore(value: 0)
-        queue.async { [self] in
-            setupDatabase()
-            semaphore.signal()
-        }
-        semaphore.wait()
+        setupDatabase()
     }
     #endif
 
@@ -90,32 +65,6 @@ final class QueryHistoryStorage {
         }
     }
 
-    // MARK: - Database Work Helpers
-
-    /// Run database work on the serial queue, returning a result via async/await
-    private func performDatabaseWork<T>(_ work: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    let result = try work()
-                    continuation.resume(returning: result)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    /// Run non-throwing database work on the serial queue
-    private func performDatabaseWork<T>(_ work: @escaping () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                let result = work()
-                continuation.resume(returning: result)
-            }
-        }
-    }
-
     // MARK: - Database Setup
 
     private func setupDatabase() {
@@ -130,7 +79,6 @@ final class QueryHistoryStorage {
         }
         let TableProDir = appSupport.appendingPathComponent("TablePro")
 
-        // Create directory if needed
         try? fileManager.createDirectory(at: TableProDir, withIntermediateDirectories: true)
 
         let suffix = testDatabaseSuffix ?? ""
@@ -141,13 +89,11 @@ final class QueryHistoryStorage {
 
         self.dbPath = dbPath
 
-        // Open database
         if sqlite3_open(dbPath, &db) != SQLITE_OK {
             Self.logger.error("Error opening database")
             return
         }
 
-        // Enable WAL mode for concurrent reads and batched writes
         execute("PRAGMA journal_mode=WAL;")
         execute("PRAGMA synchronous=NORMAL;")
 
@@ -159,11 +105,6 @@ final class QueryHistoryStorage {
 
     private func migrateIfNeeded() {
         let currentVersion = getUserVersion()
-
-        // Future migrations go here:
-        // if currentVersion < 2 {
-        //     execute("ALTER TABLE history ADD COLUMN new_col TEXT;")
-        // }
 
         let targetVersion: Int32 = 1
         if currentVersion < targetVersion {
@@ -189,7 +130,6 @@ final class QueryHistoryStorage {
     // MARK: - Table Creation
 
     private func createTables() {
-        // History table
         let historyTable = """
             CREATE TABLE IF NOT EXISTS history (
                 id TEXT PRIMARY KEY,
@@ -204,7 +144,6 @@ final class QueryHistoryStorage {
             );
             """
 
-        // FTS5 virtual table for full-text search
         let ftsTable = """
             CREATE VIRTUAL TABLE IF NOT EXISTS history_fts USING fts5(
                 query,
@@ -213,7 +152,6 @@ final class QueryHistoryStorage {
             );
             """
 
-        // Triggers to keep FTS5 in sync
         let ftsInsertTrigger = """
             CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
                 INSERT INTO history_fts(rowid, query) VALUES (new.rowid, new.query);
@@ -233,13 +171,11 @@ final class QueryHistoryStorage {
             END;
             """
 
-        // Indexes
         let historyIndexes = [
             "CREATE INDEX IF NOT EXISTS idx_history_connection ON history(connection_id);",
             "CREATE INDEX IF NOT EXISTS idx_history_executed_at ON history(executed_at DESC);",
         ]
 
-        // Execute all table creation statements
         execute(historyTable)
         execute(ftsTable)
         execute(ftsInsertTrigger)
@@ -262,10 +198,27 @@ final class QueryHistoryStorage {
 
     // MARK: - History Operations
 
-    /// Add a history entry asynchronously
-    func addHistory(_ entry: QueryHistoryEntry) async -> Bool {
-        // Capture values as Swift strings BEFORE entering async block
-        // to ensure they remain valid throughout the operation
+    func addHistory(_ entry: QueryHistoryEntry) -> Bool {
+        insertsSinceCleanup += 1
+        if insertsSinceCleanup >= 100 {
+            performCleanup()
+            insertsSinceCleanup = 0
+        }
+
+        let sql = """
+            INSERT INTO history (id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return false
+        }
+
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
         let idString = entry.id.uuidString
         let queryString = entry.query
         let connectionIdString = entry.connectionId.uuidString
@@ -274,86 +227,40 @@ final class QueryHistoryStorage {
         let executionTime = entry.executionTime
         let rowCount = Int32(entry.rowCount)
         let wasSuccessful: Int32 = entry.wasSuccessful ? 1 : 0
-        let errorMessageString = entry.errorMessage
 
-        return await performDatabaseWork { [weak self] in
-            guard let self = self else { return false }
+        sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, queryString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 3, connectionIdString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 4, databaseNameString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(statement, 5, executedAt)
+        sqlite3_bind_double(statement, 6, executionTime)
+        sqlite3_bind_int(statement, 7, rowCount)
+        sqlite3_bind_int(statement, 8, wasSuccessful)
 
-            // Throttled cleanup: only run every 100 inserts
-            self.insertsSinceCleanup += 1
-            if self.insertsSinceCleanup >= 100 {
-                self.performCleanup()
-                self.insertsSinceCleanup = 0
-            }
-
-            let sql = """
-                INSERT INTO history (id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
-                """
-
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
-                return false
-            }
-
-            defer { sqlite3_finalize(statement) }
-
-            // SQLITE_TRANSIENT tells SQLite to make its own copy of the string
-            let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-
-            sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(statement, 2, queryString, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(statement, 3, connectionIdString, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(statement, 4, databaseNameString, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_double(statement, 5, executedAt)
-            sqlite3_bind_double(statement, 6, executionTime)
-            sqlite3_bind_int(statement, 7, rowCount)
-            sqlite3_bind_int(statement, 8, wasSuccessful)
-
-            if let errorMessage = errorMessageString {
-                sqlite3_bind_text(statement, 9, errorMessage, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(statement, 9)
-            }
-
-            let result = sqlite3_step(statement)
-            return result == SQLITE_DONE
+        if let errorMessage = entry.errorMessage {
+            sqlite3_bind_text(statement, 9, errorMessage, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 9)
         }
+
+        let result = sqlite3_step(statement)
+        return result == SQLITE_DONE
     }
 
-    /// Fetch history with optional filters asynchronously
     func fetchHistory(
         limit: Int = 100,
         offset: Int = 0,
         connectionId: UUID? = nil,
         searchText: String? = nil,
         dateFilter: DateFilter = .all
-    ) async -> [QueryHistoryEntry] {
-        await performDatabaseWork { [weak self] in
-            guard let self = self else { return [] }
-            return self.fetchHistorySync(
-                limit: limit, offset: offset, connectionId: connectionId, searchText: searchText,
-                dateFilter: dateFilter)
-        }
-    }
-
-    /// Internal synchronous fetch (must be called on queue)
-    private func fetchHistorySync(
-        limit: Int,
-        offset: Int,
-        connectionId: UUID?,
-        searchText: String?,
-        dateFilter: DateFilter
     ) -> [QueryHistoryEntry] {
         var entries: [QueryHistoryEntry] = []
 
-        // Build query with placeholders
         var sql: String
         var bindIndex: Int32 = 1
         var hasConnectionFilter = false
         var hasDateFilter = false
 
-        // Use FTS5 for full-text search if search text provided
         if let searchText = searchText, !searchText.isEmpty {
             sql = """
                 SELECT h.id, h.query, h.connection_id, h.database_name, h.executed_at, h.execution_time, h.row_count, h.was_successful, h.error_message
@@ -362,7 +269,6 @@ final class QueryHistoryStorage {
                 WHERE history_fts MATCH ?
                 """
 
-            // Add additional filters
             if connectionId != nil {
                 sql += " AND h.connection_id = ?"
                 hasConnectionFilter = true
@@ -404,11 +310,7 @@ final class QueryHistoryStorage {
 
         let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-        // Bind parameters in order
         if let searchText = searchText, !searchText.isEmpty {
-            // Sanitize for FTS5: wrap in double quotes for exact phrase matching,
-            // escaping any internal double quotes to prevent parse errors from
-            // special characters like *, OR, AND, etc.
             let sanitized = "\"\(searchText.replacingOccurrences(of: "\"", with: "\"\""))\""
             sqlite3_bind_text(statement, bindIndex, sanitized, -1, SQLITE_TRANSIENT)
             bindIndex += 1
@@ -437,94 +339,70 @@ final class QueryHistoryStorage {
         return entries
     }
 
-    /// Delete a specific history entry asynchronously
-    func deleteHistory(id: UUID) async -> Bool {
+    func deleteHistory(id: UUID) -> Bool {
         let idString = id.uuidString
-        return await performDatabaseWork { [weak self] in
-            guard let self = self else { return false }
-
-            let sql = "DELETE FROM history WHERE id = ?;"
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
-                return false
-            }
-
-            defer { sqlite3_finalize(statement) }
-
-            let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-            sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
-            return sqlite3_step(statement) == SQLITE_DONE
+        let sql = "DELETE FROM history WHERE id = ?;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return false
         }
+
+        defer { sqlite3_finalize(statement) }
+
+        let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, idString, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(statement) == SQLITE_DONE
     }
 
-    /// Get total history count asynchronously
-    func getHistoryCount() async -> Int {
-        await performDatabaseWork { [weak self] in
-            guard let self = self else { return 0 }
-
-            let sql = "SELECT COUNT(*) FROM history;"
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
-                return 0
-            }
-
-            defer { sqlite3_finalize(statement) }
-
-            if sqlite3_step(statement) == SQLITE_ROW {
-                return Int(sqlite3_column_int(statement, 0))
-            }
+    func getHistoryCount() -> Int {
+        let sql = "SELECT COUNT(*) FROM history;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             return 0
         }
+
+        defer { sqlite3_finalize(statement) }
+
+        if sqlite3_step(statement) == SQLITE_ROW {
+            return Int(sqlite3_column_int(statement, 0))
+        }
+        return 0
     }
 
-    /// Clear all history entries asynchronously
-    func clearAllHistory() async -> Bool {
-        await performDatabaseWork { [weak self] in
-            guard let self = self else { return false }
-
-            let sql = "DELETE FROM history;"
-            var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(self.db, sql, -1, &statement, nil) == SQLITE_OK else {
-                return false
-            }
-
-            defer { sqlite3_finalize(statement) }
-            return sqlite3_step(statement) == SQLITE_DONE
+    func clearAllHistory() -> Bool {
+        let sql = "DELETE FROM history;"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            return false
         }
+
+        defer { sqlite3_finalize(statement) }
+        return sqlite3_step(statement) == SQLITE_DONE
+    }
+
+    // MARK: - Settings Cache
+
+    func updateSettingsCache(maxEntries: Int, maxDays: Int) {
+        cachedMaxHistoryEntries = maxEntries == 0 ? Int.max : maxEntries
+        cachedMaxHistoryDays = maxDays == 0 ? Int.max : maxDays
     }
 
     // MARK: - Cleanup
 
-    /// Update cached settings from AppSettingsManager (must be called from MainActor)
-    @MainActor
-    func updateSettingsCache() {
-        let settings = AppSettingsManager.shared.history
-        // Use Int.max for "unlimited" (0) values
-        settingsLock.lock()
-        cachedMaxHistoryEntries = settings.maxEntries == 0 ? Int.max : settings.maxEntries
-        cachedMaxHistoryDays = settings.maxDays == 0 ? Int.max : settings.maxDays
-        settingsLock.unlock()
+    func cleanup() {
+        performCleanup()
     }
 
-    /// Perform cleanup: delete old entries and limit total count
     private func performCleanup() {
-        // Snapshot settings under lock for thread-safe access
-        settingsLock.lock()
         let maxDays = cachedMaxHistoryDays
         let maxEntries = cachedMaxHistoryEntries
-        settingsLock.unlock()
 
-        // Try to wrap all cleanup operations in a single transaction to reduce journal flushes.
-        // If BEGIN IMMEDIATE fails (e.g., WAL write contention), fall back to auto-commit mode
-        // so cleanup still runs — just without the single-transaction optimization.
         let inTransaction = sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK
         if !inTransaction {
             Self.logger.warning("Failed to begin transaction for cleanup, falling back to auto-commit")
         }
 
-        // Skip cleanup if days is unlimited
         if maxDays < Int.max {
-            // Delete entries older than maxHistoryDays
             let cutoffDate = Date().addingTimeInterval(-Double(maxDays * 24 * 60 * 60))
             let deleteOldSQL = "DELETE FROM history WHERE executed_at < ?;"
 
@@ -536,9 +414,7 @@ final class QueryHistoryStorage {
             sqlite3_finalize(statement)
         }
 
-        // Skip entry limit cleanup if unlimited
         if maxEntries < Int.max {
-            // Delete oldest entries if count exceeds limit
             let countSQL = "SELECT COUNT(*) FROM history;"
             var countStatement: OpaquePointer?
             if sqlite3_prepare_v2(db, countSQL, -1, &countStatement, nil) == SQLITE_OK {
@@ -574,13 +450,6 @@ final class QueryHistoryStorage {
                 Self.logger.warning("Failed to commit cleanup transaction, attempting rollback")
                 sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             }
-        }
-    }
-
-    /// Manually trigger cleanup (call on app launch if autoCleanup is enabled)
-    func cleanup() {
-        queue.async { [weak self] in
-            self?.performCleanup()
         }
     }
 

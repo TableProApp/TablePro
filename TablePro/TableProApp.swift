@@ -619,7 +619,7 @@ struct TableProApp: App {
     init() {
         // Perform startup cleanup of query history if auto-cleanup is enabled
         Task {
-            QueryHistoryManager.shared.performStartupCleanup()
+            await QueryHistoryManager.shared.performStartupCleanup()
         }
     }
 

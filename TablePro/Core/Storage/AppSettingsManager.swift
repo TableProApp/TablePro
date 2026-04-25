@@ -244,7 +244,7 @@ final class AppSettingsManager {
     }
 
     private func applyHistorySettingsImmediately() async {
-        QueryHistoryManager.shared.applySettingsChange()
+        await QueryHistoryManager.shared.applySettingsChange()
     }
 
     // MARK: - Actions
