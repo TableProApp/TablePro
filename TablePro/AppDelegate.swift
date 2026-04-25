@@ -63,6 +63,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Connection share file URL pending consumption by WelcomeViewModel.setUp()
     var pendingConnectionShareURL: URL?
 
+    /// Deep link import pending consumption by WelcomeViewModel
+    var pendingDeeplinkImport: ExportableConnection?
+
     // MARK: - NSApplicationDelegate
 
     func application(_ application: NSApplication, open urls: [URL]) {

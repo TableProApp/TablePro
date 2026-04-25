@@ -19,7 +19,7 @@ extension MainContentCoordinator {
     ) {
         guard !safeModeLevel.blocksAllWrites else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].errorMessage = "Cannot save changes: connection is read-only"
+                tabManager.tabs[index].errorMessage = String(localized: "Cannot save changes: connection is read-only")
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
@@ -53,7 +53,7 @@ extension MainContentCoordinator {
 
         guard !allStatements.isEmpty else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].errorMessage = "Could not generate SQL for changes."
+                tabManager.tabs[index].errorMessage = String(localized: "Could not generate SQL for changes.")
             }
             saveCompletionContinuation?.resume(returning: false)
             saveCompletionContinuation = nil
@@ -182,7 +182,7 @@ extension MainContentCoordinator {
             do {
                 guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
                     if let index = tabManager.selectedTabIndex {
-                        tabManager.tabs[index].errorMessage = "Not connected to database"
+                        tabManager.tabs[index].errorMessage = String(localized: "Not connected to database")
                     }
                     throw DatabaseError.notConnected
                 }
@@ -293,7 +293,7 @@ extension MainContentCoordinator {
                 )
 
                 if let index = tabManager.selectedTabIndex {
-                    tabManager.tabs[index].errorMessage = "Save failed: \(error.localizedDescription)"
+                    tabManager.tabs[index].errorMessage = String(format: String(localized: "Save failed: %@"), error.localizedDescription)
                 }
 
                 // Show error alert to user

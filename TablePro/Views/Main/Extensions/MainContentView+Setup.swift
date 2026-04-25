@@ -200,7 +200,7 @@ extension MainContentView {
             windowTitle = fileURL.deletingPathExtension().lastPathComponent
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
-            let queryLabel = "\(langName) Query"
+            let queryLabel = String(format: String(localized: "%@ Query"), langName)
             windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableName : nil)
                 ?? selectedTab?.title
                 ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
@@ -217,7 +217,7 @@ extension MainContentView {
         )
         let isPreview = tabManager.selectedTab?.isPreview ?? payload?.isPreview ?? false
         if isPreview {
-            window.subtitle = "\(connection.name) — Preview"
+            window.subtitle = String(format: String(localized: "%@ — Preview"), connection.name)
         } else {
             window.subtitle = connection.name
         }

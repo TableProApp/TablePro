@@ -614,6 +614,49 @@ struct FilterSQLGeneratorTests {
         #expect(result == "(age > 18)")
     }
 
+    @Test("Raw SQL rejects destructive statement injection", arguments: [
+        "1=1; DROP TABLE users",
+        "1=1; DELETE FROM users",
+        "1=1; INSERT INTO users VALUES (1)",
+        "1=1; UPDATE users SET admin=1",
+        "1=1; ALTER TABLE users ADD COLUMN pwned TEXT",
+        "1=1; CREATE TABLE evil (id INT)",
+        "1=1; TRUNCATE TABLE users",
+        "1=1; GRANT ALL ON *.* TO attacker",
+        "1=1; REVOKE ALL ON *.* FROM user",
+        "1=1; EXEC xp_cmdshell 'whoami'",
+        "1=1; EXECUTE sp_executesql 'SELECT 1'",
+        "1=1; drop table users"
+    ])
+    func testRawSQLRejectsDestructiveStatements(input: String) {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let filter = TableFilter(columnName: "__RAW__", rawSQL: input)
+        #expect(generator.generateCondition(from: filter) == nil)
+    }
+
+    @Test("Raw SQL rejects comment injection", arguments: [
+        "1=1 -- always true",
+        "1=1 /* comment */"
+    ])
+    func testRawSQLRejectsCommentInjection(input: String) {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let filter = TableFilter(columnName: "__RAW__", rawSQL: input)
+        #expect(generator.generateCondition(from: filter) == nil)
+    }
+
+    @Test("Raw SQL allows legitimate WHERE conditions", arguments: [
+        ("age > 18 AND status = 'active'", "(age > 18 AND status = 'active')"),
+        ("id IN (SELECT id FROM other)", "(id IN (SELECT id FROM other))"),
+        ("YEAR(created_at) = 2024", "(YEAR(created_at) = 2024)"),
+        ("status = 'semi;colon'", "(status = 'semi;colon')"),
+        ("data->>'key' = 'value'", "(data->>'key' = 'value')")
+    ])
+    func testRawSQLAllowsLegitimateConditions(input: String, expected: String) {
+        let generator = FilterSQLGenerator(dialect: Self.mysqlDialect)
+        let filter = TableFilter(columnName: "__RAW__", rawSQL: input)
+        #expect(generator.generateCondition(from: filter) == expected)
+    }
+
     // MARK: - Identifier Quoting Per DB Type
 
     @Test("MySQL uses backtick quoting")

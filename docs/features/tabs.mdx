@@ -5,7 +5,9 @@ description: Each tab keeps its own SQL, results, pagination, sorting, and filte
 
 # Query Tabs
 
-Every tab is an independent workspace with its own SQL content, results, pagination, sorting, and filter state. Open as many as you need. They persist across app restarts.
+Every tab is a native macOS window tab. Each tab is a separate NSWindow in a tab group, managed by the system window tabbing API. This means you get standard macOS tab behavior: drag tabs between windows, merge windows via **Window > Merge All Windows**, and use **Window > Move Tab to New Window** to split them out.
+
+Each tab is an independent workspace with its own SQL content, results, pagination, sorting, and filter state. Open as many as you need. They persist across app restarts.
 
 {/* Screenshot: Tab bar showing multiple open tabs */}
 <Frame caption="Tab bar with multiple query and table tabs">

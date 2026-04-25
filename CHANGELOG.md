@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Connection sharing: Share submenu with Copy Connection String, Copy TablePro Link, Copy as JSON, and rich deep links carrying all connection fields
 - Edit > Find menu item (Cmd+F)
 - MCP server: Bearer token authentication with multi-token management
 - MCP server: three permission tiers (Read Only, Read & Write, Full Access) with per-token connection allowlists
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Raw SQL filter accepting destructive statements and comment injection
 - MCP server: schema and history resources now enforce connection access policies
 - Export "Don't show again" preference lost when clicking "Open Folder"
 - Connection failure error not shown on welcome screen
@@ -31,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SSH profile test showing modal alert instead of inline error
 - DDL results showing misleading "0 row(s) affected"
 - Export dialog missing empty state when no tables found
+- Save-changes error messages, duplicated connection "(Copy)" suffix, query window title fallback, preview window subtitle, and inspector row count not localized
 
 ### Changed
 

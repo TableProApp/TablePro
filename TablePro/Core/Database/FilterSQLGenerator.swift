@@ -38,12 +38,11 @@ struct FilterSQLGenerator {
         return conditions.joined(separator: separator)
     }
 
-    /// Generate a single filter condition
     func generateCondition(from filter: TableFilter) -> String? {
         guard filter.isValid else { return nil }
 
-        // Raw SQL mode - return as-is
         if filter.isRawSQL, let rawSQL = filter.rawSQL {
+            guard isRawSQLSafe(rawSQL) else { return nil }
             return "(\(rawSQL))"
         }
 
@@ -273,9 +272,36 @@ struct FilterSQLGenerator {
             .replacingOccurrences(of: "_", with: "\\_")
     }
 
+    // MARK: - Raw SQL Validation
+
+    private static let destructiveStatementPattern: NSRegularExpression? = {
+        let keywords = "DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|EXEC|EXECUTE"
+        let pattern = ";\\s*(\(keywords))\\b"
+        return try? NSRegularExpression(pattern: pattern, options: .caseInsensitive)
+    }()
+
+    private static let commentInjectionPattern: NSRegularExpression? = {
+        try? NSRegularExpression(pattern: "(?:^|\\s)--|\\/\\*", options: [])
+    }()
+
+    private func isRawSQLSafe(_ sql: String) -> Bool {
+        let range = NSRange(sql.startIndex..., in: sql)
+
+        if let pattern = Self.destructiveStatementPattern,
+           pattern.firstMatch(in: sql, range: range) != nil {
+            return false
+        }
+
+        if let pattern = Self.commentInjectionPattern,
+           pattern.firstMatch(in: sql, range: range) != nil {
+            return false
+        }
+
+        return true
+    }
+
     // MARK: - List Parsing
 
-    /// Parse comma-separated list values
     private func parseListValues(_ input: String) -> [String] {
         input.split(separator: ",", omittingEmptySubsequences: true)
             .compactMap {

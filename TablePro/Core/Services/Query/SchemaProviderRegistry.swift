@@ -19,7 +19,7 @@ final class SchemaProviderRegistry {
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
 
-    init() {}
+    private init() {}
 
     func provider(for connectionId: UUID) -> SQLSchemaProvider? {
         providers[connectionId]

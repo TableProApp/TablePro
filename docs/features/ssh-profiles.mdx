@@ -32,6 +32,39 @@ Select the profile from the **Profile** picker in other connections. Changes to 
 
 You can also save an existing inline SSH config as a profile: click **Save Current as Profile...**.
 
+## Profiles vs Inline Config
+
+Each connection can use either a shared profile or an inline (one-off) SSH config. Inline configs are stored with the connection and don't affect other connections. Profiles are stored globally and shared.
+
+When to use profiles: multiple connections through the same bastion host. When to use inline: a one-off tunnel specific to a single connection.
+
+## Authentication Methods
+
+TablePro supports four SSH auth methods:
+
+| Method | Description |
+|--------|-------------|
+| **Password** | Username/password auth. Password stored in Keychain. |
+| **Private Key** | RSA, Ed25519, or ECDSA key file. Supports passphrase-protected keys. |
+| **SSH Agent** | Delegates auth to a running SSH agent (system agent, 1Password, or custom socket path). |
+| **Keyboard-Interactive** | Server-driven challenge/response. Used by some PAM and MFA setups. |
+
+## TOTP Two-Factor Authentication
+
+For servers that require TOTP codes after SSH auth, enable **Two-Factor (TOTP)** in the profile. Enter the TOTP secret, and TablePro generates and submits the 6-digit code automatically during connection.
+
+Configure algorithm (SHA1, SHA256, SHA512), digit count, and time period if your server uses non-default settings.
+
+## Multi-Jump Hosts (ProxyJump)
+
+Chain multiple SSH hops to reach a database behind nested bastions. Click **Add Jump Host** in the profile editor to add intermediate hosts. Each hop authenticates independently (password, key, or agent).
+
+The chain executes in order: client connects to jump host 1, then tunnels through to jump host 2, and so on until reaching the final SSH host.
+
+## SSH Config File Integration
+
+Toggle **Use SSH Config** to read settings from `~/.ssh/config`. TablePro applies matching Host entries for hostname, port, identity file, proxy settings, and other directives. This works alongside profile settings. Explicit profile values override SSH config values.
+
 ## Editing and Deleting
 
 Select a profile and click **Edit Profile...** to modify it. To delete, click **Edit Profile...** then **Delete Profile**.

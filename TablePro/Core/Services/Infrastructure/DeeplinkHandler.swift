@@ -10,8 +10,7 @@ enum DeeplinkAction {
     case connect(connectionName: String)
     case openTable(connectionName: String, tableName: String, databaseName: String?)
     case openQuery(connectionName: String, sql: String)
-    case importConnection(name: String, host: String, port: Int, type: DatabaseType,
-                          username: String, database: String)
+    case importConnection(ExportableConnection)
 }
 
 @MainActor
@@ -100,8 +99,83 @@ enum DeeplinkHandler {
         let username = value("username") ?? ""
         let database = value("database") ?? ""
 
-        return .importConnection(name: name, host: host, port: port, type: dbType,
-                                 username: username, database: database)
+        let sshConfig: ExportableSSHConfig?
+        if value("ssh") == "1" {
+            let jumpHosts: [ExportableJumpHost]?
+            if let jumpJson = value("sshJumpHosts"),
+               let data = jumpJson.data(using: .utf8) {
+                jumpHosts = try? JSONDecoder().decode([ExportableJumpHost].self, from: data)
+            } else {
+                jumpHosts = nil
+            }
+            sshConfig = ExportableSSHConfig(
+                enabled: true,
+                host: value("sshHost") ?? "",
+                port: value("sshPort").flatMap(Int.init) ?? 22,
+                username: value("sshUsername") ?? "",
+                authMethod: value("sshAuthMethod") ?? "password",
+                privateKeyPath: value("sshPrivateKeyPath") ?? "",
+                useSSHConfig: value("sshUseSSHConfig") == "1",
+                agentSocketPath: value("sshAgentSocketPath") ?? "",
+                jumpHosts: jumpHosts,
+                totpMode: value("sshTotpMode"),
+                totpAlgorithm: value("sshTotpAlgorithm"),
+                totpDigits: value("sshTotpDigits").flatMap(Int.init),
+                totpPeriod: value("sshTotpPeriod").flatMap(Int.init)
+            )
+        } else {
+            sshConfig = nil
+        }
+
+        let sslConfig: ExportableSSLConfig?
+        if let sslMode = value("sslMode") {
+            sslConfig = ExportableSSLConfig(
+                mode: sslMode,
+                caCertificatePath: value("sslCaCertPath"),
+                clientCertificatePath: value("sslClientCertPath"),
+                clientKeyPath: value("sslClientKeyPath")
+            )
+        } else {
+            sslConfig = nil
+        }
+
+        var additionalFields: [String: String]?
+        let afItems = queryItems.filter { $0.name.hasPrefix("af_") }
+        if !afItems.isEmpty {
+            var fields: [String: String] = [:]
+            for item in afItems {
+                let fieldKey = String(item.name.dropFirst(3))
+                if !fieldKey.isEmpty, let fieldValue = item.value {
+                    fields[fieldKey] = fieldValue
+                }
+            }
+            if !fields.isEmpty {
+                additionalFields = fields
+            }
+        }
+
+        let exportable = ExportableConnection(
+            name: name,
+            host: host,
+            port: port,
+            database: database,
+            username: username,
+            type: dbType.rawValue,
+            sshConfig: sshConfig,
+            sslConfig: sslConfig,
+            color: value("color"),
+            tagName: value("tagName"),
+            groupName: value("groupName"),
+            sshProfileId: nil,
+            safeModeLevel: value("safeModeLevel"),
+            aiPolicy: value("aiPolicy"),
+            additionalFields: additionalFields,
+            redisDatabase: value("redisDatabase").flatMap(Int.init),
+            startupCommands: value("startupCommands"),
+            localOnly: value("localOnly") == "1" ? true : nil
+        )
+
+        return .importConnection(exportable)
     }
 
     // MARK: - Resolution

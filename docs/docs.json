@@ -79,6 +79,7 @@
               "features/connection-sharing",
               "features/terminal",
               "features/mcp",
+              "features/plugins",
               "features/icloud-sync",
               "features/ssh-profiles"
             ]

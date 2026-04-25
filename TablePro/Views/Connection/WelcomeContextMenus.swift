@@ -26,13 +26,15 @@ extension WelcomeWindowView {
 
         Divider()
 
-        Button {
-            vm.exportConnections(Array(vm.selectedConnections))
-        } label: {
-            Label(
-                String(format: String(localized: "Export %d Connections..."), vm.selectedConnectionIds.count),
-                systemImage: "square.and.arrow.up"
-            )
+        Menu(String(localized: "Share")) {
+            Button {
+                vm.exportConnections(Array(vm.selectedConnections))
+            } label: {
+                Label(
+                    String(format: String(localized: "Export %d Connections to File..."), vm.selectedConnectionIds.count),
+                    systemImage: "square.and.arrow.up"
+                )
+            }
         }
 
         Divider()
@@ -101,39 +103,51 @@ extension WelcomeWindowView {
 
         Divider()
 
-        Button {
-            let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
-            let sshPw: String?
-            let sshProfile: SSHProfile?
-            if let profileId = connection.sshProfileId {
-                sshPw = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
-                sshProfile = SSHProfileStorage.shared.profile(for: profileId)
-            } else {
-                sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
-                sshProfile = nil
+        Menu(String(localized: "Share")) {
+            Button {
+                let pw = ConnectionStorage.shared.loadPassword(for: connection.id)
+                let sshPw: String?
+                let sshProfile: SSHProfile?
+                if let profileId = connection.sshProfileId {
+                    sshPw = SSHProfileStorage.shared.loadSSHPassword(for: profileId)
+                    sshProfile = SSHProfileStorage.shared.profile(for: profileId)
+                } else {
+                    sshPw = ConnectionStorage.shared.loadSSHPassword(for: connection.id)
+                    sshProfile = nil
+                }
+                let url = ConnectionURLFormatter.format(
+                    connection,
+                    password: pw,
+                    sshPassword: sshPw,
+                    sshProfile: sshProfile
+                )
+                ClipboardService.shared.writeText(url)
+            } label: {
+                Label(String(localized: "Copy Connection String"), systemImage: "link")
             }
-            let url = ConnectionURLFormatter.format(
-                connection,
-                password: pw,
-                sshPassword: sshPw,
-                sshProfile: sshProfile
-            )
-            ClipboardService.shared.writeText(url)
-        } label: {
-            Label(String(localized: "Copy as URL"), systemImage: "link")
-        }
 
-        Button {
-            let link = ConnectionExportService.buildImportDeeplink(for: connection)
-            ClipboardService.shared.writeText(link)
-        } label: {
-            Label(String(localized: "Copy as Import Link"), systemImage: "link.badge.plus")
-        }
+            Button {
+                if let link = ConnectionExportService.buildImportDeeplink(for: connection) {
+                    ClipboardService.shared.writeText(link)
+                }
+            } label: {
+                Label(String(localized: "Copy TablePro Link"), systemImage: "link.badge.plus")
+            }
 
-        Button {
-            vm.exportConnections([connection])
-        } label: {
-            Label(String(localized: "Export..."), systemImage: "square.and.arrow.up")
+            Button {
+                let json = ConnectionExportService.buildCompactJSON(for: connection)
+                ClipboardService.shared.writeText(json)
+            } label: {
+                Label(String(localized: "Copy as JSON"), systemImage: "doc.text")
+            }
+
+            Divider()
+
+            Button {
+                vm.exportConnections([connection])
+            } label: {
+                Label(String(localized: "Export to File..."), systemImage: "square.and.arrow.up")
+            }
         }
 
         Divider()

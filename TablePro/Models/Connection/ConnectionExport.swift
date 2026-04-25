@@ -58,6 +58,18 @@ struct ExportableConnection: Codable {
     let redisDatabase: Int?
     let startupCommands: String?
     let localOnly: Bool?
+
+    func renamed(to newName: String) -> ExportableConnection {
+        ExportableConnection(
+            name: newName, host: host, port: port, database: database,
+            username: username, type: type, sshConfig: sshConfig,
+            sslConfig: sslConfig, color: color, tagName: tagName,
+            groupName: groupName, sshProfileId: sshProfileId,
+            safeModeLevel: safeModeLevel, aiPolicy: aiPolicy,
+            additionalFields: additionalFields, redisDatabase: redisDatabase,
+            startupCommands: startupCommands, localOnly: localOnly
+        )
+    }
 }
 
 // MARK: - SSH Config

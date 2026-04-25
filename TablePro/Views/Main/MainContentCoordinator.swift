@@ -54,7 +54,7 @@ enum ActiveSheet: Identifiable {
         case .importDialog: "importDialog"
         case .quickSwitcher: "quickSwitcher"
         case .exportQueryResults: "exportQueryResults"
-        case .maintenance: "maintenance"
+        case .maintenance(let operation, let tableName): "maintenance-\(operation)-\(tableName)"
         }
     }
 }

@@ -20,7 +20,6 @@ final class PluginManager {
 
     internal(set) var isInstalling = false
 
-    /// True once the initial plugin discovery + loading pass has completed.
     internal(set) var hasFinishedInitialLoad = false {
         didSet {
             if hasFinishedInitialLoad {
@@ -32,11 +31,8 @@ final class PluginManager {
         }
     }
 
-    /// Continuations waiting for the initial load to complete.
     private var initialLoadWaiters: [CheckedContinuation<Void, Never>] = []
 
-    /// Await completion of the initial plugin load (non-blocking alternative to loadPendingPlugins).
-    /// Times out after 10 seconds to prevent indefinite suspension.
     func waitForInitialLoad() async {
         if hasFinishedInitialLoad { return }
         await withTaskGroup(of: Void.self) { group in
@@ -52,13 +48,11 @@ final class PluginManager {
             group.addTask {
                 try? await Task.sleep(for: .seconds(10))
             }
-            // Return when either completes (load finishes or timeout)
             await group.next()
             group.cancelAll()
         }
     }
 
-    /// Plugins that were rejected during discovery (version mismatch, signature, etc.).
     internal(set) var rejectedPlugins: [(name: String, reason: String)] = []
 
     private static let needsRestartKey = "com.TablePro.needsRestart"
@@ -154,18 +148,15 @@ final class PluginManager {
 
     // MARK: - Loading
 
-    /// Discover and load all plugins. Discovery is synchronous (reads Info.plist),
-    /// then bundle loading runs on a background thread to avoid blocking the UI.
-    /// Only the final registration into dictionaries happens on MainActor.
     func loadPlugins() {
         migrateDisabledPluginsKey()
         discoverAllPlugins()
         let pending = pendingPluginURLs
         Task {
-            let loaded = await Self.loadBundlesOffMain(pending)
+            let validated = await Self.validateAndLoadBundles(pending)
             self.pendingPluginURLs.removeAll()
             self.needsRestartStorage = false
-            self.registerLoadedPlugins(loaded)
+            self.registerValidatedBundles(validated)
             self.validateDependencies()
             self.hasFinishedInitialLoad = true
             Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
@@ -175,105 +166,126 @@ final class PluginManager {
         }
     }
 
-    /// Holds the result of loading a single plugin bundle off the main thread.
-    /// Only stores the loaded Bundle and its origin. Protocol property reads
-    /// (principalClass, static vars) happen later on @MainActor in registerLoadedPlugins
-    /// to avoid ObjC runtime thread-safety issues during initial class resolution.
-    private struct LoadedBundle: @unchecked Sendable {
+    private struct ValidatedBundle: @unchecked Sendable {
         let url: URL
         let source: PluginSource
         let bundle: Bundle
     }
 
-    /// Perform the expensive bundle.load() off MainActor (dynamic linker I/O).
-    /// Does NOT access bundle.principalClass — that triggers ObjC runtime dispatch
-    /// that is not thread-safe during initial resolution. Version checks use Info.plist
-    /// which is safe after load().
-    nonisolated private static func loadBundlesOffMain(
+    nonisolated private static func validateBundleVersions(
+        _ bundle: Bundle,
+        source: PluginSource
+    ) throws {
+        let infoPlist = bundle.infoDictionary ?? [:]
+        let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
+
+        if pluginKitVersion > currentPluginKitVersion {
+            throw PluginError.incompatibleVersion(
+                required: pluginKitVersion,
+                current: currentPluginKitVersion
+            )
+        }
+
+        if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
+                throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
+            }
+        }
+
+        if source == .userInstalled {
+            if pluginKitVersion < currentPluginKitVersion {
+                throw PluginError.pluginOutdated(
+                    pluginVersion: pluginKitVersion,
+                    requiredVersion: currentPluginKitVersion
+                )
+            }
+        }
+    }
+
+    nonisolated private static func validateAndLoadBundle(
+        at url: URL,
+        source: PluginSource
+    ) throws -> Bundle {
+        guard let bundle = Bundle(url: url) else {
+            throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
+        }
+
+        try validateBundleVersions(bundle, source: source)
+
+        guard bundle.load() else {
+            throw PluginError.invalidBundle("Bundle failed to load executable")
+        }
+
+        return bundle
+    }
+
+    nonisolated private static func validateAndLoadBundles(
         _ pending: [(url: URL, source: PluginSource)]
-    ) async -> [LoadedBundle] {
-        var results: [LoadedBundle] = []
+    ) async -> [ValidatedBundle] {
+        var results: [ValidatedBundle] = []
         for entry in pending {
-            guard let bundle = Bundle(url: entry.url) else {
-                logger.error("Cannot create bundle from \(entry.url.lastPathComponent)")
-                continue
+            do {
+                let bundle = try validateAndLoadBundle(at: entry.url, source: entry.source)
+                results.append(ValidatedBundle(url: entry.url, source: entry.source, bundle: bundle))
+            } catch {
+                logger.error("Failed to load plugin at \(entry.url.lastPathComponent): \(error.localizedDescription)")
             }
-
-            let infoPlist = bundle.infoDictionary ?? [:]
-            let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
-            if pluginKitVersion > currentPluginKitVersion {
-                logger.error("Plugin \(entry.url.lastPathComponent) requires PluginKit v\(pluginKitVersion), current is v\(currentPluginKitVersion)")
-                continue
-            }
-
-            if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
-                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-                if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                    logger.error("Plugin \(entry.url.lastPathComponent) requires app v\(minAppVersion)")
-                    continue
-                }
-            }
-
-            if entry.source == .userInstalled {
-                if pluginKitVersion < currentPluginKitVersion {
-                    logger.error("User plugin \(entry.url.lastPathComponent) was built with PluginKit v\(pluginKitVersion), but v\(currentPluginKitVersion) is required")
-                    continue
-                }
-            }
-
-            // Heavy I/O: dynamic linker resolution, C bridge library initialization
-            guard bundle.load() else {
-                logger.error("Bundle failed to load executable: \(entry.url.lastPathComponent)")
-                continue
-            }
-
-            results.append(LoadedBundle(url: entry.url, source: entry.source, bundle: bundle))
         }
         return results
     }
 
-    /// Register pre-loaded bundles into the plugin dictionaries. Must be called on MainActor.
-    /// Resolves principalClass and reads all static protocol properties here (safe on main thread)
-    /// rather than in loadBundlesOffMain where ObjC runtime dispatch is not thread-safe.
-    private func registerLoadedPlugins(_ loaded: [LoadedBundle]) {
-        let disabled = disabledPluginIds
-
-        for item in loaded {
-            guard let principalClass = item.bundle.principalClass as? any TableProPlugin.Type else {
-                Self.logger.error("Principal class does not conform to TableProPlugin: \(item.url.lastPathComponent)")
-                continue
-            }
-
-            let bundleId = item.bundle.bundleIdentifier ?? item.url.lastPathComponent
-            let driverType = principalClass as? any DriverPlugin.Type
-            let version = Self.readRegistryVersion(for: item.url) ?? principalClass.pluginVersion
-            let entry = PluginEntry(
-                id: bundleId,
-                bundle: item.bundle,
-                url: item.url,
-                source: item.source,
-                name: principalClass.pluginName,
-                version: version,
-                pluginDescription: principalClass.pluginDescription,
-                capabilities: principalClass.capabilities,
-                isEnabled: !disabled.contains(bundleId),
-                databaseTypeId: driverType?.databaseTypeId,
-                additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
-                pluginIconName: driverType?.iconName ?? "puzzlepiece",
-                defaultPort: driverType?.defaultPort
-            )
-
-            plugins.append(entry)
-            validateCapabilityDeclarations(principalClass, pluginId: bundleId)
-
-            if entry.isEnabled {
-                let instance = principalClass.init()
-                registerCapabilities(instance, pluginId: bundleId)
-            }
-
-            Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(item.source == .builtIn ? "built-in" : "user")]")
+    private func registerBundle(_ bundle: Bundle, url: URL, source: PluginSource) -> PluginEntry? {
+        guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {
+            Self.logger.error("Principal class does not conform to TableProPlugin: \(url.lastPathComponent)")
+            return nil
         }
 
+        let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
+
+        if source == .userInstalled,
+           let existing = plugins.first(where: { $0.id == bundleId }),
+           existing.source == .builtIn
+        {
+            Self.logger.info("Skipping user-installed '\(bundleId)' — built-in version already loaded")
+            return existing
+        }
+
+        let disabled = disabledPluginIds
+        let driverType = principalClass as? any DriverPlugin.Type
+        let version = Self.readRegistryVersion(for: url) ?? principalClass.pluginVersion
+        let entry = PluginEntry(
+            id: bundleId,
+            bundle: bundle,
+            url: url,
+            source: source,
+            name: principalClass.pluginName,
+            version: version,
+            pluginDescription: principalClass.pluginDescription,
+            capabilities: principalClass.capabilities,
+            isEnabled: !disabled.contains(bundleId),
+            databaseTypeId: driverType?.databaseTypeId,
+            additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
+            pluginIconName: driverType?.iconName ?? "puzzlepiece",
+            defaultPort: driverType?.defaultPort
+        )
+
+        plugins.append(entry)
+        validateCapabilityDeclarations(principalClass, pluginId: bundleId)
+
+        if entry.isEnabled {
+            let instance = principalClass.init()
+            registerCapabilities(instance, pluginId: bundleId)
+        }
+
+        Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(source == .builtIn ? "built-in" : "user")]")
+        return entry
+    }
+
+    private func registerValidatedBundles(_ validated: [ValidatedBundle]) {
+        for item in validated {
+            _ = registerBundle(item.bundle, url: item.url, source: item.source)
+        }
         queryBuildingDriverCache.removeAll()
     }
 
@@ -305,8 +317,8 @@ final class PluginManager {
         let pending = pendingPluginURLs
         pendingPluginURLs.removeAll()
 
-        let loaded = await Self.loadBundlesOffMain(pending)
-        registerLoadedPlugins(loaded)
+        let validated = await Self.validateAndLoadBundles(pending)
+        registerValidatedBundles(validated)
         hasFinishedInitialLoad = true
         validateDependencies()
         Self.logger.info("Loaded \(self.plugins.count) plugin(s): \(self.driverPlugins.count) driver(s), \(self.exportPlugins.count) export format(s), \(self.importPlugins.count) import format(s)")
@@ -359,7 +371,6 @@ final class PluginManager {
         }
     }
 
-    /// Remove user-installed plugins that now ship as built-in to avoid dead weight.
     private func removeUserInstalledDuplicates(builtInDir: URL) {
         let fm = FileManager.default
         guard let builtInBundles = try? fm.contentsOfDirectory(
@@ -399,33 +410,9 @@ final class PluginManager {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        let infoPlist = bundle.infoDictionary ?? [:]
-
-        let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
-        if pluginKitVersion > Self.currentPluginKitVersion {
-            throw PluginError.incompatibleVersion(
-                required: pluginKitVersion,
-                current: Self.currentPluginKitVersion
-            )
-        }
-
-        if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
-            }
-        }
+        try Self.validateBundleVersions(bundle, source: source)
 
         if source == .userInstalled {
-            // User-installed plugins compiled against an older DriverPlugin protocol
-            // have stale witness tables — accessing protocol properties crashes with
-            // EXC_BAD_ACCESS. Reject them before loading the bundle.
-            if pluginKitVersion < Self.currentPluginKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: pluginKitVersion,
-                    requiredVersion: Self.currentPluginKitVersion
-                )
-            }
             try verifyCodeSignature(bundle: bundle)
         }
 
@@ -438,30 +425,9 @@ final class PluginManager {
             throw PluginError.invalidBundle("Cannot create bundle from \(url.lastPathComponent)")
         }
 
-        let infoPlist = bundle.infoDictionary ?? [:]
-
-        let pluginKitVersion = infoPlist["TableProPluginKitVersion"] as? Int ?? 0
-        if pluginKitVersion > Self.currentPluginKitVersion {
-            throw PluginError.incompatibleVersion(
-                required: pluginKitVersion,
-                current: Self.currentPluginKitVersion
-            )
-        }
-
-        if let minAppVersion = infoPlist["TableProMinAppVersion"] as? String {
-            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
-                throw PluginError.appVersionTooOld(minimumRequired: minAppVersion, currentApp: appVersion)
-            }
-        }
+        try Self.validateBundleVersions(bundle, source: source)
 
         if source == .userInstalled {
-            if pluginKitVersion < Self.currentPluginKitVersion {
-                throw PluginError.pluginOutdated(
-                    pluginVersion: pluginKitVersion,
-                    requiredVersion: Self.currentPluginKitVersion
-                )
-            }
             try verifyCodeSignature(bundle: bundle)
         }
 
@@ -469,57 +435,15 @@ final class PluginManager {
             throw PluginError.invalidBundle("Bundle failed to load executable")
         }
 
-        guard let principalClass = bundle.principalClass as? any TableProPlugin.Type else {
+        guard let entry = registerBundle(bundle, url: url, source: source) else {
             throw PluginError.invalidBundle("Principal class does not conform to TableProPlugin")
         }
-
-        let bundleId = bundle.bundleIdentifier ?? url.lastPathComponent
-
-        // Skip user-installed plugin if a built-in version already exists
-        if source == .userInstalled,
-           let existing = plugins.first(where: { $0.id == bundleId }),
-           existing.source == .builtIn
-        {
-            Self.logger.info("Skipping user-installed '\(bundleId)' — built-in version already loaded")
-            return existing
-        }
-
-        let disabled = disabledPluginIds
-
-        let driverType = principalClass as? any DriverPlugin.Type
-        let version = Self.readRegistryVersion(for: url) ?? principalClass.pluginVersion
-        let entry = PluginEntry(
-            id: bundleId,
-            bundle: bundle,
-            url: url,
-            source: source,
-            name: principalClass.pluginName,
-            version: version,
-            pluginDescription: principalClass.pluginDescription,
-            capabilities: principalClass.capabilities,
-            isEnabled: !disabled.contains(bundleId),
-            databaseTypeId: driverType?.databaseTypeId,
-            additionalTypeIds: driverType?.additionalDatabaseTypeIds ?? [],
-            pluginIconName: driverType?.iconName ?? "puzzlepiece",
-            defaultPort: driverType?.defaultPort
-        )
-
-        plugins.append(entry)
-        validateCapabilityDeclarations(principalClass, pluginId: bundleId)
-
-        if entry.isEnabled {
-            let instance = principalClass.init()
-            registerCapabilities(instance, pluginId: bundleId)
-        }
-
-        Self.logger.info("Loaded plugin '\(entry.name)' v\(entry.version) [\(source == .builtIn ? "built-in" : "user")]")
 
         return entry
     }
 
     func replaceExistingPlugin(bundleId: String) {
         guard let existingIndex = plugins.firstIndex(where: { $0.id == bundleId }) else { return }
-        // Order matters: unregisterCapabilities reads from `plugins` to find the principal class
         unregisterCapabilities(pluginId: bundleId)
         plugins[existingIndex].bundle.unload()
         plugins.remove(at: existingIndex)

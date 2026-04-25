@@ -190,7 +190,7 @@ final class ConnectionStorage {
         // Create duplicate with new ID and "(Copy)" suffix
         let duplicate = DatabaseConnection(
             id: newId,
-            name: "\(connection.name) (Copy)",
+            name: String(format: String(localized: "%@ (Copy)"), connection.name),
             host: connection.host,
             port: connection.port,
             database: connection.database,
