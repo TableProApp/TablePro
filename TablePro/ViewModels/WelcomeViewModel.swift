@@ -85,6 +85,9 @@ final class WelcomeViewModel {
     // MARK: - Computed Properties
 
     private(set) var treeItems: [ConnectionGroupTreeNode] = []
+    private(set) var connectionCountByGroup: [UUID: Int] = [:]
+    private(set) var depthByGroup: [UUID: Int] = [:]
+    private(set) var maxDescendantDepthByGroup: [UUID: Int] = [:]
 
     func rebuildTree() {
         let tree = buildGroupTree(groups: groups, connections: connections, parentId: nil)
@@ -93,6 +96,18 @@ final class WelcomeViewModel {
         } else {
             treeItems = filterGroupTree(tree, searchText: searchText)
         }
+
+        var counts: [UUID: Int] = [:]
+        var depths: [UUID: Int] = [:]
+        var descendantDepths: [UUID: Int] = [:]
+        for group in groups {
+            counts[group.id] = connectionCount(in: group.id, connections: connections, groups: groups)
+            depths[group.id] = depthOf(groupId: group.id, groups: groups)
+            descendantDepths[group.id] = maxDescendantDepth(groupId: group.id, groups: groups)
+        }
+        connectionCountByGroup = counts
+        depthByGroup = depths
+        maxDescendantDepthByGroup = descendantDepths
     }
 
     var filteredConnections: [DatabaseConnection] {

@@ -485,7 +485,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text("\(connectionCount(in: group.id, connections: vm.connections, groups: vm.groups))")
+            Text("\(vm.connectionCountByGroup[group.id] ?? 0)")
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
 
@@ -505,7 +505,7 @@ private struct TreeRowsView<ConnectionContent: View>: View {
             Label(String(localized: "Rename"), systemImage: "pencil")
         }
 
-        let currentGroupDepth = depthOf(groupId: group.id, groups: vm.groups)
+        let currentGroupDepth = vm.depthByGroup[group.id] ?? 0
         Button {
             vm.createSubgroup(under: group.id)
         } label: {
@@ -556,8 +556,8 @@ private struct TreeRowsView<ConnectionContent: View>: View {
                         toParentId: targetGroup.id,
                         groups: vm.groups
                     )
-                    let targetDepth = depthOf(groupId: targetGroup.id, groups: vm.groups)
-                    let subtreeDepth = maxDescendantDepth(groupId: group.id, groups: vm.groups)
+                    let targetDepth = vm.depthByGroup[targetGroup.id] ?? 0
+                    let subtreeDepth = vm.maxDescendantDepthByGroup[group.id] ?? 0
                     let wouldExceedDepth = targetDepth + 1 + subtreeDepth > 3
 
                     Button {

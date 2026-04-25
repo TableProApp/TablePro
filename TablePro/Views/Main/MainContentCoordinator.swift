@@ -945,7 +945,11 @@ final class MainContentCoordinator {
 
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
-            try? DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+            do {
+                try DatabaseManager.shared.driver(for: connectionId)?.cancelQuery()
+            } catch {
+                Self.logger.warning("cancelQuery failed: \(error.localizedDescription, privacy: .public)")
+            }
             currentQueryTask = nil
         }
         queryGeneration += 1
