@@ -299,7 +299,7 @@ internal final class ThemeEngine {
     private(set) var effectiveAppearance: ThemeAppearance = .light
     @ObservationIgnored private var currentLightThemeId: String = "tablepro.default-light"
     @ObservationIgnored private var currentDarkThemeId: String = "tablepro.default-dark"
-    @ObservationIgnored private var systemAppearanceObserver: NSObjectProtocol?
+    @ObservationIgnored private var systemAppearanceObservation: NSKeyValueObservation?
 
     /// Central entry point: resolves effective appearance, picks the correct theme, activates it,
     /// and derives NSApp.appearance from the theme's own appearance metadata.
@@ -312,12 +312,13 @@ internal final class ThemeEngine {
         currentLightThemeId = lightThemeId
         currentDarkThemeId = darkThemeId
 
+        applyNSAppAppearance(mode: mode)
+
         let resolved = resolveEffectiveAppearance(mode)
         effectiveAppearance = resolved
 
         let themeId = resolved == .dark ? darkThemeId : lightThemeId
         activateTheme(id: themeId)
-        applyNSAppAppearance(mode: mode)
 
         updateSystemAppearanceObserver(mode: mode)
     }
@@ -331,11 +332,8 @@ internal final class ThemeEngine {
         }
     }
 
-    /// Check if the system is currently in dark mode.
-    /// Reads the global `AppleInterfaceStyle` default directly so we get the real
-    /// system setting, not the app's own forced appearance.
     private func systemIsDark() -> Bool {
-        UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
+        NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
 
     /// Set NSApp.appearance based on the appearance mode (not the theme).
@@ -354,28 +352,18 @@ internal final class ThemeEngine {
     // MARK: - System Appearance Observer
 
     private func updateSystemAppearanceObserver(mode: AppAppearanceMode) {
-        // Remove existing observer
-        if let observer = systemAppearanceObserver {
-            DistributedNotificationCenter.default().removeObserver(observer)
-            systemAppearanceObserver = nil
-        }
+        systemAppearanceObservation = nil
 
         guard mode == .auto else { return }
 
-        // Install observer for system appearance changes
-        systemAppearanceObserver = DistributedNotificationCenter.default().addObserver(
-            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        systemAppearanceObservation = NSApp?.observe(\.effectiveAppearance) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 guard let self, self.appearanceMode == .auto else { return }
-                let newAppearance = self.systemIsDark() ? ThemeAppearance.dark : ThemeAppearance.light
+                let newAppearance: ThemeAppearance = self.systemIsDark() ? .dark : .light
                 guard newAppearance != self.effectiveAppearance else { return }
                 self.effectiveAppearance = newAppearance
                 let themeId = newAppearance == .dark ? self.currentDarkThemeId : self.currentLightThemeId
                 self.activateTheme(id: themeId)
-                self.applyNSAppAppearance(mode: .auto)
             }
         }
     }

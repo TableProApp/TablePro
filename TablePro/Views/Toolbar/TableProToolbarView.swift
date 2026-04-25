@@ -18,6 +18,7 @@ import TableProPluginKit
 /// Displays environment badge, connection status, and execution indicator in a unified card
 struct ToolbarPrincipalContent: View {
     var state: ConnectionToolbarState
+    var onSwitchDatabase: (() -> Void)?
     var onCancelQuery: (() -> Void)?
 
     var body: some View {
@@ -36,7 +37,8 @@ struct ToolbarPrincipalContent: View {
                 connectionState: state.connectionState,
                 displayColor: state.displayColor,
                 tagName: state.tagId.flatMap { TagStorage.shared.tag(for: $0)?.name },
-                safeModeLevel: state.safeModeLevel
+                safeModeLevel: state.safeModeLevel,
+                onSwitchDatabase: onSwitchDatabase
             )
 
             SafeModeBadgeView(safeModeLevel: Bindable(state).safeModeLevel)
@@ -116,6 +118,7 @@ struct TableProToolbar: ViewModifier {
                 ToolbarItem(placement: .principal) {
                     ToolbarPrincipalContent(
                         state: state,
+                        onSwitchDatabase: { actions?.openDatabaseSwitcher() },
                         onCancelQuery: { actions?.cancelCurrentQuery() }
                     )
                 }

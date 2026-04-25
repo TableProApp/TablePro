@@ -178,8 +178,6 @@ final class MainContentCommandActions {
             self.selectedRowIndices.wrappedValue = indices
             self.editingCell.wrappedValue = cell
         }
-
-        observeKeyWindowOnly(.openDatabaseSwitcher) { [weak self] _ in self?.openDatabaseSwitcher() }
     }
 
     // MARK: - Row Operations (Group A — Called Directly)

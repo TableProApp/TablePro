@@ -164,6 +164,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             return hostingItem(id: itemIdentifier, label: "",
                                content: ToolbarPrincipalContent(
                                    state: coordinator.toolbarState,
+                                   onSwitchDatabase: { [weak coordinator] in coordinator?.commandActions?.openDatabaseSwitcher() },
                                    onCancelQuery: { [weak coordinator] in coordinator?.cancelCurrentQuery() }
                                ))
         case Self.quickSwitcher:

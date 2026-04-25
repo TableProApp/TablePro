@@ -16,8 +16,9 @@ struct ConnectionStatusView: View {
     let connectionName: String
     let connectionState: ToolbarConnectionState
     let displayColor: Color
-    let tagName: String?  // Tag name to avoid duplication
+    let tagName: String?
     var safeModeLevel: SafeModeLevel = .silent
+    var onSwitchDatabase: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
@@ -59,7 +60,7 @@ struct ConnectionStatusView: View {
                 .help("Database: \(databaseName)")
         } else {
             Button {
-                NotificationCenter.default.post(name: .openDatabaseSwitcher, object: nil)
+                onSwitchDatabase?()
             } label: {
                 databaseNameLabel
             }
