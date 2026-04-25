@@ -144,6 +144,7 @@ struct ExportDialog: View {
                 exportService?.cancelExport()
             }
             .interactiveDismissDisabled()
+            .onExitCommand { }
         }
         .sheet(isPresented: $showSuccessDialog) {
             ExportSuccessView(

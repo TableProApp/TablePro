@@ -14,11 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardcoded font sizes ignoring Accessibility text size settings
 - Window position and size not restored between launches
 - Toolbar customization not saved between launches
-- Settings window uses content-sized tabs instead of fixed frame
+- Onboarding page dots missing accessibility labels and button traits
+- Icon-only toolbar buttons (new connection, new group) missing VoiceOver labels
+- Linked connection rows not selectable with single click in welcome list
+- Export progress sheet not handling Escape key
 
 ### Changed
 
 - About window uses standard macOS About panel
+- Use system SF Pro font instead of SF Pro Rounded on onboarding and welcome screens
 - iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
 
 ## [0.35.0] - 2026-04-25

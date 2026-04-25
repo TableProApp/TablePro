@@ -190,13 +190,15 @@ struct OnboardingContentView: View {
 
             HStack(spacing: 8) {
                 ForEach(0..<3, id: \.self) { i in
-                    Circle()
-                        .fill(i == currentPage ? Color.accentColor : Color(nsColor: .tertiaryLabelColor))
-                        .frame(width: 8, height: 8)
-                        .scaleEffect(i == currentPage ? 1.2 : 1.0)
-                        .frame(width: 24, height: 24)
-                        .contentShape(Circle())
-                        .onTapGesture { goToPage(i) }
+                    Button { goToPage(i) } label: {
+                        Circle()
+                            .fill(i == currentPage ? Color.accentColor : Color(nsColor: .tertiaryLabelColor))
+                            .frame(width: 8, height: 8)
+                            .scaleEffect(i == currentPage ? 1.2 : 1.0)
+                            .frame(width: 24, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(format: String(localized: "Page %d"), i + 1))
                 }
             }
             .animation(.spring(response: 0.3), value: currentPage)

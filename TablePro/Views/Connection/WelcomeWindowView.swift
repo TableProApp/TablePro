@@ -163,6 +163,7 @@ struct WelcomeWindowView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "New Connection (⌘N)"))
+                .accessibilityLabel(String(localized: "New Connection"))
 
                 Button(action: { vm.pendingMoveToNewGroup = []; vm.activeSheet = .newGroup(parentId: nil) }) {
                     Image(systemName: "folder.badge.plus")
@@ -175,6 +176,7 @@ struct WelcomeWindowView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "New Group"))
+                .accessibilityLabel(String(localized: "New Group"))
 
                 NativeSearchField(
                     text: $vm.searchText,
@@ -351,6 +353,7 @@ struct WelcomeWindowView: View {
                     .lineLimit(1)
             }
         }
+        .tag(linked.id)
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())

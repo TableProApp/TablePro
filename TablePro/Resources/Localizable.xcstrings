@@ -2287,6 +2287,7 @@
       }
     },
     "© 2026 Ngo Quoc Dat.\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4672,6 +4673,7 @@
       }
     },
     "All rights reserved." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -43740,6 +43742,7 @@
       }
     },
     "Version %@ (Build %@)" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -44021,6 +44024,7 @@
       }
     },
     "Website" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

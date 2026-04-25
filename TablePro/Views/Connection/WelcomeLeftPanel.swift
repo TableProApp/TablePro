@@ -21,10 +21,7 @@ struct WelcomeLeftPanel: View {
 
                 VStack(spacing: 6) {
                     Text("TablePro")
-                        .font(
-                            .system(
-                                size: 24, weight: .semibold,
-                                design: .rounded))
+                        .font(.system(size: 24, weight: .semibold))
 
                     Text("Version \(Bundle.main.appVersion)")
                         .font(.callout)
