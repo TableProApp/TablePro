@@ -55,11 +55,9 @@ actor MCPTLSManager {
         var ref: CFTypeRef?
         let status = SecItemCopyMatching(identityQuery as CFDictionary, &ref)
 
-        guard status == errSecSuccess, let ref else {
+        guard status == errSecSuccess, let ref, let identity = ref as? SecIdentity else {
             throw MCPTLSError.identityNotFound
         }
-
-        let identity = ref as! SecIdentity
 
         var secCert: SecCertificate?
         let certStatus = SecIdentityCopyCertificate(identity, &secCert)
@@ -194,7 +192,10 @@ actor MCPTLSManager {
             throw MCPTLSError.identityNotFound
         }
 
-        return ref as! SecIdentity
+        guard let identity = ref as? SecIdentity else {
+            throw MCPTLSError.identityNotFound
+        }
+        return identity
     }
 
     // MARK: - Keychain Cleanup

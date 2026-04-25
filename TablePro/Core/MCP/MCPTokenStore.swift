@@ -59,6 +59,8 @@ actor MCPTokenStore {
 
     private var tokens: [MCPAuthToken] = []
     private let storageUrl: URL
+    private var lastSavedAt: ContinuousClock.Instant = .now
+    private static let saveCooldown: Duration = .seconds(60)
 
     init() {
         let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -115,7 +117,7 @@ actor MCPTokenStore {
             guard constantTimeCompare(candidateHash, token.tokenHash) else { continue }
 
             tokens[index].lastUsedAt = Date.now
-            save()
+            saveIfCooldownElapsed()
 
             Self.logger.info("Validated MCP token '\(token.name, privacy: .public)'")
             return tokens[index]
@@ -186,7 +188,14 @@ actor MCPTokenStore {
         }
     }
 
+    private func saveIfCooldownElapsed() {
+        let now = ContinuousClock.now
+        guard now - lastSavedAt > Self.saveCooldown else { return }
+        save()
+    }
+
     private func save() {
+        lastSavedAt = .now
         let fileManager = FileManager.default
         let directory = storageUrl.deletingLastPathComponent()
 
