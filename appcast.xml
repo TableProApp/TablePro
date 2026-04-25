@@ -3,6 +3,81 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.35.0</title>
+            <pubDate>Sat, 25 Apr 2026 11:04:54 +0000</pubDate>
+            <sparkle:version>74</sparkle:version>
+            <sparkle:shortVersionString>0.35.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>MongoDB multi-host connections for replica sets</li>
+<li>JSON results view mode with Data/Structure/JSON toggle in status bar</li>
+<li>JSON viewer: "Open in Window" action for resizing and fullscreen</li>
+<li>Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1/Oracle/ClickHouse/etcd support</li>
+<li>In-app feedback form via Help > Report an Issue</li>
+<li>Per-connection "Local only" option to exclude from iCloud sync</li>
+<li>Filter operator picker shows SQL symbols alongside names</li>
+<li>SQL autocomplete suggests columns before FROM using cached schema</li>
+<li>MCP query safety: server-side confirmation for write and destructive queries</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Native macOS UI: menu pickers, native alerts, native List selection, NSSearchField, borderless toolbar buttons</li>
+<li>Quit dialog defaults to Cancel on Return key</li>
+<li>Connection form delete button moved to far left</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Connection form overflow with SSH jump hosts and TOTP fields</li>
+<li>Missing confirmation on group deletion</li>
+<li>Plugin principalClass resolved off main thread</li>
+<li>Crash when scrolling AI Chat during streaming on macOS 15.x</li>
+<li>Connection failure on PostgreSQL-compatible databases without `SET statement_timeout`</li>
+<li>Schema-qualified table names resolve correctly in autocomplete</li>
+<li>Alert dialogs use sheet attachment instead of bare modal</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.35.0/TablePro-0.35.0-arm64.zip" length="26914507" type="application/octet-stream" sparkle:edSignature="H77kkFlZ6sfSRbB5lZeHr8bO9p4vBg6ChQ95hB50EUf9I8yIU+y9kyAFnYl5VE3R1JavCnCeIMlx5PrazsnsDg=="/>
+        </item>
+        <item>
+            <title>0.35.0</title>
+            <pubDate>Sat, 25 Apr 2026 11:04:54 +0000</pubDate>
+            <sparkle:version>74</sparkle:version>
+            <sparkle:shortVersionString>0.35.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>MongoDB multi-host connections for replica sets</li>
+<li>JSON results view mode with Data/Structure/JSON toggle in status bar</li>
+<li>JSON viewer: "Open in Window" action for resizing and fullscreen</li>
+<li>Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1/Oracle/ClickHouse/etcd support</li>
+<li>In-app feedback form via Help > Report an Issue</li>
+<li>Per-connection "Local only" option to exclude from iCloud sync</li>
+<li>Filter operator picker shows SQL symbols alongside names</li>
+<li>SQL autocomplete suggests columns before FROM using cached schema</li>
+<li>MCP query safety: server-side confirmation for write and destructive queries</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>Native macOS UI: menu pickers, native alerts, native List selection, NSSearchField, borderless toolbar buttons</li>
+<li>Quit dialog defaults to Cancel on Return key</li>
+<li>Connection form delete button moved to far left</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Connection form overflow with SSH jump hosts and TOTP fields</li>
+<li>Missing confirmation on group deletion</li>
+<li>Plugin principalClass resolved off main thread</li>
+<li>Crash when scrolling AI Chat during streaming on macOS 15.x</li>
+<li>Connection failure on PostgreSQL-compatible databases without `SET statement_timeout`</li>
+<li>Schema-qualified table names resolve correctly in autocomplete</li>
+<li>Alert dialogs use sheet attachment instead of bare modal</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.35.0/TablePro-0.35.0-x86_64.zip" length="26864312" type="application/octet-stream" sparkle:edSignature="KJyjIyi/BXsbFTcuxsUJlpcpDCdHbb8OtaUlaHD90B9yBqdKO/NHO/kD6cyL9MQg6QwWvzr55vEBP4DB5jEDBA=="/>
+        </item>
+        <item>
             <title>0.34.0</title>
             <pubDate>Wed, 22 Apr 2026 13:10:28 +0000</pubDate>
             <sparkle:version>73</sparkle:version>

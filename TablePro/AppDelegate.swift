@@ -224,6 +224,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SSHTunnelManager.shared.terminateAllProcessesSync()
     }
 
+    @objc func showHelp(_ sender: Any?) {
+        if let url = URL(string: "https://docs.tablepro.app") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     nonisolated deinit {
         NotificationCenter.default.removeObserver(self)
     }
