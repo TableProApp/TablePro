@@ -74,7 +74,8 @@ struct DatabaseSwitcherSheet: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .padding(.horizontal, 12)
+                .frame(width: 220)
+                .padding(.top, 12)
                 .padding(.bottom, 8)
                 .onChange(of: viewModel.mode) {
                     Task { await viewModel.fetchDatabases() }
