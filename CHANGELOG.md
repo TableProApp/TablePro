@@ -9,34 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Edit > Find menu item (Cmd+F) for the SQL editor find panel
+- Edit > Find menu item (Cmd+F)
 
 ### Fixed
 
-- Export "Don't show again" preference lost when clicking "Open containing folder"
-- Connection failure error not shown when returning to welcome screen
-- Hardcoded font sizes ignoring Accessibility text size settings
-- Window position and size not restored between launches
-- Onboarding page dots missing accessibility labels and button traits
-- Icon-only toolbar buttons (new connection, new group) missing VoiceOver labels
-- Linked connection rows not selectable with single click in welcome list
-- Export progress sheet not handling Escape key
-- AI provider test result not cleared when endpoint or API key changes
-- Connection test success badge not reset when plugin-specific fields change
-- Export dialog shows empty tree with no message when no tables found
-- DDL results showing "0 row(s) affected" instead of "Query executed successfully"
-- Export stop button cancels immediately without confirmation
-- SSH profile test failure showing modal alert instead of inline error
-- List selection in Quick Switcher and Database Switcher requiring two clicks after focus change
+- Export "Don't show again" preference lost when clicking "Open Folder"
+- Connection failure error not shown on welcome screen
+- Window position not restored between launches
+- Export multi-table race condition on PostgreSQL
+- List selection requiring two clicks in Quick Switcher and Database Switcher
+- AI provider and connection test states not clearing on field changes
+- Export stop button missing confirmation dialog
+- SSH profile test showing modal alert instead of inline error
+- DDL results showing misleading "0 row(s) affected"
+- Export dialog missing empty state when no tables found
 
 ### Changed
 
-- About window uses standard macOS About panel
-- Use system SF Pro font instead of SF Pro Rounded on onboarding and welcome screens
-- iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
-- SSH key file picker uses standalone NSOpenPanel for hidden file access
-- QuickSwitcher uses native List selection highlighting instead of manual overrides
-- Removed iOS-style drag gesture from onboarding (arrow keys and buttons remain)
+- About window uses standard macOS panel
+- Consolidated double-click detection into single shared component
+- Accessibility improvements: VoiceOver labels, semantic fonts, larger tap targets
+- iOS: TabView navigation with ConnectionCoordinator extraction
 
 ## [0.35.0] - 2026-04-25
 
