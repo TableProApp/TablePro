@@ -81,15 +81,15 @@ extension MainContentView {
         )
     }
 
-    // MARK: - Show Structure Binding
+    // MARK: - Results View Mode Binding
 
-    /// Binding for showStructure state
-    var showStructureBinding: Binding<Bool> {
+    /// Binding for resultsViewMode state
+    var resultsViewModeBinding: Binding<ResultsViewMode> {
         Binding(
-            get: { coordinator.tabManager.selectedTab?.showStructure ?? false },
+            get: { coordinator.tabManager.selectedTab?.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].showStructure = newValue
+                    coordinator.tabManager.tabs[index].resultsViewMode = newValue
                 }
             }
         )

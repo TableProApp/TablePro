@@ -50,9 +50,13 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
 
         textView.delegate = context.coordinator
         textView.string = text
-        Self.applyHighlighting(to: textView)
 
         context.coordinator.braceHelper = JSONBraceMatchingHelper(textView: textView)
+        context.coordinator.observeScroll(of: scrollView)
+
+        DispatchQueue.main.async { [coordinator = context.coordinator] in
+            coordinator.highlightVisible()
+        }
 
         return scrollView
     }
@@ -70,48 +74,64 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
             } else {
                 textView.string = text
             }
-            Self.applyHighlighting(to: textView)
+            context.coordinator.highlightedSet = IndexSet()
+            context.coordinator.highlightVisible()
         }
     }
 
     // MARK: - Syntax Highlighting
 
-    static func applyHighlighting(to textView: NSTextView) {
+    static func applyHighlighting(to textView: NSTextView, range highlightRange: NSRange, highlightedSet: inout IndexSet) {
         guard let textStorage = textView.textStorage else { return }
         let length = textStorage.length
         guard length > 0 else { return }
 
-        let fullRange = NSRange(location: 0, length: length)
+        let clamped = NSIntersectionRange(highlightRange, NSRange(location: 0, length: length))
+        guard clamped.length > 0 else { return }
+
+        let requestedIndices = IndexSet(integersIn: clamped.location..<(clamped.location + clamped.length))
+        let newIndices = requestedIndices.subtracting(highlightedSet)
+        guard !newIndices.isEmpty else { return }
+
+        let maxBatchSize = 20_000
         let font = textView.font ?? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         let content = textStorage.string
-        let maxHighlightLength = 10_000
-        let highlightRange: NSRange
-        if length > maxHighlightLength {
-            highlightRange = NSRange(location: 0, length: maxHighlightLength)
-        } else {
-            highlightRange = fullRange
-        }
 
         textStorage.beginEditing()
 
-        textStorage.addAttribute(.font, value: font, range: fullRange)
-        textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: fullRange)
+        var processed = 0
+        for range in newIndices.rangeView {
+            if processed >= maxBatchSize { break }
+            let cappedLength = min(range.count, maxBatchSize - processed)
+            let nsRange = NSRange(location: range.lowerBound, length: cappedLength)
+            textStorage.addAttribute(.font, value: font, range: nsRange)
+            textStorage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: nsRange)
 
-        // Apply in order: strings (red) first, then keys (blue) override string ranges,
-        // then numbers and booleans. Key highlighting depends on overriding string ranges.
-        applyPattern(JSONHighlightPatterns.string, color: .systemRed, in: textStorage, content: content, range: highlightRange)
+            applyPattern(JSONHighlightPatterns.string, color: .systemRed, in: textStorage, content: content, range: nsRange)
 
-        for match in JSONHighlightPatterns.key.matches(in: content, range: highlightRange) {
-            let captureRange = match.range(at: 1)
-            if captureRange.location != NSNotFound {
-                textStorage.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: captureRange)
+            for match in JSONHighlightPatterns.key.matches(in: content, range: nsRange) {
+                let captureRange = match.range(at: 1)
+                if captureRange.location != NSNotFound {
+                    textStorage.addAttribute(.foregroundColor, value: NSColor.systemBlue, range: captureRange)
+                }
             }
+
+            applyPattern(JSONHighlightPatterns.number, color: .systemPurple, in: textStorage, content: content, range: nsRange)
+            applyPattern(JSONHighlightPatterns.booleanNull, color: .systemOrange, in: textStorage, content: content, range: nsRange)
+
+            highlightedSet.insert(integersIn: nsRange.location..<(nsRange.location + nsRange.length))
+            processed += cappedLength
         }
 
-        applyPattern(JSONHighlightPatterns.number, color: .systemPurple, in: textStorage, content: content, range: highlightRange)
-        applyPattern(JSONHighlightPatterns.booleanNull, color: .systemOrange, in: textStorage, content: content, range: highlightRange)
-
         textStorage.endEditing()
+    }
+
+    static func visibleCharacterRange(for textView: NSTextView) -> NSRange? {
+        guard let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else { return nil }
+        let visibleRect = textView.visibleRect
+        let glyphRange = layoutManager.glyphRange(forBoundingRect: visibleRect, in: textContainer)
+        return layoutManager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
     }
 
     private static func applyPattern(
@@ -133,6 +153,7 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
         var isUpdating = false
         var braceHelper: JSONBraceMatchingHelper?
         private var highlightWorkItem: DispatchWorkItem?
+        private var scrollObserver: NSObjectProtocol?
 
         init(_ parent: JSONSyntaxTextView) {
             self.parent = parent
@@ -140,6 +161,43 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
 
         deinit {
             highlightWorkItem?.cancel()
+            if let observer = scrollObserver {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        weak var scrollView: NSScrollView?
+        var highlightedSet = IndexSet()
+
+        func observeScroll(of scrollView: NSScrollView) {
+            self.scrollView = scrollView
+            scrollView.contentView.postsBoundsChangedNotifications = true
+            scrollObserver = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: scrollView.contentView,
+                queue: .main
+            ) { [weak self] _ in
+                self?.highlightVisible()
+            }
+        }
+
+        func highlightVisible() {
+            guard let textView = scrollView?.documentView as? NSTextView,
+                  let visible = JSONSyntaxTextView.visibleCharacterRange(for: textView) else {
+                return
+            }
+            let nsString = textView.string as NSString
+            let length = nsString.length
+            let buffer = 8000
+            let rawStart = max(0, visible.location - buffer)
+            let rawEnd = min(length, visible.location + visible.length + buffer)
+
+            let lineStart = nsString.lineRange(for: NSRange(location: rawStart, length: 0)).location
+            let lineEndRange = nsString.lineRange(for: NSRange(location: rawEnd > 0 ? rawEnd - 1 : 0, length: 0))
+            let lineEnd = min(length, lineEndRange.location + lineEndRange.length)
+
+            let buffered = NSRange(location: lineStart, length: lineEnd - lineStart)
+            JSONSyntaxTextView.applyHighlighting(to: textView, range: buffered, highlightedSet: &highlightedSet)
         }
 
         func textDidChange(_ notification: Notification) {
@@ -148,10 +206,10 @@ internal struct JSONSyntaxTextView: NSViewRepresentable {
             parent.text = textView.string
             isUpdating = false
 
+            highlightedSet = IndexSet()
             highlightWorkItem?.cancel()
-            let workItem = DispatchWorkItem { [weak textView] in
-                guard let textView else { return }
-                JSONSyntaxTextView.applyHighlighting(to: textView)
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.highlightVisible()
             }
             highlightWorkItem = workItem
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)

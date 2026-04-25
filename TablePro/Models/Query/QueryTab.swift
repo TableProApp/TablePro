@@ -10,6 +10,12 @@ import Observation
 import os
 import TableProPluginKit
 
+enum ResultsViewMode: String, Equatable {
+    case data
+    case structure
+    case json
+}
+
 /// Represents a single tab (query or table)
 struct QueryTab: Identifiable, Equatable {
     let id: UUID
@@ -73,7 +79,7 @@ struct QueryTab: Identifiable, Equatable {
     var isView: Bool  // True for database views (read-only)
     var databaseName: String  // Database this tab was opened in (for multi-database restore)
     var schemaName: String?  // Schema this tab was opened in (for multi-schema restore, e.g. PostgreSQL)
-    var showStructure: Bool  // Toggle to show structure view instead of data
+    var resultsViewMode: ResultsViewMode = .data
     var erDiagramSchemaKey: String?
     var explainText: String?
     var explainExecutionTime: TimeInterval?
@@ -165,7 +171,7 @@ struct QueryTab: Identifiable, Equatable {
         self.isView = false
         self.databaseName = ""
         self.schemaName = nil
-        self.showStructure = false
+        self.resultsViewMode = .data
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
         self.sortState = SortState()
@@ -201,7 +207,7 @@ struct QueryTab: Identifiable, Equatable {
         self.isView = persisted.isView
         self.databaseName = persisted.databaseName
         self.schemaName = persisted.schemaName
-        self.showStructure = false
+        self.resultsViewMode = .data
         self.erDiagramSchemaKey = persisted.erDiagramSchemaKey
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
@@ -297,7 +303,7 @@ struct QueryTab: Identifiable, Equatable {
             && lhs.paginationVersion == rhs.paginationVersion
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState
-            && lhs.showStructure == rhs.showStructure
+            && lhs.resultsViewMode == rhs.resultsViewMode
             && lhs.isEditable == rhs.isEditable
             && lhs.isView == rhs.isView
             && lhs.tabType == rhs.tabType

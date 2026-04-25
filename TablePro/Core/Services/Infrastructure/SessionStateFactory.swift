@@ -93,7 +93,7 @@ enum SessionStateFactory {
                             tabMgr.tabs[index].isEditable = !payload.isView
                             tabMgr.tabs[index].schemaName = payload.schemaName
                             if payload.showStructure {
-                                tabMgr.tabs[index].showStructure = true
+                                tabMgr.tabs[index].resultsViewMode = .structure
                             }
                             if let initialFilter = payload.initialFilterState {
                                 tabMgr.tabs[index].filterState = initialFilter

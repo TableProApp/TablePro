@@ -224,7 +224,7 @@ final class QueryTabManager {
         tab.statusMessage = nil
         tab.errorMessage = nil
         tab.lastExecutedAt = nil
-        tab.showStructure = false
+        tab.resultsViewMode = .data
         tab.sortState = SortState()
         tab.selectedRowIndices = []
         tab.pendingChanges = TabPendingChanges()

@@ -14,7 +14,7 @@ struct MainStatusBarView: View {
     let columnVisibilityManager: ColumnVisibilityManager
     let allColumns: [String]
     let selectedRowIndices: Set<Int>
-    @Binding var showStructure: Bool
+    @Binding var viewMode: ResultsViewMode
 
     @State private var showColumnPopover = false
 
@@ -33,16 +33,28 @@ struct MainStatusBarView: View {
 
     var body: some View {
         HStack {
-            // Left: Data/Structure toggle for table tabs
-            if let tab = tab, tab.tabType == .table, tab.tableName != nil {
-                Picker(String(localized: "View Mode"), selection: $showStructure) {
-                    Label("Data", systemImage: "tablecells").tag(false)
-                    Label("Structure", systemImage: "list.bullet.rectangle").tag(true)
+            // Left: View mode toggle
+            if let tab = tab {
+                if tab.tabType == .table, tab.tableName != nil {
+                    Picker(String(localized: "View Mode"), selection: $viewMode) {
+                        Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
+                        Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
+                        Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 260)
+                    .controlSize(.small)
+                } else if !tab.resultColumns.isEmpty {
+                    Picker(String(localized: "View Mode"), selection: $viewMode) {
+                        Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
+                        Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 140)
+                    .controlSize(.small)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 180)
-                .controlSize(.small)
             }
 
             Spacer()
@@ -166,7 +178,7 @@ struct MainStatusBarView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 0)
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor))
         .onChange(of: tab?.id) { _, _ in
