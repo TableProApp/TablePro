@@ -3,7 +3,6 @@
 //  TableProMobile
 //
 
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -13,6 +12,8 @@ struct ConnectedView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
     let connection: DatabaseConnection
+    let cachedCoordinator: ConnectionCoordinator?
+    let onCoordinatorCreated: (ConnectionCoordinator) -> Void
 
     @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
@@ -36,11 +37,18 @@ struct ConnectedView: View {
             }
         }
         .task {
-            let c = ConnectionCoordinator(connection: connection, appState: appState)
-            coordinator = c
-            c.restorePersistedState()
-            await c.connect()
-            if !Task.isCancelled {
+            if let cached = cachedCoordinator, cached.session != nil {
+                coordinator = cached
+                if case .connected = cached.phase { return }
+                await cached.connect()
+            } else {
+                let c = ConnectionCoordinator(connection: connection, appState: appState)
+                coordinator = c
+                onCoordinatorCreated(c)
+                c.restorePersistedState()
+                await c.connect()
+            }
+            if let c = coordinator, !Task.isCancelled {
                 if case .connected = c.phase {
                     c.loadHistory()
                     hapticSuccess.toggle()
@@ -78,34 +86,32 @@ struct ConnectedView: View {
 
     private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
         @Bindable var coordinator = coordinator
-        return TabView(selection: $coordinator.selectedTab) {
-            Tab("Tables", systemImage: "tablecells", value: .tables) {
-                NavigationStack(path: $coordinator.tablesPath) {
+        return NavigationStack(path: $coordinator.tablesPath) {
+            TabView(selection: $coordinator.selectedTab) {
+                Tab("Tables", systemImage: "tablecells", value: .tables) {
                     TableListView()
-                        .navigationTitle(coordinator.displayName)
-                        .navigationBarTitleDisplayMode(.inline)
+                        .environment(coordinator)
                 }
-                .environment(coordinator)
-            }
-            Tab("Query", systemImage: "terminal", value: .query) {
-                NavigationStack {
+                Tab("Query", systemImage: "terminal", value: .query) {
                     QueryEditorView()
+                        .environment(coordinator)
                 }
-                .environment(coordinator)
-            }
-            Tab("History", systemImage: "clock", value: .history) {
-                NavigationStack {
+                Tab("History", systemImage: "clock", value: .history) {
                     QueryHistoryView()
+                        .environment(coordinator)
                 }
-                .environment(coordinator)
-            }
-            Tab("Settings", systemImage: "gear", value: .settings) {
-                NavigationStack {
+                Tab("Settings", systemImage: "gear", value: .settings) {
                     SettingsView()
                 }
             }
+            .navigationTitle(coordinator.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { connectionToolbar(coordinator) }
+            .navigationDestination(for: TableInfo.self) { table in
+                DataBrowserView(table: table)
+                    .environment(coordinator)
+            }
         }
-        .tabViewStyle(.sidebarAdaptable)
         .background {
             Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
@@ -159,6 +165,71 @@ struct ConnectedView: View {
             activity.title = connection.name.isEmpty ? connection.host : connection.name
             activity.isEligibleForHandoff = true
             activity.userInfo = ["connectionId": connection.id.uuidString]
+        }
+    }
+
+    // MARK: - Connection Toolbar
+
+    @ToolbarContentBuilder
+    private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
+        if connection.safeModeLevel != .off {
+            ToolbarItem(placement: .topBarTrailing) {
+                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+                    .font(.caption)
+            }
+        }
+        if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    ForEach(coordinator.databases, id: \.self) { db in
+                        Button {
+                            Task { await coordinator.switchDatabase(to: db) }
+                        } label: {
+                            if db == coordinator.activeDatabase {
+                                Label(db, systemImage: "checkmark")
+                            } else {
+                                Text(db)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(coordinator.activeDatabase)
+                            .font(.subheadline)
+                        if coordinator.isSwitching {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .disabled(coordinator.isSwitching)
+            }
+        }
+        if coordinator.supportsSchemas && coordinator.schemas.count > 1 {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ForEach(coordinator.schemas, id: \.self) { schema in
+                        Button {
+                            Task { await coordinator.switchSchema(to: schema) }
+                        } label: {
+                            if schema == coordinator.activeSchema {
+                                Label(schema, systemImage: "checkmark")
+                            } else {
+                                Text(schema)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(coordinator.activeSchema, systemImage: "square.3.layers.3d")
+                        .font(.subheadline)
+                }
+                .disabled(coordinator.isSwitching)
+            }
         }
     }
 }

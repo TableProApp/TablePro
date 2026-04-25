@@ -95,9 +95,9 @@ final class ConnectionCoordinator {
             self.session = existing
             do {
                 self.tables = try await existing.driver.fetchTables(schema: nil)
-                phase = .connected
                 await loadDatabases()
                 await loadSchemas()
+                phase = .connected
             } catch {
                 self.session = nil
                 await appState.connectionManager.disconnect(connection.id)
@@ -116,9 +116,9 @@ final class ConnectionCoordinator {
             let newSession = try await appState.connectionManager.connect(connection)
             self.session = newSession
             self.tables = try await newSession.driver.fetchTables(schema: nil)
-            phase = .connected
             await loadDatabases()
             await loadSchemas()
+            phase = .connected
             navigateToPendingTable()
         } catch {
             let context = ErrorContext(

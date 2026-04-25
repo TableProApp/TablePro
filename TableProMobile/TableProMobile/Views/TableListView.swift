@@ -102,13 +102,9 @@ struct TableListView: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $searchText, prompt: "Search tables")
-        .toolbar { connectionToolbar }
         .textInputAutocapitalization(.never)
         .refreshable {
             await coordinator.refreshTables()
-        }
-        .navigationDestination(for: TableInfo.self) { table in
-            DataBrowserView(table: table)
         }
         .onAppear {
             coordinator.navigateToPendingTable()
@@ -179,70 +175,6 @@ struct TableListView: View {
         }
     }
 
-    // MARK: - Connection Toolbar
-
-    @ToolbarContentBuilder
-    private var connectionToolbar: some ToolbarContent {
-        if connection.safeModeLevel != .off {
-            ToolbarItem(placement: .topBarTrailing) {
-                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
-                    .font(.caption)
-            }
-        }
-        if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
-            ToolbarItem(placement: .topBarLeading) {
-                Menu {
-                    ForEach(coordinator.databases, id: \.self) { db in
-                        Button {
-                            Task { await coordinator.switchDatabase(to: db) }
-                        } label: {
-                            if db == coordinator.activeDatabase {
-                                Label(db, systemImage: "checkmark")
-                            } else {
-                                Text(db)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(coordinator.activeDatabase)
-                            .font(.subheadline)
-                        if coordinator.isSwitching {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .disabled(coordinator.isSwitching)
-            }
-        }
-        if coordinator.supportsSchemas && coordinator.schemas.count > 1 {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    ForEach(coordinator.schemas, id: \.self) { schema in
-                        Button {
-                            Task { await coordinator.switchSchema(to: schema) }
-                        } label: {
-                            if schema == coordinator.activeSchema {
-                                Label(schema, systemImage: "checkmark")
-                            } else {
-                                Text(schema)
-                            }
-                        }
-                    }
-                } label: {
-                    Label(coordinator.activeSchema, systemImage: "square.3.layers.3d")
-                        .font(.subheadline)
-                }
-                .disabled(coordinator.isSwitching)
-            }
-        }
-    }
 }
 
 private struct TableRow: View {

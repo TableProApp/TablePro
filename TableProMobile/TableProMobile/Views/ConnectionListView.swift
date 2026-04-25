@@ -21,6 +21,7 @@ struct ConnectionListView: View {
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
+    @State private var coordinatorCache: [UUID: ConnectionCoordinator] = [:]
 
     private var showDeleteConfirmation: Binding<Bool> {
         Binding(
@@ -123,8 +124,10 @@ struct ConnectionListView: View {
             }
         } detail: {
             if let connection = selectedConnection {
-                ConnectedView(connection: connection)
-                    .id(connection.id)
+                ConnectedView(connection: connection, cachedCoordinator: coordinatorCache[connection.id]) { coordinator in
+                    coordinatorCache[connection.id] = coordinator
+                }
+                .id(connection.id)
             } else {
                 ContentUnavailableView(
                     "Select a Connection",
