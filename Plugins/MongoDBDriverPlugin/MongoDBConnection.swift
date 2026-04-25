@@ -177,14 +177,28 @@ final class MongoDBConnection: @unchecked Sendable {
             }
         }
 
-        let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
-        let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
-
         if useSrv {
+            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
             uri += encodedHost
+        } else if host.contains(",") {
+            let segments = host.split(separator: ",").compactMap { segment -> String? in
+                let parts = segment.split(separator: ":", maxSplits: 1)
+                guard let first = parts.first else { return nil }
+                let h = String(first).trimmingCharacters(in: .whitespaces)
+                guard !h.isEmpty else { return nil }
+                let encodedH = h.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? h
+                if parts.count > 1 {
+                    return "\(encodedH):\(parts[1].trimmingCharacters(in: .whitespaces))"
+                }
+                return "\(encodedH):\(port)"
+            }
+            uri += segments.isEmpty ? "localhost:\(port)" : segments.joined(separator: ",")
         } else {
+            let encodedHost = host.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) ?? host
             uri += "\(encodedHost):\(port)"
         }
+
+        let encodedDb = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
         uri += database.isEmpty ? "/" : "/\(encodedDb)"
 
         let effectiveAuthSource: String

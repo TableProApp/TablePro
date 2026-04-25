@@ -8,10 +8,11 @@ import TableProDatabase
 import TableProModels
 
 struct TableListView: View {
-    let connection: DatabaseConnection
-    let tables: [TableInfo]
-    let session: ConnectionSession?
-    var onRefresh: (() async -> Void)?
+    @Environment(ConnectionCoordinator.self) private var coordinator
+
+    private var connection: DatabaseConnection { coordinator.connection }
+    private var tables: [TableInfo] { coordinator.tables }
+    private var session: ConnectionSession? { coordinator.session }
 
     @State private var searchText = ""
     @State private var tableToTruncate: TableInfo?
@@ -103,14 +104,10 @@ struct TableListView: View {
         .searchable(text: $searchText, prompt: "Search tables")
         .textInputAutocapitalization(.never)
         .refreshable {
-            await onRefresh?()
+            await coordinator.refreshTables()
         }
-        .navigationDestination(for: TableInfo.self) { table in
-            DataBrowserView(
-                connection: connection,
-                table: table,
-                session: session
-            )
+        .onAppear {
+            coordinator.navigateToPendingTable()
         }
         .overlay {
             if tables.isEmpty {
@@ -134,7 +131,7 @@ struct TableListView: View {
                         do {
                             let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
                             _ = try await session?.driver.execute(query: "TRUNCATE TABLE \(quoted)")
-                            await onRefresh?()
+                            await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
                             showError = true
@@ -158,7 +155,7 @@ struct TableListView: View {
                         do {
                             let quoted = SQLBuilder.quoteIdentifier(table.name, for: connection.type)
                             _ = try await session?.driver.execute(query: "DROP TABLE \(quoted)")
-                            await onRefresh?()
+                            await coordinator.refreshTables()
                         } catch {
                             errorMessage = error.localizedDescription
                             showError = true
@@ -177,6 +174,7 @@ struct TableListView: View {
             Text(errorMessage)
         }
     }
+
 }
 
 private struct TableRow: View {

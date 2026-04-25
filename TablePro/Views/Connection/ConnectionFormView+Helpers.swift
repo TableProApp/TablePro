@@ -132,6 +132,14 @@ extension ConnectionFormView {
                 additionalFieldValues["redisDatabase"] = String(rdb)
             }
 
+            // Synthesize mongoHosts from host:port for existing MongoDB connections
+            if existing.type.pluginTypeId == "MongoDB",
+               additionalFieldValues["mongoHosts"]?.isEmpty != false
+            {
+                let existingHost = existing.host.isEmpty ? "localhost" : existing.host
+                additionalFieldValues["mongoHosts"] = "\(existingHost):\(existing.port)"
+            }
+
             for field in PluginManager.shared.additionalConnectionFields(for: existing.type) {
                 if additionalFieldValues[field.id] == nil, let defaultValue = field.defaultValue {
                     additionalFieldValues[field.id] = defaultValue
@@ -170,8 +178,8 @@ extension ConnectionFormView {
             clientKeyPath: sslClientKeyPath
         )
 
-        let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
-        let finalPort = Int(port) ?? type.defaultPort
+        var finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+        var finalPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
             trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
@@ -180,6 +188,16 @@ extension ConnectionFormView {
         let finalId = connectionId ?? UUID()
 
         var finalAdditionalFields = additionalFieldValues
+
+        if type.pluginTypeId == "MongoDB",
+           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           !mongoHosts.isEmpty
+        {
+            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: type.defaultPort)
+            finalAdditionalFields["mongoHosts"] = result.hosts
+            finalHost = result.primaryHost
+            finalPort = result.primaryPort
+        }
         let trimmedScript = preConnectScript.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedScript.isEmpty {
             finalAdditionalFields["preConnectScript"] = preConnectScript
@@ -361,8 +379,8 @@ extension ConnectionFormView {
             clientKeyPath: sslClientKeyPath
         )
 
-        let finalHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
-        let finalPort = Int(port) ?? type.defaultPort
+        var testHost = host.trimmingCharacters(in: .whitespaces).isEmpty ? "localhost" : host
+        var testPort = Int(port) ?? type.defaultPort
         let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
         let finalUsername =
             trimmedUsername.isEmpty && PluginManager.shared.requiresAuthentication(for: type)
@@ -376,11 +394,21 @@ extension ConnectionFormView {
             finalAdditionalFields.removeValue(forKey: "preConnectScript")
         }
 
+        if type.pluginTypeId == "MongoDB",
+           let mongoHosts = finalAdditionalFields["mongoHosts"],
+           !mongoHosts.isEmpty
+        {
+            let result = Self.normalizeMongoHosts(mongoHosts, defaultPort: type.defaultPort)
+            finalAdditionalFields["mongoHosts"] = result.hosts
+            testHost = result.primaryHost
+            testPort = result.primaryPort
+        }
+
         let testTunnelMode = sshState.buildTunnelMode()
         let testConn = DatabaseConnection(
             name: name,
-            host: finalHost,
-            port: finalPort,
+            host: testHost,
+            port: testPort,
             database: database,
             username: finalUsername,
             type: type,
@@ -544,9 +572,16 @@ extension ConnectionFormView {
                     sshState.applyAgentSocketPath(parsed.agentSocket ?? "")
                 }
             }
+            // Multi-host MongoDB support
+            if let multiHost = parsed.multiHost, !multiHost.isEmpty {
+                additionalFieldValues["mongoHosts"] = multiHost
+            } else if parsed.type.pluginTypeId == "MongoDB" {
+                let portStr = parsed.port.map(String.init) ?? String(parsed.type.defaultPort)
+                additionalFieldValues["mongoHosts"] = "\(parsed.host):\(portStr)"
+            }
             // Clear stale MongoDB fields before applying new import
             let mongoKeys = additionalFieldValues.keys.filter {
-                $0.hasPrefix("mongo") || $0.hasPrefix("mongoParam_")
+                ($0.hasPrefix("mongo") || $0.hasPrefix("mongoParam_")) && $0 != "mongoHosts"
             }
             for key in mongoKeys {
                 additionalFieldValues.removeValue(forKey: key)
@@ -600,6 +635,39 @@ extension ConnectionFormView {
         case .failure(let error):
             urlParseError = error.localizedDescription
         }
+    }
+}
+
+// MARK: - Multi-Host Helpers
+
+extension ConnectionFormView {
+    struct NormalizedHosts {
+        let hosts: String
+        let primaryHost: String
+        let primaryPort: Int
+    }
+
+    static func normalizeMongoHosts(_ raw: String, defaultPort: Int) -> NormalizedHosts {
+        let normalized = raw.split(separator: ",", omittingEmptySubsequences: false)
+            .map { segment -> String in
+                let trimmed = segment.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty { return "localhost:\(defaultPort)" }
+                if !trimmed.contains(":") { return "\(trimmed):\(defaultPort)" }
+                return trimmed
+            }
+            .joined(separator: ",")
+        let firstSegment = normalized.split(separator: ",").first.map(String.init) ?? normalized
+        let parts = firstSegment.split(separator: ":", maxSplits: 1)
+        var host = "localhost"
+        var port = defaultPort
+        if let first = parts.first {
+            let derived = String(first).trimmingCharacters(in: .whitespaces)
+            if !derived.isEmpty { host = derived }
+        }
+        if parts.count > 1, let p = Int(parts[1].trimmingCharacters(in: .whitespaces)) {
+            port = p
+        }
+        return NormalizedHosts(hosts: normalized, primaryHost: host, primaryPort: port)
     }
 }
 

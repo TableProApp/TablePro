@@ -607,6 +607,16 @@
         }
       }
     },
+    "%@ (+%d more)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ (+%2$d more)"
+          }
+        }
+      }
+    },
     "%@ (Pro)" : {
       "localizations" : {
         "tr" : {
@@ -1197,6 +1207,7 @@
       }
     },
     "%@:%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1220,6 +1231,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@:%@"
+          }
+        }
+      }
+    },
+    "%@:%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@:%2$lld"
           }
         }
       }
@@ -1413,6 +1434,16 @@
         }
       }
     },
+    "%d of %d rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$d of %2$d rows"
+          }
+        }
+      }
+    },
     "%d of %d rows selected" : {
       "localizations" : {
         "en" : {
@@ -1462,6 +1493,9 @@
           }
         }
       }
+    },
+    "%d rows" : {
+
     },
     "%d-%d of %@%@ rows" : {
       "localizations" : {
@@ -2153,15 +2187,8 @@
         }
       }
     },
-    "%lld/%lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$lld/%2$lld"
-          }
-        }
-      }
+    "%lld/5" : {
+
     },
     "%lld%%" : {
       "localizations" : {
@@ -5593,6 +5620,9 @@
           }
         }
       }
+    },
+    "Are you sure you want to delete the group \"%@\"? Connections in this group will be moved to the top level." : {
+
     },
     "Are you sure you want to delete this connection? This cannot be undone." : {
       "localizations" : {
@@ -10383,6 +10413,9 @@
           }
         }
       }
+    },
+    "Copy JSON" : {
+
     },
     "Copy Key" : {
       "localizations" : {
@@ -15841,6 +15874,9 @@
         }
       }
     },
+    "Execute a query to view results as JSON" : {
+
+    },
     "Execute All" : {
       "localizations" : {
         "tr" : {
@@ -16083,6 +16119,9 @@
           }
         }
       }
+    },
+    "Expand in Sidebar" : {
+
     },
     "Expected Behavior" : {
 
@@ -19957,6 +19996,12 @@
         }
       }
     },
+    "hostname:%lld" : {
+
+    },
+    "Hosts" : {
+
+    },
     "Hover" : {
       "localizations" : {
         "tr" : {
@@ -20924,9 +20969,6 @@
           }
         }
       }
-    },
-    "Includes app version, macOS version, and installed plugins only." : {
-
     },
     "Incorrect passphrase" : {
       "localizations" : {
@@ -26041,6 +26083,9 @@
         }
       }
     },
+    "No Data" : {
+
+    },
     "No database connection" : {
       "localizations" : {
         "tr" : {
@@ -28212,7 +28257,11 @@
         }
       }
     },
+    "Open in Window" : {
+
+    },
     "Open JSON Viewer" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29243,6 +29292,9 @@
         }
       }
     },
+    "Path" : {
+
+    },
     "Pause" : {
       "localizations" : {
         "tr" : {
@@ -29877,6 +29929,7 @@
       }
     },
     "postgresql://user:password@host:5432/database" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35793,6 +35846,9 @@
         }
       }
     },
+    "Service" : {
+
+    },
     "Service Account Key" : {
       "localizations" : {
         "tr" : {
@@ -37853,6 +37909,9 @@
           }
         }
       }
+    },
+    "SSH tunneling only forwards the first host. Other replica set members must be directly reachable from the SSH server." : {
+
     },
     "SSH User" : {
       "localizations" : {
@@ -39986,7 +40045,18 @@
         }
       }
     },
+    "The following %d queries may permanently modify or delete data. This action cannot be undone.\n\n%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The following %1$d queries may permanently modify or delete data. This action cannot be undone.\n\n%2$@"
+          }
+        }
+      }
+    },
     "The following %lld queries may permanently modify or delete data. This action cannot be undone.\n\n%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -40123,6 +40193,9 @@
           }
         }
       }
+    },
+    "The text could not be parsed as JSON." : {
+
     },
     "The text could not be parsed as JSON. Use text mode to view or edit." : {
       "localizations" : {

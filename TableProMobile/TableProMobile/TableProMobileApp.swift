@@ -49,6 +49,7 @@ struct TableProMobileApp: App {
                 guard let connectionId = activity.userInfo?["connectionId"] as? String,
                       let uuid = UUID(uuidString: connectionId) else { return }
                 appState.pendingConnectionId = uuid
+                appState.pendingTableName = activity.userInfo?["tableName"] as? String
             }
         }
         .onChange(of: scenePhase) { _, phase in

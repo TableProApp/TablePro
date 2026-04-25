@@ -3,7 +3,6 @@
 //  TableProMobile
 //
 
-import os
 import SwiftUI
 import TableProDatabase
 import TableProModels
@@ -11,445 +10,241 @@ import TableProModels
 struct ConnectedView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
     let connection: DatabaseConnection
+    let cachedCoordinator: ConnectionCoordinator?
+    let onCoordinatorCreated: (ConnectionCoordinator) -> Void
 
-    private static let logger = Logger(subsystem: "com.TablePro", category: "ConnectedView")
-
-    @State private var session: ConnectionSession?
-    @State private var tables: [TableInfo] = []
-    @State private var isConnecting = true
-    @State private var appError: AppError?
-    @State private var failureAlertMessage: String?
-    @State private var showFailureAlert = false
-    @State private var selectedTab: ConnectedTab = .tables
-    @State private var queryHistory: [QueryHistoryItem] = []
-    @State private var historyStorage = QueryHistoryStorage()
-    @State private var databases: [String] = []
-    @State private var activeDatabase: String = ""
-    @State private var schemas: [String] = []
-    @State private var activeSchema: String = "public"
-    @State private var isSwitching = false
-    @State private var isReconnecting = false
+    @State private var coordinator: ConnectionCoordinator?
     @State private var hapticSuccess = false
     @State private var hapticError = false
 
-    @Environment(\.dismiss) private var dismiss
-
-    enum ConnectedTab: String, CaseIterable {
-        case tables = "Tables"
-        case query = "Query"
-    }
-
-    private var displayName: String {
-        connection.name.isEmpty ? connection.host : connection.name
-    }
-
-    private var supportsDatabaseSwitching: Bool {
-        connection.type == .mysql || connection.type == .mariadb ||
-        connection.type == .postgresql || connection.type == .redshift
-    }
-
-    private var supportsSchemas: Bool {
-        connection.type == .postgresql || connection.type == .redshift
-    }
-
     var body: some View {
         Group {
-            if isConnecting {
-                VStack(spacing: 16) {
-                    ProgressView {
-                        Text(String(format: String(localized: "Connecting to %@..."), displayName))
+            if let coordinator {
+                switch coordinator.phase {
+                case .connecting:
+                    connectingView
+                case .error(let error):
+                    ErrorView(error: error) {
+                        await coordinator.connect()
                     }
-                    Button(String(localized: "Cancel")) {
-                        dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let appError {
-                ErrorView(error: appError) {
-                    await connect()
+                case .connected:
+                    connectedContent(coordinator)
                 }
             } else {
-                connectedContent
-                    .userActivity("com.TablePro.viewConnection") { activity in
-                        activity.title = connection.name.isEmpty ? connection.host : connection.name
-                        activity.isEligibleForHandoff = true
-                        activity.userInfo = ["connectionId": connection.id.uuidString]
-                    }
-                    .allowsHitTesting(!isSwitching)
-                    .overlay {
-                        if isSwitching {
-                            ZStack {
-                                Rectangle()
-                                    .fill(.ultraThinMaterial)
-                                    .ignoresSafeArea()
-                                ProgressView()
-                                    .controlSize(.large)
-                            }
-                            .transition(.opacity)
-                        }
-                    }
-                    .animation(.default, value: isSwitching)
-                    .overlay(alignment: .top) {
-                        if isReconnecting {
-                            HStack(spacing: 6) {
-                                ProgressView()
-                                    .controlSize(.mini)
-                                Text(String(localized: "Reconnecting..."))
-                                    .font(.caption)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(.regularMaterial, in: Capsule())
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .padding(.top, 4)
-                        }
-                    }
-                    .animation(.default, value: isReconnecting)
+                connectingView
+            }
+        }
+        .navigationTitle(connection.name.isEmpty ? connection.host : connection.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            if let cached = cachedCoordinator {
+                coordinator = cached
+                if case .connected = cached.phase { return }
+                await cached.connect()
+            } else {
+                let c = ConnectionCoordinator(connection: connection, appState: appState)
+                coordinator = c
+                onCoordinatorCreated(c)
+                c.restorePersistedState()
+                await c.connect()
+            }
+            if let c = coordinator, !Task.isCancelled {
+                if case .connected = c.phase {
+                    c.loadHistory()
+                    hapticSuccess.toggle()
+                } else if case .error = c.phase {
+                    hapticError.toggle()
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await coordinator?.reconnectIfNeeded() }
             }
         }
         .sensoryFeedback(.success, trigger: hapticSuccess)
         .sensoryFeedback(.error, trigger: hapticError)
-        .alert("Error", isPresented: $showFailureAlert) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(failureAlertMessage ?? "")
-        }
-        .navigationTitle(supportsDatabaseSwitching && databases.count > 1 ? "" : displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .top) {
-            Picker("Tab", selection: $selectedTab) {
-                Text("Tables").tag(ConnectedTab.tables)
-                Text("Query").tag(ConnectedTab.query)
+    }
+
+    // MARK: - Connecting
+
+    private var connectingView: some View {
+        VStack(spacing: 16) {
+            ProgressView {
+                Text(String(format: String(localized: "Connecting to %@..."),
+                             connection.name.isEmpty ? connection.host : connection.name))
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            Button(String(localized: "Cancel")) {
+                dismiss()
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Connected Content
+
+    private func connectedContent(_ coordinator: ConnectionCoordinator) -> some View {
+        @Bindable var coordinator = coordinator
+        return NavigationStack(path: $coordinator.navigationPath) {
+            TabView(selection: $coordinator.selectedTab) {
+                Tab("Tables", systemImage: "tablecells", value: .tables) {
+                    TableListView()
+                        .environment(coordinator)
+                }
+                Tab("Query", systemImage: "terminal", value: .query) {
+                    QueryEditorView()
+                        .environment(coordinator)
+                }
+                Tab("History", systemImage: "clock", value: .history) {
+                    QueryHistoryView()
+                        .environment(coordinator)
+                }
+                Tab("Settings", systemImage: "gear", value: .settings) {
+                    SettingsView()
+                        .environment(coordinator)
+                }
+            }
+            .navigationTitle(tabTitle(coordinator))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { connectionToolbar(coordinator) }
+            .navigationDestination(for: TableInfo.self) { table in
+                DataBrowserView(table: table)
+                    .environment(coordinator)
+            }
         }
         .background {
-            Button("") { selectedTab = .tables }
+            Button("") { coordinator.selectedTab = .tables }
                 .keyboardShortcut("1", modifiers: .command)
+                .accessibilityLabel(Text("Tables"))
                 .hidden()
-            Button("") { selectedTab = .query }
+            Button("") { coordinator.selectedTab = .query }
                 .keyboardShortcut("2", modifiers: .command)
+                .accessibilityLabel(Text("Query"))
+                .hidden()
+            Button("") { coordinator.selectedTab = .history }
+                .keyboardShortcut("3", modifiers: .command)
+                .accessibilityLabel(Text("History"))
+                .hidden()
+            Button("") { coordinator.selectedTab = .settings }
+                .keyboardShortcut("4", modifiers: .command)
+                .accessibilityLabel(Text("Settings"))
                 .hidden()
         }
-        .toolbar {
-            if connection.safeModeLevel != .off {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
-                        .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+        .overlay(alignment: .top) {
+            if coordinator.isReconnecting {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(String(localized: "Reconnecting..."))
                         .font(.caption)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.regularMaterial, in: Capsule())
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .padding(.top, 4)
             }
-            if supportsDatabaseSwitching && databases.count > 1 {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        ForEach(databases, id: \.self) { db in
-                            Button {
-                                Task { await switchDatabase(to: db) }
-                            } label: {
-                                if db == activeDatabase {
-                                    Label(db, systemImage: "checkmark")
-                                } else {
-                                    Text(db)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(activeDatabase)
-                                .font(.subheadline)
-                            if isSwitching {
-                                ProgressView()
-                                    .controlSize(.mini)
+        }
+        .animation(.default, value: coordinator.isReconnecting)
+        .allowsHitTesting(!coordinator.isSwitching)
+        .overlay {
+            if coordinator.isSwitching {
+                ZStack {
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .controlSize(.large)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.default, value: coordinator.isSwitching)
+        .alert("Error", isPresented: $coordinator.showFailureAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(coordinator.failureAlertMessage ?? "")
+        }
+        .userActivity("com.TablePro.viewConnection") { activity in
+            activity.title = connection.name.isEmpty ? connection.host : connection.name
+            activity.isEligibleForHandoff = true
+            activity.userInfo = ["connectionId": connection.id.uuidString]
+        }
+    }
+
+    private func tabTitle(_ coordinator: ConnectionCoordinator) -> String {
+        switch coordinator.selectedTab {
+        case .tables, .query: coordinator.displayName
+        case .history: String(localized: "History")
+        case .settings: String(localized: "Settings")
+        }
+    }
+
+    // MARK: - Connection Toolbar
+
+    @ToolbarContentBuilder
+    private func connectionToolbar(_ coordinator: ConnectionCoordinator) -> some ToolbarContent {
+        if connection.safeModeLevel != .off {
+            ToolbarItem(placement: .topBarTrailing) {
+                Image(systemName: connection.safeModeLevel == .readOnly ? "lock.fill" : "shield.fill")
+                    .foregroundStyle(connection.safeModeLevel == .readOnly ? .red : .orange)
+                    .font(.caption)
+            }
+        }
+        if coordinator.supportsDatabaseSwitching && coordinator.databases.count > 1 {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    ForEach(coordinator.databases, id: \.self) { db in
+                        Button {
+                            Task { await coordinator.switchDatabase(to: db) }
+                        } label: {
+                            if db == coordinator.activeDatabase {
+                                Label(db, systemImage: "checkmark")
                             } else {
-                                Image(systemName: "chevron.down")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                Text(db)
                             }
                         }
                     }
-                    .disabled(isSwitching)
-                }
-            }
-            if supportsSchemas && schemas.count > 1 && selectedTab == .tables {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(schemas, id: \.self) { schema in
-                            Button {
-                                Task { await switchSchema(to: schema) }
-                            } label: {
-                                if schema == activeSchema {
-                                    Label(schema, systemImage: "checkmark")
-                                } else {
-                                    Text(schema)
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(activeSchema, systemImage: "square.3.layers.3d")
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(coordinator.activeDatabase)
                             .font(.subheadline)
+                        if coordinator.isSwitching {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .disabled(isSwitching)
                 }
+                .disabled(coordinator.isSwitching)
             }
         }
-        .task {
-            restorePersistedState()
-            await connect()
-            if !Task.isCancelled {
-                queryHistory = historyStorage.load(for: connection.id)
-            }
-        }
-        .onChange(of: selectedTab) { _, newValue in
-            UserDefaults.standard.set(newValue.rawValue, forKey: "lastTab.\(connection.id.uuidString)")
-        }
-        .onChange(of: activeDatabase) { _, newValue in
-            guard !newValue.isEmpty else { return }
-            UserDefaults.standard.set(newValue, forKey: "lastDB.\(connection.id.uuidString)")
-        }
-        .onChange(of: activeSchema) { _, newValue in
-            UserDefaults.standard.set(newValue, forKey: "lastSchema.\(connection.id.uuidString)")
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active, session != nil {
-                Task { await reconnectIfNeeded() }
-            }
-        }
-    }
-
-    private var connectedContent: some View {
-        VStack(spacing: 0) {
-            switch selectedTab {
-            case .tables:
-                TableListView(
-                    connection: connection,
-                    tables: tables,
-                    session: session,
-                    onRefresh: { await refreshTables() }
-                )
-            case .query:
-                QueryEditorView(
-                    session: session,
-                    tables: tables,
-                    databaseType: connection.type,
-                    safeModeLevel: connection.safeModeLevel,
-                    queryHistory: $queryHistory,
-                    connectionId: connection.id,
-                    historyStorage: historyStorage
-                )
-            }
-        }
-    }
-
-    private func restorePersistedState() {
-        let key = connection.id.uuidString
-        if let savedTab = UserDefaults.standard.string(forKey: "lastTab.\(key)"),
-           let tab = ConnectedTab(rawValue: savedTab) {
-            selectedTab = tab
-        }
-        activeDatabase = UserDefaults.standard.string(forKey: "lastDB.\(key)") ?? ""
-        activeSchema = UserDefaults.standard.string(forKey: "lastSchema.\(key)") ?? "public"
-    }
-
-    private func connect() async {
-        guard session == nil else {
-            isConnecting = false
-            return
-        }
-
-        isConnecting = true
-        appError = nil
-
-        if let existing = appState.connectionManager.session(for: connection.id) {
-            self.session = existing
-            do {
-                self.tables = try await existing.driver.fetchTables(schema: nil)
-                isConnecting = false
-                await loadDatabases()
-                await loadSchemas()
-            } catch {
-                self.session = nil
-                await appState.connectionManager.disconnect(connection.id)
-                await connectFresh()
-            }
-            return
-        }
-
-        await connectFresh()
-    }
-
-    private func connectFresh() async {
-        await appState.sshProvider.setPendingConnectionId(connection.id)
-
-        do {
-            let session = try await appState.connectionManager.connect(connection)
-            self.session = session
-            self.tables = try await session.driver.fetchTables(schema: nil)
-            isConnecting = false
-            hapticSuccess.toggle()
-            await loadDatabases()
-            await loadSchemas()
-        } catch {
-            let context = ErrorContext(
-                operation: "connect",
-                databaseType: connection.type,
-                host: connection.host,
-                sshEnabled: connection.sshEnabled
-            )
-            appError = ErrorClassifier.classify(error, context: context)
-            isConnecting = false
-            hapticError.toggle()
-        }
-    }
-
-    private func reconnectIfNeeded() async {
-        guard let session, !isSwitching, !isReconnecting else { return }
-        isReconnecting = true
-        defer { isReconnecting = false }
-        do {
-            _ = try await session.driver.ping()
-        } catch {
-            // Connection lost — reconnect
-            do {
-                await appState.sshProvider.setPendingConnectionId(connection.id)
-                let newSession = try await appState.connectionManager.connect(connection)
-                self.session = newSession
-            } catch {
-                let context = ErrorContext(
-                    operation: "reconnect",
-                    databaseType: connection.type,
-                    host: connection.host,
-                    sshEnabled: connection.sshEnabled
-                )
-                appError = ErrorClassifier.classify(error, context: context)
-                self.session = nil
-            }
-        }
-    }
-
-    private func loadDatabases() async {
-        guard let session, supportsDatabaseSwitching else { return }
-        do {
-            databases = try await session.driver.fetchDatabases()
-            if !activeDatabase.isEmpty, databases.contains(activeDatabase) {
-                let sessionDB = appState.connectionManager.session(for: connection.id)?.activeDatabase ?? connection.database
-                if activeDatabase != sessionDB {
-                    let target = activeDatabase
-                    activeDatabase = sessionDB
-                    await switchDatabase(to: target)
+        if coordinator.supportsSchemas && coordinator.schemas.count > 1 {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ForEach(coordinator.schemas, id: \.self) { schema in
+                        Button {
+                            Task { await coordinator.switchSchema(to: schema) }
+                        } label: {
+                            if schema == coordinator.activeSchema {
+                                Label(schema, systemImage: "checkmark")
+                            } else {
+                                Text(schema)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(coordinator.activeSchema, systemImage: "square.3.layers.3d")
+                        .font(.subheadline)
                 }
-            } else if let stored = appState.connectionManager.session(for: connection.id) {
-                activeDatabase = stored.activeDatabase
-            } else {
-                activeDatabase = connection.database
+                .disabled(coordinator.isSwitching)
             }
-        } catch {
-            // Silently fail — just don't show picker
-        }
-    }
-
-    private func loadSchemas() async {
-        guard let session, supportsSchemas else { return }
-        do {
-            schemas = try await session.driver.fetchSchemas()
-            let currentSchema = session.driver.currentSchema ?? "public"
-            if schemas.contains(activeSchema), activeSchema != currentSchema {
-                let target = activeSchema
-                activeSchema = currentSchema
-                await switchSchema(to: target)
-            } else if !schemas.contains(activeSchema) {
-                activeSchema = currentSchema
-            }
-        } catch {
-            // Silently fail — don't show picker
-        }
-    }
-
-    private func switchSchema(to name: String) async {
-        guard let session, name != activeSchema, !isSwitching else { return }
-        isSwitching = true
-        defer { isSwitching = false }
-
-        do {
-            try await session.driver.switchSchema(to: name)
-            activeSchema = name
-            self.tables = try await session.driver.fetchTables(schema: name)
-        } catch {
-            failureAlertMessage = String(localized: "Failed to switch schema")
-            showFailureAlert = true
-        }
-    }
-
-    private func switchDatabase(to name: String) async {
-        guard let session, name != activeDatabase, !isSwitching else { return }
-        isSwitching = true
-        defer { isSwitching = false }
-
-        if connection.type == .postgresql || connection.type == .redshift {
-            await reconnectWithDatabase(name)
-        } else {
-            do {
-                try await appState.connectionManager.switchDatabase(connection.id, to: name)
-                activeDatabase = name
-                self.tables = try await session.driver.fetchTables(schema: nil)
-            } catch {
-                failureAlertMessage = String(localized: "Failed to switch database")
-                showFailureAlert = true
-            }
-        }
-    }
-
-    private func reconnectWithDatabase(_ database: String) async {
-        await appState.connectionManager.disconnect(connection.id)
-        self.session = nil
-
-        var newConnection = connection
-        newConnection.database = database
-
-        await appState.sshProvider.setPendingConnectionId(connection.id)
-
-        do {
-            let newSession = try await appState.connectionManager.connect(newConnection)
-            self.session = newSession
-            self.tables = try await newSession.driver.fetchTables(schema: nil)
-            activeDatabase = database
-            await loadSchemas()
-        } catch {
-            // Reconnect to original database as fallback
-            Self.logger.error("Failed to switch to database \(database, privacy: .public): \(error.localizedDescription, privacy: .public)")
-            await appState.sshProvider.setPendingConnectionId(connection.id)
-            do {
-                let fallbackSession = try await appState.connectionManager.connect(connection)
-                self.session = fallbackSession
-                self.tables = try await fallbackSession.driver.fetchTables(schema: nil)
-                failureAlertMessage = String(localized: "Failed to switch database")
-                showFailureAlert = true
-            } catch {
-                // Both failed — show error view
-                let context = ErrorContext(
-                    operation: "switchDatabase",
-                    databaseType: connection.type,
-                    host: connection.host,
-                    sshEnabled: connection.sshEnabled
-                )
-                appError = ErrorClassifier.classify(error, context: context)
-                self.session = nil
-            }
-        }
-    }
-
-    private func refreshTables() async {
-        guard let session else { return }
-        do {
-            let schema = supportsSchemas ? activeSchema : nil
-            self.tables = try await session.driver.fetchTables(schema: schema)
-        } catch {
-            Self.logger.warning("Failed to refresh tables: \(error.localizedDescription, privacy: .public)")
-            failureAlertMessage = String(localized: "Failed to refresh tables")
-            showFailureAlert = true
         }
     }
 }

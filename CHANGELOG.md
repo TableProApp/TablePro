@@ -7,34 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: TabView navigation with ConnectionCoordinator extraction and coordinator caching
+
+## [0.35.0] - 2026-04-25
+
 ### Added
 
-- Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1 support, URL schemes for Oracle/ClickHouse/etcd/D1/libSQL
-- In-app feedback form for bug reports and feature requests via Help > Report an Issue
-- Per-connection "Local only" option to exclude individual connections from iCloud sync
-- Filter operator picker shows SQL symbols alongside names for quick visual recognition
-- SQL autocomplete now suggests column names before a FROM clause is written, using all cached schema columns as fallback
-- Eager column cache warming after schema load for faster autocomplete
-- MCP query safety: three-tier classification with server-side confirmation for write and destructive queries
+- MongoDB multi-host connections for replica sets
+- JSON results view mode with Data/Structure/JSON toggle in status bar
+- JSON viewer: "Open in Window" action for resizing and fullscreen
+- Import URL: dynamic placeholder, parsed preview, clipboard auto-paste, libSQL/D1/Oracle/ClickHouse/etcd support
+- In-app feedback form via Help > Report an Issue
+- Per-connection "Local only" option to exclude from iCloud sync
+- Filter operator picker shows SQL symbols alongside names
+- SQL autocomplete suggests columns before FROM using cached schema
+- MCP query safety: server-side confirmation for write and destructive queries
 
 ### Changed
 
-- Native macOS UI patterns: Picker(.menu) for cell editors, native alerts, native List selection, .navigationTitle for sheets, NSSearchField for welcome search, borderless toolbar buttons, chevron indicator on SET picker
+- Native macOS UI: menu pickers, native alerts, native List selection, NSSearchField, borderless toolbar buttons
 - Quit dialog defaults to Cancel on Return key
 - Connection form delete button moved to far left
-- SSH/SSL browse panels show descriptive message text
 
 ### Fixed
 
-- Connection form can overflow with SSH jump hosts and TOTP fields due to fixed height
-- Group deletion has no confirmation dialog
-- Thread-safety race in plugin system when resolving principalClass off the main thread
+- Connection form overflow with SSH jump hosts and TOTP fields
+- Missing confirmation on group deletion
+- Plugin principalClass resolved off main thread
 - Crash when scrolling AI Chat during streaming on macOS 15.x
-- Connection failure on PostgreSQL-compatible databases (e.g., Aurora DSQL) that don't support `SET statement_timeout`
-- Schema-qualified table names (e.g. `public.users`) now correctly resolve in autocomplete
+- Connection failure on PostgreSQL-compatible databases without `SET statement_timeout`
+- Schema-qualified table names resolve correctly in autocomplete
 - Alert dialogs use sheet attachment instead of bare modal
-- Terminal copy uses responder chain instead of synthetic NSEvent
-- Unlocalized metadata strings in query history panel
 
 ## [0.34.0] - 2026-04-22
 
@@ -1444,7 +1449,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/TableProApp/TablePro/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/TableProApp/TablePro/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/TableProApp/TablePro/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/TableProApp/TablePro/compare/v0.32.0...v0.32.1

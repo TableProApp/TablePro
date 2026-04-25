@@ -51,8 +51,11 @@ final class MongoDBPluginDriver: PluginDatabaseDriver {
             }
         }
 
+        let effectiveHost = config.additionalFields["mongoHosts"].flatMap { hosts in
+            hosts.isEmpty ? nil : hosts
+        } ?? config.host
         let conn = MongoDBConnection(
-            host: config.host,
+            host: effectiveHost,
             port: config.port,
             user: config.username,
             password: config.password,

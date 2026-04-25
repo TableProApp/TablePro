@@ -544,8 +544,10 @@ struct AppMenuCommands: Commands {
             }
         }
 
-        // Help menu — append after system-provided search field
-        CommandGroup(after: .help) {
+        // Help menu — replace default "[App Name] Help" item (which calls
+        // showHelp: and fails with "Help isn't available" when no Help Book
+        // is registered). The search field is preserved automatically.
+        CommandGroup(replacing: .help) {
             Button(String(localized: "TablePro Website")) {
                 if let url = URL(string: "https://tablepro.app") { NSWorkspace.shared.open(url) }
             }

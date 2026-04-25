@@ -21,6 +21,7 @@ struct ConnectionListView: View {
     @State private var editMode: EditMode = .inactive
     @State private var connectionToDelete: DatabaseConnection?
     @State private var showingSettings = false
+    @State private var coordinatorCache: [UUID: ConnectionCoordinator] = [:]
 
     private var showDeleteConfirmation: Binding<Bool> {
         Binding(
@@ -122,17 +123,17 @@ struct ConnectionListView: View {
                 navigateToPendingConnection(appState.pendingConnectionId)
             }
         } detail: {
-            NavigationStack {
-                if let connection = selectedConnection {
-                    ConnectedView(connection: connection)
-                        .id(connection.id)
-                } else {
-                    ContentUnavailableView(
-                        "Select a Connection",
-                        systemImage: "server.rack",
-                        description: Text("Choose a connection from the sidebar.")
-                    )
+            if let connection = selectedConnection {
+                ConnectedView(connection: connection, cachedCoordinator: coordinatorCache[connection.id]) { coordinator in
+                    coordinatorCache[connection.id] = coordinator
                 }
+                .id(connection.id)
+            } else {
+                ContentUnavailableView(
+                    "Select a Connection",
+                    systemImage: "server.rack",
+                    description: Text("Choose a connection from the sidebar.")
+                )
             }
         }
         .sheet(isPresented: $showingAddConnection) {
@@ -238,6 +239,7 @@ struct ConnectionListView: View {
                         if selectedConnectionUUID == connection.id {
                             selectedConnectionIdString = nil
                         }
+                        coordinatorCache.removeValue(forKey: connection.id)
                         appState.removeConnection(connection)
                     }
                 }
@@ -352,16 +354,14 @@ struct ConnectionListView: View {
         var items = sectionItems
         items.move(fromOffsets: source, toOffset: destination)
         var all = appState.connections
-        for (i, item) in items.enumerated() {
+        let baseOrder = items.compactMap { item in
+            all.firstIndex { $0.id == item.id }.map { all[$0].sortOrder }
+        }.sorted()
+        for (i, item) in items.enumerated() where i < baseOrder.count {
             if let idx = all.firstIndex(where: { $0.id == item.id }) {
-                all[idx].sortOrder = i
+                all[idx].sortOrder = baseOrder[i]
             }
         }
-        all.sort {
-            if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        for index in all.indices { all[index].sortOrder = index }
         appState.reorderConnections(all)
     }
 

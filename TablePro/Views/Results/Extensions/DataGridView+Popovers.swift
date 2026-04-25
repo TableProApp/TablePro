@@ -115,6 +115,7 @@ extension TableViewCoordinator {
 
     func showJSONEditorPopover(tableView: NSTableView, row: Int, column: Int, columnIndex: Int) {
         let currentValue = rowProvider.value(atRow: row, column: columnIndex)
+        let columnName = rowProvider.columns[columnIndex]
 
         guard tableView.view(atColumn: column, row: row, makeIfNecessary: false) != nil else { return }
 
@@ -126,6 +127,7 @@ extension TableViewCoordinator {
         ) { [weak self] dismiss in
             JSONEditorContentView(
                 initialValue: currentValue,
+                columnName: columnName,
                 onCommit: { newValue in
                     self?.commitPopoverEdit(
                         tableView: tableView,
@@ -135,7 +137,24 @@ extension TableViewCoordinator {
                         newValue: newValue
                     )
                 },
-                onDismiss: dismiss
+                onDismiss: dismiss,
+                onPopOut: { currentText in
+                    dismiss()
+                    JSONViewerWindowController.open(
+                        text: currentText,
+                        columnName: columnName,
+                        isEditable: true,
+                        onCommit: { newValue in
+                            self?.commitPopoverEdit(
+                                tableView: tableView,
+                                row: row,
+                                column: column,
+                                columnIndex: columnIndex,
+                                newValue: newValue
+                            )
+                        }
+                    )
+                }
             )
         }
     }

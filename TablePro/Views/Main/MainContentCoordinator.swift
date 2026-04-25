@@ -258,8 +258,6 @@ final class MainContentCoordinator {
         }
     }
 
-
-
     /// Collect all tabs from all active coordinators for a given connectionId.
     static func allTabs(for connectionId: UUID) -> [QueryTab] {
         activeCoordinators.values

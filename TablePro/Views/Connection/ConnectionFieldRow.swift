@@ -61,6 +61,8 @@ struct ConnectionFieldRow: View {
             ) {
                 Text("\(field.label): \(Int(value) ?? range.lowerBound)")
             }
+        case .hostList:
+            EmptyView()
         }
     }
 }

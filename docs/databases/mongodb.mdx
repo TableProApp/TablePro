@@ -22,8 +22,7 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| **Host** | `localhost` | |
-| **Port** | `27017` | |
+| **Hosts** | `localhost:27017` | Add multiple hosts for replica sets |
 | **Database** | - | Database name to connect to |
 | **Username** | - | Leave empty for local dev without auth |
 | **Password** | - | |
@@ -44,6 +43,22 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
     alt="MongoDB connection form"
   />
 </Frame>
+
+## Replica Sets
+
+The **Hosts** field supports multiple entries. Click **Add Host** to add replica set members, each with its own port.
+
+Set the replica set name in the **Advanced** tab.
+
+You can also paste a multi-host URI directly:
+
+```
+mongodb://host1:27017,host2:27017,host3:27017/mydb?replicaSet=myrs
+```
+
+<Note>
+SSH tunneling only forwards the first host. Other members must be reachable from the SSH server.
+</Note>
 
 ## Example Configurations
 

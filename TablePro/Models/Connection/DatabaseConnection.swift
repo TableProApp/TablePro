@@ -367,6 +367,18 @@ extension DatabaseConnection {
     static let preview = DatabaseConnection(name: "Preview Connection")
 }
 
+// MARK: - Display Helpers
+
+extension DatabaseConnection {
+    var hostDisplayString: String {
+        if let mongoHosts = additionalFields["mongoHosts"], mongoHosts.contains(",") {
+            let count = mongoHosts.split(separator: ",").count
+            return String(format: String(localized: "%@ (+%d more)"), "\(host):\(port)", count - 1)
+        }
+        return "\(host):\(port)"
+    }
+}
+
 // MARK: - Codable Conformance
 
 extension DatabaseConnection: Codable {

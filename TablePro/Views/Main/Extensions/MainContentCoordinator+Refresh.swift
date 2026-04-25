@@ -17,7 +17,7 @@ extension MainContentCoordinator {
     ) {
         // If showing structure view, let it handle refresh notifications
         if let tabIndex = tabManager.selectedTabIndex,
-           tabManager.tabs[tabIndex].showStructure {
+           tabManager.tabs[tabIndex].resultsViewMode == .structure {
             return
         }
 

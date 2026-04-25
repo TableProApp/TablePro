@@ -154,7 +154,7 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.schemaName = tab.schemaName
         self.initialQuery = tab.query
         self.isView = tab.isView
-        self.showStructure = tab.showStructure
+        self.showStructure = tab.resultsViewMode == .structure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false
         self.initialFilterState = nil

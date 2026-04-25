@@ -199,7 +199,9 @@ extension ConnectionFormView {
                     previewRow(String(localized: "Host"), parsed.host)
                 }
             case .network:
-                if !parsed.host.isEmpty {
+                if let multiHost = parsed.multiHost, multiHost.contains(",") {
+                    previewRow(String(localized: "Hosts"), multiHost)
+                } else if !parsed.host.isEmpty {
                     let portStr = parsed.port.map { ":\($0)" } ?? ""
                     previewRow(String(localized: "Host"), parsed.host + portStr)
                 }
