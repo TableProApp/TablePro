@@ -132,14 +132,6 @@ struct DatabaseSwitcherSheet: View {
             openSelectedDatabase()
             return .handled
         }
-        .onKeyPress(.upArrow) {
-            viewModel.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            viewModel.moveDown()
-            return .handled
-        }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             viewModel.moveDown()
@@ -169,6 +161,14 @@ struct DatabaseSwitcherSheet: View {
                 text: $viewModel.searchText
             )
             .focused($focus, equals: .search)
+            .onKeyPress(.upArrow) {
+                viewModel.moveUp()
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                viewModel.moveDown()
+                return .handled
+            }
 
             // Refresh
             Button(action: {

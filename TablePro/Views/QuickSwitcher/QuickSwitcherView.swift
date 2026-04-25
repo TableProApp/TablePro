@@ -72,14 +72,6 @@ internal struct QuickSwitcherSheet: View {
             openSelectedItem()
             return .handled
         }
-        .onKeyPress(.upArrow) {
-            viewModel.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            viewModel.moveDown()
-            return .handled
-        }
         .onKeyPress(characters: .init(charactersIn: "jn"), phases: [.down, .repeat]) { keyPress in
             guard keyPress.modifiers.contains(.control) else { return .ignored }
             viewModel.moveDown()
@@ -100,6 +92,14 @@ internal struct QuickSwitcherSheet: View {
             text: $viewModel.searchText
         )
         .focused($focus, equals: .search)
+        .onKeyPress(.upArrow) {
+            viewModel.moveUp()
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            viewModel.moveDown()
+            return .handled
+        }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }

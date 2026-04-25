@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DDL results showing "0 row(s) affected" instead of "Query executed successfully"
 - Export stop button cancels immediately without confirmation
 - SSH profile test failure showing modal alert instead of inline error
+- List selection in Quick Switcher and Database Switcher requiring two clicks after focus change
 
 ### Changed
 
