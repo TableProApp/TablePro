@@ -41,11 +41,11 @@ final class CopilotService {
     @ObservationIgnored private let authManager = CopilotAuthManager()
     @ObservationIgnored private lazy var unauthenticatedStop = CopilotIdleStopController(
         timeout: Self.unauthenticatedTimeout,
-        isAuthenticated: { self.isAuthenticated },
-        isRunning: { self.status == .running },
-        onStopRequest: {
+        isAuthenticated: { [weak self] in self?.isAuthenticated ?? true },
+        isRunning: { [weak self] in self?.status == .running },
+        onStopRequest: { [weak self] in
             Self.logger.info("Copilot LSP idle without sign-in, stopping")
-            await self.stop()
+            await self?.stop()
         }
     )
 
