@@ -17,6 +17,8 @@ struct QueryEditorView: View {
 
     @Binding var queryText: String
     @Binding var cursorPositions: [CursorPosition]
+    @Binding var parameters: [QueryParameter]
+    @Binding var isParameterPanelVisible: Bool
     var onExecute: () -> Void
     var schemaProvider: SQLSchemaProvider?
     var databaseType: DatabaseType?
@@ -43,7 +45,14 @@ struct QueryEditorView: View {
 
             Divider()
 
-            // SQL Editor (CodeEditSourceEditor-based with tree-sitter highlighting)
+            if isParameterPanelVisible && !parameters.isEmpty {
+                QueryParameterPanelView(
+                    parameters: $parameters,
+                    onDismiss: { isParameterPanelVisible = false }
+                )
+                Divider()
+            }
+
             SQLEditorView(
                 text: $queryText,
                 cursorPositions: $cursorPositions,
@@ -203,6 +212,8 @@ struct QueryEditorView: View {
     QueryEditorView(
         queryText: .constant("SELECT * FROM users\nWHERE active = true\nORDER BY created_at DESC;"),
         cursorPositions: .constant([]),
+        parameters: .constant([]),
+        isParameterPanelVisible: .constant(false),
         onExecute: {},
         databaseType: .mysql
     )

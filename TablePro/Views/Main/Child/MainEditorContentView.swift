@@ -269,6 +269,8 @@ struct MainEditorContentView: View {
                     QueryEditorView(
                         queryText: queryTextBinding(for: tab),
                         cursorPositions: $bindableCoordinator.cursorPositions,
+                        parameters: parameterBinding(for: tab),
+                        isParameterPanelVisible: parameterVisibilityBinding(for: tab),
                         onExecute: { coordinator.runQuery() },
                         schemaProvider: coordinator.schemaProvider,
                         databaseType: coordinator.connection.type,
@@ -352,6 +354,28 @@ struct MainEditorContentView: View {
                 guard queryLength < QueryTab.maxPersistableQuerySize else { return }
 
                 coordinator.persistence.saveLastQuery(newValue)
+            }
+        )
+    }
+
+    private func parameterBinding(for tab: QueryTab) -> Binding<[QueryParameter]> {
+        let tabId = tab.id
+        return Binding(
+            get: { tab.queryParameters },
+            set: { newValue in
+                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+                tabManager.tabs[index].queryParameters = newValue
+            }
+        )
+    }
+
+    private func parameterVisibilityBinding(for tab: QueryTab) -> Binding<Bool> {
+        let tabId = tab.id
+        return Binding(
+            get: { tab.isParameterPanelVisible },
+            set: { newValue in
+                guard let index = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+                tabManager.tabs[index].isParameterPanelVisible = newValue
             }
         )
     }
