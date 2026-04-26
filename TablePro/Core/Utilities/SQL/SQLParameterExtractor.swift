@@ -75,6 +75,7 @@ enum SQLParameterExtractor {
     private static let newline = UInt16(UnicodeScalar("\n").value)
     private static let backslash = UInt16(UnicodeScalar("\\").value)
     private static let underscore = UInt16(UnicodeScalar("_").value)
+    private static let dollarChar = UInt16(UnicodeScalar("$").value)
 
     private static func isIdentifierStart(_ ch: UInt16) -> Bool {
         (ch >= 0x41 && ch <= 0x5A) || (ch >= 0x61 && ch <= 0x7A) || ch == underscore
@@ -147,6 +148,45 @@ enum SQLParameterExtractor {
                 }
                 i += 1
                 continue
+            }
+
+            if !inString && ch == dollarChar {
+                let tagStart = i + 1
+                if tagStart < length && nsSQL.character(at: tagStart) == dollarChar {
+                    var j = tagStart + 1
+                    while j < length - 1 {
+                        if nsSQL.character(at: j) == dollarChar && nsSQL.character(at: j + 1) == dollarChar {
+                            i = j + 2
+                            break
+                        }
+                        j += 1
+                    }
+                    if i < tagStart + 1 { i = length }
+                    continue
+                }
+                var tagEnd = tagStart
+                while tagEnd < length && isIdentifierChar(nsSQL.character(at: tagEnd)) {
+                    tagEnd += 1
+                }
+                if tagEnd > tagStart && tagEnd < length && nsSQL.character(at: tagEnd) == dollarChar {
+                    let tagLen = tagEnd - i + 1
+                    let openTag = nsSQL.substring(with: NSRange(location: i, length: tagLen))
+                    var j = tagEnd + 1
+                    var found = false
+                    while j <= length - tagLen {
+                        if nsSQL.character(at: j) == dollarChar {
+                            let candidate = nsSQL.substring(with: NSRange(location: j, length: tagLen))
+                            if candidate == openTag {
+                                i = j + tagLen
+                                found = true
+                                break
+                            }
+                        }
+                        j += 1
+                    }
+                    if !found { i = length }
+                    continue
+                }
             }
 
             if !inString && ch == colonChar {

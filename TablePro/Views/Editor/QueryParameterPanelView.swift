@@ -47,7 +47,6 @@ struct QueryParameterPanelView: View {
             Button("Clear All") {
                 for index in parameters.indices {
                     parameters[index].value = ""
-                    parameters[index].isNull = false
                 }
             }
             .buttonStyle(.bordered)
@@ -68,14 +67,18 @@ struct QueryParameterPanelView: View {
     private var parameterRows: some View {
         VStack(spacing: 0) {
             ForEach(parameters) { parameter in
-                if let index = parameters.firstIndex(where: { $0.id == parameter.id }) {
-                    QueryParameterRowView(
-                        parameter: Binding(
-                            get: { parameters[index] },
-                            set: { parameters[index] = $0 }
-                        )
+                QueryParameterRowView(
+                    parameter: Binding(
+                        get: {
+                            parameters.first(where: { $0.id == parameter.id }) ?? parameter
+                        },
+                        set: { newValue in
+                            if let idx = parameters.firstIndex(where: { $0.id == parameter.id }) {
+                                parameters[idx] = newValue
+                            }
+                        }
                     )
-                }
+                )
             }
         }
         .padding(.vertical, 4)

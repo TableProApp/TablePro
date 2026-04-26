@@ -771,11 +771,11 @@ final class MainContentCoordinator {
                     return
                 }
 
-                if paramStatements.count == 1 {
-                    executeQueryWithParameters(paramStatements[0], parameters: reconciled)
-                } else {
-                    executeMultipleStatementsWithParameters(paramStatements, parameters: reconciled)
-                }
+                dispatchParameterizedStatements(
+                    paramStatements,
+                    parameters: reconciled,
+                    tabIndex: index
+                )
                 return
             }
         }

@@ -229,4 +229,38 @@ final class SQLParameterExtractorTests: XCTestCase {
         XCTAssertEqual(result.sql, "SELECT col::text WHERE id = $1")
         XCTAssertEqual(result.values.count, 1)
     }
+
+    // MARK: - Dollar-Quoted Strings
+
+    func testParameterInDollarQuotedString() {
+        XCTAssertEqual(
+            SQLParameterExtractor.extractParameters(from: "CREATE FUNCTION foo() AS $$ SELECT :name $$ LANGUAGE sql"),
+            []
+        )
+    }
+
+    func testParameterInTaggedDollarQuotedString() {
+        XCTAssertEqual(
+            SQLParameterExtractor.extractParameters(from: "DO $body$ SELECT :name $body$"),
+            []
+        )
+    }
+
+    func testParameterAfterDollarQuotedString() {
+        XCTAssertEqual(
+            SQLParameterExtractor.extractParameters(from: "$$ body $$ SELECT :id"),
+            ["id"]
+        )
+    }
+
+    func testConvertSkipsDollarQuotedString() {
+        let params = [QueryParameter(name: "id", value: "42")]
+        let result = SQLParameterExtractor.convertToNativeStyle(
+            sql: "$$ :id $$ WHERE id = :id",
+            parameters: params,
+            style: .questionMark
+        )
+        XCTAssertEqual(result.sql, "$$ :id $$ WHERE id = ?")
+        XCTAssertEqual(result.values.count, 1)
+    }
 }

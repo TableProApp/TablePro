@@ -111,9 +111,27 @@ actor QueryHistoryStorage {
         }
 
         if currentVersion < 2 {
-            execute("ALTER TABLE history ADD COLUMN parameter_values TEXT;")
+            if !hasColumn("parameter_values", inTable: "history") {
+                execute("ALTER TABLE history ADD COLUMN parameter_values TEXT;")
+            }
             setUserVersion(2)
         }
+    }
+
+    private func hasColumn(_ column: String, inTable table: String) -> Bool {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table))", -1, &statement, nil) == SQLITE_OK else {
+            return false
+        }
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let name = sqlite3_column_text(statement, 1) {
+                if String(cString: name) == column {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     private func getUserVersion() -> Int32 {
@@ -144,7 +162,8 @@ actor QueryHistoryStorage {
                 execution_time REAL NOT NULL,
                 row_count INTEGER NOT NULL,
                 was_successful INTEGER NOT NULL,
-                error_message TEXT
+                error_message TEXT,
+                parameter_values TEXT
             );
             """
 
