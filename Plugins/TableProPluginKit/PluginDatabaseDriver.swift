@@ -449,19 +449,72 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    /// Escape a parameter value for safe interpolation into SQL.
-    /// Numeric values are unquoted; strings are single-quoted with proper escaping.
     private static func escapedParameterValue(_ value: String) -> String {
-        // Numeric: don't quote
-        if Int64(value) != nil || (Double(value) != nil && value.contains(".")) {
+        if isNumericLiteral(value) {
             return value
         }
-        // String: escape and quote
-        let escaped = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        var escaped = ""
+        escaped.reserveCapacity(value.count + 2)
+        escaped.append("'")
+        for char in value {
+            switch char {
+            case "'":
+                escaped.append("''")
+            case "\0":
+                continue
+            case "\\":
+                escaped.append("\\\\")
+            case "\n":
+                escaped.append("\\n")
+            case "\r":
+                escaped.append("\\r")
+            case "\t":
+                escaped.append("\\t")
+            case "\u{1A}":
+                escaped.append("\\Z")
+            default:
+                escaped.append(char)
+            }
+        }
+        escaped.append("'")
+        return escaped
+    }
+
+    private static func isNumericLiteral(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        var scanner = value.makeIterator()
+        var hasDigit = false
+        var hasDot = false
+        var hasE = false
+
+        var first = true
+        while let c = scanner.next() {
+            if first {
+                first = false
+                if c == "-" || c == "+" { continue }
+            }
+            if c.isNumber {
+                hasDigit = true
+                continue
+            }
+            if c == "." && !hasDot && !hasE {
+                hasDot = true
+                continue
+            }
+            if (c == "e" || c == "E") && hasDigit && !hasE {
+                hasE = true
+                hasDigit = false
+                if let next = scanner.next() {
+                    if next == "+" || next == "-" || next.isNumber {
+                        if next.isNumber { hasDigit = true }
+                        continue
+                    }
+                }
+                return false
+            }
+            return false
+        }
+        return hasDigit
     }
 
     func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {

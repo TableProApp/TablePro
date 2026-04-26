@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hardened SQL parameter escaping in plugin fallback to handle control characters and edge-case numeric formats
 - Query parameter conversion handles Bool, Date, Data, and non-finite numbers correctly
 - Plugin default query methods handle trailing semicolons and whitespace correctly
 - ER diagram no longer uses a polling loop to wait for database connection
