@@ -448,16 +448,32 @@ impl App {
                 // a browse tab; otherwise append a new one (so clicking a
                 // table while an editor tab is active doesn't replace
                 // the editor — just appends a new browse tab next to it).
-                let active_browse_id = self.selected_browse_tab_id();
-                match active_browse_id {
-                    Some(id) => {
-                        self.close_workspace_tab_by_id(id, sender.clone());
-                        self.append_browse_tab(schema, name, sender);
-                    }
-                    None => {
-                        self.append_browse_tab(schema, name, sender);
-                    }
+                //
+                // Critical: route the close through `tab_view.close_page`,
+                // not `close_workspace_tab_by_id` directly. AdwTabView's
+                // close_page_finish asserts that page->closing == true,
+                // which only the signal-driven flow sets up
+                // (close_page → close-page signal → our handler →
+                // close_page_finish). Calling close_page_finish on a
+                // page that wasn't first put into closing state fails
+                // with `Adwaita-CRITICAL: assertion 'page->closing' failed`.
+                let active_browse_page = self.selected_browse_tab_id().and_then(|id| {
+                    self.workspace_tabs.borrow().get(&id).map(|t| match t {
+                        WorkspaceTab::Browse(s) => s.page.clone(),
+                        WorkspaceTab::Editor(s) => s.page.clone(),
+                    })
+                });
+                if let Some(page) = active_browse_page
+                    && let Some(tab_view) = self.workspace_tab_view.as_ref()
+                {
+                    tab_view.close_page(&page);
+                    // The close-page signal will fire WorkspaceTabClosed
+                    // and the dispatcher's handler will run
+                    // close_workspace_tab_by_id (which calls
+                    // close_page_finish — now valid because the page is
+                    // in closing state).
                 }
+                self.append_browse_tab(schema, name, sender);
             }
         }
     }
