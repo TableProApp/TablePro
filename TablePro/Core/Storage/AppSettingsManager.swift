@@ -214,7 +214,8 @@ final class AppSettingsManager {
     /// Auto-pick the first configured provider as active when nothing is selected.
     /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
     /// (with multiple providers and no activeProviderID concept) is loaded.
-    private static func migrateAI(_ settings: AISettings) -> AISettings {
+    /// Internal so `@testable` tests can exercise it directly.
+    internal static func migrateAI(_ settings: AISettings) -> AISettings {
         guard settings.activeProviderID == nil, let first = settings.providers.first else {
             return settings
         }
