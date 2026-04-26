@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- ER diagram no longer uses a polling loop to wait for database connection
 - MCP server now shuts down reliably on app quit
 - Result tab bar and history panel follow macOS HIG patterns
 - Improved keyboard and VoiceOver accessibility for interactive rows across the app
