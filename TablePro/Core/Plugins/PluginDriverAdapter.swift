@@ -123,6 +123,24 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
         return mapPagedResult(pluginResult)
     }
 
+    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
+        let stringParams = parameters.map { param -> String? in
+            guard let p = param else { return nil }
+            return String(describing: p)
+        }
+        let pluginResult = try await pluginDriver.fetchFirstPageParameterized(query: query, parameters: stringParams, limit: limit)
+        return mapPagedResult(pluginResult)
+    }
+
+    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
+        let stringParams = parameters.map { param -> String? in
+            guard let p = param else { return nil }
+            return String(describing: p)
+        }
+        let pluginResult = try await pluginDriver.fetchNextPageParameterized(query: query, parameters: stringParams, offset: offset, limit: limit)
+        return mapPagedResult(pluginResult)
+    }
+
     // MARK: - Schema Operations
 
     func fetchTables() async throws -> [TableInfo] {

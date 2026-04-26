@@ -27,6 +27,7 @@ struct PersistedTab: Codable {
     var schemaName: String?
     var sourceFileURL: URL?
     var erDiagramSchemaKey: String?
+    var queryParameters: [QueryParameter]?
 }
 
 /// Stores pending changes for a tab (used to preserve state when switching tabs)
@@ -104,6 +105,7 @@ struct PaginationState: Equatable {
     var loadMoreOffset: Int = 0
     var isLoadingMore: Bool = false
     var baseQueryForMore: String?
+    var baseQueryParameterValues: [String?]?
 
     /// Default page size constant (used when no explicit value is provided)
     /// Note: For new tabs, callers should pass AppSettingsManager.shared.dataGrid.defaultPageSize
@@ -202,6 +204,7 @@ struct PaginationState: Equatable {
         loadMoreOffset = 0
         isLoadingMore = false
         baseQueryForMore = nil
+        baseQueryParameterValues = nil
     }
 
     /// Update page size (limit)

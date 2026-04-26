@@ -142,6 +142,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Progressive loading
     func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult
+    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult
+    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult
 }
 
 public extension PluginDatabaseDriver {
@@ -489,6 +491,47 @@ public extension PluginDatabaseDriver {
 
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult {
         let result = try await fetchRows(query: query, offset: offset, limit: limit + 1)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
+        )
+    }
+
+    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await executeParameterized(query: query, parameters: parameters)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET 0"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
+    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult {
+        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET \(offset)"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
         let hasMore = result.rows.count > limit
         let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
         return PluginPagedResult(
