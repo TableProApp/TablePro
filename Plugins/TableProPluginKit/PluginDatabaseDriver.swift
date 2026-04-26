@@ -449,7 +449,7 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    private static func escapedParameterValue(_ value: String) -> String {
+    static func escapedParameterValue(_ value: String) -> String {
         if isNumericLiteral(value) {
             return value
         }
@@ -480,7 +480,7 @@ public extension PluginDatabaseDriver {
         return escaped
     }
 
-    private static func isNumericLiteral(_ value: String) -> Bool {
+    static func isNumericLiteral(_ value: String) -> Bool {
         guard !value.isEmpty else { return false }
         var scanner = value.makeIterator()
         var hasDigit = false
