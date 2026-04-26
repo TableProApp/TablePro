@@ -136,6 +136,9 @@
         }
       }
     },
+    ":%@" : {
+
+    },
     ".%@" : {
       "localizations" : {
         "tr" : {
@@ -8469,6 +8472,9 @@
           }
         }
       }
+    },
+    "Close parameter panel" : {
+
     },
     "Close preview" : {
       "localizations" : {
@@ -24823,6 +24829,9 @@
         }
       }
     },
+    "Missing value for parameter: :%@" : {
+
+    },
     "Mode" : {
 
     },
@@ -29185,6 +29194,9 @@
         }
       }
     },
+    "Parameters" : {
+
+    },
     "Parent Group" : {
       "localizations" : {
         "tr" : {
@@ -31716,6 +31728,9 @@
           }
         }
       }
+    },
+    "Query parameters (:name syntax)" : {
+
     },
     "Query Result Limit" : {
       "localizations" : {

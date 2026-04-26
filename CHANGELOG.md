@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Query parameters: write `:name` placeholders in SQL, fill values in an inline panel, execute with native prepared statement binding
 - AI provider registry for extensible provider management
 - GitHub Copilot integration: inline suggestions, chat via LSP conversation protocol, OAuth sign-in, schema context
 - Connection sharing: Share submenu with Copy Connection String, Copy TablePro Link, Copy as JSON, and rich deep links carrying all connection fields
