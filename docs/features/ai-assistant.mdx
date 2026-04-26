@@ -1,0 +1,193 @@
+---
+title: AI Assistant
+description: Built-in AI for SQL with chat, inline suggestions, explain, optimize, and fix-error. Supports Copilot, Claude, OpenAI, Gemini, OpenRouter, Ollama.
+---
+
+# AI Assistant
+
+Built-in AI for writing, explaining, optimizing, and fixing SQL. One active provider drives every AI feature: chat, inline suggestions, editor actions, and fix-error.
+
+## Configure a Provider
+
+Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence settings: a single **Active Provider** picker at the top, a list of configured providers below, and a detail sheet when you drill into one.
+
+<Frame caption="AI settings">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-settings-provider.png"
+    alt="AI settings"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-settings-provider-dark.png"
+    alt="AI settings"
+  />
+</Frame>
+
+### Add a Provider
+
+1. Click **Add Provider...** and pick a type (GitHub Copilot, Claude, OpenAI, Gemini, OpenRouter, Ollama, or a custom OpenAI-compatible endpoint).
+2. Enter the API key, or run device-flow sign-in for Copilot.
+3. Pick a model. The list fetches automatically; click **Reload** if needed.
+4. Click **Test Connection**.
+
+API keys are stored in the macOS Keychain. Ollama is detected at launch.
+
+### Active Provider
+
+The active provider handles every AI request. Switch it from the **Active Provider** picker at the top of the AI tab.
+
+### GitHub Copilot
+
+Add Copilot like any other provider. The detail sheet runs GitHub's device-flow sign-in: enter the displayed code on github.com to authorize. The Copilot language server starts when you add a Copilot provider and stops when you remove it.
+
+## Chat
+
+Press `Cmd+Shift+L`, click the AI toolbar button, or use **View** > **Toggle AI Chat**.
+
+<Frame caption="AI chat panel">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-panel.png"
+    alt="AI chat panel"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-panel-dark.png"
+    alt="AI chat panel"
+  />
+</Frame>
+
+Type a question and press Return. The AI receives your database type, schema, and current query. Code blocks have **Copy** and **Insert to Editor** buttons. Token counts show below each response.
+
+<Frame caption="Code block actions">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-code-block.png"
+    alt="Code block actions"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-code-block-dark.png"
+    alt="Code block actions"
+  />
+</Frame>
+
+<Frame caption="Token usage">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-token-usage.png"
+    alt="Token usage"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-token-usage-dark.png"
+    alt="Token usage"
+  />
+</Frame>
+
+Conversations auto-save and auto-title from your first message. Browse, clear, or start a new one from the panel header.
+
+<Frame caption="Conversation history">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-conversation-history.png"
+    alt="Conversation history"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-conversation-history-dark.png"
+    alt="Conversation history"
+  />
+</Frame>
+
+Failed responses show **Retry**. Successful ones show **Regenerate**. Click **Stop** to cancel a streaming response.
+
+<Frame caption="Streaming response">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-streaming.png"
+    alt="Streaming response"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-streaming-dark.png"
+    alt="Streaming response"
+  />
+</Frame>
+
+## Inline Suggestions
+
+Toggle **Enable inline suggestions while typing** in the AI tab. The active provider drives suggestions. Press `Tab` to accept, `Esc` to dismiss.
+
+With Copilot active, suggestions come from Copilot's inline-completion model. With any other active provider, suggestions come from chat completions.
+
+## Editor Actions
+
+Right-click SQL in the editor for **Explain with AI** and **Optimize with AI**.
+
+<Frame caption="Editor context menu">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-context-menu.png"
+    alt="Editor context menu"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-context-menu-dark.png"
+    alt="Editor context menu"
+  />
+</Frame>
+
+Default shortcuts:
+
+| Action | Shortcut |
+|--------|----------|
+| Toggle AI Chat | `Cmd+Shift+L` |
+| Explain with AI | `Cmd+L` |
+| Optimize with AI | `Cmd+Option+L` |
+
+Customize under **Settings** > **Keyboard** > **AI**.
+
+## Ask AI to Fix
+
+Query error dialogs include an **Ask AI to Fix** button. It opens chat with the failed query and error pre-filled.
+
+<Frame caption="Ask AI to Fix">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-fix-error.png"
+    alt="Ask AI to Fix"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-fix-error-dark.png"
+    alt="Ask AI to Fix"
+  />
+</Frame>
+
+## Context
+
+Under **Settings** > **AI** > **Context**:
+
+- **Include database schema** (default on)
+- **Include current query** (default on)
+- **Include query results** (default off)
+- **Max schema tables** (default 20)
+
+## Privacy
+
+Set a per-connection AI policy in the connection form: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. New connections default to **Ask Each Time**.
+
+<Frame caption="Per-connection AI policy">
+  <img
+    className="block dark:hidden"
+    src="/images/ai-chat-connection-policy.png"
+    alt="Per-connection AI policy"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/ai-chat-connection-policy-dark.png"
+    alt="Per-connection AI policy"
+  />
+</Frame>
