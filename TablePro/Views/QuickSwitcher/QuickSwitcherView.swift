@@ -89,7 +89,8 @@ internal struct QuickSwitcherSheet: View {
             text: $viewModel.searchText,
             placeholder: String(localized: "Search tables, views, databases..."),
             onMoveUp: { viewModel.moveUp() },
-            onMoveDown: { viewModel.moveDown() }
+            onMoveDown: { viewModel.moveDown() },
+            focusOnAppear: true
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

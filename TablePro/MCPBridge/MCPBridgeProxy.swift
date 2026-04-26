@@ -51,7 +51,6 @@ private final class CertificatePinningDelegate: NSObject, URLSessionDelegate {
 final class MCPBridgeProxy {
     private let handshakePath: String
     private var sessionId: String?
-    private var urlSession: URLSession!
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -93,13 +92,13 @@ final class MCPBridgeProxy {
         } else {
             delegate = nil
         }
-        self.urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+        let urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
 
         let scheme = (handshake.tls ?? false) ? "https" : "http"
         let baseUrl = "\(scheme)://127.0.0.1:\(handshake.port)/mcp"
         let bearerToken = handshake.token
 
-        await readLoop(baseUrl: baseUrl, bearerToken: bearerToken)
+        await readLoop(baseUrl: baseUrl, bearerToken: bearerToken, urlSession: urlSession)
     }
 
     private func loadHandshake() throws -> MCPHandshake {
@@ -111,7 +110,7 @@ final class MCPBridgeProxy {
         kill(pid, 0) == 0
     }
 
-    private func readLoop(baseUrl: String, bearerToken: String) async {
+    private func readLoop(baseUrl: String, bearerToken: String, urlSession: URLSession) async {
         let stdin = FileHandle.standardInput
         var buffer = Data()
 
@@ -136,7 +135,8 @@ final class MCPBridgeProxy {
                     let responseData = try await forwardRequest(
                         lineDataCopy,
                         baseUrl: baseUrl,
-                        bearerToken: bearerToken
+                        bearerToken: bearerToken,
+                        urlSession: urlSession
                     )
                     writeStdout(responseData)
                     writeStdout(Data([0x0A]))
@@ -155,7 +155,8 @@ final class MCPBridgeProxy {
     private func forwardRequest(
         _ body: Data,
         baseUrl: String,
-        bearerToken: String
+        bearerToken: String,
+        urlSession: URLSession
     ) async throws -> Data {
         guard let url = URL(string: baseUrl) else {
             throw BridgeError.invalidUrl

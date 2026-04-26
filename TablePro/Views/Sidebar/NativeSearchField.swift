@@ -14,6 +14,7 @@ struct NativeSearchField: NSViewRepresentable {
     var controlSize: NSControl.ControlSize = .regular
     var onMoveUp: (() -> Void)?
     var onMoveDown: (() -> Void)?
+    var focusOnAppear: Bool = false
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -22,6 +23,11 @@ struct NativeSearchField: NSViewRepresentable {
         field.controlSize = controlSize
         field.sendsSearchStringImmediately = true
         field.setAccessibilityIdentifier("sidebar-filter")
+        if focusOnAppear {
+            DispatchQueue.main.async {
+                field.window?.makeFirstResponder(field)
+            }
+        }
         return field
     }
 

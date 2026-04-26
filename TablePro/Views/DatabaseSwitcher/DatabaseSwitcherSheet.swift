@@ -157,7 +157,8 @@ struct DatabaseSwitcherSheet: View {
                     ? String(localized: "Search schemas...")
                     : String(localized: "Search databases..."),
                 onMoveUp: { viewModel.moveUp() },
-                onMoveDown: { viewModel.moveDown() }
+                onMoveDown: { viewModel.moveDown() },
+                focusOnAppear: true
             )
 
             // Refresh
