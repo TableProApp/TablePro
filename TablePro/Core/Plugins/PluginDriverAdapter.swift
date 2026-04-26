@@ -59,6 +59,35 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "PluginDriverAdapter")
 
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static func stringValue(for parameter: Any) -> String {
+        switch parameter {
+        case let s as String:
+            return s
+        case let b as Bool:
+            return b ? "1" : "0"
+        case let i as any BinaryInteger:
+            return String(i)
+        case let f as any BinaryFloatingPoint:
+            let d = Double(f)
+            guard d.isFinite else { return "NULL" }
+            return String(d)
+        case let d as Date:
+            return Self.iso8601Formatter.string(from: d)
+        case let data as Data:
+            return data.map { String(format: "%02x", $0) }.joined()
+        case let uuid as UUID:
+            return uuid.uuidString
+        default:
+            return String(describing: parameter)
+        }
+    }
+
     init(connection: DatabaseConnection, pluginDriver: any PluginDatabaseDriver) {
         self.connection = connection
         self.pluginDriver = pluginDriver
@@ -96,7 +125,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func executeParameterized(query: String, parameters: [Any?]) async throws -> QueryResult {
         let stringParams = parameters.map { param -> String? in
             guard let p = param else { return nil }
-            return String(describing: p)
+            return Self.stringValue(for: p)
         }
         let pluginResult = try await pluginDriver.executeParameterized(query: query, parameters: stringParams)
         return mapQueryResult(pluginResult)
@@ -126,7 +155,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
         let stringParams = parameters.map { param -> String? in
             guard let p = param else { return nil }
-            return String(describing: p)
+            return Self.stringValue(for: p)
         }
         let pluginResult = try await pluginDriver.fetchFirstPageParameterized(query: query, parameters: stringParams, limit: limit)
         return mapPagedResult(pluginResult)
@@ -135,7 +164,7 @@ final class PluginDriverAdapter: DatabaseDriver, SchemaSwitchable {
     func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
         let stringParams = parameters.map { param -> String? in
             guard let p = param else { return nil }
-            return String(describing: p)
+            return Self.stringValue(for: p)
         }
         let pluginResult = try await pluginDriver.fetchNextPageParameterized(query: query, parameters: stringParams, offset: offset, limit: limit)
         return mapPagedResult(pluginResult)
