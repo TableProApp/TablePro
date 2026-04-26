@@ -33,13 +33,10 @@ impl App {
 
     fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
         let tab_view = adw::TabView::new();
-        // Content-sized tabs: with expand_tabs(true), 5 tabs already span the
-        // whole bar and 15+ would compress to unreadable widths. Matches
-        // TablePlus / DBeaver / DataGrip; AdwTabBar handles overflow natively.
         let tab_bar = adw::TabBar::builder()
             .view(&tab_view)
             .autohide(false)
-            .expand_tabs(false)
+            .expand_tabs(true)
             .build();
 
         let overview_button = adw::TabButton::builder()
