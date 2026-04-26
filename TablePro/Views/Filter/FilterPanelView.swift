@@ -38,8 +38,8 @@ struct FilterPanelView: View {
         .onAppear {
             if filterState.filters.isEmpty && !columns.isEmpty {
                 filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)
-                focusedFilterId = filterState.filters.last?.id
             }
+            focusedFilterId = filterState.filters.last?.id
         }
         .onChange(of: columns) { _, newColumns in
             if filterState.filters.isEmpty && !newColumns.isEmpty && filterState.isVisible {
