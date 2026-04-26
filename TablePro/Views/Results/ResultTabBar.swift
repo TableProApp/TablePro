@@ -28,34 +28,36 @@ struct ResultTabBar: View {
 
     private func resultTab(_ rs: ResultSet) -> some View {
         let isActive = rs.id == (activeResultSetId ?? resultSets.last?.id)
-        return HStack(spacing: 4) {
-            if rs.isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
-            }
-            Text(rs.label)
-                .font(.subheadline)
-                .lineLimit(1)
-            if !rs.isPinned {
-                Button { onClose?(rs.id) } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 8))
+        return Button {
+            activeResultSetId = rs.id
+        } label: {
+            HStack(spacing: 4) {
+                if rs.isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Close result tab"))
+                Text(rs.label)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                if !rs.isPinned {
+                    Button { onClose?(rs.id) } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Close result tab"))
+                }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(isActive ? Color(nsColor: .selectedControlColor) : Color.clear)
+            )
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(isActive ? Color(nsColor: .selectedControlColor) : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { activeResultSetId = rs.id }
-        .accessibilityAddTraits(.isButton)
+        .buttonStyle(.plain)
         .contextMenu {
             Button(rs.isPinned ? String(localized: "Unpin") : String(localized: "Pin Result")) {
                 onPin?(rs.id)

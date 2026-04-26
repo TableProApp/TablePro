@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - MCP server now shuts down reliably on app quit
+- Result tab bar and history panel follow macOS HIG patterns
 - Improved keyboard and VoiceOver accessibility for interactive rows across the app
 - Compiled theme fallback colors now match the default theme JSON files
 - TablePlus import: correctly map all SSL/TLS modes instead of treating Prefer as disabled
