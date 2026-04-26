@@ -38,8 +38,16 @@ final class CopilotService {
     @ObservationIgnored private var serverGeneration: Int = 0
     @ObservationIgnored private var restartTask: Task<Void, Never>?
     @ObservationIgnored private var restartAttempt: Int = 0
-    @ObservationIgnored private var unauthenticatedStopTask: Task<Void, Never>?
     @ObservationIgnored private let authManager = CopilotAuthManager()
+    @ObservationIgnored private lazy var unauthenticatedStop = CopilotIdleStopController(
+        timeout: Self.unauthenticatedTimeout,
+        isAuthenticated: { self.isAuthenticated },
+        isRunning: { self.status == .running },
+        onStopRequest: {
+            Self.logger.info("Copilot LSP idle without sign-in, stopping")
+            await self.stop()
+        }
+    )
 
     /// Stops the LSP server if the user hasn't signed in within this window after start.
     /// Avoids leaving a Node process idle for users who add a Copilot config but never authorise.
@@ -114,8 +122,7 @@ final class CopilotService {
     func stop() async {
         restartTask?.cancel()
         restartTask = nil
-        unauthenticatedStopTask?.cancel()
-        unauthenticatedStopTask = nil
+        unauthenticatedStop.cancel()
         serverGeneration += 1
 
         if let client = lspClient {
@@ -149,8 +156,7 @@ final class CopilotService {
         }
         let username = try await authManager.completeSignIn(transport: transport)
         authState = .signedIn(username: username)
-        unauthenticatedStopTask?.cancel()
-        unauthenticatedStopTask = nil
+        unauthenticatedStop.cancel()
     }
 
     func signOut() async {
@@ -197,15 +203,7 @@ final class CopilotService {
     }
 
     private func scheduleUnauthenticatedStopIfNeeded() {
-        unauthenticatedStopTask?.cancel()
-        guard !isAuthenticated else { return }
-        unauthenticatedStopTask = Task {
-            try? await Task.sleep(for: Self.unauthenticatedTimeout)
-            guard !Task.isCancelled else { return }
-            guard !self.isAuthenticated, self.status == .running else { return }
-            Self.logger.info("Copilot LSP idle without sign-in, stopping")
-            await self.stop()
-        }
+        unauthenticatedStop.schedule()
     }
 
     private func handleStatusNotification(_ data: Data) {
