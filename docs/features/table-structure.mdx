@@ -77,6 +77,16 @@ Use the filter field at the top to search columns by name. Click any column head
 | **Unique** | Whether the index enforces uniqueness |
 | **Condition** | WHERE clause for partial indexes (PostgreSQL) |
 
+### Add and Drop Indexes
+
+Click **+** to add a new index, **-** or `Delete` to mark an index for removal. Multi-column indexes are supported by adding multiple column entries to one index row.
+
+- **Partial indexes (PostgreSQL)**: enter a `WHERE` predicate in the **Condition** field. The generated DDL emits `CREATE INDEX ... WHERE ...`.
+- **Prefix length (MySQL/MariaDB)**: append `(N)` to the column entry, for example `email(20)`. Useful for `TEXT` and long `VARCHAR` columns.
+- **Index type**: pick from the type dropdown. Available types depend on the database (BTREE everywhere, GIN/GIST/BRIN on PostgreSQL, FULLTEXT/SPATIAL on MySQL).
+
+Changes are queued. Click **Apply** to preview the `CREATE INDEX` / `DROP INDEX` statements before executing.
+
 ## Foreign Keys Tab
 
 {/* Screenshot: Foreign keys tab */}
@@ -104,6 +114,26 @@ Use the filter field at the top to search columns by name. Click any column head
 | **On Update** | Action when referenced row is updated |
 
 On Delete and On Update use dropdown pickers with all standard referential actions.
+
+### Add and Drop Foreign Keys
+
+Click **+** to add a new foreign key, **-** or `Delete` to remove one. The local and referenced columns use dropdowns populated from the live schema, so typos surface as missing entries rather than runtime errors.
+
+- **Cross-schema references**: pick a different schema in the **Ref Schema** column for PostgreSQL or MySQL. The generated DDL qualifies the referenced table (`other_schema.other_table`).
+- **Composite foreign keys**: add multiple column pairs to a single FK entry.
+- **Referential actions**: configure `ON DELETE` and `ON UPDATE` per FK.
+
+Changes are queued. Apply to preview the generated `ALTER TABLE ... ADD CONSTRAINT` / `DROP CONSTRAINT` SQL.
+
+## Primary Keys
+
+Mark one or more columns as primary key in the **Columns** tab by toggling the **Primary Key** flag. Multiple flagged columns produce a composite primary key. The generated DDL emits a single `PRIMARY KEY (col1, col2)` clause.
+
+Changing a primary key on an existing table executes as a drop-and-add sequence. SQLite and ClickHouse do not support modifying primary keys without recreating the table: TablePro disables the action on those databases.
+
+## Table Options (MySQL/MariaDB)
+
+The Columns tab toolbar exposes table-level **Charset** and **Collation** pickers for MySQL and MariaDB. Changes generate `ALTER TABLE ... CONVERT TO CHARACTER SET ...` and update the table's default collation. Per-column overrides remain available in the column detail panel.
 
 ## DDL Tab
 

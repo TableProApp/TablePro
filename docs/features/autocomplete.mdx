@@ -160,11 +160,24 @@ What appears depends on where your cursor is:
 | After ON (JOIN) | Columns from both tables |
 | After GROUP BY / ORDER BY | Columns, ASC/DESC |
 
-## Schema Caching
+## Schema-Aware Completions
 
-On connection, TablePro fetches table names and loads columns for up to 50 tables in the background. Column suggestions work right away, even before you write a FROM clause.
+Suggestions use the actual tables and columns from the connected database, not heuristics or static keyword lists.
 
-After external schema changes, right-click the connection and select **Refresh**.
+- Table names come from the live schema (per database, per schema for PostgreSQL)
+- Column names come from each table's column metadata
+- Schema-qualified table names resolve correctly: `public.users`, `app.orders`, `analytics.events`
+- Aliases are resolved against the live schema (`u.` after `FROM users u` shows `users` columns)
+
+### Pre-FROM Column Suggestions
+
+You don't need a FROM clause to get column completions. If you start typing a column name before writing FROM, TablePro suggests columns from all cached tables. Once you add `FROM users`, suggestions narrow to that table's columns. If a name is ambiguous across tables (`id`, `name`), the fallback qualifies it: `users.id`, `orders.id`.
+
+### Schema Cache
+
+On connection, TablePro fetches table names and loads columns for up to 50 tables in the background. Cached metadata has a short TTL: stale entries are refreshed on next access, and a failed schema load has a 30 second retry cooldown to avoid hammering the server.
+
+After external schema changes (migrations, CLI work), right-click the connection and select **Refresh** to force a reload.
 
 ## Performance
 

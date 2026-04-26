@@ -46,14 +46,14 @@ TablePro supports MongoDB 5.0 and later. Collections appear as tables in the sid
 
 ## Replica Sets
 
-The **Hosts** field supports multiple entries. Click **Add Host** to add replica set members, each with its own port.
+The **Hosts** field accepts multiple `host:port` pairs separated by commas (for example `host1:27017,host2:27017,host3:27017`). TablePro discovers the primary automatically and routes writes there.
 
 Set the replica set name in the **Advanced** tab.
 
 You can also paste a multi-host URI directly:
 
 ```
-mongodb://host1:27017,host2:27017,host3:27017/mydb?replicaSet=myrs
+mongodb://user:pass@host1:27017,host2:27017,host3:27017/db?replicaSet=rs0
 ```
 
 <Note>
