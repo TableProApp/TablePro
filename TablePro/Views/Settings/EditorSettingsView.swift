@@ -21,6 +21,7 @@ struct EditorSettingsView: View {
                     Text("8 spaces").tag(8)
                 }
                 Toggle("Auto-uppercase keywords", isOn: $settings.uppercaseKeywords)
+                Toggle("Query parameters (:name syntax)", isOn: $settings.queryParametersEnabled)
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
             }
 

@@ -74,6 +74,7 @@ struct EditorSettings: Codable, Equatable {
     var wordWrap: Bool
     var vimModeEnabled: Bool
     var uppercaseKeywords: Bool
+    var queryParametersEnabled: Bool
     var jsonViewerPreferredMode: JSONViewMode
 
     static let `default` = EditorSettings(
@@ -83,6 +84,7 @@ struct EditorSettings: Codable, Equatable {
         wordWrap: false,
         vimModeEnabled: false,
         uppercaseKeywords: false,
+        queryParametersEnabled: true,
         jsonViewerPreferredMode: .text
     )
 
@@ -93,6 +95,7 @@ struct EditorSettings: Codable, Equatable {
         wordWrap: Bool = false,
         vimModeEnabled: Bool = false,
         uppercaseKeywords: Bool = false,
+        queryParametersEnabled: Bool = true,
         jsonViewerPreferredMode: JSONViewMode = .text
     ) {
         self.showLineNumbers = showLineNumbers
@@ -101,6 +104,7 @@ struct EditorSettings: Codable, Equatable {
         self.wordWrap = wordWrap
         self.vimModeEnabled = vimModeEnabled
         self.uppercaseKeywords = uppercaseKeywords
+        self.queryParametersEnabled = queryParametersEnabled
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
     }
 
@@ -112,6 +116,7 @@ struct EditorSettings: Codable, Equatable {
         wordWrap = try container.decodeIfPresent(Bool.self, forKey: .wordWrap) ?? false
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
+        queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
     }
 
