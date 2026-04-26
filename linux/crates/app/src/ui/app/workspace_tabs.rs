@@ -33,10 +33,13 @@ impl App {
 
     fn build_workspace_root(&mut self, sender: ComponentSender<Self>) {
         let tab_view = adw::TabView::new();
+        // Content-sized tabs: with expand_tabs(true), 5 tabs already span the
+        // whole bar and 15+ would compress to unreadable widths. Matches
+        // TablePlus / DBeaver / DataGrip; AdwTabBar handles overflow natively.
         let tab_bar = adw::TabBar::builder()
             .view(&tab_view)
             .autohide(false)
-            .expand_tabs(true)
+            .expand_tabs(false)
             .build();
 
         let overview_button = adw::TabButton::builder()
@@ -123,7 +126,8 @@ impl App {
                 .count();
             let label = default_editor_tab_label(editor_count + 1);
             page.set_title(&label);
-            page.set_tooltip(&label);
+            // Empty query → no tooltip; tooltip will be set on first edit
+            // via on_editor_tab_query_changed.
             write_workspace_tab_id(&page, tab_id);
             let slot = EditorTabSlot {
                 id: tab_id,
@@ -317,7 +321,9 @@ impl App {
         let page = tab_view.append(controller.widget());
         let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
         page.set_title(&label);
-        page.set_tooltip(&label);
+        if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
+            page.set_tooltip(&tip);
+        }
         write_workspace_tab_id(&page, tab_id);
 
         let slot = BrowseTabSlot {
@@ -359,7 +365,9 @@ impl App {
             false => derive_tab_label(&query),
         };
         page.set_title(&label);
-        page.set_tooltip(&label);
+        if let Some(tip) = editor_tab_tooltip(&query, &label) {
+            page.set_tooltip(&tip);
+        }
         write_workspace_tab_id(&page, tab_id);
 
         let slot = EditorTabSlot {
@@ -632,7 +640,10 @@ impl App {
         };
         if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
             slot.page.set_title(&label);
-            slot.page.set_tooltip(&label);
+            // Pass empty when no extra info to clear any prior tooltip;
+            // libadwaita treats empty-string as no tooltip.
+            let tooltip = editor_tab_tooltip(&query, &label).unwrap_or_default();
+            slot.page.set_tooltip(&tooltip);
             slot.query = query;
         }
         self.persist_workspace_state();
@@ -680,4 +691,32 @@ fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table:
 
 fn default_editor_tab_label(n: usize) -> String {
     crate::tr!("Query {n}").replace("{n}", &n.to_string())
+}
+
+/// Returns a tooltip for a Browse tab, but only when it would add info
+/// beyond the visible label. When the label is already
+/// `schema.table`, or there is no schema, the tooltip would just
+/// duplicate the tab title and we skip it.
+fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<String> {
+    let s = schema?;
+    let qualified = format!("{s}.{table}");
+    if qualified == label { None } else { Some(qualified) }
+}
+
+/// Returns a tooltip for an Editor tab. Empty for blank queries; for
+/// non-empty queries, a 200-char preview — but only when distinct from
+/// the (truncated) label, so non-truncated labels don't get a redundant
+/// hover popup.
+fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
+    let q = query.trim();
+    if q.is_empty() {
+        return None;
+    }
+    let preview: String = q.chars().take(200).collect();
+    let preview = if q.chars().count() > 200 {
+        format!("{preview}…")
+    } else {
+        preview
+    };
+    if preview == label { None } else { Some(preview) }
 }
