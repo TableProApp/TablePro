@@ -111,8 +111,9 @@ Keywords are context-sensitive:
 | Action | Shortcut | Description |
 |--------|----------|-------------|
 | Execute query | `Cmd+Enter` | Runs query at cursor, or all selected statements |
+| Cancel query | `Cmd+.` | Stops the running query |
 | Explain query | `Option+Cmd+E` | Show the execution plan for the query at cursor |
-| Format query | `Option+Cmd+F` | Format the current query for readability |
+| Format query | `Cmd+Shift+L` | Format the current query for readability |
 
 ### Query Results
 
@@ -162,14 +163,28 @@ Run Explain before expensive queries to verify index usage.
 
 ## SQL Formatting
 
-Press `Option+Cmd+F` to format the current query. You can also click **Format** in the toolbar or use **Query** > **Format Query**.
+Press `Cmd+Shift+L` to format the current query. You can also click **Format** in the toolbar or use **Query** > **Format Query**. The shortcut is rebindable in **Settings** > **Keyboard**.
 
-The formatter:
-- Uppercases SQL keywords (`select` becomes `SELECT`)
+TablePro ships a token-based formatter (rewritten in v0.34.0). It parses the query into tokens before reflowing, so it handles:
+
+- JOINs (INNER, LEFT, RIGHT, FULL, CROSS, LATERAL)
+- Subqueries and derived tables
+- CASE expressions
+- Common Table Expressions (CTEs), including recursive
+- Window functions (`OVER (...)`)
+- 15+ other SQL constructs (UNION, INTERSECT, EXCEPT, GROUP BY, HAVING, etc.)
+
+The formatter also:
+
 - Adds line breaks per clause (`SELECT`, `FROM`, `WHERE`, `JOIN`)
 - Indents logically with consistent spacing
 - Preserves comments, string literals, and cursor position
 - Detects your database dialect and preserves backtick (MySQL) or double-quote (PostgreSQL) identifiers
+- Preserves the original keyword case by default. Toggle uppercase/lowercase keyword output in **Settings** > **Editor**
+
+### Limitations
+
+The formatter handles pure SQL only. Procedural extensions (PL/pgSQL `DO` blocks, MySQL stored procedures, T-SQL `BEGIN`/`END` blocks) are passed through with minimal changes.
 
 ### Example
 
@@ -243,7 +258,7 @@ Customize font, line numbers, word wrap, Vim mode, and indentation in **Settings
 
 ## AI Assistance
 
-Use **Explain with AI** (`Cmd+L`) to understand queries, **Optimize with AI** (`Cmd+Option+L`) for performance suggestions, or click "Ask AI to Fix" in error dialogs. See [AI Chat](/features/ai-chat) for configuration.
+Use **Explain with AI** (`Cmd+L`) to understand queries, **Optimize with AI** (`Cmd+Option+L`) for performance suggestions, or click "Ask AI to Fix" in error dialogs. See [AI Assistant](/features/ai-assistant) for configuration.
 
 ## SQL Files
 

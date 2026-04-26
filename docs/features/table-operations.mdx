@@ -186,6 +186,20 @@ Click the database name in the toolbar to browse databases on the current connec
   />
 </Frame>
 
+### Drop Database
+
+Drop a database from the database switcher (shipped v0.33.0). Three entry points:
+
+- Right-click a database and select **Drop Database**
+- Select a database and click the trash icon in the switcher toolbar
+- Select a database and press `Delete`
+
+A confirmation dialog appears with a destructive (red) action button and the database name typed in the prompt. The current database cannot be dropped: switch to another one first.
+
+<Warning>
+Dropping a database is irreversible. Whether the action succeeds depends on the connected user's privileges (`DROP` on MySQL/MariaDB, `DROPDB` or owner on PostgreSQL). Permission errors surface inline.
+</Warning>
+
 ## MongoDB Collections
 
 ### Create Collection

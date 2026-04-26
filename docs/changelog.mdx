@@ -112,7 +112,7 @@ rss: true
 
   ### Bug Fixes
 
-  - Fix raw SQL injection via external URL scheme deeplinks — now requires user confirmation
+  - Fix raw SQL injection via external URL scheme deeplinks: now requires user confirmation
   - Fix MySQL prepared statements silently truncating columns larger than 64KB
   - Fix MSSQL error messages misattributed when multiple connections open simultaneously
   - Fix BigQuery filter injection via unescaped column names and unvalidated operators
@@ -130,7 +130,7 @@ rss: true
 <Update label="April 14, 2026" description="v0.31.5">
   ### Improvements
 
-  - **Keyboard Shortcuts**: Follow macOS HIG — Quick Switcher remapped to ⌘⇧O, Format Query to ⌘⇧L, AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) now wired to menu bar
+  - **Keyboard Shortcuts**: Follow macOS HIG. Quick Switcher remapped to ⌘⇧O, Format Query to ⌘⇧L, AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) now wired to menu bar
 
   ### Bug Fixes
 
@@ -165,9 +165,9 @@ rss: true
 
   ### Improvements
 
-  - **SQL Formatter**: Complete rewrite with token-based architecture — proper handling of JOINs, subqueries, CASE expressions, CTEs, window functions, and 15+ SQL constructs (#705)
-  - **Keyboard Shortcuts**: Updated to follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar. Format Query and Pagination now customizable.
-  - **Menu Bar**: Restructured per macOS HIG — `⌘N` opens connection list (#722), Help search restored, duplicates removed
+  - **SQL Formatter**: Complete rewrite with token-based architecture, with proper handling of JOINs, subqueries, CASE expressions, CTEs, window functions, and 15+ SQL constructs (#705)
+  - **Keyboard Shortcuts**: Updated to follow macOS HIG: `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar. Format Query and Pagination now customizable.
+  - **Menu Bar**: Restructured per macOS HIG: `⌘N` opens connection list (#722), Help search restored, duplicates removed
   - **UI Colors**: Standardized to macOS semantic colors across all error/success/warning indicators
 
   ### Bug Fixes
@@ -178,7 +178,7 @@ rss: true
   - Fixed UI layout breaks when toggling menus, panels, and inspectors (#702)
   - Fixed `⌘W` accidentally closing connection window instead of tab
   - Fixed tabs not saved before database switch, rollback failures now logged, filter validation improved (#707)
-  - Fixed Ollama AI chat streaming — responses were silently discarded
+  - Fixed Ollama AI chat streaming: responses were silently discarded
 </Update>
 
 <Update label="April 13, 2026" description="v0.31.2">
@@ -252,7 +252,7 @@ rss: true
   - Fixed cross-schema foreign key preview, edit, and navigation for PostgreSQL and MySQL (#644)
   - Fixed macOS HIG compliance: system colors, accessibility labels, theme tokens, localization
   - Fixed idle ping spin loop caused by exhausted AsyncStream iterator (#618)
-  - Skip exact row count for large tables — use database statistics estimate (#519)
+  - Skip exact row count for large tables: use database statistics estimate (#519)
 
   ### Improvements
 
