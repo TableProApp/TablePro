@@ -140,8 +140,10 @@ impl App {
         sender: ComponentSender<Self>,
     ) {
         let (columns, driver_id, snapshot) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().columns().to_vec(),
                 slot.controller.model().driver_id().to_string(),
@@ -197,8 +199,10 @@ impl App {
         sender: ComponentSender<Self>,
     ) {
         let (columns, driver_id, snapshot) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().columns().to_vec(),
                 slot.controller.model().driver_id().to_string(),
@@ -252,8 +256,10 @@ impl App {
         sender: ComponentSender<Self>,
     ) {
         let (columns, driver_id, snapshot) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().columns().to_vec(),
                 slot.controller.model().driver_id().to_string(),
@@ -295,8 +301,10 @@ impl App {
 
     pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {
         let (columns, driver_id, snapshot, table) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().columns().to_vec(),
                 slot.controller.model().driver_id().to_string(),

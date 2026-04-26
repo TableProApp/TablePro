@@ -26,8 +26,10 @@ impl App {
     /// the same tab via `AppMsg::RowsLoaded(tab_id, ...)`.
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table, offset, limit, sort, driver_id) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().schema().map(str::to_owned),
                 slot.controller.model().table().to_string(),
@@ -43,11 +45,11 @@ impl App {
             return;
         };
         let order_by = sort.and_then(|(idx, asc)| {
-            let tabs = self.browse_tabs.borrow();
-            let cols = tabs
-                .get(&tab_id)
-                .map(|s| s.controller.model().columns().to_vec())
-                .unwrap_or_default();
+            let tabs = self.workspace_tabs.borrow();
+            let cols = match tabs.get(&tab_id) {
+                Some(super::WorkspaceTab::Browse(s)) => s.controller.model().columns().to_vec(),
+                _ => Vec::new(),
+            };
             cols.get(idx).map(|c| {
                 let name = tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name);
                 let dir = if asc { "ASC" } else { "DESC" };
@@ -88,8 +90,10 @@ impl App {
 
     pub(super) fn fetch_browse_columns(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().schema().map(str::to_owned),
                 slot.controller.model().table().to_string(),
@@ -113,8 +117,10 @@ impl App {
 
     pub(super) fn fetch_browse_row_count(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table, driver_id) = {
-            let tabs = self.browse_tabs.borrow();
-            let Some(slot) = tabs.get(&tab_id) else { return };
+            let tabs = self.workspace_tabs.borrow();
+            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+                return;
+            };
             (
                 slot.controller.model().schema().map(str::to_owned),
                 slot.controller.model().table().to_string(),
@@ -189,8 +195,11 @@ impl App {
             return;
         };
         let result = {
-            let tabs = self.browse_tabs.borrow();
-            tabs.get(&active_id).and_then(|s| s.controller.model().snapshot())
+            let tabs = self.workspace_tabs.borrow();
+            match tabs.get(&active_id) {
+                Some(super::WorkspaceTab::Browse(s)) => s.controller.model().snapshot(),
+                _ => None,
+            }
         };
         let Some(result) = result else {
             self.show_toast(&crate::tr!("Nothing to export"));

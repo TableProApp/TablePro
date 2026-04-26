@@ -34,37 +34,34 @@ impl App {
         self.split_view.set_show_sidebar(true);
         self.disconnect_action.set_enabled(true);
         self.table_search.set_text("");
-        // Build Browse + Editor tab roots eagerly so the ViewSwitcher
-        // always shows both peers (single-tab switcher would be noise).
-        self.ensure_browse_root(sender.clone());
-        self.ensure_editor_page(sender.clone());
-        self.view_switcher_bar.set_reveal(true);
-        self.view_stack.set_visible_child_name("browse");
-        self.content_holder.set_content(Some(&self.view_stack));
+        // Build the unified workspace tab tree (Browse + Editor share one
+        // strip). Empty state shows "Select a table" until the user opens
+        // a tab via sidebar click or Ctrl+T.
+        self.ensure_workspace_root(sender.clone());
+        self.content_holder.set_content(Some(&self.workspace_outer_stack));
         self.table_names = tables.iter().map(|t| t.name.clone()).collect();
         tracing::info!(driver = %driver_id, table_count = tables.len(), "workspace ready");
         self.repopulate_sidebar(&tables);
         self.rebuild_schema_buffer();
         self.refresh_window_title();
-        // Restore browse tabs persisted from the prior session for this
-        // connection (if any) — Q4. Empty state otherwise.
+        // Restore tabs (browse + editor) persisted from the prior session
+        // for this connection.
         if let Some(connection_id) = database_service::instance().active_id() {
-            self.restore_browse_tabs(connection_id, sender.clone());
+            self.restore_workspace_tabs(connection_id, sender.clone());
         }
         sender.input(AppMsg::ReloadConnections);
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
-        // Tear down browse tabs first (also persists state) before we
-        // drop the connection — persist needs the active connection_id.
-        self.teardown_browse_tabs();
+        // Persist + tear down workspace tabs before dropping the
+        // connection (persist needs the active connection_id).
+        self.teardown_workspace_tabs();
         let svc = database_service::instance();
         if let Some(id) = svc.active_id() {
             svc.remove(id);
         } else {
             svc.clear_all();
         }
-        self.cancel_all_editor_runs();
         self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
         self.current_driver_id = None;
         self.read_only = false;
@@ -76,19 +73,6 @@ impl App {
         self.table_search.set_text("");
         self.sidebar_schemas.borrow_mut().clear();
         self.sidebar_factory.guard().clear();
-        // Tear down the Editor view-stack page so the next connection
-        // builds a fresh editor (with its own tabs / persisted state).
-        if let Some(root) = self.editor_root.take()
-            && self.editor_page_added.get()
-        {
-            self.view_stack.remove(&root);
-            self.editor_page_added.set(false);
-        }
-        self.editor_tab_view = None;
-        self.editor_tabs.borrow_mut().clear();
-        // Hide the ViewSwitcherBar so the welcome view occupies the full
-        // toolbar — the bar is only meaningful in the connected state.
-        self.view_switcher_bar.set_reveal(false);
         self.show_welcome_page(sender);
         tracing::info!("disconnected");
     }

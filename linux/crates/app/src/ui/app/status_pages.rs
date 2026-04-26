@@ -1,5 +1,7 @@
 use relm4::adw::prelude::*;
-use relm4::{ComponentController, ComponentSender, adw, gtk};
+use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
+
+use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
 
 use super::{App, AppMsg, UndoBatch, build_shortcuts_window};
 
@@ -54,15 +56,16 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
-    /// Context-sensitive Ctrl+W: closes the active tab in whichever
-    /// ViewStack page is visible (Browse or Editor). Falls back to
-    /// closing the window when neither has tabs.
-    pub(super) fn on_close_current(&mut self, sender: ComponentSender<Self>) {
-        match self.view_stack.visible_child_name().as_deref() {
-            Some("editor") => self.close_active_editor_tab(sender),
-            Some("browse") if !self.browse_tabs.borrow().is_empty() => self.close_active_browse_tab(sender),
-            _ => self.window.close(),
-        }
+    pub(super) fn on_show_history(&mut self, sender: ComponentSender<Self>) {
+        let dialog =
+            HistoryDialog::builder()
+                .launch(HistoryDialogInit)
+                .forward(sender.input_sender(), |out| match out {
+                    HistoryDialogOutput::OpenInNewTab(text) => AppMsg::OpenHistoryQuery(text),
+                    HistoryDialogOutput::ReplaceCurrentTabQuery(text) => AppMsg::ReplaceActiveTabQuery(text),
+                });
+        dialog.model().dialog().present(Some(&self.window));
+        self.history_dialog = Some(dialog);
     }
 
     pub(super) fn on_show_shortcuts(&self) {

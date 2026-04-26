@@ -1,9 +1,8 @@
 mod browse;
-mod browse_tabs;
 mod connection;
-mod editor_tabs;
 mod row_ops;
 mod status_pages;
+mod workspace_tabs;
 
 use std::sync::Arc;
 
@@ -21,7 +20,7 @@ use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::connect_dialog::ConnectDialog;
 use super::connection_row::{ConnectionRow, ConnectionRowOutput};
 use super::edit_dialog::EditDialog;
-use super::editor::{SqlEditor, SqlEditorInit, SqlEditorOutput, build_schema_buffer};
+use super::editor::{SqlEditor, build_schema_buffer};
 use super::history_dialog::HistoryDialog;
 use super::insert_dialog::InsertDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
@@ -47,31 +46,21 @@ pub struct App {
     row_op_spinner: gtk::Spinner,
     read_only_badge: gtk::Label,
     table_search: gtk::SearchEntry,
-    /// View-stack containing Browse + Editor pages.
-    view_stack: adw::ViewStack,
-    /// Bottom-of-headerbar tab strip. Revealed when connected, hidden
-    /// otherwise — keeps WindowTitle visible above for connection name.
-    view_switcher_bar: adw::ViewSwitcherBar,
-    /// `true` once the Editor page has been added to view_stack.
-    editor_page_added: std::cell::Cell<bool>,
-    /// Outer Stack inside the Browse view_stack page — swaps between
-    /// `"empty"` (AdwStatusPage "Select a table") and `"tabs"` (the
-    /// AdwTabOverview hosting BrowseTab sub-components).
-    browse_outer_stack: gtk::Stack,
-    /// AdwTabOverview wrapping Browse's AdwTabBar + AdwTabView. None
-    /// before connect; rebuilt fresh each connection (we tear down on
-    /// disconnect to drop all per-tab GTK state cleanly).
-    browse_root: Option<adw::TabOverview>,
-    browse_tab_view: Option<adw::TabView>,
-    /// Idempotency flag for `ensure_browse_root` (mirrors editor pattern).
-    browse_root_added: std::cell::Cell<bool>,
-    /// Per-tab browse state. HashMap for O(1) tab_id lookup; display
-    /// order is read from `tab_view.pages()` since HashMap is unordered.
-    browse_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, BrowseTabSlot>>>,
+    /// Outer Stack inside `content_holder` — swaps between `"empty"`
+    /// (AdwStatusPage "Select a table") and `"tabs"` (the unified
+    /// AdwTabOverview hosting both Browse and Editor sub-components).
+    workspace_outer_stack: gtk::Stack,
+    /// AdwTabOverview wrapping the unified AdwTabBar + AdwTabView.
+    /// Built lazily on connect; torn down on disconnect.
+    workspace_root: Option<adw::TabOverview>,
+    workspace_tab_view: Option<adw::TabView>,
+    /// Idempotency flag for `ensure_workspace_root`.
+    workspace_root_added: std::cell::Cell<bool>,
+    /// Per-tab state. Each entry is either a Browse or Editor tab.
+    /// HashMap for O(1) tab_id lookup; display order is read from
+    /// `tab_view.pages()` since HashMap is unordered.
+    workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
     dialog: Option<Controller<ConnectDialog>>,
-    editor_root: Option<adw::TabOverview>,
-    editor_tab_view: Option<adw::TabView>,
-    editor_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, EditorTabSlot>>>,
     schema_buffer: gtk::TextBuffer,
     insert_dialog: Option<Controller<InsertDialog>>,
     edit_dialog: Option<Controller<EditDialog>>,
@@ -93,6 +82,7 @@ pub struct App {
 }
 
 pub struct EditorTabSlot {
+    #[allow(dead_code)]
     pub id: Uuid,
     pub controller: Controller<SqlEditor>,
     pub page: adw::TabPage,
@@ -100,9 +90,6 @@ pub struct EditorTabSlot {
 }
 
 pub struct BrowseTabSlot {
-    /// Canonical tab identity — written into qdata and used as HashMap
-    /// key. Kept for parity with EditorTabSlot even if not read directly
-    /// (lookups are by HashMap key, not by reading the field).
     #[allow(dead_code)]
     pub id: Uuid,
     pub controller: Controller<BrowseTab>,
@@ -111,36 +98,41 @@ pub struct BrowseTabSlot {
     pub table: String,
 }
 
+/// A tab in the unified workspace — either a Browse table view or an
+/// SQL editor. Stored together in a single HashMap so the user-facing
+/// tab strip is one homogeneous list rather than two ViewSwitcher
+/// modes.
+pub enum WorkspaceTab {
+    Browse(BrowseTabSlot),
+    Editor(EditorTabSlot),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum OpenMode {
-    /// Smart switch: activate an existing tab for the given table if any,
-    /// otherwise replace the active tab with a fresh one for this table.
+    /// Smart switch: activate an existing Browse tab for the given table
+    /// if any, otherwise replace the active Browse tab with a fresh one
+    /// (or append if no Browse tab is currently active).
     SmartSwitchOrReplace,
     /// Always append a new tab even if the same table is already open.
     NewTab,
 }
 
-// Quark-keyed qdata avoids the type-unsafety contract of string-keyed
-// `set_data`/`data` (a foreign caller could collide with the same string
-// key for a different type). The Quark is interned once and cached.
-fn editor_tab_id_quark() -> glib::Quark {
+// One Quark keyed `tp-workspace-tab-id` covers all tabs in the unified
+// workspace. We look up the WorkspaceTab from the HashMap to discover
+// kind — qdata only carries identity.
+fn workspace_tab_id_quark() -> glib::Quark {
     static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
-    *QUARK.get_or_init(|| glib::Quark::from_str("tp-editor-tab-id"))
+    *QUARK.get_or_init(|| glib::Quark::from_str("tp-workspace-tab-id"))
 }
 
-fn browse_tab_id_quark() -> glib::Quark {
-    static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
-    *QUARK.get_or_init(|| glib::Quark::from_str("tp-browse-tab-id"))
-}
-
-pub(super) fn write_browse_tab_id(page: &adw::TabPage, id: Uuid) {
+pub(super) fn write_workspace_tab_id(page: &adw::TabPage, id: Uuid) {
     unsafe {
-        page.set_qdata(browse_tab_id_quark(), id);
+        page.set_qdata(workspace_tab_id_quark(), id);
     }
 }
 
-pub(super) fn read_browse_tab_id(page: &adw::TabPage) -> Option<Uuid> {
-    unsafe { page.qdata::<Uuid>(browse_tab_id_quark()).map(|p| *p.as_ref()) }
+pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
+    unsafe { page.qdata::<Uuid>(workspace_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
 #[derive(Debug)]
@@ -177,15 +169,12 @@ pub enum AppMsg {
     ConnectionsLoaded(Vec<SavedConnection>),
     OpenSaved(SavedConnection),
     DeleteConnection(Uuid),
-    OpenEditor,
+    /// "+ New query" button or Ctrl+T → append a new editor tab.
     NewEditorTab,
-    /// Context-sensitive close — closes active tab in whichever
-    /// ViewStack page is visible (Browse or Editor).
-    CloseCurrent,
-    EditorTabClosed(Uuid),
+    /// Ctrl+W → close active workspace tab (browse or editor).
+    CloseActiveWorkspaceTab,
     EditorTabRunStateChanged(Uuid, bool),
     EditorTabQueryChanged(Uuid, String),
-    EditorTabsChanged,
     ShowHistory,
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
@@ -217,22 +206,21 @@ pub enum AppMsg {
         row_position: u32,
     },
 
-    // ── Multi-tab Browse routing ─────────────────────────────────────
+    // ── Workspace tab routing ────────────────────────────────────────
     /// BrowseTab sub-component asked for its current page to be fetched.
     FetchBrowsePage(Uuid),
     /// BrowseTab needs schema columns.
     FetchBrowseColumns(Uuid),
     /// BrowseTab needs the row count.
     FetchBrowseRowCount(Uuid),
-    /// BrowseTab emitted a state change worth persisting.
-    BrowseStateChanged,
-    /// BrowseTab columns arrived; rebuild the editor schema buffer
-    /// (union across all open browse tabs + sidebar table_names).
-    BrowseSchemaWordsChanged,
-    /// User clicked the close-X on a Browse tab page.
-    BrowseTabClosed(Uuid),
-    /// Drag-reorder / selection change in the Browse tab strip.
-    BrowseTabsChanged,
+    /// Any browse tab's columns changed; rebuild editor schema buffer.
+    WorkspaceSchemaWordsChanged,
+    /// User clicked the close-X on any workspace tab.
+    WorkspaceTabClosed(Uuid),
+    /// Drag-reorder / selection change / browse-tab-state-changed —
+    /// triggers persistence (writes the current display order + each
+    /// slot's state to workspace_state.json).
+    WorkspaceTabsChanged,
     /// Show insert dialog scoped to a specific browse tab.
     ShowInsertDialog {
         tab_id: Uuid,
@@ -584,38 +572,23 @@ impl SimpleComponent for App {
         popover_content.append(&scroll);
         widgets.connections_popover.set_child(Some(&popover_content));
 
-        // Browse outer stack: swaps between an "empty" StatusPage shown
-        // when no browse tabs are open, and "tabs" hosting the
-        // AdwTabOverview wrapping AdwTabBar + AdwTabView. The actual
-        // tab tree (browse_root) is built lazily on connect by
-        // `ensure_browse_root` in app/browse_tabs.rs — at this point we
-        // only register a placeholder so the view_stack has a "browse"
-        // page named for the ViewSwitcher.
-        let browse_outer_stack = gtk::Stack::builder()
+        // Workspace outer stack: swaps between an empty StatusPage
+        // ("Select a table") when no tabs are open and the unified
+        // AdwTabOverview hosting both Browse and Editor tabs. The
+        // tab tree itself is built lazily on connect via
+        // `ensure_workspace_root` in app/workspace_tabs.rs.
+        let workspace_outer_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
             .build();
-        let browse_empty_page = adw::StatusPage::builder()
+        let workspace_empty_page = adw::StatusPage::builder()
             .icon_name(StatusKind::Info.icon())
             .title(crate::tr!("Select a table"))
-            .description(crate::tr!("Pick a table from the sidebar to load its rows."))
+            .description(crate::tr!(
+                "Pick a table from the sidebar, or press Ctrl+T to open a query editor."
+            ))
             .build();
-        browse_outer_stack.add_named(&browse_empty_page, Some("empty"));
-        browse_outer_stack.set_visible_child_name("empty");
-
-        let view_stack = adw::ViewStack::new();
-        let browse_page = view_stack.add_titled_with_icon(
-            &browse_outer_stack,
-            Some("browse"),
-            &crate::tr!("Browse"),
-            "view-grid-symbolic",
-        );
-        let _ = browse_page;
-
-        // ViewSwitcherBar lives inside content_holder so it sits only
-        // above the content column, not above the sidebar. Sidebar runs
-        // full-height alongside (Files / Builder / Music pattern).
-        let view_switcher_bar = adw::ViewSwitcherBar::builder().stack(&view_stack).reveal(false).build();
-        widgets.content_holder.add_top_bar(&view_switcher_bar);
+        workspace_outer_stack.add_named(&workspace_empty_page, Some("empty"));
+        workspace_outer_stack.set_visible_child_name("empty");
 
         let disconnect_action = install_window_actions(&widgets.window, sender.clone());
         install_window_shortcuts(&widgets.window);
@@ -647,18 +620,12 @@ impl SimpleComponent for App {
             row_op_spinner: widgets.row_op_spinner.clone(),
             read_only_badge: widgets.read_only_badge.clone(),
             table_search: widgets.table_search.clone(),
-            view_stack,
-            view_switcher_bar,
-            editor_page_added: std::cell::Cell::new(false),
-            browse_outer_stack,
-            browse_root: None,
-            browse_tab_view: None,
-            browse_root_added: std::cell::Cell::new(false),
-            browse_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
+            workspace_outer_stack,
+            workspace_root: None,
+            workspace_tab_view: None,
+            workspace_root_added: std::cell::Cell::new(false),
+            workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
             dialog: None,
-            editor_root: None,
-            editor_tab_view: None,
-            editor_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
             schema_buffer: build_schema_buffer(),
             insert_dialog: None,
             edit_dialog: None,
@@ -723,10 +690,10 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowsePage(tab_id) => self.fetch_browse_page(tab_id, sender),
             AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
-            AppMsg::BrowseStateChanged | AppMsg::BrowseTabsChanged => self.persist_browse_state(),
-            AppMsg::BrowseSchemaWordsChanged => self.rebuild_schema_buffer(),
-            AppMsg::BrowseTabClosed(id) => self.close_browse_tab_by_id(id, sender),
-            AppMsg::CloseCurrent => self.on_close_current(sender),
+            AppMsg::WorkspaceTabsChanged => self.persist_workspace_state(),
+            AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
+            AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
+            AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             AppMsg::ShowInsertDialog {
                 tab_id,
@@ -763,9 +730,7 @@ impl SimpleComponent for App {
                     self.show_toast(&label);
                 }
                 // Refetch only if the originating tab is still alive (Q10).
-                if self.browse_tabs.borrow().contains_key(&tab_id) {
-                    self.dispatch_to_tab(tab_id, BrowseTabInput::Refresh);
-                }
+                self.dispatch_to_tab(tab_id, BrowseTabInput::Refresh);
             }
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ExecuteUndo(batch) => {
@@ -787,18 +752,11 @@ impl SimpleComponent for App {
                 let conns = connections;
                 self.on_connections_loaded(&conns, sender);
             }
-            AppMsg::OpenEditor => self.on_open_editor(sender),
             AppMsg::NewEditorTab => self.append_editor_tab(None, sender),
-            AppMsg::EditorTabClosed(id) => self.close_editor_tab_by_id(id, sender),
             AppMsg::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
             AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
-            AppMsg::EditorTabsChanged => {
-                self.rebuild_schema_buffer();
-                self.persist_editor_state();
-            }
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::OpenHistoryQuery(text) => {
-                self.on_open_editor(sender.clone());
                 self.append_editor_tab(Some(text), sender);
             }
             AppMsg::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
@@ -1028,52 +986,6 @@ fn qualified_label(schema: Option<&str>, table: &str) -> String {
     }
 }
 
-fn default_tab_label(n: usize) -> String {
-    crate::tr!("Query {n}").replace("{n}", &n.to_string())
-}
-
-fn create_editor_tab_slot(
-    tab_view: &adw::TabView,
-    schema_buffer: &gtk::TextBuffer,
-    initial_query: Option<String>,
-    label: &str,
-    sender: &ComponentSender<App>,
-) -> EditorTabSlot {
-    let query = initial_query.clone().unwrap_or_default();
-    let tab_id = Uuid::new_v4();
-    let editor = SqlEditor::builder()
-        .launch(SqlEditorInit {
-            schema_buffer: schema_buffer.clone(),
-            initial_query,
-        })
-        .forward(sender.input_sender(), move |out| match out {
-            SqlEditorOutput::RunStateChanged(running) => AppMsg::EditorTabRunStateChanged(tab_id, running),
-            SqlEditorOutput::QueryChanged(text) => AppMsg::EditorTabQueryChanged(tab_id, text),
-        });
-    let page = tab_view.append(editor.widget());
-    page.set_title(label);
-    page.set_tooltip(label);
-    write_tab_id(&page, tab_id);
-    EditorTabSlot {
-        id: tab_id,
-        controller: editor,
-        page,
-        query,
-    }
-}
-
-fn write_tab_id(page: &adw::TabPage, id: Uuid) {
-    unsafe {
-        page.set_qdata(editor_tab_id_quark(), id);
-    }
-}
-
-fn read_tab_id(page: &adw::TabPage) -> Option<Uuid> {
-    // GObject returns null (None here) for unknown qdata keys, so a foreign
-    // TabPage that was never tagged simply yields None.
-    unsafe { page.qdata::<Uuid>(editor_tab_id_quark()).map(|p| *p.as_ref()) }
-}
-
 fn primary_menu_model() -> gio::Menu {
     let menu = gio::Menu::new();
     let connection_section = gio::Menu::new();
@@ -1118,9 +1030,9 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("shortcuts", AppMsg::ShowShortcuts),
         input_action!("about", AppMsg::ShowAbout),
         quit,
-        input_action!("open-editor", AppMsg::OpenEditor),
+        input_action!("open-editor", AppMsg::NewEditorTab),
         input_action!("disconnect", AppMsg::Disconnect),
-        input_action!("close-current", AppMsg::CloseCurrent),
+        input_action!("close-current", AppMsg::CloseActiveWorkspaceTab),
         input_action!("preferences", AppMsg::ShowPreferences),
         input_action!("show-history", AppMsg::ShowHistory),
         input_action!("refresh-page", AppMsg::RefreshPage),
