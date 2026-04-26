@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Miscellaneous HIG view cleanup: use ClipboardService, remove deprecated cornerRadius, fix window tabbing state, consistent double-click detection
 - Added runtime guard against DriverPlugin ABI mismatch for user-installed plugins
 - Hardened SQL parameter escaping in plugin fallback to handle control characters and edge-case numeric formats
 - Query parameter conversion handles Bool, Date, Data, and non-finite numbers correctly

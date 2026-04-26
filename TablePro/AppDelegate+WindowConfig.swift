@@ -2,8 +2,6 @@
 //  AppDelegate+WindowConfig.swift
 //  TablePro
 //
-//  Window lifecycle, styling, dock menu, and auto-reconnect
-//
 
 import AppKit
 import os
@@ -399,7 +397,7 @@ extension AppDelegate {
     }
 
     func closeRestoredMainWindows() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             for window in NSApp.windows where self?.isMainWindow(window) == true {
                 window.close()
             }

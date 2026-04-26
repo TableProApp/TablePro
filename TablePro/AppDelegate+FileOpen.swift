@@ -2,8 +2,6 @@
 //  AppDelegate+FileOpen.swift
 //  TablePro
 //
-//  URL and file open handling dispatched from application(_:open:)
-//
 
 import AppKit
 import os
@@ -239,12 +237,14 @@ extension AppDelegate {
         }
 
         let hadExistingMain = NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
+        let savedTabbing = NSWindow.allowsAutomaticWindowTabbing
         if hadExistingMain && !AppSettingsManager.shared.tabs.groupAllConnectionTabs {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
 
         let deeplinkPayload = EditorTabPayload(connectionId: connection.id)
         WindowManager.shared.openTab(payload: deeplinkPayload)
+        NSWindow.allowsAutomaticWindowTabbing = savedTabbing
 
         Task {
             do {

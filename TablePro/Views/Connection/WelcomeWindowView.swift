@@ -388,9 +388,7 @@ struct WelcomeWindowView: View {
         .padding(.vertical, 4)
         .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture(count: 2).onEnded {
-            vm.connectToLinkedConnection(linked)
-        })
+        .background { DoubleClickDetector { vm.connectToLinkedConnection(linked) } }
         .listRowSeparator(.hidden)
         .contextMenu {
             Button {

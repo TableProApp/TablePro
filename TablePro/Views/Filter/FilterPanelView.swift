@@ -28,7 +28,6 @@ struct FilterPanelView: View {
             filterHeader
 
             Divider()
-                .foregroundStyle(Color(nsColor: .separatorColor))
 
             if !filterState.filters.isEmpty {
                 filterList

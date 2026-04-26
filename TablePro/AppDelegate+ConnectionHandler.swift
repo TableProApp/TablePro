@@ -2,16 +2,12 @@
 //  AppDelegate+ConnectionHandler.swift
 //  TablePro
 //
-//  Database URL and SQLite file open handlers with cold-start queuing
-//
 
 import AppKit
 import os
 
 private let connectionLogger = Logger(subsystem: "com.TablePro", category: "ConnectionHandler")
 
-/// Typed queue entry for URLs waiting on the SwiftUI window system.
-/// Replaces the separate `queuedDatabaseURLs` and `queuedSQLiteFileURLs` arrays.
 enum QueuedURLEntry {
     case databaseURL(URL)
     case sqliteFile(URL)
@@ -321,11 +317,13 @@ extension AppDelegate {
 
     private func openNewConnectionWindow(for connection: DatabaseConnection) {
         let hadExistingMain = NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
+        let savedTabbing = NSWindow.allowsAutomaticWindowTabbing
         if hadExistingMain && !AppSettingsManager.shared.tabs.groupAllConnectionTabs {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
         let payload = EditorTabPayload(connectionId: connection.id)
         WindowManager.shared.openTab(payload: payload)
+        NSWindow.allowsAutomaticWindowTabbing = savedTabbing
     }
 
     // MARK: - Post-Connect Actions

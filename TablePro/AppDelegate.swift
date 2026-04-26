@@ -2,8 +2,6 @@
 //  AppDelegate.swift
 //  TablePro
 //
-//  Window configuration using AppKit-native approach
-//
 
 import AppKit
 import os
@@ -21,43 +19,20 @@ internal extension URL {
     }
 }
 
-/// AppDelegate handles window lifecycle events using proper AppKit patterns.
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Track windows that have been configured to avoid re-applying styles
     var configuredWindows = Set<ObjectIdentifier>()
-
-    /// SQL files queued until a database connection is active (drained on .databaseDidConnect)
     var queuedFileURLs: [URL] = []
-
-    /// Database URL and SQLite file entries queued until the SwiftUI window system is ready
     var queuedURLEntries: [QueuedURLEntry] = []
-
-    /// True while handling a file-open event — suppresses welcome window
     var isHandlingFileOpen = false
-
-    /// Counter for outstanding suppressions; welcome window is suppressed while > 0
     var fileOpenSuppressionCount = 0
-
-    /// True while a queued URL polling task is active — prevents duplicate pollers
     var isProcessingQueuedURLs = false
-
-    /// True while auto-reconnect is in progress at startup
     var isAutoReconnecting = false
-
-    /// ConnectionIds currently being connected from URL handlers.
-    /// Prevents duplicate connections when the same URL is opened twice rapidly.
     var connectingURLConnectionIds = Set<UUID>()
-
-    /// Normalized param keys for URLs currently being connected.
-    /// Catches duplicates even before connectToSession creates the session.
     var connectingURLParamKeys = Set<String>()
-
-    /// File paths currently being connected from file-open handlers.
-    /// Prevents duplicate connections when the same file is opened twice rapidly.
     var connectingFilePaths = Set<String>()
 
     // MARK: - NSApplicationDelegate

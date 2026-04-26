@@ -12,20 +12,9 @@ struct SQLPreviewSheet: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            HStack {
-                Text("Generated WHERE Clause")
-                    .font(.body.weight(.semibold))
-                Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.large)
-                        .frame(width: 24, height: 24)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(String(localized: "Close"))
-                .help(String(localized: "Close preview"))
-            }
+            Text("Generated WHERE Clause")
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView {
                 Text(sql.isEmpty ? "(no conditions)" : sql)
