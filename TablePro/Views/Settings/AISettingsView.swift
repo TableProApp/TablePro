@@ -15,6 +15,7 @@ struct AISettingsView: View {
     @State private var addingProviderType: AIProviderType?
     @State private var pendingDeleteID: UUID?
     @State private var copilotService = CopilotService.shared
+    @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
         Form {
@@ -28,6 +29,10 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .task { refreshKeyAvailability() }
+        .onChange(of: settings.providers.map(\.id)) {
+            refreshKeyAvailability()
+        }
         .sheet(item: editingProviderBinding) { provider in
             AIProviderDetailSheet(
                 provider: provider,
@@ -301,10 +306,9 @@ struct AISettingsView: View {
             if provider.type == .custom {
                 return customStatusText(for: provider)
             }
-            let key = AIKeyStorage.shared.loadAPIKey(for: provider.id) ?? ""
-            return key.isEmpty
-                ? String(localized: "Not configured")
-                : String(localized: "API key set")
+            return providersWithKey.contains(provider.id)
+                ? String(localized: "API key set")
+                : String(localized: "Not configured")
         case .none:
             if provider.type == .ollama {
                 let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
@@ -331,14 +335,23 @@ struct AISettingsView: View {
     }
 
     private func customStatusText(for provider: AIProviderConfig) -> String {
-        let key = AIKeyStorage.shared.loadAPIKey(for: provider.id) ?? ""
-        if !key.isEmpty {
+        if providersWithKey.contains(provider.id) {
             return String(localized: "API key set")
         }
         if let host = URL(string: provider.endpoint)?.host, !host.isEmpty {
             return host
         }
         return String(localized: "Not configured")
+    }
+
+    private func refreshKeyAvailability() {
+        var ids: Set<UUID> = []
+        for provider in settings.providers where provider.type.authStyle == .apiKey {
+            if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
+                ids.insert(provider.id)
+            }
+        }
+        providersWithKey = ids
     }
 
     // MARK: - Mutations
@@ -367,6 +380,7 @@ struct AISettingsView: View {
         }
 
         AIProviderFactory.invalidateCache(for: provider.id)
+        refreshKeyAvailability()
 
         if isNew, settings.activeProviderID == nil {
             settings.activeProviderID = provider.id
@@ -380,6 +394,7 @@ struct AISettingsView: View {
         if settings.activeProviderID == id {
             settings.activeProviderID = nil
         }
+        refreshKeyAvailability()
     }
 }
 
