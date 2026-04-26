@@ -515,7 +515,8 @@ public extension PluginDatabaseDriver {
                 nextOffset: result.rows.count
             )
         }
-        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET 0"
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET 0"
         let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
         let hasMore = result.rows.count > limit
         let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
@@ -530,7 +531,8 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult {
-        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET \(offset)"
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET \(offset)"
         let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
         let hasMore = result.rows.count > limit
         let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
@@ -545,7 +547,8 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchRowCount(query: String) async throws -> Int {
-        let result = try await execute(query: "SELECT COUNT(*) FROM (\(query)) _t")
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let result = try await execute(query: "SELECT COUNT(*) FROM (\(sanitized)) _t")
         guard let firstRow = result.rows.first, let value = firstRow.first, let countStr = value else {
             return 0
         }
@@ -553,7 +556,16 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        try await execute(query: "\(query) LIMIT \(limit) OFFSET \(offset)")
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        return try await execute(query: "\(sanitized) LIMIT \(limit) OFFSET \(offset)")
+    }
+
+    private static func sanitizeQueryForWrapping(_ query: String) -> String {
+        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while result.hasSuffix(";") {
+            result = String(result.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {
