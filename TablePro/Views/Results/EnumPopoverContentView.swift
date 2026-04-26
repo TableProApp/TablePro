@@ -45,13 +45,14 @@ struct EnumPopoverContentView: View {
 
             List {
                 ForEach(filteredValues, id: \.self) { value in
-                    rowLabel(for: value)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { commitValue(value) }
-                        .listRowInsets(EdgeInsets(
-                            top: 2, leading: 6, bottom: 2, trailing: 6
-                        ))
+                    Button { commitValue(value) } label: {
+                        rowLabel(for: value)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(EdgeInsets(
+                        top: 2, leading: 6, bottom: 2, trailing: 6
+                    ))
                 }
             }
             .listStyle(.plain)

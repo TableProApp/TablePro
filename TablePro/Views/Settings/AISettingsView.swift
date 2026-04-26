@@ -118,24 +118,26 @@ struct AISettingsView: View {
                 emptyProvidersRow
             } else {
                 ForEach(settings.providers) { provider in
-                    providerRow(provider)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                    Button {
+                        editingProviderID = provider.id
+                    } label: {
+                        providerRow(provider)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        Button(String(localized: "Edit")) {
                             editingProviderID = provider.id
                         }
-                        .contextMenu {
-                            Button(String(localized: "Edit")) {
-                                editingProviderID = provider.id
-                            }
-                            Button(String(localized: "Set as Active")) {
-                                settings.activeProviderID = provider.id
-                            }
-                            .disabled(settings.activeProviderID == provider.id)
-                            Divider()
-                            Button(String(localized: "Remove"), role: .destructive) {
-                                pendingDeleteID = provider.id
-                            }
+                        Button(String(localized: "Set as Active")) {
+                            settings.activeProviderID = provider.id
                         }
+                        .disabled(settings.activeProviderID == provider.id)
+                        Divider()
+                        Button(String(localized: "Remove"), role: .destructive) {
+                            pendingDeleteID = provider.id
+                        }
+                    }
                 }
             }
             addProviderMenu

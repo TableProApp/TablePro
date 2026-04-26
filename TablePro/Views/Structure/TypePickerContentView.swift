@@ -65,13 +65,14 @@ struct TypePickerContentView: View {
                 ForEach(visibleCategories, id: \.name) { category in
                     Section(header: Text(category.name)) {
                         ForEach(category.types, id: \.self) { type in
-                            typeRow(type)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .contentShape(Rectangle())
-                                .onTapGesture { commitType(type) }
-                                .listRowInsets(EdgeInsets(
-                                    top: 2, leading: 6, bottom: 2, trailing: 6
-                                ))
+                            Button { commitType(type) } label: {
+                                typeRow(type)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .listRowInsets(EdgeInsets(
+                                top: 2, leading: 6, bottom: 2, trailing: 6
+                            ))
                         }
                     }
                 }

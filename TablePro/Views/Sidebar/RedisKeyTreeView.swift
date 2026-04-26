@@ -66,36 +66,38 @@ internal struct RedisKeyTreeView: View {
     }
 
     private func namespaceLabel(name: String, keyCount: Int, fullPrefix: String) -> some View {
-        HStack {
-            Label(name, systemImage: "folder")
-                .foregroundStyle(.primary)
-            Spacer()
-            Text("\(keyCount)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(.quaternary, in: Capsule())
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             onSelectNamespace?(fullPrefix)
+        } label: {
+            HStack {
+                Label(name, systemImage: "folder")
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("\(keyCount)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+            }
         }
+        .buttonStyle(.plain)
     }
 
     private func keyLabel(name: String, fullKey: String, keyType: String) -> some View {
-        HStack {
-            Label(name, systemImage: keyTypeIcon(keyType))
-                .foregroundStyle(.primary)
-            Spacer()
-            Text(keyType)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button {
             onSelectKey?(fullKey, keyType)
+        } label: {
+            HStack {
+                Label(name, systemImage: keyTypeIcon(keyType))
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text(keyType)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
+        .buttonStyle(.plain)
     }
 
     private func keyTypeIcon(_ type: String) -> String {

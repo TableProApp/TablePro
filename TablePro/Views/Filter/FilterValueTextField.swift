@@ -306,23 +306,24 @@ struct FilterValueTextField: NSViewRepresentable {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.items.enumerated()), id: \.offset) { index, item in
-                            Text(item)
-                                .font(.callout)
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(
-                                    state.selectedIndex == index
-                                        ? Color.accentColor.opacity(0.18)
-                                        : Color.clear
-                                )
-                                .cornerRadius(4)
-                                .contentShape(Rectangle())
-                                .id(index)
-                                .onTapGesture {
-                                    onSelect(item)
-                                }
+                            Button {
+                                onSelect(item)
+                            } label: {
+                                Text(item)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        state.selectedIndex == index
+                                            ? Color.accentColor.opacity(0.18)
+                                            : Color.clear
+                                    )
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
+                            .buttonStyle(.plain)
+                            .id(index)
                         }
                     }
                     .padding(4)

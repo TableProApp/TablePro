@@ -30,32 +30,33 @@ struct ThemePreviewCard: View {
     // MARK: - Standard Card
 
     private var standardCard: some View {
-        VStack(spacing: 4) {
-            thumbnail
-                .frame(width: 160, height: 100)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isActive ? Color.accentColor : Color.clear, lineWidth: 2.5)
-                )
-                .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
+        Button(action: onSelect) {
+            VStack(spacing: 4) {
+                thumbnail
+                    .frame(width: 160, height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(isActive ? Color.accentColor : Color.clear, lineWidth: 2.5)
+                    )
+                    .shadow(color: .black.opacity(0.1), radius: 2, y: 1)
 
-            VStack(spacing: 1) {
-                Text(theme.name)
-                    .font(.subheadline)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
+                VStack(spacing: 1) {
+                    Text(theme.name)
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
 
-                Text(theme.isBuiltIn
-                    ? String(localized: "Built-in")
-                    : String(localized: "Custom"))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.secondary)
+                    Text(theme.isBuiltIn
+                        ? String(localized: "Built-in")
+                        : String(localized: "Custom"))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
+        .buttonStyle(.plain)
         .frame(width: 160)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
     }
 
     // MARK: - Compact Card

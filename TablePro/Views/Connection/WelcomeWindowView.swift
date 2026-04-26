@@ -274,7 +274,6 @@ struct WelcomeWindowView: View {
             .listStyle(.inset)
             .scrollContentBackground(.hidden)
             .focused($focus, equals: .connectionList)
-            .environment(\.defaultMinListRowHeight, 44)
             .onKeyPress(.return) {
                 vm.connectSelectedConnections()
                 return .handled
