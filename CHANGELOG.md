@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Plugin auto-update: outdated plugins are silently updated from the registry at launch, with an actionable alert if auto-update fails
+- Plugin update detection in Settings: update badges on installed plugins, one-click update from both Installed and Browse tabs
 - Query parameters: write `:name` placeholders in SQL, fill values in an inline panel, execute with native prepared statement binding
 - AI provider registry for extensible provider management
 - GitHub Copilot integration: inline suggestions, chat via LSP conversation protocol, OAuth sign-in, schema context

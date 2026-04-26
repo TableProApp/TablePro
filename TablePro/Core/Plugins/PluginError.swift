@@ -57,4 +57,9 @@ enum PluginError: LocalizedError {
             return String(format: String(localized: "Plugin '%@' has an invalid descriptor: %@"), pluginId, reason)
         }
     }
+
+    var isOutdated: Bool {
+        if case .pluginOutdated = self { return true }
+        return false
+    }
 }

@@ -80,4 +80,31 @@ extension PluginManager {
 
         return entry
     }
+
+    func updateFromRegistry(
+        _ registryPlugin: RegistryPlugin,
+        existingPluginLoaded: Bool = true,
+        progress: @escaping @MainActor @Sendable (Double) -> Void
+    ) async throws -> PluginEntry {
+        if let minAppVersion = registryPlugin.minAppVersion {
+            let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            if appVersion.compare(minAppVersion, options: .numeric) == .orderedAscending {
+                throw PluginError.incompatibleWithCurrentApp(minimumRequired: minAppVersion)
+            }
+        }
+
+        if let minKit = registryPlugin.minPluginKitVersion, minKit > Self.currentPluginKitVersion {
+            throw PluginError.incompatibleVersion(required: minKit, current: Self.currentPluginKitVersion)
+        }
+
+        replaceExistingPlugin(bundleId: registryPlugin.id)
+
+        let entry = try await installFromRegistry(registryPlugin, progress: progress)
+
+        if existingPluginLoaded {
+            needsRestartStorage = true
+        }
+
+        return entry
+    }
 }

@@ -53,7 +53,7 @@ final class PluginManager {
         }
     }
 
-    internal(set) var rejectedPlugins: [(name: String, reason: String)] = []
+    internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
     private static let needsRestartKey = "com.TablePro.needsRestart"
 
@@ -114,6 +114,15 @@ final class PluginManager {
         return metadata.version
     }
 
+    nonisolated private static func readRegistryPluginId(for pluginURL: URL) -> String? {
+        let url = metadataURL(for: pluginURL)
+        guard let data = try? Data(contentsOf: url),
+              let metadata = try? JSONDecoder().decode(RegistryMetadata.self, from: data) else {
+            return nil
+        }
+        return metadata.pluginId
+    }
+
     func saveRegistryMetadata(version: String, pluginId: String, pluginURL: URL) {
         let metadata = RegistryMetadata(version: version, pluginId: pluginId)
         let url = Self.metadataURL(for: pluginURL)
@@ -153,6 +162,9 @@ final class PluginManager {
         discoverAllPlugins()
         let pending = pendingPluginURLs
         Task {
+            if !self.rejectedPlugins.isEmpty {
+                await self.autoUpdateRejectedPlugins()
+            }
             let validated = await Self.validateAndLoadBundles(pending)
             self.pendingPluginURLs.removeAll()
             self.needsRestartStorage = false
@@ -362,9 +374,14 @@ final class PluginManager {
             } catch {
                 Self.logger.error("Failed to discover plugin at \(itemURL.lastPathComponent): \(error.localizedDescription)")
                 if source == .userInstalled {
-                    rejectedPlugins.append((
+                    let bundle = Bundle(url: itemURL)
+                    rejectedPlugins.append(RejectedPlugin(
+                        url: itemURL,
+                        bundleId: bundle?.bundleIdentifier,
+                        registryId: Self.readRegistryPluginId(for: itemURL),
                         name: itemURL.deletingPathExtension().lastPathComponent,
-                        reason: error.localizedDescription
+                        reason: error.localizedDescription,
+                        isOutdated: (error as? PluginError)?.isOutdated ?? false
                     ))
                 }
             }

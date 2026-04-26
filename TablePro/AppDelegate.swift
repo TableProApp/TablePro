@@ -176,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handlePluginsRejected(_ notification: Notification) {
-        guard let rejected = notification.object as? [(name: String, reason: String)],
+        guard let rejected = notification.object as? [RejectedPlugin],
               !rejected.isEmpty else { return }
         let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
         Task {
@@ -186,15 +186,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 rejected.count
             )
             alert.informativeText = String(
-                format: String(localized: "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry."),
+                format: String(localized: "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings."),
                 details
             )
             alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "OK"))
+            alert.addButton(withTitle: String(localized: "Open Plugin Settings"))
+            alert.addButton(withTitle: String(localized: "Dismiss"))
+
+            let response: NSApplication.ModalResponse
             if let window = AlertHelper.resolveWindow(nil) {
-                alert.beginSheetModal(for: window)
+                response = await withCheckedContinuation { continuation in
+                    alert.beginSheetModal(for: window) { resp in
+                        continuation.resume(returning: resp)
+                    }
+                }
             } else {
-                alert.runModal()
+                response = alert.runModal()
+            }
+
+            if response == .alertFirstButtonReturn {
+                UserDefaults.standard.set(SettingsTab.plugins.rawValue, forKey: "selectedSettingsTab")
+                NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
             }
         }
     }
