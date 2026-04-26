@@ -1793,11 +1793,11 @@
 /* Begin XCBuildConfiguration section */
 		5AA136152F82611000ADCD58 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
@@ -1824,11 +1824,11 @@
 		};
 		5AA136162F82611000ADCD58 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = TableProWidgetExtension.entitlements;
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = TableProWidget/Info.plist;
@@ -1920,6 +1920,7 @@
 		};
 		5AB9F3E32F7C1C13001F3337 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -1977,12 +1978,12 @@
 		};
 		5AB9F3E52F7C1C13001F3337 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A72D6222F97A69500E2ADE0 /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -2025,7 +2026,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = TableProMobile/TableProMobileRelease.entitlements;
-				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
