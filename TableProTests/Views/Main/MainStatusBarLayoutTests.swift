@@ -22,7 +22,7 @@ struct MainStatusBarLayoutTests {
             columnVisibilityManager: colVisManager,
             allColumns: [],
             selectedRowIndices: [],
-            showStructure: .constant(false),
+            viewMode: .constant(.data),
             onFirstPage: {},
             onPreviousPage: {},
             onNextPage: {},

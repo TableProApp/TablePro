@@ -138,6 +138,6 @@ struct EditorTabPayloadTests {
         #expect(payload.databaseName == tab.databaseName)
         #expect(payload.initialQuery == tab.query)
         #expect(payload.isView == tab.isView)
-        #expect(payload.showStructure == tab.showStructure)
+        #expect(payload.showStructure == (tab.resultsViewMode == .structure))
     }
 }

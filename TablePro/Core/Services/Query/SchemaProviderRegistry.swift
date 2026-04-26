@@ -19,7 +19,8 @@ final class SchemaProviderRegistry {
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
 
-    private init() {}
+    /// Internal so `@testable` tests can construct isolated instances; production code uses `.shared`.
+    internal init() {}
 
     func provider(for connectionId: UUID) -> SQLSchemaProvider? {
         providers[connectionId]

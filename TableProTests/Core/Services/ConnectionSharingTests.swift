@@ -309,7 +309,7 @@ struct ConnectionSharingTests {
                 name: "Dev MySQL", host: "db.example.com", port: 3307,
                 database: "app_db", username: "dev_user", type: .mysql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -340,7 +340,7 @@ struct ConnectionSharingTests {
                 database: "main", username: "app", type: .postgresql,
                 sshConfig: ssh
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -371,7 +371,7 @@ struct ConnectionSharingTests {
                 database: "secure", username: "admin", type: .postgresql,
                 sslConfig: ssl
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -396,7 +396,7 @@ struct ConnectionSharingTests {
                 startupCommands: "SET statement_timeout = 30000;",
                 localOnly: true
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -417,7 +417,7 @@ struct ConnectionSharingTests {
                 database: "", username: "", type: .redis,
                 redisDatabase: 5
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -433,7 +433,7 @@ struct ConnectionSharingTests {
                 name: "Dev & Staging (v2)", host: "db.example.com", port: 5432,
                 database: "my database", username: "user@company.com", type: .postgresql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -451,7 +451,7 @@ struct ConnectionSharingTests {
                 name: "Bare", host: "localhost", port: 5432,
                 database: "", username: "", type: .postgresql
             )
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")
@@ -483,7 +483,7 @@ struct ConnectionSharingTests {
             ssh.jumpHosts = [
                 SSHJumpHost(
                     host: "jump1.com", port: 22, username: "admin",
-                    authMethod: .password, privateKeyPath: ""
+                    authMethod: .privateKey, privateKeyPath: "~/.ssh/jump_key"
                 )
             ]
 
@@ -508,7 +508,7 @@ struct ConnectionSharingTests {
                 additionalFields: ["schema": "public"]
             )
 
-            let link = ConnectionExportService.buildImportDeeplink(for: original)
+            let link = ConnectionExportService.buildImportDeeplink(for: original)!
             let url = URL(string: link)!
             guard case .importConnection(let parsed) = DeeplinkHandler.parse(url) else {
                 Issue.record("Failed to parse round-trip link")

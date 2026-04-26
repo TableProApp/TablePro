@@ -88,7 +88,7 @@ struct SessionStateFactoryTests {
             Issue.record("Expected at least one tab")
             return
         }
-        #expect(tab.showStructure == true)
+        #expect(tab.resultsViewMode == .structure)
     }
 
     @Test("Payload with isView sets isView and clears isEditable")
