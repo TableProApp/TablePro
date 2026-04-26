@@ -1,15 +1,15 @@
 ---
 title: AI Chat
-description: Built-in AI chat panel with support for Claude, OpenAI, Gemini, OpenRouter, Ollama, and custom endpoints
+description: Built-in AI panel for writing, explaining, and fixing SQL. Supports GitHub Copilot, Claude, OpenAI, Gemini, OpenRouter, Ollama, and any OpenAI-compatible endpoint.
 ---
 
 # AI Chat
 
-Built-in AI chat panel for writing, explaining, and fixing SQL. Supports Claude, OpenAI, Gemini, OpenRouter, Ollama, and custom OpenAI-compatible endpoints.
+Built-in AI panel for writing, explaining, and fixing SQL. Works with GitHub Copilot, Claude, OpenAI, Gemini, OpenRouter, Ollama, and any OpenAI-compatible endpoint.
 
-## Opening the Panel
+## Open the Panel
 
-Press `Cmd+Shift+L`, click the AI toolbar button, or go **View** > **Toggle AI Chat**.
+Press `Cmd+Shift+L`, click the AI toolbar button, or use **View** > **Toggle AI Chat**.
 
 <Frame caption="AI chat panel">
   <img
@@ -24,38 +24,37 @@ Press `Cmd+Shift+L`, click the AI toolbar button, or go **View** > **Toggle AI C
   />
 </Frame>
 
-## Chatting with AI
+## Use the Chat
 
-Type a question and press Enter. The AI receives your database type, schema, and current query, then responds with syntax-highlighted SQL code blocks. Each code block has **Copy** and **Insert to Editor** buttons. Token counts appear below each response.
+Type a question and press Return. The AI receives your database type, schema, and current query. Code blocks have **Copy** and **Insert to Editor** buttons. Token counts show below each response.
 
-<Frame caption="AI response with code block actions">
+<Frame caption="Code block actions">
   <img
     className="block dark:hidden"
     src="/images/ai-chat-code-block.png"
-    alt="AI response with code block actions"
+    alt="Code block actions"
   />
   <img
     className="hidden dark:block"
     src="/images/ai-chat-code-block-dark.png"
-    alt="AI response with code block actions"
+    alt="Code block actions"
   />
 </Frame>
 
-
-<Frame caption="Token usage display">
+<Frame caption="Token usage">
   <img
     className="block dark:hidden"
     src="/images/ai-chat-token-usage.png"
-    alt="Token usage display"
+    alt="Token usage"
   />
   <img
     className="hidden dark:block"
     src="/images/ai-chat-token-usage-dark.png"
-    alt="Token usage display"
+    alt="Token usage"
   />
 </Frame>
 
-Conversations auto-save and auto-title from your first message. Browse history, start new conversations, or delete old ones from the panel.
+Conversations auto-save and auto-title from your first message. Browse, clear, or start a new one from the panel header.
 
 <Frame caption="Conversation history">
   <img
@@ -70,7 +69,7 @@ Conversations auto-save and auto-title from your first message. Browse history, 
   />
 </Frame>
 
-Failed responses show **Retry**; successful ones show **Regenerate**. Responses stream in real-time. Click **Stop** to cancel.
+Failed responses show **Retry**. Successful ones show **Regenerate**. Click **Stop** to cancel a streaming response.
 
 <Frame caption="Streaming response">
   <img
@@ -85,49 +84,58 @@ Failed responses show **Retry**; successful ones show **Regenerate**. Responses 
   />
 </Frame>
 
-## Configuring AI Providers
+## Configure Providers
 
-Configure providers in **Settings** (`Cmd+,`) > **AI**. Ollama auto-detects on launch.
+Open **Settings** (`Cmd+,`) > **AI**. The tab is modeled on Xcode's Intelligence settings: a list of configured providers with one explicit active selection.
 
-### Adding a Provider
-
-Click **Add Provider**, choose a type, enter your API key, specify a model (or click **Fetch** to list available models), then **Test** to verify.
-
-<Frame caption="AI settings - provider configuration">
+<Frame caption="AI settings">
   <img
     className="block dark:hidden"
     src="/images/ai-chat-settings-provider.png"
-    alt="AI settings - provider configuration"
+    alt="AI settings"
   />
   <img
     className="hidden dark:block"
     src="/images/ai-chat-settings-provider-dark.png"
-    alt="AI settings - provider configuration"
+    alt="AI settings"
   />
 </Frame>
 
-API keys are stored in macOS Keychain, never in plain text.
+### Add a Provider
 
-### Feature Routing
+1. Click **Add Provider…** and pick a type
+2. Enter the API key (or sign in for Copilot)
+3. Pick a model (the list fetches automatically; click **Reload** if needed)
+4. Click **Test Connection**
 
-Route each feature (Chat, Explain, Optimize, Fix Error, Inline Suggestions) to a specific provider, or use the default.
+API keys are stored in the macOS Keychain. Ollama is detected at launch.
 
-<Frame caption="Feature routing configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/ai-chat-feature-routing.png"
-    alt="Feature routing configuration"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/ai-chat-feature-routing-dark.png"
-    alt="Feature routing configuration"
-  />
-</Frame>
+### Active Provider
 
-Configure context in **Settings** > **AI** > **Context**: schema (on), current query (on), query results (off), max tables (20).
+The active provider handles every AI request: chat, explain, optimize, fix, and inline suggestions. Switch it from the **Active Provider** picker at the top of the AI tab.
 
-Set a per-connection AI policy (Use Default, Always Allow, Ask Each Time, or Never) for sensitive connections.
+### GitHub Copilot
+
+Add Copilot like any other provider. The detail sheet runs GitHub's device-flow sign-in: enter the displayed code on github.com to authorize. The Copilot language server starts when you add a Copilot provider and stops when you remove it.
+
+## Inline Suggestions
+
+Toggle **Enable inline suggestions while typing** in the AI tab. The active provider drives the suggestions. Press `Tab` to accept, `Esc` to dismiss.
+
+With Copilot active, suggestions come from the Copilot inline-completion model. With any other active provider, suggestions come from chat completions.
+
+## Context
+
+Under **Settings** > **AI** > **Context**:
+
+- **Include database schema** (default on)
+- **Include current query** (default on)
+- **Include query results** (default off)
+- **Max schema tables** (default 20)
+
+## Privacy
+
+Set a per-connection AI policy in the connection form: **Use Default**, **Always Allow**, **Ask Each Time**, or **Never**. New connections default to **Ask Each Time**.
 
 <Frame caption="Per-connection AI policy">
   <img
@@ -142,39 +150,38 @@ Set a per-connection AI policy (Use Default, Always Allow, Ask Each Time, or Nev
   />
 </Frame>
 
-## Editor Integration
+## Editor Actions
 
 Right-click SQL in the editor for **Explain with AI** and **Optimize with AI**.
 
-<Frame caption="SQL editor context menu with AI items">
+<Frame caption="Editor context menu">
   <img
     className="block dark:hidden"
     src="/images/ai-chat-context-menu.png"
-    alt="SQL editor context menu with AI items"
+    alt="Editor context menu"
   />
   <img
     className="hidden dark:block"
     src="/images/ai-chat-context-menu-dark.png"
-    alt="SQL editor context menu with AI items"
+    alt="Editor context menu"
   />
 </Frame>
 
-Shortcuts: Toggle AI Chat (`Cmd+Shift+L`), Explain (`Cmd+L`), Optimize (`Cmd+Option+L`). Customizable in **Settings** > **Keyboard** > **AI**.
+Shortcuts: AI Chat (`Cmd+Shift+L`), Explain (`Cmd+L`), Optimize (`Cmd+Option+L`). Customize under **Settings** > **Keyboard** > **AI**.
 
-### Ask AI to Fix Errors
+### Fix Errors
 
-Query error dialogs include an **Ask AI to Fix** button. It opens the chat panel with the failed query and error message.
+Query error dialogs include an **Ask AI to Fix** button. It opens the chat with the failed query and error pre-filled.
 
-<Frame caption="Query error dialog with Ask AI to Fix button">
+<Frame caption="Ask AI to Fix">
   <img
     className="block dark:hidden"
     src="/images/ai-chat-fix-error.png"
-    alt="Query error dialog with Ask AI to Fix button"
+    alt="Ask AI to Fix"
   />
   <img
     className="hidden dark:block"
     src="/images/ai-chat-fix-error-dark.png"
-    alt="Query error dialog with Ask AI to Fix button"
+    alt="Ask AI to Fix"
   />
 </Frame>
-
