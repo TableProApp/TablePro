@@ -125,12 +125,18 @@ extension MainContentCoordinator {
             }
         }
 
+        let tabId = tabManager.tabs[index].id
+
         if level == .silent {
             Task {
                 let window = NSApp.keyWindow
-                let dangerousStatements = statements.filter { isDangerousQuery($0) }
-                if !dangerousStatements.isEmpty {
-                    guard await confirmDangerousQueries(dangerousStatements, window: window) else { return }
+                if statements.count == 1 {
+                    guard await confirmDangerousQueryIfNeeded(statements[0], window: window) else { return }
+                } else {
+                    let dangerousStatements = statements.filter { isDangerousQuery($0) }
+                    if !dangerousStatements.isEmpty {
+                        guard await confirmDangerousQueries(dangerousStatements, window: window) else { return }
+                    }
                 }
                 executeParameterizedAfterSafeMode(statements, parameters: parameters)
             }
@@ -154,8 +160,8 @@ extension MainContentCoordinator {
                 case .allowed:
                     executeParameterizedAfterSafeMode(statements, parameters: parameters)
                 case .blocked(let reason):
-                    if index < tabManager.tabs.count {
-                        tabManager.tabs[index].errorMessage = reason
+                    if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
+                        tabManager.tabs[idx].errorMessage = reason
                     }
                 }
             }

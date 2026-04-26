@@ -30,8 +30,8 @@ extension MainContentCoordinator {
         }
         if let firstMissing = missing.first {
             tabManager.tabs[index].errorMessage = String(
-                format: String(localized: "Missing value for parameter: :%@"),
-                firstMissing.name
+                format: String(localized: "Missing value for parameter: %@"),
+                ":\(firstMissing.name)"
             )
             return
         }
@@ -264,8 +264,8 @@ extension MainContentCoordinator {
         }
         if let firstMissing = missing.first {
             tabManager.tabs[index].errorMessage = String(
-                format: String(localized: "Missing value for parameter: :%@"),
-                firstMissing.name
+                format: String(localized: "Missing value for parameter: %@"),
+                ":\(firstMissing.name)"
             )
             return
         }
