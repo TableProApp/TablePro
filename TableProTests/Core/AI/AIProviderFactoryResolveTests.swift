@@ -60,6 +60,7 @@ struct AIProviderFactoryResolveTests {
     @Test("Returns ResolvedProvider for an active apiKey provider")
     func resolvesApiKeyProvider() {
         let provider = makeProvider(type: .claude, model: "claude-3-5-sonnet")
+        defer { AIProviderFactory.invalidateCache(for: provider.id) }
         let settings = AISettings(
             enabled: true,
             providers: [provider],
@@ -70,12 +71,12 @@ struct AIProviderFactoryResolveTests {
         #expect(resolved?.config.id == provider.id)
         #expect(resolved?.config.type == .claude)
         #expect(resolved?.model == "claude-3-5-sonnet")
-        AIProviderFactory.invalidateCache(for: provider.id)
     }
 
     @Test("Returns ResolvedProvider for an oauth provider (Copilot, no key lookup)")
     func resolvesOauthProvider() {
         let provider = makeProvider(type: .copilot, model: "gpt-4o")
+        defer { AIProviderFactory.invalidateCache(for: provider.id) }
         let settings = AISettings(
             enabled: true,
             providers: [provider],
@@ -85,12 +86,12 @@ struct AIProviderFactoryResolveTests {
         #expect(resolved != nil)
         #expect(resolved?.config.type == .copilot)
         #expect(resolved?.model == "gpt-4o")
-        AIProviderFactory.invalidateCache(for: provider.id)
     }
 
     @Test("Returns ResolvedProvider for an Ollama provider (no auth)")
     func resolvesOllamaProvider() {
         let provider = makeProvider(type: .ollama, model: "llama3")
+        defer { AIProviderFactory.invalidateCache(for: provider.id) }
         let settings = AISettings(
             enabled: true,
             providers: [provider],
@@ -100,7 +101,6 @@ struct AIProviderFactoryResolveTests {
         #expect(resolved != nil)
         #expect(resolved?.config.type == .ollama)
         #expect(resolved?.model == "llama3")
-        AIProviderFactory.invalidateCache(for: provider.id)
     }
 
     @Test("Resolves the active provider when multiple are configured")
@@ -108,6 +108,7 @@ struct AIProviderFactoryResolveTests {
         let claude = makeProvider(name: "Claude", type: .claude, model: "claude-x")
         let openAI = makeProvider(name: "OpenAI", type: .openAI, model: "gpt-x")
         let target = makeProvider(name: "Gemini", type: .gemini, model: "gemini-x")
+        defer { AIProviderFactory.invalidateCache(for: target.id) }
         let settings = AISettings(
             enabled: true,
             providers: [claude, openAI, target],
@@ -116,14 +117,12 @@ struct AIProviderFactoryResolveTests {
         let resolved = AIProviderFactory.resolve(settings: settings)
         #expect(resolved?.config.id == target.id)
         #expect(resolved?.config.type == .gemini)
-        AIProviderFactory.invalidateCache(for: claude.id)
-        AIProviderFactory.invalidateCache(for: openAI.id)
-        AIProviderFactory.invalidateCache(for: target.id)
     }
 
     @Test("Empty model string passes through to ResolvedProvider")
     func emptyModelPassesThrough() {
         let provider = makeProvider(type: .claude, model: "")
+        defer { AIProviderFactory.invalidateCache(for: provider.id) }
         let settings = AISettings(
             enabled: true,
             providers: [provider],
@@ -131,6 +130,5 @@ struct AIProviderFactoryResolveTests {
         )
         let resolved = AIProviderFactory.resolve(settings: settings)
         #expect(resolved?.model == "")
-        AIProviderFactory.invalidateCache(for: provider.id)
     }
 }
