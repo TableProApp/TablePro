@@ -219,7 +219,7 @@ final class WelcomeViewModel {
                 let exportable = (notification.object as? ExportableConnection)
                     ?? PendingActionStore.shared.consumeDeeplinkImport()
                 guard let exportable else { return }
-                _ = PendingActionStore.shared.consumeDeeplinkImport()
+                PendingActionStore.shared.deeplinkImport = nil
                 self.activeSheet = .deeplinkImport(exportable)
             }
         }

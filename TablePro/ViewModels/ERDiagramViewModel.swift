@@ -128,6 +128,7 @@ final class ERDiagramViewModel {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let resumed = OSAllocatedUnfairLock(initialState: false)
             let observerBox = OSAllocatedUnfairLock<NSObjectProtocol?>(initialState: nil)
+            let timeoutTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
             @Sendable func resumeOnce() {
                 let alreadyResumed = resumed.withLock { value -> Bool in
@@ -136,6 +137,7 @@ final class ERDiagramViewModel {
                     return false
                 }
                 guard !alreadyResumed else { return }
+                timeoutTaskBox.withLock { $0?.cancel(); $0 = nil }
                 let observer = observerBox.withLock { current -> NSObjectProtocol? in
                     let value = current
                     current = nil
@@ -154,10 +156,11 @@ final class ERDiagramViewModel {
             }
             observerBox.withLock { $0 = observer }
 
-            Task {
+            let timeoutTask = Task {
                 try? await Task.sleep(for: .seconds(10))
                 resumeOnce()
             }
+            timeoutTaskBox.withLock { $0 = timeoutTask }
         }
     }
 
