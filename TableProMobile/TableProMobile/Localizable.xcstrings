@@ -173,7 +173,20 @@
       }
     },
     "About" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giới thiệu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于"
+          }
+        }
+      }
     },
     "Add a database connection to get started." : {
       "localizations" : {
@@ -417,7 +430,20 @@
       }
     },
     "Build" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bản dựng"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "构建版本"
+          }
+        }
+      }
     },
     "Cancel" : {
       "localizations" : {
@@ -902,7 +928,20 @@
       }
     },
     "Copy Query" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sao chép truy vấn"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制查询"
+          }
+        }
+      }
     },
     "Copy Results" : {
       "localizations" : {
@@ -1772,7 +1811,20 @@
       }
     },
     "Help improve TablePro by sharing anonymous usage statistics (no personal data or queries)." : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giúp cải thiện TablePro bằng cách chia sẻ thống kê sử dụng ẩn danh (không có dữ liệu cá nhân hoặc truy vấn)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过共享匿名使用统计信息帮助改进TablePro（不包含个人数据或查询）。"
+          }
+        }
+      }
     },
     "History" : {
       "localizations" : {
@@ -2676,7 +2728,20 @@
       }
     },
     "Privacy" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quyền riêng tư"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私"
+          }
+        }
+      }
     },
     "Private Key" : {
       "localizations" : {
@@ -3097,7 +3162,20 @@
       }
     },
     "Settings" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cài đặt"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置"
+          }
+        }
+      }
     },
     "Share" : {
       "localizations" : {
@@ -3116,7 +3194,20 @@
       }
     },
     "Share anonymous usage data" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chia sẻ dữ liệu sử dụng ẩn danh"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共享匿名使用数据"
+          }
+        }
+      }
     },
     "Share Results" : {
       "localizations" : {
@@ -3810,7 +3901,20 @@
       }
     },
     "Version" : {
-
+      "localizations" : {
+        "vi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Phiên bản"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "版本"
+          }
+        }
+      }
     },
     "Views" : {
       "extractionState" : "stale",
