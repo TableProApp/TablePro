@@ -18,11 +18,11 @@ internal struct SyntaxColors: Codable, Equatable, Sendable {
     var type: String
 
     static let defaultLight = SyntaxColors(
-        keyword: "#9B2393",
+        keyword: "#0A49A5",
         string: "#C41A16",
-        number: "#1C00CF",
-        comment: "#5D6C79",
-        null: "#9B2393",
+        number: "#6C36A9",
+        comment: "#007400",
+        null: "#C55B00",
         operator: "#000000",
         function: "#326D74",
         type: "#3F6E74"
@@ -73,18 +73,17 @@ internal struct EditorThemeColors: Codable, Equatable, Sendable {
     var selection: String
     var lineNumber: String
     var invisibles: String
-    /// Reserved for future current-statement background highlight in the query editor.
     var currentStatementHighlight: String
     var syntax: SyntaxColors
 
     static let defaultLight = EditorThemeColors(
         background: "#FFFFFF",
         text: "#000000",
-        cursor: "#000000",
-        currentLineHighlight: "#ECF5FF",
+        cursor: "#007AFF",
+        currentLineHighlight: "#007AFF14",
         selection: "#B4D8FD",
-        lineNumber: "#747478",
-        invisibles: "#D6D6D6",
+        lineNumber: "#8E8E93",
+        invisibles: "#C7C7CC",
         currentStatementHighlight: "#F0F4FA",
         syntax: .defaultLight
     )
@@ -149,15 +148,15 @@ internal struct DataGridThemeColors: Codable, Equatable, Sendable {
         background: "#FFFFFF",
         text: "#000000",
         alternateRow: "#F5F5F5",
-        nullValue: "#B0B0B0",
-        boolTrue: "#34A853",
-        boolFalse: "#EA4335",
-        rowNumber: "#747478",
-        modified: "#FFF9C4",
-        inserted: "#E8F5E9",
-        deleted: "#FFEBEE",
-        deletedText: "#B0B0B0",
-        focusBorder: "#2196F3"
+        nullValue: "#8E8E93",
+        boolTrue: "#248A3D",
+        boolFalse: "#D70015",
+        rowNumber: "#8E8E93",
+        modified: "#FFD60A4D",
+        inserted: "#34C7594D",
+        deleted: "#FF3B304D",
+        deletedText: "#FF3B3080",
+        focusBorder: "#007AFF"
     )
 
     init(
@@ -216,10 +215,10 @@ internal struct StatusColors: Codable, Equatable, Sendable {
     var info: String
 
     static let defaultLight = StatusColors(
-        success: "#34A853",
-        warning: "#FBBC04",
-        error: "#EA4335",
-        info: "#4285F4"
+        success: "#248A3D",
+        warning: "#C55B00",
+        error: "#D70015",
+        info: "#007AFF"
     )
 
     init(success: String, warning: String, error: String, info: String) {
@@ -248,9 +247,9 @@ internal struct BadgeColors: Codable, Equatable, Sendable {
     var autoIncrement: String
 
     static let defaultLight = BadgeColors(
-        background: "#E8E8ED",
-        primaryKey: "#FFCC00",
-        autoIncrement: "#AF52DE"
+        background: "#E5E5EA",
+        primaryKey: "#007AFF26",
+        autoIncrement: "#AF52DE26"
     )
 
     init(background: String, primaryKey: String, autoIncrement: String) {

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Compiled theme fallback colors now match the default theme JSON files
 - TablePlus import: correctly map all SSL/TLS modes instead of treating Prefer as disabled
 - DBeaver import: parse SSL configuration from handler properties
 - Sequel Ace import: read SSH port as number, not string
