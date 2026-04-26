@@ -418,8 +418,21 @@ impl App {
         let _ = sender;
     }
 
-    /// Smart-switch dispatcher for sidebar clicks. Q1 semantics adapted
-    /// for the unified tab strip — only matches against Browse-kind tabs.
+    /// Sidebar-click dispatcher. Two behaviours:
+    ///
+    /// - `SwitchOrAppend` (plain click): if a Browse tab for
+    ///   `(schema, table)` is already open, activate it; otherwise
+    ///   append a new Browse tab. Never closes anything — tabs only
+    ///   go away when the user clicks the X.
+    /// - `NewTab` (Ctrl+click / right-click "Open in new tab"): always
+    ///   append a new tab even if the same table is already open.
+    ///
+    /// The earlier "smart-replace" sub-case (close active + append new
+    /// in one step) was dropped because AdwTabView's close-page
+    /// animation overlapped with the append, producing a visual flash
+    /// where the user briefly saw the closing tab and the new tab
+    /// side by side. Always-append is what every modern DB client
+    /// (TablePlus, DBeaver, DataGrip, Beekeeper) does anyway.
     pub(super) fn dispatch_select_table(
         &mut self,
         schema: Option<String>,
@@ -427,55 +440,21 @@ impl App {
         open_mode: OpenMode,
         sender: ComponentSender<Self>,
     ) {
-        match open_mode {
-            OpenMode::NewTab => {
-                self.append_browse_tab(schema, name, sender);
-            }
-            OpenMode::SmartSwitchOrReplace => {
-                let existing = self.workspace_tabs.borrow().values().find_map(|t| match t {
-                    WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
-                        Some(s.page.clone())
-                    }
-                    _ => None,
-                });
-                if let Some(page) = existing
-                    && let Some(tab_view) = self.workspace_tab_view.as_ref()
-                {
-                    tab_view.set_selected_page(&page);
-                    return;
+        if matches!(open_mode, OpenMode::SwitchOrAppend) {
+            let existing = self.workspace_tabs.borrow().values().find_map(|t| match t {
+                WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
+                    Some(s.page.clone())
                 }
-                // No matching browse tab. Replace the active tab IF it's
-                // a browse tab; otherwise append a new one (so clicking a
-                // table while an editor tab is active doesn't replace
-                // the editor — just appends a new browse tab next to it).
-                //
-                // Critical: route the close through `tab_view.close_page`,
-                // not `close_workspace_tab_by_id` directly. AdwTabView's
-                // close_page_finish asserts that page->closing == true,
-                // which only the signal-driven flow sets up
-                // (close_page → close-page signal → our handler →
-                // close_page_finish). Calling close_page_finish on a
-                // page that wasn't first put into closing state fails
-                // with `Adwaita-CRITICAL: assertion 'page->closing' failed`.
-                let active_browse_page = self.selected_browse_tab_id().and_then(|id| {
-                    self.workspace_tabs.borrow().get(&id).map(|t| match t {
-                        WorkspaceTab::Browse(s) => s.page.clone(),
-                        WorkspaceTab::Editor(s) => s.page.clone(),
-                    })
-                });
-                if let Some(page) = active_browse_page
-                    && let Some(tab_view) = self.workspace_tab_view.as_ref()
-                {
-                    tab_view.close_page(&page);
-                    // The close-page signal will fire WorkspaceTabClosed
-                    // and the dispatcher's handler will run
-                    // close_workspace_tab_by_id (which calls
-                    // close_page_finish — now valid because the page is
-                    // in closing state).
-                }
-                self.append_browse_tab(schema, name, sender);
+                _ => None,
+            });
+            if let Some(page) = existing
+                && let Some(tab_view) = self.workspace_tab_view.as_ref()
+            {
+                tab_view.set_selected_page(&page);
+                return;
             }
         }
+        self.append_browse_tab(schema, name, sender);
     }
 
     /// Persist workspace tabs for the active connection. Walks

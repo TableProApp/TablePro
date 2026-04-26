@@ -109,11 +109,12 @@ pub enum WorkspaceTab {
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpenMode {
-    /// Smart switch: activate an existing Browse tab for the given table
-    /// if any, otherwise replace the active Browse tab with a fresh one
-    /// (or append if no Browse tab is currently active).
-    SmartSwitchOrReplace,
-    /// Always append a new tab even if the same table is already open.
+    /// Plain sidebar click: if a Browse tab for the table already
+    /// exists, activate it; otherwise append a new Browse tab.
+    /// Never closes existing tabs — accumulates until the user dismisses.
+    SwitchOrAppend,
+    /// Ctrl+click / right-click "Open in new tab": always append a
+    /// new tab even when the same table is already open.
     NewTab,
 }
 
@@ -466,7 +467,7 @@ impl SimpleComponent for App {
                 SidebarRowOutput::Selected { schema, name } => AppMsg::SelectTable {
                     schema,
                     name,
-                    open_mode: OpenMode::SmartSwitchOrReplace,
+                    open_mode: OpenMode::SwitchOrAppend,
                 },
                 SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable {
                     schema,
