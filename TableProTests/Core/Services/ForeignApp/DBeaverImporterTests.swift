@@ -640,7 +640,10 @@ struct DBeaverImporterTests {
     @Test("importConnections no SSL when handler disabled")
     func testImportConnections_noSSLWhenHandlerDisabled() throws {
         var connDict = makeConnection(name: "SSL Disabled")
-        var config = connDict["configuration"] as! [String: Any]
+        guard var config = connDict["configuration"] as? [String: Any] else {
+            Issue.record("Expected configuration dict")
+            return
+        }
         config["handlers"] = [
             "ssl": [
                 "enabled": false,

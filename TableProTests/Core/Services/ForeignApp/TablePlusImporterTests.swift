@@ -285,6 +285,16 @@ struct TablePlusImporterTests {
         #expect(ssl?.mode == "Verify Identity")
     }
 
+    @Test("importConnections no SSL for unknown tLSMode value")
+    func testImportConnections_noSSLForUnknownTLSMode() throws {
+        try writeConnections([
+            makeConnection(name: "Unknown TLS", id: "ssl-unknown", tlsMode: 99)
+        ])
+
+        let result = try importer.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sslConfig == nil)
+    }
+
     @Test("importConnections preserves groups")
     func testImportConnections_preservesGroups() throws {
         try writeGroups([
