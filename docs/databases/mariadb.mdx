@@ -1,0 +1,40 @@
+---
+title: MariaDB
+description: Connect to MariaDB through TablePro's MySQL driver, which uses the MariaDB Connector/C client.
+---
+
+# MariaDB
+
+TablePro's MySQL plugin handles MariaDB. The driver links against MariaDB Connector/C (libmariadb), so MariaDB-specific extended metadata (for example LONGTEXT-stored JSON detection) is recognised on connect.
+
+## Connect
+
+In the connection form choose **MySQL** or **MariaDB**. Both selections route to the same plugin.
+
+## Default port
+
+3306.
+
+## Connection URL
+
+```
+mysql://user:password@host:3306/database
+```
+
+See [Connection URL Reference](/databases/connection-urls).
+
+## Differences from MySQL
+
+- Default authentication plugin is `mysql_native_password` (MySQL 8.0 defaults to `caching_sha2_password`).
+- TablePro reads MariaDB extended field attributes (`MARIADB_FIELD_ATTR_FORMAT_NAME`) to detect JSON values stored in LONGTEXT columns and render them with the JSON cell editor.
+
+Everything else (SSH tunnels, SSL/TLS, schema browsing, table operations) matches MySQL.
+
+## SSL / TLS
+
+Same as MySQL. See [MySQL & MariaDB](/databases/mysql) for SSL configuration.
+
+## See also
+
+- [MySQL & MariaDB](/databases/mysql)
+- [SSH Tunneling](/databases/ssh-tunneling)

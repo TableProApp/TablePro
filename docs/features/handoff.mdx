@@ -1,0 +1,30 @@
+---
+title: Handoff
+description: Resume the active connection or table on another Mac signed into the same iCloud account.
+---
+
+# Handoff
+
+TablePro publishes an `NSUserActivity` for the key window so Apple Continuity can hand off the current context to another Mac.
+
+## Requirements
+
+- Both Macs signed into the same iCloud account
+- Both Macs on the same Wi-Fi network with Bluetooth on
+- Handoff enabled in **System Settings** > **General** > **AirDrop & Handoff**
+- TablePro running on both devices
+
+## What gets handed off
+
+The activity tracks the focused window and switches between two types based on what is selected:
+
+- **`com.TablePro.viewConnection`**: connection ID. Receiving Mac opens that connection.
+- **`com.TablePro.viewTable`**: connection ID and table name. Receiving Mac opens the connection and selects the table.
+
+Switching between a query tab and a table tab updates the activity automatically. The activity title shows the table name when viewing a table, otherwise the connection name.
+
+Query text, scroll position, and unsaved edits are not included.
+
+## Use it
+
+On the receiving Mac, the TablePro Handoff icon appears in the Dock and in the Cmd-Tab app switcher. Click it to open the same connection (and table, if any).

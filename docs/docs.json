@@ -36,57 +36,125 @@
             "pages": [
               "databases/overview",
               "databases/connection-urls",
-              "databases/mysql",
-              "databases/postgresql",
-              "databases/sqlite",
-              "databases/mongodb",
-              "databases/redis",
-              "databases/redshift",
-              "databases/oracle",
-              "databases/clickhouse",
-              "databases/cassandra",
-              "databases/dynamodb",
-              "databases/mssql",
-              "databases/duckdb",
-              "databases/cloudflare-d1",
-              "databases/libsql",
-              "databases/bigquery",
-              "databases/etcd",
-              "databases/ssh-tunneling"
+              "databases/ssh-tunneling",
+              {
+                "group": "SQL",
+                "pages": [
+                  "databases/mysql",
+                  "databases/mariadb",
+                  "databases/postgresql",
+                  "databases/redshift",
+                  "databases/mssql",
+                  "databases/oracle"
+                ]
+              },
+              {
+                "group": "NoSQL & Key-Value",
+                "pages": [
+                  "databases/mongodb",
+                  "databases/redis",
+                  "databases/cassandra",
+                  "databases/etcd"
+                ]
+              },
+              {
+                "group": "File-Based & Embedded",
+                "pages": [
+                  "databases/sqlite",
+                  "databases/duckdb",
+                  "databases/libsql"
+                ]
+              },
+              {
+                "group": "Cloud & API",
+                "pages": [
+                  "databases/dynamodb",
+                  "databases/bigquery",
+                  "databases/cloudflare-d1"
+                ]
+              },
+              {
+                "group": "Analytics",
+                "pages": ["databases/clickhouse"]
+              }
             ]
           },
           {
             "group": "Features",
             "pages": [
-              "features/sql-editor",
-              "features/explain-visualization",
-              "features/er-diagram",
-              "features/server-dashboard",
-              "features/data-grid",
-              "features/autocomplete",
-              "features/table-structure",
-              "features/table-operations",
-              "features/filtering",
-              "features/change-tracking",
-              "features/tabs",
-              "features/import-export",
-              "features/sql-favorites",
-              "features/query-history",
-              "features/ai-chat",
-              "features/keyboard-shortcuts",
-              "features/deep-links",
-              "features/safe-mode",
-              "features/connection-sharing",
-              "features/terminal",
-              "features/mcp",
-              "features/plugins",
-              "features/icloud-sync",
-              "features/ssh-profiles"
+              "features/overview",
+              {
+                "group": "Editor & Data",
+                "pages": [
+                  "features/sql-editor",
+                  "features/data-grid",
+                  "features/table-structure",
+                  "features/table-operations",
+                  "features/autocomplete",
+                  "features/vim-mode"
+                ]
+              },
+              {
+                "group": "AI",
+                "pages": [
+                  "features/ai-assistant",
+                  "features/mcp"
+                ]
+              },
+              {
+                "group": "Views & Visualization",
+                "pages": [
+                  "features/er-diagram",
+                  "features/explain-visualization",
+                  "features/json-viewer",
+                  "features/server-dashboard",
+                  "features/terminal"
+                ]
+              },
+              {
+                "group": "Data Management",
+                "pages": [
+                  "features/import-export",
+                  "features/change-tracking",
+                  "features/filtering"
+                ]
+              },
+              {
+                "group": "Workflow",
+                "pages": [
+                  "features/tabs",
+                  "features/query-history",
+                  "features/sql-favorites",
+                  "features/keyboard-shortcuts",
+                  "features/deep-links"
+                ]
+              },
+              {
+                "group": "Security & Sharing",
+                "pages": [
+                  "features/safe-mode",
+                  "features/ssh-profiles",
+                  "features/connection-sharing"
+                ]
+              },
+              {
+                "group": "Sync",
+                "pages": [
+                  "features/icloud-sync",
+                  "features/handoff"
+                ]
+              },
+              {
+                "group": "Extensibility",
+                "pages": ["features/plugins"]
+              },
+              "features/feedback"
             ]
           },
           {
             "group": "Customization",
             "pages": [
+              "customization/overview",
               "customization/settings",
               "customization/appearance",
               "customization/editor-settings"
@@ -114,10 +182,11 @@
           {
             "group": "Contributing",
             "pages": [
+              "development/overview",
               "development/setup",
               "development/architecture",
-              "development/code-style",
               "development/building",
+              "development/code-style",
               "development/plugin-registry"
             ]
           }

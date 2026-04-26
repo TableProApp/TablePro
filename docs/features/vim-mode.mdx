@@ -1,0 +1,72 @@
+---
+title: Vim Mode
+description: Modal editing in the SQL editor with Normal, Insert, Visual, and command-line modes.
+---
+
+# Vim Mode
+
+Modal editing in the SQL editor. The current mode shows in the editor status bar.
+
+## Enable
+
+Open Settings (`Cmd+,`) > Editor and toggle **Vim mode**. The mode indicator (`NORMAL`, `INSERT`, `VISUAL`, `VISUAL LINE`) appears next to the editor when the toggle is on.
+
+## Modes
+
+| Mode | Enter | Use for |
+|------|-------|---------|
+| Normal | `Esc` | Navigation, deletion, yank |
+| Insert | `i`, `a`, `o`, `I`, `A`, `O` | Typing SQL |
+| Visual | `v` | Character-wise selection |
+| Visual Line | `V` | Line-wise selection |
+| Command-line | `:` or `/` | Run a command or start a search |
+
+## Motions
+
+| Key | Motion |
+|-----|--------|
+| `h` `j` `k` `l` | Left, down, up, right |
+| `w` | Next word start |
+| `b` | Previous word start |
+| `e` | Word end |
+| `0` | Line start |
+| `^` `_` | First non-blank on line |
+| `$` | Line end |
+| `gg` | Buffer start |
+| `G` | Buffer end |
+| `{count}G` | Line `{count}` |
+
+Counts work with motions: `5j` moves down five lines, `3w` moves three words forward.
+
+## Operators
+
+| Key | Action |
+|-----|--------|
+| `d` | Delete (with motion) |
+| `dd` | Delete line |
+| `c` | Change (with motion) |
+| `cc` | Change line |
+| `y` | Yank (with motion) |
+| `yy` | Yank line |
+| `x` | Delete character under cursor |
+| `p` | Paste after cursor |
+| `P` | Paste before cursor |
+| `u` | Undo |
+| `Ctrl+r` | Redo |
+
+Operators combine with motions: `dw` deletes to next word, `c$` changes to end of line, `y3j` yanks the next three lines.
+
+Yank, delete, and change all sync to the system pasteboard.
+
+## Visual Mode
+
+In Visual or Visual Line mode the same motion keys extend the selection. Press `d`, `c`, or `y` to operate on the selection. Press `v` or `V` again to leave the mode, or `Esc` to cancel.
+
+## Command-line
+
+| Command | Action |
+|---------|--------|
+| `:w` | Execute the current query |
+| `:q` | Close the current tab |
+
+Other command-line input is parsed but ignored.
