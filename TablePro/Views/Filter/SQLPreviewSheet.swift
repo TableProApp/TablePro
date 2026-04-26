@@ -2,17 +2,11 @@
 //  SQLPreviewSheet.swift
 //  TablePro
 //
-//  Modal sheet to display generated SQL from filters.
-//  Extracted from FilterPanelView for better maintainability.
-//
 
 import SwiftUI
 
-/// Modal sheet to display generated SQL
 struct SQLPreviewSheet: View {
     let sql: String
-    let tableName: String
-    let databaseType: DatabaseType
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
@@ -82,7 +76,6 @@ struct SQLPreviewSheet: View {
         copied = true
         AccessibilityNotification.Announcement(String(localized: "Copied to clipboard")).post()
 
-        // Reset after delay
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             copied = false

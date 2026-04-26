@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline suggestions toggle moved into AI settings; provider follows the active AI provider (Copilot or any chat provider)
 - Removed the separate Copilot settings tab and the per-feature routing UI
 - Existing AI providers are preserved on upgrade; the first one is auto-set as active
+- Filter value field uses a native SwiftUI suggestion dropdown instead of the AppKit autocomplete popup
 
 ### Added
 
@@ -30,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Filter value field now works correctly with Chinese, Japanese, and Korean input methods (#878)
+- Saving a filter preset with a duplicate name no longer silently overwrites the existing preset
 - Raw SQL filter accepting destructive statements and comment injection
 - MCP server: schema and history resources now enforce connection access policies
 - Export "Don't show again" preference lost when clicking "Open Folder"
