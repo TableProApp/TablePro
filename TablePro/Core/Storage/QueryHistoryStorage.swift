@@ -106,9 +106,13 @@ actor QueryHistoryStorage {
     private func migrateIfNeeded() {
         let currentVersion = getUserVersion()
 
-        let targetVersion: Int32 = 1
-        if currentVersion < targetVersion {
-            setUserVersion(targetVersion)
+        if currentVersion < 1 {
+            setUserVersion(1)
+        }
+
+        if currentVersion < 2 {
+            execute("ALTER TABLE history ADD COLUMN parameter_values TEXT;")
+            setUserVersion(2)
         }
     }
 
@@ -206,8 +210,8 @@ actor QueryHistoryStorage {
         }
 
         let sql = """
-            INSERT INTO history (id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO history (id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message, parameter_values)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
 
         var statement: OpaquePointer?
@@ -243,6 +247,12 @@ actor QueryHistoryStorage {
             sqlite3_bind_null(statement, 9)
         }
 
+        if let parameterValues = entry.parameterValues {
+            sqlite3_bind_text(statement, 10, parameterValues, -1, SQLITE_TRANSIENT)
+        } else {
+            sqlite3_bind_null(statement, 10)
+        }
+
         let result = sqlite3_step(statement)
         return result == SQLITE_DONE
     }
@@ -263,7 +273,7 @@ actor QueryHistoryStorage {
 
         if let searchText = searchText, !searchText.isEmpty {
             sql = """
-                SELECT h.id, h.query, h.connection_id, h.database_name, h.executed_at, h.execution_time, h.row_count, h.was_successful, h.error_message
+                SELECT h.id, h.query, h.connection_id, h.database_name, h.executed_at, h.execution_time, h.row_count, h.was_successful, h.error_message, h.parameter_values
                 FROM history h
                 INNER JOIN history_fts ON h.rowid = history_fts.rowid
                 WHERE history_fts MATCH ?
@@ -280,7 +290,7 @@ actor QueryHistoryStorage {
             }
         } else {
             sql =
-                "SELECT id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message FROM history"
+                "SELECT id, query, connection_id, database_name, executed_at, execution_time, row_count, was_successful, error_message, parameter_values FROM history"
 
             var whereClauses: [String] = []
 
@@ -473,6 +483,7 @@ actor QueryHistoryStorage {
         let rowCount = Int(sqlite3_column_int(statement, 6))
         let wasSuccessful = sqlite3_column_int(statement, 7) == 1
         let errorMessage = sqlite3_column_text(statement, 8).map { String(cString: $0) }
+        let parameterValues = sqlite3_column_text(statement, 9).map { String(cString: $0) }
 
         return QueryHistoryEntry(
             id: id,
@@ -483,7 +494,8 @@ actor QueryHistoryStorage {
             executionTime: executionTime,
             rowCount: rowCount,
             wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
+            errorMessage: errorMessage,
+            parameterValues: parameterValues
         )
     }
 }

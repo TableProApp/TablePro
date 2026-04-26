@@ -123,7 +123,9 @@ struct QueryTab: Identifiable, Equatable {
         return resultSets.first { $0.id == id }
     }
 
-    // Source file URL for .sql files opened from disk (used for deduplication)
+    var queryParameters: [QueryParameter] = []
+    var isParameterPanelVisible: Bool = false
+
     var sourceFileURL: URL?
 
     // Snapshot of file content at last save/load (nil for non-file tabs).

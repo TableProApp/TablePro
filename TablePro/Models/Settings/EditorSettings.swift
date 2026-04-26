@@ -76,6 +76,7 @@ struct EditorSettings: Codable, Equatable {
     var uppercaseKeywords: Bool
     var queryParametersEnabled: Bool
     var jsonViewerPreferredMode: JSONViewMode
+    var queryParametersEnabled: Bool
 
     static let `default` = EditorSettings(
         showLineNumbers: true,
@@ -106,6 +107,7 @@ struct EditorSettings: Codable, Equatable {
         self.uppercaseKeywords = uppercaseKeywords
         self.queryParametersEnabled = queryParametersEnabled
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
+        self.queryParametersEnabled = queryParametersEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -118,6 +120,7 @@ struct EditorSettings: Codable, Equatable {
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
         queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
+        queryParametersEnabled = try container.decodeIfPresent(Bool.self, forKey: .queryParametersEnabled) ?? true
     }
 
     /// Clamped tab width (1-16)
