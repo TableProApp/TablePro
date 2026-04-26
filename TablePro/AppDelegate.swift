@@ -205,23 +205,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
-        guard hasUnsaved else { return .terminateNow }
+        if hasUnsaved {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "You have unsaved changes")
+            alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "Cancel"))
+            alert.addButton(withTitle: String(localized: "Quit Anyway"))
+            alert.buttons[1].hasDestructiveAction = true
+            let response = alert.runModal()
+            guard response == .alertSecondButtonReturn else { return .terminateCancel }
+        }
 
-        let alert = NSAlert()
-        alert.messageText = String(localized: "You have unsaved changes")
-        alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.addButton(withTitle: String(localized: "Quit Anyway"))
-        alert.buttons[1].hasDestructiveAction = true
-        let response = alert.runModal()
-        return response == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+        Task {
+            await MCPServerManager.shared.stop()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        Task {
-            await MCPServerManager.shared.stop()
-        }
         LinkedFolderWatcher.shared.stop()
         TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()
