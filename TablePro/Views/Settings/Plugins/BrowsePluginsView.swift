@@ -252,55 +252,41 @@ struct BrowsePluginsView: View {
     }
 
     private func installPlugin(_ plugin: RegistryPlugin) {
-        Task {
-            installTracker.beginInstall(pluginId: plugin.id)
-            do {
-                if plugin.category == .theme {
-                    try await ThemeRegistryInstaller.shared.install(plugin) { fraction in
-                        installTracker.updateProgress(pluginId: plugin.id, fraction: fraction)
-                        if fraction >= 1.0 {
-                            installTracker.markInstalling(pluginId: plugin.id)
-                        }
-                    }
-                } else {
-                    _ = try await pluginManager.installFromRegistry(plugin) { fraction in
-                        installTracker.updateProgress(pluginId: plugin.id, fraction: fraction)
-                        if fraction >= 1.0 {
-                            installTracker.markInstalling(pluginId: plugin.id)
-                        }
-                    }
-                }
-                installTracker.completeInstall(pluginId: plugin.id)
-            } catch {
-                installTracker.failInstall(pluginId: plugin.id, error: error.localizedDescription)
-                errorMessage = error.localizedDescription
-                showErrorAlert = true
+        performTrackedOperation(pluginId: plugin.id) { progress in
+            if plugin.category == .theme {
+                try await ThemeRegistryInstaller.shared.install(plugin, progress: progress)
+            } else {
+                _ = try await pluginManager.installFromRegistry(plugin, progress: progress)
             }
         }
     }
 
     private func updatePlugin(_ plugin: RegistryPlugin) {
+        performTrackedOperation(pluginId: plugin.id) { progress in
+            if plugin.category == .theme {
+                try await ThemeRegistryInstaller.shared.update(plugin, progress: progress)
+            } else {
+                _ = try await pluginManager.updateFromRegistry(plugin, progress: progress)
+            }
+        }
+    }
+
+    private func performTrackedOperation(
+        pluginId: String,
+        operation: @escaping (@escaping @MainActor @Sendable (Double) -> Void) async throws -> Void
+    ) {
         Task {
-            installTracker.beginInstall(pluginId: plugin.id)
+            installTracker.beginInstall(pluginId: pluginId)
             do {
-                if plugin.category == .theme {
-                    try await ThemeRegistryInstaller.shared.update(plugin) { fraction in
-                        installTracker.updateProgress(pluginId: plugin.id, fraction: fraction)
-                        if fraction >= 1.0 {
-                            installTracker.markInstalling(pluginId: plugin.id)
-                        }
-                    }
-                } else {
-                    _ = try await pluginManager.updateFromRegistry(plugin) { fraction in
-                        installTracker.updateProgress(pluginId: plugin.id, fraction: fraction)
-                        if fraction >= 1.0 {
-                            installTracker.markInstalling(pluginId: plugin.id)
-                        }
+                try await operation { fraction in
+                    self.installTracker.updateProgress(pluginId: pluginId, fraction: fraction)
+                    if fraction >= 1.0 {
+                        self.installTracker.markInstalling(pluginId: pluginId)
                     }
                 }
-                installTracker.completeInstall(pluginId: plugin.id)
+                installTracker.completeInstall(pluginId: pluginId)
             } catch {
-                installTracker.failInstall(pluginId: plugin.id, error: error.localizedDescription)
+                installTracker.failInstall(pluginId: pluginId, error: error.localizedDescription)
                 errorMessage = error.localizedDescription
                 showErrorAlert = true
             }

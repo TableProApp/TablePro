@@ -57,18 +57,6 @@ extension PluginManager {
         rejectedPlugins = stillRejected
     }
 
-    func availablePluginUpdates(manifest: RegistryManifest) -> [String: RegistryPlugin] {
-        var updates: [String: RegistryPlugin] = [:]
-        for registryPlugin in manifest.plugins {
-            guard registryPlugin.category != .theme else { continue }
-            guard let installed = plugins.first(where: { $0.id == registryPlugin.id }) else { continue }
-            if registryPlugin.version.compare(installed.version, options: .numeric) == .orderedDescending {
-                updates[registryPlugin.id] = registryPlugin
-            }
-        }
-        return updates
-    }
-
     func registryUpdate(for pluginId: String) -> RegistryPlugin? {
         guard let manifest = RegistryClient.shared.manifest else { return nil }
         guard let installed = plugins.first(where: { $0.id == pluginId }) else { return nil }

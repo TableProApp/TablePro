@@ -105,22 +105,10 @@ final class PluginManager {
             .appendingPathComponent(pluginURL.lastPathComponent + ".metadata.json")
     }
 
-    nonisolated private static func readRegistryVersion(for pluginURL: URL) -> String? {
+    nonisolated private static func readRegistryMetadata(for pluginURL: URL) -> RegistryMetadata? {
         let url = metadataURL(for: pluginURL)
-        guard let data = try? Data(contentsOf: url),
-              let metadata = try? JSONDecoder().decode(RegistryMetadata.self, from: data) else {
-            return nil
-        }
-        return metadata.version
-    }
-
-    nonisolated private static func readRegistryPluginId(for pluginURL: URL) -> String? {
-        let url = metadataURL(for: pluginURL)
-        guard let data = try? Data(contentsOf: url),
-              let metadata = try? JSONDecoder().decode(RegistryMetadata.self, from: data) else {
-            return nil
-        }
-        return metadata.pluginId
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(RegistryMetadata.self, from: data)
     }
 
     func saveRegistryMetadata(version: String, pluginId: String, pluginURL: URL) {
@@ -265,7 +253,7 @@ final class PluginManager {
 
         let disabled = disabledPluginIds
         let driverType = principalClass as? any DriverPlugin.Type
-        let version = Self.readRegistryVersion(for: url) ?? principalClass.pluginVersion
+        let version = Self.readRegistryMetadata(for: url)?.version ?? principalClass.pluginVersion
         let entry = PluginEntry(
             id: bundleId,
             bundle: bundle,
@@ -378,7 +366,7 @@ final class PluginManager {
                     rejectedPlugins.append(RejectedPlugin(
                         url: itemURL,
                         bundleId: bundle?.bundleIdentifier,
-                        registryId: Self.readRegistryPluginId(for: itemURL),
+                        registryId: Self.readRegistryMetadata(for: itemURL)?.pluginId,
                         name: itemURL.deletingPathExtension().lastPathComponent,
                         reason: error.localizedDescription,
                         isOutdated: (error as? PluginError)?.isOutdated ?? false
