@@ -28,7 +28,6 @@ struct AISettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .scrollContentBackground(.hidden)
         .sheet(item: editingProviderBinding) { provider in
             AIProviderDetailSheet(
                 provider: provider,

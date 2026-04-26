@@ -274,7 +274,7 @@ struct AIProviderDetailSheet: View {
     }
 
     private var shouldShowConnectionSection: Bool {
-        draft.type != .copilot || draft.type == .custom
+        draft.type != .copilot
     }
 
     // MARK: - Model

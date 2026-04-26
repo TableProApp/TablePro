@@ -178,7 +178,7 @@ final class AppSettingsManager {
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
-        self.ai = storage.loadAI()
+        self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
@@ -209,6 +209,18 @@ final class AppSettingsManager {
 
     private func notifyChange(_ notification: Notification.Name) {
         NotificationCenter.default.post(name: notification, object: self)
+    }
+
+    /// Auto-pick the first configured provider as active when nothing is selected.
+    /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
+    /// (with multiple providers and no activeProviderID concept) is loaded.
+    private static func migrateAI(_ settings: AISettings) -> AISettings {
+        guard settings.activeProviderID == nil, let first = settings.providers.first else {
+            return settings
+        }
+        var migrated = settings
+        migrated.activeProviderID = first.id
+        return migrated
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")

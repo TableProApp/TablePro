@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AI settings rewritten as a single tab modeled on Xcode's Intelligence settings: pick one active provider from a configured list, drill down to configure each provider in a sheet
 - Inline suggestions toggle moved into AI settings; provider follows the active AI provider (Copilot or any chat provider)
 - Removed the separate Copilot settings tab and the per-feature routing UI
+- Existing AI providers are preserved on upgrade; the first one is auto-set as active
 
 ### Added
 

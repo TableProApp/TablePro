@@ -96,6 +96,18 @@ struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
         self.telemetryEnabled = telemetryEnabled
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        type = try container.decode(AIProviderType.self, forKey: .type)
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        let rawEndpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
+        maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
+        telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
+    }
+
     var displayName: String {
         name.isEmpty ? type.displayName : name
     }
