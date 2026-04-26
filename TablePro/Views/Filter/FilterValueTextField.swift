@@ -73,8 +73,10 @@ struct FilterValueTextField: NSViewRepresentable {
 
         if focusedId == identity {
             let binding = $focusedId
+            let pendingId = identity
             DispatchQueue.main.async {
-                guard let window = textField.window else { return }
+                guard let window = textField.window,
+                      binding.wrappedValue == pendingId else { return }
                 if window.firstResponder !== textField.currentEditor() {
                     window.makeFirstResponder(textField)
                 }
