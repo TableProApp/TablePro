@@ -176,7 +176,6 @@ struct FilterPanelView: View {
                 FilterRowView(
                     filter: filterState.binding(for: filter),
                     columns: columns,
-                    databaseType: databaseType,
                     completions: completionItems(),
                     onAdd: {
                         filterState.addFilter(columns: columns, primaryKeyColumn: primaryKeyColumn)

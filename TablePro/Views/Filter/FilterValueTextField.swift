@@ -100,7 +100,7 @@ struct FilterValueTextField: NSViewRepresentable {
         var onSubmit: () -> Void
         weak var textField: NSTextField?
 
-        let suggestionState = SuggestionState()
+        private let suggestionState = SuggestionState()
         private var suggestionPopover: NSPopover?
         private var keyMonitor: Any?
 
@@ -121,10 +121,6 @@ struct FilterValueTextField: NSViewRepresentable {
         deinit {
             if let token = keyMonitor {
                 NSEvent.removeMonitor(token)
-            }
-            MainActor.assumeIsolated {
-                suggestionPopover?.close()
-                suggestionPopover = nil
             }
         }
 
@@ -290,41 +286,49 @@ struct FilterValueTextField: NSViewRepresentable {
             suggestionPopover = nil
         }
     }
-}
 
-@MainActor
-final class SuggestionState: ObservableObject {
-    @Published var items: [String] = []
-    @Published var selectedIndex: Int = 0
-}
+    @MainActor
+    private final class SuggestionState: ObservableObject {
+        @Published var items: [String] = []
+        @Published var selectedIndex: Int = 0
+    }
 
-private struct SuggestionDropdownView: View {
-    @ObservedObject var state: SuggestionState
-    let onSelect: (String) -> Void
+    private struct SuggestionDropdownView: View {
+        @ObservedObject var state: SuggestionState
+        let onSelect: (String) -> Void
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(state.items.enumerated()), id: \.offset) { index, item in
-                    Text(item)
-                        .font(.callout)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            state.selectedIndex == index
-                                ? Color.accentColor.opacity(0.18)
-                                : Color.clear
-                        )
-                        .cornerRadius(4)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onSelect(item)
+        var body: some View {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(state.items.enumerated()), id: \.offset) { index, item in
+                            Text(item)
+                                .font(.callout)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    state.selectedIndex == index
+                                        ? Color.accentColor.opacity(0.18)
+                                        : Color.clear
+                                )
+                                .cornerRadius(4)
+                                .contentShape(Rectangle())
+                                .id(index)
+                                .onTapGesture {
+                                    onSelect(item)
+                                }
                         }
+                    }
+                    .padding(4)
+                }
+                .onChange(of: state.selectedIndex) { _, newIndex in
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        proxy.scrollTo(newIndex, anchor: .center)
+                    }
                 }
             }
-            .padding(4)
         }
     }
 }

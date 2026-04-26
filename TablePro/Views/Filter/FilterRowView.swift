@@ -8,7 +8,6 @@ import SwiftUI
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
-    let databaseType: DatabaseType
     let completions: [String]
     let onAdd: () -> Void
     let onDuplicate: () -> Void

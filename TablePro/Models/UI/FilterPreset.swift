@@ -45,7 +45,7 @@ struct FilterPreset: Identifiable, Codable, Equatable {
         saveAllPresets(presets)
     }
 
-    static func uniqueName(for base: String, existingNames: Set<String>) -> String {
+    private static func uniqueName(for base: String, existingNames: Set<String>) -> String {
         var counter = 2
         var candidate = "\(base) (\(counter))"
         while existingNames.contains(candidate) {
