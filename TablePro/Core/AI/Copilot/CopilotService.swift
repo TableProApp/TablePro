@@ -133,6 +133,9 @@ final class CopilotService {
     // MARK: - Authentication
 
     func signIn() async throws {
+        if status == .stopped {
+            await start()
+        }
         guard let transport else {
             throw CopilotError.serverNotRunning
         }
@@ -196,9 +199,9 @@ final class CopilotService {
     private func scheduleUnauthenticatedStopIfNeeded() {
         unauthenticatedStopTask?.cancel()
         guard !isAuthenticated else { return }
-        unauthenticatedStopTask = Task { [weak self] in
+        unauthenticatedStopTask = Task {
             try? await Task.sleep(for: Self.unauthenticatedTimeout)
-            guard !Task.isCancelled, let self else { return }
+            guard !Task.isCancelled else { return }
             guard !self.isAuthenticated, self.status == .running else { return }
             Self.logger.info("Copilot LSP idle without sign-in, stopping")
             await self.stop()
