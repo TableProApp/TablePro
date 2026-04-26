@@ -459,6 +459,16 @@
         }
       }
     },
+    "(showing %d of %d rows)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "(showing %1$d of %2$d rows)"
+          }
+        }
+      }
+    },
     "(this Mac)" : {
       "localizations" : {
         "en" : {
@@ -554,6 +564,9 @@
         }
       }
     },
+    "%@ — Preview" : {
+
+    },
     "%@ (%@@%@)" : {
       "localizations" : {
         "en" : {
@@ -619,6 +632,9 @@
           }
         }
       }
+    },
+    "%@ (Copy)" : {
+
     },
     "%@ (Pro)" : {
       "localizations" : {
@@ -1042,6 +1058,9 @@
           }
         }
       }
+    },
+    "%@ Query" : {
+
     },
     "%@ requires a Pro license" : {
       "localizations" : {
@@ -4443,7 +4462,6 @@
       }
     },
     "AI Provider" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4488,6 +4506,7 @@
       }
     },
     "AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7199,6 +7218,9 @@
         }
       }
     },
+    "Cannot save changes: connection is read-only" : {
+
+    },
     "Cannot save schema changes: connection is read-only." : {
       "localizations" : {
         "tr" : {
@@ -7791,6 +7813,9 @@
           }
         }
       }
+    },
+    "Clear All Conversations?" : {
+
     },
     "Clear all history" : {
       "localizations" : {
@@ -9123,6 +9148,9 @@
         }
       }
     },
+    "Complete Sign In" : {
+
+    },
     "Compress the file using Gzip" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10155,6 +10183,18 @@
         }
       }
     },
+    "Copilot" : {
+
+    },
+    "Copilot language server binary not found" : {
+
+    },
+    "Copilot server is not running" : {
+
+    },
+    "Copilot subscription inactive" : {
+
+    },
     "Copy" : {
       "localizations" : {
         "tr" : {
@@ -10743,6 +10783,9 @@
           }
         }
       }
+    },
+    "Could not generate SQL for changes." : {
+
     },
     "Could not reach the license server. Check your internet connection and try again." : {
       "localizations" : {
@@ -15138,7 +15181,11 @@
         }
       }
     },
+    "Enable GitHub Copilot" : {
+
+    },
     "Enable inline suggestions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15606,6 +15653,9 @@
           }
         }
       }
+    },
+    "Enter this code on GitHub:" : {
+
     },
     "Enter your license key to unlock Pro features." : {
       "localizations" : {
@@ -19457,6 +19507,9 @@
         }
       }
     },
+    "GitHub Copilot" : {
+
+    },
     "GitHub Repository" : {
       "localizations" : {
         "tr" : {
@@ -21261,6 +21314,9 @@
         }
       }
     },
+    "Inline suggestion provider" : {
+
+    },
     "Inline Suggestions" : {
       "localizations" : {
         "tr" : {
@@ -21970,6 +22026,9 @@
           }
         }
       }
+    },
+    "Invalid LSP response" : {
+
     },
     "Invalid MongoDB syntax: %@" : {
       "extractionState" : "stale",
@@ -23881,6 +23940,25 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在历史记录中记录 MCP 查询"
+          }
+        }
+      }
+    },
+    "LSP process exited with code %d" : {
+
+    },
+    "LSP process is not running" : {
+
+    },
+    "LSP request was cancelled" : {
+
+    },
+    "LSP server error (%d): %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LSP server error (%1$d): %2$@"
           }
         }
       }
@@ -27560,6 +27638,9 @@
         }
       }
     },
+    "Not signed in to GitHub Copilot" : {
+
+    },
     "Not supported for this database." : {
       "localizations" : {
         "tr" : {
@@ -30315,6 +30396,9 @@
         }
       }
     },
+    "Preferences" : {
+
+    },
     "Preferred" : {
       "localizations" : {
         "tr" : {
@@ -32788,6 +32872,9 @@
         }
       }
     },
+    "Remove" : {
+
+    },
     "Remove all filters and reload" : {
       "localizations" : {
         "tr" : {
@@ -33007,6 +33094,9 @@
           }
         }
       }
+    },
+    "Remove Provider?" : {
+
     },
     "Rename" : {
       "localizations" : {
@@ -34141,6 +34231,9 @@
         }
       }
     },
+    "Running" : {
+
+    },
     "Running on port %d" : {
       "localizations" : {
         "tr" : {
@@ -34611,6 +34704,9 @@
           }
         }
       }
+    },
+    "Save failed: %@" : {
+
     },
     "Save Filter Preset" : {
       "localizations" : {
@@ -35831,6 +35927,9 @@
         }
       }
     },
+    "Send telemetry to GitHub" : {
+
+    },
     "Server" : {
       "localizations" : {
         "tr" : {
@@ -36789,6 +36888,21 @@
           }
         }
       }
+    },
+    "Sign in with GitHub" : {
+
+    },
+    "Sign Out" : {
+
+    },
+    "Sign-in cancelled" : {
+
+    },
+    "Sign-in timed out" : {
+
+    },
+    "Signed in as %@" : {
+
     },
     "Silent" : {
       "localizations" : {
@@ -40119,6 +40233,9 @@
         }
       }
     },
+    "The API key will be permanently deleted." : {
+
+    },
     "The authenticity of host '%@' can't be established.\n\n%@ key fingerprint is:\n%@\n\nAre you sure you want to continue connecting?" : {
       "localizations" : {
         "en" : {
@@ -40146,6 +40263,12 @@
           }
         }
       }
+    },
+    "The code expires in 15 minutes." : {
+
+    },
+    "The code has been copied to your clipboard." : {
+
     },
     "The encrypted file is corrupt or incomplete" : {
       "localizations" : {
@@ -41186,6 +41309,9 @@
           }
         }
       }
+    },
+    "This will permanently delete all conversation history." : {
+
     },
     "This will permanently delete all data in partition '%@'." : {
       "localizations" : {
@@ -43234,6 +43360,9 @@
           }
         }
       }
+    },
+    "Use Copilot for chat" : {
+
     },
     "Use Default" : {
       "localizations" : {

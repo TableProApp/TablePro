@@ -16,6 +16,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
     case openRouter = "openRouter"
     case ollama = "ollama"
     case gemini = "gemini"
+    case copilot = "copilot"
     case custom = "custom"
 
     var id: String { rawValue }
@@ -27,6 +28,7 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         case .openRouter: return "OpenRouter"
         case .ollama: return "Ollama"
         case .gemini: return "Gemini"
+        case .copilot: return "GitHub Copilot"
         case .custom: return String(localized: "Custom")
         }
     }
@@ -38,13 +40,14 @@ enum AIProviderType: String, Codable, CaseIterable, Identifiable {
         case .openRouter: return "https://openrouter.ai/api"
         case .ollama: return "http://localhost:11434"
         case .gemini: return "https://generativelanguage.googleapis.com"
+        case .copilot: return ""
         case .custom: return ""
         }
     }
 
     var requiresAPIKey: Bool {
         switch self {
-        case .ollama: return false
+        case .ollama, .copilot: return false
         default: return true
         }
     }
@@ -143,7 +146,7 @@ struct AISettings: Codable, Equatable {
     var includeQueryResults: Bool
     var maxSchemaTables: Int
     var defaultConnectionPolicy: AIConnectionPolicy
-    var inlineSuggestEnabled: Bool
+    var copilotChatEnabled: Bool
 
     static let `default` = AISettings(
         enabled: true,
@@ -154,7 +157,7 @@ struct AISettings: Codable, Equatable {
         includeQueryResults: false,
         maxSchemaTables: 20,
         defaultConnectionPolicy: .askEachTime,
-        inlineSuggestEnabled: false
+        copilotChatEnabled: false
     )
 
     init(
@@ -166,7 +169,7 @@ struct AISettings: Codable, Equatable {
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
         defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
-        inlineSuggestEnabled: Bool = false
+        copilotChatEnabled: Bool = false
     ) {
         self.enabled = enabled
         self.providers = providers
@@ -176,7 +179,7 @@ struct AISettings: Codable, Equatable {
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
         self.defaultConnectionPolicy = defaultConnectionPolicy
-        self.inlineSuggestEnabled = inlineSuggestEnabled
+        self.copilotChatEnabled = copilotChatEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -191,7 +194,7 @@ struct AISettings: Codable, Equatable {
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
-        inlineSuggestEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestEnabled) ?? false
+        copilotChatEnabled = try container.decodeIfPresent(Bool.self, forKey: .copilotChatEnabled) ?? false
     }
 }
 
@@ -244,4 +247,11 @@ struct AITokenUsage: Codable, Equatable {
 enum AIStreamEvent {
     case text(String)
     case usage(AITokenUsage)
+}
+
+// MARK: - Copilot Provider ID
+
+extension AIProviderConfig {
+    // swiftlint:disable:next force_unwrapping
+    static let copilotProviderID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
 }

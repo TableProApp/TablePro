@@ -32,20 +32,9 @@ enum AIProviderFactory {
             }
 
             let provider: AIProvider
-            switch config.type {
-            case .claude:
-                provider = AnthropicProvider(
-                    endpoint: config.endpoint,
-                    apiKey: apiKey ?? "",
-                    maxOutputTokens: config.maxOutputTokens ?? 4_096
-                )
-            case .gemini:
-                provider = GeminiProvider(
-                    endpoint: config.endpoint,
-                    apiKey: apiKey ?? "",
-                    maxOutputTokens: config.maxOutputTokens ?? 8_192
-                )
-            case .openAI, .openRouter, .ollama, .custom:
+            if let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) {
+                provider = descriptor.makeProvider(config, apiKey)
+            } else {
                 provider = OpenAICompatibleProvider(
                     endpoint: config.endpoint,
                     apiKey: apiKey,
@@ -66,22 +55,70 @@ enum AIProviderFactory {
         cacheLock.withLock { $0.removeValue(forKey: configID) }
     }
 
+    static func resetCopilotConversation() {
+        cacheLock.withLock { cache in
+            for (_, entry) in cache {
+                if let copilot = entry.provider as? CopilotChatProvider {
+                    copilot.resetConversation()
+                }
+            }
+        }
+    }
+
+    static func copilotDeleteLastTurn() {
+        cacheLock.withLock { cache in
+            for (_, entry) in cache {
+                if let copilot = entry.provider as? CopilotChatProvider {
+                    copilot.deleteLastTurn()
+                }
+            }
+        }
+    }
+
     static func resolveProvider(
         for feature: AIFeature,
         settings: AISettings
     ) -> (AIProviderConfig, String?)? {
-        if let route = settings.featureRouting[feature.rawValue],
-           let config = settings.providers.first(where: { $0.id == route.providerID && $0.isEnabled }) {
+        // Check feature routing: explicit provider or Copilot
+        if let route = settings.featureRouting[feature.rawValue] {
+            // Routed to Copilot
+            if route.providerID == AIProviderConfig.copilotProviderID, settings.copilotChatEnabled {
+                let config = AIProviderConfig(
+                    id: AIProviderConfig.copilotProviderID,
+                    name: "GitHub Copilot",
+                    type: .copilot,
+                    model: route.model,
+                    endpoint: ""
+                )
+                return (config, nil)
+            }
+
+            // Routed to a regular provider
+            if let config = settings.providers.first(where: { $0.id == route.providerID && $0.isEnabled }) {
+                let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
+                return (config, apiKey)
+            }
+        }
+
+        // Fallback: first enabled provider
+        if let config = settings.providers.first(where: { $0.isEnabled }) {
             let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
             return (config, apiKey)
         }
 
-        guard let config = settings.providers.first(where: { $0.isEnabled }) else {
-            return nil
+        // Last resort: if copilotChatEnabled and no other providers, use Copilot
+        if settings.copilotChatEnabled {
+            let config = AIProviderConfig(
+                id: AIProviderConfig.copilotProviderID,
+                name: "GitHub Copilot",
+                type: .copilot,
+                model: "",
+                endpoint: ""
+            )
+            return (config, nil)
         }
 
-        let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-        return (config, apiKey)
+        return nil
     }
 
     static func resolveModel(

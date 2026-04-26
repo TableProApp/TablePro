@@ -15,6 +15,7 @@ struct AISettingsView: View {
     @State private var editingProvider: AIProviderConfig?
     @State private var editingProviderAPIKey: String = ""
     @State private var isAddingNewProvider: Bool = false
+    @State private var showDeleteProviderConfirmation: Bool = false
 
     var body: some View {
         Form {
@@ -23,9 +24,9 @@ struct AISettingsView: View {
             }
             if settings.enabled {
                 providersSection
+                copilotChatSection
                 featureRoutingSection
                 contextSection
-                inlineSuggestionsSection
                 privacySection
             }
         }
@@ -46,6 +47,14 @@ struct AISettingsView: View {
                     editingProvider = nil
                 }
             )
+        }
+        .alert(String(localized: "Remove Provider?"), isPresented: $showDeleteProviderConfirmation) {
+            Button(String(localized: "Remove"), role: .destructive) {
+                removeSelectedProvider()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "The API key will be permanently deleted."))
         }
     }
 
@@ -79,7 +88,7 @@ struct AISettingsView: View {
 
                 HStack(spacing: 0) {
                     Button {
-                        removeSelectedProvider()
+                        showDeleteProviderConfirmation = true
                     } label: {
                         Image(systemName: "minus")
                             .frame(width: 24, height: 24)
@@ -147,6 +156,16 @@ struct AISettingsView: View {
         }
     }
 
+    // MARK: - Copilot Chat Section
+
+    private var copilotChatSection: some View {
+        Section {
+            Toggle("Use Copilot for chat", isOn: $settings.copilotChatEnabled)
+        } header: {
+            Text("GitHub Copilot")
+        }
+    }
+
     // MARK: - Feature Routing Section
 
     private var featureRoutingSection: some View {
@@ -160,6 +179,10 @@ struct AISettingsView: View {
                         ForEach(settings.providers.filter(\.isEnabled)) { provider in
                             Text(provider.name.isEmpty ? provider.type.displayName : provider.name)
                                 .tag(UUID?.some(provider.id) as UUID?)
+                        }
+                        if settings.copilotChatEnabled, CopilotService.shared.isAuthenticated {
+                            Text("GitHub Copilot")
+                                .tag(UUID?.some(AIProviderConfig.copilotProviderID) as UUID?)
                         }
                     }
                     .labelsHidden()
@@ -186,18 +209,6 @@ struct AISettingsView: View {
             )
         } header: {
             Text("Context")
-        }
-    }
-
-    // MARK: - Inline Suggestions Section
-
-    private var inlineSuggestionsSection: some View {
-        Section {
-            Toggle(String(localized: "Enable inline suggestions"), isOn: $settings.inlineSuggestEnabled)
-        } header: {
-            Text("Inline Suggestions")
-        } footer: {
-            Text("AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss.")
         }
     }
 
@@ -296,6 +307,7 @@ struct AISettingsView: View {
         case .gemini: return "wand.and.stars"
         case .ollama: return "desktopcomputer"
         case .openRouter: return "globe"
+        case .copilot: return "chevron.left.forwardslash.chevron.right"
         case .custom: return "server.rack"
         }
     }

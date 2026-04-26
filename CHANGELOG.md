@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- AI provider registry for extensible provider management
+- GitHub Copilot integration: inline suggestions, chat via LSP conversation protocol, OAuth sign-in, schema context
+- Inline suggestion architecture rewrite with protocol-based sources and ghost text rendering
+- Unified inline suggestion provider picker (Off/Copilot/AI) in Editor settings
 - Connection sharing: Share submenu with Copy Connection String, Copy TablePro Link, Copy as JSON, and rich deep links carrying all connection fields
 - Edit > Find menu item (Cmd+F)
 - MCP server: Bearer token authentication with multi-token management

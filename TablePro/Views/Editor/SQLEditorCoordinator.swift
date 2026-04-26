@@ -27,6 +27,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var connectionAIPolicy: AIConnectionPolicy?
     @ObservationIgnored private var contextMenu: AIEditorContextMenu?
     @ObservationIgnored private var inlineSuggestionManager: InlineSuggestionManager?
+    @ObservationIgnored private var aiChatInlineSource: AIChatInlineSource?
+    @ObservationIgnored private var copilotDocumentSync: CopilotDocumentSync?
+    @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
     @ObservationIgnored private var editorSettingsObserver: NSObjectProtocol?
     @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
     /// Debounce work item for frame-change notification to avoid
@@ -52,6 +55,8 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored var onSaveAsFavorite: ((String) -> Void)?
     @ObservationIgnored var onFormatSQL: (() -> Void)?
     @ObservationIgnored var databaseType: DatabaseType?
+    @ObservationIgnored var tabID: UUID?
+    @ObservationIgnored var connectionId: UUID?
 
     /// Whether the editor text view is currently the first responder.
     /// Used to guard cursor propagation — when the find panel highlights
@@ -131,6 +136,11 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             self?.vimCursorManager?.updatePosition()
         }
 
+        if !didDestroy, let tabID, let sync = copilotDocumentSync {
+            let text = textView.string
+            Task { await sync.didChangeText(tabID: tabID, newText: text) }
+        }
+
         frameChangeTask?.cancel()
         frameChangeTask = Task { [weak controller] in
             try? await Task.sleep(for: .milliseconds(50))
@@ -163,8 +173,16 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
         uninstallVimKeyInterceptor()
 
+        if let tabID, let sync = copilotDocumentSync {
+            let id = tabID
+            Task { await sync.didCloseTab(tabID: id) }
+        }
+
         inlineSuggestionManager?.uninstall()
         inlineSuggestionManager = nil
+        copilotDocumentSync = nil
+        copilotInlineSource = nil
+        aiChatInlineSource = nil
 
         // Release closure captures to break potential retain cycles
         onCloseTab = nil
@@ -194,6 +212,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         }
         if contextMenu == nil, let controller {
             installAIContextMenu(controller: controller)
+        }
+        if inlineSuggestionManager == nil, let controller {
+            installInlineSuggestionManager(controller: controller)
         }
     }
 
@@ -235,9 +256,58 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
 
     private func installInlineSuggestionManager(controller: TextViewController) {
         let manager = InlineSuggestionManager()
-        manager.connectionPolicy = connectionAIPolicy
-        manager.install(controller: controller, schemaProvider: schemaProvider)
+        manager.install(controller: controller, sourceResolver: { [weak self] in
+            self?.resolveInlineSource()
+        })
         inlineSuggestionManager = manager
+    }
+
+    private func resolveInlineSource() -> InlineSuggestionSource? {
+        let provider = AppSettingsManager.shared.editor.inlineSuggestionProvider
+        switch provider {
+        case .off:
+            return nil
+        case .copilot:
+            guard AppSettingsManager.shared.copilot.enabled else { return nil }
+            if copilotInlineSource == nil {
+                let sync = CopilotDocumentSync()
+                copilotDocumentSync = sync
+                copilotInlineSource = CopilotInlineSource(documentSync: sync)
+
+                let capturedTabID = tabID
+                let capturedText = controller?.textView?.string ?? ""
+                let capturedSchemaProvider = schemaProvider
+                let capturedDBType = databaseType
+                let dbName = connectionId.flatMap {
+                    DatabaseManager.shared.session(for: $0)?.activeDatabase
+                } ?? "database"
+
+                Task {
+                    // Build preamble first so ensureDocumentOpen includes it
+                    if let provider = capturedSchemaProvider, let dbType = capturedDBType {
+                        await sync.schemaContext.buildPreamble(
+                            schemaProvider: provider,
+                            databaseName: dbName,
+                            databaseType: dbType
+                        )
+                    }
+                    // Then open document (with preamble already available)
+                    if let tabID = capturedTabID {
+                        sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
+                        await sync.didActivateTab(tabID: tabID, text: capturedText)
+                    }
+                }
+            }
+            return copilotInlineSource
+        case .ai:
+            if aiChatInlineSource == nil {
+                aiChatInlineSource = AIChatInlineSource(
+                    schemaProvider: schemaProvider,
+                    connectionPolicy: connectionAIPolicy
+                )
+            }
+            return aiChatInlineSource
+        }
     }
 
     // MARK: - Vim Mode
@@ -345,7 +415,23 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         ) { [weak self, weak controller] _ in
             guard let self, let controller else { return }
             self.handleVimSettingsChange(controller: controller)
+            self.handleInlineProviderChange()
             self.vimCursorManager?.updatePosition()
+        }
+    }
+
+    private func handleInlineProviderChange() {
+        let provider = AppSettingsManager.shared.editor.inlineSuggestionProvider
+        if provider != .copilot {
+            if let tabID, let sync = copilotDocumentSync {
+                let id = tabID
+                Task { await sync.didCloseTab(tabID: id) }
+            }
+            copilotDocumentSync = nil
+            copilotInlineSource = nil
+        }
+        if provider != .ai {
+            aiChatInlineSource = nil
         }
     }
 

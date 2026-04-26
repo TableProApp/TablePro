@@ -18,9 +18,11 @@ struct AIChatPanelView: View {
     private let settingsManager = AppSettingsManager.shared
     @State private var isUserScrolledUp = false
     @State private var lastAutoScrollTime: Date = .distantPast
+    @State private var showClearConfirmation = false
 
     private var hasConfiguredProvider: Bool {
         settingsManager.ai.providers.contains(where: { $0.isEnabled })
+            || settingsManager.ai.copilotChatEnabled
     }
 
     var body: some View {
@@ -66,6 +68,14 @@ struct AIChatPanelView: View {
         } message: {
             Text(String(localized: "Your database schema and query data will be sent to the AI provider for analysis. Allow for this connection?"))
         }
+        .alert(String(localized: "Clear All Conversations?"), isPresented: $showClearConfirmation) {
+            Button(String(localized: "Clear"), role: .destructive) {
+                viewModel.clearConversation()
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "This will permanently delete all conversation history."))
+        }
     }
 
     // MARK: - Header
@@ -107,7 +117,7 @@ struct AIChatPanelView: View {
                     Divider()
                 }
                 Button(role: .destructive) {
-                    viewModel.clearConversation()
+                    showClearConfirmation = true
                 } label: {
                     Label(String(localized: "Clear Recents"), systemImage: "trash")
                 }

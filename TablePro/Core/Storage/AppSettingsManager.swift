@@ -153,6 +153,23 @@ final class AppSettingsManager {
         }
     }
 
+    var copilot: CopilotSettings {
+        didSet {
+            storage.saveCopilot(copilot)
+            SyncChangeTracker.shared.markDirty(.settings, id: "copilot")
+            if copilot.enabled != oldValue.enabled {
+                let shouldEnable = copilot.enabled
+                Task {
+                    if shouldEnable {
+                        await CopilotService.shared.start()
+                    } else {
+                        await CopilotService.shared.stop()
+                    }
+                }
+            }
+        }
+    }
+
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     @ObservationIgnored private var isValidating = false
     @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
@@ -170,6 +187,7 @@ final class AppSettingsManager {
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
+        self.copilot = storage.loadCopilot()
 
         general.language.apply()
 
@@ -189,6 +207,11 @@ final class AppSettingsManager {
         DateFormattingService.shared.updateFormat(dataGrid.dateFormat)
 
         observeAccessibilityTextSizeChanges()
+
+        // Start Copilot service if enabled (didSet doesn't fire during init)
+        if copilot.enabled {
+            Task { await CopilotService.shared.start() }
+        }
     }
 
     private func notifyChange(_ notification: Notification.Name) {
@@ -232,6 +255,7 @@ final class AppSettingsManager {
         sync = .default
         terminal = .default
         mcp = .default
+        copilot = .default
         storage.resetToDefaults()
     }
 }

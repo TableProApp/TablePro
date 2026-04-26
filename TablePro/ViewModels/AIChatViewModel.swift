@@ -156,6 +156,7 @@ final class AIChatViewModel {
     /// Clear all recent conversations
     func clearConversation() {
         cancelStream()
+        AIProviderFactory.resetCopilotConversation()
         Task { await chatStorage.deleteAll() }
         conversations.removeAll()
         messages.removeAll()
@@ -186,6 +187,7 @@ final class AIChatViewModel {
               let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant })
         else { return }
 
+        AIProviderFactory.copilotDeleteLastTurn()
         messages.remove(at: lastAssistantIndex)
         errorMessage = nil
         startStreaming(feature: lastUsedFeature)
@@ -241,6 +243,7 @@ final class AIChatViewModel {
     /// Switch to an existing conversation
     func switchConversation(to id: UUID) {
         guard let conversation = conversations.first(where: { $0.id == id }) else { return }
+        AIProviderFactory.resetCopilotConversation()
         cancelStream()
         persistCurrentConversation()
         messages = conversation.messages
@@ -251,6 +254,7 @@ final class AIChatViewModel {
     /// Release all session-specific data to free memory on disconnect.
     /// Unlike `clearConversation()`, this does not delete persisted history.
     func clearSessionData() {
+        AIProviderFactory.resetCopilotConversation()
         streamingTask?.cancel()
         streamingTask = nil
         schemaFetchTask?.cancel()
@@ -275,6 +279,9 @@ final class AIChatViewModel {
 
     /// Delete a conversation
     func deleteConversation(_ id: UUID) {
+        if activeConversationID == id {
+            AIProviderFactory.resetCopilotConversation()
+        }
         Task { await chatStorage.delete(id) }
         conversations.removeAll { $0.id == id }
         if activeConversationID == id {
@@ -380,7 +387,6 @@ final class AIChatViewModel {
 
         // Capture value types on main actor before detaching
         let chatMessages = Array(messages.dropLast())
-        let assistantIndex = messages.count - 1
 
         streamingTask = Task.detached(priority: .userInitiated) { [weak self] in
             do {
@@ -447,14 +453,13 @@ final class AIChatViewModel {
                         pendingUsage = nil
                         await MainActor.run { [weak self] in
                             guard let self,
-                                  assistantIndex < self.messages.count,
-                                  self.messages[assistantIndex].id == assistantID
+                                  let idx = self.messages.firstIndex(where: { $0.id == assistantID })
                             else { return }
                             if !content.isEmpty {
-                                self.messages[assistantIndex].content += content
+                                self.messages[idx].content += content
                             }
                             if let usage {
-                                self.messages[assistantIndex].usage = usage
+                                self.messages[idx].usage = usage
                             }
                         }
                         lastFlushTime = .now
@@ -467,14 +472,13 @@ final class AIChatViewModel {
                     let usage = pendingUsage
                     await MainActor.run { [weak self] in
                         guard let self,
-                              assistantIndex < self.messages.count,
-                              self.messages[assistantIndex].id == assistantID
+                              let idx = self.messages.firstIndex(where: { $0.id == assistantID })
                         else { return }
                         if !content.isEmpty {
-                            self.messages[assistantIndex].content += content
+                            self.messages[idx].content += content
                         }
                         if let usage {
-                            self.messages[assistantIndex].usage = usage
+                            self.messages[idx].usage = usage
                         }
                     }
                 }
