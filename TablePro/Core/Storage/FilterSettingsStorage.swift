@@ -19,8 +19,8 @@ enum FilterDefaultColumn: String, CaseIterable, Identifiable, Codable {
     var displayName: String {
         switch self {
         case .rawSQL: return "Raw SQL"
-        case .primaryKey: return "Primary Key"
-        case .anyColumn: return "Any Column"
+        case .primaryKey: return String(localized: "Primary Key")
+        case .anyColumn: return String(localized: "Any Column")
         }
     }
 }
@@ -56,9 +56,9 @@ enum FilterPanelDefaultState: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .restoreLast: return "Restore Last Filter"
-        case .alwaysShow: return "Always Show"
-        case .alwaysHide: return "Always Hide"
+        case .restoreLast: return String(localized: "Restore Last Filter")
+        case .alwaysShow: return String(localized: "Always Show")
+        case .alwaysHide: return String(localized: "Always Hide")
         }
     }
 }

@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DDL results showing misleading "0 row(s) affected"
 - Export dialog missing empty state when no tables found
 - Save-changes error messages, duplicated connection "(Copy)" suffix, query window title fallback, preview window subtitle, and inspector row count not localized
+- Filter settings popover options not localized
 
 ### Changed
 
