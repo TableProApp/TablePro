@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the separate Copilot settings tab and the per-feature routing UI
 - Existing AI providers are preserved on upgrade; the first one is auto-set as active
 - Filter value field uses a native SwiftUI suggestion dropdown instead of the AppKit autocomplete popup
+- Replaced custom search field with native NSSearchField in keyboard shortcuts, database switcher, and quick switcher
 
 ### Added
 
@@ -32,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Improved keyboard and VoiceOver accessibility for interactive rows across the app
 - Compiled theme fallback colors now match the default theme JSON files
 - TablePlus import: correctly map all SSL/TLS modes instead of treating Prefer as disabled
 - DBeaver import: parse SSL configuration from handler properties

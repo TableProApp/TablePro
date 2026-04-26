@@ -18,10 +18,9 @@ struct KeyboardSettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
-            SearchFieldView(
-                placeholder: "Search shortcuts...",
-                text: $searchText
+            NativeSearchField(
+                text: $searchText,
+                placeholder: String(localized: "Search shortcuts...")
             )
             .padding(.horizontal, 20)
             .padding(.top, 16)
