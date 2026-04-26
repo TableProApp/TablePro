@@ -690,7 +690,7 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowsePage(tab_id) => self.fetch_browse_page(tab_id, sender),
             AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
-            AppMsg::WorkspaceTabsChanged => self.persist_workspace_state(),
+            AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
@@ -757,9 +757,19 @@ impl SimpleComponent for App {
             AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
             AppMsg::ShowHistory => self.on_show_history(sender),
             AppMsg::OpenHistoryQuery(text) => {
-                self.append_editor_tab(Some(text), sender);
+                if self.connected {
+                    self.append_editor_tab(Some(text), sender);
+                } else {
+                    self.show_toast(&crate::tr!("Connect to a database first to run SQL."));
+                }
             }
-            AppMsg::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
+            AppMsg::ReplaceActiveTabQuery(text) => {
+                if self.connected {
+                    self.on_replace_active_tab_query(text, sender);
+                } else {
+                    self.show_toast(&crate::tr!("Connect to a database first to run SQL."));
+                }
+            }
             AppMsg::PollHealth => self.on_poll_health(),
             AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowShortcuts => self.on_show_shortcuts(),

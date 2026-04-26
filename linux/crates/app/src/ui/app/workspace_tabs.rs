@@ -69,9 +69,17 @@ impl App {
             glib::Propagation::Stop
         });
 
+        // Both selection-change AND any pages-list change (insert /
+        // remove / drag-reorder) trigger persist + title-refresh.
+        // Without connect_pages_notify, drag-reorder doesn't persist
+        // until the next other event.
         let pages_sender = sender.clone();
         tab_view.connect_selected_page_notify(move |_| {
             pages_sender.input(AppMsg::WorkspaceTabsChanged);
+        });
+        let reorder_sender = sender.clone();
+        tab_view.connect_pages_notify(move |_| {
+            reorder_sender.input(AppMsg::WorkspaceTabsChanged);
         });
 
         let inner = gtk::Box::builder().orientation(gtk::Orientation::Vertical).build();
@@ -88,6 +96,10 @@ impl App {
         // we build an SqlEditor inline, register the slot, and return
         // the page. Browse tabs aren't creatable from the overview
         // (they need a sidebar table target).
+        // Overview "+" must return a real TabPage synchronously. We
+        // construct an editor slot inline using the same label scheme
+        // as `append_editor_tab` ("Query 1", "Query 2", …) so the two
+        // entry points are visually indistinguishable.
         let workspace_tabs_for_create = self.workspace_tabs.clone();
         let tab_view_for_create = tab_view.clone();
         let schema_buffer_for_create = self.schema_buffer.clone();
@@ -104,7 +116,12 @@ impl App {
                     SqlEditorOutput::QueryChanged(text) => AppMsg::EditorTabQueryChanged(tab_id, text),
                 });
             let page = tab_view_for_create.append(editor.widget());
-            let label = crate::tr!("Empty query");
+            let editor_count = workspace_tabs_for_create
+                .borrow()
+                .values()
+                .filter(|t| matches!(t, WorkspaceTab::Editor(_)))
+                .count();
+            let label = default_editor_tab_label(editor_count + 1);
             page.set_title(&label);
             page.set_tooltip(&label);
             write_workspace_tab_id(&page, tab_id);
@@ -495,6 +512,44 @@ impl App {
         workspace_state::save_connection(connection_id, conn_state);
     }
 
+    /// Single handler for `WorkspaceTabsChanged`. Persists tab state,
+    /// refreshes the window title (so tab switches update the subtitle),
+    /// and syncs the sidebar selection to the active Browse tab's table.
+    pub(super) fn on_workspace_tabs_changed(&self) {
+        self.persist_workspace_state();
+        self.refresh_window_title();
+        self.sync_sidebar_selection();
+    }
+
+    /// Highlight the sidebar row matching the active Browse tab's
+    /// `(schema, table)`. No-op when active is an Editor tab (we leave
+    /// the sidebar selection on whatever was last clicked, so switching
+    /// to editor and back doesn't disorient).
+    fn sync_sidebar_selection(&self) {
+        let Some((schema, table)) = self.selected_browse_slot_table() else {
+            return;
+        };
+        let listbox = self.sidebar_factory.widget();
+        let schemas = self.sidebar_schemas.borrow();
+        let mut idx = 0_i32;
+        while let Some(row) = listbox.row_at_index(idx) {
+            // The factory builds one row per TableInfo, in the same order
+            // as `sidebar_schemas`, so we can pair each row with its
+            // schema-Option by index.
+            if let Some(action_row) = row.downcast_ref::<adw::ActionRow>() {
+                let row_table = action_row.title().to_string();
+                let row_schema = schemas.get(idx as usize).cloned().unwrap_or(None);
+                if row_table == table && row_schema.as_deref() == schema.as_deref() {
+                    // select_row doesn't trigger row-activated (user-only
+                    // signal), so this won't recurse into SelectTable.
+                    listbox.select_row(Some(action_row));
+                    return;
+                }
+            }
+            idx += 1;
+        }
+    }
+
     pub(super) fn selected_workspace_tab_id(&self) -> Option<Uuid> {
         let tab_view = self.workspace_tab_view.as_ref()?;
         let page = tab_view.selected_page()?;
@@ -594,13 +649,19 @@ impl App {
         }
     }
 
-    pub(super) fn on_replace_active_tab_query(&self, text: String) {
-        let Some(id) = self.selected_workspace_tab_id() else {
-            return;
-        };
-        if let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id) {
+    pub(super) fn on_replace_active_tab_query(&mut self, text: String, sender: ComponentSender<Self>) {
+        // If an editor tab is active, replace its buffer in-place. If a
+        // browse tab is active (or no tab at all), fall back to opening
+        // a new editor tab with the query — silent no-op was the prior
+        // (annoying) behaviour for users invoking from history while
+        // browsing.
+        if let Some(id) = self.selected_workspace_tab_id()
+            && let Some(WorkspaceTab::Editor(slot)) = self.workspace_tabs.borrow().get(&id)
+        {
             let _ = slot.controller.sender().send(SqlEditorInput::ReplaceQuery(text));
+            return;
         }
+        self.append_editor_tab(Some(text), sender);
     }
 
     fn editor_tab_count(&self) -> usize {
