@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- TablePlus import: correctly map all SSL/TLS modes instead of treating Prefer as disabled
+- DBeaver import: parse SSL configuration from handler properties
+- Sequel Ace import: read SSH port as number, not string
+- TablePlus import: import SSH key passphrases from keychain
 - Filter value field now works correctly with Chinese, Japanese, and Korean input methods (#878)
 - Saving a filter preset with a duplicate name no longer silently overwrites the existing preset
 - Raw SQL filter accepting destructive statements and comment injection
