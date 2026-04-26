@@ -6,7 +6,7 @@
 import SwiftUI
 
 enum SettingsTab: String {
-    case general, appearance, editor, keyboard, ai, copilot, terminal, mcp, plugins, account
+    case general, appearance, editor, keyboard, ai, terminal, mcp, plugins, account
 }
 
 struct SettingsView: View {
@@ -44,10 +44,6 @@ struct SettingsView: View {
             AISettingsView(settings: $settingsManager.ai)
                 .tabItem { Label("AI", systemImage: "sparkles") }
                 .tag(SettingsTab.ai.rawValue)
-
-            CopilotSettingsView(settings: $settingsManager.copilot)
-                .tabItem { Label("Copilot", systemImage: "chevron.left.forwardslash.chevron.right") }
-                .tag(SettingsTab.copilot.rawValue)
 
             TerminalSettingsView(settings: $settingsManager.terminal)
                 .tabItem { Label("Terminal", systemImage: "terminal") }

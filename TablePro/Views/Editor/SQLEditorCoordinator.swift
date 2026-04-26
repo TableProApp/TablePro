@@ -31,7 +31,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
     @ObservationIgnored private var copilotDocumentSync: CopilotDocumentSync?
     @ObservationIgnored private var copilotInlineSource: CopilotInlineSource?
     @ObservationIgnored private var editorSettingsObserver: NSObjectProtocol?
+    @ObservationIgnored private var aiSettingsObserver: NSObjectProtocol?
     @ObservationIgnored private var windowKeyObserver: NSObjectProtocol?
+    @ObservationIgnored private var lastInlineSourceKind: InlineSourceKind = .off
     /// Debounce work item for frame-change notification to avoid
     /// triggering syntax highlight viewport recalculation on every keystroke.
     @ObservationIgnored private var frameChangeTask: Task<Void, Never>?
@@ -72,6 +74,9 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         if let observer = editorSettingsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = aiSettingsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -82,6 +87,10 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         if let observer = editorSettingsObserver {
             NotificationCenter.default.removeObserver(observer)
             editorSettingsObserver = nil
+        }
+        if let observer = aiSettingsObserver {
+            NotificationCenter.default.removeObserver(observer)
+            aiSettingsObserver = nil
         }
         if let observer = windowKeyObserver {
             NotificationCenter.default.removeObserver(observer)
@@ -262,41 +271,32 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
         inlineSuggestionManager = manager
     }
 
+    private enum InlineSourceKind {
+        case off
+        case copilot
+        case ai
+    }
+
+    private var resolvedInlineSourceKind: InlineSourceKind {
+        let ai = AppSettingsManager.shared.ai
+        guard ai.enabled, ai.inlineSuggestionsEnabled, let active = ai.activeProvider else {
+            return .off
+        }
+        return active.type == .copilot ? .copilot : .ai
+    }
+
     private func resolveInlineSource() -> InlineSuggestionSource? {
-        let provider = AppSettingsManager.shared.editor.inlineSuggestionProvider
-        switch provider {
+        let kind = resolvedInlineSourceKind
+        if kind != lastInlineSourceKind {
+            teardownInlineSources(except: kind)
+            lastInlineSourceKind = kind
+        }
+        switch kind {
         case .off:
             return nil
         case .copilot:
-            guard AppSettingsManager.shared.copilot.enabled else { return nil }
             if copilotInlineSource == nil {
-                let sync = CopilotDocumentSync()
-                copilotDocumentSync = sync
-                copilotInlineSource = CopilotInlineSource(documentSync: sync)
-
-                let capturedTabID = tabID
-                let capturedText = controller?.textView?.string ?? ""
-                let capturedSchemaProvider = schemaProvider
-                let capturedDBType = databaseType
-                let dbName = connectionId.flatMap {
-                    DatabaseManager.shared.session(for: $0)?.activeDatabase
-                } ?? "database"
-
-                Task {
-                    // Build preamble first so ensureDocumentOpen includes it
-                    if let provider = capturedSchemaProvider, let dbType = capturedDBType {
-                        await sync.schemaContext.buildPreamble(
-                            schemaProvider: provider,
-                            databaseName: dbName,
-                            databaseType: dbType
-                        )
-                    }
-                    // Then open document (with preamble already available)
-                    if let tabID = capturedTabID {
-                        sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
-                        await sync.didActivateTab(tabID: tabID, text: capturedText)
-                    }
-                }
+                installCopilotInlineSource()
             }
             return copilotInlineSource
         case .ai:
@@ -307,6 +307,48 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
                 )
             }
             return aiChatInlineSource
+        }
+    }
+
+    private func installCopilotInlineSource() {
+        let sync = CopilotDocumentSync()
+        copilotDocumentSync = sync
+        copilotInlineSource = CopilotInlineSource(documentSync: sync)
+
+        let capturedTabID = tabID
+        let capturedText = controller?.textView?.string ?? ""
+        let capturedSchemaProvider = schemaProvider
+        let capturedDBType = databaseType
+        let dbName = connectionId.flatMap {
+            DatabaseManager.shared.session(for: $0)?.activeDatabase
+        } ?? "database"
+
+        Task {
+            if let provider = capturedSchemaProvider, let dbType = capturedDBType {
+                await sync.schemaContext.buildPreamble(
+                    schemaProvider: provider,
+                    databaseName: dbName,
+                    databaseType: dbType
+                )
+            }
+            if let tabID = capturedTabID {
+                sync.ensureDocumentOpen(tabID: tabID, text: capturedText)
+                await sync.didActivateTab(tabID: tabID, text: capturedText)
+            }
+        }
+    }
+
+    private func teardownInlineSources(except kind: InlineSourceKind) {
+        if kind != .copilot {
+            if let tabID, let sync = copilotDocumentSync {
+                let id = tabID
+                Task { await sync.didCloseTab(tabID: id) }
+            }
+            copilotDocumentSync = nil
+            copilotInlineSource = nil
+        }
+        if kind != .ai {
+            aiChatInlineSource = nil
         }
     }
 
@@ -418,21 +460,20 @@ final class SQLEditorCoordinator: TextViewCoordinator, TextViewDelegate {
             self.handleInlineProviderChange()
             self.vimCursorManager?.updatePosition()
         }
+        aiSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .aiSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleInlineProviderChange()
+        }
     }
 
     private func handleInlineProviderChange() {
-        let provider = AppSettingsManager.shared.editor.inlineSuggestionProvider
-        if provider != .copilot {
-            if let tabID, let sync = copilotDocumentSync {
-                let id = tabID
-                Task { await sync.didCloseTab(tabID: id) }
-            }
-            copilotDocumentSync = nil
-            copilotInlineSource = nil
-        }
-        if provider != .ai {
-            aiChatInlineSource = nil
-        }
+        let kind = resolvedInlineSourceKind
+        guard kind != lastInlineSourceKind else { return }
+        teardownInlineSources(except: kind)
+        lastInlineSourceKind = kind
     }
 
     // MARK: - Keyword Auto-Uppercase

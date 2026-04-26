@@ -24,17 +24,6 @@ struct EditorSettingsView: View {
                 Toggle("Vim mode", isOn: $settings.vimModeEnabled)
             }
 
-            Section("Inline Suggestions") {
-                Picker(
-                    String(localized: "Inline suggestion provider"),
-                    selection: $settings.inlineSuggestionProvider
-                ) {
-                    ForEach(InlineSuggestionProvider.allCases) { provider in
-                        Text(provider.displayName).tag(provider)
-                    }
-                }
-            }
-
             Section("JSON Viewer") {
                 Picker("Default view:", selection: $settings.jsonViewerPreferredMode) {
                     Text("Text").tag(JSONViewMode.text)

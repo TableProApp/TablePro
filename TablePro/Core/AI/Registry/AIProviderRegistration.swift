@@ -49,7 +49,7 @@ enum AIProviderRegistration {
                 typeID: type.rawValue,
                 displayName: type.displayName,
                 defaultEndpoint: type.defaultEndpoint,
-                requiresAPIKey: type.requiresAPIKey,
+                requiresAPIKey: type.authStyle == .apiKey,
                 capabilities: [.chat, .models],
                 symbolName: iconForType(type),
                 makeProvider: { config, apiKey in
@@ -63,17 +63,14 @@ enum AIProviderRegistration {
             ))
         }
 
-        // Copilot: chat via LSP, no API key
         registry.register(AIProviderDescriptor(
             typeID: AIProviderType.copilot.rawValue,
             displayName: "GitHub Copilot",
             defaultEndpoint: "",
             requiresAPIKey: false,
             capabilities: [.chat, .models],
-            symbolName: "chevron.left.forwardslash.chevron.right",
-            makeProvider: { _, _ in
-                CopilotChatProvider()
-            }
+            symbolName: AIProviderType.copilot.symbolName,
+            makeProvider: { _, _ in CopilotChatProvider() }
         ))
     }
 

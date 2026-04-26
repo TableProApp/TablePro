@@ -2,16 +2,15 @@
 //  AIProviderFactory.swift
 //  TablePro
 //
-//  Factory for creating AI provider instances based on configuration.
+//  Factory for creating AI provider instances. Resolves the active provider
+//  from settings (no per-feature routing).
 //
 
 import Foundation
 import os
 
-/// Factory for creating AI provider instances
 enum AIProviderFactory {
-    /// Resolved provider ready for use
-    struct ResolvedProvider {
+    struct ResolvedProvider: Sendable {
         let provider: AIProvider
         let model: String
         let config: AIProviderConfig
@@ -21,16 +20,11 @@ enum AIProviderFactory {
         initialState: [UUID: (apiKey: String?, provider: AIProvider)]()
     )
 
-    /// Create or return a cached AI provider for the given configuration
-    static func createProvider(
-        for config: AIProviderConfig,
-        apiKey: String?
-    ) -> AIProvider {
+    static func createProvider(for config: AIProviderConfig, apiKey: String?) -> AIProvider {
         cacheLock.withLock { cache in
             if let cached = cache[config.id], cached.apiKey == apiKey {
                 return cached.provider
             }
-
             let provider: AIProvider
             if let descriptor = AIProviderRegistry.shared.descriptor(for: config.type.rawValue) {
                 provider = descriptor.makeProvider(config, apiKey)
@@ -75,70 +69,16 @@ enum AIProviderFactory {
         }
     }
 
-    static func resolveProvider(
-        for feature: AIFeature,
-        settings: AISettings
-    ) -> (AIProviderConfig, String?)? {
-        // Check feature routing: explicit provider or Copilot
-        if let route = settings.featureRouting[feature.rawValue] {
-            // Routed to Copilot
-            if route.providerID == AIProviderConfig.copilotProviderID, settings.copilotChatEnabled {
-                let config = AIProviderConfig(
-                    id: AIProviderConfig.copilotProviderID,
-                    name: "GitHub Copilot",
-                    type: .copilot,
-                    model: route.model,
-                    endpoint: ""
-                )
-                return (config, nil)
-            }
-
-            // Routed to a regular provider
-            if let config = settings.providers.first(where: { $0.id == route.providerID && $0.isEnabled }) {
-                let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-                return (config, apiKey)
-            }
+    static func resolve(settings: AISettings) -> ResolvedProvider? {
+        guard settings.enabled, let config = settings.activeProvider else { return nil }
+        let apiKey: String?
+        switch config.type.authStyle {
+        case .apiKey:
+            apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
+        case .oauth, .none:
+            apiKey = nil
         }
-
-        // Fallback: first enabled provider
-        if let config = settings.providers.first(where: { $0.isEnabled }) {
-            let apiKey = AIKeyStorage.shared.loadAPIKey(for: config.id)
-            return (config, apiKey)
-        }
-
-        // Last resort: if copilotChatEnabled and no other providers, use Copilot
-        if settings.copilotChatEnabled {
-            let config = AIProviderConfig(
-                id: AIProviderConfig.copilotProviderID,
-                name: "GitHub Copilot",
-                type: .copilot,
-                model: "",
-                endpoint: ""
-            )
-            return (config, nil)
-        }
-
-        return nil
-    }
-
-    static func resolveModel(
-        for feature: AIFeature,
-        config: AIProviderConfig,
-        settings: AISettings
-    ) -> String {
-        if let route = settings.featureRouting[feature.rawValue], !route.model.isEmpty {
-            return route.model
-        }
-        return config.model
-    }
-
-    /// Resolve provider, model, and config in one step
-    static func resolve(for feature: AIFeature, settings: AISettings) -> ResolvedProvider? {
-        guard let (config, apiKey) = resolveProvider(for: feature, settings: settings) else {
-            return nil
-        }
-        let model = resolveModel(for: feature, config: config, settings: settings)
         let provider = createProvider(for: config, apiKey: apiKey)
-        return ResolvedProvider(provider: provider, model: model, config: config)
+        return ResolvedProvider(provider: provider, model: config.model, config: config)
     }
 }

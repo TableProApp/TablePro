@@ -21,8 +21,7 @@ struct AIChatPanelView: View {
     @State private var showClearConfirmation = false
 
     private var hasConfiguredProvider: Bool {
-        settingsManager.ai.providers.contains(where: { $0.isEnabled })
-            || settingsManager.ai.copilotChatEnabled
+        settingsManager.ai.hasActiveProvider
     }
 
     var body: some View {

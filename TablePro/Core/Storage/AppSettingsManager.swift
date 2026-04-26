@@ -106,6 +106,18 @@ final class AppSettingsManager {
         didSet {
             storage.saveAI(ai)
             SyncChangeTracker.shared.markDirty(.settings, id: "ai")
+            notifyChange(.aiSettingsDidChange)
+            let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
+            let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
+            if hasCopilot != hadCopilot {
+                Task {
+                    if hasCopilot {
+                        await CopilotService.shared.start()
+                    } else {
+                        await CopilotService.shared.stop()
+                    }
+                }
+            }
         }
     }
 
@@ -153,23 +165,6 @@ final class AppSettingsManager {
         }
     }
 
-    var copilot: CopilotSettings {
-        didSet {
-            storage.saveCopilot(copilot)
-            SyncChangeTracker.shared.markDirty(.settings, id: "copilot")
-            if copilot.enabled != oldValue.enabled {
-                let shouldEnable = copilot.enabled
-                Task {
-                    if shouldEnable {
-                        await CopilotService.shared.start()
-                    } else {
-                        await CopilotService.shared.stop()
-                    }
-                }
-            }
-        }
-    }
-
     @ObservationIgnored private let storage = AppSettingsStorage.shared
     @ObservationIgnored private var isValidating = false
     @ObservationIgnored private var accessibilityTextSizeObserver: NSObjectProtocol?
@@ -187,7 +182,6 @@ final class AppSettingsManager {
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
-        self.copilot = storage.loadCopilot()
 
         general.language.apply()
 
@@ -208,8 +202,7 @@ final class AppSettingsManager {
 
         observeAccessibilityTextSizeChanges()
 
-        // Start Copilot service if enabled (didSet doesn't fire during init)
-        if copilot.enabled {
+        if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
             Task { await CopilotService.shared.start() }
         }
     }
@@ -255,7 +248,6 @@ final class AppSettingsManager {
         sync = .default
         terminal = .default
         mcp = .default
-        copilot = .default
         storage.resetToDefaults()
     }
 }

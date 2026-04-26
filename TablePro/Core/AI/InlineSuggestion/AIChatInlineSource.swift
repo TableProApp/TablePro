@@ -20,15 +20,15 @@ final class AIChatInlineSource: InlineSuggestionSource {
 
     var isAvailable: Bool {
         let settings = AppSettingsManager.shared.ai
-        guard settings.enabled else { return false }
+        guard settings.enabled, settings.hasActiveProvider else { return false }
         if connectionPolicy == .never { return false }
-        return settings.providers.contains(where: \.isEnabled)
+        return true
     }
 
     func requestSuggestion(context: SuggestionContext) async throws -> InlineSuggestion? {
         let settings = AppSettingsManager.shared.ai
 
-        guard let resolved = AIProviderFactory.resolve(for: .chat, settings: settings) else {
+        guard let resolved = AIProviderFactory.resolve(settings: settings) else {
             return nil
         }
 

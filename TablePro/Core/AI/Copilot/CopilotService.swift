@@ -70,8 +70,8 @@ final class CopilotService {
             )
             await client.initialized()
 
-            let copilotSettings = AppSettingsManager.shared.copilot
-            let telemetryLevel: String = copilotSettings.telemetryEnabled ? "all" : "off"
+            let copilotConfig = AppSettingsManager.shared.ai.providers.first(where: { $0.type == .copilot })
+            let telemetryLevel: String = (copilotConfig?.telemetryEnabled ?? false) ? "all" : "off"
             await client.didChangeConfiguration(settings: [
                 "telemetry": AnyCodable(["telemetryLevel": telemetryLevel])
             ])

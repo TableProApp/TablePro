@@ -66,22 +66,6 @@ internal enum JSONViewMode: String, Codable, CaseIterable {
     case tree
 }
 
-internal enum InlineSuggestionProvider: String, Codable, CaseIterable, Identifiable {
-    case off
-    case copilot
-    case ai
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .off: return String(localized: "Off")
-        case .copilot: return "GitHub Copilot"
-        case .ai: return String(localized: "AI Provider")
-        }
-    }
-}
-
 /// Editor settings
 struct EditorSettings: Codable, Equatable {
     var showLineNumbers: Bool
@@ -91,7 +75,6 @@ struct EditorSettings: Codable, Equatable {
     var vimModeEnabled: Bool
     var uppercaseKeywords: Bool
     var jsonViewerPreferredMode: JSONViewMode
-    var inlineSuggestionProvider: InlineSuggestionProvider
 
     static let `default` = EditorSettings(
         showLineNumbers: true,
@@ -100,8 +83,7 @@ struct EditorSettings: Codable, Equatable {
         wordWrap: false,
         vimModeEnabled: false,
         uppercaseKeywords: false,
-        jsonViewerPreferredMode: .text,
-        inlineSuggestionProvider: .off
+        jsonViewerPreferredMode: .text
     )
 
     init(
@@ -111,8 +93,7 @@ struct EditorSettings: Codable, Equatable {
         wordWrap: Bool = false,
         vimModeEnabled: Bool = false,
         uppercaseKeywords: Bool = false,
-        jsonViewerPreferredMode: JSONViewMode = .text,
-        inlineSuggestionProvider: InlineSuggestionProvider = .off
+        jsonViewerPreferredMode: JSONViewMode = .text
     ) {
         self.showLineNumbers = showLineNumbers
         self.highlightCurrentLine = highlightCurrentLine
@@ -121,7 +102,6 @@ struct EditorSettings: Codable, Equatable {
         self.vimModeEnabled = vimModeEnabled
         self.uppercaseKeywords = uppercaseKeywords
         self.jsonViewerPreferredMode = jsonViewerPreferredMode
-        self.inlineSuggestionProvider = inlineSuggestionProvider
     }
 
     init(from decoder: Decoder) throws {
@@ -133,9 +113,6 @@ struct EditorSettings: Codable, Equatable {
         vimModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .vimModeEnabled) ?? false
         uppercaseKeywords = try container.decodeIfPresent(Bool.self, forKey: .uppercaseKeywords) ?? false
         jsonViewerPreferredMode = try container.decodeIfPresent(JSONViewMode.self, forKey: .jsonViewerPreferredMode) ?? .text
-        inlineSuggestionProvider = try container.decodeIfPresent(
-            InlineSuggestionProvider.self, forKey: .inlineSuggestionProvider
-        ) ?? .off
     }
 
     /// Clamped tab width (1-16)

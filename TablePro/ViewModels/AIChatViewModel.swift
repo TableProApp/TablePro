@@ -55,7 +55,7 @@ final class AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.fixError(query: query, error: error, databaseType: databaseType)
-        sendWithContext(prompt: prompt, feature: .fixError)
+        sendWithContext(prompt: prompt)
     }
 
     func handleExplainSelection(_ selectedText: String) {
@@ -63,7 +63,7 @@ final class AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.explainQuery(selectedText, databaseType: databaseType)
-        sendWithContext(prompt: prompt, feature: .explainQuery)
+        sendWithContext(prompt: prompt)
     }
 
     func handleOptimizeSelection(_ selectedText: String) {
@@ -71,7 +71,7 @@ final class AIChatViewModel {
         startNewConversation()
         let databaseType = connection?.type ?? .mysql
         let prompt = AIPromptTemplates.optimizeQuery(selectedText, databaseType: databaseType)
-        sendWithContext(prompt: prompt, feature: .optimizeQuery)
+        sendWithContext(prompt: prompt)
     }
 
     func editMessage(_ message: AIChatMessage) {
@@ -95,10 +95,9 @@ final class AIChatViewModel {
     @ObservationIgnored nonisolated(unsafe) private var streamingTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var schemaFetchTask: Task<Void, Never>?
     private var streamingAssistantID: UUID?
-    private var lastUsedFeature: AIFeature = .chat
     private let chatStorage = AIChatStorage.shared
     private var sessionApprovedConnections: Set<UUID> = []
-    private var pendingFeature: AIFeature?
+    private var pendingApproval: Bool = false
 
     // MARK: - Init
 
@@ -124,17 +123,17 @@ final class AIChatViewModel {
         inputText = ""
         errorMessage = nil
 
-        startStreaming(feature: .chat)
+        startStreaming()
     }
 
-    /// Send a pre-filled prompt for a specific AI feature
-    func sendWithContext(prompt: String, feature: AIFeature) {
+    /// Send a pre-filled prompt
+    func sendWithContext(prompt: String) {
         let userMessage = AIChatMessage(role: .user, content: prompt)
         messages.append(userMessage)
         trimMessagesIfNeeded()
         errorMessage = nil
 
-        startStreaming(feature: feature)
+        startStreaming()
     }
 
     /// Cancel the current streaming response
@@ -168,17 +167,15 @@ final class AIChatViewModel {
     func retry() {
         guard lastMessageFailed else { return }
 
-        // Remove failed assistant message if present
         if let lastMessage = messages.last, lastMessage.role == .assistant {
             messages.removeLast()
         }
 
-        // Verify the last message is a user message before retrying
         guard messages.last?.role == .user else { return }
 
         lastMessageFailed = false
         errorMessage = nil
-        startStreaming(feature: lastUsedFeature)
+        startStreaming()
     }
 
     /// Regenerate the last assistant response
@@ -190,7 +187,7 @@ final class AIChatViewModel {
         AIProviderFactory.copilotDeleteLastTurn()
         messages.remove(at: lastAssistantIndex)
         errorMessage = nil
-        startStreaming(feature: lastUsedFeature)
+        startStreaming()
     }
 
     /// User confirmed AI access for the current connection
@@ -198,16 +195,14 @@ final class AIChatViewModel {
         if let connectionID = connection?.id {
             sessionApprovedConnections.insert(connectionID)
         }
-        if let feature = pendingFeature {
-            pendingFeature = nil
-            startStreaming(feature: feature)
-        }
+        guard pendingApproval else { return }
+        pendingApproval = false
+        startStreaming()
     }
 
     /// User denied AI access for the current connection
     func denyAIAccess() {
-        pendingFeature = nil
-        // Remove the last user message since we can't process it
+        pendingApproval = false
         if let last = messages.last, last.role == .user {
             messages.removeLast()
         }
@@ -274,7 +269,7 @@ final class AIChatViewModel {
         sessionApprovedConnections = []
         isStreaming = false
         streamingAssistantID = nil
-        pendingFeature = nil
+        pendingApproval = false
     }
 
     /// Delete a conversation
@@ -332,8 +327,7 @@ final class AIChatViewModel {
         }
     }
 
-    private func startStreaming(feature: AIFeature) {
-        // Cancel any in-flight stream before starting a new one
+    private func startStreaming() {
         if streamingTask != nil {
             streamingTask?.cancel()
             streamingTask = nil
@@ -346,17 +340,15 @@ final class AIChatViewModel {
             isStreaming = false
         }
 
-        lastUsedFeature = feature
         lastMessageFailed = false
 
         let settings = AppSettingsManager.shared.ai
 
-        guard let resolved = AIProviderFactory.resolve(for: feature, settings: settings) else {
+        guard let resolved = AIProviderFactory.resolve(settings: settings) else {
             errorMessage = String(localized: "No AI provider configured. Go to Settings > AI to add one.")
             return
         }
 
-        // Check connection policy
         if connection != nil {
             if let policy = resolveConnectionPolicy(settings: settings) {
                 if policy == .never {
@@ -367,7 +359,7 @@ final class AIChatViewModel {
                     return
                 }
                 if policy == .askEachTime {
-                    pendingFeature = feature
+                    pendingApproval = true
                     showAIAccessConfirmation = true
                     return
                 }

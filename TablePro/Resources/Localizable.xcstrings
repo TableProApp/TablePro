@@ -3752,6 +3752,9 @@
         }
       }
     },
+    "Active Provider" : {
+
+    },
     "Active Queries" : {
       "localizations" : {
         "tr" : {
@@ -3839,6 +3842,9 @@
           }
         }
       }
+    },
+    "Add %@" : {
+
     },
     "Add as Copy" : {
 
@@ -3975,6 +3981,9 @@
           }
         }
       }
+    },
+    "Add Custom Provider…" : {
+
     },
     "Add filter" : {
       "localizations" : {
@@ -4176,6 +4185,7 @@
       }
     },
     "Add provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4198,6 +4208,7 @@
       }
     },
     "Add Provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4218,6 +4229,9 @@
           }
         }
       }
+    },
+    "Add Provider…" : {
+
     },
     "Add Row" : {
       "localizations" : {
@@ -4284,6 +4298,9 @@
           }
         }
       }
+    },
+    "Advanced" : {
+
     },
     "Agent Socket" : {
       "localizations" : {
@@ -4462,6 +4479,7 @@
       }
     },
     "AI Provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5280,6 +5298,9 @@
         }
       }
     },
+    "API key set" : {
+
+    },
     "API token" : {
       "localizations" : {
         "tr" : {
@@ -6050,6 +6071,9 @@
           }
         }
       }
+    },
+    "Authentication required" : {
+
     },
     "Authentication required to execute operations" : {
       "localizations" : {
@@ -7605,6 +7629,7 @@
       }
     },
     "Chat" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9240,6 +9265,9 @@
         }
       }
     },
+    "Configure an active provider to enable inline suggestions." : {
+
+    },
     "Configure an AI provider in Settings to start chatting." : {
       "localizations" : {
         "tr" : {
@@ -9691,6 +9719,9 @@
           }
         }
       }
+    },
+    "Connection policy" : {
+
     },
     "Connection Status" : {
       "extractionState" : "stale",
@@ -10182,9 +10213,6 @@
           }
         }
       }
-    },
-    "Copilot" : {
-
     },
     "Copilot language server binary not found" : {
 
@@ -12677,6 +12705,7 @@
       }
     },
     "Default connection policy" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14871,6 +14900,7 @@
       }
     },
     "Edit provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14893,6 +14923,7 @@
       }
     },
     "Edit Provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15181,9 +15212,6 @@
         }
       }
     },
-    "Enable GitHub Copilot" : {
-
-    },
     "Enable inline suggestions" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15206,6 +15234,9 @@
           }
         }
       }
+    },
+    "Enable inline suggestions while typing" : {
+
     },
     "Enable MCP Server" : {
       "localizations" : {
@@ -15274,6 +15305,7 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -18183,6 +18215,7 @@
 
     },
     "Feature Routing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -18900,6 +18933,7 @@
       }
     },
     "Fix Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -19506,9 +19540,6 @@
           }
         }
       }
-    },
-    "GitHub Copilot" : {
-
     },
     "GitHub Repository" : {
       "localizations" : {
@@ -21314,7 +21345,7 @@
         }
       }
     },
-    "Inline suggestion provider" : {
+    "Inline SQL suggestions appear as you type. Press Tab to accept, Escape to dismiss." : {
 
     },
     "Inline Suggestions" : {
@@ -23583,6 +23614,7 @@
       }
     },
     "Load Models" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23871,6 +23903,9 @@
           }
         }
       }
+    },
+    "Local" : {
+
     },
     "Local only" : {
 
@@ -24228,6 +24263,9 @@
           }
         }
       }
+    },
+    "Max output tokens" : {
+
     },
     "Max schema tables: %d" : {
       "localizations" : {
@@ -26747,6 +26785,7 @@
       }
     },
     "No model selected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27439,6 +27478,9 @@
         }
       }
     },
+    "Not configured" : {
+
+    },
     "Not connected" : {
       "localizations" : {
         "tr" : {
@@ -27637,6 +27679,9 @@
           }
         }
       }
+    },
+    "Not signed in" : {
+
     },
     "Not signed in to GitHub Copilot" : {
 
@@ -28688,6 +28733,7 @@
       }
     },
     "Optimize Query" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -30395,9 +30441,6 @@
           }
         }
       }
-    },
-    "Preferences" : {
-
     },
     "Preferred" : {
       "localizations" : {
@@ -32872,7 +32915,13 @@
         }
       }
     },
+    "Reload" : {
+
+    },
     "Remove" : {
+
+    },
+    "Remove %@?" : {
 
     },
     "Remove all filters and reload" : {
@@ -33074,6 +33123,7 @@
       }
     },
     "Remove provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33094,6 +33144,9 @@
           }
         }
       }
+    },
+    "Remove Provider" : {
+
     },
     "Remove Provider?" : {
 
@@ -34230,9 +34283,6 @@
           }
         }
       }
-    },
-    "Running" : {
-
     },
     "Running on port %d" : {
       "localizations" : {
@@ -35538,6 +35588,9 @@
         }
       }
     },
+    "Select a model" : {
+
+    },
     "Select a Plugin" : {
       "localizations" : {
         "tr" : {
@@ -36123,6 +36176,9 @@
         }
       }
     },
+    "Service stopped" : {
+
+    },
     "Session Token" : {
       "localizations" : {
         "en" : {
@@ -36150,6 +36206,9 @@
           }
         }
       }
+    },
+    "Set as Active" : {
+
     },
     "Set DEFAULT" : {
       "localizations" : {
@@ -36902,6 +36961,9 @@
 
     },
     "Signed in as %@" : {
+
+    },
+    "Signing in…" : {
 
     },
     "Silent" : {
@@ -38258,6 +38320,9 @@
           }
         }
       }
+    },
+    "Starting service…" : {
+
     },
     "Starting..." : {
       "localizations" : {
@@ -40102,6 +40167,7 @@
       }
     },
     "Test" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -43360,9 +43426,6 @@
           }
         }
       }
-    },
-    "Use Copilot for chat" : {
-
     },
     "Use Default" : {
       "localizations" : {

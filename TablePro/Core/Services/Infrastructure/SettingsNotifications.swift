@@ -28,4 +28,8 @@ extension Notification.Name {
     /// Posted when terminal settings change (font, theme, cursor, etc.)
     /// Used by terminal views to live-update configuration.
     static let terminalSettingsDidChange = Notification.Name("terminalSettingsDidChange")
+
+    /// Posted when AI settings change (active provider, inline suggestions toggle, etc.)
+    /// Used by editor coordinators to re-resolve inline suggestion sources.
+    static let aiSettingsDidChange = Notification.Name("aiSettingsDidChange")
 }

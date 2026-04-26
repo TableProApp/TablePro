@@ -32,7 +32,6 @@ final class AppSettingsStorage {
         static let sync = "com.TablePro.settings.sync"
         static let terminal = "com.TablePro.settings.terminal"
         static let mcp = "com.TablePro.settings.mcp"
-        static let copilot = "com.TablePro.settings.copilot"
         static let lastConnectionId = "com.TablePro.settings.lastConnectionId"
         static let lastOpenConnectionIds = "com.TablePro.settings.lastOpenConnectionIds"
         static let hasCompletedOnboarding = "com.TablePro.settings.hasCompletedOnboarding"
@@ -151,16 +150,6 @@ final class AppSettingsStorage {
         save(settings, key: Keys.mcp)
     }
 
-    // MARK: - Copilot Settings
-
-    func loadCopilot() -> CopilotSettings {
-        load(key: Keys.copilot, default: .default)
-    }
-
-    func saveCopilot(_ settings: CopilotSettings) {
-        save(settings, key: Keys.copilot)
-    }
-
     // MARK: - Last Connection (for Reopen Last Session)
 
     /// Load the last used connection ID
@@ -254,7 +243,6 @@ final class AppSettingsStorage {
         saveSync(.default)
         saveTerminal(.default)
         saveMCP(.default)
-        saveCopilot(.default)
     }
 
     // MARK: - Helpers
