@@ -1,4 +1,5 @@
 mod browse;
+mod browse_tabs;
 mod connection;
 mod editor_tabs;
 mod row_ops;
@@ -16,11 +17,11 @@ use tablepro_core::{ColumnInfo, DriverRegistry, QueryResult, TableInfo, Value};
 use tablepro_storage::SavedConnection;
 use uuid::Uuid;
 
+use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::connect_dialog::ConnectDialog;
 use super::connection_row::{ConnectionRow, ConnectionRowOutput};
 use super::edit_dialog::EditDialog;
 use super::editor::{SqlEditor, SqlEditorInit, SqlEditorOutput, build_schema_buffer};
-use super::grid::GridMsg;
 use super::history_dialog::HistoryDialog;
 use super::insert_dialog::InsertDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
@@ -28,9 +29,6 @@ use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
 use crate::services::database_service;
 use crate::services::database_service::ConnectionHealth;
 use tablepro_core::sql_dialect::{placeholder_for, quote_ident};
-
-const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
-const DEFAULT_PAGE_SIZE: u64 = 1_000;
 
 pub struct App {
     registry: Arc<DriverRegistry>,
@@ -49,33 +47,27 @@ pub struct App {
     row_op_spinner: gtk::Spinner,
     read_only_badge: gtk::Label,
     table_search: gtk::SearchEntry,
-    paginator_label: gtk::Label,
-    prev_button: gtk::Button,
-    next_button: gtk::Button,
-    insert_button: gtk::Button,
-    edit_row_button: gtk::Button,
-    delete_button: gtk::Button,
-    grid_holder: gtk::Box,
-    grid_search: gtk::SearchEntry,
-    grid_search_bar: gtk::SearchBar,
-    grid_search_handler: Option<glib::SignalHandlerId>,
-    grid_sender: relm4::Sender<GridMsg>,
-    /// Inner stack for the Browse view-stack page: swaps between the table
-    /// grid (`grid`) and status pages (`status`, `loading`). Replaces the
-    /// previous full-window content swap so the ViewSwitcher tabs remain
-    /// stable while the Browse content updates underneath.
-    browse_inner_stack: gtk::Stack,
-    /// Connected-state content: ViewSwitcher tabs for Browse + Editor.
-    /// Hidden (replaced by `welcome_view`) while disconnected.
+    /// View-stack containing Browse + Editor pages.
     view_stack: adw::ViewStack,
     /// Bottom-of-headerbar tab strip. Revealed when connected, hidden
-    /// otherwise — keeps WindowTitle visible above for connection name
-    /// rather than swapping it out (GNOME Maps pattern).
+    /// otherwise — keeps WindowTitle visible above for connection name.
     view_switcher_bar: adw::ViewSwitcherBar,
-    /// `true` once the Editor page has been added to view_stack — built
-    /// eagerly on connect so the ViewSwitcher always has Browse + Editor
-    /// peers (a single-tab switcher would be visual noise).
+    /// `true` once the Editor page has been added to view_stack.
     editor_page_added: std::cell::Cell<bool>,
+    /// Outer Stack inside the Browse view_stack page — swaps between
+    /// `"empty"` (AdwStatusPage "Select a table") and `"tabs"` (the
+    /// AdwTabOverview hosting BrowseTab sub-components).
+    browse_outer_stack: gtk::Stack,
+    /// AdwTabOverview wrapping Browse's AdwTabBar + AdwTabView. None
+    /// before connect; rebuilt fresh each connection (we tear down on
+    /// disconnect to drop all per-tab GTK state cleanly).
+    browse_root: Option<adw::TabOverview>,
+    browse_tab_view: Option<adw::TabView>,
+    /// Idempotency flag for `ensure_browse_root` (mirrors editor pattern).
+    browse_root_added: std::cell::Cell<bool>,
+    /// Per-tab browse state. HashMap for O(1) tab_id lookup; display
+    /// order is read from `tab_view.pages()` since HashMap is unordered.
+    browse_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, BrowseTabSlot>>>,
     dialog: Option<Controller<ConnectDialog>>,
     editor_root: Option<adw::TabOverview>,
     editor_tab_view: Option<adw::TabView>,
@@ -85,17 +77,17 @@ pub struct App {
     edit_dialog: Option<Controller<EditDialog>>,
     history_dialog: Option<Controller<HistoryDialog>>,
     welcome_view: Controller<WelcomeView>,
-    current_table: Option<String>,
-    current_schema: Option<String>,
-    current_offset: u64,
-    current_columns: Vec<ColumnInfo>,
-    current_result: Option<QueryResult>,
-    current_selection: Option<gtk::MultiSelection>,
+    /// Driver id is connection-wide, not per-tab.
     current_driver_id: Option<String>,
-    current_sort: Option<(usize, bool)>,
-    current_total_rows: Option<u64>,
-    page_size: u64,
+    /// All tables in the current connection — fed into `schema_buffer`
+    /// for the editor's autocomplete; not the per-tab columns.
     table_names: Vec<String>,
+    /// Read-only flag is connection-wide; fanned out to every BrowseTab
+    /// when toggled.
+    read_only: bool,
+    /// Default page size for newly-opened browse tabs (from preferences).
+    /// Per-tab page size lives on each BrowseTab.
+    default_page_size: u64,
     saved_connections: Vec<SavedConnection>,
     connected: bool,
 }
@@ -107,12 +99,48 @@ pub struct EditorTabSlot {
     pub query: String,
 }
 
+pub struct BrowseTabSlot {
+    /// Canonical tab identity — written into qdata and used as HashMap
+    /// key. Kept for parity with EditorTabSlot even if not read directly
+    /// (lookups are by HashMap key, not by reading the field).
+    #[allow(dead_code)]
+    pub id: Uuid,
+    pub controller: Controller<BrowseTab>,
+    pub page: adw::TabPage,
+    pub schema: Option<String>,
+    pub table: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum OpenMode {
+    /// Smart switch: activate an existing tab for the given table if any,
+    /// otherwise replace the active tab with a fresh one for this table.
+    SmartSwitchOrReplace,
+    /// Always append a new tab even if the same table is already open.
+    NewTab,
+}
+
 // Quark-keyed qdata avoids the type-unsafety contract of string-keyed
 // `set_data`/`data` (a foreign caller could collide with the same string
 // key for a different type). The Quark is interned once and cached.
 fn editor_tab_id_quark() -> glib::Quark {
     static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
     *QUARK.get_or_init(|| glib::Quark::from_str("tp-editor-tab-id"))
+}
+
+fn browse_tab_id_quark() -> glib::Quark {
+    static QUARK: std::sync::OnceLock<glib::Quark> = std::sync::OnceLock::new();
+    *QUARK.get_or_init(|| glib::Quark::from_str("tp-browse-tab-id"))
+}
+
+pub(super) fn write_browse_tab_id(page: &adw::TabPage, id: Uuid) {
+    unsafe {
+        page.set_qdata(browse_tab_id_quark(), id);
+    }
+}
+
+pub(super) fn read_browse_tab_id(page: &adw::TabPage) -> Option<Uuid> {
+    unsafe { page.qdata::<Uuid>(browse_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
 #[derive(Debug)]
@@ -126,21 +154,20 @@ pub enum AppMsg {
     SelectTable {
         schema: Option<String>,
         name: String,
+        open_mode: OpenMode,
     },
-    ColumnsLoaded(String, Vec<ColumnInfo>),
-    RowsLoaded(String, u64, QueryResult),
-    LoadFailed(String),
-    PrevPage,
-    NextPage,
-    InsertRow,
-    InsertCommitted,
-    EditSelectedRow,
-    EditCommitted,
-    DeleteSelectedRow,
-    RowOperationCommitted(Option<UndoBatch>),
+    ColumnsLoaded(Uuid, Vec<ColumnInfo>),
+    RowsLoaded(Uuid, u64, QueryResult),
+    /// `Some(tab_id)` for tab-scoped failures; `None` for app-level
+    /// failures (e.g. connect failure during open_saved).
+    LoadFailed(Option<Uuid>, String),
+    InsertCommitted(Uuid),
+    EditCommitted(Uuid),
+    RowOperationCommitted(Uuid, Option<UndoBatch>),
     RowOpStarted,
     ExecuteUndo(UndoBatch),
     CellEdited {
+        tab_id: Uuid,
         table: String,
         row_position: u32,
         col_index: usize,
@@ -152,7 +179,9 @@ pub enum AppMsg {
     DeleteConnection(Uuid),
     OpenEditor,
     NewEditorTab,
-    CloseActiveEditorTab,
+    /// Context-sensitive close — closes active tab in whichever
+    /// ViewStack page is visible (Browse or Editor).
+    CloseCurrent,
     EditorTabClosed(Uuid),
     EditorTabRunStateChanged(Uuid, bool),
     EditorTabQueryChanged(Uuid, String),
@@ -166,24 +195,73 @@ pub enum AppMsg {
     ShowShortcuts,
     ShowAbout,
     ShowPreferences,
-    SortChanged(usize),
-    PageSizeChanged(u64),
-    RowCountLoaded(String, u64),
+    /// Sort flipped on tab_id's grid for column idx.
+    RowCountLoaded(Uuid, u64),
     FindInResults,
     ExportCsv,
     ExportJson,
     CopyToClipboard(String),
     SetCellNull {
+        tab_id: Uuid,
         table: String,
         row_position: u32,
         col_index: usize,
     },
     DeleteRowAt {
+        tab_id: Uuid,
         table: String,
         row_position: u32,
     },
     CopyRowAsInsert {
+        tab_id: Uuid,
         row_position: u32,
+    },
+
+    // ── Multi-tab Browse routing ─────────────────────────────────────
+    /// BrowseTab sub-component asked for its current page to be fetched.
+    FetchBrowsePage(Uuid),
+    /// BrowseTab needs schema columns.
+    FetchBrowseColumns(Uuid),
+    /// BrowseTab needs the row count.
+    FetchBrowseRowCount(Uuid),
+    /// BrowseTab emitted a state change worth persisting.
+    BrowseStateChanged,
+    /// BrowseTab columns arrived; rebuild the editor schema buffer
+    /// (union across all open browse tabs + sidebar table_names).
+    BrowseSchemaWordsChanged,
+    /// User clicked the close-X on a Browse tab page.
+    BrowseTabClosed(Uuid),
+    /// Drag-reorder / selection change in the Browse tab strip.
+    BrowseTabsChanged,
+    /// Show insert dialog scoped to a specific browse tab.
+    ShowInsertDialog {
+        tab_id: Uuid,
+        table: String,
+        columns: Vec<ColumnInfo>,
+        driver_id: String,
+    },
+    /// Show edit dialog scoped to a specific browse tab.
+    ShowEditDialog {
+        tab_id: Uuid,
+        table: String,
+        columns: Vec<ColumnInfo>,
+        driver_id: String,
+        row: Vec<Value>,
+    },
+    /// Confirm-and-execute a multi-row delete from a specific tab.
+    ConfirmDeleteSelected {
+        tab_id: Uuid,
+        table: String,
+        columns: Vec<ColumnInfo>,
+        driver_id: String,
+        positions: Vec<u32>,
+        rows: Vec<Vec<Value>>,
+    },
+    /// Show a small alert dialog; used by BrowseTab for "select exactly
+    /// one row" type messages.
+    ShowAlert {
+        title: String,
+        body: String,
     },
 }
 
@@ -395,10 +473,18 @@ impl SimpleComponent for App {
             )
             .forward(sender.input_sender(), |out| match out {
                 // Both default activation and Ctrl+click currently dispatch
-                // SelectTable; the new-tab semantics land in the App-side
-                // multi-tab integration that follows this groundwork.
-                SidebarRowOutput::Selected { schema, name } => AppMsg::SelectTable { schema, name },
-                SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable { schema, name },
+                // Default activation = smart-switch (Q1); Ctrl+click /
+                // right-click = always new tab.
+                SidebarRowOutput::Selected { schema, name } => AppMsg::SelectTable {
+                    schema,
+                    name,
+                    open_mode: OpenMode::SmartSwitchOrReplace,
+                },
+                SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable {
+                    schema,
+                    name,
+                    open_mode: OpenMode::NewTab,
+                },
             });
 
         let sidebar_listbox = sidebar_factory.widget();
@@ -498,193 +584,42 @@ impl SimpleComponent for App {
         popover_content.append(&scroll);
         widgets.connections_popover.set_child(Some(&popover_content));
 
-        let prev_button = gtk::Button::builder()
-            .icon_name("go-previous-symbolic")
-            .tooltip_text(crate::tr!("Previous page"))
-            .sensitive(false)
-            .build();
-        let next_button = gtk::Button::builder()
-            .icon_name("go-next-symbolic")
-            .tooltip_text(crate::tr!("Next page"))
-            .sensitive(false)
-            .build();
-        let paginator_label = gtk::Label::builder().build();
-        paginator_label.add_css_class("dim-label");
-        paginator_label.set_accessible_role(gtk::AccessibleRole::Status);
-
-        let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS
-            .iter()
-            .map(|n| {
-                if *n >= 1_000 {
-                    format!("{} K", n / 1_000)
-                } else {
-                    n.to_string()
-                }
-            })
-            .collect();
-        let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
-        let page_size_combo = gtk::DropDown::from_strings(&page_size_strs);
-        let default_idx = PAGE_SIZE_OPTIONS
-            .iter()
-            .position(|n| *n == DEFAULT_PAGE_SIZE)
-            .unwrap_or(2) as u32;
-        page_size_combo.set_selected(default_idx);
-        page_size_combo.set_tooltip_text(Some(&crate::tr!("Rows per page")));
-        let sender_for_size = sender.clone();
-        page_size_combo.connect_selected_notify(move |dd| {
-            let idx = dd.selected() as usize;
-            if let Some(&size) = PAGE_SIZE_OPTIONS.get(idx) {
-                sender_for_size.input(AppMsg::PageSizeChanged(size));
-            }
-        });
-
-        let sender_for_prev = sender.clone();
-        prev_button.connect_clicked(move |_| sender_for_prev.input(AppMsg::PrevPage));
-        let sender_for_next = sender.clone();
-        next_button.connect_clicked(move |_| sender_for_next.input(AppMsg::NextPage));
-
-        let insert_button = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("Insert row"))
-            .sensitive(false)
-            .build();
-        let edit_row_button = gtk::Button::builder()
-            .icon_name("document-edit-symbolic")
-            .tooltip_text(crate::tr!("Edit selected row"))
-            .sensitive(false)
-            .build();
-        let delete_button = gtk::Button::builder()
-            .icon_name("user-trash-symbolic")
-            .tooltip_text(crate::tr!("Delete selected row"))
-            .sensitive(false)
-            .build();
-
-        let sender_for_insert = sender.clone();
-        insert_button.connect_clicked(move |_| sender_for_insert.input(AppMsg::InsertRow));
-        let sender_for_edit = sender.clone();
-        edit_row_button.connect_clicked(move |_| sender_for_edit.input(AppMsg::EditSelectedRow));
-        let sender_for_delete = sender.clone();
-        delete_button.connect_clicked(move |_| sender_for_delete.input(AppMsg::DeleteSelectedRow));
-
-        let spacer = gtk::Box::builder().hexpand(true).build();
-
-        let paginator_bar = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        let export_menu = gio::Menu::new();
-        export_menu.append(Some(&crate::tr!("Export as CSV…")), Some("win.export-csv"));
-        export_menu.append(Some(&crate::tr!("Export as JSON…")), Some("win.export-json"));
-        let export_button = gtk::MenuButton::builder()
-            .icon_name("document-save-symbolic")
-            .tooltip_text(crate::tr!("Export results"))
-            .menu_model(&export_menu)
-            .build();
-        export_button.add_css_class("flat");
-
-        paginator_bar.append(&prev_button);
-        paginator_bar.append(&next_button);
-        paginator_bar.append(&paginator_label);
-        paginator_bar.append(&spacer);
-        paginator_bar.append(&page_size_combo);
-        paginator_bar.append(&export_button);
-        paginator_bar.append(&insert_button);
-        paginator_bar.append(&edit_row_button);
-        paginator_bar.append(&delete_button);
-
-        let grid_holder = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .vexpand(true)
-            .build();
-
-        let grid_search = gtk::SearchEntry::builder()
-            .placeholder_text(crate::tr!("Find in results"))
-            .build();
-        let grid_search_bar = gtk::SearchBar::builder()
-            .child(&grid_search)
-            .show_close_button(true)
-            .search_mode_enabled(false)
-            .build();
-        grid_search_bar.connect_entry(&grid_search);
-
-        let browse_view = adw::ToolbarView::new();
-        browse_view.add_top_bar(&grid_search_bar);
-        browse_view.set_content(Some(&grid_holder));
-        browse_view.add_bottom_bar(&paginator_bar);
-        grid_search_bar.set_key_capture_widget(Some(&browse_view));
-
-        // Inner Browse stack: starts on `status` ("Select a table"),
-        // switches to `grid` once on_rows_loaded populates, or `loading`
-        // during fetch. Defined in code (not view!) so set_loading_page /
-        // set_status_page can rebuild children dynamically.
-        let browse_inner_stack = gtk::Stack::builder()
+        // Browse outer stack: swaps between an "empty" StatusPage shown
+        // when no browse tabs are open, and "tabs" hosting the
+        // AdwTabOverview wrapping AdwTabBar + AdwTabView. The actual
+        // tab tree (browse_root) is built lazily on connect by
+        // `ensure_browse_root` in app/browse_tabs.rs — at this point we
+        // only register a placeholder so the view_stack has a "browse"
+        // page named for the ViewSwitcher.
+        let browse_outer_stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
             .build();
-        browse_inner_stack.add_named(&browse_view, Some("grid"));
-        let browse_initial_status = adw::StatusPage::builder()
+        let browse_empty_page = adw::StatusPage::builder()
             .icon_name(StatusKind::Info.icon())
             .title(crate::tr!("Select a table"))
             .description(crate::tr!("Pick a table from the sidebar to load its rows."))
             .build();
-        browse_inner_stack.add_named(&browse_initial_status, Some("status"));
-        browse_inner_stack.set_visible_child_name("status");
+        browse_outer_stack.add_named(&browse_empty_page, Some("empty"));
+        browse_outer_stack.set_visible_child_name("empty");
 
         let view_stack = adw::ViewStack::new();
         let browse_page = view_stack.add_titled_with_icon(
-            &browse_inner_stack,
+            &browse_outer_stack,
             Some("browse"),
             &crate::tr!("Browse"),
             "view-grid-symbolic",
         );
         let _ = browse_page;
 
-        // ViewSwitcherBar lives inside content_holder (the ToolbarView on
-        // the right side of the OverlaySplitView), not on the outer
-        // toolbar_view — that way it sits only above the content column,
-        // not above the sidebar. Sidebar runs full-height alongside, the
-        // multi-pane layout used by Files / Builder / Music.
-        //
-        // Keeping the WindowTitle in the headerbar's title slot preserves
-        // the connection-name subtitle (C3) instead of swapping it out.
+        // ViewSwitcherBar lives inside content_holder so it sits only
+        // above the content column, not above the sidebar. Sidebar runs
+        // full-height alongside (Files / Builder / Music pattern).
         let view_switcher_bar = adw::ViewSwitcherBar::builder().stack(&view_stack).reveal(false).build();
         widgets.content_holder.add_top_bar(&view_switcher_bar);
 
         let disconnect_action = install_window_actions(&widgets.window, sender.clone());
         install_window_shortcuts(&widgets.window);
         widgets.primary_menu_button.set_menu_model(Some(&primary_menu_model()));
-
-        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
-        let grid_input = sender.input_sender().clone();
-        relm4::spawn_local(grid_receiver.forward(grid_input, |msg| match msg {
-            GridMsg::SortChanged(idx) => AppMsg::SortChanged(idx),
-            GridMsg::CellEdited {
-                table,
-                row_position,
-                col_index,
-                new_value,
-            } => AppMsg::CellEdited {
-                table,
-                row_position,
-                col_index,
-                new_value,
-            },
-            GridMsg::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
-            GridMsg::CopyRowAsInsert { row_position } => AppMsg::CopyRowAsInsert { row_position },
-            GridMsg::SetCellNull {
-                table,
-                row_position,
-                col_index,
-            } => AppMsg::SetCellNull {
-                table,
-                row_position,
-                col_index,
-            },
-            GridMsg::DeleteRowAt { table, row_position } => AppMsg::DeleteRowAt { table, row_position },
-        }));
 
         let welcome_view =
             WelcomeView::builder()
@@ -712,21 +647,14 @@ impl SimpleComponent for App {
             row_op_spinner: widgets.row_op_spinner.clone(),
             read_only_badge: widgets.read_only_badge.clone(),
             table_search: widgets.table_search.clone(),
-            paginator_label,
-            prev_button,
-            next_button,
-            insert_button,
-            edit_row_button,
-            delete_button,
-            grid_holder,
-            grid_search,
-            grid_search_bar,
-            grid_search_handler: None,
-            grid_sender,
-            browse_inner_stack,
             view_stack,
             view_switcher_bar,
             editor_page_added: std::cell::Cell::new(false),
+            browse_outer_stack,
+            browse_root: None,
+            browse_tab_view: None,
+            browse_root_added: std::cell::Cell::new(false),
+            browse_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
             dialog: None,
             editor_root: None,
             editor_tab_view: None,
@@ -736,17 +664,10 @@ impl SimpleComponent for App {
             edit_dialog: None,
             history_dialog: None,
             welcome_view,
-            current_table: None,
-            current_schema: None,
-            current_offset: 0,
-            current_columns: Vec::new(),
-            current_result: None,
-            current_selection: None,
             current_driver_id: None,
-            current_sort: None,
-            current_total_rows: None,
-            page_size: crate::services::preferences::load().default_page_size,
             table_names: Vec::new(),
+            read_only: false,
+            default_page_size: crate::services::preferences::load().default_page_size,
             saved_connections: Vec::new(),
             connected: false,
         };
@@ -790,18 +711,47 @@ impl SimpleComponent for App {
             AppMsg::Connected { tables, driver_id } => self.on_connected(tables, driver_id, sender),
             AppMsg::Disconnect => self.on_disconnect(sender),
             AppMsg::DialogClosed => self.dialog = None,
-            AppMsg::SelectTable { schema, name } => self.on_select_table(schema, name, sender),
-            AppMsg::ColumnsLoaded(table, columns) => self.on_columns_loaded(table, columns, sender),
-            AppMsg::PrevPage => self.on_prev_page(sender),
-            AppMsg::NextPage => self.on_next_page(sender),
-            AppMsg::RowsLoaded(table, offset, result) => self.on_rows_loaded(table, offset, result),
-            AppMsg::LoadFailed(msg) => self.on_load_failed(msg),
-            AppMsg::InsertRow => self.on_insert_row(sender),
-            AppMsg::InsertCommitted => self.on_insert_committed(sender),
-            AppMsg::EditSelectedRow => self.on_edit_selected_row(sender),
-            AppMsg::EditCommitted => self.on_edit_committed(sender),
-            AppMsg::DeleteSelectedRow => self.on_delete_selected_row(sender),
-            AppMsg::RowOperationCommitted(undo) => {
+            AppMsg::SelectTable {
+                schema,
+                name,
+                open_mode,
+            } => self.on_select_table(schema, name, open_mode, sender),
+            AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns),
+            AppMsg::RowsLoaded(tab_id, offset, result) => self.on_browse_rows_loaded(tab_id, offset, result),
+            AppMsg::LoadFailed(tab_id, msg) => self.on_browse_load_failed(tab_id, msg),
+            AppMsg::RowCountLoaded(tab_id, count) => self.on_browse_row_count_loaded(tab_id, count),
+            AppMsg::FetchBrowsePage(tab_id) => self.fetch_browse_page(tab_id, sender),
+            AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
+            AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
+            AppMsg::BrowseStateChanged | AppMsg::BrowseTabsChanged => self.persist_browse_state(),
+            AppMsg::BrowseSchemaWordsChanged => self.rebuild_schema_buffer(),
+            AppMsg::BrowseTabClosed(id) => self.close_browse_tab_by_id(id, sender),
+            AppMsg::CloseCurrent => self.on_close_current(sender),
+            AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
+            AppMsg::ShowInsertDialog {
+                tab_id,
+                table,
+                columns,
+                driver_id,
+            } => self.on_show_insert_dialog(tab_id, table, columns, driver_id, sender),
+            AppMsg::ShowEditDialog {
+                tab_id,
+                table,
+                columns,
+                driver_id,
+                row,
+            } => self.on_show_edit_dialog(tab_id, table, columns, driver_id, row, sender),
+            AppMsg::ConfirmDeleteSelected {
+                tab_id,
+                table,
+                columns,
+                driver_id,
+                positions,
+                rows,
+            } => self.on_confirm_delete_selected(tab_id, table, columns, driver_id, positions, rows, sender),
+            AppMsg::InsertCommitted(tab_id) => self.on_insert_committed(tab_id),
+            AppMsg::EditCommitted(tab_id) => self.on_edit_committed(tab_id),
+            AppMsg::RowOperationCommitted(tab_id, undo) => {
                 self.set_row_op_in_flight(false);
                 let label = undo
                     .as_ref()
@@ -812,20 +762,26 @@ impl SimpleComponent for App {
                 } else {
                     self.show_toast(&label);
                 }
-                self.fetch_current_page(sender);
+                // Refetch only if the originating tab is still alive (Q10).
+                if self.browse_tabs.borrow().contains_key(&tab_id) {
+                    self.dispatch_to_tab(tab_id, BrowseTabInput::Refresh);
+                }
             }
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ExecuteUndo(batch) => {
                 self.set_row_op_in_flight(true);
                 self.show_toast(&crate::tr!("Undoing…"));
-                run_undo_batch(sender, batch);
+                if let Some(tab_id) = self.selected_browse_tab_id() {
+                    run_undo_batch(sender, tab_id, batch);
+                }
             }
             AppMsg::CellEdited {
+                tab_id,
                 table,
                 row_position,
                 col_index,
                 new_value,
-            } => self.on_cell_edited(table, row_position, col_index, new_value, sender),
+            } => self.on_cell_edited(tab_id, table, row_position, col_index, new_value, sender),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionsLoaded(connections) => {
                 let conns = connections;
@@ -833,12 +789,11 @@ impl SimpleComponent for App {
             }
             AppMsg::OpenEditor => self.on_open_editor(sender),
             AppMsg::NewEditorTab => self.append_editor_tab(None, sender),
-            AppMsg::CloseActiveEditorTab => self.close_active_editor_tab(sender),
             AppMsg::EditorTabClosed(id) => self.close_editor_tab_by_id(id, sender),
             AppMsg::EditorTabRunStateChanged(id, running) => self.on_editor_tab_run_state_changed(id, running),
             AppMsg::EditorTabQueryChanged(id, text) => self.on_editor_tab_query_changed(id, text),
             AppMsg::EditorTabsChanged => {
-                self.push_schema_words();
+                self.rebuild_schema_buffer();
                 self.persist_editor_state();
             }
             AppMsg::ShowHistory => self.on_show_history(sender),
@@ -848,24 +803,26 @@ impl SimpleComponent for App {
             }
             AppMsg::ReplaceActiveTabQuery(text) => self.on_replace_active_tab_query(text),
             AppMsg::PollHealth => self.on_poll_health(),
-            AppMsg::RefreshPage => self.fetch_current_page(sender),
+            AppMsg::RefreshPage => self.on_refresh_active_tab(),
             AppMsg::ShowShortcuts => self.on_show_shortcuts(),
             AppMsg::ShowAbout => self.on_show_about(),
             AppMsg::ShowPreferences => super::preferences::present(&self.window),
-            AppMsg::SortChanged(col_idx) => self.on_sort_changed(col_idx, sender),
-            AppMsg::PageSizeChanged(size) => self.on_page_size_changed(size, sender),
-            AppMsg::RowCountLoaded(table, count) => self.on_row_count_loaded(table, count),
             AppMsg::FindInResults => self.on_find_in_results(),
             AppMsg::ExportCsv => self.on_export(ExportFormat::Csv),
             AppMsg::ExportJson => self.on_export(ExportFormat::Json),
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
             AppMsg::SetCellNull {
+                tab_id,
                 table,
                 row_position,
                 col_index,
-            } => self.on_set_cell_null(table, row_position, col_index, sender),
-            AppMsg::DeleteRowAt { table, row_position } => self.on_delete_row_at(table, row_position, sender),
-            AppMsg::CopyRowAsInsert { row_position } => self.on_copy_row_as_insert(row_position),
+            } => self.on_set_cell_null(tab_id, table, row_position, col_index, sender),
+            AppMsg::DeleteRowAt {
+                tab_id,
+                table,
+                row_position,
+            } => self.on_delete_row_at(tab_id, table, row_position, sender),
+            AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
         }
@@ -950,24 +907,15 @@ fn value_to_json(v: &Value) -> serde_json::Value {
     }
 }
 
-fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
-    let bitset = selection.selection();
-    let mut out = Vec::with_capacity(bitset.size() as usize);
-    for i in 0..bitset.size() {
-        out.push(bitset.nth(i as u32));
-    }
-    out.sort_unstable();
-    out
-}
-
-fn execute_many_then_refetch(
+pub(super) fn execute_many_then_refetch_for_tab(
+    tab_id: Uuid,
     sender: ComponentSender<App>,
     sql: String,
     batches: Vec<Vec<Value>>,
     undo: Option<UndoBatch>,
 ) {
     let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed("no active connection".into()));
+        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
         return;
     };
     let sender_clone = sender.clone();
@@ -980,21 +928,27 @@ fn execute_many_then_refetch(
                         Ok(exec) => total += exec.rows_affected,
                         Err(e) => {
                             tracing::warn!(error = %e, "execute (multi) failed");
-                            sender_clone.input(AppMsg::LoadFailed(super::error_text::driver_message(&e)));
+                            sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
                             return;
                         }
                     }
                 }
                 tracing::info!(rows = total, "multi-execute ok");
-                sender_clone.input(AppMsg::RowOperationCommitted(undo));
+                sender_clone.input(AppMsg::RowOperationCommitted(tab_id, undo));
             })
             .drop_on_shutdown()
     });
 }
 
-fn execute_then_refetch(sender: ComponentSender<App>, sql: String, params: Vec<Value>, undo: Option<UndoBatch>) {
+pub(super) fn execute_then_refetch_for_tab(
+    tab_id: Uuid,
+    sender: ComponentSender<App>,
+    sql: String,
+    params: Vec<Value>,
+    undo: Option<UndoBatch>,
+) {
     let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed("no active connection".into()));
+        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
         return;
     };
     let sender_clone = sender.clone();
@@ -1004,11 +958,11 @@ fn execute_then_refetch(sender: ComponentSender<App>, sql: String, params: Vec<V
                 match conn.execute_params(&sql, &params).await {
                     Ok(exec) => {
                         tracing::info!(rows = exec.rows_affected, "execute ok");
-                        sender_clone.input(AppMsg::RowOperationCommitted(undo));
+                        sender_clone.input(AppMsg::RowOperationCommitted(tab_id, undo));
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, "execute failed");
-                        sender_clone.input(AppMsg::LoadFailed(super::error_text::driver_message(&e)));
+                        sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
                     }
                 }
             })
@@ -1016,9 +970,9 @@ fn execute_then_refetch(sender: ComponentSender<App>, sql: String, params: Vec<V
     });
 }
 
-fn run_undo_batch(sender: ComponentSender<App>, batch: UndoBatch) {
+fn run_undo_batch(sender: ComponentSender<App>, tab_id: Uuid, batch: UndoBatch) {
     let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed("no active connection".into()));
+        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
         return;
     };
     let sender_clone = sender.clone();
@@ -1028,12 +982,12 @@ fn run_undo_batch(sender: ComponentSender<App>, batch: UndoBatch) {
                 for (sql, params) in batch.statements.iter() {
                     if let Err(e) = conn.execute_params(sql, params).await {
                         tracing::warn!(error = %e, "undo failed");
-                        sender_clone.input(AppMsg::LoadFailed(super::error_text::driver_message(&e)));
+                        sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
                         return;
                     }
                 }
                 tracing::info!(count = batch.statements.len(), "undo ok");
-                sender_clone.input(AppMsg::RowOperationCommitted(None));
+                sender_clone.input(AppMsg::RowOperationCommitted(tab_id, None));
             })
             .drop_on_shutdown()
     });
@@ -1065,12 +1019,6 @@ fn preview_pk(columns: &[ColumnInfo], pk_indexes: &[usize], row: &[Value]) -> St
         })
         .collect::<Vec<_>>()
         .join(" AND ")
-}
-
-fn clear_box(b: &gtk::Box) {
-    while let Some(child) = b.first_child() {
-        b.remove(&child);
-    }
 }
 
 fn qualified_label(schema: Option<&str>, table: &str) -> String {
@@ -1172,7 +1120,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         quit,
         input_action!("open-editor", AppMsg::OpenEditor),
         input_action!("disconnect", AppMsg::Disconnect),
-        input_action!("close-current", AppMsg::CloseActiveEditorTab),
+        input_action!("close-current", AppMsg::CloseCurrent),
         input_action!("preferences", AppMsg::ShowPreferences),
         input_action!("show-history", AppMsg::ShowHistory),
         input_action!("refresh-page", AppMsg::RefreshPage),

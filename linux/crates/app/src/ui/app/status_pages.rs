@@ -1,7 +1,7 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender, adw, gtk};
 
-use super::{App, AppMsg, StatusKind, UndoBatch, build_shortcuts_window};
+use super::{App, AppMsg, UndoBatch, build_shortcuts_window};
 
 impl App {
     pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
@@ -11,50 +11,20 @@ impl App {
         self.content_holder.set_content(Some(self.welcome_view.widget()));
     }
 
-    /// Replaces the Browse view-stack page's content with a busy spinner +
-    /// title + description. The ViewSwitcher tabs stay visible (we're still
-    /// inside the connected ViewStack), only the Browse page's inner stack
-    /// swaps.
-    ///
-    /// Uses `adw::StatusPage` with a spinner as its child for native
-    /// styling (margins, typography, accessibility) — matches the idiom
-    /// of `set_status_page` for visual consistency.
+    /// Used during connect to convey "Connecting…" — surfaces as a toast
+    /// since the welcome view is still visible. Per-tab loading/error
+    /// states live inside BrowseTab now (replace_status_child there).
     pub(super) fn set_loading_page(&self, title: &str, description: &str) {
-        let spinner = gtk::Spinner::builder()
-            .spinning(true)
-            .width_request(32)
-            .height_request(32)
-            .halign(gtk::Align::Center)
-            .build();
-        let page = adw::StatusPage::builder()
-            .title(title)
-            .description(description)
-            .child(&spinner)
-            .build();
-        self.replace_browse_status_child("loading", &page);
-        self.view_stack.set_visible_child_name("browse");
+        let _ = description;
+        self.show_toast(title);
     }
 
-    /// Same idea as `set_loading_page`: swap the Browse page's inner stack
-    /// to show a status page (Select-a-table / Failed / etc).
-    pub(super) fn set_status_page(&self, kind: StatusKind, title: &str, description: &str) {
-        let page = adw::StatusPage::builder()
-            .title(title)
-            .description(description)
-            .icon_name(kind.icon())
-            .build();
-        self.replace_browse_status_child("status", &page);
-        self.view_stack.set_visible_child_name("browse");
-    }
-
-    /// Helper: removes the previous child registered under `name` (if any)
-    /// from the Browse inner stack, adds the new one, and shows it.
-    fn replace_browse_status_child(&self, name: &str, child: &impl IsA<gtk::Widget>) {
-        if let Some(prev) = self.browse_inner_stack.child_by_name(name) {
-            self.browse_inner_stack.remove(&prev);
-        }
-        self.browse_inner_stack.add_named(child, Some(name));
-        self.browse_inner_stack.set_visible_child_name(name);
+    /// Convenience for `set_status_page(Error, ...)` and similar; in the
+    /// connected state, browse-tab errors flow through BrowseTabInput::ShowError.
+    /// Used here only for app-level (non-tab-scoped) failures — surfaces
+    /// as an alert dialog so the user actually notices.
+    pub(super) fn set_status_page(&self, _kind: super::StatusKind, title: &str, description: &str) {
+        self.show_error_alert(title, description);
     }
 
     pub(super) fn show_toast(&self, msg: &str) {
@@ -82,6 +52,17 @@ impl App {
         dialog.set_default_response(Some("ok"));
         dialog.set_close_response("ok");
         dialog.present(Some(&self.window));
+    }
+
+    /// Context-sensitive Ctrl+W: closes the active tab in whichever
+    /// ViewStack page is visible (Browse or Editor). Falls back to
+    /// closing the window when neither has tabs.
+    pub(super) fn on_close_current(&mut self, sender: ComponentSender<Self>) {
+        match self.view_stack.visible_child_name().as_deref() {
+            Some("editor") => self.close_active_editor_tab(sender),
+            Some("browse") if !self.browse_tabs.borrow().is_empty() => self.close_active_browse_tab(sender),
+            _ => self.window.close(),
+        }
     }
 
     pub(super) fn on_show_shortcuts(&self) {

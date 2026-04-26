@@ -171,7 +171,7 @@ impl App {
         let slot = create_editor_tab_slot(&tab_view, &self.schema_buffer, initial_query, &label, &sender);
         tab_view.set_selected_page(&slot.page);
         self.editor_tabs.borrow_mut().insert(slot.id, slot);
-        self.push_schema_words();
+        self.rebuild_schema_buffer();
         self.persist_editor_state();
     }
 

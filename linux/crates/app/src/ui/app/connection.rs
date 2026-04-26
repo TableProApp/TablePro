@@ -9,7 +9,7 @@ use crate::services::database_service::ConnectionHealth;
 use crate::services::{connection_service, database_service};
 use crate::ui::connect_dialog::{ConnectDialog, ConnectDialogInit, ConnectDialogOutput};
 
-use super::{App, AppMsg, StatusKind, qualified_label};
+use super::{App, AppMsg, qualified_label};
 
 impl App {
     pub(super) fn on_open_connect(&mut self, sender: ComponentSender<Self>) {
@@ -29,13 +29,14 @@ impl App {
         self.dialog = None;
         self.connected = true;
         self.current_driver_id = Some(driver_id.clone());
+        self.read_only = database_service::instance().is_active_read_only();
+        self.read_only_badge.set_visible(self.read_only);
         self.split_view.set_show_sidebar(true);
         self.disconnect_action.set_enabled(true);
         self.table_search.set_text("");
-        // Reveal the ViewSwitcherBar so Browse / Editor tabs become
-        // visible just below the headerbar. The Editor page is added
-        // eagerly on first connect so the switcher always has two tabs;
-        // a lone "Browse" tab would be visual noise.
+        // Build Browse + Editor tab roots eagerly so the ViewSwitcher
+        // always shows both peers (single-tab switcher would be noise).
+        self.ensure_browse_root(sender.clone());
         self.ensure_editor_page(sender.clone());
         self.view_switcher_bar.set_reveal(true);
         self.view_stack.set_visible_child_name("browse");
@@ -43,17 +44,20 @@ impl App {
         self.table_names = tables.iter().map(|t| t.name.clone()).collect();
         tracing::info!(driver = %driver_id, table_count = tables.len(), "workspace ready");
         self.repopulate_sidebar(&tables);
-        self.push_schema_words();
+        self.rebuild_schema_buffer();
         self.refresh_window_title();
-        self.set_status_page(
-            StatusKind::Info,
-            &crate::tr!("Select a table"),
-            &crate::tr!("Pick a table from the sidebar to load its rows."),
-        );
+        // Restore browse tabs persisted from the prior session for this
+        // connection (if any) — Q4. Empty state otherwise.
+        if let Some(connection_id) = database_service::instance().active_id() {
+            self.restore_browse_tabs(connection_id, sender.clone());
+        }
         sender.input(AppMsg::ReloadConnections);
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
+        // Tear down browse tabs first (also persists state) before we
+        // drop the connection — persist needs the active connection_id.
+        self.teardown_browse_tabs();
         let svc = database_service::instance();
         if let Some(id) = svc.active_id() {
             svc.remove(id);
@@ -62,17 +66,12 @@ impl App {
         }
         self.cancel_all_editor_runs();
         self.schema_buffer.set_text(crate::ui::editor::SQL_KEYWORDS);
-        self.current_table = None;
-        self.current_schema = None;
-        self.current_offset = 0;
-        self.current_columns.clear();
-        self.current_result = None;
-        self.current_selection = None;
         self.current_driver_id = None;
+        self.read_only = false;
+        self.read_only_badge.set_visible(false);
         self.connected = false;
         self.split_view.set_show_sidebar(false);
         self.disconnect_action.set_enabled(false);
-        self.refresh_crud_buttons();
         self.refresh_window_title();
         self.table_search.set_text("");
         self.sidebar_schemas.borrow_mut().clear();
@@ -87,10 +86,6 @@ impl App {
         }
         self.editor_tab_view = None;
         self.editor_tabs.borrow_mut().clear();
-        // Reset the Browse inner stack to its default "Select a table"
-        // status so the next connection doesn't briefly flash the prior
-        // session's grid before fetching fresh rows.
-        self.browse_inner_stack.set_visible_child_name("status");
         // Hide the ViewSwitcherBar so the welcome view occupies the full
         // toolbar — the bar is only meaningful in the connected state.
         self.view_switcher_bar.set_reveal(false);
@@ -191,7 +186,7 @@ impl App {
                 .register(async move {
                     match connection_service::open_saved(registry, saved).await {
                         Ok(tables) => sender_clone.input(AppMsg::Connected { tables, driver_id }),
-                        Err(e) => sender_clone.input(AppMsg::LoadFailed(e)),
+                        Err(e) => sender_clone.input(AppMsg::LoadFailed(None, e)),
                     }
                 })
                 .drop_on_shutdown()
@@ -231,15 +226,16 @@ impl App {
     }
 
     pub(super) fn refresh_window_title(&self) {
-        // Subtitle composes user-facing connection name (e.g. "Production")
-        // with driver, then table when one is selected. Window title (the
-        // OS-level string used by the shell) keeps the "— TablePro" suffix
-        // so it remains identifiable across multiple windows.
+        // Subtitle: "<table> · <connection> · <driver>" when a browse tab
+        // is active; "<connection> · <driver>" otherwise. Window title
+        // keeps the "— TablePro" suffix for shell window-list identity.
         let metadata = database_service::instance().active_metadata();
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
-        let (os_title, subtitle) = match (connection_name, &self.current_driver_id, &self.current_table) {
-            (Some(name), Some(driver), Some(table)) => {
-                let label = qualified_label(self.current_schema.as_deref(), table);
+        let active = self.selected_browse_slot_table();
+        let table_pair = active.as_ref().map(|(s, t)| (s.as_deref(), t.as_str()));
+        let (os_title, subtitle) = match (connection_name, &self.current_driver_id, table_pair) {
+            (Some(name), Some(driver), Some((schema, table))) => {
+                let label = qualified_label(schema, table);
                 (
                     format!("{label} · {name} — TablePro"),
                     format!("{label} · {name} · {driver}"),
