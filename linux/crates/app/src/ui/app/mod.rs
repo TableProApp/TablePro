@@ -394,7 +394,11 @@ impl SimpleComponent for App {
                     .build(),
             )
             .forward(sender.input_sender(), |out| match out {
+                // Both default activation and Ctrl+click currently dispatch
+                // SelectTable; the new-tab semantics land in the App-side
+                // multi-tab integration that follows this groundwork.
                 SidebarRowOutput::Selected { schema, name } => AppMsg::SelectTable { schema, name },
+                SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable { schema, name },
             });
 
         let sidebar_listbox = sidebar_factory.widget();

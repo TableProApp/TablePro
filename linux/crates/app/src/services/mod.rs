@@ -1,3 +1,4 @@
+pub mod browse_state;
 pub mod column_widths;
 pub mod config_io;
 pub mod connection_monitor;

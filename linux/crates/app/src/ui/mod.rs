@@ -1,4 +1,5 @@
 mod app;
+mod browse_tab;
 mod connect_dialog;
 mod connection_row;
 mod edit_dialog;
