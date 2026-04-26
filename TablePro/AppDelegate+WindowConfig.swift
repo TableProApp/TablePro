@@ -140,6 +140,12 @@ extension AppDelegate {
         return rawValue == WindowId.connectionForm || rawValue.hasPrefix("\(WindowId.connectionForm)-")
     }
 
+    @objc func handleFocusConnectionForm() {
+        if let window = NSApp.windows.first(where: { isConnectionFormWindow($0) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
     // MARK: - Welcome Window
 
     /// Hide the Welcome window immediately when we know we're going to

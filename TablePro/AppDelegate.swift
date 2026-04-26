@@ -60,12 +60,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// Prevents duplicate connections when the same file is opened twice rapidly.
     var connectingFilePaths = Set<String>()
 
-    /// Connection share file URL pending consumption by WelcomeViewModel.setUp()
-    var pendingConnectionShareURL: URL?
-
-    /// Deep link import pending consumption by WelcomeViewModel
-    var pendingDeeplinkImport: ExportableConnection?
-
     // MARK: - NSApplicationDelegate
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -172,6 +166,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(handlePluginsRejected(_:)),
             name: .pluginsRejected, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFocusConnectionForm),
+            name: .focusConnectionFormWindowRequested, object: nil
         )
     }
 

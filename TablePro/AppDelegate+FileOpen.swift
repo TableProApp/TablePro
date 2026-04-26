@@ -207,8 +207,8 @@ extension AppDelegate {
 
         case .importConnection(let exportable):
             openWelcomeWindow()
-            pendingDeeplinkImport = exportable
-            NotificationCenter.default.post(name: .deeplinkImportRequested, object: nil)
+            PendingActionStore.shared.deeplinkImport = exportable
+            NotificationCenter.default.post(name: .deeplinkImportRequested, object: exportable)
         }
     }
 
@@ -280,7 +280,7 @@ extension AppDelegate {
 
     private func handleConnectionShareFile(_ url: URL) {
         openWelcomeWindow()
-        pendingConnectionShareURL = url
+        PendingActionStore.shared.connectionShareURL = url
         NotificationCenter.default.post(name: .connectionShareFileOpened, object: url)
     }
 

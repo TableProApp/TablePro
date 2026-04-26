@@ -95,7 +95,7 @@ struct WelcomeWindowView: View {
                 ConnectionImportSheet(fileURL: url) { count in
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(300))
-                        vm.showImportResultAlert(count: count)
+                        vm.showImportResult(count: count)
                     }
                 }
             case .exportConnections(let conns):
@@ -104,7 +104,7 @@ struct WelcomeWindowView: View {
                 ImportFromAppSheet { count in
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(300))
-                        vm.showImportResultAlert(count: count)
+                        vm.showImportResult(count: count)
                     }
                 }
             case .deeplinkImport(let exportable):
@@ -133,6 +133,34 @@ struct WelcomeWindowView: View {
         } message: {
             if let error = vm.connectionError {
                 Text(error)
+            }
+        }
+        .fileImporter(
+            isPresented: $vm.showImportFilePanel,
+            allowedContentTypes: [.tableproConnectionShare],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                vm.activeSheet = .importFile(url)
+            }
+        }
+        .alert(
+            (vm.importResultCount ?? 0) > 0
+                ? String(localized: "Import Complete")
+                : String(localized: "No Connections Imported"),
+            isPresented: Binding(
+                get: { vm.importResultCount != nil },
+                set: { if !$0 { vm.importResultCount = nil } }
+            )
+        ) {
+            Button(String(localized: "OK")) { vm.importResultCount = nil }
+        } message: {
+            if let count = vm.importResultCount, count > 0 {
+                Text(count == 1
+                    ? String(localized: "1 connection was imported.")
+                    : String(format: String(localized: "%d connections were imported."), count))
+            } else {
+                Text(String(localized: "All selected connections were skipped."))
             }
         }
     }

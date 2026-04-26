@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP bridge now pins the server's TLS certificate fingerprint instead of accepting any certificate
 - Replaced custom search field with native NSSearchField in keyboard shortcuts, database switcher, and quick switcher
 - Column layout and filter state storage migrated from UserDefaults to file-based storage
+- Refactored welcome screen to properly separate view model and view layer responsibilities
 
 ### Added
 
