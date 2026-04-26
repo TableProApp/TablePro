@@ -251,8 +251,26 @@ final class PluginManager {
             return existing
         }
 
+        let rawDriverType = principalClass as? any DriverPlugin.Type
+        let pluginKitVersion = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int ?? 0
+        if rawDriverType != nil, source == .userInstalled, pluginKitVersion != Self.currentPluginKitVersion {
+            assertionFailure(
+                "DriverPlugin '\(bundleId)' has TableProPluginKitVersion \(pluginKitVersion) but current is \(Self.currentPluginKitVersion); ABI mismatch would crash on static property access"
+            )
+            Self.logger.error("Plugin '\(bundleId)' DriverPlugin ABI mismatch: plist=\(pluginKitVersion) current=\(Self.currentPluginKitVersion). Rejecting to prevent crash.")
+            rejectedPlugins.append(RejectedPlugin(
+                url: url,
+                bundleId: bundleId,
+                registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+                name: principalClass.pluginName,
+                reason: String(localized: "Incompatible plugin version"),
+                isOutdated: pluginKitVersion < Self.currentPluginKitVersion
+            ))
+            return nil
+        }
+
         let disabled = disabledPluginIds
-        let driverType = principalClass as? any DriverPlugin.Type
+        let driverType = rawDriverType
         let version = Self.readRegistryMetadata(for: url)?.version ?? principalClass.pluginVersion
         let entry = PluginEntry(
             id: bundleId,
