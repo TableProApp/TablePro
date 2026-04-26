@@ -386,8 +386,6 @@ final class ConnectionStorage {
 // MARK: - Stored Connection (Codable wrapper)
 
 private struct StoredConnection: Codable {
-    static let sharedEncoder = JSONEncoder()
-    static let sharedDecoder = JSONDecoder()
 
     let id: UUID
     let name: String
@@ -527,7 +525,7 @@ private struct StoredConnection: Codable {
         self.localOnly = connection.localOnly
 
         // SSH tunnel mode (v2 format preserving jump hosts, profiles, etc.)
-        self.sshTunnelModeJson = try? Self.sharedEncoder.encode(connection.sshTunnelMode)
+        self.sshTunnelModeJson = try? JSONEncoder().encode(connection.sshTunnelMode)
 
         // Plugin-driven additional fields
         self.additionalFields = connection.additionalFields.isEmpty ? nil : connection.additionalFields
@@ -673,7 +671,7 @@ private struct StoredConnection: Codable {
         // Prefer sshTunnelModeJson (v2 format) over legacy flat fields
         let resolvedTunnelMode: SSHTunnelMode
         if let json = sshTunnelModeJson,
-           let decoded = try? Self.sharedDecoder.decode(SSHTunnelMode.self, from: json) {
+           let decoded = try? JSONDecoder().decode(SSHTunnelMode.self, from: json) {
             resolvedTunnelMode = decoded
             switch decoded {
             case .disabled:

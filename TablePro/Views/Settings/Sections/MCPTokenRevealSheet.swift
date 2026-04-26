@@ -49,10 +49,10 @@ struct MCPTokenRevealSheet: View {
         } icon: {
             Image(systemName: "exclamationmark.triangle.fill")
         }
-        .foregroundStyle(.orange)
+        .foregroundStyle(Color(nsColor: .systemOrange))
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.orange.opacity(0.1))
+        .background(Color(nsColor: .systemOrange).opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 

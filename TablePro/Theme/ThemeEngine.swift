@@ -419,9 +419,4 @@ extension View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-    func toolbarButtonStyle() -> some View {
-        self
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-    }
 }

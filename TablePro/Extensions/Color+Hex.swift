@@ -12,7 +12,7 @@ extension Color {
             .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
 
         guard cleaned.count == 6, let rgbValue = UInt64(cleaned, radix: 16) else {
-            self = .gray
+            self = Color(nsColor: .labelColor)
             return
         }
 
@@ -20,6 +20,6 @@ extension Color {
         let green = Double((rgbValue >> 8) & 0xFF) / 255.0
         let blue = Double(rgbValue & 0xFF) / 255.0
 
-        self.init(red: red, green: green, blue: blue)
+        self.init(.sRGB, red: red, green: green, blue: blue)
     }
 }

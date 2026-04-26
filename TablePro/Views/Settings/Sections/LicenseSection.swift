@@ -43,7 +43,7 @@ struct LicenseSection: View {
                         .controlSize(.small)
                 }
                 .padding(6)
-                .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                .background(Color(nsColor: .systemOrange).opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
             }
 
             LabeledContent("Email:", value: license.email)
