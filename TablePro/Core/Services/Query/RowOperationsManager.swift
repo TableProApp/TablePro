@@ -47,7 +47,7 @@ final class RowOperationsManager {
         let newRowIndex = rowBuffer.rows.count
         rowBuffer.rows.append(newRowValues)
 
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newRowValues, rowBuffer: rowBuffer)
+        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newRowValues)
 
         return (newRowIndex, newRowValues)
     }
@@ -72,7 +72,7 @@ final class RowOperationsManager {
         let newRowIndex = rowBuffer.rows.count
         rowBuffer.rows.append(newValues)
 
-        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newValues, rowBuffer: rowBuffer)
+        changeManager.recordRowInsertion(rowIndex: newRowIndex, values: newValues)
 
         return (newRowIndex, newValues)
     }
@@ -109,7 +109,7 @@ final class RowOperationsManager {
                 rowBuffer.rows.remove(at: rowIndex)
             }
 
-            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows, rowBuffer: rowBuffer)
+            changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
         }
 
         if !existingRowsToDelete.isEmpty {
@@ -296,7 +296,7 @@ final class RowOperationsManager {
             rowBuffer.rows.append(rowValues)
             let newRowIndex = rowBuffer.rows.count - 1
 
-            changeManager.recordRowInsertion(rowIndex: newRowIndex, values: rowValues, rowBuffer: rowBuffer)
+            changeManager.recordRowInsertion(rowIndex: newRowIndex, values: rowValues)
 
             pastedRowInfo.append((newRowIndex, rowValues))
         }

@@ -10214,9 +10214,6 @@
         }
       }
     },
-    "Copilot" : {
-
-    },
     "Copilot language server binary not found" : {
 
     },
@@ -15214,9 +15211,6 @@
           }
         }
       }
-    },
-    "Enable GitHub Copilot" : {
-
     },
     "Enable inline suggestions" : {
       "extractionState" : "stale",
@@ -30448,9 +30442,6 @@
         }
       }
     },
-    "Preferences" : {
-
-    },
     "Preferred" : {
       "localizations" : {
         "tr" : {
@@ -32563,6 +32554,9 @@
         }
       }
     },
+    "Redo %@" : {
+
+    },
     "Ref Columns" : {
       "localizations" : {
         "tr" : {
@@ -34292,9 +34286,6 @@
           }
         }
       }
-    },
-    "Running" : {
-
     },
     "Running on port %d" : {
       "localizations" : {
@@ -42750,6 +42741,9 @@
         }
       }
     },
+    "Undo %@" : {
+
+    },
     "Undo Delete" : {
       "localizations" : {
         "tr" : {
@@ -43482,9 +43476,6 @@
           }
         }
       }
-    },
-    "Use for inline suggestions" : {
-
     },
     "Use SSL if available" : {
       "localizations" : {

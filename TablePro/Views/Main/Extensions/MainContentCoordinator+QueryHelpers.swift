@@ -303,6 +303,7 @@ extension MainContentCoordinator {
                 primaryKeyColumns: resolvedPKs,
                 databaseType: conn.type
             )
+            changeManager.rowBuffer = tabManager.tabs[idx].rowBuffer
         }
 
         QueryHistoryManager.shared.recordQuery(

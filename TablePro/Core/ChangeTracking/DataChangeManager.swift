@@ -25,6 +25,8 @@ final class DataChangeManager {
 
     private(set) var changedRowIndices: Set<Int> = []
 
+    weak var rowBuffer: RowBuffer?
+
     var tableName: String = ""
     var primaryKeyColumns: [String] = []
     /// First PK column, for contexts that need a single column (paste, filters)
@@ -164,8 +166,7 @@ final class DataChangeManager {
         columnName: String,
         oldValue: String?,
         newValue: String?,
-        originalRow: [String?]? = nil,
-        rowBuffer: RowBuffer? = nil
+        originalRow: [String?]? = nil
     ) {
         if oldValue == newValue {
             let updateKey = RowChangeKey(rowIndex: rowIndex, type: .update)
@@ -221,11 +222,10 @@ final class DataChangeManager {
                     newValue: newValue
                 ))
             }
-            undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
+            undoManager.registerUndo(withTarget: self) { target in
                 target.applyCellEditUndo(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: oldValue, newValue: newValue, rowBuffer: rowBuffer
-                )
+                    previousValue: oldValue, newValue: newValue                )
             }
             undoManager.setActionName(String(localized: "Edit Cell"))
             changedRowIndices.insert(rowIndex)
@@ -276,11 +276,10 @@ final class DataChangeManager {
             changedRowIndices.insert(rowIndex)
         }
 
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
+        undoManager.registerUndo(withTarget: self) { target in
             target.applyCellEditUndo(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                previousValue: oldValue, newValue: newValue, rowBuffer: rowBuffer
-            )
+                previousValue: oldValue, newValue: newValue            )
         }
         undoManager.setActionName(String(localized: "Edit Cell"))
         hasChanges = !changes.isEmpty
@@ -333,15 +332,15 @@ final class DataChangeManager {
         reloadVersion += 1
     }
 
-    func recordRowInsertion(rowIndex: Int, values: [String?], rowBuffer: RowBuffer? = nil) {
+    func recordRowInsertion(rowIndex: Int, values: [String?]) {
         insertedRowData[rowIndex] = values
         let rowChange = RowChange(rowIndex: rowIndex, type: .insert, cellChanges: [])
         changes.append(rowChange)
         changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] = changes.count - 1
         insertedRowIndices.insert(rowIndex)
         changedRowIndices.insert(rowIndex)
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
-            target.applyRowInsertionUndo(rowIndex: rowIndex, rowBuffer: rowBuffer)
+        undoManager.registerUndo(withTarget: self) { target in
+            target.applyRowInsertionUndo(rowIndex: rowIndex)
         }
         undoManager.setActionName(String(localized: "Insert Row"))
         hasChanges = true
@@ -441,7 +440,7 @@ final class DataChangeManager {
         rebuildChangeIndex()
     }
 
-    func undoBatchRowInsertion(rowIndices: [Int], rowBuffer: RowBuffer? = nil) {
+    func undoBatchRowInsertion(rowIndices: [Int]) {
         guard !rowIndices.isEmpty else { return }
 
         let validRows = rowIndices.filter { insertedRowIndices.contains($0) }
@@ -465,10 +464,9 @@ final class DataChangeManager {
             insertedRowData.removeValue(forKey: rowIndex)
         }
 
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
+        undoManager.registerUndo(withTarget: self) { target in
             target.applyBatchInsertionUndo(
-                rowIndices: validRows, rowValues: rowValues, rowBuffer: rowBuffer
-            )
+                rowIndices: validRows, rowValues: rowValues            )
         }
         undoManager.setActionName(String(localized: "Insert Rows"))
 
@@ -652,15 +650,13 @@ extension DataChangeManager {
         columnIndex: Int,
         columnName: String,
         previousValue: String?,
-        newValue: String?,
-        rowBuffer: RowBuffer?
+        newValue: String?
     ) {
         // Register inverse for redo
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
+        undoManager.registerUndo(withTarget: self) { target in
             target.applyCellEditUndo(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                previousValue: newValue, newValue: previousValue, rowBuffer: rowBuffer
-            )
+                previousValue: newValue, newValue: previousValue            )
         }
         undoManager.setActionName(String(localized: "Edit Cell"))
 
@@ -724,15 +720,15 @@ extension DataChangeManager {
         reloadVersion += 1
     }
 
-    private func applyRowInsertionUndo(rowIndex: Int, rowBuffer: RowBuffer?) {
+    private func applyRowInsertionUndo(rowIndex: Int) {
         let savedValues = insertedRowData[rowIndex]
 
         // Register inverse for redo
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer, savedValues] target in
+        undoManager.registerUndo(withTarget: self) { [savedValues] target in
             if let savedValues {
                 target.insertedRowData[rowIndex] = savedValues
             }
-            target.applyRowInsertionRedo(rowIndex: rowIndex, savedValues: savedValues, rowBuffer: rowBuffer)
+            target.applyRowInsertionRedo(rowIndex: rowIndex, savedValues: savedValues)
         }
         undoManager.setActionName(String(localized: "Insert Row"))
 
@@ -778,10 +774,10 @@ extension DataChangeManager {
         reloadVersion += 1
     }
 
-    private func applyRowInsertionRedo(rowIndex: Int, savedValues: [String?]?, rowBuffer: RowBuffer?) {
+    private func applyRowInsertionRedo(rowIndex: Int, savedValues: [String?]?) {
         // Register inverse for undo again
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
-            target.applyRowInsertionUndo(rowIndex: rowIndex, rowBuffer: rowBuffer)
+        undoManager.registerUndo(withTarget: self) { target in
+            target.applyRowInsertionUndo(rowIndex: rowIndex)
         }
         undoManager.setActionName(String(localized: "Insert Row"))
 
@@ -867,14 +863,12 @@ extension DataChangeManager {
 
     private func applyBatchInsertionUndo(
         rowIndices: [Int],
-        rowValues: [[String?]],
-        rowBuffer: RowBuffer?
+        rowValues: [[String?]]
     ) {
         // Register inverse
-        undoManager.registerUndo(withTarget: self) { [weak rowBuffer] target in
+        undoManager.registerUndo(withTarget: self) { target in
             target.applyBatchInsertionUndo(
-                rowIndices: rowIndices, rowValues: rowValues, rowBuffer: rowBuffer
-            )
+                rowIndices: rowIndices, rowValues: rowValues            )
         }
         undoManager.setActionName(String(localized: "Insert Rows"))
 

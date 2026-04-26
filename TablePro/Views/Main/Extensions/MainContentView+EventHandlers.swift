@@ -104,6 +104,7 @@ extension MainContentView {
             primaryKeyColumns: tab.primaryKeyColumns,
             databaseType: connection.type
         )
+        changeManager.rowBuffer = tab.rowBuffer
     }
 
     func handleTableSelectionChange(
