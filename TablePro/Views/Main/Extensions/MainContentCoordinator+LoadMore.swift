@@ -105,9 +105,6 @@ extension MainContentCoordinator {
                     if !pagedResult.hasMore {
                         tab.pagination.baseQueryForMore = nil
                     }
-                    if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.schemaVersion
-                    }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
@@ -225,9 +222,6 @@ extension MainContentCoordinator {
                     tab.execution.executionTime = result.executionTime
                     tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()
-                    if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.schemaVersion
-                    }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = result.executionTime

@@ -241,14 +241,13 @@ struct RowOperationsManagerTests {
         _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
         #expect(rows.count == 6)
 
-        let nextRow = manager.deleteSelectedRows(
+        let result = manager.deleteSelectedRows(
             selectedIndices: [5],
             resultRows: &rows
         )
 
-        // After removing the last row, should select the new last row
-        #expect(nextRow >= 0)
-        #expect(nextRow < rows.count)
+        #expect(result.nextRowToSelect >= 0)
+        #expect(result.nextRowToSelect < rows.count)
     }
 
     // MARK: - Integration Tests

@@ -12,12 +12,12 @@ import Testing
 @Suite("MainStatusBarView Layout")
 @MainActor
 struct MainStatusBarLayoutTests {
-    @Test("Status bar can be instantiated with nil tab")
-    func instantiateWithNilTab() {
+    @Test("Status bar can be instantiated with empty snapshot")
+    func instantiateWithEmptySnapshot() {
         let filterManager = FilterStateManager()
         let colVisManager = ColumnVisibilityManager()
         let view = MainStatusBarView(
-            tab: nil,
+            snapshot: StatusBarSnapshot(tab: nil, buffer: nil),
             filterStateManager: filterManager,
             columnVisibilityManager: colVisManager,
             allColumns: [],
@@ -31,7 +31,6 @@ struct MainStatusBarLayoutTests {
             onOffsetChange: { _ in },
             onPaginationGo: {}
         )
-        // Smoke test: view constructs without error
         #expect(type(of: view.body) != Never.self)
     }
 }

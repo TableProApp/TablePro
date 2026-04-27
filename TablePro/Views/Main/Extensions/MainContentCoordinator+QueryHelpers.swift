@@ -292,7 +292,6 @@ extension MainContentCoordinator {
         rs.statusMessage = updatedTab.execution.statusMessage
         rs.tableName = updatedTab.tableContext.tableName
         rs.isEditable = updatedTab.tableContext.isEditable
-        rs.resultVersion = updatedTab.schemaVersion
         rs.metadataVersion = updatedTab.metadataVersion
 
         // Keep pinned results, replace unpinned

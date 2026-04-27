@@ -22,7 +22,6 @@ final class ResultSet: Identifiable {
     var tableName: String?
     var isEditable: Bool = false
     var isPinned: Bool = false
-    var resultVersion: Int = 0
     var metadataVersion: Int = 0
     var sortState = SortState()
     var pagination = PaginationState()

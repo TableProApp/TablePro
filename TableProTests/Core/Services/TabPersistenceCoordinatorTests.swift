@@ -127,31 +127,6 @@ struct TabPersistenceCoordinatorTests {
         await sleep()
     }
 
-    @Test("saveLastQuery + loadLastQuery round-trip")
-    func saveAndLoadLastQueryRoundTrip() async {
-        let coordinator = makeCoordinator()
-        let query = "SELECT * FROM products WHERE active = 1"
-
-        coordinator.saveLastQuery(query)
-        await sleep()
-
-        let loaded = await coordinator.loadLastQuery()
-
-        #expect(loaded == query)
-
-        coordinator.clearSavedState()
-        await sleep()
-    }
-
-    @Test("loadLastQuery returns nil when nothing saved")
-    func loadLastQueryReturnsNilWhenEmpty() async {
-        let coordinator = makeCoordinator()
-
-        let loaded = await coordinator.loadLastQuery()
-
-        #expect(loaded == nil)
-    }
-
     @Test("Large query over 500KB is truncated to empty string in persisted tab")
     func largeQueryIsTruncated() async {
         let coordinator = makeCoordinator()

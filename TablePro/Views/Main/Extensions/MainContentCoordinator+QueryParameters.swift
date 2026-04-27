@@ -341,7 +341,6 @@ extension MainContentCoordinator {
                     rs.rowsAffected = result.rowsAffected
                     rs.statusMessage = result.statusMessage
                     rs.tableName = stmtTableName
-                    rs.resultVersion = 1
                     newResultSets.append(rs)
 
                     let historySQL = stmtSQL.hasSuffix(";") ? stmtSQL : stmtSQL + ";"
