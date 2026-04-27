@@ -128,4 +128,17 @@ struct TabStructureVersionTests {
 
         #expect(manager.tabStructureVersion == before + 1)
     }
+
+    @Test("Drag-reordering tabs (id array reordered) bumps via the didSet")
+    func tabsReorderBumps() {
+        let manager = QueryTabManager()
+        manager.addTableTab(tableName: "users")
+        manager.addTableTab(tableName: "orders")
+        manager.addTableTab(tableName: "products")
+        let before = manager.tabStructureVersion
+
+        manager.tabs.swapAt(0, 2)
+
+        #expect(manager.tabStructureVersion == before + 1)
+    }
 }

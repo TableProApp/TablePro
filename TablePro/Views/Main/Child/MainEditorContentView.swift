@@ -134,8 +134,9 @@ struct MainEditorContentView: View {
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
 
-            guard let tab = tabManager.selectedTab else { return }
-            guard !coordinator.rowDataStore.buffer(for: tab.id).isEvicted else { return }
+            guard let tab = tabManager.selectedTab,
+                  let existing = coordinator.rowDataStore.existingBuffer(for: tab.id),
+                  !existing.isEvicted else { return }
             if providerCache.provider(
                 for: tab.id,
                 schemaVersion: tab.schemaVersion,
@@ -148,7 +149,9 @@ struct MainEditorContentView: View {
         .onAppear {
             updateHasQueryText()
             cachedChangeManager = AnyChangeManager(changeManager)
-            if let tab = tabManager.selectedTab {
+            if let tab = tabManager.selectedTab,
+               let existing = coordinator.rowDataStore.existingBuffer(for: tab.id),
+               !existing.isEvicted {
                 cacheRowProvider(for: tab)
             }
             wireDataTabDelegateStableRefs()
