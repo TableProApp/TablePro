@@ -34,6 +34,17 @@ pub enum GridMsg {
     },
 }
 
+/// Per-tab context plumbed into the grid factory so cell bind-time
+/// callbacks can query the change tracker for pending-state CSS
+/// classes. `tab_id == None` means the grid is read-only / not
+/// associated with a tracked Browse tab (e.g., editor results).
+#[derive(Debug, Clone, Default)]
+pub struct TabGridContext {
+    pub tab_id: Option<uuid::Uuid>,
+    pub pk_col_indices: Vec<usize>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn build_column_view(
     result: &QueryResult,
     schema_columns: &[ColumnInfo],
@@ -42,6 +53,7 @@ pub fn build_column_view(
     sort: Option<(usize, bool)>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
+    tab_ctx: TabGridContext,
 ) -> (gtk::ColumnView, gtk::MultiSelection, FilterSetter) {
     let store = gtk4::gio::ListStore::new::<RowObject>();
     for row in &result.rows {
@@ -89,6 +101,7 @@ pub fn build_column_view(
             sort_indicator,
             sort_sender.clone(),
             connection_id,
+            tab_ctx.clone(),
         );
         column_view.append_column(&col);
         columns.push(col);
@@ -138,6 +151,7 @@ fn build_column(
     sort_indicator: Option<bool>,
     sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
+    tab_ctx: TabGridContext,
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
     let editable_for_setup = editable && sender.is_some();
@@ -157,6 +171,7 @@ fn build_column(
     });
 
     let editable_for_bind = editable_for_setup;
+    let tab_ctx_for_bind = tab_ctx.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -171,6 +186,38 @@ fn build_column(
         } else {
             value_to_display_text(&value)
         };
+
+        // Query the per-tab change tracker for pending state on this
+        // (row, col). Apply tp-cell-modified / tp-row-pending-delete /
+        // tp-row-pending-insert CSS classes accordingly. Done at bind
+        // time so scroll-recycled widgets always reflect current
+        // tracker state without needing per-cell signal subscriptions.
+        let pending_classes: &[&str] = if let Some(tab_id) = tab_ctx_for_bind.tab_id {
+            let pk_values: Vec<Value> = tab_ctx_for_bind
+                .pk_col_indices
+                .iter()
+                .map(|&i| row.cell_value(i))
+                .collect();
+            crate::services::change_tracker::with_tab_ref(tab_id, |t| {
+                if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
+                    let row_state = t.row_state(&key);
+                    let cell_state = t.cell_state(&key, idx);
+                    use crate::services::change_tracker::{CellState, RowState};
+                    match (row_state, cell_state) {
+                        (RowState::PendingDelete, _) => &["tp-row-pending-delete"][..],
+                        (RowState::InsertDraft, _) => &["tp-row-pending-insert"][..],
+                        (_, CellState::Modified) => &["tp-cell-modified"][..],
+                        _ => &[][..],
+                    }
+                } else {
+                    &[][..]
+                }
+            })
+            .unwrap_or(&[][..])
+        } else {
+            &[][..]
+        };
+
         let Some(child) = item.child() else { return };
         if let Ok(label) = child.clone().downcast::<gtk::EditableLabel>() {
             label.set_text(&text);
@@ -179,6 +226,12 @@ fn build_column(
             } else {
                 label.remove_css_class("dim-label");
             }
+            for cls in ["tp-cell-modified", "tp-row-pending-delete", "tp-row-pending-insert"] {
+                label.remove_css_class(cls);
+            }
+            for cls in pending_classes {
+                label.add_css_class(cls);
+            }
             POSITION_SLOT.set(&label, item.position());
         } else if let Ok(label) = child.downcast::<gtk::Label>() {
             label.set_text(&text);
@@ -186,6 +239,12 @@ fn build_column(
                 label.add_css_class("dim-label");
             } else {
                 label.remove_css_class("dim-label");
+            }
+            for cls in ["tp-cell-modified", "tp-row-pending-delete", "tp-row-pending-insert"] {
+                label.remove_css_class(cls);
+            }
+            for cls in pending_classes {
+                label.add_css_class(cls);
             }
             POSITION_SLOT.set(&label, item.position());
         }

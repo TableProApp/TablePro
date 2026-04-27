@@ -243,6 +243,9 @@ pub enum AppMsg {
     SaveCompletedForTab(Uuid),
     /// Inline-Save failed; transaction was already rolled back.
     SaveFailedForTab(Uuid, String),
+    /// Ctrl+S — fire CommitSave on the active browse tab. No-op if
+    /// the active tab is an Editor or there's no active connection.
+    SaveActiveBrowseTab,
     /// Show insert dialog scoped to a specific browse tab.
     ShowInsertDialog {
         tab_id: Uuid,
@@ -818,6 +821,11 @@ impl SimpleComponent for App {
                 self.set_row_op_in_flight(false);
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(message));
             }
+            AppMsg::SaveActiveBrowseTab => {
+                if let Some(id) = self.selected_browse_tab_id() {
+                    self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
+                }
+            }
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
@@ -1175,6 +1183,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("find-in-results", AppMsg::FindInResults),
         input_action!("export-csv", AppMsg::ExportCsv),
         input_action!("export-json", AppMsg::ExportJson),
+        input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
     ]);
     window.insert_action_group("win", Some(&group));
     let disconnect_action: gio::SimpleAction = group
@@ -1198,6 +1207,7 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>f", "win.find-in-results"));
     controller.add_shortcut(make_shortcut("<Primary>comma", "win.preferences"));
     controller.add_shortcut(make_shortcut("<Primary>h", "win.show-history"));
+    controller.add_shortcut(make_shortcut("<Primary>s", "win.save-changes"));
     window.add_controller(controller);
 }
 
@@ -1221,6 +1231,7 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
     general.append(&shortcut_entry("F5", &crate::tr!("Refresh table")));
     general.append(&shortcut_entry("<Primary>comma", &crate::tr!("Open Preferences")));
     general.append(&shortcut_entry("<Primary>h", &crate::tr!("Open Query History")));
+    general.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending changes")));
     general.append(&shortcut_entry(
         "<Primary>question",
         &crate::tr!("Show keyboard shortcuts"),

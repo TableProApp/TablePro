@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
-use super::grid::{GridMsg, build_column_view};
+use super::grid::{GridMsg, TabGridContext, build_column_view};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
@@ -726,6 +726,17 @@ impl SimpleComponent for BrowseTab {
                 } else {
                     Some(self.grid_sender.clone())
                 };
+                let pk_col_indices: Vec<usize> = self
+                    .current_columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.primary_key)
+                    .map(|(i, _)| i)
+                    .collect();
+                let tab_ctx = TabGridContext {
+                    tab_id: Some(self.tab_id),
+                    pk_col_indices,
+                };
                 let (column_view, selection, filter_setter) = build_column_view(
                     &result,
                     &self.current_columns,
@@ -734,6 +745,7 @@ impl SimpleComponent for BrowseTab {
                     self.current_sort,
                     Some(self.grid_sender.clone()),
                     self.connection_id,
+                    tab_ctx,
                 );
                 if let Some(prev) = self.grid_search_handler.take() {
                     self.grid_search.disconnect(prev);
@@ -990,6 +1002,23 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::PendingCountChanged(n) => {
                 self.refresh_pending_bar(n);
+                // Force the visible cells to re-bind so CSS classes
+                // for pending state reflect the latest tracker view.
+                // Cheap: GTK's ColumnView only re-binds the visible
+                // viewport, not every row in the store.
+                if let Some(selection) = self.current_selection.as_ref()
+                    && let Some(model) = selection.model()
+                {
+                    let n_items = model.n_items();
+                    if n_items > 0 {
+                        // items_changed(0, n, n) re-emits "removed and
+                        // re-added" for every item — forces re-bind
+                        // without altering selection or scroll.
+                        if let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>() {
+                            filter_model.items_changed(0, n_items, n_items);
+                        }
+                    }
+                }
             }
             BrowseTabInput::SaveCompleted => {
                 crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());

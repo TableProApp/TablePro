@@ -10,7 +10,7 @@ use tokio_util::sync::CancellationToken;
 use tablepro_core::QueryResult;
 use tablepro_storage::query_history::{self, NewEntry, Outcome};
 
-use super::grid::build_column_view;
+use super::grid::{TabGridContext, build_column_view};
 use crate::services::database_service::{self, ConnectionMetadata};
 
 pub struct SqlEditor {
@@ -350,8 +350,16 @@ impl SimpleComponent for SqlEditor {
                         .build();
                     self.results_holder.append(&placeholder);
                 } else {
-                    let (column_view, _selection, _filter) =
-                        build_column_view(&result, &result.columns, "", None, None, None, None);
+                    let (column_view, _selection, _filter) = build_column_view(
+                        &result,
+                        &result.columns,
+                        "",
+                        None,
+                        None,
+                        None,
+                        None,
+                        TabGridContext::default(),
+                    );
                     let scrolled = gtk::ScrolledWindow::builder()
                         .child(&column_view)
                         .hexpand(true)
