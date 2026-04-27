@@ -134,8 +134,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorHosting = NSHostingController(rootView: AnyView(buildInspectorView()))
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
-        inspectorSplitItem.minimumThickness = 280
-        inspectorSplitItem.maximumThickness = 500
+        inspectorSplitItem.minimumThickness = 270
+        inspectorSplitItem.maximumThickness = 400
         addSplitViewItem(inspectorSplitItem)
 
         if currentSession == nil {
@@ -391,7 +391,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection,
                 tables: currentSession.tables
             )
-            .background(Color(nsColor: .windowBackgroundColor))
         } else {
             Color.clear
         }

@@ -98,6 +98,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let refreshSaveGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.refreshSaveGroup")
     private static let exportImportGroup = NSToolbarItem.Identifier("com.TablePro.toolbar.exportImportGroup")
     private static let sidebarToggle = NSToolbarItem.Identifier("com.TablePro.toolbar.sidebarToggle")
+    private static let inspectorTrackingSeparator = NSToolbarItem.Identifier("com.TablePro.toolbar.inspectorTrackingSeparator")
 
     // MARK: - NSToolbarDelegate
 
@@ -114,6 +115,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             Self.newTab,
             Self.filters,
             Self.previewSQL,
+            Self.inspectorTrackingSeparator,
             Self.inspector,
         ]
     }
@@ -132,6 +134,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             Self.exportImportGroup,
             Self.dashboard,
             Self.history,
+            Self.inspectorTrackingSeparator,
         ]
     }
 
@@ -209,6 +212,13 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
                                    ExportToolbarButton(coordinator: coordinator)
                                    ImportToolbarButton(coordinator: coordinator)
                                })
+        case Self.inspectorTrackingSeparator:
+            guard let splitView = coordinator.splitViewController?.splitView else { return nil }
+            return NSTrackingSeparatorToolbarItem(
+                identifier: itemIdentifier,
+                splitView: splitView,
+                dividerIndex: 1
+            )
         default:
             return nil
         }

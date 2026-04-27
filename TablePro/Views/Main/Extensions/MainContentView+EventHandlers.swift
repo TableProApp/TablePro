@@ -217,13 +217,18 @@ extension MainContentView {
             excludedNames = []
         }
 
+        let pkColumns = Set(tab.primaryKeyColumns)
+        let fkColumns = Set(tab.columnForeignKeys.keys)
+
         rightPanelState.editState.configure(
             selectedRowIndices: selectedRowIndices,
             allRows: allRows,
             columns: tab.resultColumns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
-            excludedColumnNames: excludedNames
+            excludedColumnNames: excludedNames,
+            primaryKeyColumns: pkColumns,
+            foreignKeyColumns: fkColumns
         )
 
         guard isSidebarEditable else {

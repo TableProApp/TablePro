@@ -7,14 +7,12 @@
 
 import SwiftUI
 
-/// Right sidebar that shows table metadata or selected row details
 struct RightSidebarView: View {
     let tableName: String?
     let tableMetadata: TableMetadata?
     let selectedRowData: [(column: String, value: String?, type: String)]?
     let isEditable: Bool
     let isRowDeleted: Bool
-    let onSave: () -> Void
 
     var editState: MultiRowEditState
     let databaseType: DatabaseType
@@ -221,12 +219,10 @@ struct RightSidebarView: View {
         return VStack(spacing: 0) {
             NativeSearchField(
                 text: $searchText,
-                placeholder: String(localized: "Search for field..."),
+                placeholder: String(localized: "Search fields..."),
                 controlSize: .small
             )
             .padding(.horizontal, 6)
-
-            Divider()
 
             List {
                 Section {
@@ -238,32 +234,20 @@ struct RightSidebarView: View {
                     } else {
                         ForEach(filtered, id: \.id) { field in
                             fieldDetailRow(field, at: field.columnIndex, isEditable: contentMode == .editRow)
+                                .listRowSeparator(.hidden)
                         }
                     }
                 } header: {
                     HStack {
-                        Text("FIELDS")
+                        Text("Fields")
                         Spacer()
                         Text("\(filtered.count)")
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.trailing, 15)
                 }
             }
-            .listStyle(.sidebar)
+            .listStyle(.inset)
             .scrollContentBackground(.hidden)
-
-            if contentMode == .editRow && editState.hasEdits {
-                Divider()
-                Button(action: onSave) {
-                    Text("Save Changes")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
         }
     }
 
@@ -298,6 +282,8 @@ struct RightSidebarView: View {
             onSetDefault: { editState.setFieldToDefault(at: index) },
             onSetEmpty: { editState.setFieldToEmpty(at: index) },
             onSetFunction: { editState.setFieldToFunction(at: index, function: $0) },
+            isPrimaryKey: field.isPrimaryKey,
+            isForeignKey: field.isForeignKey,
             onExpand: isJsonField ? { expandedJsonFieldId = field.id } : nil,
             onPopOut: isJsonField ? { currentText in
                 popOutJsonField(text: currentText, field: field, isEditable: isEditable)
@@ -328,7 +314,6 @@ struct RightSidebarView_Previews: PreviewProvider {
             selectedRowData: nil,
             isEditable: false,
             isRowDeleted: false,
-            onSave: {},
             editState: MultiRowEditState(),
             databaseType: .mysql
         )

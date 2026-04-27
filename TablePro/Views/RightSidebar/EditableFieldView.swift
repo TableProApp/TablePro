@@ -20,6 +20,8 @@ internal struct FieldDetailView: View {
     let onSetDefault: () -> Void
     let onSetEmpty: () -> Void
     let onSetFunction: (String) -> Void
+    var isPrimaryKey: Bool = false
+    var isForeignKey: Bool = false
     var onExpand: (() -> Void)?
     var onPopOut: ((String) -> Void)?
 
@@ -32,37 +34,48 @@ internal struct FieldDetailView: View {
             originalValue: context.originalValue
         )
 
+        let isPickerField: Bool = {
+            switch kind {
+            case .boolean, .enumPicker, .setPicker: return true
+            default: return false
+            }
+        }()
+
         VStack(alignment: .leading, spacing: 4) {
             fieldHeader
 
-            PendingStateOverlay(
-                isPendingNull: isPendingNull,
-                isPendingDefault: isPendingDefault,
-                isLoadingFullValue: isLoadingFullValue,
-                isTruncated: isTruncated,
-                minHeight: editorMinHeight(for: kind)
-            ) {
+            if isPickerField {
                 resolvedEditor(for: kind)
-            }
-            .overlay(alignment: .topTrailing) {
-                if !context.isReadOnly {
-                    FieldMenuView(
-                        value: context.value.wrappedValue,
-                        columnType: context.columnType,
-                        sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
-                        isPendingNull: isPendingNull,
-                        isPendingDefault: isPendingDefault,
-                        onSetNull: onSetNull,
-                        onSetDefault: onSetDefault,
-                        onSetEmpty: onSetEmpty,
-                        onSetFunction: onSetFunction,
-                        onClear: { context.value.wrappedValue = context.originalValue ?? "" }
-                    )
-                    .opacity(isHovered ? 1 : 0)
-                    .padding(.trailing, 4)
+            } else {
+                PendingStateOverlay(
+                    isPendingNull: isPendingNull,
+                    isPendingDefault: isPendingDefault,
+                    isLoadingFullValue: isLoadingFullValue,
+                    isTruncated: isTruncated,
+                    minHeight: editorMinHeight(for: kind)
+                ) {
+                    resolvedEditor(for: kind)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if !context.isReadOnly && isHovered {
+                        FieldMenuView(
+                            value: context.value.wrappedValue,
+                            columnType: context.columnType,
+                            sqlFunctions: SQLFunctionProvider.functions(for: databaseType),
+                            isPendingNull: isPendingNull,
+                            isPendingDefault: isPendingDefault,
+                            onSetNull: onSetNull,
+                            onSetDefault: onSetDefault,
+                            onSetEmpty: onSetEmpty,
+                            onSetFunction: onSetFunction,
+                            onClear: { context.value.wrappedValue = context.originalValue ?? "" }
+                        )
+                        .padding(.trailing, 4)
+                    }
                 }
             }
         }
+        .labelsHidden()
         .onHover { isHovered = $0 }
     }
 
@@ -74,6 +87,16 @@ internal struct FieldDetailView: View {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 6, height: 6)
+            }
+
+            if isPrimaryKey {
+                Image(systemName: "key.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.yellow)
+            } else if isForeignKey {
+                Image(systemName: "arrow.right.arrow.left")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
             }
 
             Text(context.columnName)
@@ -123,11 +146,31 @@ internal struct FieldDetailView: View {
         case .blobHex:
             BlobHexEditorView(context: context)
         case .boolean:
-            BooleanPickerView(context: context)
+            BooleanPickerView(
+                context: context,
+                isPendingNull: isPendingNull,
+                isPendingDefault: isPendingDefault,
+                onSetNull: context.isReadOnly ? nil : onSetNull,
+                onSetDefault: context.isReadOnly ? nil : onSetDefault
+            )
         case .enumPicker(let values):
-            EnumPickerView(context: context, values: values)
+            EnumPickerView(
+                context: context,
+                values: values,
+                isPendingNull: isPendingNull,
+                isPendingDefault: isPendingDefault,
+                onSetNull: context.isReadOnly ? nil : onSetNull,
+                onSetDefault: context.isReadOnly ? nil : onSetDefault
+            )
         case .setPicker(let values):
-            SetPickerView(context: context, values: values)
+            SetPickerView(
+                context: context,
+                values: values,
+                isPendingNull: isPendingNull,
+                isPendingDefault: isPendingDefault,
+                onSetNull: context.isReadOnly ? nil : onSetNull,
+                onSetDefault: context.isReadOnly ? nil : onSetDefault
+            )
         case .multiLine:
             MultiLineEditorView(context: context)
         case .singleLine:
