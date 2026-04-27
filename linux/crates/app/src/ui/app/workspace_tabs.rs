@@ -242,11 +242,16 @@ impl App {
                 WorkspaceTabRecord::Editor { query } => {
                     self.append_editor_tab(Some(query.clone()), sender.clone());
                 }
-                WorkspaceTabRecord::Structure { schema: _, table: _ } => {
-                    // Structure tabs are wired up later in the rollout
-                    // (steps 11-13). For now restore is a no-op so a
-                    // workspace_state.json carrying a Structure record
-                    // doesn't crash on load before the UI catches up.
+                WorkspaceTabRecord::Structure { schema, table } => {
+                    // Only Edit-mode Structure tabs persist; restore in
+                    // Edit mode and the tab fires FetchStructureData
+                    // automatically on init.
+                    self.append_structure_tab(
+                        schema.clone(),
+                        table.clone(),
+                        crate::ui::structure_tab::StructureMode::Edit,
+                        sender.clone(),
+                    );
                 }
                 WorkspaceTabRecord::Unknown => {
                     // Forward-compat: silently skip unknown tab kinds.
@@ -338,6 +343,79 @@ impl App {
         self.persist_workspace_state();
     }
 
+    /// Public entry: append a Structure (DDL editor) tab in either
+    /// `New` mode (drafting a new table) or `Edit` mode (altering an
+    /// existing one). Mirrors `append_browse_tab_inner`'s shape.
+    pub(super) fn append_structure_tab(
+        &mut self,
+        schema: Option<String>,
+        table: String,
+        mode: crate::ui::structure_tab::StructureMode,
+        sender: ComponentSender<Self>,
+    ) {
+        self.ensure_workspace_root(sender.clone());
+        let Some(tab_view) = self.workspace_tab_view.clone() else {
+            return;
+        };
+        let tab_id = Uuid::new_v4();
+        let driver_id = self.driver_id().to_string();
+        let init = crate::ui::structure_tab::StructureTabInit {
+            tab_id,
+            schema: schema.clone(),
+            table: table.clone(),
+            mode,
+            driver_id,
+        };
+        let controller =
+            crate::ui::structure_tab::StructureTab::builder()
+                .launch(init)
+                .forward(sender.input_sender(), move |out| match out {
+                    crate::ui::structure_tab::StructureTabOutput::DirtyChanged(dirty) => {
+                        AppMsg::StructureTabDirtyChanged(tab_id, dirty)
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::FetchStructure => {
+                        AppMsg::FetchStructureData { tab_id }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::ExecuteTransaction { statements } => {
+                        AppMsg::ExecuteStructureTransaction { tab_id, statements }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::DropTableRequested { schema, table } => {
+                        AppMsg::DropTablePrompt { schema, table }
+                    }
+                    crate::ui::structure_tab::StructureTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
+                    crate::ui::structure_tab::StructureTabOutput::ShowAlert { title, body } => {
+                        AppMsg::ShowAlert { title, body }
+                    }
+                });
+
+        let page = tab_view.append(controller.widget());
+        let title = match mode {
+            crate::ui::structure_tab::StructureMode::New => crate::tr!("New Table"),
+            crate::ui::structure_tab::StructureMode::Edit => match schema.as_deref() {
+                Some(s) if !s.is_empty() => format!("{s}.{}", table),
+                _ => table.clone(),
+            },
+        };
+        page.set_title(&title);
+        write_workspace_tab_id(&page, tab_id);
+
+        let slot = super::StructureTabSlot {
+            id: tab_id,
+            controller,
+            page: page.clone(),
+            schema,
+            table,
+            mode,
+        };
+        self.workspace_tabs
+            .borrow_mut()
+            .insert(tab_id, WorkspaceTab::Structure(slot));
+        tab_view.set_selected_page(&page);
+        self.workspace_outer_stack.set_visible_child_name("tabs");
+        self.refresh_window_title();
+        self.persist_workspace_state();
+    }
+
     /// Public entry: append an Editor tab with optional initial query.
     pub(super) fn append_editor_tab(&mut self, initial_query: Option<String>, sender: ComponentSender<Self>) {
         self.ensure_workspace_root(sender.clone());
@@ -397,6 +475,9 @@ impl App {
             .get(&id)
             .and_then(|t| match t {
                 WorkspaceTab::Browse(s) => crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()),
+                WorkspaceTab::Structure(s) => {
+                    crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending())
+                }
                 _ => None,
             })
             .unwrap_or(false);
@@ -404,6 +485,7 @@ impl App {
             let page = self.workspace_tabs.borrow().get(&id).map(|t| match t {
                 WorkspaceTab::Browse(s) => s.page.clone(),
                 WorkspaceTab::Editor(s) => s.page.clone(),
+                WorkspaceTab::Structure(s) => s.page.clone(),
             });
             let Some(page) = page else { return };
             // Cancel | Discard(destructive) | Save(suggested), Save is
@@ -460,7 +542,7 @@ impl App {
 
     /// Tear down a tab without prompting. Internal helper called once
     /// the close-with-pending dialog (if any) has resolved.
-    fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
+    pub(super) fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
         let removed = self.workspace_tabs.borrow_mut().remove(&id);
         let Some(removed) = removed else {
             return;
@@ -472,10 +554,14 @@ impl App {
             WorkspaceTab::Browse(slot) => {
                 crate::services::change_tracker::close_tab(slot.id);
             }
+            WorkspaceTab::Structure(slot) => {
+                crate::services::structure_tracker::close_tab(slot.id);
+            }
         }
         let page = match &removed {
             WorkspaceTab::Browse(s) => s.page.clone(),
             WorkspaceTab::Editor(s) => s.page.clone(),
+            WorkspaceTab::Structure(s) => s.page.clone(),
         };
         tab_view.close_page_finish(&page, true);
         drop(removed);
@@ -688,6 +774,20 @@ fn do_persist_workspace_state(
                 }
             }
             WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor { query: s.query.clone() },
+            WorkspaceTab::Structure(s) => {
+                // Only Edit-mode Structure tabs persist. New mode is
+                // a draft for a table that doesn't exist yet — restoring
+                // it would be meaningless. Skip by returning a record
+                // we'll filter out below.
+                if matches!(s.mode, crate::ui::structure_tab::StructureMode::Edit) && !s.table.is_empty() {
+                    WorkspaceTabRecord::Structure {
+                        schema: s.schema.clone(),
+                        table: s.table.clone(),
+                    }
+                } else {
+                    continue;
+                }
+            }
         });
     }
     let conn_state = ConnectionWorkspaceState {
@@ -821,8 +921,10 @@ impl App {
         // the connection and its row identities, so any pending edits
         // would no longer be commitable.
         for tab in self.workspace_tabs.borrow().values() {
-            if let WorkspaceTab::Browse(slot) = tab {
-                crate::services::change_tracker::close_tab(slot.id);
+            match tab {
+                WorkspaceTab::Browse(slot) => crate::services::change_tracker::close_tab(slot.id),
+                WorkspaceTab::Structure(slot) => crate::services::structure_tracker::close_tab(slot.id),
+                WorkspaceTab::Editor(_) => {}
             }
         }
         if let Some(root) = self.workspace_root.take()

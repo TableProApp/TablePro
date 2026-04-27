@@ -2,6 +2,7 @@ mod browse;
 mod connection;
 mod row_ops;
 mod status_pages;
+mod structure;
 mod workspace_tabs;
 
 use std::sync::Arc;
@@ -124,13 +125,26 @@ pub struct BrowseTabSlot {
     pub table: String,
 }
 
-/// A tab in the unified workspace — either a Browse table view or an
-/// SQL editor. Stored together in a single HashMap so the user-facing
-/// tab strip is one homogeneous list rather than two ViewSwitcher
-/// modes.
+pub struct StructureTabSlot {
+    pub id: Uuid,
+    pub controller: Controller<crate::ui::structure_tab::StructureTab>,
+    pub page: adw::TabPage,
+    pub schema: Option<String>,
+    /// Empty in `New` mode until SaveCompleted carries the canonical
+    /// table name back from the driver. Edit mode populates from the
+    /// sidebar click or restore record.
+    pub table: String,
+    pub mode: crate::ui::structure_tab::StructureMode,
+}
+
+/// A tab in the unified workspace — either a Browse table view, an
+/// SQL editor, or a Structure (DDL) editor. Stored together in a
+/// single HashMap so the user-facing tab strip is one homogeneous
+/// list rather than three separate ViewSwitcher modes.
 pub enum WorkspaceTab {
     Browse(BrowseTabSlot),
     Editor(EditorTabSlot),
+    Structure(StructureTabSlot),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -162,6 +176,10 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
     unsafe { page.qdata::<Uuid>(workspace_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
+// Some variants are emitted only by sidebar / structure-tab UI not
+// yet wired up in this commit; silence dead_code rather than annotate
+// each in isolation. The next two commits exercise them.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum AppMsg {
     OpenConnect,
@@ -283,6 +301,89 @@ pub enum AppMsg {
     /// "•" dirty marker. Mirrors GNOME Text Editor's leading-bullet
     /// convention for unsaved buffers.
     BrowseTabDirtyChanged(Uuid, bool),
+    /// Sidebar right-click → "New Table…" or schema-header "+" button.
+    /// Always appends a fresh draft Structure tab; never matches an
+    /// existing tab.
+    NewTableTab {
+        schema: Option<String>,
+    },
+    /// Sidebar right-click → "Edit Structure". Switches to an existing
+    /// Edit-mode Structure tab for `(schema, table)` if one is open;
+    /// otherwise appends a new Edit-mode Structure tab.
+    EditStructureTab {
+        schema: Option<String>,
+        table: String,
+    },
+    /// Sidebar right-click → "Drop Table…", or in-tab Drop button.
+    /// App shows the AdwAlertDialog confirmation; on confirm dispatches
+    /// `DropTableConfirmed`.
+    DropTablePrompt {
+        schema: Option<String>,
+        table: String,
+    },
+    /// Confirmed drop — App runs DROP TABLE then closes any open
+    /// Browse / Structure tabs for that table and refreshes sidebar.
+    DropTableConfirmed {
+        schema: Option<String>,
+        table: String,
+    },
+    /// Structure tab Save: run the materialised DDL statements
+    /// sequentially. Postgres wraps in BEGIN / COMMIT for atomicity;
+    /// MySQL / SQLite execute per-statement (DDL implicitly commits).
+    ExecuteStructureTransaction {
+        tab_id: Uuid,
+        statements: Vec<String>,
+    },
+    /// Structure tab Save resolved successfully. `new_table_name` is
+    /// `Some(name)` for `New` mode CreateTable transitions; the tab
+    /// promotes to Edit mode and the slot's `table` field updates.
+    StructureSaveCompleted {
+        tab_id: Uuid,
+        new_table_name: Option<String>,
+    },
+    /// Structure tab Save failed; tracker is intact for retry.
+    StructureSaveFailed(Uuid, String),
+    /// Structure tab Edit-mode init triggers introspection. App fans
+    /// out fetch_columns / fetch_indexes / fetch_foreign_keys and
+    /// dispatches the Loaded variants below.
+    FetchStructureData {
+        tab_id: Uuid,
+    },
+    StructureColumnsLoaded {
+        tab_id: Uuid,
+        columns: Vec<ColumnInfo>,
+    },
+    StructureIndexesLoaded {
+        tab_id: Uuid,
+        indexes: Vec<tablepro_core::IndexInfo>,
+    },
+    StructureForeignKeysLoaded {
+        tab_id: Uuid,
+        fks: Vec<tablepro_core::ForeignKeyInfo>,
+    },
+    StructureLoadFailed {
+        tab_id: Uuid,
+        message: String,
+    },
+    /// Tracker for a Structure tab crossed empty / non-empty boundary.
+    /// Mirrors `BrowseTabDirtyChanged` for the title prefix and the
+    /// AdwTabPage::set_needs_attention background-tab indicator.
+    StructureTabDirtyChanged(Uuid, bool),
+    /// Schema state changed (table created / dropped / altered) — App
+    /// refreshes the sidebar and any open Browse tabs for the affected
+    /// table.
+    SchemaChanged {
+        schema: Option<String>,
+        table: Option<String>,
+    },
+    /// Result of `list_tables` after a SchemaChanged event. Rebuilds
+    /// the sidebar factory without going through the full Connected
+    /// path.
+    TablesReloaded(Vec<TableInfo>),
+    /// Ctrl+Z on a Structure tab.
+    UndoActiveStructureTab,
+    /// Ctrl+Y on a Structure tab.
+    RedoActiveStructureTab,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1028,6 +1129,27 @@ impl SimpleComponent for App {
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             AppMsg::ShowToast(msg) => self.show_toast(&msg),
             AppMsg::BrowseTabDirtyChanged(tab_id, dirty) => self.refresh_browse_tab_dirty(tab_id, dirty),
+            AppMsg::NewTableTab { schema } => self.on_new_table_tab(schema, sender),
+            AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
+            AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
+            AppMsg::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table, sender),
+            AppMsg::ExecuteStructureTransaction { tab_id, statements } => {
+                self.on_execute_structure_transaction(tab_id, statements, sender)
+            }
+            AppMsg::StructureSaveCompleted { tab_id, new_table_name } => {
+                self.on_structure_save_completed(tab_id, new_table_name, sender)
+            }
+            AppMsg::StructureSaveFailed(tab_id, message) => self.on_structure_save_failed(tab_id, message),
+            AppMsg::FetchStructureData { tab_id } => self.on_fetch_structure_data(tab_id, sender),
+            AppMsg::StructureColumnsLoaded { tab_id, columns } => self.on_structure_columns_loaded(tab_id, columns),
+            AppMsg::StructureIndexesLoaded { tab_id, indexes } => self.on_structure_indexes_loaded(tab_id, indexes),
+            AppMsg::StructureForeignKeysLoaded { tab_id, fks } => self.on_structure_foreign_keys_loaded(tab_id, fks),
+            AppMsg::StructureLoadFailed { tab_id, message } => self.on_structure_load_failed(tab_id, message),
+            AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
+            AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
+            AppMsg::TablesReloaded(tables) => self.on_tables_reloaded(tables),
+            AppMsg::UndoActiveStructureTab => self.undo_active_structure_tab(),
+            AppMsg::RedoActiveStructureTab => self.redo_active_structure_tab(),
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionsLoaded(connections) => {
