@@ -133,18 +133,39 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
     window.add(&general);
     window.add(&editor);
 
-    let page_size_for_save = page_size_row.clone();
-    let confirm_for_save = confirm_row.clone();
-    let font_size_for_save = font_size_row.clone();
-    let retention_for_save = retention_row.clone();
-    window.connect_closed(move |_| {
-        let prefs = Preferences {
-            default_page_size: page_size_for_save.value() as u64,
-            confirm_destructive: confirm_for_save.is_active(),
-            editor_font_size: font_size_for_save.value() as u32,
-            history_retention_days: retention_for_save.value() as u32,
-        };
-        preferences::save(&prefs);
+    // Live save — write on every value change instead of batching to
+    // window.connect_closed. GNOME Settings applies its preferences
+    // immediately (no Apply button); same model here. The previous
+    // close-only save lost edits on a crash between change and close.
+    let save_all: std::rc::Rc<dyn Fn()> = {
+        let page_size = page_size_row.clone();
+        let confirm = confirm_row.clone();
+        let font = font_size_row.clone();
+        let retention = retention_row.clone();
+        std::rc::Rc::new(move || {
+            preferences::save(&Preferences {
+                default_page_size: page_size.value() as u64,
+                confirm_destructive: confirm.is_active(),
+                editor_font_size: font.value() as u32,
+                history_retention_days: retention.value() as u32,
+            });
+        })
+    };
+    page_size_row.connect_value_notify({
+        let s = save_all.clone();
+        move |_| s()
+    });
+    font_size_row.connect_value_notify({
+        let s = save_all.clone();
+        move |_| s()
+    });
+    retention_row.connect_value_notify({
+        let s = save_all.clone();
+        move |_| s()
+    });
+    confirm_row.connect_active_notify({
+        let s = save_all.clone();
+        move |_| s()
     });
 
     window.present(Some(parent));
