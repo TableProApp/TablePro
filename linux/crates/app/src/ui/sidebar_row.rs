@@ -15,6 +15,8 @@ pub struct SidebarRow {
 #[derive(Debug)]
 pub enum SidebarRowMsg {
     OpenInNewTab,
+    EditStructure,
+    DropTable,
 }
 
 #[derive(Debug)]
@@ -25,6 +27,13 @@ pub enum SidebarRowOutput {
     /// parent ListBox via the `row-activated` signal, which is the only
     /// GTK signal that fires for both mouse and keyboard activation.
     OpenInNewTab { schema: Option<String>, name: String },
+    /// Right-click "Edit Structure" → opens an Edit-mode Structure tab
+    /// for this table.
+    EditStructure { schema: Option<String>, name: String },
+    /// Right-click "Drop Table…" → App presents the AdwAlertDialog
+    /// confirmation; on confirm runs DROP TABLE and closes any open
+    /// tabs for the dropped table.
+    DropTable { schema: Option<String>, name: String },
 }
 
 #[relm4::factory(pub)]
@@ -106,24 +115,42 @@ impl FactoryComponent for SidebarRow {
         });
         root.add_controller(click_gesture);
 
-        // Right-click → context menu with a single "Open in new tab" entry.
-        // Same pattern as crates/app/src/ui/grid.rs::attach_context_menu —
-        // PopoverMenu fed by a gio::Menu, action group on the row widget.
+        // Right-click → context menu. Three sections per HIG: open
+        // (navigation) → structure (DDL) → mutate (destructive). Each
+        // emits a SidebarRowMsg variant that update() forwards as a
+        // SidebarRowOutput; App's forwarder maps to the corresponding
+        // AppMsg.
         let menu = gtk::gio::Menu::new();
-        menu.append(
+        let open_section = gtk::gio::Menu::new();
+        open_section.append(
             Some(&crate::tr!("Open in new tab")),
             Some("sidebar-row.open-in-new-tab"),
         );
+        menu.append_section(None, &open_section);
+        let structure_section = gtk::gio::Menu::new();
+        structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
+        menu.append_section(None, &structure_section);
+        let mutate_section = gtk::gio::Menu::new();
+        mutate_section.append(Some(&crate::tr!("Drop Table…")), Some("sidebar-row.drop-table"));
+        menu.append_section(None, &mutate_section);
         let popover = gtk::PopoverMenu::from_model(Some(&menu));
         popover.set_has_arrow(true);
         popover.set_parent(&root);
 
         let group = gtk::gio::SimpleActionGroup::new();
-        let sender_for_action = sender.clone();
+        let sender_for_open = sender.clone();
         let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
-            .activate(move |_, _, _| sender_for_action.input(SidebarRowMsg::OpenInNewTab))
+            .activate(move |_, _, _| sender_for_open.input(SidebarRowMsg::OpenInNewTab))
             .build();
-        group.add_action_entries([open_action]);
+        let sender_for_edit = sender.clone();
+        let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
+            .activate(move |_, _, _| sender_for_edit.input(SidebarRowMsg::EditStructure))
+            .build();
+        let sender_for_drop = sender.clone();
+        let drop_action = gtk::gio::ActionEntry::builder("drop-table")
+            .activate(move |_, _, _| sender_for_drop.input(SidebarRowMsg::DropTable))
+            .build();
+        group.add_action_entries([open_action, edit_action, drop_action]);
         root.insert_action_group("sidebar-row", Some(&group));
 
         let right_click = gtk::GestureClick::builder().button(3).build();
@@ -154,6 +181,18 @@ impl FactoryComponent for SidebarRow {
         match msg {
             SidebarRowMsg::OpenInNewTab => {
                 let _ = sender.output(SidebarRowOutput::OpenInNewTab {
+                    schema: self.info.schema.clone(),
+                    name: self.info.name.clone(),
+                });
+            }
+            SidebarRowMsg::EditStructure => {
+                let _ = sender.output(SidebarRowOutput::EditStructure {
+                    schema: self.info.schema.clone(),
+                    name: self.info.name.clone(),
+                });
+            }
+            SidebarRowMsg::DropTable => {
+                let _ = sender.output(SidebarRowOutput::DropTable {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });

@@ -176,9 +176,10 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
     unsafe { page.qdata::<Uuid>(workspace_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
-// Some variants are emitted only by sidebar / structure-tab UI not
-// yet wired up in this commit; silence dead_code rather than annotate
-// each in isolation. The next two commits exercise them.
+// `UndoActiveStructureTab` / `RedoActiveStructureTab` are the only
+// variants without a current emit site (Structure tab Ctrl+Z/Y will
+// fire them in a follow-up commit alongside the full UI). Carrying
+// the keep-alive on the enum is cheaper than annotating each variant.
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum AppMsg {
@@ -804,6 +805,8 @@ impl SimpleComponent for App {
                     name,
                     open_mode: OpenMode::NewTab,
                 },
+                SidebarRowOutput::EditStructure { schema, name } => AppMsg::EditStructureTab { schema, table: name },
+                SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             });
 
         let sidebar_listbox = sidebar_factory.widget();
@@ -856,40 +859,74 @@ impl SimpleComponent for App {
             .build();
 
         let schemas_for_header = sidebar_schemas.clone();
+        let sender_for_header = sender.clone();
         sidebar_listbox.set_header_func(move |row, before| {
             let schemas = schemas_for_header.borrow();
             let total_distinct: std::collections::BTreeSet<&str> =
                 schemas.iter().filter_map(|s| s.as_deref()).collect();
-            if total_distinct.len() < 2 {
+            // Postgres-style multi-schema connections render a header
+            // per schema with a "+" button for "New Table…". Single-
+            // schema connections (MySQL / SQLite) get one header
+            // anchored to "main" / database-name with the same "+"
+            // affordance — the visual cue matters even when there's
+            // only one schema in the list.
+            let multi_schema = total_distinct.len() >= 2;
+            let idx = row.index();
+            let current = schemas.get(idx as usize).cloned().flatten();
+            let prev_idx = before.map(|b| b.index());
+            let prev = prev_idx.and_then(|i| schemas.get(i as usize)).cloned().flatten();
+            let needs = match (&current, &prev) {
+                (Some(c), Some(p)) => c != p,
+                (Some(_), None) => true,
+                (None, None) => before.is_none() && !multi_schema,
+                (None, Some(_)) => false,
+            };
+            if !needs {
                 row.set_header(gtk::Widget::NONE);
                 return;
             }
-            let idx = row.index();
-            let current = schemas.get(idx as usize).and_then(|s| s.as_deref());
-            let prev_idx = before.map(|b| b.index());
-            let prev = prev_idx
-                .and_then(|i| schemas.get(i as usize))
-                .and_then(|s| s.as_deref());
-            let needs = match (current, prev) {
-                (Some(c), Some(p)) => c != p,
-                (Some(_), None) => true,
-                _ => false,
-            };
-            if needs {
-                let header = gtk::Label::builder()
-                    .label(current.unwrap_or(""))
-                    .xalign(0.0)
-                    .margin_top(8)
-                    .margin_bottom(4)
-                    .margin_start(12)
-                    .margin_end(12)
-                    .build();
-                header.add_css_class("heading");
-                header.add_css_class("dim-label");
-                row.set_header(Some(&header));
-            } else {
-                row.set_header(gtk::Widget::NONE);
-            }
+            let header_box = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(6)
+                .margin_top(8)
+                .margin_bottom(4)
+                .margin_start(12)
+                .margin_end(6)
+                .build();
+            let label_text = current
+                .as_deref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| crate::tr!("Tables"));
+            let label = gtk::Label::builder()
+                .label(&label_text)
+                .xalign(0.0)
+                .hexpand(true)
+                .build();
+            label.add_css_class("heading");
+            label.add_css_class("dim-label");
+            header_box.append(&label);
+            // "+" button: emit NewTableTab carrying this schema. Flat
+            // styling matches GNOME Files' inline-add buttons; the
+            // tooltip clarifies the destination ("New Table in …")
+            // so the user understands what the schema scoping means.
+            let new_table_button = gtk::Button::builder()
+                .icon_name("list-add-symbolic")
+                .tooltip_text(match current.as_deref() {
+                    Some(s) => crate::tr!("New Table in {schema}…").replace("{schema}", s),
+                    None => crate::tr!("New Table…"),
+                })
+                .valign(gtk::Align::Center)
+                .build();
+            new_table_button.add_css_class("flat");
+            let sender_for_button = sender_for_header.clone();
+            let schema_for_button = current.clone();
+            new_table_button.connect_clicked(move |_| {
+                sender_for_button.input(AppMsg::NewTableTab {
+                    schema: schema_for_button.clone(),
+                });
+            });
+            header_box.append(&new_table_button);
+            row.set_header(Some(&header_box));
         });
 
         let connections_factory: FactoryVecDeque<ConnectionRow> = FactoryVecDeque::builder()
