@@ -142,4 +142,5 @@ build/
 # Static libraries (downloaded from GitHub Releases via scripts/download-libs.sh)
 Libs/*.a
 Libs/.downloaded
+Libs/dylibs/
 Libs/ios/

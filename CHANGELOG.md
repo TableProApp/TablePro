@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- OpenSSL shared as dylib across app and plugins, saving ~15MB in bundle size
+
 ## [0.36.0] - 2026-04-27
 
 ### Added

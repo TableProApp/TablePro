@@ -64,6 +64,14 @@ touch "$MARKER"
 LIB_COUNT=$(find "$LIBS_DIR" -maxdepth 1 -name '*.a' | wc -l | tr -d ' ')
 echo "Downloaded $LIB_COUNT static libraries."
 
+# --- OpenSSL shared dylibs ---
+echo "Creating OpenSSL shared dylibs for local development..."
+if [[ -f "$LIBS_DIR/libcrypto_arm64.a" || -f "$LIBS_DIR/libcrypto.a" ]]; then
+  scripts/create-openssl-dylibs.sh both
+else
+  echo "Skipping OpenSSL dylibs (no static libs found yet)."
+fi
+
 # --- iOS xcframeworks ---
 IOS_ARCHIVE="tablepro-libs-ios-v1.tar.gz"
 IOS_DIR="$LIBS_DIR/ios"

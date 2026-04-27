@@ -2275,18 +2275,23 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.36.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libssh2.a",
-					"-force_load",
-					"$(PROJECT_DIR)/Libs/libssl.a",
-					"-force_load",
-					"$(PROJECT_DIR)/Libs/libcrypto.a",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro;
@@ -2348,18 +2353,23 @@
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs/dylibs";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.36.0;
 				OTHER_LDFLAGS = (
 					"-Wl,-w",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libssh2.a",
-					"-force_load",
-					"$(PROJECT_DIR)/Libs/libssl.a",
-					"-force_load",
-					"$(PROJECT_DIR)/Libs/libcrypto.a",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro;
@@ -2670,15 +2680,21 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/MSSQLDriverPlugin/CFreeTDS/include";
 				INFOPLIST_FILE = Plugins/MSSQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MSSQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libsybdb.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-liconv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
@@ -2703,15 +2719,21 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/MSSQLDriverPlugin/CFreeTDS/include";
 				INFOPLIST_FILE = Plugins/MSSQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MSSQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libsybdb.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-liconv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MSSQLDriver;
@@ -2736,15 +2758,21 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB/include";
 				INFOPLIST_FILE = Plugins/MySQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MySQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libmariadb.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-liconv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MySQLDriver;
@@ -2769,15 +2797,21 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/MySQLDriverPlugin/CMariaDB/include";
 				INFOPLIST_FILE = Plugins/MySQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).MySQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libmariadb.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-liconv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.MySQLDriver;
@@ -2886,8 +2920,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/RedisDriverPlugin/CRedis/include";
 				INFOPLIST_FILE = Plugins/RedisDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).RedisPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2895,8 +2935,8 @@
 					"$(PROJECT_DIR)/Libs/libhiredis.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libhiredis_ssl.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.RedisDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2920,8 +2960,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/RedisDriverPlugin/CRedis/include";
 				INFOPLIST_FILE = Plugins/RedisDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).RedisPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2929,8 +2975,8 @@
 					"$(PROJECT_DIR)/Libs/libhiredis.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libhiredis_ssl.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.RedisDriver;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -2954,8 +3000,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ/include";
 				INFOPLIST_FILE = Plugins/PostgreSQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).PostgreSQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2963,8 +3015,8 @@
 					"$(PROJECT_DIR)/Libs/libpq.a",
 					"$(PROJECT_DIR)/Libs/libpgcommon.a",
 					"$(PROJECT_DIR)/Libs/libpgport.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.PostgreSQLDriver;
@@ -2989,8 +3041,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/PostgreSQLDriverPlugin/CLibPQ/include";
 				INFOPLIST_FILE = Plugins/PostgreSQLDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).PostgreSQLPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -2998,8 +3056,8 @@
 					"$(PROJECT_DIR)/Libs/libpq.a",
 					"$(PROJECT_DIR)/Libs/libpgcommon.a",
 					"$(PROJECT_DIR)/Libs/libpgport.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lz",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.TablePro.PostgreSQLDriver;
@@ -3362,8 +3420,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra/include";
 				INFOPLIST_FILE = Plugins/CassandraDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CassandraPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -3371,8 +3435,8 @@
 					"$(PROJECT_DIR)/Libs/libcassandra.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libuv.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lc++",
 					"-lz",
 				);
@@ -3398,8 +3462,14 @@
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/Plugins/CassandraDriverPlugin/CCassandra/include";
 				INFOPLIST_FILE = Plugins/CassandraDriverPlugin/Info.plist;
 				INFOPLIST_KEY_NSPrincipalClass = "$(PRODUCT_MODULE_NAME).CassandraPlugin";
-				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(PROJECT_DIR)/Libs";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"@executable_path/../Frameworks",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Libs",
+					"$(PROJECT_DIR)/Libs/dylibs",
+				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
@@ -3407,8 +3477,8 @@
 					"$(PROJECT_DIR)/Libs/libcassandra.a",
 					"-force_load",
 					"$(PROJECT_DIR)/Libs/libuv.a",
-					"-lssl",
-					"-lcrypto",
+					"-lssl.3",
+					"-lcrypto.3",
 					"-lc++",
 					"-lz",
 				);
