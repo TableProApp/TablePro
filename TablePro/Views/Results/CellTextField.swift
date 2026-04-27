@@ -16,11 +16,6 @@ final class CellTextField: NSTextField {
     /// The truncated display value
     private var truncatedValue: String?
 
-    override class var cellClass: AnyClass? {
-        get { CellTextFieldCell.self }
-        set { }
-    }
-
     override var stringValue: String {
         didSet {
             // Store the truncated value when set externally
@@ -75,50 +70,33 @@ final class CellTextField: NSTextField {
     }
 }
 
-/// Custom text field cell that provides a field editor with custom context menu behavior
-final class CellTextFieldCell: NSTextFieldCell {
-    private class CellFieldEditor: NSTextView {
-        /// Key equivalents that should commit the edit and bubble up to the menu bar.
-        private static let menuKeyEquivalents: Set<String> = ["s"]
+final class DataGridFieldEditor: NSTextView {
+    private static let menuKeyEquivalents: Set<String> = ["s"]
 
-        override func performKeyEquivalent(with event: NSEvent) -> Bool {
-            if event.modifierFlags.contains(.command),
-               let chars = event.charactersIgnoringModifiers,
-               Self.menuKeyEquivalents.contains(chars) {
-                // Commit the inline edit so the change is recorded in DataChangeManager
-                // before the menu action (e.g. Cmd+S save) fires.
-                window?.makeFirstResponder(nil)
-                return false
-            }
-            return super.performKeyEquivalent(with: event)
-        }
-
-        override func rightMouseDown(with event: NSEvent) {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command),
+           let chars = event.charactersIgnoringModifiers,
+           Self.menuKeyEquivalents.contains(chars) {
             window?.makeFirstResponder(nil)
-
-            var view: NSView? = self
-            while let parent = view?.superview {
-                if let cellTextField = parent as? CellTextField {
-                    cellTextField.rightMouseDown(with: event)
-                    return
-                }
-                view = parent
-            }
+            return false
         }
+        return super.performKeyEquivalent(with: event)
+    }
 
-        override func menu(for event: NSEvent) -> NSMenu? {
-            nil
+    override func rightMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(nil)
+
+        var view: NSView? = self
+        while let parent = view?.superview {
+            if let cellTextField = parent as? CellTextField {
+                cellTextField.rightMouseDown(with: event)
+                return
+            }
+            view = parent
         }
     }
 
-    private var customFieldEditor: CellFieldEditor?
-
-    override func fieldEditor(for controlView: NSView) -> NSTextView? {
-        if customFieldEditor == nil {
-            let editor = CellFieldEditor()
-            editor.isFieldEditor = true
-            customFieldEditor = editor
-        }
-        return customFieldEditor
+    override func menu(for event: NSEvent) -> NSMenu? {
+        nil
     }
 }
