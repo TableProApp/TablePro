@@ -1,0 +1,267 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "tablepro",
+  "title": "TablePro",
+  "description": "Open and search your TablePro database connections, browse schema, and run queries.",
+  "icon": "icon.png",
+  "author": "datlechin",
+  "categories": ["Developer Tools", "Productivity"],
+  "platforms": ["macOS"],
+  "license": "MIT",
+  "version": "0.1.0",
+  "commands": [
+    {
+      "name": "search-connections",
+      "title": "Search Connections",
+      "subtitle": "TablePro",
+      "description": "Search and open saved TablePro connections.",
+      "mode": "view"
+    },
+    {
+      "name": "open-connection",
+      "title": "Open Connection",
+      "subtitle": "TablePro",
+      "description": "Open a connection by name.",
+      "mode": "no-view",
+      "arguments": [
+        {
+          "name": "connection",
+          "placeholder": "Connection name",
+          "type": "text",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "menu-bar-connections",
+      "title": "TablePro Menu Bar",
+      "subtitle": "TablePro",
+      "description": "Show connections in the menu bar.",
+      "mode": "menu-bar",
+      "interval": "10m"
+    },
+    {
+      "name": "search-schema",
+      "title": "Search Schema",
+      "subtitle": "TablePro",
+      "description": "Search databases and schemas across your connections.",
+      "mode": "view"
+    },
+    {
+      "name": "search-tables",
+      "title": "Search Tables",
+      "subtitle": "TablePro",
+      "description": "Search tables in a connection.",
+      "mode": "view"
+    },
+    {
+      "name": "recent-tabs",
+      "title": "Recent Tabs",
+      "subtitle": "TablePro",
+      "description": "Show recently opened tabs in TablePro.",
+      "mode": "view"
+    },
+    {
+      "name": "run-query",
+      "title": "Run Query",
+      "subtitle": "TablePro",
+      "description": "Run a SQL query against a connection.",
+      "mode": "view"
+    },
+    {
+      "name": "search-history",
+      "title": "Search Query History",
+      "subtitle": "TablePro",
+      "description": "Search the TablePro query history.",
+      "mode": "view"
+    },
+    {
+      "name": "pair",
+      "title": "Pair with TablePro",
+      "subtitle": "TablePro",
+      "description": "Pair this extension with TablePro.",
+      "mode": "view"
+    }
+  ],
+  "tools": [
+    {
+      "name": "list-connections",
+      "title": "List Connections",
+      "description": "List all saved TablePro database connections."
+    },
+    {
+      "name": "list-databases",
+      "title": "List Databases",
+      "description": "List databases on a TablePro connection."
+    },
+    {
+      "name": "list-schemas",
+      "title": "List Schemas",
+      "description": "List schemas in a database on a TablePro connection."
+    },
+    {
+      "name": "list-tables",
+      "title": "List Tables",
+      "description": "List tables in a database or schema."
+    },
+    {
+      "name": "describe-table",
+      "title": "Describe Table",
+      "description": "Return the column list, types, and constraints for a table."
+    },
+    {
+      "name": "get-table-ddl",
+      "title": "Get Table DDL",
+      "description": "Return the CREATE TABLE statement for a table."
+    },
+    {
+      "name": "run-query",
+      "title": "Run Query",
+      "description": "Run a read or write SQL query. Mutating queries require user confirmation."
+    },
+    {
+      "name": "explain-query",
+      "title": "Explain Query",
+      "description": "Run EXPLAIN on a query and return the plan."
+    },
+    {
+      "name": "open-connection-window",
+      "title": "Open Connection in TablePro",
+      "description": "Open a TablePro connection window so the user can continue work in the GUI."
+    },
+    {
+      "name": "search-history",
+      "title": "Search Query History",
+      "description": "Search the saved TablePro query history by text."
+    }
+  ],
+  "ai": {
+    "instructions": "TablePro is a native macOS database client. Use list-connections to find a connection by user description, then pass its UUID to other tools. Always describe-table before generating queries against an unknown schema. For mutating SQL (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, MERGE) the run-query tool will require user confirmation, never bypass that. The connection's external-access setting may reject your query as read-only, surface that error to the user verbatim. Prefer open-connection-window when the user wants to inspect or edit data interactively rather than streaming rows in chat.",
+    "evals": [
+      {
+        "input": "@tablepro list my connections",
+        "expected": [
+          {
+            "callsTool": {
+              "name": "list-connections"
+            }
+          }
+        ],
+        "mocks": {
+          "list-connections": [
+            {
+              "id": "3823CB84-BB87-457E-8930-6DB35E210228",
+              "name": "prod",
+              "type": "postgresql",
+              "host": "db.example.com",
+              "port": 5432
+            }
+          ]
+        }
+      },
+      {
+        "input": "@tablepro show me the columns of the users table on my prod connection",
+        "expected": [
+          {
+            "callsTool": {
+              "name": "list-connections"
+            }
+          },
+          {
+            "callsTool": {
+              "name": "describe-table",
+              "arguments": {
+                "connectionId": "3823CB84-BB87-457E-8930-6DB35E210228",
+                "table": "users"
+              }
+            }
+          }
+        ],
+        "mocks": {
+          "list-connections": [
+            {
+              "id": "3823CB84-BB87-457E-8930-6DB35E210228",
+              "name": "prod",
+              "type": "postgresql",
+              "host": "db.example.com",
+              "port": 5432
+            }
+          ],
+          "describe-table": {
+            "columns": [
+              { "name": "id", "type": "uuid", "nullable": false, "primaryKey": true },
+              { "name": "email", "type": "text", "nullable": false }
+            ]
+          }
+        }
+      },
+      {
+        "input": "@tablepro open my prod connection in TablePro",
+        "expected": [
+          {
+            "callsTool": {
+              "name": "list-connections"
+            }
+          },
+          {
+            "callsTool": {
+              "name": "open-connection-window",
+              "arguments": {
+                "connectionId": "3823CB84-BB87-457E-8930-6DB35E210228"
+              }
+            }
+          }
+        ],
+        "mocks": {
+          "list-connections": [
+            {
+              "id": "3823CB84-BB87-457E-8930-6DB35E210228",
+              "name": "prod",
+              "type": "postgresql",
+              "host": "db.example.com",
+              "port": 5432
+            }
+          ],
+          "open-connection-window": "Opened connection prod in TablePro"
+        }
+      }
+    ]
+  },
+  "preferences": [
+    {
+      "name": "tableProAppPath",
+      "title": "TablePro App",
+      "description": "Path to the TablePro app. Used to detect installation and open the app on demand.",
+      "type": "appPicker",
+      "required": false,
+      "default": "/Applications/TablePro.app"
+    },
+    {
+      "name": "apiToken",
+      "title": "API Token",
+      "description": "Token issued by TablePro after pairing. Run the Pair with TablePro command to fill this in.",
+      "type": "password",
+      "required": false,
+      "placeholder": "tp_..."
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.83.0",
+    "@raycast/utils": "^1.18.1"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "22.13.10",
+    "@types/react": "19.0.10",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.3",
+    "typescript": "~5.6.2"
+  },
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
+    "publish": "npx @raycast/api@latest publish"
+  }
+}
