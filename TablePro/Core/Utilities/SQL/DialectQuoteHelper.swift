@@ -24,3 +24,14 @@ func quoteIdentifierFromDialect(_ dialect: SQLDialectDescriptor?) -> (String) ->
         return "\(q)\(escaped)\(q)"
     }
 }
+
+/// Resolve a SQL dialect for a given database type, falling back to the
+/// plugin metadata registry when no explicit dialect is supplied.
+/// Returns nil for NoSQL databases (no SQL dialect registered).
+func resolveSQLDialect(
+    for databaseType: DatabaseType,
+    explicit: SQLDialectDescriptor? = nil
+) -> SQLDialectDescriptor? {
+    if let explicit { return explicit }
+    return PluginMetadataRegistry.shared.snapshot(forTypeId: databaseType.pluginTypeId)?.editor.sqlDialect
+}
