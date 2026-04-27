@@ -78,6 +78,26 @@ pub struct App {
     default_page_size: u64,
     saved_connections: Vec<SavedConnection>,
     connected: bool,
+    /// Tabs the user picked "Save" on in a close-confirmation dialog.
+    /// On `SaveCompletedForTab`, if the id is in this set, the tab is
+    /// closed automatically so the user gets the close they asked for
+    /// without a second click. On `SaveFailedForTab` the id is removed
+    /// (abort the close so they can fix the error and retry).
+    close_after_save: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>>,
+    /// Set when the user picked "Save" on the *window*-close dialog.
+    /// While true, the last `SaveCompletedForTab` that empties
+    /// `close_after_save` triggers `window.close()`. A `SaveFailed`
+    /// while in this state aborts the window-close intent. `Rc<Cell>`
+    /// so the close-request handler closure can mutate it from outside
+    /// `App::update`.
+    close_window_after_save: std::rc::Rc<std::cell::Cell<bool>>,
+    /// Count of in-flight transaction commits (a tab clicked Save
+    /// and is awaiting `execute_in_transaction`). Incremented by
+    /// `on_execute_browse_transaction` at dispatch, decremented by
+    /// `SaveCompletedForTab` and `SaveFailedForTab`. Window-close
+    /// blocks while this is > 0 so an async transaction never commits
+    /// after the tab / window has been torn down.
+    in_flight_saves: std::rc::Rc<std::cell::Cell<usize>>,
 }
 
 pub struct EditorTabSlot {
@@ -208,16 +228,29 @@ pub enum AppMsg {
     ExecuteBrowseTransaction {
         tab_id: Uuid,
         statements: Vec<(String, Vec<Value>)>,
+        sources: Vec<crate::services::change_tracker::StatementSource>,
     },
     /// Inline-Save resolved successfully for a specific browse tab.
     /// Routes through App.update so we can reset the row-op spinner
     /// before forwarding `BrowseTabInput::SaveCompleted` to the tab.
-    SaveCompletedForTab(Uuid),
+    /// `warning` is `Some(msg)` when the transaction committed but at
+    /// least one UPDATE / DELETE statement matched zero rows — typically
+    /// a concurrent modification by another session. The user sees a
+    /// toast so a phantom save doesn't pass silently.
+    SaveCompletedForTab(Uuid, Option<String>),
     /// Inline-Save failed; transaction was already rolled back.
     SaveFailedForTab(Uuid, String),
+    /// Driver reported `DriverError::Transaction { statement_index }`.
+    /// Routed before SaveFailedForTab so the tab can scroll-and-select
+    /// the offending row before the error alert appears.
+    FlashErrorRowForTab(Uuid, crate::services::change_tracker::StatementSource),
     /// Ctrl+S — fire CommitSave on the active browse tab. No-op if
     /// the active tab is an Editor or there's no active connection.
     SaveActiveBrowseTab,
+    /// Targeted variant: close-confirmation dialogs use this to commit
+    /// a specific tab (which may not be the currently-active one when
+    /// the user is closing a background tab via its X button).
+    SaveActiveBrowseTabById(Uuid),
     /// Ctrl+Z — undo the last pending change in the active tab.
     UndoActiveBrowseTab,
     /// Ctrl+Y — redo a previously undone change in the active tab.
@@ -228,6 +261,14 @@ pub enum AppMsg {
         title: String,
         body: String,
     },
+    /// Show a transient toast — used for inline-validation feedback like
+    /// "Invalid date format" where a modal alert would be over-heavy.
+    ShowToast(String),
+    /// Tracker for a specific browse tab moved between empty / non-empty.
+    /// Handler updates that tab's page title to add or remove the
+    /// "•" dirty marker. Mirrors GNOME Text Editor's leading-bullet
+    /// convention for unsaved buffers.
+    BrowseTabDirtyChanged(Uuid, bool),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -452,6 +493,47 @@ impl SimpleComponent for App {
                 label.tp-null-sentinel {\
                     font-style: italic;\
                     opacity: 0.55;\
+                }\
+                /* Cell focus ring. GtkColumnView's default focus chevron\
+                   on cells is a 1px outline that disappears against the\
+                   selected-row highlight. A 2px inset accent ring is the\
+                   spreadsheet-standard focus-cell signal and matches\
+                   what GNOME Builder draws for its source-buffer cursor.\
+                */\
+                columnview > listview > row > cell:focus-within > label,\
+                columnview > listview > row > cell:focus-within > editablelabel,\
+                columnview > listview > row > cell:focus-within > checkbutton {\
+                    box-shadow: inset 0 0 0 2px @accent_color;\
+                    border-radius: 2px;\
+                }\
+                /* Row-level pending indicators on the leftmost cell.\
+                   A 3px inset ribbon flush to the left edge marks the\
+                   row's overall mutation state. Independent of the\
+                   per-cell highlights so a row with one modified cell\
+                   still reads as a modified row at a glance.\
+                */\
+                .tp-row-leftmost-insert {\
+                    box-shadow: inset 3px 0 0 @success_color;\
+                }\
+                .tp-row-leftmost-update {\
+                    box-shadow: inset 3px 0 0 @warning_color;\
+                }\
+                .tp-row-leftmost-delete {\
+                    box-shadow: inset 3px 0 0 @error_color;\
+                }\
+                /* One-shot flash on the row that produced a failing\
+                   commit statement. Animation fades the red overlay\
+                   to transparent over ~1.8s; the bind callback\
+                   re-applies the class until the BrowseTab clears\
+                   tracker.error_row.\
+                */\
+                @keyframes tp-flash-error {\
+                    0%   { background: alpha(@error_color, 0.55); }\
+                    100% { background: alpha(@error_color, 0); }\
+                }\
+                .tp-row-leftmost-error-flash {\
+                    animation: tp-flash-error 1.8s ease-out;\
+                    box-shadow: inset 3px 0 0 @error_color;\
                 }",
             );
             gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -462,41 +544,103 @@ impl SimpleComponent for App {
         if restored.maximized {
             widgets.window.maximize();
         }
-        // Window-close handler. Two responsibilities: persist window
-        // size + maximize state, and (when any open tab has pending
-        // changes) show an AdwAlertDialog that lets the user Cancel
-        // or Discard the unsaved batch. Save-and-close stays a
-        // separate manual flow (Ctrl+S, then close) because async
-        // commit during close has poor failure modes.
+        // Window-close handler. Three responsibilities: persist window
+        // size + maximize state, intercept close when any tab has
+        // unsaved edits with a Cancel | Discard | Save dialog, and
+        // route Save through the same SaveCompletedForTab plumbing as
+        // a per-tab close so failures abort cleanly.
         let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
         let force_close_for_close = force_close.clone();
+        let close_after_save_for_close: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>> =
+            std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new()));
+        let close_window_after_save_for_close: std::rc::Rc<std::cell::Cell<bool>> =
+            std::rc::Rc::new(std::cell::Cell::new(false));
+        let in_flight_saves: std::rc::Rc<std::cell::Cell<usize>> = std::rc::Rc::new(std::cell::Cell::new(0));
+        let close_after_save_handle = close_after_save_for_close.clone();
+        let close_window_after_save_handle = close_window_after_save_for_close.clone();
+        let in_flight_saves_handle = in_flight_saves.clone();
+        let in_flight_saves_for_close = in_flight_saves.clone();
+        let close_request_input_sender = sender.input_sender().clone();
         widgets.window.connect_close_request(move |w| {
+            // If a Save is mid-flight (async transaction running), block
+            // the close until it resolves. Without this, the completion
+            // handler would dispatch SaveCompleted to a tab that's
+            // already gone — the transaction commits in the background
+            // with no UI feedback.
+            if !force_close_for_close.get() && in_flight_saves_for_close.get() > 0 {
+                let dialog = adw::AlertDialog::new(
+                    Some(&crate::tr!("Saving in progress")),
+                    Some(&crate::tr!(
+                        "Waiting for pending saves to finish before closing the window."
+                    )),
+                );
+                dialog.set_can_close(false);
+                dialog.present(Some(w));
+                let dialog_for_poll = dialog.clone();
+                let window_for_poll = w.clone();
+                let force_close_for_poll = force_close_for_close.clone();
+                let in_flight_for_poll = in_flight_saves_for_close.clone();
+                glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+                    if in_flight_for_poll.get() == 0 {
+                        dialog_for_poll.close();
+                        force_close_for_poll.set(true);
+                        window_for_poll.close();
+                        glib::ControlFlow::Break
+                    } else {
+                        glib::ControlFlow::Continue
+                    }
+                });
+                return glib::Propagation::Stop;
+            }
             // Already-confirmed close path (set by the dialog handler
             // below) — skip the guard, save state, allow close.
             if !force_close_for_close.get() && crate::services::change_tracker::any_pending_globally() {
                 let dialog = adw::AlertDialog::new(
-                    Some(&crate::tr!("Discard pending changes?")),
+                    Some(&crate::tr!("Save changes?")),
                     Some(&crate::tr!(
-                        "One or more tabs have unsaved edits. Cancel to keep them and save manually, or Discard to close anyway."
+                        "One or more tabs have unsaved edits. Save commits them all now, Discard throws them away."
                     )),
                 );
                 dialog.add_response("cancel", &crate::tr!("Cancel"));
                 dialog.add_response("discard", &crate::tr!("Discard"));
+                dialog.add_response("save", &crate::tr!("Save"));
                 dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-                dialog.set_default_response(Some("cancel"));
+                dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+                dialog.set_default_response(Some("save"));
                 dialog.set_close_response("cancel");
                 let force_close_for_resp = force_close_for_close.clone();
                 let window_for_resp = w.clone();
+                let close_after_save_for_resp = close_after_save_for_close.clone();
+                let close_window_after_save_for_resp = close_window_after_save_for_close.clone();
+                let input_sender_for_resp = close_request_input_sender.clone();
                 dialog.connect_response(None, move |dlg, response| {
                     dlg.close();
-                    if response == "discard" {
-                        for tab_id in crate::services::change_tracker::pending_tabs() {
-                            crate::services::change_tracker::with_tab(tab_id, |t| t.clear());
+                    match response {
+                        "discard" => {
+                            for tab_id in crate::services::change_tracker::pending_tabs() {
+                                crate::services::change_tracker::with_tab(tab_id, |t| t.clear());
+                            }
+                            force_close_for_resp.set(true);
+                            // Re-fire close_request — guard sees the flag,
+                            // saves window state, returns Proceed.
+                            window_for_resp.close();
                         }
-                        force_close_for_resp.set(true);
-                        // Re-fire close_request — guard sees the flag,
-                        // saves window state, returns Proceed.
-                        window_for_resp.close();
+                        "save" => {
+                            // Commit each dirty tab in parallel via
+                            // SaveActiveBrowseTabById. The shared
+                            // close_after_save tracks how many we're
+                            // waiting on; the SaveCompletedForTab
+                            // handler in App::update closes the window
+                            // once the set drains. Any SaveFailed clears
+                            // close_window_after_save and aborts.
+                            let tabs: Vec<Uuid> = crate::services::change_tracker::pending_tabs();
+                            close_after_save_for_resp.borrow_mut().extend(tabs.iter().copied());
+                            close_window_after_save_for_resp.set(true);
+                            for id in tabs {
+                                let _ = input_sender_for_resp.send(AppMsg::SaveActiveBrowseTabById(id));
+                            }
+                        }
+                        _ => {} // Cancel: do nothing, stay open.
                     }
                 });
                 dialog.present(Some(w));
@@ -735,6 +879,9 @@ impl SimpleComponent for App {
             default_page_size: crate::services::preferences::load().default_page_size,
             saved_connections: Vec::new(),
             connected: false,
+            close_after_save: close_after_save_handle,
+            close_window_after_save: close_window_after_save_handle,
+            in_flight_saves: in_flight_saves_handle,
         };
         sender.input(AppMsg::ReloadConnections);
         model.show_welcome_page(sender.clone());
@@ -793,21 +940,61 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
-            AppMsg::ExecuteBrowseTransaction { tab_id, statements } => {
-                self.on_execute_browse_transaction(tab_id, statements, sender);
+            AppMsg::ExecuteBrowseTransaction {
+                tab_id,
+                statements,
+                sources,
+            } => {
+                self.on_execute_browse_transaction(tab_id, statements, sources, sender);
             }
-            AppMsg::SaveCompletedForTab(tab_id) => {
+            AppMsg::SaveCompletedForTab(tab_id, warning) => {
                 self.set_row_op_in_flight(false);
+                self.in_flight_saves.set(self.in_flight_saves.get().saturating_sub(1));
+                // GNOME HIG toast pattern: confirm one-shot events.
+                // Concurrency warning takes precedence (it implicitly
+                // confirms the save *and* explains the partial-match);
+                // otherwise the plain "Saved" reads as a successful
+                // commit. No Undo button — the transaction has already
+                // committed; users have explicit Ctrl+Z before Save.
+                // 4s timeout (vs the default 5) so the success toast
+                // doesn't hang around long after the user has moved on.
+                let msg = warning.unwrap_or_else(|| crate::tr!("Saved"));
+                let toast = adw::Toast::builder().title(msg).timeout(4).build();
+                self.toast_overlay.add_toast(toast);
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveCompleted);
+                // If the user picked Save in a close-confirmation
+                // dialog, fire the close now that the commit succeeded.
+                let was_close_after = self.close_after_save.borrow_mut().remove(&tab_id);
+                if was_close_after {
+                    sender.input(AppMsg::WorkspaceTabClosed(tab_id));
+                }
+                // If we're in a window-close-Save-all flow and the set
+                // just drained, the window can finally close.
+                if self.close_window_after_save.get() && self.close_after_save.borrow().is_empty() {
+                    self.close_window_after_save.set(false);
+                    self.window.close();
+                }
             }
             AppMsg::SaveFailedForTab(tab_id, message) => {
                 self.set_row_op_in_flight(false);
+                self.in_flight_saves.set(self.in_flight_saves.get().saturating_sub(1));
+                // Abort any close-after-save intent: the commit failed,
+                // so we keep the tab open and let the user see the
+                // error and retry. Window-close intent is also cleared.
+                self.close_after_save.borrow_mut().remove(&tab_id);
+                self.close_window_after_save.set(false);
                 self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(message));
+            }
+            AppMsg::FlashErrorRowForTab(tab_id, source) => {
+                self.dispatch_to_tab(tab_id, BrowseTabInput::FlashErrorRow(source));
             }
             AppMsg::SaveActiveBrowseTab => {
                 if let Some(id) = self.selected_browse_tab_id() {
                     self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
                 }
+            }
+            AppMsg::SaveActiveBrowseTabById(id) => {
+                self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
             }
             AppMsg::UndoActiveBrowseTab => {
                 if let Some(id) = self.selected_browse_tab_id() {
@@ -822,6 +1009,8 @@ impl SimpleComponent for App {
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
+            AppMsg::ShowToast(msg) => self.show_toast(&msg),
+            AppMsg::BrowseTabDirtyChanged(tab_id, dirty) => self.refresh_browse_tab_dirty(tab_id, dirty),
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionsLoaded(connections) => {
@@ -1047,6 +1236,24 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
     // context-sensitive (close current tab when in editor, close window
     // otherwise). Listing it twice with different labels confused readers.
     section.append(&general);
+
+    let browse = gtk::ShortcutsGroup::builder().title(crate::tr!("Browse table")).build();
+    browse.append(&shortcut_entry("F2", &crate::tr!("Edit focused cell")));
+    browse.append(&shortcut_entry("Return", &crate::tr!("Edit focused cell")));
+    browse.append(&shortcut_entry("Escape", &crate::tr!("Cancel edit")));
+    browse.append(&shortcut_entry("Tab", &crate::tr!("Commit edit and move to next cell")));
+    browse.append(&shortcut_entry(
+        "<Shift>Tab",
+        &crate::tr!("Commit edit and move to previous cell"),
+    ));
+    browse.append(&shortcut_entry("space", &crate::tr!("Toggle boolean cell")));
+    browse.append(&shortcut_entry("<Primary>n", &crate::tr!("Insert row")));
+    browse.append(&shortcut_entry("Delete", &crate::tr!("Delete selected row")));
+    browse.append(&shortcut_entry(
+        "<Primary><Shift>n",
+        &crate::tr!("Set focused cell to NULL"),
+    ));
+    section.append(&browse);
 
     let editor = gtk::ShortcutsGroup::builder().title(crate::tr!("SQL editor")).build();
     editor.append(&shortcut_entry("<Primary>Return", &crate::tr!("Run query")));

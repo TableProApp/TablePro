@@ -33,5 +33,7 @@ pub fn save(state: WindowState) {
     let Some(path) = xdg_config_path("window.json") else {
         return;
     };
-    let _ = atomic_write_json(&path, &state);
+    if let Err(e) = atomic_write_json(&path, &state) {
+        tracing::warn!(path = %path.display(), error = %e, "window_state: write failed");
+    }
 }

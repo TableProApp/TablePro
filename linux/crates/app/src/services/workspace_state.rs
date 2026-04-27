@@ -73,11 +73,14 @@ pub fn load() -> WorkspaceState {
 
 pub fn save(state: &WorkspaceState) {
     let Some(path) = xdg_config_path(FILE_NAME) else {
+        tracing::warn!("workspace_state: no config path; skipping save");
         return;
     };
     let mut snapshot = state.clone();
     clamp(&mut snapshot);
-    let _ = atomic_write_json(&path, &snapshot);
+    if let Err(e) = atomic_write_json(&path, &snapshot) {
+        tracing::warn!(path = %path.display(), error = %e, "workspace_state: write failed");
+    }
 }
 
 pub fn load_connection(id: Uuid) -> Option<ConnectionWorkspaceState> {

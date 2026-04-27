@@ -250,9 +250,13 @@ impl App {
                 BrowseTabOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
                 BrowseTabOutput::SchemaWordsChanged(_words) => AppMsg::WorkspaceSchemaWordsChanged,
                 BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
-                BrowseTabOutput::ExecuteTransaction { statements } => {
-                    AppMsg::ExecuteBrowseTransaction { tab_id, statements }
-                }
+                BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
+                BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
+                BrowseTabOutput::ExecuteTransaction { statements, sources } => AppMsg::ExecuteBrowseTransaction {
+                    tab_id,
+                    statements,
+                    sources,
+                },
             });
 
         let page = tab_view.append(controller.widget());
@@ -347,31 +351,49 @@ impl App {
                 WorkspaceTab::Editor(s) => s.page.clone(),
             });
             let Some(page) = page else { return };
+            // Cancel | Discard(destructive) | Save(suggested), Save is
+            // default. Mirrors GNOME Text Editor's close-with-unsaved
+            // template (libadwaita AdwAlertDialog reference).
             let dialog = adw::AlertDialog::new(
-                Some(&crate::tr!("Discard pending changes?")),
+                Some(&crate::tr!("Save changes?")),
                 Some(&crate::tr!(
-                    "This tab has unsaved edits. Cancel to keep them and save manually, or Discard to close anyway."
+                    "This tab has unsaved edits. Save commits them now, Discard throws them away."
                 )),
             );
             dialog.add_response("cancel", &crate::tr!("Cancel"));
             dialog.add_response("discard", &crate::tr!("Discard"));
+            dialog.add_response("save", &crate::tr!("Save"));
             dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-            dialog.set_default_response(Some("cancel"));
+            dialog.set_response_appearance("save", adw::ResponseAppearance::Suggested);
+            dialog.set_default_response(Some("save"));
             dialog.set_close_response("cancel");
             let tab_view_for_resp = tab_view.clone();
             let page_for_resp = page.clone();
             let sender_for_resp = sender.clone();
+            let close_after_save = self.close_after_save.clone();
             dialog.connect_response(None, move |dlg, response| {
                 dlg.close();
-                if response == "discard" {
-                    crate::services::change_tracker::with_tab(id, |t| t.clear());
-                    sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
-                } else {
-                    // Revert AdwTabView's "closing" state so the page
-                    // stays open. Without this the X click would still
-                    // dismiss the page (close-page-finish was deferred
-                    // by `close_sender.input(WorkspaceTabClosed(id))`).
-                    tab_view_for_resp.close_page_finish(&page_for_resp, false);
+                match response {
+                    "discard" => {
+                        crate::services::change_tracker::with_tab(id, |t| t.clear());
+                        sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
+                    }
+                    "save" => {
+                        // Mark the tab so SaveCompletedForTab will close
+                        // it once the transaction commits. SaveFailed
+                        // removes it and aborts the close.
+                        close_after_save.borrow_mut().insert(id);
+                        // Revert AdwTabView's "closing" state for now
+                        // (the user might still cancel via SaveFailed).
+                        tab_view_for_resp.close_page_finish(&page_for_resp, false);
+                        sender_for_resp.input(AppMsg::SaveActiveBrowseTabById(id));
+                    }
+                    _ => {
+                        // Cancel: revert AdwTabView's "closing" state
+                        // so the page stays open. Without this the X
+                        // click would still dismiss the page.
+                        tab_view_for_resp.close_page_finish(&page_for_resp, false);
+                    }
                 }
             });
             dialog.present(Some(&self.window));
@@ -447,12 +469,32 @@ impl App {
         sender: ComponentSender<Self>,
     ) {
         if matches!(open_mode, OpenMode::SwitchOrAppend) {
-            let existing = self.workspace_tabs.borrow().values().find_map(|t| match t {
-                WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
-                    Some(s.page.clone())
-                }
-                _ => None,
-            });
+            // Multiple tabs may be open for the same (schema, table)
+            // pair (Ctrl+click duplicates). Prefer the currently-
+            // selected tab when it matches, then any other match.
+            // HashMap iteration is otherwise non-deterministic and the
+            // result on duplicate matches would feel arbitrary.
+            let existing = {
+                let tabs = self.workspace_tabs.borrow();
+                let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
+                let selected_match = selected_page.and_then(|sp| {
+                    let id = read_workspace_tab_id(&sp)?;
+                    match tabs.get(&id)? {
+                        WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
+                            Some(s.page.clone())
+                        }
+                        _ => None,
+                    }
+                });
+                selected_match.or_else(|| {
+                    tabs.values().find_map(|t| match t {
+                        WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
+                            Some(s.page.clone())
+                        }
+                        _ => None,
+                    })
+                })
+            };
             if let Some(page) = existing
                 && let Some(tab_view) = self.workspace_tab_view.as_ref()
             {
@@ -595,6 +637,21 @@ impl App {
         let schemas = self.sidebar_schemas.borrow();
         let distinct: std::collections::BTreeSet<&str> = schemas.iter().filter_map(|s| s.as_deref()).collect();
         distinct.len()
+    }
+
+    /// Refresh a browse tab's title based on its tracker dirty state.
+    /// Mirrors GNOME Text Editor's leading "•" prefix convention for
+    /// unsaved buffers. The base label is recomputed (not stored) so
+    /// schema disambiguation stays correct if other tabs change.
+    pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
+        let schemas_count = self.sidebar_schemas_distinct();
+        let tabs = self.workspace_tabs.borrow();
+        let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+            return;
+        };
+        let base = qualified_browse_tab_label(schemas_count, slot.schema.as_deref(), &slot.table);
+        let title = if dirty { format!("• {base}") } else { base };
+        slot.page.set_title(&title);
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {

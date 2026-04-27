@@ -40,5 +40,7 @@ pub fn save(prefs: &Preferences) {
     let Some(path) = xdg_config_path("preferences.json") else {
         return;
     };
-    let _ = atomic_write_json(&path, prefs);
+    if let Err(e) = atomic_write_json(&path, prefs) {
+        tracing::warn!(path = %path.display(), error = %e, "preferences: write failed");
+    }
 }

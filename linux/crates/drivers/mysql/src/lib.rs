@@ -94,7 +94,15 @@ impl Connection for MysqlConnection {
             .into_iter()
             .map(|r| {
                 let extra = r.try_get::<String, _>(4).unwrap_or_default().to_ascii_lowercase();
-                let default_value: Option<String> = r.try_get::<Option<String>, _>(5).unwrap_or(None);
+                // information_schema.column_default uses NULL for "no
+                // default", but some sqlx + MySQL combinations surface
+                // it as an empty string. Treat empty as absent so the
+                // build_insert_from_draft "omit when default present"
+                // heuristic doesn't trigger on phantom defaults.
+                let default_value: Option<String> = r
+                    .try_get::<Option<String>, _>(5)
+                    .unwrap_or(None)
+                    .filter(|s| !s.is_empty());
                 let generation_expr: Option<String> = r.try_get::<Option<String>, _>(6).unwrap_or(None);
                 ColumnInfo {
                     name: r.get::<String, _>(0),
@@ -103,7 +111,19 @@ impl Connection for MysqlConnection {
                     primary_key: r.get::<String, _>(3) == "PRI",
                     is_auto_increment: extra.contains("auto_increment"),
                     default_value,
-                    is_generated: generation_expr.is_some() || extra.contains("generated"),
+                    // Two false-positives to guard against:
+                    //   1. MySQL 8.0.13+ marks expression-default columns
+                    //      (e.g. DEFAULT CURRENT_TIMESTAMP) with extra =
+                    //      "DEFAULT_GENERATED" — contains "generated" but
+                    //      not a generated column. Match the explicit
+                    //      keywords instead.
+                    //   2. information_schema.generation_expression returns
+                    //      an *empty string* for non-generated columns,
+                    //      not NULL — so `generation_expr.is_some()` is
+                    //      true even for plain columns. Check non-empty.
+                    is_generated: generation_expr.as_deref().is_some_and(|s| !s.is_empty())
+                        || extra.contains("virtual generated")
+                        || extra.contains("stored generated"),
                 }
             })
             .collect())

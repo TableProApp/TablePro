@@ -139,6 +139,17 @@ pub enum RowState {
     InsertDraft,
 }
 
+/// Identifies which logical row produced a given materialised SQL
+/// statement. Returned alongside the statements from `materialize` so
+/// a downstream `DriverError::Transaction { statement_index }` can be
+/// mapped back to the offending grid row for scroll-and-select.
+#[derive(Debug, Clone)]
+pub enum StatementSource {
+    Insert { draft_id: u64 },
+    Update { row_key: RowKey },
+    Delete { row_key: RowKey },
+}
+
 /// Reversible action recorded for the per-tab undo stack.
 #[derive(Debug, Clone)]
 pub enum UndoOp {
@@ -179,6 +190,17 @@ pub struct TabChangeTracker {
     redo: VecDeque<UndoOp>,
     next_draft_id: u64,
     subscribers: Vec<relm4::Sender<TrackerEvent>>,
+    /// Row that produced a failing statement during the most recent
+    /// save. The grid bind callback consults this to apply the
+    /// `tp-row-leftmost-error-flash` class. Cleared by a timeout on
+    /// the BrowseTab side ~1.8s after the flash starts.
+    error_row: Option<RowKey>,
+    /// Generation counter incremented every time `set_error_row`
+    /// records a new failing row. The clear-timeout closure captures
+    /// the gen at scheduling and only clears `error_row` if the
+    /// counter still matches — protects against a first-flash timeout
+    /// blanking out a second flash that started inside its 1.8s window.
+    error_row_gen: u64,
 }
 
 impl TabChangeTracker {
@@ -429,6 +451,39 @@ impl TabChangeTracker {
         &self.inserts
     }
 
+    /// Mark a row as the "currently failing" row for the flash animation.
+    /// Returns the generation counter the caller should pass to
+    /// `clear_error_row_if_gen` after the flash timeout, so a new flash
+    /// during the timeout window doesn't get blanked out by the older
+    /// timer firing.
+    pub fn set_error_row(&mut self, key: RowKey) -> u64 {
+        self.error_row_gen = self.error_row_gen.wrapping_add(1);
+        self.error_row = Some(key);
+        self.error_row_gen
+    }
+
+    /// Clear the error row only if the generation hasn't been bumped by
+    /// a newer `set_error_row` call. Used by the flash timeout to avoid
+    /// clearing a fresh flash that started after this timer was scheduled.
+    pub fn clear_error_row_if_gen(&mut self, generation: u64) {
+        if self.error_row_gen == generation {
+            self.error_row = None;
+        }
+    }
+
+    /// True when the given generation matches the most recent
+    /// `set_error_row`. Used by the flash-clear timeout to detect
+    /// whether its scheduled clear is still authoritative.
+    pub fn is_error_row_gen(&self, generation: u64) -> bool {
+        self.error_row_gen == generation
+    }
+
+    /// True when `key` matches the row currently flagged as the error
+    /// row. Used by the grid bind callback to apply the flash class.
+    pub fn is_error_row(&self, key: &RowKey) -> bool {
+        self.error_row.as_ref() == Some(key)
+    }
+
     /// Display value for a cell — pending edit if present, else
     /// `original`. Used by the grid bind to render the user's pending
     /// edit instead of the stale DB value.
@@ -448,15 +503,20 @@ impl TabChangeTracker {
     /// 3. DELETEs.
     ///
     /// Each statement is a (SQL, params) pair fed straight into
-    /// `Connection::execute_in_transaction`.
+    /// `Connection::execute_in_transaction`. The parallel `sources`
+    /// vector lets the caller map a `DriverError::Transaction
+    /// { statement_index, .. }` back to the grid row that produced
+    /// the failing statement.
+    #[allow(clippy::type_complexity)]
     pub fn materialize(
         &self,
         driver_id: &str,
         schema: Option<&str>,
         table: &str,
         columns: &[ColumnInfo],
-    ) -> Result<Vec<(String, Vec<Value>)>, BuildSqlError> {
+    ) -> Result<(Vec<(String, Vec<Value>)>, Vec<StatementSource>), BuildSqlError> {
         let mut out: Vec<(String, Vec<Value>)> = Vec::new();
+        let mut sources: Vec<StatementSource> = Vec::new();
         for draft in &self.inserts {
             out.push(build_insert_from_draft(
                 driver_id,
@@ -465,6 +525,9 @@ impl TabChangeTracker {
                 columns,
                 &draft.values,
             )?);
+            sources.push(StatementSource::Insert {
+                draft_id: draft.draft_id,
+            });
         }
         // Group updates by row_key so each row becomes ONE UPDATE
         // (a multi-cell edit on one row is one statement, not N).
@@ -514,18 +577,23 @@ impl TabChangeTracker {
                     s
                 })
                 .collect();
+            // NULL-safe WHERE: `col = NULL` is never true under SQL
+            // three-valued logic. A nullable PK component holding NULL
+            // must use `IS NULL` or the UPDATE silently matches zero
+            // rows and the user thinks their save worked.
             let where_clauses: Vec<String> = pk_indices
                 .iter()
                 .enumerate()
                 .map(|(local_idx, &col_idx)| {
-                    let s = format!(
-                        "{} = {}",
-                        quote_ident(driver_id, &columns[col_idx].name),
-                        placeholder_for(driver_id, placeholder_idx)
-                    );
-                    placeholder_idx += 1;
-                    params.push(pk_values[local_idx].clone());
-                    s
+                    let ident = quote_ident(driver_id, &columns[col_idx].name);
+                    if matches!(pk_values[local_idx], Value::Null) {
+                        format!("{ident} IS NULL")
+                    } else {
+                        let s = format!("{ident} = {}", placeholder_for(driver_id, placeholder_idx));
+                        placeholder_idx += 1;
+                        params.push(pk_values[local_idx].clone());
+                        s
+                    }
                 })
                 .collect();
             let qualified = match schema {
@@ -542,6 +610,9 @@ impl TabChangeTracker {
             // build pattern as build_full_row_update.
             let _ = build_full_row_update;
             out.push((sql, params));
+            sources.push(StatementSource::Update {
+                row_key: row_key.clone(),
+            });
         }
         // Deletes last so FK references unblocked first.
         for row_key in self.deletes.keys() {
@@ -559,17 +630,19 @@ impl TabChangeTracker {
             }
             let pk_values: Vec<Value> = pk_keyvalues.iter().map(keyvalue_to_value).collect();
             let mut params: Vec<Value> = Vec::new();
+            // Same NULL-safe rewrite as the UPDATE path above.
             let where_clauses: Vec<String> = pk_indices
                 .iter()
                 .enumerate()
                 .map(|(local_idx, &col_idx)| {
-                    let s = format!(
-                        "{} = {}",
-                        quote_ident(driver_id, &columns[col_idx].name),
-                        placeholder_for(driver_id, params.len())
-                    );
-                    params.push(pk_values[local_idx].clone());
-                    s
+                    let ident = quote_ident(driver_id, &columns[col_idx].name);
+                    if matches!(pk_values[local_idx], Value::Null) {
+                        format!("{ident} IS NULL")
+                    } else {
+                        let s = format!("{ident} = {}", placeholder_for(driver_id, params.len()));
+                        params.push(pk_values[local_idx].clone());
+                        s
+                    }
                 })
                 .collect();
             let qualified = match schema {
@@ -578,8 +651,11 @@ impl TabChangeTracker {
             };
             let sql = format!("DELETE FROM {qualified} WHERE {}", where_clauses.join(" AND "));
             out.push((sql, params));
+            sources.push(StatementSource::Delete {
+                row_key: row_key.clone(),
+            });
         }
-        Ok(out)
+        Ok((out, sources))
     }
 }
 
@@ -812,11 +888,77 @@ mod tests {
         t.track_cell_edit(updated.clone(), 1, Value::Text("old".into()), Value::Text("new".into()));
         t.track_insert(vec![Value::Null, Value::Text("draft".into())]);
         t.track_delete(rk(&[Value::Int(9)]), vec![Value::Int(9), Value::Text("doomed".into())]);
-        let stmts = t.materialize("postgres", None, "users", &columns).unwrap();
+        let (stmts, sources) = t.materialize("postgres", None, "users", &columns).unwrap();
         assert_eq!(stmts.len(), 3);
+        assert_eq!(sources.len(), 3);
         assert!(stmts[0].0.starts_with("INSERT"));
+        assert!(matches!(sources[0], StatementSource::Insert { .. }));
         assert!(stmts[1].0.starts_with("UPDATE"));
+        assert!(matches!(sources[1], StatementSource::Update { .. }));
         assert!(stmts[2].0.starts_with("DELETE"));
+        assert!(matches!(sources[2], StatementSource::Delete { .. }));
+    }
+
+    #[test]
+    fn materialize_uses_is_null_for_null_pk_components() {
+        // Composite PK where one component is NULL — the WHERE must use
+        // `IS NULL` for that component or the UPDATE silently matches
+        // zero rows.
+        let mut t = TabChangeTracker::new();
+        let columns = vec![
+            ColumnInfo {
+                name: "a".into(),
+                data_type: "integer".into(),
+                nullable: false,
+                primary_key: true,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            },
+            ColumnInfo {
+                name: "b".into(),
+                data_type: "integer".into(),
+                nullable: true,
+                primary_key: true,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            },
+            data_col("name"),
+        ];
+        let key = RowKey::from_pk_values(&[Value::Int(1), Value::Null]).unwrap();
+        t.track_cell_edit(key, 2, Value::Text("old".into()), Value::Text("new".into()));
+        let (stmts, _sources) = t.materialize("postgres", None, "t", &columns).unwrap();
+        assert_eq!(stmts.len(), 1);
+        // SET "name" = $1 then WHERE "a" = $2 AND "b" IS NULL
+        assert_eq!(
+            stmts[0].0,
+            "UPDATE \"t\" SET \"name\" = $1 WHERE \"a\" = $2 AND \"b\" IS NULL"
+        );
+        assert_eq!(stmts[0].1, vec![Value::Text("new".into()), Value::Int(1)]);
+    }
+
+    #[test]
+    fn materialize_delete_uses_is_null_for_null_pk_components() {
+        let mut t = TabChangeTracker::new();
+        let columns = vec![
+            ColumnInfo {
+                name: "a".into(),
+                data_type: "integer".into(),
+                nullable: true,
+                primary_key: true,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            },
+            data_col("name"),
+        ];
+        let key = RowKey::from_pk_values(&[Value::Null]).unwrap();
+        t.track_delete(key, vec![Value::Null, Value::Text("doomed".into())]);
+        let (stmts, _sources) = t.materialize("mysql", None, "t", &columns).unwrap();
+        assert_eq!(stmts.len(), 1);
+        assert_eq!(stmts[0].0, "DELETE FROM `t` WHERE `a` IS NULL");
+        assert!(stmts[0].1.is_empty());
     }
 
     #[test]

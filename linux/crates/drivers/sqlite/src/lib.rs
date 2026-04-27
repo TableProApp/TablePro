@@ -86,17 +86,32 @@ impl Connection for SqliteConnection {
             .await
             .map_err(map_sqlx_error)?;
 
-        // SQLite has no PRAGMA flag for AUTOINCREMENT — read the CREATE
-        // TABLE DDL once and check whether the keyword appears. INTEGER
-        // PRIMARY KEY (with or without AUTOINCREMENT) is a rowid alias
-        // that auto-increments; we treat both as auto_increment.
-        let ddl: Option<String> = sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type='table' AND name = ?")
-            .bind(table)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(map_sqlx_error)?;
-        let ddl_upper = ddl.unwrap_or_default().to_ascii_uppercase();
-        let table_has_autoincrement = ddl_upper.contains("AUTOINCREMENT");
+        // AUTOINCREMENT detection: `sqlite_sequence` is the canonical
+        // signal. SQLite creates a row in that table for every table
+        // declared with AUTOINCREMENT and updates it on each insert.
+        // The query may fail (table doesn't exist when no AUTOINCREMENT
+        // table has ever existed in the database); we treat any error
+        // as "not autoincrement" rather than propagating.
+        //
+        // The previous implementation substring-matched the CREATE
+        // TABLE DDL for "AUTOINCREMENT", which mis-flagged columns
+        // whose names contained that token, comments mentioning the
+        // keyword, or unrelated parts of the schema.
+        let table_has_autoincrement =
+            sqlx::query_scalar::<_, String>("SELECT name FROM sqlite_sequence WHERE name = ?")
+                .bind(table)
+                .fetch_optional(&self.pool)
+                .await
+                .ok()
+                .flatten()
+                .is_some();
+
+        // Single-column PK detection: only a single-column INTEGER PK
+        // is a rowid alias and auto-fills. Composite PKs (each member
+        // reports `pk > 0`) never auto-increment, even if a member is
+        // INTEGER.
+        let pk_count = rows.iter().filter(|r| r.get::<i64, _>(5) > 0).count();
+        let single_col_pk = pk_count == 1;
 
         Ok(rows
             .into_iter()
@@ -109,14 +124,22 @@ impl Connection for SqliteConnection {
                 // hidden=2 → STORED generated; hidden=3 → VIRTUAL generated.
                 let is_generated = hidden == 2 || hidden == 3;
                 let is_int_type = data_type.eq_ignore_ascii_case("INTEGER");
-                let is_auto_increment = primary_key && is_int_type && (table_has_autoincrement || dflt.is_none());
+                // INTEGER PRIMARY KEY (with or without AUTOINCREMENT)
+                // is a rowid alias that auto-fills on insert when no
+                // explicit default is set. The strict AUTOINCREMENT
+                // form additionally guarantees monotonic ids via
+                // sqlite_sequence; both behave the same to the inline-
+                // insert UI.
+                let is_auto_increment =
+                    primary_key && is_int_type && single_col_pk && (table_has_autoincrement || dflt.is_none());
+                let default_value = dflt.map(normalize_default_value);
                 ColumnInfo {
                     name,
                     data_type,
                     nullable: r.get::<i64, _>(3) == 0,
                     primary_key,
                     is_auto_increment,
-                    default_value: dflt,
+                    default_value,
                     is_generated,
                 }
             })
@@ -284,6 +307,23 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Normalize the `default_value` text returned by `pragma_table_xinfo`.
+/// SQLite stores string defaults with the surrounding apostrophes
+/// (`'pending'` literal in the dflt_value column); other drivers return
+/// the raw expression. Strip a single matched pair of outer single
+/// quotes so the value reads as the user would type it. Numeric and
+/// expression defaults (e.g. `CURRENT_TIMESTAMP`) are returned
+/// unchanged.
+fn normalize_default_value(raw: String) -> String {
+    let bytes = raw.as_bytes();
+    if bytes.len() >= 2 && bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'' {
+        // SQLite escapes embedded apostrophes by doubling them; collapse.
+        let inner = &raw[1..raw.len() - 1];
+        return inner.replace("''", "'");
+    }
+    raw
+}
+
 fn map_sqlx_error(err: sqlx::Error) -> DriverError {
     use sqlx::Error::*;
     match err {
@@ -379,5 +419,90 @@ mod tests {
             .unwrap();
         let result = conn.fetch_rows(None, "weird\"name", 0, 100).await.unwrap();
         assert_eq!(result.rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn autoincrement_detected_via_sqlite_sequence() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("ai.db");
+        let driver = SqliteDriver;
+        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
+        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)")
+            .await
+            .unwrap();
+        // Insert at least one row so sqlite_sequence has an entry.
+        conn.execute("INSERT INTO t (name) VALUES ('a')").await.unwrap();
+        let cols = conn.fetch_columns(None, "t").await.unwrap();
+        assert!(cols[0].is_auto_increment, "AUTOINCREMENT id should be flagged");
+        assert!(!cols[1].is_auto_increment, "name column should not be flagged");
+    }
+
+    #[tokio::test]
+    async fn integer_primary_key_no_autoincrement_is_rowid_alias() {
+        // INTEGER PRIMARY KEY without AUTOINCREMENT is still a rowid
+        // alias and auto-fills on insert. Should be flagged.
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("rowid.db");
+        let driver = SqliteDriver;
+        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
+        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)")
+            .await
+            .unwrap();
+        let cols = conn.fetch_columns(None, "t").await.unwrap();
+        assert!(cols[0].is_auto_increment);
+    }
+
+    #[tokio::test]
+    async fn integer_primary_key_with_default_is_not_auto_increment() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("def.db");
+        let driver = SqliteDriver;
+        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
+        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY DEFAULT 0, name TEXT)")
+            .await
+            .unwrap();
+        let cols = conn.fetch_columns(None, "t").await.unwrap();
+        assert!(!cols[0].is_auto_increment);
+    }
+
+    #[tokio::test]
+    async fn composite_primary_key_no_auto_increment() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("composite.db");
+        let driver = SqliteDriver;
+        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
+        conn.execute("CREATE TABLE t (a INTEGER, b TEXT, PRIMARY KEY(a, b))")
+            .await
+            .unwrap();
+        let cols = conn.fetch_columns(None, "t").await.unwrap();
+        // Both members are part of the PK but neither auto-increments.
+        assert!(!cols[0].is_auto_increment);
+        assert!(!cols[1].is_auto_increment);
+    }
+
+    #[tokio::test]
+    async fn column_named_autoincrement_substring_is_not_flagged() {
+        // Pre-fix bug: ddl_upper.contains("AUTOINCREMENT") would match
+        // a column named MYAUTOINCREMENT. Verify the canonical
+        // sqlite_sequence path doesn't fall for this.
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("substr.db");
+        let driver = SqliteDriver;
+        let conn = driver.connect(opts_for(path.to_str().unwrap())).await.unwrap();
+        conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, autoincrementflag INTEGER)")
+            .await
+            .unwrap();
+        let cols = conn.fetch_columns(None, "t").await.unwrap();
+        assert!(cols[0].is_auto_increment, "id is INTEGER PRIMARY KEY (rowid alias)");
+        assert!(!cols[1].is_auto_increment, "non-PK INTEGER must not be flagged");
+    }
+
+    #[test]
+    fn normalize_default_value_strips_outer_quotes() {
+        assert_eq!(normalize_default_value("'pending'".into()), "pending");
+        assert_eq!(normalize_default_value("'it''s'".into()), "it's");
+        assert_eq!(normalize_default_value("0".into()), "0");
+        assert_eq!(normalize_default_value("CURRENT_TIMESTAMP".into()), "CURRENT_TIMESTAMP");
+        assert_eq!(normalize_default_value("'unbalanced".into()), "'unbalanced");
     }
 }

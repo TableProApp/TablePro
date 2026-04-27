@@ -76,30 +76,43 @@ impl Connection for PgConnection {
     }
 
     async fn fetch_columns(&self, schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError> {
+        // Source schema metadata from pg_catalog rather than
+        // information_schema:
+        //   - pg_attribute.attgenerated ('s' for STORED, '' otherwise)
+        //     is the canonical generated-column flag. The
+        //     information_schema.is_generated text column is brittle
+        //     across PG versions.
+        //   - pg_attribute.attidentity ('a' / 'd' for ALWAYS / BY
+        //     DEFAULT identity, '' otherwise) authoritatively flags
+        //     identity columns.
+        //   - format_type() returns the user-facing type name including
+        //     length / precision (e.g. "character varying(255)") which
+        //     matches what the user wrote in CREATE TABLE.
+        //   - pg_get_expr() returns the default expression text.
         let rows = sqlx::query(
             "SELECT
-                c.column_name,
-                c.data_type,
-                c.is_nullable,
+                a.attname,
+                pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
+                NOT a.attnotnull AS nullable,
                 EXISTS (
-                    SELECT 1
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                     AND tc.table_schema = kcu.table_schema
-                     AND tc.table_name = kcu.table_name
-                    WHERE tc.constraint_type = 'PRIMARY KEY'
-                      AND kcu.table_name = c.table_name
-                      AND kcu.table_schema = c.table_schema
-                      AND kcu.column_name = c.column_name
+                    SELECT 1 FROM pg_catalog.pg_constraint c
+                    WHERE c.conrelid = a.attrelid
+                      AND c.contype = 'p'
+                      AND a.attnum = ANY(c.conkey)
                 ) AS is_pk,
-                c.column_default,
-                c.is_identity,
-                c.is_generated
-             FROM information_schema.columns c
-             WHERE c.table_name = $1
-               AND c.table_schema = COALESCE($2, current_schema())
-             ORDER BY c.ordinal_position",
+                pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS default_value,
+                a.attidentity <> '' AS is_identity,
+                a.attgenerated <> '' AS is_generated
+             FROM pg_catalog.pg_attribute a
+             JOIN pg_catalog.pg_class t ON a.attrelid = t.oid
+             JOIN pg_catalog.pg_namespace n ON t.relnamespace = n.oid
+             LEFT JOIN pg_catalog.pg_attrdef d
+                 ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+             WHERE n.nspname = COALESCE($2, current_schema())
+               AND t.relname = $1
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+             ORDER BY a.attnum",
         )
         .bind(table)
         .bind(schema)
@@ -109,20 +122,29 @@ impl Connection for PgConnection {
         Ok(rows
             .into_iter()
             .map(|r| {
-                let default_value: Option<String> = r.try_get::<Option<String>, _>(4).unwrap_or(None);
-                let is_identity = r.try_get::<String, _>(5).map(|s| s == "YES").unwrap_or(false);
-                // SERIAL/BIGSERIAL columns set column_default to a
-                // `nextval(...)` expression but are not flagged as IDENTITY;
-                // detect both forms.
-                let is_serial = default_value
+                let raw_default: Option<String> = r.try_get::<Option<String>, _>(4).unwrap_or(None);
+                let is_identity = r.try_get::<bool, _>(5).unwrap_or(false);
+                let is_generated = r.try_get::<bool, _>(6).unwrap_or(false);
+                // SERIAL / BIGSERIAL columns aren't IDENTITY in PG's
+                // catalog terms but have a `nextval(...)` default; treat
+                // them as auto-increment for the inline-insert UI.
+                let is_serial = raw_default
                     .as_deref()
                     .map(|d| d.starts_with("nextval("))
                     .unwrap_or(false);
-                let is_generated = r.try_get::<String, _>(6).map(|s| s != "NEVER").unwrap_or(false);
+                // For identity / serial columns the default expression
+                // is internal sequence machinery — suppress so the UI
+                // doesn't leak implementation details. Otherwise
+                // normalise the expression for display.
+                let default_value = if is_identity || is_serial {
+                    None
+                } else {
+                    raw_default.map(normalize_pg_default)
+                };
                 ColumnInfo {
                     name: r.get::<String, _>(0),
                     data_type: r.get::<String, _>(1),
-                    nullable: r.get::<String, _>(2) == "YES",
+                    nullable: r.get::<bool, _>(2),
                     primary_key: r.get::<bool, _>(3),
                     is_auto_increment: is_identity || is_serial,
                     default_value,
@@ -325,6 +347,41 @@ fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
 }
 
+/// Normalize the `default_value` text returned by `pg_get_expr`.
+/// PG appends an explicit type cast to typed literal defaults
+/// (`'hi'::text`, `42::integer`, `'2024-01-01'::date`); strip the
+/// trailing `::TYPE` cast for display so the value reads as the user
+/// would type it. Then, if the result is a single-quoted string
+/// literal, strip the outer quotes (matching the SQLite driver's
+/// behaviour) so default values look the same across all engines.
+/// Function-call defaults like `now()` and complex expressions are
+/// returned unchanged.
+fn normalize_pg_default(raw: String) -> String {
+    let stripped = strip_pg_type_cast(&raw).unwrap_or(raw.as_str()).to_string();
+    strip_outer_single_quotes(&stripped)
+}
+
+fn strip_pg_type_cast(raw: &str) -> Option<&str> {
+    let idx = raw.rfind("::")?;
+    let suffix = &raw[idx + 2..];
+    if suffix.is_empty() {
+        return None;
+    }
+    let is_type_name = suffix
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == ' ' || c == '(' || c == ')' || c == ',' || c == '_');
+    if is_type_name { Some(&raw[..idx]) } else { None }
+}
+
+fn strip_outer_single_quotes(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    if bytes.len() >= 2 && bytes[0] == b'\'' && bytes[bytes.len() - 1] == b'\'' {
+        // PG escapes embedded apostrophes by doubling, same as SQLite.
+        return raw[1..raw.len() - 1].replace("''", "'");
+    }
+    raw.to_string()
+}
+
 fn qualified(schema: Option<&str>, table: &str) -> String {
     match schema {
         Some(s) => format!("{}.{}", quote_ident(s), quote_ident(table)),
@@ -371,5 +428,39 @@ mod tests {
             quote_ident("evil\"; DROP TABLE x; --"),
             "\"evil\"\"; DROP TABLE x; --\""
         );
+    }
+
+    #[test]
+    fn normalize_pg_default_strips_type_cast_and_quotes() {
+        assert_eq!(normalize_pg_default("'hi'::text".into()), "hi");
+        assert_eq!(normalize_pg_default("42::integer".into()), "42");
+        assert_eq!(normalize_pg_default("'2024-01-01'::date".into()), "2024-01-01");
+        assert_eq!(
+            normalize_pg_default("'2024-01-01 12:00:00'::timestamp without time zone".into()),
+            "2024-01-01 12:00:00"
+        );
+        assert_eq!(normalize_pg_default("'it''s'::text".into()), "it's");
+    }
+
+    #[test]
+    fn normalize_pg_default_leaves_function_calls_alone() {
+        // now() has no cast — return as-is.
+        assert_eq!(normalize_pg_default("now()".into()), "now()");
+        assert_eq!(normalize_pg_default("CURRENT_TIMESTAMP".into()), "CURRENT_TIMESTAMP");
+        // Already-unquoted expression: untouched.
+        assert_eq!(normalize_pg_default("gen_random_uuid()".into()), "gen_random_uuid()");
+    }
+
+    #[test]
+    fn normalize_pg_default_handles_nested_casts() {
+        // (a::int + b)::numeric → strip outer ::numeric, leave inner alone.
+        assert_eq!(normalize_pg_default("(a::int + b)::numeric".into()), "(a::int + b)");
+    }
+
+    #[test]
+    fn normalize_pg_default_unquoted_string_passthrough() {
+        // Already-unquoted (e.g. legacy MySQL-style) — no double-strip.
+        assert_eq!(normalize_pg_default("hello".into()), "hello");
+        assert_eq!(normalize_pg_default("'unbalanced".into()), "'unbalanced");
     }
 }

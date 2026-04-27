@@ -1,8 +1,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use chrono::Datelike;
 use gtk4::prelude::*;
 use gtk4::{self as gtk, gio, glib};
+use sourceview5::prelude::*;
 
 use tablepro_core::{ColumnInfo, QueryResult, Value};
 
@@ -32,6 +34,10 @@ pub enum GridMsg {
         table: String,
         row_position: u32,
     },
+    /// Context-menu "Insert row" — forwarded by browse_tab as
+    /// `BrowseTabInput::InsertRow`. Same effect as the toolbar Insert
+    /// button or Ctrl+N.
+    InsertRow,
 }
 
 /// Per-tab context plumbed into the grid factory so cell bind-time
@@ -96,6 +102,12 @@ pub fn build_column_view(
 
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result.columns.len());
     for (i, column) in result.columns.iter().enumerate() {
+        // `schema_columns` is preferred when populated (it carries
+        // accurate primary_key / is_generated / is_auto_increment from
+        // the driver's information_schema fetch). When ColumnsLoaded
+        // hasn't fired yet we fall back to the QueryResult's column
+        // metadata, which only knows name + data_type and conservatively
+        // reports the rest as false.
         let editable = is_cell_editable(schema_columns.get(i).unwrap_or(column));
         let sort_indicator = sort.and_then(|(c, asc)| if c == i { Some(asc) } else { None });
         let col = build_column(
@@ -160,23 +172,54 @@ fn build_column(
     tab_ctx: TabGridContext,
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
-    let editable_for_setup = editable && sender.is_some();
-    let sender_for_setup = sender.clone();
+    // Editable cells require a sender to dispatch CellEdited / SetCellNull /
+    // CopyRowAsInsert events. When `sender` is None (read-only result grids
+    // in the editor) we always go through the read-only setup path.
+    let edit_sender = if editable { sender.clone() } else { None };
+    let readonly_sender = sender.clone();
     let table_for_setup = table.clone();
     let table_for_persist = table;
 
+    let column_data_type = info.data_type.clone();
+    let column_name = info.name.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        if editable_for_setup {
-            setup_editable_cell(item, idx, table_for_setup.clone(), sender_for_setup.clone());
+        if let Some(edit_sender) = edit_sender.clone() {
+            // Type-specific cell widgets per HIG:
+            // - Bool → GtkCheckButton (single-click toggles, native
+            //   Space, no edit-mode dance).
+            // - Date → GtkEditableLabel for display + GtkCalendar
+            //   popover for edit (no inline typing; user picks a day).
+            // - Other types → GtkEditableLabel + text parsing on
+            //   commit (parse_input_for_column on the receiving side
+            //   coerces to the right native Value variant).
+            if is_bool_type(&column_data_type) {
+                setup_bool_cell(item, idx, table_for_setup.clone(), column_name.clone(), edit_sender);
+            } else {
+                let editor_kind = classify_editor_kind(&column_data_type);
+                setup_editable_cell(
+                    item,
+                    idx,
+                    table_for_setup.clone(),
+                    column_name.clone(),
+                    edit_sender,
+                    editor_kind,
+                );
+            }
         } else {
-            setup_readonly_cell(item, idx, table_for_setup.clone(), sender_for_setup.clone());
+            setup_readonly_cell(
+                item,
+                idx,
+                table_for_setup.clone(),
+                column_name.clone(),
+                readonly_sender.clone(),
+            );
         }
     });
 
-    let editable_for_bind = editable_for_setup;
+    let editable_for_bind = editable && sender.is_some();
     let tab_ctx_for_bind = tab_ctx.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -211,9 +254,18 @@ fn build_column(
         // (set when the row was created via the inline-Insert flow).
         // Persisted rows are keyed by PK column values via
         // RowKey::from_pk_values.
-        let pending_classes: &[&str] = if let Some(_tab_id) = tab_ctx_for_bind.tab_id {
+        //
+        // The leftmost cell (idx == 0) gets an extra row-level class
+        // (tp-row-leftmost-{insert|update|delete}) that draws a 3px
+        // accent ribbon flush to the left edge — a HIG-aligned signal
+        // for "this row has changes" that survives row recycling.
+        let pending_classes: Vec<&'static str> = if let Some(_tab_id) = tab_ctx_for_bind.tab_id {
             if row.draft_id().is_some() {
-                &["tp-row-pending-insert"][..]
+                let mut v = vec!["tp-row-pending-insert"];
+                if idx == 0 {
+                    v.push("tp-row-leftmost-insert");
+                }
+                v
             } else {
                 let pk_values: Vec<Value> = tab_ctx_for_bind
                     .pk_col_indices
@@ -221,26 +273,43 @@ fn build_column(
                     .map(|&i| row.cell_value(i))
                     .collect();
                 crate::services::change_tracker::with_tab_ref(_tab_id, |t| {
-                    if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
-                        let row_state = t.row_state(&key);
-                        let cell_state = t.cell_state(&key, idx);
-                        use crate::services::change_tracker::{CellState, RowState};
-                        match (row_state, cell_state) {
-                            (RowState::PendingDelete, _) => &["tp-row-pending-delete"][..],
-                            (RowState::InsertDraft, _) => &["tp-row-pending-insert"][..],
-                            (_, CellState::Modified) => &["tp-cell-modified"][..],
-                            _ => &[][..],
-                        }
-                    } else {
-                        &[][..]
+                    let mut v: Vec<&'static str> = Vec::new();
+                    let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) else {
+                        return v;
+                    };
+                    let row_state = t.row_state(&key);
+                    let cell_state = t.cell_state(&key, idx);
+                    use crate::services::change_tracker::{CellState, RowState};
+                    match (row_state, cell_state) {
+                        (RowState::PendingDelete, _) => v.push("tp-row-pending-delete"),
+                        (RowState::InsertDraft, _) => v.push("tp-row-pending-insert"),
+                        (_, CellState::Modified) => v.push("tp-cell-modified"),
+                        _ => {}
                     }
+                    if idx == 0 {
+                        // Error-row flash takes precedence over the
+                        // pending-state ribbon: the user's attention
+                        // should be on the failing row first.
+                        if t.is_error_row(&key) {
+                            v.push("tp-row-leftmost-error-flash");
+                        } else {
+                            match row_state {
+                                RowState::PendingDelete => v.push("tp-row-leftmost-delete"),
+                                RowState::InsertDraft => v.push("tp-row-leftmost-insert"),
+                                RowState::Modified => v.push("tp-row-leftmost-update"),
+                                RowState::Clean => {}
+                            }
+                        }
+                    }
+                    v
                 })
-                .unwrap_or(&[][..])
+                .unwrap_or_default()
             }
         } else {
-            &[][..]
+            Vec::new()
         };
 
+        let is_pending_delete = pending_classes.contains(&"tp-row-pending-delete");
         let Some(child) = item.child() else { return };
         if let Ok(label) = child.clone().downcast::<gtk::EditableLabel>() {
             label.set_text(&text);
@@ -256,13 +325,48 @@ fn build_column(
             } else {
                 label.remove_css_class("tp-null-sentinel");
             }
-            for cls in ["tp-cell-modified", "tp-row-pending-delete", "tp-row-pending-insert"] {
-                label.remove_css_class(cls);
-            }
-            for cls in pending_classes {
+            clear_pending_classes(label.upcast_ref());
+            for cls in &pending_classes {
                 label.add_css_class(cls);
             }
+            set_editable_label_strikethrough(&label, is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
+        } else if let Ok(checkbox) = child.clone().downcast::<gtk::CheckButton>() {
+            // Bool cell: render via active / inconsistent state. Suppress
+            // the toggled signal during programmatic set so the bind
+            // doesn't echo as a synthetic CellEdited event.
+            SUPPRESS_SLOT.set(&checkbox, true);
+            match value {
+                Value::Bool(true) => {
+                    checkbox.set_inconsistent(false);
+                    checkbox.set_active(true);
+                }
+                Value::Bool(false) => {
+                    checkbox.set_inconsistent(false);
+                    checkbox.set_active(false);
+                }
+                Value::Null => {
+                    checkbox.set_inconsistent(true);
+                    checkbox.set_active(false);
+                }
+                _ => {
+                    // Defensive: a non-bool value in a bool column means
+                    // the driver returned an unexpected type. Render
+                    // unchecked + inconsistent so the user sees something
+                    // is off rather than a confidently-wrong checkbox.
+                    checkbox.set_inconsistent(true);
+                    checkbox.set_active(false);
+                }
+            }
+            SUPPRESS_SLOT.set(&checkbox, false);
+            clear_pending_classes(checkbox.upcast_ref());
+            for cls in &pending_classes {
+                checkbox.add_css_class(cls);
+            }
+            // Bool cells can't render a strikethrough on the box; dim
+            // via opacity for pending-delete instead.
+            checkbox.set_opacity(if is_pending_delete { 0.5 } else { 1.0 });
+            POSITION_SLOT.set(&checkbox, item.position());
         } else if let Ok(label) = child.downcast::<gtk::Label>() {
             label.set_text(&text);
             if is_null {
@@ -270,12 +374,11 @@ fn build_column(
             } else {
                 label.remove_css_class("dim-label");
             }
-            for cls in ["tp-cell-modified", "tp-row-pending-delete", "tp-row-pending-insert"] {
-                label.remove_css_class(cls);
-            }
-            for cls in pending_classes {
+            clear_pending_classes(label.upcast_ref());
+            for cls in &pending_classes {
                 label.add_css_class(cls);
             }
+            set_label_strikethrough(&label, is_pending_delete);
             POSITION_SLOT.set(&label, item.position());
         }
     });
@@ -289,8 +392,17 @@ fn build_column(
             if label.is_editing() {
                 label.stop_editing(false);
             }
+            // Pop down any open popover (calendar / spin / JSON) so it
+            // unparents itself before the cell is recycled. Otherwise
+            // GTK warns "Finalizing widget, but it still has children
+            // left: GtkPopover" on parent destruction.
+            if let Some(popover) = POPOVER_SLOT.take(&label) {
+                popover.popdown();
+            }
             POSITION_SLOT.take(&label);
             SNAPSHOT_SLOT.take(&label);
+        } else if let Ok(checkbox) = child.clone().downcast::<gtk::CheckButton>() {
+            POSITION_SLOT.take(&checkbox);
         } else if let Ok(label) = child.downcast::<gtk::Label>() {
             POSITION_SLOT.take(&label);
         }
@@ -336,7 +448,15 @@ fn build_column(
 /// (focus-then-click) because clicks in a data grid are routinely
 /// row-selection clicks — a single-click trigger would silently drop
 /// the user into edit mode on the cell they happened to land on.
-fn setup_editable_cell(item: &gtk::ListItem, idx: usize, table: String, sender: Option<relm4::Sender<GridMsg>>) {
+#[allow(clippy::too_many_arguments)]
+fn setup_editable_cell(
+    item: &gtk::ListItem,
+    idx: usize,
+    table: String,
+    column_name: String,
+    sender: relm4::Sender<GridMsg>,
+    editor_kind: CellEditorKind,
+) {
     let label = gtk::EditableLabel::builder()
         .xalign(0.0)
         .hexpand(true)
@@ -344,20 +464,252 @@ fn setup_editable_cell(item: &gtk::ListItem, idx: usize, table: String, sender: 
         .margin_end(8)
         .build();
     label.set_editable(false);
+    // Stash the column index so keyboard shortcuts (Ctrl+Shift+N)
+    // can resolve `(row, col)` from the focused widget. POSITION_SLOT
+    // is written by connect_bind because the position changes as
+    // rows scroll-recycle.
+    COLUMN_SLOT.set(&label, idx);
     item.set_child(Some(&label));
 
-    install_double_click_to_edit(&label);
+    attach_context_menu(
+        label.upcast_ref(),
+        idx,
+        table.clone(),
+        column_name,
+        sender.clone(),
+        true,
+    );
+    install_edit_commit_handler(&label, idx, table.clone(), sender.clone());
+    install_edit_triggers(&label, idx, table, sender, editor_kind);
+}
 
-    if let Some(sender) = sender {
-        attach_context_menu(label.upcast_ref(), idx, table.clone(), sender.clone(), true);
-        install_edit_commit_handler(&label, idx, table, sender);
+/// Bool cells render as a real `gtk::CheckButton`. Click toggles, Space
+/// toggles (native), no edit-mode dance. The toggled signal emits a
+/// `GridMsg::CellEdited` with a "true"/"false" payload that
+/// `parse_input_for_column` upgrades to `Value::Bool` on the receiving
+/// side. CheckButton's native focus ring already distinguishes it from
+/// the row selection, so this path doesn't need the cell focus-ring CSS
+/// added in C1.
+fn setup_bool_cell(
+    item: &gtk::ListItem,
+    idx: usize,
+    table: String,
+    column_name: String,
+    sender: relm4::Sender<GridMsg>,
+) {
+    let checkbox = gtk::CheckButton::builder()
+        .halign(gtk::Align::Start)
+        .valign(gtk::Align::Center)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    COLUMN_SLOT.set(&checkbox, idx);
+    item.set_child(Some(&checkbox));
+
+    attach_context_menu(
+        checkbox.upcast_ref(),
+        idx,
+        table.clone(),
+        column_name,
+        sender.clone(),
+        true,
+    );
+    checkbox.connect_toggled(move |cb| {
+        // Suppress the echo while the bind callback is driving the
+        // checkbox programmatically.
+        if SUPPRESS_SLOT.get(cb).unwrap_or(false) {
+            return;
+        }
+        let position = POSITION_SLOT.get(cb).unwrap_or(0);
+        let new_value = if cb.is_active() { "true" } else { "false" };
+        sender
+            .send(GridMsg::CellEdited {
+                table: table.clone(),
+                row_position: position,
+                col_index: idx,
+                new_value: new_value.to_string(),
+            })
+            .ok();
+    });
+}
+
+/// Flip the EditableLabel into edit mode, clearing the `<NULL>`
+/// sentinel first so the user types into an empty entry rather than
+/// over the sentinel string. Centralised so every entry path
+/// (double-click, F2, Enter, context-menu Edit) behaves the same.
+fn enter_edit_mode(label: &gtk::EditableLabel) {
+    label.set_editable(true);
+    if label.text().as_str() == "<NULL>" {
+        label.set_text("");
     }
+    label.start_editing();
+}
+
+/// Detect whether a column's declared data_type is boolean. Mirrors
+/// the bool branch of `classify_type` in browse_tab; kept local here
+/// to avoid pulling browse_tab into grid's compile graph for one fn.
+fn is_bool_type(data_type: &str) -> bool {
+    let dt = data_type.to_ascii_lowercase();
+    matches!(dt.as_str(), "bool" | "boolean" | "bit" | "tinyint(1)")
+}
+
+/// CSS classes that connect_bind toggles per pending-state. Centralised
+/// here so the three cell-widget branches (Label, EditableLabel,
+/// CheckButton) clear the same set without drift.
+const PENDING_CSS_CLASSES: &[&str] = &[
+    "tp-cell-modified",
+    "tp-row-pending-delete",
+    "tp-row-pending-insert",
+    "tp-row-leftmost-insert",
+    "tp-row-leftmost-update",
+    "tp-row-leftmost-delete",
+    "tp-row-leftmost-error-flash",
+];
+
+fn clear_pending_classes(widget: &gtk::Widget) {
+    for cls in PENDING_CSS_CLASSES {
+        widget.remove_css_class(cls);
+    }
+}
+
+/// Apply or clear a Pango strikethrough attribute on a `GtkLabel`.
+/// Used in preference to CSS `text-decoration: line-through` because
+/// GTK4's CSS engine doesn't reliably cascade text-decoration through
+/// `GtkEditableLabel`'s internal Stack > Label structure.
+fn set_label_strikethrough(label: &gtk::Label, on: bool) {
+    if on {
+        let attrs = gtk::pango::AttrList::new();
+        attrs.insert(gtk::pango::AttrInt::new_strikethrough(true));
+        label.set_attributes(Some(&attrs));
+    } else {
+        label.set_attributes(None);
+    }
+}
+
+/// Apply Pango strikethrough to the inner `GtkLabel` of a
+/// `GtkEditableLabel` (the one that's visible in non-edit mode).
+/// EditableLabel wraps a `GtkStack` with a Label child for display
+/// and a Text child for edit; we walk the stack to find the Label.
+/// Pending-delete rows are read-only by definition (you can't edit a
+/// row marked for deletion), so the Text path doesn't need to mirror
+/// the strikethrough.
+fn set_editable_label_strikethrough(el: &gtk::EditableLabel, on: bool) {
+    let Some(stack) = el.first_child().and_then(|w| w.dynamic_cast::<gtk::Stack>().ok()) else {
+        return;
+    };
+    let mut child = stack.first_child();
+    while let Some(c) = child {
+        if let Ok(label) = c.clone().dynamic_cast::<gtk::Label>() {
+            set_label_strikethrough(&label, on);
+        }
+        child = c.next_sibling();
+    }
+}
+
+/// Detect whether a column's declared data_type is a plain SQL date
+/// (no time component). Datetime, timestamp, and timestamptz columns
+/// fall through to text-edit because a calendar widget alone can't
+/// capture time + zone — those use the standard EditableLabel + ISO
+/// 8601 parser.
+fn is_date_type(data_type: &str) -> bool {
+    let dt = data_type.to_ascii_lowercase();
+    dt == "date" || (dt.starts_with("date") && !dt.contains("datetime") && !dt.contains("time"))
+}
+
+/// Detect whether a column is integer-typed (excludes `tinyint(1)`
+/// which is bool — caller must check `is_bool_type` first).
+fn is_int_type(data_type: &str) -> bool {
+    let dt = data_type.to_ascii_lowercase();
+    matches!(
+        dt.as_str(),
+        "int"
+            | "int2"
+            | "int4"
+            | "int8"
+            | "integer"
+            | "smallint"
+            | "bigint"
+            | "tinyint"
+            | "mediumint"
+            | "serial"
+            | "bigserial"
+            | "smallserial"
+    ) || dt.starts_with("int(")
+        || dt.starts_with("integer(")
+        || dt.starts_with("smallint(")
+        || dt.starts_with("bigint(")
+        || dt.starts_with("mediumint(")
+}
+
+/// Detect whether a column is floating-point typed. Decimal /
+/// numeric / money are intentionally excluded because `rust_decimal`
+/// is arbitrary-precision and `GtkSpinButton` is f64-internally.
+fn is_float_type(data_type: &str) -> bool {
+    let dt = data_type.to_ascii_lowercase();
+    matches!(dt.as_str(), "float" | "double" | "real" | "double precision") || dt.starts_with("float(")
+}
+
+/// Detect whether a column is JSON-typed.
+fn is_json_type(data_type: &str) -> bool {
+    let dt = data_type.to_ascii_lowercase();
+    dt.contains("json")
+}
+
+/// Per-type cell editor selection. Bool is handled separately via
+/// `setup_bool_cell` (CheckButton) and never reaches `setup_editable_cell`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CellEditorKind {
+    /// Default `GtkEditableLabel` with text parsing on commit.
+    Text,
+    /// `GtkCalendar` popover, day-selected commits ISO 8601 date.
+    Date,
+    /// `GtkSpinButton` popover with integer-only adjustment.
+    Int,
+    /// `GtkSpinButton` popover with floating-point adjustment.
+    Float,
+    /// `GtkSourceView` popover with json language and Save button.
+    Json,
+}
+
+fn classify_editor_kind(data_type: &str) -> CellEditorKind {
+    // Bool is filtered out at the call site (handled by setup_bool_cell).
+    // Order matters: json check before generic int/float since the type
+    // strings overlap occasionally on contrived schemas.
+    if is_date_type(data_type) {
+        CellEditorKind::Date
+    } else if is_json_type(data_type) {
+        CellEditorKind::Json
+    } else if is_int_type(data_type) {
+        CellEditorKind::Int
+    } else if is_float_type(data_type) {
+        CellEditorKind::Float
+    } else {
+        CellEditorKind::Text
+    }
+}
+
+/// Ask the window to advance focus by one step in the given direction.
+/// `child_focus` on the root window mirrors what a real Tab keypress
+/// would do, so the next focusable widget (next cell, with the
+/// default `TAB_ALL` behaviour on `GtkColumnView`) gets the cursor.
+fn move_focus(widget: &impl IsA<gtk::Widget>, direction: gtk::DirectionType) {
+    let Some(root) = widget.root() else { return };
+    let Ok(window) = root.dynamic_cast::<gtk::Window>() else {
+        return;
+    };
+    window.child_focus(direction);
 }
 
 /// Setup a read-only cell — plain `gtk::Label` with selectable text +
 /// ellipsis on overflow, plus the context menu (Copy value, Copy row
 /// as INSERT) for non-mutating actions.
-fn setup_readonly_cell(item: &gtk::ListItem, idx: usize, table: String, sender: Option<relm4::Sender<GridMsg>>) {
+fn setup_readonly_cell(
+    item: &gtk::ListItem,
+    idx: usize,
+    table: String,
+    column_name: String,
+    sender: Option<relm4::Sender<GridMsg>>,
+) {
     let label = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
@@ -368,38 +720,308 @@ fn setup_readonly_cell(item: &gtk::ListItem, idx: usize, table: String, sender: 
         .build();
     item.set_child(Some(&label));
     if let Some(sender) = sender {
-        attach_context_menu(label.upcast_ref(), idx, table, sender, false);
+        attach_context_menu(label.upcast_ref(), idx, table, column_name, sender, false);
     }
 }
 
-/// Capture-phase double-click GestureClick that flips the
-/// `EditableLabel` into edit mode. Capture phase is required because
-/// `ColumnView`'s row-selection logic absorbs press events in the
-/// default Bubble phase before they can reach this cell-level
-/// controller.
-fn install_double_click_to_edit(label: &gtk::EditableLabel) {
+/// Capture-phase double-click + key handler bundle. Routes F2 / Enter
+/// / double-click to either text-edit mode (default) or a date-picker
+/// popover, depending on the column type. Tab / Shift+Tab during text
+/// edit commit and traverse cells. The two installs share a single
+/// `Rc<dyn Fn>` trigger so the date-popover capture only happens once.
+///
+/// Capture phase on the gesture is required because `ColumnView`'s
+/// row-selection logic absorbs press events in the default Bubble
+/// phase before they can reach this cell-level controller.
+fn install_edit_triggers(
+    label: &gtk::EditableLabel,
+    col_index: usize,
+    table: String,
+    sender: relm4::Sender<GridMsg>,
+    editor_kind: CellEditorKind,
+) {
+    let trigger: std::rc::Rc<dyn Fn(&gtk::EditableLabel)> = match editor_kind {
+        CellEditorKind::Text => std::rc::Rc::new(|l: &gtk::EditableLabel| enter_edit_mode(l)),
+        CellEditorKind::Date => {
+            let table = table.clone();
+            let sender = sender.clone();
+            std::rc::Rc::new(move |l| show_calendar_popover(l, col_index, &table, &sender))
+        }
+        CellEditorKind::Int => {
+            let table = table.clone();
+            let sender = sender.clone();
+            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &table, &sender, false))
+        }
+        CellEditorKind::Float => {
+            let table = table.clone();
+            let sender = sender.clone();
+            std::rc::Rc::new(move |l| show_spin_button_popover(l, col_index, &table, &sender, true))
+        }
+        CellEditorKind::Json => {
+            let table = table.clone();
+            let sender = sender.clone();
+            std::rc::Rc::new(move |l| show_json_popover(l, col_index, &table, &sender))
+        }
+    };
+
+    // Double-click → trigger. Capture phase so we beat the ColumnView
+    // row-selection gesture that runs in Bubble.
     let gesture = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     let label_for_press = label.clone();
+    let trigger_for_press = trigger.clone();
     gesture.connect_pressed(move |gesture, n_press, _, _| {
         if n_press != 2 {
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        label_for_press.set_editable(true);
-        // Clear the "<NULL>" sentinel before entering edit mode so the
-        // user types into an empty entry — without this, double-clicking
-        // a NULL cell shows the literal "<NULL>" string selected, and
-        // any commit-without-changes would write "<NULL>" as a literal
-        // value. BrowseTab's commit handler converts empty input back
-        // to Value::Null for nullable columns, so the round-trip
-        // preserves NULL when the user just enters edit and exits.
-        if label_for_press.text().as_str() == "<NULL>" {
-            label_for_press.set_text("");
-        }
-        label_for_press.start_editing();
+        trigger_for_press(&label_for_press);
     });
     label.add_controller(gesture);
+
+    // Keyboard model:
+    // - Not editing: F2 / Return / KP_Enter → trigger (start text edit,
+    //   open calendar / spin / json popover, etc.).
+    // - Editing (only reachable for `CellEditorKind::Text` since other
+    //   kinds use popovers and never enter EditableLabel edit mode):
+    //   Tab / Shift+Tab commit + traverse. Return / Esc handled by
+    //   EditableLabel's built-ins.
+    let controller = gtk::EventControllerKey::new();
+    let label_for_key = label.clone();
+    let trigger_for_key = trigger;
+    controller.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let editing = label_for_key.is_editing();
+        let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+
+        if !editing {
+            match keyval {
+                gtk::gdk::Key::F2 | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+                    trigger_for_key(&label_for_key);
+                    return glib::Propagation::Stop;
+                }
+                _ => {}
+            }
+            return glib::Propagation::Proceed;
+        }
+
+        match keyval {
+            gtk::gdk::Key::Tab if !shift => {
+                label_for_key.stop_editing(true);
+                move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                glib::Propagation::Stop
+            }
+            gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab if shift => {
+                label_for_key.stop_editing(true);
+                move_focus(&label_for_key, gtk::DirectionType::TabBackward);
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        }
+    });
+    label.add_controller(controller);
+}
+
+/// Open a `GtkCalendar` popover anchored to the cell. Pre-selects the
+/// cell's current date if the displayed text is a parseable ISO 8601
+/// date; otherwise the calendar shows today's month with no selection.
+/// `day-selected` formats YYYY-MM-DD and emits `GridMsg::CellEdited`.
+fn show_calendar_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+    let calendar = gtk::Calendar::new();
+    if let Ok(parsed) = chrono::NaiveDate::parse_from_str(label.text().as_str(), "%Y-%m-%d")
+        && let Ok(dt) = glib::DateTime::from_local(parsed.year(), parsed.month() as i32, parsed.day() as i32, 0, 0, 0.0)
+    {
+        calendar.select_day(&dt);
+    }
+
+    let popover = gtk::Popover::builder().child(&calendar).build();
+    popover.set_parent(label);
+    POPOVER_SLOT.set(label, popover.clone());
+
+    let label_for_cal = label.clone();
+    let popover_for_cal = popover.clone();
+    let table_for_cal = table.to_string();
+    let sender_for_cal = sender.clone();
+    calendar.connect_day_selected(move |c| {
+        let dt = c.date();
+        // glib::DateTime month is 1-based; chrono format directly.
+        let formatted = format!("{:04}-{:02}-{:02}", dt.year(), dt.month(), dt.day_of_month());
+        let position = POSITION_SLOT.get(&label_for_cal).unwrap_or(0);
+        // Update the label text so the visual changes immediately
+        // even if the tracker round-trip is async.
+        label_for_cal.set_text(&formatted);
+        sender_for_cal
+            .send(GridMsg::CellEdited {
+                table: table_for_cal.clone(),
+                row_position: position,
+                col_index,
+                new_value: formatted,
+            })
+            .ok();
+        popover_for_cal.popdown();
+    });
+
+    install_popover_close_cleanup(label, &popover);
+    popover.popup();
+}
+
+/// Open a `GtkSpinButton` popover anchored to the cell. Pre-fills from
+/// the current cell text. Enter (the spin button's `activate` signal)
+/// commits and closes; Esc / click-outside cancels. `is_float = true`
+/// configures the adjustment for fractional values with 6 digits of
+/// precision; `false` for integers (no decimals). Decimal columns
+/// stay on the text-edit path because GtkSpinButton is f64-internally
+/// and would lose `rust_decimal` precision.
+fn show_spin_button_popover(
+    label: &gtk::EditableLabel,
+    col_index: usize,
+    table: &str,
+    sender: &relm4::Sender<GridMsg>,
+    is_float: bool,
+) {
+    let current_text = label.text().to_string();
+    let (initial, lower, upper, step, digits) = if is_float {
+        let val = current_text.parse::<f64>().unwrap_or(0.0);
+        (val, f64::MIN, f64::MAX, 0.1_f64, 6_u32)
+    } else {
+        let val = current_text.parse::<i64>().unwrap_or(0) as f64;
+        (val, i64::MIN as f64, i64::MAX as f64, 1.0_f64, 0_u32)
+    };
+    let adjustment = gtk::Adjustment::new(initial, lower, upper, step, step * 10.0, 0.0);
+    let spin = gtk::SpinButton::new(Some(&adjustment), step, digits);
+    spin.set_numeric(true);
+    spin.set_width_chars(20);
+
+    let popover = gtk::Popover::builder().child(&spin).build();
+    popover.set_parent(label);
+    POPOVER_SLOT.set(label, popover.clone());
+
+    let label_for_commit = label.clone();
+    let popover_for_commit = popover.clone();
+    let table_for_commit = table.to_string();
+    let sender_for_commit = sender.clone();
+    spin.connect_activate(move |s| {
+        // Format faithfully to the column kind: integers as "{}",
+        // floats as f64::Display (drops trailing zeros, no fixed
+        // precision so we don't lie about precision we don't have).
+        let formatted = if is_float {
+            format!("{}", s.value())
+        } else {
+            format!("{}", s.value() as i64)
+        };
+        let position = POSITION_SLOT.get(&label_for_commit).unwrap_or(0);
+        label_for_commit.set_text(&formatted);
+        sender_for_commit
+            .send(GridMsg::CellEdited {
+                table: table_for_commit.clone(),
+                row_position: position,
+                col_index,
+                new_value: formatted,
+            })
+            .ok();
+        popover_for_commit.popdown();
+    });
+
+    install_popover_close_cleanup(label, &popover);
+    popover.popup();
+    spin.grab_focus();
+}
+
+/// Open a `GtkSourceView` popover for editing JSON. Multi-line, json
+/// language for syntax highlighting, monospace font, line numbers.
+/// Explicit Save button (the buffer is multi-line so Enter inserts a
+/// newline rather than committing). Esc / click-outside cancels.
+fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+    let buffer = sourceview5::Buffer::new(None);
+    if let Some(lang) = sourceview5::LanguageManager::default().language("json") {
+        buffer.set_language(Some(&lang));
+    }
+    buffer.set_text(label.text().as_str());
+
+    let view = sourceview5::View::with_buffer(&buffer);
+    view.set_show_line_numbers(true);
+    view.set_monospace(true);
+    view.set_auto_indent(true);
+    view.set_tab_width(2);
+    view.set_indent_width(2);
+
+    let scrolled = gtk::ScrolledWindow::builder()
+        .child(&view)
+        .min_content_width(420)
+        .min_content_height(280)
+        .has_frame(true)
+        .build();
+
+    let save_button = gtk::Button::with_label(&crate::tr!("Save"));
+    save_button.add_css_class("suggested-action");
+
+    let cancel_button = gtk::Button::with_label(&crate::tr!("Cancel"));
+
+    let button_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .halign(gtk::Align::End)
+        .build();
+    button_box.append(&cancel_button);
+    button_box.append(&save_button);
+
+    let container = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(8)
+        .margin_top(8)
+        .margin_bottom(8)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    container.append(&scrolled);
+    container.append(&button_box);
+
+    let popover = gtk::Popover::builder().child(&container).build();
+    popover.set_parent(label);
+    POPOVER_SLOT.set(label, popover.clone());
+
+    let popover_for_cancel = popover.clone();
+    cancel_button.connect_clicked(move |_| popover_for_cancel.popdown());
+
+    let label_for_commit = label.clone();
+    let popover_for_commit = popover.clone();
+    let table_for_commit = table.to_string();
+    let sender_for_commit = sender.clone();
+    let buffer_for_commit = buffer.clone();
+    save_button.connect_clicked(move |_| {
+        let start = buffer_for_commit.start_iter();
+        let end = buffer_for_commit.end_iter();
+        let text = buffer_for_commit.text(&start, &end, true).to_string();
+        let position = POSITION_SLOT.get(&label_for_commit).unwrap_or(0);
+        // Show the new text in the cell immediately. parse_input_for_column
+        // on the receiving side validates and rejects with a toast if
+        // the JSON is malformed.
+        label_for_commit.set_text(&text);
+        sender_for_commit
+            .send(GridMsg::CellEdited {
+                table: table_for_commit.clone(),
+                row_position: position,
+                col_index,
+                new_value: text,
+            })
+            .ok();
+        popover_for_commit.popdown();
+    });
+
+    install_popover_close_cleanup(label, &popover);
+    popover.popup();
+    view.grab_focus();
+}
+
+/// Wire `popover.connect_closed` to unparent the popover and clear the
+/// per-cell `POPOVER_SLOT`. Used by all three editor popovers
+/// (calendar, spin button, JSON sourceview) to share one lifecycle.
+fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popover) {
+    let popover_for_close = popover.clone();
+    let label_for_close = label.clone();
+    popover.connect_closed(move |_| {
+        popover_for_close.unparent();
+        POPOVER_SLOT.take(&label_for_close);
+    });
 }
 
 /// Wire the editing-notify signal: snapshot the original text on
@@ -438,34 +1060,75 @@ fn install_edit_commit_handler(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn attach_context_menu(
     widget: &gtk::Widget,
     idx: usize,
     table: String,
+    column_name: String,
     sender: relm4::Sender<GridMsg>,
     editable: bool,
 ) {
+    // Build the menu in three sections per HIG: edit (cell-scope) →
+    // copy (read-only conveniences) → mutate (destructive). Sections
+    // render with separators automatically. "Edit cell" is only shown
+    // when the cell widget is actually a text-editable widget;
+    // CheckButton bool cells do their own editing via click/Space.
+    let is_text_editable = editable && widget.is::<gtk::EditableLabel>();
     let menu = gio::Menu::new();
-    menu.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
-    menu.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
+    if is_text_editable {
+        let edit = gio::Menu::new();
+        edit.append(Some(&crate::tr!("Edit cell")), Some("cell.edit"));
+        menu.append_section(None, &edit);
+    }
+    let copy = gio::Menu::new();
+    copy.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
+    copy.append(Some(&crate::tr!("Copy column name")), Some("cell.copy-column-name"));
+    copy.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
+    menu.append_section(None, &copy);
     if editable {
         let mutate = gio::Menu::new();
+        mutate.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
         mutate.append(Some(&crate::tr!("Set to NULL")), Some("cell.set-null"));
         mutate.append(Some(&crate::tr!("Delete row")), Some("cell.delete-row"));
         menu.append_section(None, &mutate);
     }
 
-    let popover = gtk::PopoverMenu::from_model(Some(&menu));
-    popover.set_has_arrow(true);
-    popover.set_parent(widget);
+    // PopoverMenu requires manual unparenting on dispose per GTK4 docs;
+    // cell widgets are recycled and finalized by the column-view, and an
+    // eagerly-parented popover would leak with the warning
+    // "Finalizing widget, but it still has children left: GtkPopoverMenu".
+    // Build the menu *model* once, but construct + parent + unparent the
+    // popover lazily inside the right-click and Menu-key handlers.
+    let menu_model: gio::Menu = menu;
 
     let group = gio::SimpleActionGroup::new();
+    let widget_for_edit = widget.clone();
+    let edit = gio::ActionEntry::builder("edit")
+        .activate(move |_, _, _| {
+            // Mirrors the F2 / double-click trigger. No-op for non-
+            // EditableLabel cells (the menu item is only shown for
+            // text-editable cells anyway).
+            if let Ok(label) = widget_for_edit.clone().downcast::<gtk::EditableLabel>() {
+                enter_edit_mode(&label);
+            }
+        })
+        .build();
     let widget_for_copy = widget.clone();
     let copy_value = gio::ActionEntry::builder("copy-value")
         .activate({
             let s = sender.clone();
             move |_, _, _| {
                 s.send(GridMsg::CopyToClipboard(cell_text(&widget_for_copy))).ok();
+            }
+        })
+        .build();
+    let column_name_for_copy = column_name;
+    let copy_column_name = gio::ActionEntry::builder("copy-column-name")
+        .activate({
+            let s = sender.clone();
+            move |_, _, _| {
+                s.send(GridMsg::CopyToClipboard(column_name_for_copy.clone())).ok();
             }
         })
         .build();
@@ -476,6 +1139,14 @@ fn attach_context_menu(
             move |_, _, _| {
                 let position = POSITION_SLOT.get(&widget_for_row).unwrap_or(0);
                 s.send(GridMsg::CopyRowAsInsert { row_position: position }).ok();
+            }
+        })
+        .build();
+    let insert_row = gio::ActionEntry::builder("insert-row")
+        .activate({
+            let s = sender.clone();
+            move |_, _, _| {
+                s.send(GridMsg::InsertRow).ok();
             }
         })
         .build();
@@ -510,32 +1181,62 @@ fn attach_context_menu(
             }
         })
         .build();
-    group.add_action_entries([copy_value, copy_row, set_null, delete_row]);
+    group.add_action_entries([
+        edit,
+        copy_value,
+        copy_column_name,
+        copy_row,
+        insert_row,
+        set_null,
+        delete_row,
+    ]);
     widget.insert_action_group("cell", Some(&group));
 
     let gesture = gtk::GestureClick::new();
     gesture.set_button(3);
-    let popover_for_gesture = popover.clone();
+    let widget_for_gesture = widget.clone();
+    let menu_for_gesture = menu_model.clone();
     gesture.connect_pressed(move |g, _, x, y| {
         g.set_state(gtk::EventSequenceState::Claimed);
-        popover_for_gesture.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-        popover_for_gesture.popup();
+        present_cell_popover(
+            &widget_for_gesture,
+            &menu_for_gesture,
+            Some(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
+        );
     });
     widget.add_controller(gesture);
 
+    let widget_for_menu_key = widget.clone();
+    let menu_for_menu_key = menu_model;
     let menu_shortcut = gtk::Shortcut::builder()
         .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
-        .action(&gtk::CallbackAction::new({
-            let popover = popover.clone();
-            move |_, _| {
-                popover.popup();
-                glib::Propagation::Stop
-            }
+        .action(&gtk::CallbackAction::new(move |_, _| {
+            present_cell_popover(&widget_for_menu_key, &menu_for_menu_key, None);
+            glib::Propagation::Stop
         }))
         .build();
     let shortcut_controller = gtk::ShortcutController::new();
     shortcut_controller.add_shortcut(menu_shortcut);
     widget.add_controller(shortcut_controller);
+}
+
+/// Build a fresh `GtkPopoverMenu`, parent it to `anchor`, popup, and
+/// arrange to unparent + drop on close. Lazy creation sidesteps the
+/// "finalizing widget still has children" warning that
+/// `set_parent`-then-leak triggers when the column-view recycles cell
+/// widgets without the popover being unparented first.
+fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Option<&gtk::gdk::Rectangle>) {
+    let popover = gtk::PopoverMenu::from_model(Some(menu));
+    popover.set_has_arrow(true);
+    popover.set_parent(anchor);
+    if let Some(rect) = pointing_to {
+        popover.set_pointing_to(Some(rect));
+    }
+    let popover_for_close = popover.clone();
+    popover.connect_closed(move |_| {
+        popover_for_close.unparent();
+    });
+    popover.popup();
 }
 
 fn cell_text(widget: &gtk::Widget) -> String {
@@ -549,7 +1250,13 @@ fn cell_text(widget: &gtk::Widget) -> String {
 }
 
 fn is_cell_editable(col: &ColumnInfo) -> bool {
-    !col.primary_key && !is_bytes_type(&col.data_type)
+    // Primary keys: locked because the grid identifies rows by PK and
+    // editing a PK component would orphan the tracker's row identity.
+    // Generated columns: the database computes them from other columns;
+    // a user-supplied value would be rejected at commit.
+    // Auto-increment non-PK: rare but possible; same rejection at commit.
+    // Bytes / blobs: not text-editable in any meaningful way.
+    !col.primary_key && !col.is_generated && !col.is_auto_increment && !is_bytes_type(&col.data_type)
 }
 
 fn is_bytes_type(s: &str) -> bool {
@@ -593,6 +1300,43 @@ impl<T: 'static + Copy> WidgetSlot<T> {
 
 const POSITION_SLOT: WidgetSlot<u32> = WidgetSlot::new("tp-position");
 const SNAPSHOT_SLOT: WidgetSlot<EditSnapshot> = WidgetSlot::new("tp-snapshot");
+/// Column index of an editable cell. Set at setup time; read by the
+/// "Set to NULL" keyboard shortcut (Ctrl+Shift+N) which routes via the
+/// app-level focused-widget lookup and needs `(row, col)` to emit
+/// `GridMsg::SetCellNull`.
+const COLUMN_SLOT: WidgetSlot<usize> = WidgetSlot::new("tp-column");
+/// Suppression flag for `GtkCheckButton::toggled` during programmatic
+/// `set_active()` calls in the bind callback. Without this the bind
+/// would echo as a synthetic `CellEdited` event and clobber the
+/// tracker with the freshly-rendered value, looping forever.
+const SUPPRESS_SLOT: WidgetSlot<bool> = WidgetSlot::new("tp-suppress-toggle");
+/// Currently-open popover (calendar / spin button / JSON editor)
+/// anchored to a cell widget. Set by `show_*_popover` helpers; cleared
+/// by `connect_closed`. The factory's `connect_unbind` takes this slot
+/// and calls `popdown()` so the popover unparents itself before its
+/// parent cell widget is recycled. Without this guard ColumnView's
+/// cell pool can drop a parent that still has an open popover child,
+/// producing the same "Finalizing widget, but it still has children
+/// left: GtkPopover" warning that we hit on context menus.
+const POPOVER_SLOT: WidgetSlot<gtk::Popover> = WidgetSlot::new("tp-popover");
+
+/// Look up the `(row_position, col_index)` of the currently focused
+/// cell widget. Returns `None` when the focus is outside the window
+/// or on a widget without the per-cell slots set. Widget-type-
+/// agnostic by design: works for `gtk::EditableLabel` (text cells),
+/// `gtk::CheckButton` (bool cells), and any future cell-widget that
+/// writes the slots at setup time.
+pub(crate) fn focused_cell_coords(widget: &impl IsA<gtk::Widget>) -> Option<(u32, usize)> {
+    let root = widget.root()?;
+    let window = root.dynamic_cast::<gtk::Window>().ok()?;
+    // Disambiguate `focus()` which exists on both GtkWindowExt (returns
+    // the focused widget inside the window) and RootExt (returns the
+    // window itself); we want the former.
+    let focused = gtk4::prelude::GtkWindowExt::focus(&window)?;
+    let position = POSITION_SLOT.get(&focused)?;
+    let column = COLUMN_SLOT.get(&focused)?;
+    Some((position, column))
+}
 
 pub fn value_to_display_text(value: &Value) -> String {
     match value {
@@ -644,6 +1388,20 @@ mod tests {
     #[test]
     fn not_editable_for_primary_key() {
         assert!(!is_cell_editable(&col("integer", true)));
+    }
+
+    #[test]
+    fn not_editable_for_generated_column() {
+        let mut c = col("integer", false);
+        c.is_generated = true;
+        assert!(!is_cell_editable(&c));
+    }
+
+    #[test]
+    fn not_editable_for_auto_increment_non_pk() {
+        let mut c = col("integer", false);
+        c.is_auto_increment = true;
+        assert!(!is_cell_editable(&c));
     }
 
     #[test]

@@ -1,9 +1,10 @@
 use relm4::adw::prelude::*;
 use relm4::{ComponentController, ComponentSender};
 
-use tablepro_core::Value;
+use tablepro_core::{DriverError, Value};
 use uuid::Uuid;
 
+use crate::services::change_tracker::StatementSource;
 use crate::ui::browse_tab::BrowseTabInput;
 use crate::ui::error_text;
 
@@ -21,6 +22,7 @@ impl App {
         &self,
         tab_id: Uuid,
         statements: Vec<(String, Vec<Value>)>,
+        sources: Vec<StatementSource>,
         sender: ComponentSender<App>,
     ) {
         let Some(conn) = crate::services::database_service::instance().active() else {
@@ -28,21 +30,44 @@ impl App {
             return;
         };
         self.set_row_op_in_flight(true);
+        // Increment the in-flight counter so window-close blocks until
+        // the transaction resolves. Decrement happens in the
+        // SaveCompletedForTab / SaveFailedForTab handlers regardless of
+        // outcome.
+        self.in_flight_saves.set(self.in_flight_saves.get() + 1);
         let sender_for_cmd = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown
                 .register(async move {
                     match conn.execute_in_transaction(&statements).await {
-                        Ok(_affected) => {
+                        Ok(affected) => {
+                            // Optimistic-concurrency guard: every UPDATE
+                            // and DELETE in our materialised set targets
+                            // a single PK-identified row, so each must
+                            // affect exactly one row. Zero affected for
+                            // any of them means the row was modified or
+                            // deleted by another session between fetch
+                            // and save. The transaction still committed
+                            // — there's nothing to roll back — but the
+                            // user must hear about it so a phantom save
+                            // doesn't pass silently.
+                            let warning = compute_concurrency_warning(&statements, &affected);
                             sender_for_cmd.input(AppMsg::RowOpStarted);
-                            // Reuse the cell-edited "completed" path
-                            // for spinner reset + tab notification.
                             sender_for_cmd.input(AppMsg::WorkspaceSchemaWordsChanged);
-                            // Dispatch the per-tab SaveCompleted so the
-                            // tab clears its tracker and refetches.
-                            sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id));
+                            sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id, warning));
                         }
                         Err(e) => {
+                            // If the driver pinpointed which statement
+                            // failed, look up its source and ask the
+                            // tab to scroll-and-select that row before
+                            // showing the error dialog. The user sees
+                            // the row in question without scanning the
+                            // whole grid.
+                            if let DriverError::Transaction { statement_index, .. } = &e
+                                && let Some(source) = sources.get(*statement_index).cloned()
+                            {
+                                sender_for_cmd.input(AppMsg::FlashErrorRowForTab(tab_id, source));
+                            }
                             let msg = error_text::driver_message(&e);
                             sender_for_cmd.input(AppMsg::SaveFailedForTab(tab_id, msg));
                         }
@@ -99,6 +124,42 @@ impl App {
     }
 }
 
+/// Inspect the SQL prefix of each statement and compare its expected
+/// affected-row count against the driver's reported count. Returns
+/// `Some(message)` if any UPDATE / DELETE matched zero rows.
+///
+/// `materialize` always emits one UPDATE / DELETE per PK-identified
+/// row, so each is expected to affect exactly one row. Zero means the
+/// target row was modified or deleted out-of-band between fetch and
+/// save. INSERTs are ignored — auto-increment / generated-column rows
+/// can plausibly affect zero according to driver quirks (e.g. ON
+/// CONFLICT DO NOTHING in user-extended SQL), and we don't produce
+/// those today.
+fn compute_concurrency_warning(statements: &[(String, Vec<Value>)], affected: &[u64]) -> Option<String> {
+    let mut zero_updates = 0usize;
+    let mut zero_deletes = 0usize;
+    for (idx, (sql, _)) in statements.iter().enumerate() {
+        let count = affected.get(idx).copied().unwrap_or(0);
+        if count > 0 {
+            continue;
+        }
+        let trimmed = sql.trim_start().to_ascii_uppercase();
+        if trimmed.starts_with("UPDATE") {
+            zero_updates += 1;
+        } else if trimmed.starts_with("DELETE") {
+            zero_deletes += 1;
+        }
+    }
+    if zero_updates == 0 && zero_deletes == 0 {
+        return None;
+    }
+    let total = zero_updates + zero_deletes;
+    Some(
+        crate::tr!("{n} rows could not be located. They may have been changed by another session. Refresh and review.")
+            .replace("{n}", &total.to_string()),
+    )
+}
+
 /// Render a `Value` as a SQL literal — used by the "Copy row as
 /// INSERT" clipboard helper to produce a self-contained statement
 /// that round-trips through any SQL client.
@@ -117,5 +178,48 @@ fn format_sql_literal(v: &Value) -> String {
         Value::TimestampTz(ts) => format!("'{}'", ts.to_rfc3339()),
         Value::Uuid(u) => format!("'{u}'"),
         Value::Json(j) => format!("'{}'", j.to_string().replace('\'', "''")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_concurrency_warning;
+
+    fn stmt(sql: &str) -> (String, Vec<tablepro_core::Value>) {
+        (sql.to_string(), Vec::new())
+    }
+
+    #[test]
+    fn warning_none_when_all_match() {
+        let stmts = vec![stmt("UPDATE \"t\" SET …"), stmt("DELETE FROM \"t\" …")];
+        assert!(compute_concurrency_warning(&stmts, &[1, 1]).is_none());
+    }
+
+    #[test]
+    fn warning_present_when_update_matches_zero() {
+        let stmts = vec![stmt("UPDATE \"t\" SET …"), stmt("DELETE FROM \"t\" …")];
+        let w = compute_concurrency_warning(&stmts, &[0, 1]).unwrap();
+        assert!(w.contains("1 rows"));
+    }
+
+    #[test]
+    fn warning_counts_update_and_delete_zero_together() {
+        let stmts = vec![stmt("UPDATE a"), stmt("DELETE FROM b"), stmt("UPDATE c")];
+        let w = compute_concurrency_warning(&stmts, &[0, 0, 1]).unwrap();
+        assert!(w.contains("2 rows"));
+    }
+
+    #[test]
+    fn warning_ignores_zero_inserts() {
+        // INSERT with affected=0 is unusual but not necessarily a phantom
+        // — keep the warning specific to UPDATE / DELETE for now.
+        let stmts = vec![stmt("INSERT INTO t (a) VALUES (?)"), stmt("UPDATE t SET …")];
+        assert!(compute_concurrency_warning(&stmts, &[0, 1]).is_none());
+    }
+
+    #[test]
+    fn warning_handles_lowercase_and_whitespace() {
+        let stmts = vec![stmt("  update t set x = 1 where id = 5")];
+        assert!(compute_concurrency_warning(&stmts, &[0]).is_some());
     }
 }

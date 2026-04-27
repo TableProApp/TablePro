@@ -50,6 +50,28 @@ pub struct BrowseTab {
 
     inner_stack: gtk::Stack,
     grid_holder: gtk::Box,
+    /// Live reference to the current page's `gtk::ColumnView`. Replaced
+    /// on every `RowsLoaded`. Used by the inline-Insert flow to
+    /// scroll-to-and-focus the freshly-prepended draft row.
+    current_column_view: Option<gtk::ColumnView>,
+    /// Persistent-state banners (per HIG: banners for state, toasts
+    /// for events). Visibility is driven by SetReadOnly / ColumnsLoaded
+    /// / PendingCountChanged respectively.
+    read_only_banner: adw::Banner,
+    no_pk_banner: adw::Banner,
+    pending_banner: adw::Banner,
+    /// Last-emitted dirty state. PendingCountChanged fires on every
+    /// tracker mutation including count-only changes (2 → 3) where the
+    /// dirty flag hasn't actually flipped. Tracking the previous flag
+    /// here lets us emit `BrowseTabOutput::DirtyChanged` only on real
+    /// transitions and avoid redundant tab-title rewrites in App.
+    was_dirty: std::cell::Cell<bool>,
+    /// Row identity captured before a sort/save/refresh-driven reload
+    /// so the focused row can be re-selected and re-scrolled into view
+    /// once the new page lands. Persisted rows match by PK; drafts
+    /// match by draft_id (for the rare case where a draft is focused
+    /// when a sort happens). Cleared by `restore_focused_row`.
+    pending_focus_restore: std::cell::RefCell<Option<crate::services::change_tracker::RowKey>>,
     grid_search: gtk::SearchEntry,
     grid_search_bar: gtk::SearchBar,
     grid_search_handler: Option<glib::SignalHandlerId>,
@@ -101,6 +123,12 @@ pub enum BrowseTabInput {
     PageSizeChanged(u64),
     /// User clicked the Insert button on this tab's paginator bar.
     InsertRow,
+    /// Self-dispatched after `InsertRow` to grab focus on the newly-
+    /// inserted draft row's first editable cell. Sent through the
+    /// input queue so the handler reads `self.current_column_view`
+    /// fresh rather than capturing a potentially-stale reference into
+    /// an `idle_add_local_once` closure.
+    FocusInsertedDraft,
     /// User clicked the Delete Selected button.
     DeleteSelectedRow,
     /// Cell-edit / set-null / delete-row / copy-as-insert events from
@@ -134,11 +162,23 @@ pub enum BrowseTabInput {
     /// Pending count changed (from tracker subscription) — refresh
     /// the Save / Discard / counter visibility.
     PendingCountChanged(usize),
+    /// Specific rows mutated in the tracker (cell edit, set NULL,
+    /// insert, delete, undo, redo). Triggers a targeted re-bind of
+    /// just those rows so pending-state CSS classes update without
+    /// re-binding the entire visible viewport.
+    ChangedRows(Vec<crate::services::change_tracker::RowKey>),
     /// Save command resolved successfully — clear tracker, refetch.
     SaveCompleted,
     /// Save command failed — surface error to the user; keep the
     /// pending changeset intact so they can retry.
     SaveFailed(String),
+    /// App-side mapping resolved a `DriverError::Transaction`'s
+    /// statement_index to a `StatementSource`. Find the matching row
+    /// in the current grid (by draft_id for inserts, PK for updates
+    /// and deletes) and scroll-and-select it. Best-effort: if the row
+    /// isn't on the current page (paginated past it, sorted away),
+    /// the alert dialog still tells the user which statement failed.
+    FlashErrorRow(crate::services::change_tracker::StatementSource),
 }
 
 #[derive(Debug)]
@@ -160,11 +200,25 @@ pub enum BrowseTabOutput {
     SchemaWordsChanged(Vec<String>),
     /// Show a generic info dialog for "Cannot edit / select exactly one row".
     ShowSelectionAlert { title: String, body: String },
+    /// Show a transient toast — used for inline cell-input validation
+    /// errors ("Invalid date format" etc.) where a modal alert is too
+    /// heavy for the user's intent.
+    ShowToast(String),
+    /// Pending-changeset count crossed the empty / non-empty boundary.
+    /// `true` = at least one pending edit; the App-side handler
+    /// prefixes the tab title with the GNOME-Text-Editor "•" dot.
+    DirtyChanged(bool),
     /// Run a sequence of pending-changeset statements inside a single
     /// DB transaction. Materialised by the per-tab change tracker on
     /// Save click. App routes this to `Connection::execute_in_transaction`
     /// and dispatches `SaveCompleted` / `SaveFailed` back via input.
-    ExecuteTransaction { statements: Vec<(String, Vec<Value>)> },
+    /// `sources[i]` identifies the row that produced `statements[i]`,
+    /// so a `DriverError::Transaction { statement_index, .. }` can be
+    /// mapped back to the offending grid row for scroll-and-select.
+    ExecuteTransaction {
+        statements: Vec<(String, Vec<Value>)>,
+        sources: Vec<crate::services::change_tracker::StatementSource>,
+    },
 }
 
 impl BrowseTab {
@@ -361,10 +415,11 @@ impl BrowseTab {
     }
 
     /// Toggle visibility / label of the pending-changeset cluster
-    /// in the mutation bar. Hidden when there are no pending edits;
-    /// shows "{n} unsaved" with Save (.suggested-action) + Discard
-    /// when there are. Mirrors GNOME Files' per-folder operation
-    /// strip pattern.
+    /// in the mutation bar AND the top-of-tab pending banner.
+    /// Hidden when there are no pending edits; shows "{n} unsaved"
+    /// with Save (.suggested-action) + Discard in the action bar,
+    /// plus an AdwBanner above the grid with a "Discard all" button
+    /// for the HIG-correct persistent-state pattern.
     fn refresh_pending_bar(&self, count: usize) {
         let visible = count > 0;
         self.save_button.set_visible(visible);
@@ -373,7 +428,16 @@ impl BrowseTab {
         if visible {
             self.pending_label
                 .set_label(&crate::tr!("{n} unsaved").replace("{n}", &count.to_string()));
+            // Pluralized banner copy. English plural is naive but
+            // matches GNOME's plural-aware translations downstream.
+            let banner_title = if count == 1 {
+                crate::tr!("1 unsaved change")
+            } else {
+                crate::tr!("{n} unsaved changes").replace("{n}", &count.to_string())
+            };
+            self.pending_banner.set_title(&banner_title);
         }
+        self.pending_banner.set_revealed(visible);
     }
 
     /// Walk the selection → FilterListModel → ListStore chain to
@@ -392,6 +456,323 @@ impl BrowseTab {
     fn row_object_at(&self, position: u32) -> Option<super::row_object::RowObject> {
         let model = self.current_selection.as_ref()?.model()?;
         model.item(position)?.downcast::<super::row_object::RowObject>().ok()
+    }
+
+    /// Locate the row in the current model that matches a given
+    /// `RowKey`. Drafts match by `draft_id`; persisted rows match by
+    /// recomputing the row's PK key-tuple from cell values and
+    /// comparing. Returns the position in the (filtered) selection
+    /// model, or `None` if the row isn't on the current page.
+    fn find_row_position_by_key(&self, key: &crate::services::change_tracker::RowKey) -> Option<u32> {
+        use crate::services::change_tracker::{KeyValue, RowKey};
+        let selection = self.current_selection.as_ref()?;
+        let model = selection.model()?;
+        let pk_indices: Vec<usize> = self
+            .current_columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .map(|(i, _)| i)
+            .collect();
+        let n_items = model.n_items();
+        for i in 0..n_items {
+            let Some(item) = model.item(i) else { continue };
+            let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
+                continue;
+            };
+            let matched = match key {
+                RowKey::Draft(id) => row.draft_id() == Some(*id),
+                RowKey::Persisted(target_keys) => {
+                    if row.draft_id().is_some() || pk_indices.is_empty() {
+                        false
+                    } else {
+                        let row_keys: Vec<KeyValue> = pk_indices
+                            .iter()
+                            .map(|&col_idx| (&row.cell_value(col_idx)).into())
+                            .collect();
+                        row_keys == *target_keys
+                    }
+                }
+            };
+            if matched {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Locate the row that produced a failing statement and scroll-and-
+    /// select it, plus apply a one-shot red flash animation. The flash
+    /// state lives on `TabChangeTracker.error_row` so the grid bind
+    /// callback picks it up via the existing tracker query path; a
+    /// 1.8s timeout clears the state afterwards (matches the CSS
+    /// animation duration). Best-effort lookup: a row that's been
+    /// paginated past, sorted away, or filtered out won't be found,
+    /// and we silently fall through to just the alert dialog.
+    fn flash_error_row(&self, source: &crate::services::change_tracker::StatementSource) {
+        use crate::services::change_tracker::{RowKey, StatementSource};
+        let key = match source {
+            StatementSource::Insert { draft_id } => RowKey::Draft(*draft_id),
+            StatementSource::Update { row_key } | StatementSource::Delete { row_key } => row_key.clone(),
+        };
+        let Some(position) = self.find_row_position_by_key(&key) else {
+            return;
+        };
+        if let Some(selection) = self.current_selection.as_ref() {
+            selection.select_item(position, true);
+        }
+        if let Some(cv) = self.current_column_view.as_ref() {
+            cv.scroll_to(
+                position,
+                None,
+                gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                None,
+            );
+        }
+        // Mark the row as the error row and trigger a re-bind so the
+        // bind callback applies tp-row-leftmost-error-flash. Schedule
+        // a timeout to clear the state once the animation has played.
+        // The generation counter protects against a second flash that
+        // starts inside the 1.8s window: the older timer's clear runs
+        // but no-ops because gen no longer matches.
+        let tab_id = self.tab_id;
+        let generation =
+            crate::services::change_tracker::with_tab(tab_id, |t| t.set_error_row(key.clone())).unwrap_or(0);
+        if let Some(selection) = self.current_selection.as_ref()
+            && let Some(model) = selection.model()
+            && let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>()
+        {
+            filter_model.items_changed(position, 1, 1);
+        }
+        let selection_for_clear = self.current_selection.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(1800), move || {
+            let cleared = crate::services::change_tracker::with_tab(tab_id, |t| {
+                let was_match = t.is_error_row_gen(generation);
+                t.clear_error_row_if_gen(generation);
+                was_match
+            })
+            .unwrap_or(false);
+            if !cleared {
+                // A newer flash superseded ours; don't disturb its bind.
+                return;
+            }
+            if let Some(selection) = selection_for_clear
+                && let Some(model) = selection.model()
+                && let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>()
+            {
+                filter_model.items_changed(position, 1, 1);
+            }
+        });
+    }
+
+    /// Snapshot the currently focused/first-selected row's identity.
+    /// Called before any operation that triggers a `RowsLoaded` reload
+    /// (sort flip, save, F5 refresh) so we can re-anchor the user's
+    /// view to the same row after the new page renders.
+    fn capture_focus_for_restore(&self) {
+        use crate::services::change_tracker::RowKey;
+        // If a previous capture is still pending (sort+save fire in
+        // quick succession before the first reload's restore runs), keep
+        // the original capture. The first user-visible focus should
+        // anchor to where they were before triggering the chain — not
+        // wherever focus drifted mid-rebuild.
+        if self.pending_focus_restore.borrow().is_some() {
+            return;
+        }
+        let Some(selection) = self.current_selection.as_ref() else {
+            return;
+        };
+        let bitset = selection.selection();
+        if bitset.size() == 0 {
+            return;
+        }
+        let pos = bitset.nth(0);
+        let Some(model) = selection.model() else { return };
+        let Some(item) = model.item(pos) else { return };
+        let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
+            return;
+        };
+        let key = if let Some(draft_id) = row.draft_id() {
+            Some(RowKey::Draft(draft_id))
+        } else {
+            let pk_indices: Vec<usize> = self
+                .current_columns
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| c.primary_key)
+                .map(|(i, _)| i)
+                .collect();
+            if pk_indices.is_empty() {
+                None
+            } else {
+                let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row.cell_value(i)).collect();
+                RowKey::from_pk_values(&pk_values)
+            }
+        };
+        *self.pending_focus_restore.borrow_mut() = key;
+    }
+
+    /// Grab focus + start-editing on the freshly-inserted draft row's
+    /// first editable cell. Called via `BrowseTabInput::FocusInsertedDraft`
+    /// rather than directly so we read the current `column_view` /
+    /// `selection` state rather than a captured-by-value reference that
+    /// could go stale if a RowsLoaded fires between Insert and the
+    /// deferred focus. The actual `start_editing` call is queued via
+    /// `idle_add_local_once` so the new row finishes layout first.
+    fn focus_inserted_draft(&self) {
+        let Some(cv) = self.current_column_view.clone() else {
+            return;
+        };
+        glib::idle_add_local_once(move || {
+            // At idle time the column-view may already be detached
+            // (rare race, e.g. user pressed F5 between InsertRow and
+            // this idle). Bail silently — the row was inserted; only
+            // the auto-edit affordance is missed.
+            let Some(window) = cv.root().and_then(|r| r.dynamic_cast::<gtk::Window>().ok()) else {
+                return;
+            };
+            let Some(focused) = gtk::prelude::GtkWindowExt::focus(&window) else {
+                return;
+            };
+            if let Ok(label) = focused.dynamic_cast::<gtk::EditableLabel>() {
+                label.set_editable(true);
+                if label.text().as_str() == "<NULL>" {
+                    label.set_text("");
+                }
+                label.start_editing();
+            }
+            // Bool draft (CheckButton focused) needs no edit-mode
+            // dance; clicking / Space toggles natively.
+        });
+    }
+
+    /// Re-select and scroll-to the row captured by
+    /// `capture_focus_for_restore`, if it's still on the page after
+    /// the reload. Silently no-ops if the row was filtered out, sorted
+    /// to a different page, or removed by the commit. Always clears
+    /// the captured key so it doesn't bleed into the next reload.
+    fn restore_focused_row(&self) {
+        let Some(key) = self.pending_focus_restore.borrow_mut().take() else {
+            return;
+        };
+        let Some(position) = self.find_row_position_by_key(&key) else {
+            return;
+        };
+        if let Some(selection) = self.current_selection.as_ref() {
+            selection.select_item(position, true);
+        }
+        if let Some(cv) = self.current_column_view.as_ref() {
+            cv.scroll_to(position, None, gtk::ListScrollFlags::FOCUS, None);
+        }
+    }
+
+    /// Build the `ColumnView` if we have both the schema (`current_columns`,
+    /// from `ColumnsLoaded`) and the current page's data (`current_result`,
+    /// from `RowsLoaded`). Until both are present the `inner_stack` stays
+    /// on the "loading" status page so the user can't interact with cells
+    /// whose editability map is wrong.
+    fn render_grid_if_ready(&mut self, sender: ComponentSender<Self>) {
+        let Some(result) = self.current_result.clone() else {
+            return;
+        };
+        if self.current_columns.is_empty() {
+            // Schema not yet loaded — keep the loading status visible.
+            // ColumnsLoaded will re-invoke this when it arrives.
+            return;
+        }
+
+        clear_box(&self.grid_holder);
+        let edit_sender = if self.read_only {
+            None
+        } else {
+            Some(self.grid_sender.clone())
+        };
+        let pk_col_indices: Vec<usize> = self
+            .current_columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .map(|(i, _)| i)
+            .collect();
+        let tab_ctx = TabGridContext {
+            tab_id: Some(self.tab_id),
+            pk_col_indices,
+        };
+        let (column_view, selection, filter_setter) = build_column_view(
+            &result,
+            &self.current_columns,
+            &self.table,
+            edit_sender,
+            self.current_sort,
+            Some(self.grid_sender.clone()),
+            self.connection_id,
+            tab_ctx,
+        );
+        if let Some(prev) = self.grid_search_handler.take() {
+            self.grid_search.disconnect(prev);
+        }
+        let setter = filter_setter.clone();
+        let id = self.grid_search.connect_search_changed(move |entry| {
+            setter(&entry.text());
+        });
+        self.grid_search_handler = Some(id);
+        filter_setter(&self.grid_search.text());
+        self.current_selection = Some(selection);
+        self.current_column_view = Some(column_view.clone());
+
+        // Re-prepend any pending draft rows so they survive page changes,
+        // sort flips, and F5 refresh. The tracker is the canonical source
+        // of truth for drafts; the grid model is rebuilt fresh on every
+        // RowsLoaded so without this step the drafts vanish visually
+        // while the tracker still holds them, leading to confused state.
+        if let Some(store) = self.list_store() {
+            let drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
+                t.drafts()
+                    .iter()
+                    .map(|d| (d.draft_id, d.values.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+            for (draft_id, values) in drafts {
+                let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
+                store.insert(0, &draft_row);
+            }
+        }
+
+        let scrolled = gtk::ScrolledWindow::builder()
+            .child(&column_view)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        self.grid_holder.append(&scrolled);
+        self.refresh_crud_buttons();
+        self.update_paginator_label();
+        self.prev_button.set_sensitive(self.current_offset > 0);
+        let n_rows = result.rows.len() as u64;
+        self.next_button.set_sensitive(n_rows == self.page_size);
+        self.inner_stack.set_visible_child_name("grid");
+        self.suppress_combo_emit.set(false);
+        self.restore_focused_row();
+        let _ = sender.output(BrowseTabOutput::StateChanged);
+    }
+
+    /// Force a single-row re-bind via `items_changed(pos, 1, 1)` on the
+    /// FilterListModel. Used when rejecting an invalid cell edit: the
+    /// EditableLabel still holds the user's typed text after editing-
+    /// notify fires, so we trigger a re-bind to restore the canonical
+    /// display from `RowObject.cell_value()` (which we did NOT mutate
+    /// because the parse failed).
+    fn refresh_row(&self, position: u32) {
+        let Some(selection) = self.current_selection.as_ref() else {
+            return;
+        };
+        let Some(model) = selection.model() else { return };
+        let Ok(filter_model) = model.downcast::<gtk::FilterListModel>() else {
+            return;
+        };
+        if position < filter_model.n_items() {
+            filter_model.items_changed(position, 1, 1);
+        }
     }
 
     /// Build the (RowKey, current_values) pair for a row at the
@@ -415,9 +796,16 @@ impl BrowseTab {
         Some((key, row.clone()))
     }
 
+    /// Returns true when the loaded columns include at least one PK.
+    /// Used to gate Insert / Delete and reveal the no-PK banner.
+    fn has_primary_key(&self) -> bool {
+        self.current_columns.iter().any(|c| c.primary_key)
+    }
+
     fn refresh_crud_buttons(&self) {
         let has_columns = !self.current_columns.is_empty();
         let has_rows = self.current_result.is_some();
+        let has_pk = self.has_primary_key();
         if self.read_only {
             self.insert_button.set_visible(false);
             self.delete_button.set_visible(false);
@@ -425,8 +813,22 @@ impl BrowseTab {
         }
         self.insert_button.set_visible(true);
         self.delete_button.set_visible(true);
-        self.insert_button.set_sensitive(has_columns);
-        self.delete_button.set_sensitive(has_columns && has_rows);
+        // No-PK tables don't get inline editing because RowKey can't be
+        // formed without a PK and our materialise path would silently
+        // no-op on UPDATE/DELETE. Disable instead of hide so the
+        // affordance stays discoverable; tooltip explains the gate.
+        let pk_tip = crate::tr!("This table has no primary key. Inline editing is disabled.");
+        self.insert_button.set_sensitive(has_columns && has_pk);
+        self.delete_button.set_sensitive(has_columns && has_rows && has_pk);
+        if has_columns && !has_pk {
+            self.insert_button.set_tooltip_text(Some(&pk_tip));
+            self.delete_button.set_tooltip_text(Some(&pk_tip));
+        } else {
+            self.insert_button.set_tooltip_text(Some(&crate::tr!("Insert row")));
+            self.delete_button
+                .set_tooltip_text(Some(&crate::tr!("Delete selected row")));
+        }
+        self.no_pk_banner.set_revealed(has_columns && !has_pk);
     }
 
     fn update_paginator_label(&self) {
@@ -550,6 +952,39 @@ impl SimpleComponent for BrowseTab {
         let paginator = Self::build_paginator(sender.clone(), init.page_size, page_size_handler_slot.clone());
         let mutations = Self::build_mutation_bar(sender.clone());
 
+        // Per-HIG banner-vs-toast rule: persistent state lives in a
+        // banner, transient events in a toast. Three banners, all
+        // hidden until their condition triggers:
+        //   - read-only: connection-wide constraint (most permanent).
+        //   - no-PK: table-level constraint (per browse tab, persists
+        //     until the user opens a different table).
+        //   - pending: ephemeral pending-changeset count (transient,
+        //     but state-shaped — banner is correct here, not toast).
+        // Stack order (top to bottom): read-only → no-PK → pending →
+        // search bar. Most-stable state at top so transient banners
+        // don't push it around as they appear and disappear.
+        let read_only_banner = adw::Banner::builder()
+            .title(crate::tr!("Read-only connection. Editing disabled."))
+            .revealed(init.read_only)
+            .build();
+        let no_pk_banner = adw::Banner::builder()
+            .title(crate::tr!(
+                "This table has no primary key. Use the SQL editor to modify rows."
+            ))
+            .revealed(false)
+            .build();
+        let pending_banner = adw::Banner::builder()
+            .button_label(crate::tr!("Discard all"))
+            .revealed(false)
+            .build();
+        let sender_for_pending_banner = sender.clone();
+        pending_banner.connect_button_clicked(move |_| {
+            sender_for_pending_banner.input(BrowseTabInput::DiscardAll);
+        });
+
+        root.add_top_bar(&read_only_banner);
+        root.add_top_bar(&no_pk_banner);
+        root.add_top_bar(&pending_banner);
         root.add_top_bar(&grid_search_bar);
         root.set_content(Some(&inner_stack));
         // Mutations bar sits below the paginator (call order = stack
@@ -557,7 +992,14 @@ impl SimpleComponent for BrowseTab {
         // hierarchy is: grid → paginator → mutations.
         root.add_bottom_bar(&paginator.bar);
         root.add_bottom_bar(&mutations.bar);
-        grid_search_bar.set_key_capture_widget(Some(&root));
+        // No `set_key_capture_widget` on the search bar: that property
+        // makes any printable keystroke anywhere in the BrowseTab open
+        // the search entry, even while the user is typing into a
+        // cell's GtkText (the "type-to-search" pattern from GNOME
+        // Files). It conflicts with inline cell editing — the first
+        // keystroke after entering edit mode jumps focus to the search
+        // entry instead of going into the cell. Ctrl+F still opens
+        // search, which is the documented shortcut.
 
         // SearchBar's built-in Escape handler only fires while the
         // SearchEntry (or its close button) has focus. If the user opens
@@ -566,6 +1008,14 @@ impl SimpleComponent for BrowseTab {
         // shortcut on root catches Escape anywhere in this tab and
         // dismisses the bar — matching the GNOME Files / Text Editor
         // behaviour where Esc reliably closes search regardless of focus.
+        // Per-tab GridMsg channel: events from this tab's grid (sort
+        // change, cell edits, context-menu actions) flow into this tab's
+        // own input queue, which then re-emits them as outputs to App
+        // tagged with this tab's id (via the forward closure App sets up).
+        // Created up-front so tab-local shortcuts (Ctrl+Shift+N → set
+        // focused cell to NULL) can route directly to the grid sender.
+        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
+
         let search_bar_for_esc = grid_search_bar.clone();
         let esc_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
@@ -578,16 +1028,68 @@ impl SimpleComponent for BrowseTab {
                 }
             }))
             .build();
+
+        // Tab-local shortcuts for browse-grid keyboard model. Local
+        // scope means these only fire while focus is inside this
+        // BrowseTab. When the user is in another tab or in the editor,
+        // these triggers fall through to whatever that context wires.
+        //
+        // - Delete: mark selected rows for pending deletion (matches
+        //   the Delete-button toolbar action; HIG keyboard reference
+        //   "Delete = Delete the selected item").
+        // - Ctrl+N: insert a draft row (HIG "Ctrl+N = Create a new
+        //   document"; document = row in this context).
+        // - Ctrl+Shift+N: set the focused cell to SQL NULL. App-
+        //   specific binding (no GNOME precedent for "set NULL");
+        //   chosen because Ctrl+Backspace conflicts with delete-word
+        //   in every text-edit widget.
+        let sender_for_delete = sender.clone();
+        let delete_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("Delete").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_delete.input(BrowseTabInput::DeleteSelectedRow);
+                glib::Propagation::Stop
+            }))
+            .build();
+        let sender_for_insert = sender.clone();
+        let insert_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>n").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_insert.input(BrowseTabInput::InsertRow);
+                glib::Propagation::Stop
+            }))
+            .build();
+        let table_for_null = init.table.clone();
+        let grid_sender_for_null = grid_sender.clone();
+        let null_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>n").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |widget, _| {
+                let Some((row_position, col_index)) = super::grid::focused_cell_coords(widget) else {
+                    return glib::Propagation::Proceed;
+                };
+                grid_sender_for_null
+                    .send(GridMsg::SetCellNull {
+                        table: table_for_null.clone(),
+                        row_position,
+                        col_index,
+                    })
+                    .ok();
+                glib::Propagation::Stop
+            }))
+            .build();
+
         let esc_controller = gtk::ShortcutController::new();
         esc_controller.set_scope(gtk::ShortcutScope::Local);
         esc_controller.add_shortcut(esc_shortcut);
+        esc_controller.add_shortcut(delete_shortcut);
+        esc_controller.add_shortcut(insert_shortcut);
+        esc_controller.add_shortcut(null_shortcut);
         root.add_controller(esc_controller);
 
-        // Per-tab GridMsg channel: events from this tab's grid (sort
-        // change, cell edits, context-menu actions) flow into this tab's
-        // own input queue, which then re-emits them as outputs to App
-        // tagged with this tab's id (via the forward closure App sets up).
-        let (grid_sender, grid_receiver) = relm4::channel::<GridMsg>();
+        // Wire the GridMsg receiver into this tab's input queue. Each
+        // GridMsg becomes a BrowseTabInput tagged with the same payload
+        // shape; the tab's update() then routes them to the App via
+        // outputs that App's forwarder tags with this tab's id.
         let grid_input = sender.input_sender().clone();
         relm4::spawn_local(grid_receiver.forward(grid_input, |msg| match msg {
             GridMsg::SortChanged(idx) => BrowseTabInput::SortChanged(idx),
@@ -614,6 +1116,7 @@ impl SimpleComponent for BrowseTab {
                 col_index,
             },
             GridMsg::DeleteRowAt { table, row_position } => BrowseTabInput::GridDeleteRowAt { table, row_position },
+            GridMsg::InsertRow => BrowseTabInput::InsertRow,
         }));
 
         let model = BrowseTab {
@@ -632,6 +1135,12 @@ impl SimpleComponent for BrowseTab {
             current_total_rows: None,
             inner_stack,
             grid_holder,
+            current_column_view: None,
+            read_only_banner,
+            no_pk_banner,
+            pending_banner,
+            was_dirty: std::cell::Cell::new(false),
+            pending_focus_restore: std::cell::RefCell::new(None),
             grid_search,
             grid_search_bar,
             grid_search_handler: None,
@@ -658,17 +1167,17 @@ impl SimpleComponent for BrowseTab {
         let (tracker_sender, tracker_receiver) = relm4::channel::<crate::services::change_tracker::TrackerEvent>();
         crate::services::change_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_sender));
         let input_for_tracker = sender.input_sender().clone();
-        let tab_id_for_tracker = init.tab_id;
         relm4::spawn_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
             crate::services::change_tracker::TrackerEvent::PendingCountChanged(n) => {
                 BrowseTabInput::PendingCountChanged(n)
             }
             crate::services::change_tracker::TrackerEvent::Cleared => BrowseTabInput::PendingCountChanged(0),
-            // ChangedRows would drive items_changed for visual refresh —
-            // wired in the next iteration when grid CSS overlay lands.
-            crate::services::change_tracker::TrackerEvent::ChangedRows(_) => BrowseTabInput::PendingCountChanged(
-                crate::services::change_tracker::with_tab_ref(tab_id_for_tracker, |t| t.pending_count()).unwrap_or(0),
-            ),
+            // ChangedRows drives targeted items_changed so only the
+            // affected rows re-bind, not the whole visible viewport.
+            // PendingCountChanged is emitted alongside by the tracker
+            // (see emit_changed) so banner / dirty-flag updates still
+            // run for the same mutation.
+            crate::services::change_tracker::TrackerEvent::ChangedRows(keys) => BrowseTabInput::ChangedRows(keys),
         }));
         // Trigger the initial fetches the moment the parent attaches us.
         // The parent's forward closure wraps these in AppMsg::… with tab_id.
@@ -682,72 +1191,24 @@ impl SimpleComponent for BrowseTab {
         match msg {
             BrowseTabInput::RowsLoaded { offset, result } => {
                 self.current_offset = offset;
-                self.current_result = Some(result.clone());
-
-                // Build the column view fresh — this is a hot path in
-                // multi-tab because every page change rebuilds.
-                clear_box(&self.grid_holder);
-                let edit_sender = if self.read_only {
-                    None
-                } else {
-                    Some(self.grid_sender.clone())
-                };
-                let pk_col_indices: Vec<usize> = self
-                    .current_columns
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, c)| c.primary_key)
-                    .map(|(i, _)| i)
-                    .collect();
-                let tab_ctx = TabGridContext {
-                    tab_id: Some(self.tab_id),
-                    pk_col_indices,
-                };
-                let (column_view, selection, filter_setter) = build_column_view(
-                    &result,
-                    &self.current_columns,
-                    &self.table,
-                    edit_sender,
-                    self.current_sort,
-                    Some(self.grid_sender.clone()),
-                    self.connection_id,
-                    tab_ctx,
-                );
-                if let Some(prev) = self.grid_search_handler.take() {
-                    self.grid_search.disconnect(prev);
-                }
-                let setter = filter_setter.clone();
-                let id = self.grid_search.connect_search_changed(move |entry| {
-                    setter(&entry.text());
-                });
-                self.grid_search_handler = Some(id);
-                filter_setter(&self.grid_search.text());
-                self.current_selection = Some(selection);
-                let scrolled = gtk::ScrolledWindow::builder()
-                    .child(&column_view)
-                    .hexpand(true)
-                    .vexpand(true)
-                    .build();
-                self.grid_holder.append(&scrolled);
-                self.refresh_crud_buttons();
-                self.update_paginator_label();
-                self.prev_button.set_sensitive(offset > 0);
-                let n_rows = result.rows.len() as u64;
-                self.next_button.set_sensitive(n_rows == self.page_size);
-                self.inner_stack.set_visible_child_name("grid");
-                self.suppress_combo_emit.set(false);
-                let _ = sender.output(BrowseTabOutput::StateChanged);
+                self.current_result = Some(result);
+                // Defer rendering until columns are also loaded — the
+                // QueryResult's ColumnInfo lacks `primary_key` /
+                // `is_generated` / `is_auto_increment`, so rendering
+                // before the schema fetch would let the user edit cells
+                // (PK, generated columns) that the DB will reject on
+                // save. Waiting also avoids a wasted full rebuild when
+                // ColumnsLoaded fires next and triggers a re-render.
+                self.render_grid_if_ready(sender);
             }
             BrowseTabInput::ColumnsLoaded(columns) => {
                 let words: Vec<String> = columns.iter().map(|c| c.name.clone()).collect();
                 self.current_columns = columns;
                 self.refresh_crud_buttons();
                 let _ = sender.output(BrowseTabOutput::SchemaWordsChanged(words));
-                // If rows arrived before columns we now know the editability
-                // map and need to rebuild the view with that knowledge.
-                if self.current_result.is_some() {
-                    let _ = sender.output(BrowseTabOutput::FetchPage);
-                }
+                // If rows are already cached, render now with the proper
+                // editability map. Otherwise wait for RowsLoaded.
+                self.render_grid_if_ready(sender);
             }
             BrowseTabInput::RowCountLoaded(count) => {
                 self.current_total_rows = Some(count);
@@ -774,6 +1235,7 @@ impl SimpleComponent for BrowseTab {
                 self.show_error_inner(&message);
             }
             BrowseTabInput::Refresh => {
+                self.capture_focus_for_restore();
                 self.show_loading_inner(
                     &crate::tr!("Loading…"),
                     &crate::tr!("Fetching rows from {table}").replace("{table}", &self.table_label()),
@@ -789,6 +1251,7 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::SetReadOnly(read_only) => {
                 self.read_only = read_only;
+                self.read_only_banner.set_revealed(read_only);
                 self.refresh_crud_buttons();
                 // Force a full grid rebuild so editable labels turn into
                 // read-only labels (or vice versa) without waiting for the
@@ -816,6 +1279,7 @@ impl SimpleComponent for BrowseTab {
                 };
                 self.current_sort = next;
                 self.current_offset = 0;
+                self.capture_focus_for_restore();
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
             }
@@ -851,6 +1315,24 @@ impl SimpleComponent for BrowseTab {
                     let draft_row = super::row_object::RowObject::new_draft(draft_id, default_values);
                     store.insert(0, &draft_row);
                 }
+                // Scroll the new row into view immediately, then defer
+                // the start-editing call to the next event-loop tick
+                // through a self-message. Self-messaging (instead of
+                // capturing column_view by value into an
+                // `idle_add_local_once`) means the handler reads the
+                // freshest `self.current_column_view` — if a
+                // RowsLoaded fires between Insert and the deferred
+                // focus, we use the rebuilt view rather than a dangling
+                // reference to the old one.
+                if let Some(cv) = self.current_column_view.as_ref() {
+                    cv.scroll_to(
+                        0,
+                        None,
+                        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                        None,
+                    );
+                }
+                sender.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::DeleteSelectedRow => {
                 // Toolbar Delete now marks the selected rows for
@@ -901,19 +1383,29 @@ impl SimpleComponent for BrowseTab {
                 col_index,
                 new_value,
             } => {
-                // Cell edits no longer commit immediately to the
-                // database. Route through the per-tab change tracker
+                // Cell edits route through the per-tab change tracker
                 // so the user can review / Save / Discard a batch.
                 //
-                // Empty input on a nullable column → Value::Null
+                // Empty input on a nullable column becomes Value::Null
                 // (canonical SQL convention for "user cleared the
                 // cell"). Non-empty input is parsed against the
-                // column's data_type so INT / BOOL / DECIMAL columns
-                // commit as the right native type instead of failing
-                // at transaction time with a driver type-coercion
-                // error that aborts the whole batch.
+                // column's data_type so every native type binds at
+                // its declared kind instead of falling back to text.
+                //
+                // On parse failure the edit is rejected: a toast
+                // explains why and `refresh_row` forces a re-bind so
+                // the EditableLabel goes back to the canonical
+                // pre-edit display. The tracker stays untouched so
+                // a single bad keystroke can't sneak into the batch.
                 let col = self.current_columns.get(col_index);
-                let new = parse_input_for_column(&new_value, col);
+                let new = match parse_input_for_column(&new_value, col) {
+                    Ok(v) => v,
+                    Err(message) => {
+                        let _ = sender.output(BrowseTabOutput::ShowToast(message));
+                        self.refresh_row(row_position);
+                        return;
+                    }
+                };
                 let row_obj = self.row_object_at(row_position);
                 if let Some(row_obj) = &row_obj
                     && let Some(draft_id) = row_obj.draft_id()
@@ -972,8 +1464,20 @@ impl SimpleComponent for BrowseTab {
                     t.materialize(&driver_id, schema.as_deref(), &table, &columns)
                 });
                 match result {
-                    Some(Ok(statements)) if !statements.is_empty() => {
-                        let _ = sender.output(BrowseTabOutput::ExecuteTransaction { statements });
+                    Some(Ok((statements, sources))) if !statements.is_empty() => {
+                        // Disable both buttons for the duration of the
+                        // in-flight transaction. SaveCompleted /
+                        // SaveFailed re-enable them. This prevents a
+                        // double-click firing two transactions and
+                        // matches GNOME's standard "in-progress action"
+                        // affordance (busy spinner + disabled control).
+                        self.save_button.set_sensitive(false);
+                        self.discard_button.set_sensitive(false);
+                        // SaveCompleted will refetch the page; capture
+                        // the focused row's PK now so it can be re-
+                        // selected after the reload.
+                        self.capture_focus_for_restore();
+                        let _ = sender.output(BrowseTabOutput::ExecuteTransaction { statements, sources });
                     }
                     Some(Ok(_)) => {
                         // Nothing to save (tracker empty) — refresh bar.
@@ -994,35 +1498,61 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::PendingCountChanged(n) => {
                 self.refresh_pending_bar(n);
-                // Force the visible cells to re-bind so CSS classes
-                // for pending state reflect the latest tracker view.
-                // Cheap: GTK's ColumnView only re-binds the visible
-                // viewport, not every row in the store.
-                if let Some(selection) = self.current_selection.as_ref()
-                    && let Some(model) = selection.model()
-                {
-                    let n_items = model.n_items();
-                    if n_items > 0 {
-                        // items_changed(0, n, n) re-emits "removed and
-                        // re-added" for every item — forces re-bind
-                        // without altering selection or scroll.
-                        if let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>() {
-                            filter_model.items_changed(0, n_items, n_items);
-                        }
+                // Tell the App so it can prefix the tab title with the
+                // GNOME-Text-Editor "•" dot for dirty buffers. Only on
+                // real transitions (empty ↔ non-empty) so a count
+                // change like 2 → 3 doesn't re-rewrite the tab title.
+                let dirty = n > 0;
+                if dirty != self.was_dirty.get() {
+                    self.was_dirty.set(dirty);
+                    let _ = sender.output(BrowseTabOutput::DirtyChanged(dirty));
+                }
+                // Note: row re-binds are driven by the parallel
+                // ChangedRows event, not from here. PendingCountChanged
+                // fires on every tracker mutation so re-binding the
+                // viewport here would be wasteful — most edits affect
+                // exactly one row and ChangedRows hits only that row.
+            }
+            BrowseTabInput::ChangedRows(keys) => {
+                let Some(selection) = self.current_selection.as_ref() else {
+                    return;
+                };
+                let Some(model) = selection.model() else { return };
+                let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>() else {
+                    return;
+                };
+                // Walk the model once per key. For typical interactive
+                // edits (one cell at a time) this is O(n) per keystroke
+                // where n = visible row count — bounded and cheap.
+                // Bulk operations (Discard) emit one ChangedRows per
+                // op via undo unwind, again bounded.
+                for key in &keys {
+                    if let Some(pos) = self.find_row_position_by_key(key) {
+                        filter_model.items_changed(pos, 1, 1);
                     }
                 }
             }
             BrowseTabInput::SaveCompleted => {
                 crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());
                 self.refresh_pending_bar(0);
+                self.save_button.set_sensitive(true);
+                self.discard_button.set_sensitive(true);
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::FetchRowCount);
             }
             BrowseTabInput::SaveFailed(message) => {
+                self.save_button.set_sensitive(true);
+                self.discard_button.set_sensitive(true);
                 let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
                     title: crate::tr!("Save failed"),
                     body: message,
                 });
+            }
+            BrowseTabInput::FlashErrorRow(source) => {
+                self.flash_error_row(&source);
+            }
+            BrowseTabInput::FocusInsertedDraft => {
+                self.focus_inserted_draft();
             }
         }
         // Quark prevents accidental cross-page lookups; tab_id used by App
@@ -1048,44 +1578,198 @@ fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
 }
 
 /// Parse a user-typed cell value against the column's declared data
-/// type. Empty input on a nullable column becomes `Value::Null`;
-/// otherwise we coerce to a native variant (Int, Float, Decimal,
-/// Bool) when the column's `data_type` looks like a numeric or boolean
-/// type. Unrecognised types and parse failures fall through to
-/// `Value::Text` so the driver can attempt its own coercion. Date /
-/// Time / Uuid / Json columns stay as text — they round-trip through
-/// the driver's text binding without precision loss.
-fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Value {
+/// type. Returns `Err(message)` when the input is unambiguously wrong
+/// for the column (invalid date, malformed UUID, required field empty,
+/// etc.) so the caller can show a toast and revert the cell.
+///
+/// Rules:
+/// - Empty + nullable (or has server default) → `Value::Null`. For
+///   drafts this maps to INSERT-skip-column; for UPDATEs on NOT NULL
+///   the DB will surface a clearer error than we can predict here.
+/// - Empty + NOT NULL + no default → reject ("Field is required") —
+///   the only path to bypass is to type a value or use the explicit
+///   "Set to NULL" affordance.
+/// - Non-empty → routed through the per-type parser. Native types
+///   (Bool / Int / Float / Decimal / Date / Time / DateTime /
+///   TimestampTz / Uuid / Json) bind correctly; `Text` is the
+///   fallthrough for unclassified types.
+fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Result<Value, String> {
     let Some(col) = col else {
-        return Value::Text(text.to_string());
+        return Ok(Value::Text(text.to_string()));
     };
-    if text.is_empty() && col.nullable {
-        return Value::Null;
+    if text.is_empty() {
+        if col.nullable || col.default_value.is_some() {
+            return Ok(Value::Null);
+        }
+        return Err(crate::tr!("Field is required"));
     }
     let dt = col.data_type.to_ascii_lowercase();
-    let is_int = ["int", "serial", "bigint", "smallint", "tinyint", "integer"]
-        .iter()
-        .any(|k| dt.contains(k));
-    if is_int && let Ok(i) = text.parse::<i64>() {
-        return Value::Int(i);
+    let trimmed = text.trim();
+    match classify_type(&dt) {
+        TypeKind::Bool => parse_bool_value(trimmed),
+        TypeKind::Int => parse_int_value(trimmed),
+        TypeKind::Float => parse_float_value(trimmed),
+        TypeKind::Decimal => parse_decimal_value(trimmed),
+        TypeKind::Uuid => parse_uuid_value(trimmed),
+        TypeKind::Json => parse_json_value(trimmed),
+        TypeKind::TimestampTz => parse_timestamptz_value(trimmed),
+        TypeKind::DateTime => parse_datetime_value(trimmed),
+        TypeKind::Date => parse_date_value(trimmed),
+        TypeKind::Time => parse_time_value(trimmed),
+        TypeKind::Text => Ok(Value::Text(text.to_string())),
     }
-    let is_float = ["float", "double", "real"].iter().any(|k| dt.contains(k));
-    if is_float && let Ok(f) = text.parse::<f64>() {
-        return Value::Float(f);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TypeKind {
+    Bool,
+    Int,
+    Float,
+    Decimal,
+    Uuid,
+    Json,
+    TimestampTz,
+    DateTime,
+    Date,
+    Time,
+    Text,
+}
+
+/// Map a lowercased `data_type` string to a coarse `TypeKind`. Order
+/// of checks matters because several SQL types share substrings — for
+/// example `timestamptz` / `timestamp with time zone` must be matched
+/// before bare `timestamp`, and `tinyint(1)` (MySQL bool) must be
+/// matched before generic `tinyint` / `int` patterns.
+fn classify_type(dt: &str) -> TypeKind {
+    if matches!(dt, "bool" | "boolean" | "bit" | "tinyint(1)") {
+        return TypeKind::Bool;
     }
-    let is_decimal = ["decimal", "numeric", "money"].iter().any(|k| dt.contains(k));
-    if is_decimal && let Ok(d) = text.parse::<rust_decimal::Decimal>() {
-        return Value::Decimal(d);
+    if dt.contains("uuid") {
+        return TypeKind::Uuid;
     }
-    let is_bool = matches!(dt.as_str(), "bool" | "boolean" | "tinyint(1)") || dt.contains("bool");
-    if is_bool {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "true" | "t" | "1" | "yes" | "y" => return Value::Bool(true),
-            "false" | "f" | "0" | "no" | "n" => return Value::Bool(false),
-            _ => {}
+    if dt.contains("json") {
+        return TypeKind::Json;
+    }
+    if dt.contains("timestamptz") || dt.contains("with time zone") {
+        return TypeKind::TimestampTz;
+    }
+    if dt.contains("timestamp") || dt.contains("datetime") {
+        return TypeKind::DateTime;
+    }
+    if dt == "date" || (dt.starts_with("date") && !dt.contains("datetime") && !dt.contains("time")) {
+        return TypeKind::Date;
+    }
+    if dt == "time" || dt.starts_with("time(") || dt == "time without time zone" {
+        return TypeKind::Time;
+    }
+    if matches!(dt, "decimal" | "numeric" | "money") || dt.starts_with("decimal(") || dt.starts_with("numeric(") {
+        return TypeKind::Decimal;
+    }
+    if matches!(dt, "float" | "double" | "real" | "double precision") || dt.starts_with("float(") {
+        return TypeKind::Float;
+    }
+    if matches!(
+        dt,
+        "int"
+            | "int2"
+            | "int4"
+            | "int8"
+            | "integer"
+            | "smallint"
+            | "bigint"
+            | "tinyint"
+            | "mediumint"
+            | "serial"
+            | "bigserial"
+            | "smallserial"
+    ) || dt.starts_with("int(")
+        || dt.starts_with("integer(")
+        || dt.starts_with("smallint(")
+        || dt.starts_with("bigint(")
+        || dt.starts_with("tinyint(")
+        || dt.starts_with("mediumint(")
+    {
+        return TypeKind::Int;
+    }
+    TypeKind::Text
+}
+
+fn parse_bool_value(text: &str) -> Result<Value, String> {
+    match text.to_ascii_lowercase().as_str() {
+        "true" | "t" | "1" | "yes" | "y" | "on" => Ok(Value::Bool(true)),
+        "false" | "f" | "0" | "no" | "n" | "off" => Ok(Value::Bool(false)),
+        _ => Err(crate::tr!("Invalid boolean. Use true/false, yes/no, or 1/0.")),
+    }
+}
+
+fn parse_int_value(text: &str) -> Result<Value, String> {
+    text.parse::<i64>()
+        .map(Value::Int)
+        .map_err(|_| crate::tr!("Invalid integer"))
+}
+
+fn parse_float_value(text: &str) -> Result<Value, String> {
+    text.parse::<f64>()
+        .map(Value::Float)
+        .map_err(|_| crate::tr!("Invalid number"))
+}
+
+fn parse_decimal_value(text: &str) -> Result<Value, String> {
+    text.parse::<rust_decimal::Decimal>()
+        .map(Value::Decimal)
+        .map_err(|_| crate::tr!("Invalid decimal"))
+}
+
+fn parse_uuid_value(text: &str) -> Result<Value, String> {
+    uuid::Uuid::parse_str(text)
+        .map(Value::Uuid)
+        .map_err(|_| crate::tr!("Invalid UUID. Expected 8-4-4-4-12 hex digits."))
+}
+
+fn parse_json_value(text: &str) -> Result<Value, String> {
+    serde_json::from_str::<serde_json::Value>(text)
+        .map(Value::Json)
+        .map_err(|e| crate::tr!("Invalid JSON: {error}").replace("{error}", &e.to_string()))
+}
+
+fn parse_timestamptz_value(text: &str) -> Result<Value, String> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(text) {
+        return Ok(Value::TimestampTz(dt.with_timezone(&chrono::Utc)));
+    }
+    Err(crate::tr!(
+        "Invalid timestamp. Use ISO 8601, e.g. 2024-01-15T14:30:00Z."
+    ))
+}
+
+fn parse_datetime_value(text: &str) -> Result<Value, String> {
+    let formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S%.f",
+    ];
+    for fmt in &formats {
+        if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(text, fmt) {
+            return Ok(Value::DateTime(dt));
         }
     }
-    Value::Text(text.to_string())
+    Err(crate::tr!("Invalid datetime. Use YYYY-MM-DD HH:MM:SS."))
+}
+
+fn parse_date_value(text: &str) -> Result<Value, String> {
+    chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .map(Value::Date)
+        .map_err(|_| crate::tr!("Invalid date. Use YYYY-MM-DD."))
+}
+
+fn parse_time_value(text: &str) -> Result<Value, String> {
+    let formats = ["%H:%M:%S", "%H:%M:%S%.f", "%H:%M"];
+    for fmt in &formats {
+        if let Ok(t) = chrono::NaiveTime::parse_from_str(text, fmt) {
+            return Ok(Value::Time(t));
+        }
+    }
+    Err(crate::tr!("Invalid time. Use HH:MM:SS."))
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).
@@ -1127,7 +1811,26 @@ struct Mutations {
 
 #[cfg(test)]
 mod tests {
-    use super::format_thousands;
+    use super::{TypeKind, classify_type, format_thousands, parse_input_for_column};
+    use tablepro_core::{ColumnInfo, Value};
+
+    fn col(data_type: &str, nullable: bool) -> ColumnInfo {
+        ColumnInfo {
+            name: "x".into(),
+            data_type: data_type.into(),
+            nullable,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
+        }
+    }
+
+    fn col_with_default(data_type: &str, default: &str) -> ColumnInfo {
+        let mut c = col(data_type, false);
+        c.default_value = Some(default.into());
+        c
+    }
 
     #[test]
     fn format_thousands_handles_common_page_sizes() {
@@ -1144,5 +1847,132 @@ mod tests {
         assert_eq!(format_thousands(0), "0");
         assert_eq!(format_thousands(1), "1");
         assert_eq!(format_thousands(999), "999");
+    }
+
+    #[test]
+    fn classify_disambiguates_overlapping_types() {
+        assert_eq!(classify_type("tinyint(1)"), TypeKind::Bool);
+        assert_eq!(classify_type("tinyint"), TypeKind::Int);
+        assert_eq!(classify_type("uuid"), TypeKind::Uuid);
+        assert_eq!(classify_type("jsonb"), TypeKind::Json);
+        assert_eq!(classify_type("timestamptz"), TypeKind::TimestampTz);
+        assert_eq!(classify_type("timestamp with time zone"), TypeKind::TimestampTz);
+        assert_eq!(classify_type("timestamp without time zone"), TypeKind::DateTime);
+        assert_eq!(classify_type("timestamp"), TypeKind::DateTime);
+        assert_eq!(classify_type("datetime"), TypeKind::DateTime);
+        assert_eq!(classify_type("date"), TypeKind::Date);
+        assert_eq!(classify_type("time"), TypeKind::Time);
+        assert_eq!(classify_type("integer"), TypeKind::Int);
+        assert_eq!(classify_type("int4"), TypeKind::Int);
+        assert_eq!(classify_type("bigint"), TypeKind::Int);
+        assert_eq!(classify_type("decimal(10,2)"), TypeKind::Decimal);
+        assert_eq!(classify_type("numeric"), TypeKind::Decimal);
+        assert_eq!(classify_type("double precision"), TypeKind::Float);
+        assert_eq!(classify_type("real"), TypeKind::Float);
+        assert_eq!(classify_type("text"), TypeKind::Text);
+        assert_eq!(classify_type("varchar(255)"), TypeKind::Text);
+        // "interval" must NOT be classified as Int even though it
+        // contains "int".
+        assert_eq!(classify_type("interval"), TypeKind::Text);
+    }
+
+    #[test]
+    fn empty_on_nullable_yields_null() {
+        let r = parse_input_for_column("", Some(&col("text", true))).unwrap();
+        assert!(matches!(r, Value::Null));
+    }
+
+    #[test]
+    fn empty_on_not_null_with_default_yields_null() {
+        let r = parse_input_for_column("", Some(&col_with_default("timestamp", "now()"))).unwrap();
+        assert!(matches!(r, Value::Null));
+    }
+
+    #[test]
+    fn empty_on_not_null_no_default_is_rejected() {
+        let r = parse_input_for_column("", Some(&col("text", false)));
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("required"));
+    }
+
+    #[test]
+    fn parses_int_decimal_float_bool() {
+        assert!(matches!(
+            parse_input_for_column("42", Some(&col("integer", false))).unwrap(),
+            Value::Int(42)
+        ));
+        assert!(matches!(
+            parse_input_for_column("3.14", Some(&col("real", false))).unwrap(),
+            Value::Float(_)
+        ));
+        assert!(matches!(
+            parse_input_for_column("99.99", Some(&col("decimal(10,2)", false))).unwrap(),
+            Value::Decimal(_)
+        ));
+        assert!(matches!(
+            parse_input_for_column("yes", Some(&col("boolean", false))).unwrap(),
+            Value::Bool(true)
+        ));
+        assert!(matches!(
+            parse_input_for_column("0", Some(&col("tinyint(1)", false))).unwrap(),
+            Value::Bool(false)
+        ));
+    }
+
+    #[test]
+    fn parses_uuid_json_date_time_datetime_timestamptz() {
+        let uuid = parse_input_for_column("550e8400-e29b-41d4-a716-446655440000", Some(&col("uuid", false))).unwrap();
+        assert!(matches!(uuid, Value::Uuid(_)));
+
+        let json = parse_input_for_column(r#"{"a":1}"#, Some(&col("jsonb", false))).unwrap();
+        assert!(matches!(json, Value::Json(_)));
+
+        let date = parse_input_for_column("2024-01-15", Some(&col("date", false))).unwrap();
+        assert!(matches!(date, Value::Date(_)));
+
+        let time = parse_input_for_column("14:30:00", Some(&col("time", false))).unwrap();
+        assert!(matches!(time, Value::Time(_)));
+        let time_short = parse_input_for_column("14:30", Some(&col("time", false))).unwrap();
+        assert!(matches!(time_short, Value::Time(_)));
+
+        let datetime = parse_input_for_column("2024-01-15 14:30:00", Some(&col("timestamp", false))).unwrap();
+        assert!(matches!(datetime, Value::DateTime(_)));
+        let datetime_t = parse_input_for_column("2024-01-15T14:30:00", Some(&col("datetime", false))).unwrap();
+        assert!(matches!(datetime_t, Value::DateTime(_)));
+
+        let ts = parse_input_for_column("2024-01-15T14:30:00Z", Some(&col("timestamptz", false))).unwrap();
+        assert!(matches!(ts, Value::TimestampTz(_)));
+    }
+
+    #[test]
+    fn rejects_invalid_type_specific_input() {
+        assert!(parse_input_for_column("not-a-number", Some(&col("integer", false))).is_err());
+        assert!(parse_input_for_column("not-a-uuid", Some(&col("uuid", false))).is_err());
+        assert!(parse_input_for_column("{not json", Some(&col("jsonb", false))).is_err());
+        assert!(parse_input_for_column("2024/01/15", Some(&col("date", false))).is_err());
+        assert!(parse_input_for_column("13:00:99", Some(&col("time", false))).is_err());
+        assert!(parse_input_for_column("not-a-date", Some(&col("timestamp", false))).is_err());
+        assert!(parse_input_for_column("maybe", Some(&col("boolean", false))).is_err());
+    }
+
+    #[test]
+    fn unknown_type_falls_through_to_text() {
+        let r = parse_input_for_column("anything goes here", Some(&col("varchar(255)", false))).unwrap();
+        assert!(matches!(r, Value::Text(_)));
+    }
+
+    #[test]
+    fn null_sentinel_typed_literally_is_text() {
+        // Column is text + nullable; user types "<NULL>" literally. We
+        // do NOT special-case the sentinel string — only an actually-
+        // empty input becomes Null. The visual sentinel is cleared by
+        // the grid before edit (grid.rs install_double_click_to_edit),
+        // so this path is only reached if the user typed `<NULL>` on
+        // purpose.
+        let r = parse_input_for_column("<NULL>", Some(&col("text", true))).unwrap();
+        match r {
+            Value::Text(s) => assert_eq!(s, "<NULL>"),
+            other => panic!("expected Text(\"<NULL>\") got {other:?}"),
+        }
     }
 }

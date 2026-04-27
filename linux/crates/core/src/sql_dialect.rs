@@ -212,13 +212,17 @@ fn build_where_clause(
 ) -> String {
     let mut clauses = Vec::with_capacity(pk_indexes.len());
     for pk_col in pk_indexes {
-        clauses.push(format!(
-            "{} = {}",
-            quote_ident(driver_id, &columns[*pk_col].name),
-            placeholder_for(driver_id, *placeholder_idx)
-        ));
-        *placeholder_idx += 1;
-        params.push(original_row[*pk_col].clone());
+        let ident = quote_ident(driver_id, &columns[*pk_col].name);
+        // SQL three-valued logic: `col = NULL` is never true. A nullable
+        // PK component holding NULL must use `IS NULL` or the UPDATE /
+        // DELETE silently matches zero rows.
+        if matches!(original_row[*pk_col], Value::Null) {
+            clauses.push(format!("{ident} IS NULL"));
+        } else {
+            clauses.push(format!("{ident} = {}", placeholder_for(driver_id, *placeholder_idx)));
+            *placeholder_idx += 1;
+            params.push(original_row[*pk_col].clone());
+        }
     }
     clauses.join(" AND ")
 }
@@ -406,6 +410,28 @@ mod tests {
         let values = vec![Value::Int(1), Value::Text("a".into())];
         let (sql, _) = build_insert_from_draft("postgres", Some("public"), "u", &columns, &values).unwrap();
         assert_eq!(sql, "INSERT INTO \"public\".\"u\" (\"id\", \"name\") VALUES ($1, $2)");
+    }
+
+    #[test]
+    fn where_clause_uses_is_null_for_null_pk_components() {
+        let columns = vec![col("a", true), col("b", true), col("c", false)];
+        let original = vec![Value::Int(1), Value::Null, Value::Text("x".into())];
+        let (sql, params) =
+            build_single_cell_update("postgres", "t", &columns, &original, 2, Value::Text("y".into())).unwrap();
+        assert_eq!(sql, "UPDATE \"t\" SET \"c\" = $1 WHERE \"a\" = $2 AND \"b\" IS NULL");
+        // params: new_value, plus the non-null PK component only — the NULL
+        // PK component does not consume a placeholder.
+        assert_eq!(params, vec![Value::Text("y".into()), Value::Int(1)]);
+    }
+
+    #[test]
+    fn where_clause_all_null_pk_no_placeholders() {
+        let columns = vec![col("a", true), col("b", true), col("c", false)];
+        let original = vec![Value::Null, Value::Null, Value::Text("x".into())];
+        let (sql, params) =
+            build_single_cell_update("mysql", "t", &columns, &original, 2, Value::Text("y".into())).unwrap();
+        assert_eq!(sql, "UPDATE `t` SET `c` = ? WHERE `a` IS NULL AND `b` IS NULL");
+        assert_eq!(params, vec![Value::Text("y".into())]);
     }
 
     #[test]
