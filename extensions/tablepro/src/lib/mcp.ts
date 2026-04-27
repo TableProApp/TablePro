@@ -45,6 +45,10 @@ interface JsonRpcError {
 
 type JsonRpcResponse<T> = JsonRpcSuccess<T> | JsonRpcError;
 
+interface InitializeResult {
+    protocolVersion: string;
+}
+
 async function readHandshake(): Promise<MCPHandshake | null> {
     try {
         const raw = await fs.readFile(handshakeFilePath(), "utf8");
@@ -98,42 +102,64 @@ function nextRequestId(): string {
     return `tp-${Date.now()}-${requestCounter}`;
 }
 
-async function rpc<T>(
+interface SessionState {
+    sessionId: string;
+    initialized: boolean;
+}
+
+let sessionState: SessionState | null = null;
+
+function mcpUrl(handshake: MCPHandshake): string {
+    return `http${handshake.tls ? "s" : ""}://127.0.0.1:${handshake.port}/mcp`;
+}
+
+async function postJsonRpc<T>(
     method: string,
-    params: Record<string, unknown> = {},
-): Promise<T> {
-    const handshake = await ensureHandshake(true);
-    const token = getApiToken();
-    const url = `http${handshake.tls ? "s" : ""}://127.0.0.1:${handshake.port}/v1/mcp`;
+    params: Record<string, unknown> | undefined,
+    handshake: MCPHandshake,
+    token: string,
+    sessionId: string | null,
+): Promise<{ result: T; sessionId: string | null }> {
     const body: JsonRpcRequest = {
         jsonrpc: "2.0",
         id: nextRequestId(),
         method,
         params,
     };
+    const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+    };
+    if (sessionId) {
+        headers["Mcp-Session-Id"] = sessionId;
+    }
     let response: Response;
     try {
-        response = await fetch(url, {
+        response = await fetch(mcpUrl(handshake), {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
+            headers,
             body: JSON.stringify(body),
         });
     } catch {
         throw new MCPNotRunningError();
     }
     if (response.status === 401) {
+        sessionState = null;
         throw new TokenRevokedError();
     }
     if (response.status === 403) {
         const message = await safeReadError(response);
         throw new ExternalAccessDeniedError(message);
     }
+    if (response.status === 404) {
+        sessionState = null;
+        throw new Error(`TablePro MCP returned HTTP 404`);
+    }
     if (!response.ok) {
         throw new Error(`TablePro MCP returned HTTP ${response.status}`);
     }
+    const responseSessionId = response.headers.get("mcp-session-id");
     const json = (await response.json()) as JsonRpcResponse<T>;
     if ("error" in json) {
         const message = json.error.message;
@@ -145,7 +171,80 @@ async function rpc<T>(
         }
         throw new Error(message);
     }
-    return json.result;
+    return { result: json.result, sessionId: responseSessionId };
+}
+
+async function ensureSession(
+    handshake: MCPHandshake,
+    token: string,
+): Promise<string> {
+    if (sessionState && sessionState.initialized) {
+        return sessionState.sessionId;
+    }
+    const initParams = {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "raycast-tablepro", version: "0.1.0" },
+    };
+    const init = await postJsonRpc<InitializeResult>(
+        "initialize",
+        initParams,
+        handshake,
+        token,
+        null,
+    );
+    if (!init.sessionId) {
+        throw new Error("MCP initialize did not return a session id");
+    }
+    sessionState = { sessionId: init.sessionId, initialized: false };
+    await postJsonRpc<unknown>(
+        "notifications/initialized",
+        {},
+        handshake,
+        token,
+        init.sessionId,
+    );
+    sessionState.initialized = true;
+    return init.sessionId;
+}
+
+async function rpc<T>(
+    method: string,
+    params: Record<string, unknown> = {},
+): Promise<T> {
+    const handshake = await ensureHandshake(true);
+    const token = getApiToken();
+    let sessionId: string;
+    try {
+        sessionId = await ensureSession(handshake, token);
+    } catch (err) {
+        sessionState = null;
+        throw err;
+    }
+    try {
+        const { result } = await postJsonRpc<T>(
+            method,
+            params,
+            handshake,
+            token,
+            sessionId,
+        );
+        return result;
+    } catch (err) {
+        if (err instanceof Error && /HTTP 404/.test(err.message)) {
+            sessionState = null;
+            const fresh = await ensureSession(handshake, token);
+            const { result } = await postJsonRpc<T>(
+                method,
+                params,
+                handshake,
+                token,
+                fresh,
+            );
+            return result;
+        }
+        throw err;
+    }
 }
 
 async function safeReadError(response: Response): Promise<string> {
@@ -184,63 +283,155 @@ export async function callTool<T>(
     return undefined as T;
 }
 
+interface RawConnectionRow {
+    id: string;
+    name: string;
+    type: string;
+    host?: string;
+    port?: number;
+    database?: string;
+    username?: string;
+    is_connected?: boolean;
+    ai_policy?: string;
+    safe_mode?: string;
+}
+
 export async function listConnections(): Promise<Connection[]> {
-    return callTool<Connection[]>("list_connections");
+    const envelope = await callTool<{ connections: RawConnectionRow[] }>(
+        "list_connections",
+    );
+    return (envelope.connections ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        host: row.host,
+        port: row.port,
+        database: row.database,
+    }));
 }
 
 export async function listDatabases(
     connectionId: string,
 ): Promise<DatabaseInfo[]> {
-    return callTool<DatabaseInfo[]>("list_databases", {
+    const envelope = await callTool<{ databases: string[] }>("list_databases", {
         connection_id: connectionId,
     });
+    return (envelope.databases ?? []).map((name) => ({ name }));
 }
 
 export async function listSchemas(
     connectionId: string,
     database?: string,
 ): Promise<SchemaInfo[]> {
-    return callTool<SchemaInfo[]>("list_schemas", {
+    const envelope = await callTool<{ schemas: string[] }>("list_schemas", {
         connection_id: connectionId,
         database,
     });
+    return (envelope.schemas ?? []).map((name) => ({ name, database }));
+}
+
+interface RawTableRow {
+    name: string;
+    type?: string;
+    schema?: string;
+    database?: string;
+    row_count?: number;
 }
 
 export async function listTables(
     connectionId: string,
     options: { database?: string; schema?: string } = {},
 ): Promise<TableInfo[]> {
-    return callTool<TableInfo[]>("list_tables", {
+    const envelope = await callTool<{ tables: RawTableRow[] }>("list_tables", {
         connection_id: connectionId,
         database: options.database,
         schema: options.schema,
+        include_row_counts: true,
     });
+    return (envelope.tables ?? []).map((row) => ({
+        name: row.name,
+        type: row.type,
+        schema: row.schema,
+        database: row.database,
+        rowCount: row.row_count,
+    }));
+}
+
+interface RawColumn {
+    name: string;
+    data_type: string;
+    is_nullable: boolean;
+    is_primary_key: boolean;
+    default_value?: string | null;
+    extra?: string | null;
+    comment?: string | null;
+}
+
+interface RawDescribeTable {
+    columns: RawColumn[];
+    indexes?: unknown[];
+    foreign_keys?: unknown[];
+    ddl?: string;
+    approximate_row_count?: number;
 }
 
 export async function describeTable(
     connectionId: string,
     table: string,
-    options: { database?: string; schema?: string } = {},
+    options: { schema?: string } = {},
 ): Promise<{ columns: ColumnInfo[] }> {
-    return callTool<{ columns: ColumnInfo[] }>("describe_table", {
+    const envelope = await callTool<RawDescribeTable>("describe_table", {
         connection_id: connectionId,
         table,
-        database: options.database,
         schema: options.schema,
     });
+    const columns: ColumnInfo[] = (envelope.columns ?? []).map((col) => ({
+        name: col.name,
+        type: col.data_type,
+        nullable: col.is_nullable,
+        primaryKey: col.is_primary_key,
+        defaultValue: col.default_value ?? undefined,
+        comment: col.comment ?? undefined,
+    }));
+    return { columns };
 }
 
 export async function getTableDDL(
     connectionId: string,
     table: string,
-    options: { database?: string; schema?: string } = {},
+    options: { schema?: string } = {},
 ): Promise<{ ddl: string }> {
     return callTool<{ ddl: string }>("get_table_ddl", {
         connection_id: connectionId,
         table,
-        database: options.database,
         schema: options.schema,
     });
+}
+
+interface RawQueryResult {
+    columns: string[];
+    rows: Array<Array<string | null>>;
+    row_count: number;
+    rows_affected: number;
+    execution_time_ms: number;
+    is_truncated: boolean;
+    status_message?: string;
+}
+
+function adaptQueryResult(raw: RawQueryResult): QueryResult {
+    const rows: Array<Record<string, unknown>> = (raw.rows ?? []).map((row) => {
+        const obj: Record<string, unknown> = {};
+        raw.columns.forEach((col, idx) => {
+            obj[col] = row[idx] ?? null;
+        });
+        return obj;
+    });
+    return {
+        columns: raw.columns ?? [],
+        rows,
+        affectedRows: raw.rows_affected,
+        durationMs: raw.execution_time_ms,
+    };
 }
 
 export async function executeQuery(
@@ -248,13 +439,14 @@ export async function executeQuery(
     sql: string,
     options: { database?: string; schema?: string; rowLimit?: number } = {},
 ): Promise<QueryResult> {
-    return callTool<QueryResult>("execute_query", {
+    const raw = await callTool<RawQueryResult>("execute_query", {
         connection_id: connectionId,
-        sql,
+        query: sql,
         database: options.database,
         schema: options.schema,
-        row_limit: options.rowLimit,
+        max_rows: options.rowLimit,
     });
+    return adaptQueryResult(raw);
 }
 
 export async function explainQuery(
@@ -262,32 +454,86 @@ export async function explainQuery(
     sql: string,
     options: { database?: string; schema?: string } = {},
 ): Promise<QueryResult> {
-    return callTool<QueryResult>("execute_query", {
+    const raw = await callTool<RawQueryResult>("execute_query", {
         connection_id: connectionId,
-        sql: `EXPLAIN ${sql}`,
+        query: `EXPLAIN ${sql}`,
         database: options.database,
         schema: options.schema,
     });
+    return adaptQueryResult(raw);
+}
+
+interface RawRecentTab {
+    tab_id: string;
+    connection_id: string;
+    connection_name: string;
+    tab_type: string;
+    display_title: string;
+    is_active: boolean;
+    table_name?: string;
+    database_name?: string;
+    schema_name?: string;
+    window_id?: string;
+}
+
+function tabTypeFromRaw(raw: string): RecentTab["tabType"] {
+    if (raw === "table") return "table";
+    if (raw === "createTable") return "structure";
+    return "query";
 }
 
 export async function listRecentTabs(): Promise<RecentTab[]> {
-    return callTool<RecentTab[]>("list_recent_tabs");
+    const envelope = await callTool<{ tabs: RawRecentTab[] }>(
+        "list_recent_tabs",
+    );
+    return (envelope.tabs ?? []).map((tab) => ({
+        id: tab.tab_id,
+        connectionId: tab.connection_id,
+        connectionName: tab.connection_name,
+        tabType: tabTypeFromRaw(tab.tab_type),
+        title: tab.display_title,
+        tableName: tab.table_name,
+        databaseName: tab.database_name,
+    }));
+}
+
+interface RawHistoryEntry {
+    id: string;
+    query: string;
+    connection_id: string;
+    database_name?: string;
+    executed_at: number;
+    execution_time_ms: number;
+    row_count: number;
+    was_successful: boolean;
+    error_message?: string;
 }
 
 export async function searchHistory(
     query: string,
     limit = 50,
 ): Promise<QueryHistoryEntry[]> {
-    return callTool<QueryHistoryEntry[]>("search_query_history", {
-        query,
-        limit,
-    });
+    const envelope = await callTool<{ entries: RawHistoryEntry[] }>(
+        "search_query_history",
+        {
+            query,
+            limit,
+        },
+    );
+    return (envelope.entries ?? []).map((entry) => ({
+        id: entry.id,
+        query: entry.query,
+        connectionId: entry.connection_id,
+        executedAt: new Date(entry.executed_at * 1000).toISOString(),
+        durationMs: entry.execution_time_ms,
+        rowCount: entry.row_count,
+    }));
 }
 
 export async function openConnectionWindow(
     connectionId: string,
 ): Promise<void> {
-    await callTool<void>("open_connection_window", {
+    await callTool<unknown>("open_connection_window", {
         connection_id: connectionId,
     });
 }

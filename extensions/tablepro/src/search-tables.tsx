@@ -183,7 +183,6 @@ function TablesList({
                                             connection.id,
                                             table.name,
                                             {
-                                                database,
                                                 schema: table.schema ?? schema,
                                             },
                                         );
