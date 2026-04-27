@@ -6,11 +6,27 @@
 import Foundation
 import os
 
+struct PairingRequest: Sendable, Equatable {
+    let clientName: String
+    let challenge: String
+    let redirectURL: URL
+    let requestedScopes: String?
+    let requestedConnectionIds: Set<UUID>?
+}
+
+struct PairingExchange: Sendable, Equatable {
+    let code: String
+    let verifier: String
+}
+
 enum DeeplinkAction {
-    case connect(connectionName: String)
-    case openTable(connectionName: String, tableName: String, databaseName: String?)
-    case openQuery(connectionName: String, sql: String)
+    case connect(connectionId: UUID)
+    case openTable(connectionId: UUID, tableName: String, databaseName: String?)
+    case openQuery(connectionId: UUID, sql: String)
     case importConnection(ExportableConnection)
+    case pairIntegration(PairingRequest)
+    case exchangePairing(PairingExchange)
+    case startMCP
 }
 
 @MainActor
@@ -26,6 +42,8 @@ enum DeeplinkHandler {
             return parseConnect(url)
         case "import":
             return parseImport(url)
+        case "integrations":
+            return parseIntegrations(url)
         default:
             logger.warning("Unknown deep link host: \(host ?? "nil", privacy: .public)")
             return nil
@@ -36,41 +54,121 @@ enum DeeplinkHandler {
 
     private static func parseConnect(_ url: URL) -> DeeplinkAction? {
         let components = url.pathComponents.filter { $0 != "/" }
-        guard let connectionName = components.first?.removingPercentEncoding,
-              !connectionName.isEmpty else { return nil }
+        guard let firstRaw = components.first?.removingPercentEncoding,
+              !firstRaw.isEmpty else { return nil }
 
-        // /connect/{name}/query?sql=...
+        guard let connectionId = UUID(uuidString: firstRaw) else {
+            logger.warning("Connect deep link missing valid UUID: \(firstRaw, privacy: .public)")
+            return nil
+        }
+
         if components.count >= 2, components[1] == "query" {
             let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             guard let sql = queryItems?.first(where: { $0.name == "sql" })?.value,
                   !sql.isEmpty else { return nil }
-            return .openQuery(connectionName: connectionName, sql: sql)
+            return .openQuery(connectionId: connectionId, sql: sql)
         }
 
-        // /connect/{name}/database/{db}/table/{table}
         if components.count == 5,
            components[1] == "database",
            components[3] == "table",
            let dbName = components[2].removingPercentEncoding,
            let tableName = components[4].removingPercentEncoding {
-            return .openTable(connectionName: connectionName, tableName: tableName,
-                              databaseName: dbName)
+            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: dbName)
         }
 
-        // /connect/{name}/table/{table}
         if components.count >= 3, components[1] == "table",
            let tableName = components[2].removingPercentEncoding {
-            return .openTable(connectionName: connectionName, tableName: tableName,
-                              databaseName: nil)
+            return .openTable(connectionId: connectionId, tableName: tableName, databaseName: nil)
         }
 
-        // /connect/{name}
         if components.count == 1 {
-            return .connect(connectionName: connectionName)
+            return .connect(connectionId: connectionId)
         }
 
         logger.warning("Unrecognized connect deep link path: \(url.path, privacy: .public)")
         return nil
+    }
+
+    // MARK: - Integrations parsing
+
+    private static func parseIntegrations(_ url: URL) -> DeeplinkAction? {
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard let action = components.first else {
+            logger.warning("Integrations deep link missing action")
+            return nil
+        }
+
+        switch action {
+        case "pair":
+            return parsePair(url)
+        case "exchange":
+            return parseExchange(url)
+        case "start-mcp":
+            return .startMCP
+        default:
+            logger.warning("Unknown integrations action: \(action, privacy: .public)")
+            return nil
+        }
+    }
+
+    private static func parsePair(_ url: URL) -> DeeplinkAction? {
+        guard let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        else {
+            logger.warning("Pair deep link missing query items")
+            return nil
+        }
+
+        func value(_ key: String) -> String? {
+            queryItems.first(where: { $0.name == key })?.value
+        }
+
+        guard let clientName = value("client"), !clientName.isEmpty,
+              let challenge = value("challenge"), !challenge.isEmpty,
+              let redirectRaw = value("redirect"), !redirectRaw.isEmpty,
+              let redirectURL = URL(string: redirectRaw) else {
+            logger.warning("Pair deep link missing required params")
+            return nil
+        }
+
+        let scopes = value("scopes")?.nilIfEmpty
+        let connectionIds: Set<UUID>?
+        if let csv = value("connection-ids")?.nilIfEmpty {
+            let parsed = csv.split(separator: ",").compactMap { UUID(uuidString: String($0)) }
+            connectionIds = parsed.isEmpty ? nil : Set(parsed)
+        } else {
+            connectionIds = nil
+        }
+
+        return .pairIntegration(
+            PairingRequest(
+                clientName: clientName,
+                challenge: challenge,
+                redirectURL: redirectURL,
+                requestedScopes: scopes,
+                requestedConnectionIds: connectionIds
+            )
+        )
+    }
+
+    private static func parseExchange(_ url: URL) -> DeeplinkAction? {
+        guard let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        else {
+            logger.warning("Exchange deep link missing query items")
+            return nil
+        }
+
+        func value(_ key: String) -> String? {
+            queryItems.first(where: { $0.name == key })?.value
+        }
+
+        guard let code = value("code"), !code.isEmpty,
+              let verifier = value("verifier"), !verifier.isEmpty else {
+            logger.warning("Exchange deep link missing code or verifier")
+            return nil
+        }
+
+        return .exchangePairing(PairingExchange(code: code, verifier: verifier))
     }
 
     // MARK: - Import parsing
@@ -180,10 +278,13 @@ enum DeeplinkHandler {
 
     // MARK: - Resolution
 
-    static func resolveConnection(named name: String) -> DatabaseConnection? {
-        let connections = ConnectionStorage.shared.loadConnections()
-        return connections.first {
-            $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }
+    static func resolveConnection(byId id: UUID) -> DatabaseConnection? {
+        ConnectionStorage.shared.loadConnections().first { $0.id == id }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

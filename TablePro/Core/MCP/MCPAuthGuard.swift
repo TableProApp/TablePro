@@ -18,18 +18,28 @@ actor MCPAuthGuard {
     // MARK: - Connection Access Check
 
     func checkConnectionAccess(connectionId: UUID, sessionId: String) async throws {
-        let (policy, connectionName, databaseType) = await MainActor.run {
+        let snapshot: ConnectionAccessSnapshot? = await MainActor.run {
             let conns = ConnectionStorage.shared.loadConnections()
             guard let conn = conns.first(where: { $0.id == connectionId }) else {
-                return (AIConnectionPolicy.never, "", "")
+                return nil
             }
-            let effective = conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy
-            return (effective, conn.name, conn.type.rawValue)
+            return ConnectionAccessSnapshot(
+                policy: conn.aiPolicy ?? AppSettingsManager.shared.ai.defaultConnectionPolicy,
+                externalAccess: conn.externalAccess,
+                name: conn.name,
+                databaseType: conn.type.rawValue
+            )
         }
 
-        switch policy {
+        guard let snapshot else {
+            throw MCPError.forbidden(
+                String(localized: "Connection not found")
+            )
+        }
+
+        switch snapshot.policy {
         case .alwaysAllow:
-            return
+            break
 
         case .never:
             throw MCPError.forbidden(
@@ -38,12 +48,12 @@ actor MCPAuthGuard {
 
         case .askEachTime:
             if let approved = sessionApprovals[sessionId], approved.contains(connectionId) {
-                return
+                break
             }
 
             let userApproved = try await promptUserApproval(
-                connectionName: connectionName,
-                databaseType: databaseType
+                connectionName: snapshot.name,
+                databaseType: snapshot.databaseType
             )
 
             if userApproved {
@@ -54,6 +64,43 @@ actor MCPAuthGuard {
                 )
             }
         }
+
+        if snapshot.externalAccess == .blocked {
+            throw MCPError.forbidden(
+                String(localized: "External access is disabled for this connection")
+            )
+        }
+    }
+
+    func checkExternalWritePermission(
+        connectionId: UUID,
+        sql: String,
+        databaseType: DatabaseType
+    ) async throws {
+        guard QueryClassifier.isWriteQuery(sql, databaseType: databaseType) else { return }
+
+        let externalAccess: ExternalAccessLevel? = await MainActor.run {
+            ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }?.externalAccess
+        }
+
+        guard let externalAccess else {
+            throw MCPError.forbidden(
+                String(localized: "Connection not found")
+            )
+        }
+
+        if externalAccess != .readWrite {
+            throw MCPError.forbidden(
+                String(localized: "Connection is read-only for external clients")
+            )
+        }
+    }
+
+    private struct ConnectionAccessSnapshot: Sendable {
+        let policy: AIConnectionPolicy
+        let externalAccess: ExternalAccessLevel
+        let name: String
+        let databaseType: String
     }
 
     // MARK: - Query Permission Check
@@ -64,6 +111,12 @@ actor MCPAuthGuard {
         databaseType: DatabaseType,
         safeModeLevel: SafeModeLevel
     ) async throws {
+        try await checkExternalWritePermission(
+            connectionId: connectionId,
+            sql: sql,
+            databaseType: databaseType
+        )
+
         let isWrite = QueryClassifier.isWriteQuery(sql, databaseType: databaseType)
         let needsDialog = safeModeLevel != .silent && (isWrite || safeModeLevel == .alertFull || safeModeLevel == .safeModeFull)
 

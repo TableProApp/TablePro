@@ -169,19 +169,23 @@ extension AppDelegate {
         guard let action = DeeplinkHandler.parse(url) else { return }
 
         switch action {
-        case .connect(let name):
-            connectViaDeeplink(connectionName: name)
+        case .connect(let connectionId):
+            connectViaDeeplink(connectionId: connectionId)
 
-        case .openTable(let name, let table, let database):
-            connectViaDeeplink(connectionName: name) { connectionId in
-                EditorTabPayload(connectionId: connectionId, tabType: .table,
+        case .openTable(let connectionId, let table, let database):
+            connectViaDeeplink(connectionId: connectionId) { resolvedId in
+                EditorTabPayload(connectionId: resolvedId, tabType: .table,
                                  tableName: table, databaseName: database)
             }
 
-        case .openQuery(let name, let sql):
+        case .openQuery(let connectionId, let sql):
             let maxDeeplinkSQLLength = 51_200
             let sqlLength = (sql as NSString).length
             guard sqlLength <= maxDeeplinkSQLLength else { return }
+            guard let connection = DeeplinkHandler.resolveConnection(byId: connectionId) else {
+                showConnectionNotFoundAlert(connectionId: connectionId)
+                return
+            }
             let preview: String
             if sqlLength > 300 {
                 let hiddenCount = sqlLength - 300
@@ -192,14 +196,14 @@ extension AppDelegate {
             }
             let confirmed = await AlertHelper.confirmDestructive(
                 title: String(localized: "Open Query from Link"),
-                message: String(format: String(localized: "An external link wants to open a query on connection \"%@\":\n\n%@"), name, preview),
+                message: String(format: String(localized: "An external link wants to open a query on connection \"%@\":\n\n%@"), connection.name, preview),
                 confirmButton: String(localized: "Open Query"),
                 cancelButton: String(localized: "Cancel"),
                 window: NSApp.keyWindow
             )
             guard confirmed else { return }
-            connectViaDeeplink(connectionName: name) { connectionId in
-                EditorTabPayload(connectionId: connectionId, tabType: .query,
+            connectViaDeeplink(connectionId: connectionId) { resolvedId in
+                EditorTabPayload(connectionId: resolvedId, tabType: .query,
                                  initialQuery: sql)
             }
 
@@ -207,20 +211,33 @@ extension AppDelegate {
             openWelcomeWindow()
             PendingActionStore.shared.deeplinkImport = exportable
             NotificationCenter.default.post(name: .deeplinkImportRequested, object: exportable)
+
+        case .pairIntegration:
+            fileOpenLogger.info("Pair integration deep link received; Stream B will implement")
+
+        case .exchangePairing:
+            fileOpenLogger.info("Exchange pairing deep link received; Stream B will implement")
+
+        case .startMCP:
+            await MCPServerManager.shared.lazyStart()
         }
     }
 
+    private func showConnectionNotFoundAlert(connectionId: UUID) {
+        fileOpenLogger.error("Deep link: no connection with ID '\(connectionId.uuidString, privacy: .public)'")
+        AlertHelper.showErrorSheet(
+            title: String(localized: "Connection Not Found"),
+            message: String(format: String(localized: "No saved connection with ID \"%@\"."), connectionId.uuidString),
+            window: NSApp.keyWindow
+        )
+    }
+
     private func connectViaDeeplink(
-        connectionName: String,
+        connectionId: UUID,
         makePayload: (@Sendable (UUID) -> EditorTabPayload)? = nil
     ) {
-        guard let connection = DeeplinkHandler.resolveConnection(named: connectionName) else {
-            fileOpenLogger.error("Deep link: no connection named '\(connectionName, privacy: .public)'")
-            AlertHelper.showErrorSheet(
-                title: String(localized: "Connection Not Found"),
-                message: String(format: String(localized: "No saved connection named \"%@\"."), connectionName),
-                window: NSApp.keyWindow
-            )
+        guard let connection = DeeplinkHandler.resolveConnection(byId: connectionId) else {
+            showConnectionNotFoundAlert(connectionId: connectionId)
             return
         }
 

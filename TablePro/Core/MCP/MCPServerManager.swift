@@ -150,6 +150,29 @@ final class MCPServerManager {
         await start(port: port)
     }
 
+    func lazyStart() async {
+        if case .running = state { return }
+        if case .starting = state { return }
+
+        let settings = AppSettingsManager.shared.mcp
+        let preferredPort = UInt16(clamping: settings.port)
+
+        let chosenPort: UInt16
+        if preferredPort > 0, MCPPortAllocator.isFree(port: preferredPort) {
+            chosenPort = preferredPort
+        } else {
+            do {
+                chosenPort = try MCPPortAllocator.findFreePort(in: 51_000...52_000)
+            } catch {
+                Self.logger.error("Lazy start failed to allocate port: \(error.localizedDescription)")
+                state = .failed(error.localizedDescription)
+                return
+            }
+        }
+
+        await start(port: chosenPort)
+    }
+
     func disconnectClient(_ sessionId: String) async {
         await server?.removeSession(sessionId)
         await refreshClients()
