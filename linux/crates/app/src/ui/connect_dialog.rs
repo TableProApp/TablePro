@@ -20,16 +20,17 @@ pub struct ConnectDialog {
     drivers: Vec<DriverEntry>,
     driver_combo: adw::ComboRow,
     host: adw::EntryRow,
-    port: adw::EntryRow,
+    port: adw::SpinRow,
     database: adw::EntryRow,
     username: adw::EntryRow,
     password: adw::PasswordEntryRow,
     use_tls: adw::SwitchRow,
     read_only: adw::SwitchRow,
+    auth_group: adw::PreferencesGroup,
     ssh: SshSection,
     test_button: gtk::Button,
     submit: gtk::Button,
-    status: gtk::Label,
+    toast_overlay: adw::ToastOverlay,
 }
 
 #[derive(Debug, Clone)]
@@ -77,61 +78,22 @@ impl Component for ConnectDialog {
         adw::Dialog {
             set_title: &crate::tr!("Connect"),
             set_content_width: 480,
-
+            set_content_height: 720,
             connect_closed => ConnectDialogInput::Closed,
 
             #[wrap(Some)]
             set_child = &adw::ToolbarView {
-                add_top_bar = &adw::HeaderBar {},
+                // Action buttons in the headerbar — Test on the start
+                // (secondary), Connect on the end (primary). Matches
+                // GNOME Connections / Builder shape; no manual bottom
+                // Box, no pill class on header buttons.
+                add_top_bar = &adw::HeaderBar {
+                    pack_start: &model.test_button,
+                    pack_end: &model.submit,
+                },
 
                 #[wrap(Some)]
-                set_content = &gtk::ScrolledWindow {
-                    set_propagate_natural_height: true,
-
-                    #[wrap(Some)]
-                    set_child = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 12,
-                        set_margin_top: 24,
-                        set_margin_bottom: 24,
-                        set_margin_start: 24,
-                        set_margin_end: 24,
-
-                        adw::PreferencesGroup {
-                            add: &model.driver_combo,
-                            add: &model.host,
-                            add: &model.port,
-                            add: &model.database,
-                            add: &model.username,
-                            add: &model.password,
-                            add: &model.use_tls,
-                            add: &model.read_only,
-                            add: &model.ssh.enable,
-                        },
-
-                        append: &model.ssh.group,
-                    },
-                },
-
-                add_bottom_bar = &gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 6,
-                    set_margin_top: 8,
-                    set_margin_bottom: 12,
-                    set_margin_start: 12,
-                    set_margin_end: 12,
-
-                    append: &model.status,
-
-                    gtk::Box {
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 8,
-                        set_halign: gtk::Align::End,
-
-                        append: &model.test_button,
-                        append: &model.submit,
-                    },
-                },
+                set_content = &model.toast_overlay.clone(),
             },
         }
     }
@@ -164,7 +126,11 @@ impl Component for ConnectDialog {
             .title(crate::tr!("Host"))
             .text("localhost")
             .build();
-        let port = adw::EntryRow::builder().title(crate::tr!("Port")).text("5432").build();
+        // Port is a u16 1-65535. AdwSpinRow enforces the range natively;
+        // no parse + fallback dance, no inline-error CSS to maintain.
+        let port = adw::SpinRow::with_range(1.0, 65535.0, 1.0);
+        port.set_title(&crate::tr!("Port"));
+        port.set_value(5432.0);
         let database = adw::EntryRow::builder()
             .title(crate::tr!("Database"))
             .text("postgres")
@@ -187,7 +153,7 @@ impl Component for ConnectDialog {
 
         let ssh = SshSection::build();
         let sender_for_ssh = sender.clone();
-        ssh.enable.connect_active_notify(move |_| {
+        ssh.expander.connect_enable_expansion_notify(move |_| {
             sender_for_ssh.input(ConnectDialogInput::SshToggled);
         });
         let sender_for_auth = sender.clone();
@@ -195,15 +161,33 @@ impl Component for ConnectDialog {
             sender_for_auth.input(ConnectDialogInput::SshAuthChanged);
         });
 
-        for entry in [&host, &port, &database, &username] {
+        for entry in [&host, &database, &username] {
             let s = sender.clone();
             entry.connect_changed(move |_| s.input(ConnectDialogInput::InputChanged));
         }
         let s = sender.clone();
         password.connect_changed(move |_| s.input(ConnectDialogInput::InputChanged));
 
+        // Semantic preferences groups: Connection / Authentication /
+        // Options / SSH. AdwPreferencesPage renders them with the
+        // standard Adwaita section spacing & headers.
+        let connection_group = adw::PreferencesGroup::builder().title(crate::tr!("Connection")).build();
+        connection_group.add(&driver_combo);
+        connection_group.add(&host);
+        connection_group.add(&port);
+        connection_group.add(&database);
+
+        let auth_group = adw::PreferencesGroup::builder()
+            .title(crate::tr!("Authentication"))
+            .build();
+        auth_group.add(&username);
+        auth_group.add(&password);
+
+        let options_group = adw::PreferencesGroup::builder().title(crate::tr!("Options")).build();
+        options_group.add(&use_tls);
+        options_group.add(&read_only);
+
         let test_button = gtk::Button::builder().label(crate::tr!("Test")).build();
-        test_button.add_css_class("pill");
         let sender_for_test = sender.clone();
         test_button.connect_clicked(move |_| {
             sender_for_test.input(ConnectDialogInput::TestConnection);
@@ -211,15 +195,18 @@ impl Component for ConnectDialog {
 
         let submit = gtk::Button::builder().label(crate::tr!("Connect")).build();
         submit.add_css_class("suggested-action");
-        submit.add_css_class("pill");
         let sender_for_submit = sender.clone();
         submit.connect_clicked(move |_| {
             sender_for_submit.input(ConnectDialogInput::Submit);
         });
 
-        let status = gtk::Label::builder().wrap(true).xalign(0.0).margin_top(8).build();
-        status.add_css_class("dim-label");
-        status.set_accessible_role(gtk::AccessibleRole::Status);
+        let page = adw::PreferencesPage::new();
+        page.add(&connection_group);
+        page.add(&auth_group);
+        page.add(&options_group);
+        page.add(&ssh.group);
+        let toast_overlay = adw::ToastOverlay::new();
+        toast_overlay.set_child(Some(&page));
 
         let model = ConnectDialog {
             registry: init.registry,
@@ -232,10 +219,11 @@ impl Component for ConnectDialog {
             password,
             use_tls,
             read_only,
+            auth_group,
             ssh,
             test_button,
             submit,
-            status,
+            toast_overlay,
         };
         let widgets = view_output!();
 
@@ -258,12 +246,12 @@ impl Component for ConnectDialog {
                 };
                 if let Some(driver) = self.registry.get(&entry.id) {
                     self.apply_driver_form_visibility(driver.as_ref());
+                    self.port.set_value(driver.default_port() as f64);
                 }
                 root.set_title(&crate::tr!("Connect to {name}").replace("{name}", &entry.display_name));
             }
 
             ConnectDialogInput::SshToggled => {
-                self.ssh.set_section_visible(self.ssh.is_enabled());
                 self.refresh_validity();
             }
 
@@ -277,29 +265,27 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::Submit => {
-                self.submit.set_sensitive(false);
-                self.status.set_label(&crate::tr!("Connecting…"));
+                self.set_busy(true, &crate::tr!("Connecting…"));
 
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.status.set_label(&crate::tr!("no driver selected"));
-                    self.submit.set_sensitive(true);
+                    self.set_busy(false, "");
+                    self.show_toast(&crate::tr!("No driver selected"));
                     return;
                 };
 
                 let driver = match self.registry.get(&entry.id) {
                     Some(d) => d,
                     None => {
-                        self.status
-                            .set_label(&crate::tr!("driver {id} not registered").replace("{id}", &entry.id));
-                        self.submit.set_sensitive(true);
+                        self.set_busy(false, "");
+                        self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
                         return;
                     }
                 };
 
                 let opts = ConnectOptions {
                     host: self.host.text().to_string(),
-                    port: self.port.text().parse().unwrap_or_else(|_| driver.default_port()),
+                    port: self.port.value() as u16,
                     database: self.database.text().to_string(),
                     username: self.username.text().to_string(),
                     password: SecretString::new(self.password.text().to_string().into()),
@@ -317,8 +303,8 @@ impl Component for ConnectDialog {
                     match self.ssh.collect() {
                         Ok(inputs) => Some(inputs),
                         Err(e) => {
-                            self.status.set_label(&e);
-                            self.submit.set_sensitive(true);
+                            self.set_busy(false, "");
+                            self.show_toast(&e);
                             return;
                         }
                     }
@@ -339,27 +325,22 @@ impl Component for ConnectDialog {
             }
 
             ConnectDialogInput::TestConnection => {
-                self.test_button.set_sensitive(false);
-                self.submit.set_sensitive(false);
-                self.status.set_label(&crate::tr!("Testing…"));
+                self.set_busy(true, &crate::tr!("Testing…"));
 
                 let idx = self.driver_combo.selected() as usize;
                 let Some(entry) = self.drivers.get(idx).cloned() else {
-                    self.status.set_label(&crate::tr!("no driver selected"));
-                    self.test_button.set_sensitive(true);
-                    self.submit.set_sensitive(true);
+                    self.set_busy(false, "");
+                    self.show_toast(&crate::tr!("No driver selected"));
                     return;
                 };
                 let Some(driver) = self.registry.get(&entry.id) else {
-                    self.status
-                        .set_label(&crate::tr!("driver {id} not registered").replace("{id}", &entry.id));
-                    self.test_button.set_sensitive(true);
-                    self.submit.set_sensitive(true);
+                    self.set_busy(false, "");
+                    self.show_toast(&crate::tr!("Driver {id} not registered").replace("{id}", &entry.id));
                     return;
                 };
                 let opts = ConnectOptions {
                     host: self.host.text().to_string(),
-                    port: self.port.text().parse().unwrap_or_else(|_| driver.default_port()),
+                    port: self.port.value() as u16,
                     database: self.database.text().to_string(),
                     username: self.username.text().to_string(),
                     password: SecretString::new(self.password.text().to_string().into()),
@@ -369,9 +350,8 @@ impl Component for ConnectDialog {
                     match self.ssh.collect() {
                         Ok(inputs) => Some(inputs.cfg),
                         Err(e) => {
-                            self.status.set_label(&e);
-                            self.test_button.set_sensitive(true);
-                            self.submit.set_sensitive(true);
+                            self.set_busy(false, "");
+                            self.show_toast(&e);
                             return;
                         }
                     }
@@ -403,8 +383,7 @@ impl Component for ConnectDialog {
     }
 
     fn update_cmd(&mut self, msg: Self::CommandOutput, sender: ComponentSender<Self>, root: &Self::Root) {
-        self.submit.set_sensitive(true);
-        self.test_button.set_sensitive(true);
+        self.set_busy(false, "");
         match msg {
             ConnectDialogCmd::Result(Ok((saved, tables))) => {
                 tracing::info!(driver = %saved.driver_id, table_count = tables.len(), "connected");
@@ -416,16 +395,15 @@ impl Component for ConnectDialog {
             }
             ConnectDialogCmd::Result(Err(e)) => {
                 tracing::warn!(error = %e, "connect failed");
-                self.status.set_label(&e);
+                self.show_toast(&e);
             }
             ConnectDialogCmd::TestResult(Ok(table_count)) => {
-                self.status.set_label(
+                self.show_toast(
                     &crate::tr!("Connection ok · {n} table(s) visible").replace("{n}", &table_count.to_string()),
                 );
             }
             ConnectDialogCmd::TestResult(Err(e)) => {
-                self.status
-                    .set_label(&crate::tr!("Test failed: {error}").replace("{error}", &e));
+                self.show_toast(&crate::tr!("Test failed: {error}").replace("{error}", &e));
             }
         }
     }
@@ -474,12 +452,32 @@ impl ConnectDialog {
         self.username.set_visible(!file_based);
         self.password.set_visible(!file_based);
         self.use_tls.set_visible(!file_based);
-        self.ssh.set_enable_visible(!file_based);
+        // For file-based drivers (SQLite), only Connection + Options
+        // groups make sense; hide Authentication and SSH entirely.
+        self.auth_group.set_visible(!file_based);
+        self.ssh.set_visible(!file_based);
         self.database.set_title(&if file_based {
             crate::tr!("File path")
         } else {
             crate::tr!("Database")
         });
+    }
+
+    fn show_toast(&self, message: &str) {
+        self.toast_overlay.add_toast(adw::Toast::new(message));
+    }
+
+    /// Disable Connect / Test while an async op is in flight; the button
+    /// label changes so the user has feedback that something is
+    /// happening (no need for a separate status line).
+    fn set_busy(&self, busy: bool, busy_label: &str) {
+        self.submit.set_sensitive(!busy);
+        self.test_button.set_sensitive(!busy);
+        if busy {
+            self.submit.set_label(busy_label);
+        } else {
+            self.submit.set_label(&crate::tr!("Connect"));
+        }
     }
 }
 
