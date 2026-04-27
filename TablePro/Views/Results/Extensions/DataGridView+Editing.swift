@@ -78,24 +78,7 @@ extension TableViewCoordinator {
     }
 
     func commitOverlayEdit(row: Int, columnIndex: Int, newValue: String) {
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
-        guard oldValue != newValue else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowProvider.rowValues(at: row) ?? []
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-        let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
-        tableView?.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: tableColumnIndex))
+        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
@@ -159,24 +142,7 @@ extension TableViewCoordinator {
         let oldValue = rowProvider.value(atRow: row, column: columnIndex)
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
-        guard oldValue != newValue else { return true }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowProvider.rowValues(at: row) ?? []
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-        Task { @MainActor in
-            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
-        }
+        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
 
         (control as? CellTextField)?.restoreTruncatedDisplay()
 

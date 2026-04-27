@@ -22,24 +22,8 @@ extension TableViewCoordinator {
             value: currentValue,
             columnType: columnType
         ) { [weak self] newValue in
-            guard let self = self else { return }
-            let oldValue = self.rowProvider.value(atRow: row, column: columnIndex)
-            guard oldValue != newValue else { return }
-
-            let columnName = self.rowProvider.columns[columnIndex]
-            self.changeManager.recordCellChange(
-                rowIndex: row,
-                columnIndex: columnIndex,
-                columnName: columnName,
-                oldValue: oldValue,
-                newValue: newValue,
-                originalRow: self.rowProvider.rowValues(at: row) ?? []
-            )
-
-            self.rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-            self.delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
+            guard let self else { return }
+            self.commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
         }
     }
 
@@ -61,13 +45,7 @@ extension TableViewCoordinator {
                 connectionId: connectionId,
                 databaseType: databaseType,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(
-                        tableView: tableView,
-                        row: row,
-                        column: column,
-                        columnIndex: columnIndex,
-                        newValue: newValue
-                    )
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -129,13 +107,7 @@ extension TableViewCoordinator {
                 initialValue: currentValue,
                 columnName: columnName,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(
-                        tableView: tableView,
-                        row: row,
-                        column: column,
-                        columnIndex: columnIndex,
-                        newValue: newValue
-                    )
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss,
                 onPopOut: { currentText in
@@ -145,13 +117,7 @@ extension TableViewCoordinator {
                         columnName: columnName,
                         isEditable: true,
                         onCommit: { newValue in
-                            self?.commitPopoverEdit(
-                                tableView: tableView,
-                                row: row,
-                                column: column,
-                                columnIndex: columnIndex,
-                                newValue: newValue
-                            )
+                            self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                         }
                     )
                 }
@@ -173,13 +139,7 @@ extension TableViewCoordinator {
             HexEditorContentView(
                 initialValue: currentValue,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(
-                        tableView: tableView,
-                        row: row,
-                        column: column,
-                        columnIndex: columnIndex,
-                        newValue: newValue
-                    )
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -210,7 +170,7 @@ extension TableViewCoordinator {
                 currentValue: currentValue,
                 isNullable: isNullable,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(tableView: tableView, row: row, column: column, columnIndex: columnIndex, newValue: newValue)
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -244,7 +204,7 @@ extension TableViewCoordinator {
                 allowedValues: allowedValues,
                 initialSelections: selections,
                 onCommit: { newValue in
-                    self?.commitPopoverEdit(tableView: tableView, row: row, column: column, columnIndex: columnIndex, newValue: newValue)
+                    self?.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )
@@ -299,44 +259,22 @@ extension TableViewCoordinator {
     }
 
     @objc func dropdownMenuItemSelected(_ sender: NSMenuItem) {
-        guard let tableView = pendingDropdownTableView else { return }
         commitPopoverEdit(
-            tableView: tableView,
             row: pendingDropdownRow,
-            column: pendingDropdownColumn + 1,
             columnIndex: pendingDropdownColumn,
             newValue: sender.title
         )
     }
 
     @objc func dropdownMenuNullSelected(_ sender: NSMenuItem) {
-        guard let tableView = pendingDropdownTableView else { return }
         commitPopoverEdit(
-            tableView: tableView,
             row: pendingDropdownRow,
-            column: pendingDropdownColumn + 1,
             columnIndex: pendingDropdownColumn,
             newValue: nil
         )
     }
 
-    func commitPopoverEdit(tableView: NSTableView, row: Int, column: Int, columnIndex: Int, newValue: String?) {
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
-        guard oldValue != newValue else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowProvider.rowValues(at: row) ?? []
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-        tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
+    func commitPopoverEdit(row: Int, columnIndex: Int, newValue: String?) {
+        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
     }
 }
