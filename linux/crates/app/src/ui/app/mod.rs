@@ -39,6 +39,11 @@ pub struct App {
     sidebar_schemas: std::rc::Rc<std::cell::RefCell<Vec<Option<String>>>>,
     content_holder: adw::ToolbarView,
     toast_overlay: adw::ToastOverlay,
+    /// Persistent "Connecting…" toast handle. Held so we can dismiss it
+    /// when the connect attempt resolves (success or failure). Native
+    /// alternative to a fire-and-forget 2 s toast that disappeared
+    /// before the connection actually completed.
+    connect_progress_toast: Option<adw::Toast>,
     reconnect_banner: adw::Banner,
     connections_factory: FactoryVecDeque<ConnectionRow>,
     connections_popover: gtk::Popover,
@@ -664,6 +669,7 @@ impl SimpleComponent for App {
             sidebar_schemas,
             content_holder: widgets.content_holder.clone(),
             toast_overlay: widgets.toast_overlay.clone(),
+            connect_progress_toast: None,
             reconnect_banner: widgets.reconnect_banner.clone(),
             connections_factory,
             connections_popover: widgets.connections_popover.clone(),

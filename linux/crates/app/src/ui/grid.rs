@@ -152,14 +152,33 @@ fn build_column(
             return;
         };
         if editable_for_setup {
+            // Double-click-to-edit, matching GNOME Files filename rename.
+            // Single-click triggering edit is destructive in a database
+            // grid: an accidental row-selection click would commit the
+            // user into edit mode on the cell they happened to land on.
+            // Pattern: keep editable=false at rest so the EditableLabel's
+            // internal click→edit path is inert; flip true on double-click,
+            // call start_editing(), and flip back to false on
+            // editing-notify exit.
             let label = gtk::EditableLabel::builder()
                 .xalign(0.0)
                 .hexpand(true)
                 .margin_start(8)
                 .margin_end(8)
                 .build();
-            label.set_editable(true);
+            label.set_editable(false);
             item.set_child(Some(&label));
+
+            let dbl_click = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
+            let label_for_dbl = label.clone();
+            dbl_click.connect_pressed(move |gesture, n_press, _, _| {
+                if n_press == 2 {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    label_for_dbl.set_editable(true);
+                    label_for_dbl.start_editing();
+                }
+            });
+            label.add_controller(dbl_click);
 
             if let Some(ctx_sender) = context_sender.clone() {
                 attach_context_menu(label.upcast_ref(), idx, context_table.clone(), ctx_sender);
@@ -178,6 +197,9 @@ fn build_column(
                     return;
                 }
                 label.remove_css_class("accent");
+                // Reset to display-only so the next click won't enter
+                // edit mode via EditableLabel's internal handler.
+                label.set_editable(false);
                 let Some(snap) = SNAPSHOT_SLOT.take(label) else {
                     return;
                 };

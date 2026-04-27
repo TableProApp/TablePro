@@ -501,6 +501,30 @@ impl SimpleComponent for BrowseTab {
         root.add_bottom_bar(&paginator_bar);
         grid_search_bar.set_key_capture_widget(Some(&root));
 
+        // SearchBar's built-in Escape handler only fires while the
+        // SearchEntry (or its close button) has focus. If the user opens
+        // search and then clicks the page-size dropdown or any paginator
+        // control, Esc lands outside the bar's reach. A Local-scope
+        // shortcut on root catches Escape anywhere in this tab and
+        // dismisses the bar — matching the GNOME Files / Text Editor
+        // behaviour where Esc reliably closes search regardless of focus.
+        let search_bar_for_esc = grid_search_bar.clone();
+        let esc_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("Escape").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                if search_bar_for_esc.is_search_mode() {
+                    search_bar_for_esc.set_search_mode(false);
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
+            }))
+            .build();
+        let esc_controller = gtk::ShortcutController::new();
+        esc_controller.set_scope(gtk::ShortcutScope::Local);
+        esc_controller.add_shortcut(esc_shortcut);
+        root.add_controller(esc_controller);
+
         // Per-tab GridMsg channel: events from this tab's grid (sort
         // change, cell edits, context-menu actions) flow into this tab's
         // own input queue, which then re-emits them as outputs to App

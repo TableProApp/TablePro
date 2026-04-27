@@ -13,12 +13,29 @@ impl App {
         self.content_holder.set_content(Some(self.welcome_view.widget()));
     }
 
-    /// Used during connect to convey "Connecting…" — surfaces as a toast
-    /// since the welcome view is still visible. Per-tab loading/error
-    /// states live inside BrowseTab now (replace_status_child there).
-    pub(super) fn set_loading_page(&self, title: &str, description: &str) {
-        let _ = description;
-        self.show_toast(title);
+    /// Used during connect to convey "Connecting…". Persistent toast
+    /// (timeout 0) — held in `connect_progress_toast` until the connect
+    /// resolves, at which point `dismiss_loading_page` clears it. Replaces
+    /// the prior fire-and-forget toast which auto-dismissed at 2 s, well
+    /// before remote / SSH-tunnelled connections resolve.
+    pub(super) fn set_loading_page(&mut self, title: &str, description: &str) {
+        if let Some(prev) = self.connect_progress_toast.take() {
+            prev.dismiss();
+        }
+        let body = if description.is_empty() {
+            title.to_string()
+        } else {
+            format!("{title} {description}")
+        };
+        let toast = adw::Toast::builder().title(&body).timeout(0).build();
+        self.toast_overlay.add_toast(toast.clone());
+        self.connect_progress_toast = Some(toast);
+    }
+
+    pub(super) fn dismiss_loading_page(&mut self) {
+        if let Some(toast) = self.connect_progress_toast.take() {
+            toast.dismiss();
+        }
     }
 
     /// Convenience for `set_status_page(Error, ...)` and similar; in the

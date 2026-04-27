@@ -175,11 +175,14 @@ impl App {
         self.dispatch_to_tab(tab_id, BrowseTabInput::RowCountLoaded(count));
     }
 
-    pub(super) fn on_browse_load_failed(&self, tab_id: Option<Uuid>, msg: String) {
+    pub(super) fn on_browse_load_failed(&mut self, tab_id: Option<Uuid>, msg: String) {
         match tab_id {
             Some(id) => self.dispatch_to_tab(id, BrowseTabInput::ShowError(msg)),
             None => {
                 tracing::warn!(error = %msg, "app-level load failed");
+                // Connect attempt failed → drop the in-progress toast so
+                // the alert isn't competing with stale "Connecting…" UI.
+                self.dismiss_loading_page();
                 self.set_status_page(super::StatusKind::Error, &crate::tr!("Failed"), &msg);
             }
         }

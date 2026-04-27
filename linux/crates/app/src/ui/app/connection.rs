@@ -26,6 +26,7 @@ impl App {
     }
 
     pub(super) fn on_connected(&mut self, tables: Vec<TableInfo>, driver_id: String, sender: ComponentSender<Self>) {
+        self.dismiss_loading_page();
         self.dialog = None;
         self.connected = true;
         self.current_driver_id = Some(driver_id.clone());
@@ -156,7 +157,7 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
-    pub(super) fn on_open_saved(&self, saved: SavedConnection, sender: ComponentSender<Self>) {
+    pub(super) fn on_open_saved(&mut self, saved: SavedConnection, sender: ComponentSender<Self>) {
         self.connections_popover.popdown();
         self.set_loading_page(
             &crate::tr!("Connecting…"),
