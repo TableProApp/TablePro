@@ -19,15 +19,11 @@ use uuid::Uuid;
 use super::browse_tab::{BrowseTab, BrowseTabInput};
 use super::connect_dialog::ConnectDialog;
 use super::connection_row::{ConnectionRow, ConnectionRowOutput};
-use super::edit_dialog::EditDialog;
 use super::editor::{SqlEditor, build_schema_buffer};
 use super::history_dialog::HistoryDialog;
-use super::insert_dialog::InsertDialog;
 use super::sidebar_row::{SidebarRow, SidebarRowOutput};
 use super::welcome_view::{WelcomeView, WelcomeViewInit, WelcomeViewOutput};
-use crate::services::database_service;
 use crate::services::database_service::ConnectionHealth;
-use tablepro_core::sql_dialect::{placeholder_for, quote_ident};
 
 pub struct App {
     registry: Arc<DriverRegistry>,
@@ -67,8 +63,6 @@ pub struct App {
     workspace_tabs: std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
     dialog: Option<Controller<ConnectDialog>>,
     schema_buffer: gtk::TextBuffer,
-    insert_dialog: Option<Controller<InsertDialog>>,
-    edit_dialog: Option<Controller<EditDialog>>,
     history_dialog: Option<Controller<HistoryDialog>>,
     welcome_view: Controller<WelcomeView>,
     /// Driver id is connection-wide, not per-tab.
@@ -159,18 +153,7 @@ pub enum AppMsg {
     /// `Some(tab_id)` for tab-scoped failures; `None` for app-level
     /// failures (e.g. connect failure during open_saved).
     LoadFailed(Option<Uuid>, String),
-    InsertCommitted(Uuid),
-    EditCommitted(Uuid),
-    RowOperationCommitted(Uuid, Option<UndoBatch>),
     RowOpStarted,
-    ExecuteUndo(UndoBatch),
-    CellEdited {
-        tab_id: Uuid,
-        table: String,
-        row_position: u32,
-        col_index: usize,
-        new_value: String,
-    },
     ReloadConnections,
     ConnectionsLoaded(Vec<SavedConnection>),
     OpenSaved(SavedConnection),
@@ -196,17 +179,6 @@ pub enum AppMsg {
     ExportCsv,
     ExportJson,
     CopyToClipboard(String),
-    SetCellNull {
-        tab_id: Uuid,
-        table: String,
-        row_position: u32,
-        col_index: usize,
-    },
-    DeleteRowAt {
-        tab_id: Uuid,
-        table: String,
-        row_position: u32,
-    },
     CopyRowAsInsert {
         tab_id: Uuid,
         row_position: u32,
@@ -250,30 +222,6 @@ pub enum AppMsg {
     UndoActiveBrowseTab,
     /// Ctrl+Y — redo a previously undone change in the active tab.
     RedoActiveBrowseTab,
-    /// Show insert dialog scoped to a specific browse tab.
-    ShowInsertDialog {
-        tab_id: Uuid,
-        table: String,
-        columns: Vec<ColumnInfo>,
-        driver_id: String,
-    },
-    /// Show edit dialog scoped to a specific browse tab.
-    ShowEditDialog {
-        tab_id: Uuid,
-        table: String,
-        columns: Vec<ColumnInfo>,
-        driver_id: String,
-        row: Vec<Value>,
-    },
-    /// Confirm-and-execute a multi-row delete from a specific tab.
-    ConfirmDeleteSelected {
-        tab_id: Uuid,
-        table: String,
-        columns: Vec<ColumnInfo>,
-        driver_id: String,
-        positions: Vec<u32>,
-        rows: Vec<Vec<Value>>,
-    },
     /// Show a small alert dialog; used by BrowseTab for "select exactly
     /// one row" type messages.
     ShowAlert {
@@ -286,12 +234,6 @@ pub enum AppMsg {
 enum ExportFormat {
     Csv,
     Json,
-}
-
-#[derive(Debug, Clone)]
-pub struct UndoBatch {
-    pub label: String,
-    pub statements: Vec<(String, Vec<Value>)>,
 }
 
 /// Determines which icon and styling adw::StatusPage uses.
@@ -785,8 +727,6 @@ impl SimpleComponent for App {
             workspace_tabs: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashMap::new())),
             dialog: None,
             schema_buffer: build_schema_buffer(),
-            insert_dialog: None,
-            edit_dialog: None,
             history_dialog: None,
             welcome_view,
             current_driver_id: None,
@@ -882,58 +822,7 @@ impl SimpleComponent for App {
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
-            AppMsg::ShowInsertDialog {
-                tab_id,
-                table,
-                columns,
-                driver_id,
-            } => self.on_show_insert_dialog(tab_id, table, columns, driver_id, sender),
-            AppMsg::ShowEditDialog {
-                tab_id,
-                table,
-                columns,
-                driver_id,
-                row,
-            } => self.on_show_edit_dialog(tab_id, table, columns, driver_id, row, sender),
-            AppMsg::ConfirmDeleteSelected {
-                tab_id,
-                table,
-                columns,
-                driver_id,
-                positions,
-                rows,
-            } => self.on_confirm_delete_selected(tab_id, table, columns, driver_id, positions, rows, sender),
-            AppMsg::InsertCommitted(tab_id) => self.on_insert_committed(tab_id),
-            AppMsg::EditCommitted(tab_id) => self.on_edit_committed(tab_id),
-            AppMsg::RowOperationCommitted(tab_id, undo) => {
-                self.set_row_op_in_flight(false);
-                let label = undo
-                    .as_ref()
-                    .map(|u| u.label.clone())
-                    .unwrap_or_else(|| crate::tr!("Rows updated"));
-                if let Some(u) = undo {
-                    self.show_undoable_toast(&label, u, sender.clone());
-                } else {
-                    self.show_toast(&label);
-                }
-                // Refetch only if the originating tab is still alive (Q10).
-                self.dispatch_to_tab(tab_id, BrowseTabInput::Refresh);
-            }
             AppMsg::RowOpStarted => self.set_row_op_in_flight(true),
-            AppMsg::ExecuteUndo(batch) => {
-                self.set_row_op_in_flight(true);
-                self.show_toast(&crate::tr!("Undoing…"));
-                if let Some(tab_id) = self.selected_browse_tab_id() {
-                    run_undo_batch(sender, tab_id, batch);
-                }
-            }
-            AppMsg::CellEdited {
-                tab_id,
-                table,
-                row_position,
-                col_index,
-                new_value,
-            } => self.on_cell_edited(tab_id, table, row_position, col_index, new_value, sender),
             AppMsg::ReloadConnections => self.on_reload_connections(sender),
             AppMsg::ConnectionsLoaded(connections) => {
                 let conns = connections;
@@ -966,39 +855,10 @@ impl SimpleComponent for App {
             AppMsg::ExportCsv => self.on_export(ExportFormat::Csv),
             AppMsg::ExportJson => self.on_export(ExportFormat::Json),
             AppMsg::CopyToClipboard(text) => self.on_copy_to_clipboard(text),
-            AppMsg::SetCellNull {
-                tab_id,
-                table,
-                row_position,
-                col_index,
-            } => self.on_set_cell_null(tab_id, table, row_position, col_index, sender),
-            AppMsg::DeleteRowAt {
-                tab_id,
-                table,
-                row_position,
-            } => self.on_delete_row_at(tab_id, table, row_position, sender),
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
         }
-    }
-}
-
-fn value_to_sql_literal(v: &Value) -> String {
-    match v {
-        Value::Null => "NULL".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Decimal(d) => d.to_string(),
-        Value::Text(s) => format!("'{}'", s.replace('\'', "''")),
-        Value::Bytes(_) => "/* bytes omitted */ NULL".into(),
-        Value::Date(d) => format!("'{}'", d.format("%Y-%m-%d")),
-        Value::Time(t) => format!("'{}'", t.format("%H:%M:%S")),
-        Value::DateTime(dt) => format!("'{}'", dt.format("%Y-%m-%d %H:%M:%S")),
-        Value::TimestampTz(ts) => format!("'{}'", ts.to_rfc3339()),
-        Value::Uuid(u) => format!("'{u}'"),
-        Value::Json(j) => format!("'{}'", j.to_string().replace('\'', "''")),
     }
 }
 
@@ -1060,120 +920,6 @@ fn value_to_json(v: &Value) -> serde_json::Value {
         Value::Uuid(u) => J::String(u.to_string()),
         Value::Json(j) => j.clone(),
     }
-}
-
-pub(super) fn execute_many_then_refetch_for_tab(
-    tab_id: Uuid,
-    sender: ComponentSender<App>,
-    sql: String,
-    batches: Vec<Vec<Value>>,
-    undo: Option<UndoBatch>,
-) {
-    let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
-        return;
-    };
-    let sender_clone = sender.clone();
-    sender.command(move |_, shutdown| {
-        shutdown
-            .register(async move {
-                let mut total: u64 = 0;
-                for params in &batches {
-                    match conn.execute_params(&sql, params).await {
-                        Ok(exec) => total += exec.rows_affected,
-                        Err(e) => {
-                            tracing::warn!(error = %e, "execute (multi) failed");
-                            sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
-                            return;
-                        }
-                    }
-                }
-                tracing::info!(rows = total, "multi-execute ok");
-                sender_clone.input(AppMsg::RowOperationCommitted(tab_id, undo));
-            })
-            .drop_on_shutdown()
-    });
-}
-
-pub(super) fn execute_then_refetch_for_tab(
-    tab_id: Uuid,
-    sender: ComponentSender<App>,
-    sql: String,
-    params: Vec<Value>,
-    undo: Option<UndoBatch>,
-) {
-    let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
-        return;
-    };
-    let sender_clone = sender.clone();
-    sender.command(move |_, shutdown| {
-        shutdown
-            .register(async move {
-                match conn.execute_params(&sql, &params).await {
-                    Ok(exec) => {
-                        tracing::info!(rows = exec.rows_affected, "execute ok");
-                        sender_clone.input(AppMsg::RowOperationCommitted(tab_id, undo));
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "execute failed");
-                        sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
-                    }
-                }
-            })
-            .drop_on_shutdown()
-    });
-}
-
-fn run_undo_batch(sender: ComponentSender<App>, tab_id: Uuid, batch: UndoBatch) {
-    let Some(conn) = database_service::instance().active() else {
-        sender.input(AppMsg::LoadFailed(Some(tab_id), "no active connection".into()));
-        return;
-    };
-    let sender_clone = sender.clone();
-    sender.command(move |_, shutdown| {
-        shutdown
-            .register(async move {
-                for (sql, params) in batch.statements.iter() {
-                    if let Err(e) = conn.execute_params(sql, params).await {
-                        tracing::warn!(error = %e, "undo failed");
-                        sender_clone.input(AppMsg::LoadFailed(Some(tab_id), super::error_text::driver_message(&e)));
-                        return;
-                    }
-                }
-                tracing::info!(count = batch.statements.len(), "undo ok");
-                sender_clone.input(AppMsg::RowOperationCommitted(tab_id, None));
-            })
-            .drop_on_shutdown()
-    });
-}
-
-fn build_insert_for_row(driver_id: &str, table: &str, columns: &[ColumnInfo], row: &[Value]) -> (String, Vec<Value>) {
-    let cols: Vec<String> = columns.iter().map(|c| quote_ident(driver_id, &c.name)).collect();
-    let placeholders: Vec<String> = (0..columns.len()).map(|i| placeholder_for(driver_id, i)).collect();
-    let sql = format!(
-        "INSERT INTO {} ({}) VALUES ({})",
-        quote_ident(driver_id, table),
-        cols.join(", "),
-        placeholders.join(", "),
-    );
-    (sql, row.to_vec())
-}
-
-fn preview_pk(columns: &[ColumnInfo], pk_indexes: &[usize], row: &[Value]) -> String {
-    pk_indexes
-        .iter()
-        .map(|i| {
-            let name = &columns[*i].name;
-            let raw = super::grid::value_to_display_text(&row[*i]);
-            let value = match &row[*i] {
-                Value::Text(_) => format!("'{raw}'"),
-                _ => raw,
-            };
-            format!("{name} = {value}")
-        })
-        .collect::<Vec<_>>()
-        .join(" AND ")
 }
 
 fn qualified_label(schema: Option<&str>, table: &str) -> String {

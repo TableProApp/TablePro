@@ -57,7 +57,6 @@ pub struct BrowseTab {
     prev_button: gtk::Button,
     next_button: gtk::Button,
     insert_button: gtk::Button,
-    edit_row_button: gtk::Button,
     delete_button: gtk::Button,
     save_button: gtk::Button,
     discard_button: gtk::Button,
@@ -102,8 +101,6 @@ pub enum BrowseTabInput {
     PageSizeChanged(u64),
     /// User clicked the Insert button on this tab's paginator bar.
     InsertRow,
-    /// User clicked the Edit Selected button.
-    EditSelectedRow,
     /// User clicked the Delete Selected button.
     DeleteSelectedRow,
     /// Cell-edit / set-null / delete-row / copy-as-insert events from
@@ -155,42 +152,6 @@ pub enum BrowseTabOutput {
     FetchRowCount,
     /// Display state changed in a way that should be persisted.
     StateChanged,
-    /// User wants to insert a new row.
-    OpenInsertDialog {
-        columns: Vec<ColumnInfo>,
-        table: String,
-        driver_id: String,
-    },
-    /// User wants to edit the currently selected row.
-    OpenEditDialog {
-        columns: Vec<ColumnInfo>,
-        row: Vec<Value>,
-        table: String,
-        driver_id: String,
-    },
-    /// User wants to delete one or more selected rows.
-    DeleteSelected {
-        columns: Vec<ColumnInfo>,
-        table: String,
-        driver_id: String,
-        positions: Vec<u32>,
-        rows: Vec<Vec<Value>>,
-    },
-    /// Cell-edit committed via in-grid editable label.
-    CellEdited {
-        table: String,
-        row_position: u32,
-        col_index: usize,
-        new_value: String,
-    },
-    /// Cell context-menu "Set to NULL".
-    SetCellNull {
-        table: String,
-        row_position: u32,
-        col_index: usize,
-    },
-    /// Cell context-menu "Delete row".
-    DeleteRowAt { table: String, row_position: u32 },
     /// Cell context-menu "Copy row as INSERT".
     CopyRowAsInsert { row_position: u32 },
     /// Generic clipboard-copy request from grid.
@@ -353,11 +314,6 @@ impl BrowseTab {
             .tooltip_text(crate::tr!("Insert row"))
             .sensitive(false)
             .build();
-        let edit_row_button = gtk::Button::builder()
-            .icon_name("document-edit-symbolic")
-            .tooltip_text(crate::tr!("Edit selected row"))
-            .sensitive(false)
-            .build();
         let delete_button = gtk::Button::builder()
             .icon_name("user-trash-symbolic")
             .tooltip_text(crate::tr!("Delete selected row"))
@@ -366,8 +322,6 @@ impl BrowseTab {
         delete_button.add_css_class("destructive-action");
         let sender_for_insert = sender.clone();
         insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
-        let sender_for_edit = sender.clone();
-        edit_row_button.connect_clicked(move |_| sender_for_edit.input(BrowseTabInput::EditSelectedRow));
         let sender_for_delete = sender.clone();
         delete_button.connect_clicked(move |_| sender_for_delete.input(BrowseTabInput::DeleteSelectedRow));
 
@@ -392,7 +346,6 @@ impl BrowseTab {
 
         let bar = gtk::ActionBar::new();
         bar.pack_start(&insert_button);
-        bar.pack_start(&edit_row_button);
         bar.pack_start(&delete_button);
         bar.pack_end(&save_button);
         bar.pack_end(&discard_button);
@@ -400,7 +353,6 @@ impl BrowseTab {
         Mutations {
             bar,
             insert_button,
-            edit_row_button,
             delete_button,
             save_button,
             discard_button,
@@ -468,15 +420,12 @@ impl BrowseTab {
         let has_rows = self.current_result.is_some();
         if self.read_only {
             self.insert_button.set_visible(false);
-            self.edit_row_button.set_visible(false);
             self.delete_button.set_visible(false);
             return;
         }
         self.insert_button.set_visible(true);
-        self.edit_row_button.set_visible(true);
         self.delete_button.set_visible(true);
         self.insert_button.set_sensitive(has_columns);
-        self.edit_row_button.set_sensitive(has_columns && has_rows);
         self.delete_button.set_sensitive(has_columns && has_rows);
     }
 
@@ -690,7 +639,6 @@ impl SimpleComponent for BrowseTab {
             prev_button: paginator.prev_button,
             next_button: paginator.next_button,
             insert_button: mutations.insert_button,
-            edit_row_button: mutations.edit_row_button,
             delete_button: mutations.delete_button,
             save_button: mutations.save_button,
             discard_button: mutations.discard_button,
@@ -903,33 +851,6 @@ impl SimpleComponent for BrowseTab {
                     let draft_row = super::row_object::RowObject::new_draft(draft_id, default_values);
                     store.insert(0, &draft_row);
                 }
-            }
-            BrowseTabInput::EditSelectedRow => {
-                let Some(selection) = self.current_selection.as_ref() else {
-                    return;
-                };
-                let Some(result) = self.current_result.as_ref() else {
-                    return;
-                };
-                let positions = selected_positions(selection);
-                if positions.len() != 1 {
-                    let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
-                        title: crate::tr!("Cannot edit"),
-                        body: crate::tr!("Select exactly one row to edit."),
-                    });
-                    return;
-                }
-                let position = positions[0] as usize;
-                if position >= result.rows.len() {
-                    return;
-                }
-                let row = result.rows[position].clone();
-                let _ = sender.output(BrowseTabOutput::OpenEditDialog {
-                    columns: self.current_columns.clone(),
-                    row,
-                    table: self.table.clone(),
-                    driver_id: self.driver_id.clone(),
-                });
             }
             BrowseTabInput::DeleteSelectedRow => {
                 // Toolbar Delete now marks the selected rows for
@@ -1152,7 +1073,6 @@ struct Paginator {
 struct Mutations {
     bar: gtk::ActionBar,
     insert_button: gtk::Button,
-    edit_row_button: gtk::Button,
     delete_button: gtk::Button,
     save_button: gtk::Button,
     discard_button: gtk::Button,

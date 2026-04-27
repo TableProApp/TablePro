@@ -3,7 +3,7 @@ use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
 use crate::ui::history_dialog::{HistoryDialog, HistoryDialogInit, HistoryDialogOutput};
 
-use super::{App, AppMsg, UndoBatch, build_shortcuts_window};
+use super::{App, AppMsg, build_shortcuts_window};
 
 impl App {
     pub(super) fn show_welcome_page(&self, _sender: ComponentSender<Self>) {
@@ -48,21 +48,6 @@ impl App {
 
     pub(super) fn show_toast(&self, msg: &str) {
         self.toast_overlay.add_toast(adw::Toast::new(msg));
-    }
-
-    pub(super) fn show_undoable_toast(&self, msg: &str, batch: UndoBatch, sender: ComponentSender<Self>) {
-        let toast = adw::Toast::builder()
-            .title(msg)
-            .timeout(10)
-            .button_label(crate::tr!("Undo"))
-            .build();
-        let s = sender;
-        let batch_clone = batch;
-        toast.connect_button_clicked(move |t| {
-            s.input(AppMsg::ExecuteUndo(batch_clone.clone()));
-            t.dismiss();
-        });
-        self.toast_overlay.add_toast(toast);
     }
 
     pub(super) fn show_error_alert(&self, title: &str, message: &str) {
