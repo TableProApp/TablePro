@@ -87,11 +87,25 @@ Groups and folders carry over.
 
 ## Share via Link
 
-Right-click > **Copy as Import Link**. Paste in Slack, a wiki, or a README.
+Two link forms ship with TablePro. Pick the one that matches what you want to share.
+
+### Copy as Import Link
+
+Right-click > **Copy as Import Link**. Produces a `tablepro://import?...` URL with host, port, type, and username (no password). Paste in Slack, a wiki, or a README. The recipient opens the link, reviews the prefilled form, adds their own password, and saves.
 
 ```
 tablepro://import?name=Staging&host=db.example.com&port=5432&type=PostgreSQL&username=admin
 ```
+
+### Copy Connection Deep Link
+
+Right-click > **Copy Connection Deep Link**. Produces a `tablepro://connect/<uuid>` URL that opens the connection you already have saved. The link refers to your local connection record by UUID, so it only works on a Mac that already has the same connection saved (for example, your other Mac with iCloud Sync, or a teammate who imported the connection). Use this form for bookmarks, Raycast Quicklinks, or shell aliases.
+
+```
+tablepro://connect/9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1
+```
+
+See [URL Scheme](/external-api/url-scheme#open-a-connection) for the full path syntax (table targets, query parameters, percent-encoding).
 
 ## Encrypted Export <sup>Pro</sup>
 

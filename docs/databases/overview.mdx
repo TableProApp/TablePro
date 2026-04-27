@@ -243,6 +243,17 @@ SSL/TLS is not available for SQLite connections (file-based, no network involved
   />
 </Frame>
 
+#### Advanced Section
+
+Open the **Advanced** tab on the connection form for the following settings:
+
+| Field | Description |
+|-------|-------------|
+| **Startup Commands** | SQL statements that run automatically on every connection. See [Startup Commands](#startup-commands). |
+| **External Access** | Controls how external clients (Raycast, Cursor, Claude Desktop) reach this connection: `blocked`, `readOnly` (default), or `readWrite`. Tokens cannot exceed this level. See [External API](/external-api). |
+| **Local only** | Excludes this connection from iCloud Sync. See [iCloud Sync](/features/icloud-sync). |
+| **Plugin fields** | Driver-specific options (for example, MongoDB `replicaSet`, ClickHouse `Secure`). |
+
 ## Organizing Connections
 
 Colors tint the toolbar when you connect (red for production, green for development). Tags group connections in the sidebar.
