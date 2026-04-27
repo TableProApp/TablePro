@@ -112,14 +112,24 @@ pub enum StructureTrackerEvent {
     Cleared,
 }
 
+/// Paired (forward, inverse) entry stored on undo / redo deques. Both
+/// directions are kept so `redo` can re-establish the correct undo
+/// step without asking the caller to re-derive it.
+#[derive(Debug, Clone)]
+struct OpPair {
+    forward: StructureOp,
+    inverse: StructureOp,
+}
+
 #[derive(Debug, Default)]
 pub struct StructureChangeTracker {
     ops: Vec<StructureOp>,
-    /// Each push to `ops` also pushes the inverse op here so undo can
-    /// reverse the model-side state. `undo()` pops the inverse, applies
-    /// it via the caller's update path, and moves the original to redo.
-    undo: VecDeque<StructureOp>,
-    redo: VecDeque<StructureOp>,
+    /// Stores `(forward, inverse)` pairs for every entry currently in
+    /// `ops` plus any entries the user has undone. `undo()` pops the
+    /// most recent pair, applies the inverse to the caller's model,
+    /// and moves the pair to `redo`. `redo()` reverses the move.
+    undo: VecDeque<OpPair>,
+    redo: VecDeque<OpPair>,
     subscribers: Vec<relm4::Sender<StructureTrackerEvent>>,
 }
 
@@ -140,6 +150,21 @@ impl StructureChangeTracker {
         &self.ops
     }
 
+    /// Surgically remove every op for which `predicate` returns true.
+    /// Drops the matching entries from `ops`, `undo`, and `redo` in
+    /// lockstep so the undo invariant (ops length == undo length)
+    /// holds. Used by Structure tab to replace stale `AddColumn` ops
+    /// when the user edits a freshly-added column's name / type.
+    pub fn retain_ops<F: Fn(&StructureOp) -> bool>(&mut self, predicate: F) {
+        let before = self.ops.len();
+        self.ops.retain(|op| !predicate(op));
+        self.undo.retain(|pair| !predicate(&pair.forward));
+        self.redo.retain(|pair| !predicate(&pair.forward));
+        if self.ops.len() != before {
+            self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
+        }
+    }
+
     pub fn subscribe(&mut self, sender: relm4::Sender<StructureTrackerEvent>) {
         self.subscribers.push(sender);
     }
@@ -154,41 +179,38 @@ impl StructureChangeTracker {
     /// have already mutated the in-memory model; this just records
     /// for materialize + undo.
     pub fn push(&mut self, op: StructureOp, inverse: StructureOp) {
-        self.ops.push(op);
+        self.ops.push(op.clone());
         if self.undo.len() == UNDO_LIMIT {
             self.undo.pop_front();
         }
-        self.undo.push_back(inverse);
+        self.undo.push_back(OpPair { forward: op, inverse });
         self.redo.clear();
         self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
     }
 
     /// Pop the most recent op + its inverse. Returns the inverse op
-    /// for the caller to apply against the model. Saves the original
-    /// op for redo.
+    /// for the caller to apply against the model. The pair moves to
+    /// `redo` so a subsequent redo() can re-apply the forward op and
+    /// re-establish the undo entry.
     pub fn undo(&mut self) -> Option<StructureOp> {
-        let inverse = self.undo.pop_back()?;
-        let original = self.ops.pop()?;
-        self.redo.push_back(original);
+        let pair = self.undo.pop_back()?;
+        self.ops.pop()?;
+        let inverse = pair.inverse.clone();
+        self.redo.push_back(pair);
         self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
         Some(inverse)
     }
 
-    /// Pop the most recent redo entry. Returns the op for the caller
-    /// to re-apply; pushes its inverse back onto undo.
+    /// Pop the most recent redo entry. Returns the forward op for the
+    /// caller to re-apply; the pair moves back to `undo` so undo()
+    /// can reverse it again.
     pub fn redo(&mut self) -> Option<StructureOp> {
-        let op = self.redo.pop_back()?;
-        // Re-derive the inverse from the original op. Caller-supplied
-        // inverse is the cleanest contract — but at redo time the
-        // original is what we have. Caller responsibility: use
-        // push() pattern that records both directions, OR live with
-        // the fact that redo of a redoable op pushes the original
-        // back onto ops without an inverse. Practical: redo only fires
-        // after undo, so we synthesise the inverse from the model
-        // (caller-side) before re-pushing.
-        self.ops.push(op.clone());
+        let pair = self.redo.pop_back()?;
+        let forward = pair.forward.clone();
+        self.ops.push(forward.clone());
+        self.undo.push_back(pair);
         self.emit(StructureTrackerEvent::OpsChanged(self.ops.len()));
-        Some(op)
+        Some(forward)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -203,8 +225,9 @@ impl StructureChangeTracker {
         self.ops.clear();
         self.undo.clear();
         self.redo.clear();
+        // Cleared subsumes "count is now zero"; subscribers that need
+        // both signals derive count=0 from the Cleared variant.
         self.emit(StructureTrackerEvent::Cleared);
-        self.emit(StructureTrackerEvent::OpsChanged(0));
     }
 
     /// Walk the op log and produce ordered DDL statements ready for

@@ -1101,18 +1101,12 @@ impl SimpleComponent for StructureTab {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             StructureTabInput::StructureLoaded { columns, indexes, fks } => {
-                // Three separate fetches arrive as three messages —
-                // merge each into the existing model rather than
-                // overwriting. App emits non-empty vecs only.
-                if !columns.is_empty() {
-                    *self.columns.borrow_mut() = columns.into_iter().map(DraftColumn::from_info).collect();
-                }
-                if !indexes.is_empty() {
-                    *self.indexes.borrow_mut() = indexes;
-                }
-                if !fks.is_empty() {
-                    *self.foreign_keys.borrow_mut() = fks;
-                }
+                // App now coalesces the three fetches into one
+                // message; replace the model wholesale and rebuild
+                // the UI once.
+                *self.columns.borrow_mut() = columns.into_iter().map(DraftColumn::from_info).collect();
+                *self.indexes.borrow_mut() = indexes;
+                *self.foreign_keys.borrow_mut() = fks;
                 self.inner_stack.set_visible_child_name("editor");
                 sender.input(StructureTabInput::Refresh);
             }
@@ -1524,10 +1518,11 @@ impl StructureTab {
     }
 
     /// In Edit mode, walk the model's newly-added columns (where
-    /// `original.is_none()`) and rebuild AddColumn ops for them. The
-    /// existing columns' AlterColumn ops are pushed inline as the
-    /// user edits; AddColumn payloads are easier to maintain by
-    /// rebuilding from the model.
+    /// `original.is_none()`) and rebuild `AddColumn` ops for them.
+    /// Existing columns' `AlterColumn` ops are pushed inline as the
+    /// user edits each field; `AddColumn` payloads need this surgical
+    /// rewrite because the user can edit the same draft column's
+    /// fields multiple times after adding it.
     fn update_added_columns_ops(&self) {
         let table = self.table_name.borrow().clone();
         let schema = self.schema.clone();
@@ -1539,15 +1534,26 @@ impl StructureTab {
             .cloned()
             .collect();
         structure_tracker::with_tab(self.tab_id, |t| {
-            // Drop any prior AddColumn ops on this table; preserve
-            // every other op kind.
-            // Note: this implementation is a placeholder for the
-            // per-op surgical replace; for v1 we accept that
-            // multiple AddColumn ops may coexist. The Save-time
-            // materialize de-dupes by emitting them in declared
-            // order.
-            let _ = t;
-            let _ = (table, schema, new_cols);
+            // Strip every prior AddColumn op on this table so the
+            // tracker reflects only the latest column-state.
+            let table_for_filter = table.clone();
+            t.retain_ops(|op| matches!(op, StructureOp::AddColumn { table: t, .. } if *t == table_for_filter));
+            // Re-push current state. Inverse for each is the matching
+            // DropColumn so undo restores the prior model.
+            for col in new_cols {
+                t.push(
+                    StructureOp::AddColumn {
+                        schema: schema.clone(),
+                        table: table.clone(),
+                        column: col.clone(),
+                    },
+                    StructureOp::DropColumn {
+                        schema: schema.clone(),
+                        table: table.clone(),
+                        column_name: col.name.clone(),
+                    },
+                );
+            }
         });
     }
 }

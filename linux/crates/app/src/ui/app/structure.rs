@@ -102,8 +102,11 @@ impl App {
         dialog.present(Some(&self.window));
     }
 
-    /// User confirmed the drop. Run DROP TABLE → close any open tabs
-    /// for the dropped table → refresh sidebar.
+    /// User confirmed the drop. Run DROP TABLE async; only close any
+    /// open Browse / Structure tabs for the table after the DROP
+    /// returns Ok. Tabs stay open if DROP fails (FK violation,
+    /// privileges) so the user doesn't lose their state on a failed
+    /// destructive action.
     pub(super) fn on_drop_table_confirmed(
         &mut self,
         schema: Option<String>,
@@ -135,9 +138,9 @@ impl App {
                     };
                     match conn.execute(&sql).await {
                         Ok(_) => {
-                            sender_for_cmd.input(AppMsg::SchemaChanged {
+                            sender_for_cmd.input(AppMsg::DropTableSucceeded {
                                 schema: schema_for_msg.clone(),
-                                table: Some(table_for_msg.clone()),
+                                table: table_for_msg.clone(),
                             });
                         }
                         Err(e) => {
@@ -150,11 +153,49 @@ impl App {
                 })
                 .drop_on_shutdown()
         });
-        // Close any open tabs (Browse / Structure) referencing this
-        // table. We do this synchronously here so the user sees them
-        // disappear immediately rather than waiting for the async
-        // DROP to land.
+    }
+
+    /// Targeted save: commit a specific Structure tab's pending DDL
+    /// without requiring it to be the active tab. Used by the
+    /// close-with-pending dialog's "Save" branch — the user might be
+    /// closing a background tab via its X button.
+    pub(super) fn save_structure_tab_by_id(&mut self, tab_id: Uuid, sender: ComponentSender<Self>) {
+        let driver_id = self.driver_id().to_string();
+        let result = structure_tracker::with_tab_ref(tab_id, |t| t.materialize(&driver_id));
+        match result {
+            Some(Ok(statements)) if !statements.is_empty() => {
+                self.on_execute_structure_transaction(tab_id, statements, sender);
+            }
+            Some(Ok(_)) => {
+                // Nothing to save — short-circuit so close-after-save
+                // can proceed.
+                sender.input(AppMsg::StructureSaveCompleted {
+                    tab_id,
+                    new_table_name: None,
+                });
+            }
+            Some(Err(e)) => {
+                sender.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
+            }
+            None => {}
+        }
+    }
+
+    /// Drop succeeded on the driver — now close any open tabs for
+    /// the dropped table and refresh sidebar. Run synchronously on
+    /// the GTK main thread so the close + sidebar refresh appear
+    /// atomic to the user.
+    pub(super) fn on_drop_table_succeeded(
+        &mut self,
+        schema: Option<String>,
+        table: String,
+        sender: ComponentSender<Self>,
+    ) {
         self.close_tabs_for_table(schema.as_deref(), &table);
+        sender.input(AppMsg::SchemaChanged {
+            schema,
+            table: Some(table),
+        });
     }
 
     /// Walk the tab map and force-close any Browse / Structure tabs
@@ -304,9 +345,11 @@ impl App {
         }
     }
 
-    /// Edit-mode init asks for introspection. Fan out fetch_columns,
-    /// fetch_indexes, fetch_foreign_keys in one async block; the tab
-    /// gets the three results as separate StructureLoaded messages.
+    /// Edit-mode init asks for introspection. Fetch columns / indexes /
+    /// FKs in one async block and dispatch a single StructureLoaded
+    /// carrying all three so the tab only rebuilds its UI once. The
+    /// previous fan-out (3 messages, 3 rebuilds) was visible as
+    /// flicker on Edit-mode tab open.
     pub(super) fn on_fetch_structure_data(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table) = {
             let tabs = self.workspace_tabs.borrow();
@@ -341,52 +384,29 @@ impl App {
                         .fetch_foreign_keys(schema.as_deref(), &table)
                         .await
                         .unwrap_or_default();
-                    sender_for_cmd.input(AppMsg::StructureColumnsLoaded { tab_id, columns });
-                    sender_for_cmd.input(AppMsg::StructureIndexesLoaded { tab_id, indexes });
-                    sender_for_cmd.input(AppMsg::StructureForeignKeysLoaded { tab_id, fks });
+                    sender_for_cmd.input(AppMsg::StructureDataLoaded {
+                        tab_id,
+                        columns,
+                        indexes,
+                        fks,
+                    });
                 })
                 .drop_on_shutdown()
         });
     }
 
-    pub(super) fn on_structure_columns_loaded(&self, tab_id: Uuid, columns: Vec<ColumnInfo>) {
-        // Cache so the next two Loaded variants can assemble the
-        // single StructureLoaded the tab expects. Three separate
-        // fetches landing as three messages keeps the async block
-        // simple, but the tab wants one StructureLoaded — we stash
-        // the partial state in the slot until all three arrive.
+    pub(super) fn on_structure_data_loaded(
+        &self,
+        tab_id: Uuid,
+        columns: Vec<ColumnInfo>,
+        indexes: Vec<tablepro_core::IndexInfo>,
+        fks: Vec<tablepro_core::ForeignKeyInfo>,
+    ) {
         if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            // Send through immediately; the tab combines partial
-            // data with sensible defaults (empty Vecs) until the
-            // remaining loads land.
-            let _ = slot.controller.sender().send(StructureTabInput::StructureLoaded {
-                columns,
-                indexes: Vec::new(),
-                fks: Vec::new(),
-            });
-        }
-    }
-
-    pub(super) fn on_structure_indexes_loaded(&self, tab_id: Uuid, indexes: Vec<tablepro_core::IndexInfo>) {
-        // Indexes land independently of columns; the tab's stub
-        // model accepts them in whatever order via a follow-up
-        // StructureLoaded that overwrites with the union.
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot.controller.sender().send(StructureTabInput::StructureLoaded {
-                columns: Vec::new(),
-                indexes,
-                fks: Vec::new(),
-            });
-        }
-    }
-
-    pub(super) fn on_structure_foreign_keys_loaded(&self, tab_id: Uuid, fks: Vec<tablepro_core::ForeignKeyInfo>) {
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot.controller.sender().send(StructureTabInput::StructureLoaded {
-                columns: Vec::new(),
-                indexes: Vec::new(),
-                fks,
-            });
+            let _ = slot
+                .controller
+                .sender()
+                .send(StructureTabInput::StructureLoaded { columns, indexes, fks });
         }
     }
 

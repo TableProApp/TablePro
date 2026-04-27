@@ -328,6 +328,12 @@ pub enum AppMsg {
         schema: Option<String>,
         table: String,
     },
+    /// DROP TABLE returned Ok from the driver. Now-safe to close
+    /// matching tabs + refresh sidebar.
+    DropTableSucceeded {
+        schema: Option<String>,
+        table: String,
+    },
     /// Structure tab Save: run the materialised DDL statements
     /// sequentially. Postgres wraps in BEGIN / COMMIT for atomicity;
     /// MySQL / SQLite execute per-statement (DDL implicitly commits).
@@ -335,6 +341,11 @@ pub enum AppMsg {
         tab_id: Uuid,
         statements: Vec<String>,
     },
+    /// Targeted save for a specific structure tab (close-with-pending
+    /// dialog uses this — mirrors `SaveActiveBrowseTabById`). Looks up
+    /// the slot, materialises the tracker, dispatches
+    /// `ExecuteStructureTransaction`.
+    SaveActiveStructureTabById(Uuid),
     /// Structure tab Save resolved successfully. `new_table_name` is
     /// `Some(name)` for `New` mode CreateTable transitions; the tab
     /// promotes to Edit mode and the slot's `table` field updates.
@@ -350,16 +361,12 @@ pub enum AppMsg {
     FetchStructureData {
         tab_id: Uuid,
     },
-    StructureColumnsLoaded {
+    /// Coalesced load result — columns + indexes + FKs together so
+    /// the Structure tab rebuilds its list views once, not three times.
+    StructureDataLoaded {
         tab_id: Uuid,
         columns: Vec<ColumnInfo>,
-    },
-    StructureIndexesLoaded {
-        tab_id: Uuid,
         indexes: Vec<tablepro_core::IndexInfo>,
-    },
-    StructureForeignKeysLoaded {
-        tab_id: Uuid,
         fks: Vec<tablepro_core::ForeignKeyInfo>,
     },
     StructureLoadFailed {
@@ -710,7 +717,11 @@ impl SimpleComponent for App {
             }
             // Already-confirmed close path (set by the dialog handler
             // below) — skip the guard, save state, allow close.
-            if !force_close_for_close.get() && crate::services::change_tracker::any_pending_globally() {
+            // Browse + Structure tabs share the dirty-state guard:
+            // either source of pending changes triggers the dialog.
+            let has_pending = crate::services::change_tracker::any_pending_globally()
+                || crate::services::structure_tracker::any_pending_globally();
+            if !force_close_for_close.get() && has_pending {
                 let dialog = adw::AlertDialog::new(
                     Some(&crate::tr!("Save changes?")),
                     Some(&crate::tr!(
@@ -736,24 +747,36 @@ impl SimpleComponent for App {
                             for tab_id in crate::services::change_tracker::pending_tabs() {
                                 crate::services::change_tracker::with_tab(tab_id, |t| t.clear());
                             }
+                            for tab_id in crate::services::structure_tracker::pending_tabs() {
+                                crate::services::structure_tracker::with_tab(tab_id, |t| t.clear());
+                            }
                             force_close_for_resp.set(true);
                             // Re-fire close_request — guard sees the flag,
                             // saves window state, returns Proceed.
                             window_for_resp.close();
                         }
                         "save" => {
-                            // Commit each dirty tab in parallel via
-                            // SaveActiveBrowseTabById. The shared
-                            // close_after_save tracks how many we're
-                            // waiting on; the SaveCompletedForTab
-                            // handler in App::update closes the window
-                            // once the set drains. Any SaveFailed clears
-                            // close_window_after_save and aborts.
-                            let tabs: Vec<Uuid> = crate::services::change_tracker::pending_tabs();
-                            close_after_save_for_resp.borrow_mut().extend(tabs.iter().copied());
+                            // Commit each dirty tab. Browse tabs go through
+                            // SaveActiveBrowseTabById; Structure tabs need
+                            // ExecuteStructureTransaction with materialized
+                            // statements. close_after_save tracks both kinds;
+                            // the SaveCompletedForTab / StructureSaveCompleted
+                            // handlers in App::update close the window once
+                            // the set drains. Any SaveFailed aborts.
+                            let browse_tabs: Vec<Uuid> = crate::services::change_tracker::pending_tabs();
+                            let structure_tabs: Vec<Uuid> = crate::services::structure_tracker::pending_tabs();
+                            close_after_save_for_resp
+                                .borrow_mut()
+                                .extend(browse_tabs.iter().copied());
+                            close_after_save_for_resp
+                                .borrow_mut()
+                                .extend(structure_tabs.iter().copied());
                             close_window_after_save_for_resp.set(true);
-                            for id in tabs {
+                            for id in browse_tabs {
                                 let _ = input_sender_for_resp.send(AppMsg::SaveActiveBrowseTabById(id));
+                            }
+                            for id in structure_tabs {
+                                let _ = input_sender_for_resp.send(AppMsg::SaveActiveStructureTabById(id));
                             }
                         }
                         _ => {} // Cancel: do nothing, stay open.
@@ -1170,17 +1193,22 @@ impl SimpleComponent for App {
             AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
             AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table, sender),
+            AppMsg::DropTableSucceeded { schema, table } => self.on_drop_table_succeeded(schema, table, sender),
             AppMsg::ExecuteStructureTransaction { tab_id, statements } => {
                 self.on_execute_structure_transaction(tab_id, statements, sender)
             }
+            AppMsg::SaveActiveStructureTabById(id) => self.save_structure_tab_by_id(id, sender),
             AppMsg::StructureSaveCompleted { tab_id, new_table_name } => {
                 self.on_structure_save_completed(tab_id, new_table_name, sender)
             }
             AppMsg::StructureSaveFailed(tab_id, message) => self.on_structure_save_failed(tab_id, message),
             AppMsg::FetchStructureData { tab_id } => self.on_fetch_structure_data(tab_id, sender),
-            AppMsg::StructureColumnsLoaded { tab_id, columns } => self.on_structure_columns_loaded(tab_id, columns),
-            AppMsg::StructureIndexesLoaded { tab_id, indexes } => self.on_structure_indexes_loaded(tab_id, indexes),
-            AppMsg::StructureForeignKeysLoaded { tab_id, fks } => self.on_structure_foreign_keys_loaded(tab_id, fks),
+            AppMsg::StructureDataLoaded {
+                tab_id,
+                columns,
+                indexes,
+                fks,
+            } => self.on_structure_data_loaded(tab_id, columns, indexes, fks),
             AppMsg::StructureLoadFailed { tab_id, message } => self.on_structure_load_failed(tab_id, message),
             AppMsg::StructureTabDirtyChanged(tab_id, dirty) => self.refresh_structure_tab_dirty(tab_id, dirty),
             AppMsg::SchemaChanged { schema, table } => self.on_schema_changed(schema, table, sender),
