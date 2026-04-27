@@ -10,9 +10,12 @@ import Foundation
 extension MainContentCoordinator {
     // MARK: - Plugin Adapter Access
 
-    /// Returns the current connection's PluginDriverAdapter, if available.
-    private var currentPluginDriverAdapter: PluginDriverAdapter? {
-        DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
+    /// Returns the current connection's TableOperationStatementProvider, if available.
+    /// Defaults to the live `PluginDriverAdapter` resolved via DatabaseManager;
+    /// `tableOperationOverride` lets tests substitute a fake without a live session.
+    private var currentPluginDriverAdapter: TableOperationStatementProvider? {
+        if let override = tableOperationOverride { return override }
+        return DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter
     }
 
     // MARK: - Table Operation SQL Generation

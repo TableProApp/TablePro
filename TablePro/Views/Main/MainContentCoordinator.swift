@@ -99,6 +99,10 @@ final class MainContentCoordinator {
     /// Stable identifier for this coordinator's window (set by MainContentView on appear)
     var windowId: UUID?
 
+    /// Test seam: when set, replaces the live PluginDriverAdapter for table operation SQL.
+    /// Production code never assigns this; tests inject a fake to exercise truncate/drop paths.
+    @ObservationIgnored var tableOperationOverride: TableOperationStatementProvider?
+
     /// Direct reference to sidebar viewmodel — eliminates global notification broadcasts
     weak var sidebarViewModel: SidebarViewModel?
 

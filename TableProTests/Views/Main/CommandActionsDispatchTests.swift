@@ -8,8 +8,8 @@
 
 import Foundation
 import SwiftUI
-import Testing
 @testable import TablePro
+import Testing
 
 @MainActor @Suite("CommandActions Dispatch")
 struct CommandActionsDispatchTests {
@@ -24,7 +24,7 @@ struct CommandActionsDispatchTests {
         var pendingTruncates: Set<String> = []
         var pendingDeletes: Set<String> = []
         var tableOperationOptions: [String: TableOperationOptions] = [:]
-        var editingCell: CellPosition? = nil
+        var editingCell: CellPosition?
         let rightPanelState = RightPanelState()
 
         let actions = MainContentCommandActions(

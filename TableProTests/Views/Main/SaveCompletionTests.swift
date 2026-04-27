@@ -22,6 +22,7 @@ struct SaveCompletionTests {
         var conn = TestFixtures.makeConnection(type: type)
         conn.safeModeLevel = safeModeLevel
         let state = SessionStateFactory.create(connection: conn, payload: nil)
+        state.coordinator.tableOperationOverride = FakeTableOperationProvider()
         return (state.coordinator, state.tabManager, state.changeManager)
     }
 
