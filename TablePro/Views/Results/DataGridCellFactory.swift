@@ -23,40 +23,17 @@ final class CellChevronButton: NSButton {
     var cellColumnIndex: Int = -1
 }
 
-/// Factory for creating data grid cell views
 @MainActor
 final class DataGridCellFactory {
     private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCell")
 
-    /// Large dataset threshold - above this, disable expensive visual features
     private let largeDatasetThreshold = 5_000
 
-    // MARK: - Cached Settings
-
-    /// Cached NULL display string (updated via settings notification)
     private var nullDisplayString: String = AppSettingsManager.shared.dataGrid.nullDisplay
     private var settingsObserver: NSObjectProtocol?
 
-    // MARK: - Cached VoiceOver State
-
-    private static var cachedVoiceOverEnabled: Bool = NSWorkspace.shared.isVoiceOverEnabled
-    // Observer lives for app lifetime — no removal needed since DataGridCellFactory is a static singleton cache
-    private static let voiceOverObserver: NSObjectProtocol? = {
-        NotificationCenter.default.addObserver(
-            forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            Task { @MainActor in
-                DataGridCellFactory.cachedVoiceOverEnabled = NSWorkspace.shared.isVoiceOverEnabled
-            }
-        }
-    }()
-
     init() {
-        _ = Self.voiceOverObserver
-
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .dataGridSettingsDidChange,
             object: nil,
@@ -119,9 +96,8 @@ final class DataGridCellFactory {
 
         cell.stringValue = "\(row + 1)"
         cell.textColor = visualState.isDeleted ? ThemeEngine.shared.colors.dataGrid.deletedText : .secondaryLabelColor
-        if Self.cachedVoiceOverEnabled {
-            cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), row + 1))
-        }
+        cellView.setAccessibilityLabel(String(format: String(localized: "Row %d"), row + 1))
+        cellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
 
         return cellView
     }
@@ -264,12 +240,12 @@ final class DataGridCellFactory {
 
         CATransaction.commit()
 
-        if Self.cachedVoiceOverEnabled {
-            let accessibilityValue = rawValue ?? String(localized: "NULL")
-            cell.setAccessibilityLabel(
-                String(format: String(localized: "Row %d, column %d: %@"), row + 1, columnIndex + 1, accessibilityValue)
-            )
-        }
+        let accessibilityValue = rawValue ?? String(localized: "NULL")
+        cell.setAccessibilityLabel(
+            String(format: String(localized: "Row %d, column %d: %@"), row + 1, columnIndex + 1, accessibilityValue)
+        )
+        gridCellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
+        gridCellView.setAccessibilityColumnIndexRange(NSRange(location: columnIndex, length: 1))
 
         return gridCellView
     }
