@@ -87,15 +87,11 @@ final class ERDiagramViewModel {
         guard loadState != .loaded else { return }
         loadState = .loading
 
-        // Wait for connection to be established (handles app restore race condition)
-        var driver: DatabaseDriver?
-        for _ in 0..<20 {
-            driver = DatabaseManager.shared.driver(for: connectionId)
-            if driver != nil { break }
-            try? await Task.sleep(for: .milliseconds(500))
+        if DatabaseManager.shared.driver(for: connectionId) == nil {
+            await waitForConnection()
         }
 
-        guard let driver else {
+        guard let driver = DatabaseManager.shared.driver(for: connectionId) else {
             loadState = .failed(String(localized: "No database connection"))
             return
         }
@@ -125,6 +121,46 @@ final class ERDiagramViewModel {
         } catch {
             Self.logger.error("Failed to load ER diagram: \(error.localizedDescription)")
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func waitForConnection() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            let observerBox = OSAllocatedUnfairLock<NSObjectProtocol?>(initialState: nil)
+            let timeoutTaskBox = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
+
+            @Sendable func resumeOnce() {
+                let alreadyResumed = resumed.withLock { value -> Bool in
+                    if value { return true }
+                    value = true
+                    return false
+                }
+                guard !alreadyResumed else { return }
+                timeoutTaskBox.withLock { $0?.cancel(); $0 = nil }
+                let observer = observerBox.withLock { current -> NSObjectProtocol? in
+                    let value = current
+                    current = nil
+                    return value
+                }
+                if let observer {
+                    NotificationCenter.default.removeObserver(observer)
+                }
+                continuation.resume()
+            }
+
+            let observer = NotificationCenter.default.addObserver(
+                forName: .databaseDidConnect, object: nil, queue: .main
+            ) { _ in
+                resumeOnce()
+            }
+            observerBox.withLock { $0 = observer }
+
+            let timeoutTask = Task {
+                try? await Task.sleep(for: .seconds(10))
+                resumeOnce()
+            }
+            timeoutTaskBox.withLock { $0 = timeoutTask }
         }
     }
 

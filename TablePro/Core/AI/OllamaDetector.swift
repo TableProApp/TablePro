@@ -33,8 +33,7 @@ enum OllamaDetector {
             name: "Ollama (Local)",
             type: .ollama,
             model: firstModel,
-            endpoint: AIProviderType.ollama.defaultEndpoint,
-            isEnabled: true
+            endpoint: AIProviderType.ollama.defaultEndpoint
         )
 
         AppSettingsManager.shared.ai.providers.append(ollamaProvider)

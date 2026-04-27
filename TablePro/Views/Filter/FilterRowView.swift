@@ -2,34 +2,18 @@
 //  FilterRowView.swift
 //  TablePro
 //
-//  Single filter row with native macOS controls.
-//
 
 import SwiftUI
 
 struct FilterRowView: View {
     @Binding var filter: TableFilter
     let columns: [String]
-    let databaseType: DatabaseType
+    let completions: [String]
     let onAdd: () -> Void
     let onDuplicate: () -> Void
     let onRemove: () -> Void
     let onSubmit: () -> Void
-    var shouldFocus: Bool = false
-
-    private static let sqlKeywords = [
-        "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN",
-        "IS NULL", "IS NOT NULL", "EXISTS",
-        "CASE", "WHEN", "THEN", "ELSE", "END",
-    ]
-
-    private var rawSQLCompletions: [String] {
-        let langName = PluginManager.shared.queryLanguageName(for: databaseType)
-        if langName == "SQL" || langName == "CQL" || langName == "PartiQL" {
-            return columns + Self.sqlKeywords
-        }
-        return columns
-    }
+    @Binding var focusedFilterId: UUID?
 
     var body: some View {
         HStack(spacing: 4) {
@@ -48,8 +32,6 @@ struct FilterRowView: View {
         .contextMenu { rowContextMenu }
     }
 
-    // MARK: - Column Picker
-
     private var columnPicker: some View {
         Picker("", selection: $filter.columnName) {
             Text("Raw SQL").tag(TableFilter.rawSQLColumn)
@@ -66,8 +48,6 @@ struct FilterRowView: View {
         .help(String(localized: "Select filter column"))
     }
 
-    // MARK: - Operator Picker
-
     private var operatorPicker: some View {
         Picker("", selection: $filter.filterOperator) {
             ForEach(FilterOperator.allCases) { op in
@@ -82,29 +62,29 @@ struct FilterRowView: View {
         .help(String(localized: "Select filter operator"))
     }
 
-    // MARK: - Value Fields
-
     @ViewBuilder
     private var valueFields: some View {
         if filter.isRawSQL {
-            CompletionTextField(
+            FilterValueTextField(
                 text: Binding(
                     get: { filter.rawSQL ?? "" },
                     set: { filter.rawSQL = $0 }
                 ),
+                focusedId: $focusedFilterId,
+                identity: filter.id,
                 placeholder: "e.g. id = 1",
-                completions: rawSQLCompletions,
-                shouldFocus: shouldFocus,
+                completions: completions,
                 allowsMultiLine: true,
                 onSubmit: onSubmit
             )
             .accessibilityLabel(String(localized: "WHERE clause"))
         } else if filter.filterOperator.requiresValue {
-            CompletionTextField(
+            FilterValueTextField(
                 text: $filter.value,
+                focusedId: $focusedFilterId,
+                identity: filter.id,
                 placeholder: String(localized: "Value"),
-                completions: columns,
-                shouldFocus: shouldFocus,
+                completions: completions,
                 onSubmit: onSubmit
             )
             .frame(minWidth: 80)
@@ -134,8 +114,6 @@ struct FilterRowView: View {
         }
     }
 
-    // MARK: - Row Buttons (+/-)
-
     private var rowButtons: some View {
         HStack(spacing: 4) {
             Button(action: onAdd) {
@@ -157,8 +135,6 @@ struct FilterRowView: View {
             .help(String(localized: "Remove filter row"))
         }
     }
-
-    // MARK: - Context Menu
 
     @ViewBuilder
     private var rowContextMenu: some View {
@@ -182,8 +158,6 @@ struct FilterRowView: View {
             Label(String(localized: "Remove Filter"), systemImage: "trash")
         }
     }
-
-    // MARK: - Operator Menu Label
 
     private struct OperatorMenuLabel: View {
         let op: FilterOperator

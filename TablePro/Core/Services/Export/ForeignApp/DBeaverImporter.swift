@@ -160,6 +160,7 @@ struct DBeaverImporter: ForeignAppImporter {
         }
 
         let sshConfig = parseSSHConfig(config)
+        let sslConfig = parseSSLConfig(config)
         let color = parseColor(config)
 
         return ExportableConnection(
@@ -170,7 +171,7 @@ struct DBeaverImporter: ForeignAppImporter {
             username: username,
             type: dbType,
             sshConfig: sshConfig,
-            sslConfig: nil,
+            sslConfig: sslConfig,
             color: color,
             tagName: nil,
             groupName: groupName,
@@ -229,6 +230,35 @@ struct DBeaverImporter: ForeignAppImporter {
             totpAlgorithm: nil,
             totpDigits: nil,
             totpPeriod: nil
+        )
+    }
+
+    private func parseSSLConfig(_ config: [String: Any]) -> ExportableSSLConfig? {
+        guard let handlers = config["handlers"] as? [String: Any],
+              let sslHandler = handlers["ssl"] as? [String: Any] else { return nil }
+
+        let enabled = sslHandler["enabled"] as? Bool ?? false
+        guard enabled else { return nil }
+
+        let properties = sslHandler["properties"] as? [String: Any] ?? [:]
+
+        let mode: String
+        switch properties["sslMode"] as? String ?? "" {
+        case "require": mode = SSLMode.required.rawValue
+        case "verify-ca": mode = SSLMode.verifyCa.rawValue
+        case "verify-full": mode = SSLMode.verifyIdentity.rawValue
+        default: mode = SSLMode.preferred.rawValue
+        }
+
+        let caCertPath = properties["caCertPath"] as? String
+        let clientCertPath = properties["clientCertPath"] as? String
+        let clientKeyPath = properties["clientKeyPath"] as? String
+
+        return ExportableSSLConfig(
+            mode: mode,
+            caCertificatePath: caCertPath,
+            clientCertificatePath: clientCertPath,
+            clientKeyPath: clientKeyPath
         )
     }
 

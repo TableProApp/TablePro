@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import Security
 
 struct MCPHandshake: Codable {
     let port: Int
@@ -6,9 +8,16 @@ struct MCPHandshake: Codable {
     let pid: Int32
     let protocolVersion: String
     let tls: Bool?
+    let tlsCertFingerprint: String?
 }
 
-private final class TrustAllDelegate: NSObject, URLSessionDelegate {
+private final class CertificatePinningDelegate: NSObject, URLSessionDelegate {
+    private let expectedFingerprint: String
+
+    init(expectedFingerprint: String) {
+        self.expectedFingerprint = expectedFingerprint
+    }
+
     func urlSession(
         _ session: URLSession,
         didReceive challenge: URLAuthenticationChallenge
@@ -17,24 +26,35 @@ private final class TrustAllDelegate: NSObject, URLSessionDelegate {
               let trust = challenge.protectionSpace.serverTrust else {
             return (.performDefaultHandling, nil)
         }
+
+        guard let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+              let serverCert = chain.first else {
+            return (.cancelAuthenticationChallenge, nil)
+        }
+
+        let serverFingerprint = sha256Fingerprint(of: serverCert)
+        guard serverFingerprint == expectedFingerprint else {
+            return (.cancelAuthenticationChallenge, nil)
+        }
+
         return (.useCredential, URLCredential(trust: trust))
+    }
+
+    private func sha256Fingerprint(of certificate: SecCertificate) -> String {
+        let data = SecCertificateCopyData(certificate) as Data
+        return SHA256.hash(data: data)
+            .map { String(format: "%02X", $0) }
+            .joined(separator: ":")
     }
 }
 
 final class MCPBridgeProxy {
     private let handshakePath: String
     private var sessionId: String?
-    private let urlSession: URLSession
-    private let sessionDelegate = TrustAllDelegate()
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         self.handshakePath = "\(home)/Library/Application Support/com.TablePro/mcp-handshake.json"
-
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 60
-        self.urlSession = URLSession(configuration: config, delegate: sessionDelegate, delegateQueue: nil)
     }
 
     func run() async {
@@ -62,11 +82,23 @@ final class MCPBridgeProxy {
             exit(1)
         }
 
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 60
+
+        let delegate: URLSessionDelegate?
+        if handshake.tls ?? false, let fingerprint = handshake.tlsCertFingerprint {
+            delegate = CertificatePinningDelegate(expectedFingerprint: fingerprint)
+        } else {
+            delegate = nil
+        }
+        let urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+
         let scheme = (handshake.tls ?? false) ? "https" : "http"
         let baseUrl = "\(scheme)://127.0.0.1:\(handshake.port)/mcp"
         let bearerToken = handshake.token
 
-        await readLoop(baseUrl: baseUrl, bearerToken: bearerToken)
+        await readLoop(baseUrl: baseUrl, bearerToken: bearerToken, urlSession: urlSession)
     }
 
     private func loadHandshake() throws -> MCPHandshake {
@@ -78,7 +110,7 @@ final class MCPBridgeProxy {
         kill(pid, 0) == 0
     }
 
-    private func readLoop(baseUrl: String, bearerToken: String) async {
+    private func readLoop(baseUrl: String, bearerToken: String, urlSession: URLSession) async {
         let stdin = FileHandle.standardInput
         var buffer = Data()
 
@@ -103,7 +135,8 @@ final class MCPBridgeProxy {
                     let responseData = try await forwardRequest(
                         lineDataCopy,
                         baseUrl: baseUrl,
-                        bearerToken: bearerToken
+                        bearerToken: bearerToken,
+                        urlSession: urlSession
                     )
                     writeStdout(responseData)
                     writeStdout(Data([0x0A]))
@@ -122,7 +155,8 @@ final class MCPBridgeProxy {
     private func forwardRequest(
         _ body: Data,
         baseUrl: String,
-        bearerToken: String
+        bearerToken: String,
+        urlSession: URLSession
     ) async throws -> Data {
         guard let url = URL(string: baseUrl) else {
             throw BridgeError.invalidUrl
@@ -149,8 +183,6 @@ final class MCPBridgeProxy {
     }
 
     private func captureSessionId(from response: HTTPURLResponse) {
-        guard sessionId == nil else { return }
-
         let headerFields = response.allHeaderFields
         for (key, value) in headerFields {
             guard let keyString = key as? String else { continue }
@@ -183,25 +215,24 @@ final class MCPBridgeProxy {
     }
 
     private func writeJsonRpcError(id: JsonRpcId, code: Int, message: String) {
-        let idJson: String
+        var errorResponse: [String: Any] = [
+            "jsonrpc": "2.0",
+            "error": [
+                "code": code,
+                "message": message
+            ] as [String: Any]
+        ]
+
         switch id {
         case .null:
-            idJson = "null"
+            errorResponse["id"] = NSNull()
         case .int(let value):
-            idJson = "\(value)"
+            errorResponse["id"] = value
         case .string(let value):
-            let escaped = value
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\"", with: "\\\"")
-            idJson = "\"\(escaped)\""
+            errorResponse["id"] = value
         }
 
-        let escapedMessage = message
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-
-        let json = "{\"jsonrpc\":\"2.0\",\"id\":\(idJson),\"error\":{\"code\":\(code),\"message\":\"\(escapedMessage)\"}}"
-        guard let data = json.data(using: .utf8) else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: errorResponse) else { return }
         writeStdout(data)
         writeStdout(Data([0x0A]))
     }

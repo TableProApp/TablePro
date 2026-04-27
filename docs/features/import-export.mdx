@@ -177,6 +177,24 @@ Click a table in the sidebar and click **Export**, or run `SELECT * FROM table_n
 Export multiple tables at once via the export dialog's tree view. SQL exports support per-table options for structure, DROP, and data.
 </Tip>
 
+### Streaming Export
+
+Table exports stream rows directly from the database to disk (shipped v0.33.0). No in-memory buffering, no row-count limit: tables larger than RAM export fine.
+
+Properties:
+
+- Streamed write per row, constant memory regardless of table size
+- Atomic file write: the destination file appears only on success, partial files are removed on failure
+- Cancellable from the progress dialog. Cancellation removes the partial file
+- Per-row error handling, configurable in the export dialog:
+
+| Mode | Behavior |
+|------|----------|
+| **Stop and Rollback** | Stop on first row error and discard the output file. |
+| **Stop and Commit** | Stop on first row error but keep rows already written. |
+| **Skip and Continue** | Skip the failing row, log it, and continue. A summary lists skipped rows at the end. |
+
+Streaming applies to whole-table exports. Result-grid exports use in-memory data.
 
 ## Clipboard Paste (CSV/TSV)
 

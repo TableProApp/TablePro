@@ -52,11 +52,11 @@ struct MultiConnectionNavigationTests {
             Issue.record("Expected selected tab index")
             return
         }
-        #expect(tabManager.tabs[idx].showStructure == false)
+        #expect(tabManager.tabs[idx].resultsViewMode != .structure)
 
         coordinator.openTableTab("users", showStructure: true)
 
-        #expect(tabManager.tabs[idx].showStructure == true)
+        #expect(tabManager.tabs[idx].resultsViewMode == .structure)
     }
 
     // MARK: - openTableTab: isView marks tab correctly

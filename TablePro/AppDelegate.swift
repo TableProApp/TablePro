@@ -2,8 +2,6 @@
 //  AppDelegate.swift
 //  TablePro
 //
-//  Window configuration using AppKit-native approach
-//
 
 import AppKit
 import os
@@ -21,50 +19,21 @@ internal extension URL {
     }
 }
 
-/// AppDelegate handles window lifecycle events using proper AppKit patterns.
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppDelegate")
     static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Track windows that have been configured to avoid re-applying styles
     var configuredWindows = Set<ObjectIdentifier>()
-
-    /// SQL files queued until a database connection is active (drained on .databaseDidConnect)
     var queuedFileURLs: [URL] = []
-
-    /// Database URL and SQLite file entries queued until the SwiftUI window system is ready
     var queuedURLEntries: [QueuedURLEntry] = []
-
-    /// True while handling a file-open event — suppresses welcome window
     var isHandlingFileOpen = false
-
-    /// Counter for outstanding suppressions; welcome window is suppressed while > 0
     var fileOpenSuppressionCount = 0
-
-    /// True while a queued URL polling task is active — prevents duplicate pollers
     var isProcessingQueuedURLs = false
-
-    /// True while auto-reconnect is in progress at startup
     var isAutoReconnecting = false
-
-    /// ConnectionIds currently being connected from URL handlers.
-    /// Prevents duplicate connections when the same URL is opened twice rapidly.
     var connectingURLConnectionIds = Set<UUID>()
-
-    /// Normalized param keys for URLs currently being connected.
-    /// Catches duplicates even before connectToSession creates the session.
     var connectingURLParamKeys = Set<String>()
-
-    /// File paths currently being connected from file-open handlers.
-    /// Prevents duplicate connections when the same file is opened twice rapidly.
     var connectingFilePaths = Set<String>()
-
-    /// Connection share file URL pending consumption by WelcomeViewModel.setUp()
-    var pendingConnectionShareURL: URL?
-
-    /// Deep link import pending consumption by WelcomeViewModel
-    var pendingDeeplinkImport: ExportableConnection?
 
     // MARK: - NSApplicationDelegate
 
@@ -173,10 +142,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self, selector: #selector(handlePluginsRejected(_:)),
             name: .pluginsRejected, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(handleFocusConnectionForm),
+            name: .focusConnectionFormWindowRequested, object: nil
+        )
     }
 
     @objc private func handlePluginsRejected(_ notification: Notification) {
-        guard let rejected = notification.object as? [(name: String, reason: String)],
+        guard let rejected = notification.object as? [RejectedPlugin],
               !rejected.isEmpty else { return }
         let details = rejected.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
         Task {
@@ -186,15 +159,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 rejected.count
             )
             alert.informativeText = String(
-                format: String(localized: "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry."),
+                format: String(localized: "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings."),
                 details
             )
             alert.alertStyle = .warning
-            alert.addButton(withTitle: String(localized: "OK"))
+            alert.addButton(withTitle: String(localized: "Open Plugin Settings"))
+            alert.addButton(withTitle: String(localized: "Dismiss"))
+
+            let response: NSApplication.ModalResponse
             if let window = AlertHelper.resolveWindow(nil) {
-                alert.beginSheetModal(for: window)
+                response = await withCheckedContinuation { continuation in
+                    alert.beginSheetModal(for: window) { resp in
+                        continuation.resume(returning: resp)
+                    }
+                }
             } else {
-                alert.runModal()
+                response = alert.runModal()
+            }
+
+            if response == .alertFirstButtonReturn {
+                UserDefaults.standard.set(SettingsTab.plugins.rawValue, forKey: "selectedSettingsTab")
+                NotificationCenter.default.post(name: .openSettingsWindow, object: nil)
             }
         }
     }
@@ -205,23 +190,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let hasUnsaved = MainContentCoordinator.hasAnyUnsavedChanges()
-        guard hasUnsaved else { return .terminateNow }
+        if hasUnsaved {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "You have unsaved changes")
+            alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: String(localized: "Cancel"))
+            alert.addButton(withTitle: String(localized: "Quit Anyway"))
+            alert.buttons[1].hasDestructiveAction = true
+            let response = alert.runModal()
+            guard response == .alertSecondButtonReturn else { return .terminateCancel }
+        }
 
-        let alert = NSAlert()
-        alert.messageText = String(localized: "You have unsaved changes")
-        alert.informativeText = String(localized: "Some tabs have unsaved edits. Quitting will discard these changes.")
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: String(localized: "Cancel"))
-        alert.addButton(withTitle: String(localized: "Quit Anyway"))
-        alert.buttons[1].hasDestructiveAction = true
-        let response = alert.runModal()
-        return response == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+        Task {
+            await MCPServerManager.shared.stop()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        Task {
-            await MCPServerManager.shared.stop()
-        }
         LinkedFolderWatcher.shared.stop()
         TerminalProcessManager.registry.terminateAllSync()
         SSHTunnelManager.shared.terminateAllProcessesSync()

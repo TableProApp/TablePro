@@ -21,6 +21,7 @@ struct SQLEditorView: View {
     var databaseType: DatabaseType?
     var connectionId: UUID?
     var connectionAIPolicy: AIConnectionPolicy?
+    var tabID: UUID?
     @Binding var vimMode: VimMode
     var onCloseTab: (() -> Void)?
     var onExecuteQuery: (() -> Void)?
@@ -48,6 +49,8 @@ struct SQLEditorView: View {
         coordinator.schemaProvider = schemaProvider
         coordinator.connectionAIPolicy = connectionAIPolicy
         coordinator.databaseType = databaseType
+        coordinator.tabID = tabID
+        coordinator.connectionId = connectionId
 
         return Group {
             if editorReady {

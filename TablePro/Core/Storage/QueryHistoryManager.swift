@@ -40,8 +40,14 @@ final class QueryHistoryManager {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        parameterValues: [QueryParameter]? = nil
     ) {
+        var encodedParams: String?
+        if let parameterValues, !parameterValues.isEmpty {
+            encodedParams = try? String(data: JSONEncoder().encode(parameterValues), encoding: .utf8)
+        }
+
         let entry = QueryHistoryEntry(
             query: query,
             connectionId: connectionId,
@@ -49,7 +55,8 @@ final class QueryHistoryManager {
             executionTime: executionTime,
             rowCount: rowCount,
             wasSuccessful: wasSuccessful,
-            errorMessage: errorMessage
+            errorMessage: errorMessage,
+            parameterValues: encodedParams
         )
 
         Task {

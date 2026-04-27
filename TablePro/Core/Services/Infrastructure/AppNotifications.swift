@@ -25,6 +25,7 @@ extension Notification.Name {
     static let importConnections = Notification.Name("importConnections")
     static let importConnectionsFromApp = Notification.Name("importConnectionsFromApp")
     static let linkedFoldersDidUpdate = Notification.Name("linkedFoldersDidUpdate")
+    static let focusConnectionFormWindowRequested = Notification.Name("focusConnectionFormWindowRequested")
 
     // MARK: - License
 

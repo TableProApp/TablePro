@@ -217,7 +217,7 @@ extension MainContentCoordinator {
 
     // MARK: - Multi-Statement Result Application
 
-    private func applyMultiStatementResults(
+    internal func applyMultiStatementResults(
         tabId: UUID,
         capturedGeneration: Int,
         cumulativeTime: TimeInterval,

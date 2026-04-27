@@ -2,36 +2,19 @@
 //  SQLPreviewSheet.swift
 //  TablePro
 //
-//  Modal sheet to display generated SQL from filters.
-//  Extracted from FilterPanelView for better maintainability.
-//
 
 import SwiftUI
 
-/// Modal sheet to display generated SQL
 struct SQLPreviewSheet: View {
     let sql: String
-    let tableName: String
-    let databaseType: DatabaseType
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
 
     var body: some View {
         VStack(spacing: 16) {
-            HStack {
-                Text("Generated WHERE Clause")
-                    .font(.body.weight(.semibold))
-                Spacer()
-                Button(action: { dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.large)
-                        .frame(width: 24, height: 24)
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(String(localized: "Close"))
-                .help(String(localized: "Close preview"))
-            }
+            Text("Generated WHERE Clause")
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             ScrollView {
                 Text(sql.isEmpty ? "(no conditions)" : sql)
@@ -82,7 +65,6 @@ struct SQLPreviewSheet: View {
         copied = true
         AccessibilityNotification.Announcement(String(localized: "Copied to clipboard")).post()
 
-        // Reset after delay
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             copied = false

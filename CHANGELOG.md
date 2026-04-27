@@ -7,40 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-04-27
+
 ### Added
 
-- Connection sharing: Share submenu with Copy Connection String, Copy TablePro Link, Copy as JSON, and rich deep links carrying all connection fields
+- GitHub Copilot: inline suggestions, chat, OAuth sign-in, schema context
+- Query parameters: `:name` placeholders in SQL with inline value panel and native prepared statement binding
+- Plugin auto-update at launch and one-click update in Settings
+- Connection sharing: Copy Connection String, Copy TablePro Link, Copy as JSON via Share menu
+- MCP server: token auth with permission tiers, TLS, remote access, rate limiting, stdio bridge, one-click setup for Claude Code/Desktop/Cursor
 - Edit > Find menu item (Cmd+F)
-- MCP server: Bearer token authentication with multi-token management
-- MCP server: three permission tiers (Read Only, Read & Write, Full Access) with per-token connection allowlists
-- MCP server: TLS with auto-generated self-signed certificates for remote access
-- MCP server: optional remote access (bind to all network interfaces)
-- MCP server: rate limiting on failed authentication attempts
-- MCP server: stdio bridge CLI for zero-config local client setup
-- MCP server: one-click auto-setup for Claude Code, Claude Desktop, and Cursor
-
-### Fixed
-
-- Raw SQL filter accepting destructive statements and comment injection
-- MCP server: schema and history resources now enforce connection access policies
-- Export "Don't show again" preference lost when clicking "Open Folder"
-- Connection failure error not shown on welcome screen
-- Window position not restored between launches
-- Export multi-table race condition on PostgreSQL
-- List selection requiring two clicks in Quick Switcher and Database Switcher
-- AI provider and connection test states not clearing on field changes
-- Export stop button missing confirmation dialog
-- SSH profile test showing modal alert instead of inline error
-- DDL results showing misleading "0 row(s) affected"
-- Export dialog missing empty state when no tables found
-- Save-changes error messages, duplicated connection "(Copy)" suffix, query window title fallback, preview window subtitle, and inspector row count not localized
 
 ### Changed
 
+- AI settings rewritten as single tab with one active provider, per-provider config sheets
+- Filter value field uses native SwiftUI suggestion dropdown
+- MCP bridge pins TLS certificate fingerprint
+- Native NSSearchField in keyboard shortcuts, database switcher, quick switcher
 - About window uses standard macOS panel
-- Consolidated double-click detection into single shared component
-- Accessibility improvements: VoiceOver labels, semantic fonts, larger tap targets
-- iOS: TabView navigation with ConnectionCoordinator extraction
+
+### Fixed
+
+- Plugin ABI mismatch guard for user-installed plugins
+- SQL parameter escaping for control characters and edge-case formats
+- Query parameter conversion for Bool, Date, Data, non-finite numbers
+- Filter preset duplicate name overwrite
+- Raw SQL filter injection and destructive statement validation
+- IME input (Chinese, Japanese, Korean) in filter value field
+- MCP server shutdown on app quit and access policy enforcement
+- Foreign app import: SSL/SSH parsing for TablePlus, DBeaver, Sequel Ace
+- Export race condition, missing confirmation dialog, empty state
+- Window position restore, connection error display, list selection clicks
+- Localization for error messages, connection labels, filter options
 
 ## [0.35.0] - 2026-04-25
 
@@ -1480,7 +1478,8 @@ TablePro is a native macOS database client built with SwiftUI and AppKit, design
     - Custom SQL query templates
     - Performance optimized for large datasets
 
-[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/TableProApp/TablePro/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/TableProApp/TablePro/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/TableProApp/TablePro/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/TableProApp/TablePro/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/TableProApp/TablePro/compare/v0.32.1...v0.33.0

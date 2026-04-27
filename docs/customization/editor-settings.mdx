@@ -169,6 +169,15 @@ Falls back to System Mono if a saved font is unavailable.
 
 SQL keywords auto-uppercase on word boundaries. Keywords inside strings, comments, and quoted identifiers are unaffected.
 
+### Query Parameters
+
+| Option | Description |
+|--------|-------------|
+| **On** | Detect `:name` placeholders and show the parameter panel (default) |
+| **Off** | Send `:name` tokens to the database as-is |
+
+When on, queries with `:name` placeholders show an inline panel for entering values. See [Query Parameters](/features/query-parameters) for details.
+
 ### Autocomplete
 
 Autocomplete is always on. Dismiss with `Escape`. See [Autocomplete](/features/autocomplete) for details.

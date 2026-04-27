@@ -85,6 +85,11 @@ struct DBeaverImporterTests {
         sshUsername: String = "",
         sshAuthType: String = "PASSWORD",
         sshKeyPath: String = "",
+        sslEnabled: Bool = false,
+        sslMode: String = "",
+        sslCaCertPath: String = "",
+        sslClientCertPath: String = "",
+        sslClientKeyPath: String = "",
         color: String? = nil
     ) -> [String: Any] {
         var config: [String: Any] = [
@@ -98,19 +103,41 @@ struct DBeaverImporterTests {
         if let color = color {
             config["color"] = color
         }
+
+        var handlers: [String: Any] = [:]
         if sshEnabled {
-            config["handlers"] = [
-                "ssh_tunnel": [
-                    "enabled": true,
-                    "properties": [
-                        "host": sshHost,
-                        "port": sshPort as Any,
-                        "username": sshUsername,
-                        "authType": sshAuthType,
-                        "keyPath": sshKeyPath
-                    ] as [String: Any]
+            handlers["ssh_tunnel"] = [
+                "enabled": true,
+                "properties": [
+                    "host": sshHost,
+                    "port": sshPort as Any,
+                    "username": sshUsername,
+                    "authType": sshAuthType,
+                    "keyPath": sshKeyPath
                 ] as [String: Any]
-            ]
+            ] as [String: Any]
+        }
+        if sslEnabled {
+            var sslProperties: [String: Any] = [:]
+            if !sslMode.isEmpty {
+                sslProperties["sslMode"] = sslMode
+            }
+            if !sslCaCertPath.isEmpty {
+                sslProperties["caCertPath"] = sslCaCertPath
+            }
+            if !sslClientCertPath.isEmpty {
+                sslProperties["clientCertPath"] = sslClientCertPath
+            }
+            if !sslClientKeyPath.isEmpty {
+                sslProperties["clientKeyPath"] = sslClientKeyPath
+            }
+            handlers["ssl"] = [
+                "enabled": true,
+                "properties": sslProperties
+            ] as [String: Any]
+        }
+        if !handlers.isEmpty {
+            config["handlers"] = handlers
         }
 
         var dict: [String: Any] = [
@@ -516,5 +543,121 @@ struct DBeaverImporterTests {
 
         let result = try importer.importConnections(includePasswords: false)
         #expect(result.envelope.connections[0].type == "exoticdb")
+    }
+
+    // MARK: - SSL Parsing
+
+    @Test("importConnections parses SSL with require mode")
+    func testImportConnections_parsesSSLRequireMode() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "SSL Require", sslEnabled: true, sslMode: "require")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Required")
+    }
+
+    @Test("importConnections parses SSL with verify-ca mode")
+    func testImportConnections_parsesSSLVerifyCaMode() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "SSL Verify CA", sslEnabled: true, sslMode: "verify-ca")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Verify CA")
+    }
+
+    @Test("importConnections parses SSL with verify-full mode")
+    func testImportConnections_parsesSSLVerifyFullMode() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "SSL Verify Full", sslEnabled: true, sslMode: "verify-full")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Verify Identity")
+    }
+
+    @Test("importConnections SSL enabled with empty mode defaults to Preferred")
+    func testImportConnections_sslEnabledEmptyModeDefaultsToPreferred() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "SSL Default", sslEnabled: true, sslMode: "")
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Preferred")
+    }
+
+    @Test("importConnections parses SSL certificate paths")
+    func testImportConnections_parsesSSLCertPaths() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(
+                name: "SSL Certs",
+                sslEnabled: true,
+                sslMode: "verify-full",
+                sslCaCertPath: "/path/to/ca.pem",
+                sslClientCertPath: "/path/to/cert.pem",
+                sslClientKeyPath: "/path/to/key.pem"
+            )
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+
+        #expect(ssl != nil)
+        #expect(ssl?.caCertificatePath == "/path/to/ca.pem")
+        #expect(ssl?.clientCertificatePath == "/path/to/cert.pem")
+        #expect(ssl?.clientKeyPath == "/path/to/key.pem")
+    }
+
+    @Test("importConnections no SSL when handler missing")
+    func testImportConnections_noSSLWhenHandlerMissing() throws {
+        let connections: [String: [String: Any]] = [
+            "pg-1": makeConnection(name: "No SSL", sslEnabled: false)
+        ]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sslConfig == nil)
+    }
+
+    @Test("importConnections no SSL when handler disabled")
+    func testImportConnections_noSSLWhenHandlerDisabled() throws {
+        var connDict = makeConnection(name: "SSL Disabled")
+        guard var config = connDict["configuration"] as? [String: Any] else {
+            Issue.record("Expected configuration dict")
+            return
+        }
+        config["handlers"] = [
+            "ssl": [
+                "enabled": false,
+                "properties": [
+                    "sslMode": "require"
+                ] as [String: Any]
+            ] as [String: Any]
+        ]
+        connDict["configuration"] = config
+
+        let connections: [String: [String: Any]] = ["pg-1": connDict]
+        try writeDataSources(makeDataSourcesJSON(connections: connections))
+
+        let result = try importer.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sslConfig == nil)
     }
 }

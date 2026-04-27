@@ -58,7 +58,7 @@ struct TablePlusImporterTests {
         sshUser: String = "",
         usePrivateKey: Bool = false,
         privateKeyPath: String = "",
-        tlsMode: Int = 0,
+        tlsMode: Int? = nil,
         tlsKeyPaths: [String] = [],
         environment: String = ""
     ) -> [String: Any] {
@@ -72,9 +72,11 @@ struct TablePlusImporterTests {
             "ID": id,
             "GroupID": groupId,
             "isOverSSH": isOverSSH,
-            "tLSMode": tlsMode,
             "Enviroment": environment
         ]
+        if let tlsMode {
+            entry["tLSMode"] = tlsMode
+        }
         if isOverSSH {
             entry["ServerAddress"] = sshHost
             entry["ServerPort"] = sshPort
@@ -237,10 +239,56 @@ struct TablePlusImporterTests {
         #expect(ssl?.clientKeyPath == "/path/to/client-key.pem")
     }
 
-    @Test("importConnections no SSL when tLSMode is 0")
-    func testImportConnections_noSSLWhenTLSModeZero() throws {
+    @Test("importConnections no SSL when tLSMode key is absent")
+    func testImportConnections_noSSLWhenTLSModeAbsent() throws {
         try writeConnections([
-            makeConnection(name: "No SSL", id: "nossl-1", tlsMode: 0)
+            makeConnection(name: "No SSL", id: "nossl-1")
+        ])
+
+        let result = try importer.importConnections(includePasswords: false)
+        #expect(result.envelope.connections[0].sslConfig == nil)
+    }
+
+    @Test("importConnections SSL mode Preferred when tLSMode is 0")
+    func testImportConnections_sslModePreferredWhenTLSModeZero() throws {
+        try writeConnections([
+            makeConnection(name: "Prefer SSL", id: "ssl-prefer", tlsMode: 0)
+        ])
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Preferred")
+    }
+
+    @Test("importConnections SSL mode Verify CA when tLSMode is 2")
+    func testImportConnections_sslModeVerifyCA() throws {
+        try writeConnections([
+            makeConnection(name: "Verify CA", id: "ssl-ca", tlsMode: 2)
+        ])
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Verify CA")
+    }
+
+    @Test("importConnections SSL mode Verify Identity when tLSMode is 3")
+    func testImportConnections_sslModeVerifyIdentity() throws {
+        try writeConnections([
+            makeConnection(name: "Verify Identity", id: "ssl-identity", tlsMode: 3)
+        ])
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssl = result.envelope.connections[0].sslConfig
+        #expect(ssl != nil)
+        #expect(ssl?.mode == "Verify Identity")
+    }
+
+    @Test("importConnections no SSL for unknown tLSMode value")
+    func testImportConnections_noSSLForUnknownTLSMode() throws {
+        try writeConnections([
+            makeConnection(name: "Unknown TLS", id: "ssl-unknown", tlsMode: 99)
         ])
 
         let result = try importer.importConnections(includePasswords: false)

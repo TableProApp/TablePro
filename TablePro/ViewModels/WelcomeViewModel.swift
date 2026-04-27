@@ -58,6 +58,9 @@ final class WelcomeViewModel {
     var connectionError: String?
     var showConnectionError = false
 
+    var showImportFilePanel = false
+    var importResultCount: Int?
+
     var expandedGroupIds: Set<UUID> = {
         let strings = UserDefaults.standard.stringArray(forKey: "com.TablePro.expandedGroupIds") ?? []
         if strings.isEmpty {
@@ -170,6 +173,7 @@ final class WelcomeViewModel {
         ) { [weak self] notification in
             Task { @MainActor [weak self] in
                 guard let url = notification.object as? URL else { return }
+                _ = PendingActionStore.shared.consumeConnectionShareURL()
                 self?.activeSheet = .importFile(url)
             }
         }
@@ -209,12 +213,13 @@ final class WelcomeViewModel {
 
         deeplinkImportObserver = NotificationCenter.default.addObserver(
             forName: .deeplinkImportRequested, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] notification in
             Task { @MainActor [weak self] in
-                guard let self,
-                      let appDelegate = NSApp.delegate as? AppDelegate,
-                      let exportable = appDelegate.pendingDeeplinkImport else { return }
-                appDelegate.pendingDeeplinkImport = nil
+                guard let self else { return }
+                let exportable = (notification.object as? ExportableConnection)
+                    ?? PendingActionStore.shared.consumeDeeplinkImport()
+                guard let exportable else { return }
+                PendingActionStore.shared.deeplinkImport = nil
                 self.activeSheet = .deeplinkImport(exportable)
             }
         }
@@ -222,15 +227,11 @@ final class WelcomeViewModel {
         loadConnections()
         linkedConnections = LinkedFolderWatcher.shared.linkedConnections
 
-        if let appDelegate = NSApp.delegate as? AppDelegate,
-           let pendingURL = appDelegate.pendingConnectionShareURL {
-            appDelegate.pendingConnectionShareURL = nil
+        if let pendingURL = PendingActionStore.shared.consumeConnectionShareURL() {
             activeSheet = .importFile(pendingURL)
         }
 
-        if let appDelegate = NSApp.delegate as? AppDelegate,
-           let pendingImport = appDelegate.pendingDeeplinkImport {
-            appDelegate.pendingDeeplinkImport = nil
+        if let pendingImport = PendingActionStore.shared.consumeDeeplinkImport() {
             activeSheet = .deeplinkImport(pendingImport)
         }
     }
@@ -446,39 +447,11 @@ final class WelcomeViewModel {
     }
 
     func importConnectionsFromFile() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.tableproConnectionShare]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        guard let window = AlertHelper.resolveWindow(nil)
-        else { return }
-        panel.beginSheetModal(for: window) { response in
-            guard response == .OK, let url = panel.url else { return }
-            self.activeSheet = .importFile(url)
-        }
+        showImportFilePanel = true
     }
 
-    func showImportResultAlert(count: Int) {
-        let alert = NSAlert()
-        if count > 0 {
-            alert.alertStyle = .informational
-            alert.messageText = String(localized: "Import Complete")
-            alert.informativeText = count == 1
-                ? String(localized: "1 connection was imported.")
-                : String(format: String(localized: "%d connections were imported."), count)
-            alert.icon = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(paletteColors: [.white, .systemGreen]))
-        } else {
-            alert.alertStyle = .informational
-            alert.messageText = String(localized: "No Connections Imported")
-            alert.informativeText = String(localized: "All selected connections were skipped.")
-        }
-        alert.addButton(withTitle: String(localized: "OK"))
-        if let window = AlertHelper.resolveWindow(nil) {
-            alert.beginSheetModal(for: window)
-        } else {
-            alert.runModal()
-        }
+    func showImportResult(count: Int) {
+        importResultCount = count
     }
 
     // MARK: - Keyboard Navigation
@@ -610,26 +583,7 @@ final class WelcomeViewModel {
     }
 
     func focusConnectionFormWindow() {
-        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "connection-form" }) {
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        var observer: NSObjectProtocol?
-        observer = NotificationCenter.default.addObserver(
-            forName: NSWindow.didBecomeKeyNotification,
-            object: nil,
-            queue: .main
-        ) { notification in
-            guard let window = notification.object as? NSWindow,
-                  window.identifier?.rawValue == "connection-form" else { return }
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-        }
-
-        Task {
-            try? await Task.sleep(for: .milliseconds(500))
-            if let observer { NotificationCenter.default.removeObserver(observer) }
-        }
+        NotificationCenter.default.post(name: .focusConnectionFormWindowRequested, object: nil)
     }
 
     // MARK: - Private Helpers

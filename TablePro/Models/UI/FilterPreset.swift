@@ -31,16 +31,28 @@ struct FilterPreset: Identifiable, Codable, Equatable {
     func savePreset(_ preset: FilterPreset) {
         var presets = loadAllPresets()
 
-        // Replace by id first, then by name
         if let index = presets.firstIndex(where: { $0.id == preset.id }) {
             presets[index] = preset
-        } else if let index = presets.firstIndex(where: { $0.name == preset.name }) {
-            presets[index] = preset
         } else {
-            presets.append(preset)
+            var adjusted = preset
+            let existingNames = Set(presets.map(\.name))
+            if existingNames.contains(adjusted.name) {
+                adjusted.name = Self.uniqueName(for: adjusted.name, existingNames: existingNames)
+            }
+            presets.append(adjusted)
         }
 
         saveAllPresets(presets)
+    }
+
+    private static func uniqueName(for base: String, existingNames: Set<String>) -> String {
+        var counter = 2
+        var candidate = "\(base) (\(counter))"
+        while existingNames.contains(candidate) {
+            counter += 1
+            candidate = "\(base) (\(counter))"
+        }
+        return candidate
     }
 
     /// Load all saved presets (cached after first read)

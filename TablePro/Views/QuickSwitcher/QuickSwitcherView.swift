@@ -23,7 +23,6 @@ internal struct QuickSwitcherSheet: View {
     @State private var viewModel = QuickSwitcherViewModel()
 
     private enum FocusField {
-        case search
         case itemList
     }
 
@@ -66,7 +65,6 @@ internal struct QuickSwitcherSheet: View {
                 databaseType: databaseType
             )
         }
-        .defaultFocus($focus, .search)
         .onExitCommand { dismiss() }
         .onKeyPress(.return) {
             openSelectedItem()
@@ -87,19 +85,13 @@ internal struct QuickSwitcherSheet: View {
     // MARK: - Search Toolbar
 
     private var searchToolbar: some View {
-        SearchFieldView(
-            placeholder: "Search tables, views, databases...",
-            text: $viewModel.searchText
+        NativeSearchField(
+            text: $viewModel.searchText,
+            placeholder: String(localized: "Search tables, views, databases..."),
+            onMoveUp: { viewModel.moveUp() },
+            onMoveDown: { viewModel.moveDown() },
+            focusOnAppear: true
         )
-        .focused($focus, equals: .search)
-        .onKeyPress(.upArrow) {
-            viewModel.moveUp()
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            viewModel.moveDown()
-            return .handled
-        }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }

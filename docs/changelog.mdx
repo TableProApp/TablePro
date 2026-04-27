@@ -4,6 +4,32 @@ description: "Product updates and announcements for TablePro"
 rss: true
 ---
 
+<Update label="April 27, 2026" description="v0.36.0">
+  ### New Features
+
+  - **GitHub Copilot**: Inline code suggestions, chat, OAuth sign-in, and schema-aware context
+  - **Query Parameters**: Use `:name` placeholders in SQL, fill values in an inline panel, execute with native prepared statements
+  - **Plugin Auto-Update**: Outdated plugins update silently at launch; one-click update in Settings
+  - **Connection Sharing**: Copy Connection String, Copy TablePro Link, and Copy as JSON via Share menu
+  - **MCP Server Security**: Token auth with three permission tiers, TLS, remote access, rate limiting, and one-click setup for Claude Code, Desktop, and Cursor
+
+  ### Improvements
+
+  - AI settings rewritten as a single tab with one active provider and per-provider config sheets
+  - Native search fields in keyboard shortcuts, database switcher, and quick switcher
+  - Filter value field uses native SwiftUI suggestion dropdown
+  - MCP bridge pins TLS certificate fingerprint
+
+  ### Bug Fixes
+
+  - Plugin ABI mismatch no longer crashes on launch
+  - IME input (Chinese, Japanese, Korean) works correctly in filter value field
+  - SQL parameter escaping handles control characters and edge-case formats
+  - Foreign app import SSL/SSH parsing for TablePlus, DBeaver, and Sequel Ace
+  - Export race conditions, missing confirmation dialogs, and empty states
+  - Window position restore, connection error display, localization gaps
+</Update>
+
 <Update label="April 25, 2026" description="v0.35.0">
   ### New Features
 
@@ -112,7 +138,7 @@ rss: true
 
   ### Bug Fixes
 
-  - Fix raw SQL injection via external URL scheme deeplinks — now requires user confirmation
+  - Fix raw SQL injection via external URL scheme deeplinks: now requires user confirmation
   - Fix MySQL prepared statements silently truncating columns larger than 64KB
   - Fix MSSQL error messages misattributed when multiple connections open simultaneously
   - Fix BigQuery filter injection via unescaped column names and unvalidated operators
@@ -130,7 +156,7 @@ rss: true
 <Update label="April 14, 2026" description="v0.31.5">
   ### Improvements
 
-  - **Keyboard Shortcuts**: Follow macOS HIG — Quick Switcher remapped to ⌘⇧O, Format Query to ⌘⇧L, AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) now wired to menu bar
+  - **Keyboard Shortcuts**: Follow macOS HIG. Quick Switcher remapped to ⌘⇧O, Format Query to ⌘⇧L, AI Explain (⌘L), Optimize (⌘⌥L), and Toggle Sidebar (⌘0) now wired to menu bar
 
   ### Bug Fixes
 
@@ -165,9 +191,9 @@ rss: true
 
   ### Improvements
 
-  - **SQL Formatter**: Complete rewrite with token-based architecture — proper handling of JOINs, subqueries, CASE expressions, CTEs, window functions, and 15+ SQL constructs (#705)
-  - **Keyboard Shortcuts**: Updated to follow macOS HIG — `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar. Format Query and Pagination now customizable.
-  - **Menu Bar**: Restructured per macOS HIG — `⌘N` opens connection list (#722), Help search restored, duplicates removed
+  - **SQL Formatter**: Complete rewrite with token-based architecture, with proper handling of JOINs, subqueries, CASE expressions, CTEs, window functions, and 15+ SQL constructs (#705)
+  - **Keyboard Shortcuts**: Updated to follow macOS HIG: `⌘F` is Find, `⌘⇧F` for filters, `⌘⌥I` for inspector, `⌘0` for sidebar. Format Query and Pagination now customizable.
+  - **Menu Bar**: Restructured per macOS HIG: `⌘N` opens connection list (#722), Help search restored, duplicates removed
   - **UI Colors**: Standardized to macOS semantic colors across all error/success/warning indicators
 
   ### Bug Fixes
@@ -178,7 +204,7 @@ rss: true
   - Fixed UI layout breaks when toggling menus, panels, and inspectors (#702)
   - Fixed `⌘W` accidentally closing connection window instead of tab
   - Fixed tabs not saved before database switch, rollback failures now logged, filter validation improved (#707)
-  - Fixed Ollama AI chat streaming — responses were silently discarded
+  - Fixed Ollama AI chat streaming: responses were silently discarded
 </Update>
 
 <Update label="April 13, 2026" description="v0.31.2">
@@ -252,7 +278,7 @@ rss: true
   - Fixed cross-schema foreign key preview, edit, and navigation for PostgreSQL and MySQL (#644)
   - Fixed macOS HIG compliance: system colors, accessibility labels, theme tokens, localization
   - Fixed idle ping spin loop caused by exhausted AsyncStream iterator (#618)
-  - Skip exact row count for large tables — use database statistics estimate (#519)
+  - Skip exact row count for large tables: use database statistics estimate (#519)
 
   ### Improvements
 

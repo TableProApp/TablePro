@@ -54,8 +54,9 @@ struct AISchemaContext {
            !query.isEmpty {
             let lang = editorLanguage.codeBlockTag
             let maxQueryLength = 2_000
-            let truncated = query.count > maxQueryLength
-                ? String(query.prefix(maxQueryLength)) + "\n-- ... truncated"
+            let nsQuery = query as NSString
+            let truncated = nsQuery.length > maxQueryLength
+                ? nsQuery.substring(to: maxQueryLength) + "\n-- ... truncated"
                 : query
             parts.append("\n## Current Query\n```\(lang)\n\(truncated)\n```")
         }

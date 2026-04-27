@@ -106,7 +106,8 @@ final class MCPServerManager {
                 allowRemoteAccess: settings.allowRemoteConnections,
                 tlsIdentity: tlsIdentity
             )
-            writeHandshakeFile(port: port)
+            let certFingerprint = await tlsManager?.fingerprint
+            writeHandshakeFile(port: port, tlsCertFingerprint: certFingerprint)
             startClientRefresh()
             MCPAuditLogger.logServerStarted(
                 port: port,
@@ -186,17 +187,20 @@ final class MCPServerManager {
         "\(handshakeDirectoryPath)/mcp-handshake.json"
     }()
 
-    private func writeHandshakeFile(port: UInt16) {
+    private func writeHandshakeFile(port: UInt16, tlsCertFingerprint: String? = nil) {
         guard let bridgeToken = internalBridgeToken else { return }
 
         let settings = AppSettingsManager.shared.mcp
-        let handshake: [String: Any] = [
+        var handshake: [String: Any] = [
             "port": Int(port),
             "token": bridgeToken,
             "pid": ProcessInfo.processInfo.processIdentifier,
             "protocolVersion": "2025-03-26",
             "tls": settings.allowRemoteConnections
         ]
+        if let tlsCertFingerprint {
+            handshake["tlsCertFingerprint"] = tlsCertFingerprint
+        }
 
         let fileManager = FileManager.default
         let directory = Self.handshakeDirectoryPath

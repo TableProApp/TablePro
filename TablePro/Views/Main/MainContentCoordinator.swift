@@ -753,7 +753,33 @@ final class MainContentCoordinator {
             return
         }
 
-        // Split into individual statements for multi-statement support
+        if AppSettingsManager.shared.editor.queryParametersEnabled {
+            let paramStatements = SQLStatementScanner.allStatements(in: sql)
+            guard !paramStatements.isEmpty else { return }
+            let combinedSQL = paramStatements.joined(separator: "; ")
+            let detectedNames = SQLParameterExtractor.extractParameters(from: combinedSQL)
+
+            if !detectedNames.isEmpty {
+                let reconciled = detectAndReconcileParameters(
+                    sql: combinedSQL,
+                    existing: tabManager.tabs[index].queryParameters
+                )
+                tabManager.tabs[index].queryParameters = reconciled
+
+                if !tabManager.tabs[index].isParameterPanelVisible {
+                    tabManager.tabs[index].isParameterPanelVisible = true
+                    return
+                }
+
+                dispatchParameterizedStatements(
+                    paramStatements,
+                    parameters: reconciled,
+                    tabIndex: index
+                )
+                return
+            }
+        }
+
         let statements = SQLStatementScanner.allStatements(in: sql)
         guard !statements.isEmpty else { return }
 
@@ -1135,7 +1161,7 @@ final class MainContentCoordinator {
 
     /// Reset execution state when a query is cancelled
     @MainActor
-    private func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
+    internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
             tabManager.tabs[idx].isExecuting = false
         }
@@ -1144,7 +1170,7 @@ final class MainContentCoordinator {
         toolbarState.lastQueryDuration = executionTime
     }
 
-    private func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
+    internal func resolveTableEditability(tab: QueryTab, sql: String) -> (tableName: String?, isEditable: Bool) {
         let usesNoSQLBrowsing = PluginManager.shared.editorLanguage(for: connection.type) != .sql
             || (DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil

@@ -63,6 +63,9 @@ protocol DatabaseDriver: AnyObject {
     /// Fetch subsequent pages of results
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PagedQueryResult
 
+    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult
+    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult
+
     // MARK: - Schema Operations
 
     /// Fetch all tables in the database
@@ -386,7 +389,47 @@ extension DatabaseDriver {
         )
     }
 
-    /// Default no-op implementation for drivers that don't support query cancellation
+    func fetchFirstPageParameterized(query: String, parameters: [Any?], limit: Int) async throws -> PagedQueryResult {
+        guard limit > 0 else {
+            let result = try await executeParameterized(query: query, parameters: parameters)
+            return PagedQueryResult(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET 0"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PagedQueryResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
+    func fetchNextPageParameterized(query: String, parameters: [Any?], offset: Int, limit: Int) async throws -> PagedQueryResult {
+        let wrappedQuery = "SELECT * FROM (\(query)) _t LIMIT \(limit + 1) OFFSET \(offset)"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PagedQueryResult(
+            columns: result.columns,
+            columnTypes: result.columnTypes,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
+        )
+    }
+
     func cancelQuery() throws {
         // No-op by default
     }

@@ -1,0 +1,106 @@
+---
+title: Query Parameters
+description: Use :name placeholders in SQL queries, fill values in a panel, execute with prepared statements
+---
+
+# Query Parameters
+
+Instead of editing your SQL every time you want to test a different value, use `:name` placeholders. TablePro detects them, shows a panel for entering values, and executes using prepared statements.
+
+{/* Screenshot: Query parameter panel with filled values */}
+<Frame caption="Query parameter panel">
+  <img
+    className="block dark:hidden"
+    src="/images/query-parameters.png"
+    alt="Query parameters"
+  />
+  <img
+    className="hidden dark:block"
+    src="/images/query-parameters-dark.png"
+    alt="Query parameters"
+  />
+</Frame>
+
+## Usage
+
+Write a query with `:name` placeholders:
+
+```sql
+SELECT *
+FROM orders
+WHERE customer_id = :customer_id
+  AND status = :status
+  AND created_at > :since;
+```
+
+Press `Cmd+Enter`. A panel appears with a field for each parameter. Fill in values, press `Cmd+Enter` again. Done.
+
+Works with **Execute All** (`Cmd+Shift+Enter`) too.
+
+## The Panel
+
+Each row has:
+
+| Control | What it does |
+|---------|-------------|
+| **Name** | Shows the parameter name from your query |
+| **Value** | Where you type the value |
+| **Type** | String, Integer, Decimal, Date, or Boolean |
+| **NULL** | Check this to bind NULL |
+
+**Clear All** empties all value fields. The X button hides the panel. It comes back on the next execute if the query still has parameters.
+
+## What Gets Detected
+
+`:name` is detected when `name` starts with a letter or underscore. These are ignored:
+
+| Pattern | Why it's ignored |
+|---------|-----------------|
+| `':name'` | Inside a string |
+| `-- :name` | Inside a comment |
+| `/* :name */` | Inside a block comment |
+| `col::integer` | PostgreSQL type cast |
+| `$$ :name $$` | Dollar-quoted string |
+| `:123` | Starts with a digit |
+
+If the same name appears twice (`:id = :id`), both get the same value.
+
+## How Binding Works
+
+TablePro converts your `:name` placeholders to the database's native format before executing:
+
+- MySQL, SQLite: `?` placeholders via `mysql_stmt_bind_param` / `sqlite3_bind_text`
+- PostgreSQL: `$1`, `$2` via `PQexecParams`
+- DuckDB: `$1`, `$2` via prepared statements
+- ClickHouse, SQL Server, others: client-side substitution with proper escaping
+
+<Tip>
+This is real prepared statement binding, not string replacement. Quoting and SQL injection are handled for you.
+</Tip>
+
+## Values Stick Around
+
+Parameter values are saved with the tab. They survive tab switches, app restarts, and show up in [query history](/features/query-history).
+
+When you edit the query and change parameter names, new names get empty fields and old ones disappear. Names that still match keep their values.
+
+## Multiple Statements
+
+For multi-statement scripts, all unique parameter names across all statements appear in one panel. Each statement only binds the parameters it uses.
+
+```sql
+INSERT INTO users (id, name) VALUES (:id, :name);
+SELECT * FROM users WHERE id = :id;
+```
+
+Both use `:id`. Only the INSERT uses `:name`.
+
+## Safe Mode
+
+Parameterized queries still go through [safe mode](/features/safe-mode) checks. DROP, DELETE without WHERE, and TRUNCATE still ask for confirmation.
+
+## Settings
+
+**Settings** > **Editor** > **Query parameters (:name syntax)**. On by default.
+
+Turn it off if you don't want parameter detection (`:name` will be sent to the database as-is).

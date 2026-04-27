@@ -106,6 +106,18 @@ final class AppSettingsManager {
         didSet {
             storage.saveAI(ai)
             SyncChangeTracker.shared.markDirty(.settings, id: "ai")
+            notifyChange(.aiSettingsDidChange)
+            let hadCopilot = oldValue.providers.contains(where: { $0.type == .copilot })
+            let hasCopilot = ai.providers.contains(where: { $0.type == .copilot })
+            if hasCopilot != hadCopilot {
+                Task {
+                    if hasCopilot {
+                        await CopilotService.shared.start()
+                    } else {
+                        await CopilotService.shared.stop()
+                    }
+                }
+            }
         }
     }
 
@@ -166,7 +178,7 @@ final class AppSettingsManager {
         self.history = storage.loadHistory()
         self.tabs = storage.loadTabs()
         self.keyboard = storage.loadKeyboard()
-        self.ai = storage.loadAI()
+        self.ai = Self.migrateAI(storage.loadAI())
         self.sync = storage.loadSync()
         self.terminal = storage.loadTerminal()
         self.mcp = storage.loadMCP()
@@ -189,10 +201,27 @@ final class AppSettingsManager {
         DateFormattingService.shared.updateFormat(dataGrid.dateFormat)
 
         observeAccessibilityTextSizeChanges()
+
+        if ai.enabled, ai.providers.contains(where: { $0.type == .copilot }) {
+            Task { await CopilotService.shared.start() }
+        }
     }
 
     private func notifyChange(_ notification: Notification.Name) {
         NotificationCenter.default.post(name: notification, object: self)
+    }
+
+    /// Auto-pick the first configured provider as active when nothing is selected.
+    /// Avoids a "AI suddenly stopped working" upgrade UX when older settings JSON
+    /// (with multiple providers and no activeProviderID concept) is loaded.
+    /// Internal so `@testable` tests can exercise it directly.
+    internal static func migrateAI(_ settings: AISettings) -> AISettings {
+        guard settings.activeProviderID == nil, let first = settings.providers.first else {
+            return settings
+        }
+        var migrated = settings
+        migrated.activeProviderID = first.id
+        return migrated
     }
 
     private static let logger = Logger(subsystem: "com.TablePro", category: "AppSettingsManager")

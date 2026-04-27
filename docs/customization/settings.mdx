@@ -1,69 +1,29 @@
 ---
-title: Settings Overview
-description: All settings categories - General, Appearance, Editor, Keyboard, AI, Terminal, Plugins, and Account
+title: Settings
+description: All settings categories with their purpose and where to find each tab.
 ---
 
-# Settings Overview
+# Settings
 
-Open settings via **TablePro** > **Settings** or `Cmd+,`.
-
-{/* Screenshot: Settings window showing all categories */}
-<Frame caption="TablePro settings">
-  <img
-    className="block dark:hidden"
-    src="/images/settings.png"
-    alt="Settings window"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-dark.png"
-    alt="Settings window"
-  />
-</Frame>
-
-## Settings Categories
+Open with `Cmd+,`. Settings are grouped into tabs.
 
 <CardGroup cols={2}>
-  <Card title="General" icon="gear">
-    Language, startup, tabs, query history, updates, privacy
-  </Card>
-  <Card title="Appearance" icon="palette" href="/customization/appearance">
-    Themes, colors, and fonts
-  </Card>
-  <Card title="Editor" icon="code" href="/customization/editor-settings">
-    SQL editor, data grid, pagination
-  </Card>
-  <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">
-    Custom shortcuts
-  </Card>
-  <Card title="AI" icon="sparkles" href="/features/ai-chat">
-    AI provider setup
-  </Card>
-  <Card title="Terminal" icon="terminal" href="/features/terminal#settings">
-    Terminal font, theme, CLI paths, MCP server
-  </Card>
-  <Card title="Plugins" icon="puzzle-piece">
-    Manage drivers
-  </Card>
-  <Card title="Account" icon="user" href="/features/icloud-sync">
-    License, iCloud sync, linked folders
-  </Card>
+  <Card title="General" icon="gear" href="/customization/settings#general">Language, updates, query timeout, restore session.</Card>
+  <Card title="Appearance" icon="palette" href="/customization/appearance">Theme, accent colour, sidebar.</Card>
+  <Card title="Editor" icon="code" href="/customization/editor-settings">Font, Vim mode, line numbers, JSON viewer.</Card>
+  <Card title="Keyboard" icon="keyboard" href="/features/keyboard-shortcuts#customizing-shortcuts">Custom shortcuts.</Card>
+  <Card title="AI" icon="sparkles" href="/features/ai-assistant#configure-a-provider">Provider config, inline suggestions, context, privacy.</Card>
+  <Card title="Terminal" icon="terminal" href="/features/terminal#settings">Font, theme, CLI paths.</Card>
+  <Card title="MCP" icon="network-wired" href="/features/mcp#enabling-the-server">MCP server config.</Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/customization/settings#plugins">Manage drivers and exporters.</Card>
+  <Card title="Account" icon="user" href="/features/icloud-sync">License, iCloud sync, linked folders.</Card>
 </CardGroup>
 
-## General Settings
+## General
 
 ### Language
 
-| Option | Description |
-|--------|-------------|
-| **System** | Follow macOS system language (default) |
-| **English** | English |
-| **Tiếng Việt** | Vietnamese |
-| **Türkçe** | Turkish |
-
-<Note>
-Changing the language requires restarting TablePro.
-</Note>
+System (default), English, Tiếng Việt, Türkçe. Changing the language requires restarting TablePro.
 
 ### Startup Behavior
 
@@ -74,543 +34,90 @@ Changing the language requires restarting TablePro.
 
 ### Query Execution Timeout
 
-Set the maximum time a query runs before cancellation:
+Maximum seconds a query runs before cancellation. Default 60, range 0-600 (0 means no limit).
 
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| **Query timeout** | 60 seconds | 0 -- 600 | Maximum seconds to wait. 0 means no limit. |
-
-The timeout is enforced at the database level:
-
-| Database | Mechanism |
-|----------|-----------|
-| PostgreSQL | `SET statement_timeout` (all statements) |
-| MySQL | `SET SESSION max_execution_time` (SELECT queries) |
-| MariaDB | `SET SESSION max_statement_time` (SELECT queries) |
-| SQLite | `sqlite3_busy_timeout` (lock contention) |
-
-<Note>
-The timeout applies when a new connection is established. Changing it requires reconnecting.
-</Note>
-
-{/* Screenshot: Query timeout setting */}
-<Frame caption="Query execution timeout configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-query-timeout.png"
-    alt="Query timeout setting"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-query-timeout-dark.png"
-    alt="Query timeout setting"
-  />
-</Frame>
+Enforced at the database level: `statement_timeout` (PostgreSQL), `max_execution_time` (MySQL), `max_statement_time` (MariaDB), `sqlite3_busy_timeout` (SQLite). Applies on new connections; change requires reconnect.
 
 ### Software Update
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Automatically check for updates** | On | Periodically check for new versions in the background |
-| **Check for Updates...** | -- | Check right now |
+| **Automatically check for updates** | On | Periodic background check |
+| **Check for Updates...** | - | Check now |
 
-TablePro uses [Sparkle](https://sparkle-project.org/) for updates. When an update is available, a dialog shows release notes and an install option.
-
-Also available from the **TablePro** menu > **Check for Updates...**.
+Powered by [Sparkle](https://sparkle-project.org/). Also available from the **TablePro** menu.
 
 ### Privacy
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Share anonymous usage data** | On | Sends anonymous stats (OS version, architecture, locale, database types) every 24 hours |
+| **Share anonymous usage data** | On | OS version, architecture, locale, database types every 24 hours |
 
-No personal information, queries, or database content is transmitted. Toggle off at any time.
+No queries or database content is transmitted.
 
-{/* Screenshot: General settings panel */}
-<Frame caption="General settings">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-general.png"
-    alt="General settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-general-dark.png"
-    alt="General settings"
-  />
-</Frame>
-
-## Data Grid Settings (Editor Tab)
-
-### Font
-
-| Setting | Default | Range | Description |
-|---------|---------|-------|-------------|
-| **Font family** | System Mono | Installed monospaced fonts (dynamic list) | Monospace font for data grid cells |
-| **Font size** | 13 pt | 10-18 pt | Text size in data grid cells |
-
-Affects all data grid cells, including NULL placeholders and cell editing overlays. A live preview is shown in the settings panel.
-
-<Tip>
-The data grid font is independent of the SQL editor font. You can use different fonts and sizes for each.
-</Tip>
-
-### Row Height
-
-| Option | Height | Best For |
-|--------|--------|----------|
-| **Compact** | 20px | Dense data, more rows visible |
-| **Normal** | 24px | Balanced (default) |
-| **Comfortable** | 28px | Better readability |
-| **Spacious** | 32px | Accessibility |
-
-### Date Format
-
-| Format | Example |
-|--------|---------|
-| ISO 8601 | 2024-12-31 23:59:59 |
-| ISO Date | 2024-12-31 |
-| US Long | 12/31/2024 11:59:59 PM |
-| US Short | 12/31/2024 |
-| EU Long | 31/12/2024 23:59:59 |
-| EU Short | 31/12/2024 |
-
-<Tip>
-ISO 8601 is recommended for consistency, especially with international teams.
-</Tip>
-
-### NULL Display
+### Query History
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **NULL Display** | "NULL" | Text shown for NULL values |
+| **Max Entries** | 10,000 | `0` = unlimited |
+| **Max Days** | 90 | `0` = keep forever |
+| **Auto Cleanup** | On | Remove old entries automatically |
+| **Clear All History** | - | One-click wipe |
 
-Options:
-- `NULL` - Standard database notation
-- `(null)` - Parenthesized
-- `∅` - Empty set symbol
-- Custom text (max 20 characters)
-
-### Page Size
-
-| Range | Minimum | Maximum | Default |
-|-------|---------|---------|---------|
-| Page Size | 10 | 100,000 | 1,000 |
-
-<Note>
-Larger page sizes use more memory but show more data at once.
-</Note>
-
-### Row Count Estimation
-
-| Setting | Options | Default |
-|---------|---------|---------|
-| Count rows if estimate less than | 1,000 / 10,000 / 100,000 / 1,000,000 / Always count | 100,000 |
-
-Tables above this threshold show an estimated count (`~3,000,000 rows`) from database statistics instead of running `COUNT(*)`. Useful for large PostgreSQL tables where `COUNT(*)` requires a full table scan.
-
-<Note>
-**Validation ranges:**
-- **Page Size**: 10 -- 100,000 rows (values outside this range are clamped)
-- **NULL Display**: Maximum 20 characters, no newlines or tabs
-</Note>
-
-### Query Result Limit
-
-How many rows to load on first execution in query tabs. Table tabs use page size instead.
-
-| Setting | Default | Range |
-|---------|---------|-------|
-| **Enforce query result limit** | On | On / Off |
-| **Row limit** | 10,000 | 100 - 500,000 |
-
-When enabled, `SELECT` queries load up to the configured limit. If more rows exist, the status bar shows **Load More** and **Fetch All** actions.
-
-Turn this off to load all rows at once (capped at 5M by the driver safety limit).
-
-See [Data Grid - Progressive Loading](/features/data-grid#progressive-loading) for details.
-
-### Alternate Row Colors
-
-| Option | Description |
-|--------|-------------|
-| **On** | Zebra striping for easier scanning |
-| **Off** | Uniform background color |
-
-### Row Numbers
-
-| Option | Description |
-|--------|-------------|
-| **On** | Show row number column (`#`) as the first column |
-| **Off** | Hide the row number column |
-
-### Smart Value Detection
+### Tabs
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Smart value detection** | On | Auto-render UUIDs in binary columns and Unix timestamps in integer columns |
+| **Reuse clean table tab** | Off | Click a new table to replace the current tab if untouched |
+| **Enable preview tabs** | On | Single-click opens a preview tab; double-click or interaction makes it permanent |
+| **Group all connections in one window** | Off | Force all tabs into one window regardless of connection |
 
-See [Data Grid - Smart Value Detection](/features/data-grid#smart-value-detection). Per-column overrides via column header right-click work regardless of this setting.
+A tab is "clean" when it's a table tab (not query/create), unpinned, no unsaved changes, and no interactions (sort, filter, selection).
 
-### Auto-Show Inspector
+## Plugins
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Auto-show inspector on row select** | Off | Open the right sidebar automatically when selecting a row in a table tab |
+Manage database driver and exporter plugins from **Settings** > **Plugins**. Split-view: list on the left, details on the right.
 
-{/* Screenshot: Data Grid settings */}
-<Frame caption="Data Grid settings: row height, date format, NULL display">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-data-grid.png"
-    alt="Data Grid settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-data-grid-dark.png"
-    alt="Data Grid settings"
-  />
-</Frame>
+- **Installed**: built-in (MySQL, PostgreSQL, SQLite, ClickHouse, SQL Server, Redis, CSV, JSON, SQL) plus user-installed plugins. Toggle on/off in the detail pane.
+- **Browse**: install drivers from the registry (MongoDB, DuckDB, Oracle, Cassandra, Etcd, Cloudflare D1, DynamoDB, BigQuery, libSQL).
+- **Sideload**: click **+** or drag a `.tableplugin` / `.zip` onto the view. TablePro verifies the code signature.
 
-## Tab Settings (General Tab)
-
-### Reuse Clean Table Tab
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Reuse clean table tab** | Off | Clicking a new table in the sidebar replaces the current table tab instead of opening a new one |
-
-A tab is "clean" when all of these are true:
-
-- It's a table tab (not query or create table)
-- Not pinned
-- No unsaved changes
-- You haven't interacted with it (no sorting, filtering, row selection, etc.)
-
-When off (default), every table click opens a new tab.
-
-<Tip>
-Enable this for single-tab browsing, similar to TablePlus's default behavior.
-</Tip>
-
-{/* Screenshot: Tab settings */}
-<Frame caption="Tab settings: reuse behavior">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-tabs.png"
-    alt="Tab settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-tabs-dark.png"
-    alt="Tab settings"
-  />
-</Frame>
-
-### Preview Tabs
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Enable preview tabs** | On | Single-clicking a table opens a temporary tab that gets replaced on next click |
-
-Single-clicking a table opens a preview tab that gets replaced on next click. Double-clicking or interacting with the tab (sorting, filtering, editing) makes it permanent.
-
-Preview tabs show "Preview" in the subtitle and are not persisted across restarts.
-
-### Tab Grouping
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Group all connections in one window** | Off | Tabs from different connections share the same window instead of opening separate windows |
-
-By default, each database connection opens its own window — tabs for the same connection are grouped together, while different connections get separate windows. Enable this setting to group all tabs into a single window regardless of which connection they belong to.
-
-The setting takes effect for newly opened connections. Existing windows keep their current grouping until closed.
-
-## Keyboard Settings
-
-Customize keyboard shortcuts for menu actions. See [Keyboard Shortcuts](/features/keyboard-shortcuts#customizing-shortcuts) for full details.
-
-### Rebinding Shortcuts
-
-1. Open **Settings** > **Keyboard**
-2. Click the shortcut field next to any action
-3. Press the new key combination
-4. Updates immediately
-
-### Conflict Detection
-
-Assigning a shortcut already in use shows a dialog with **Cancel** or **Reassign** options. System-reserved shortcuts (`Cmd+Q`, `Cmd+H`, `Cmd+M`, `Cmd+,`) cannot be reassigned.
-
-### Reset to Defaults
-
-Click **Reset to Defaults** to restore all shortcuts.
-
-{/* Screenshot: Keyboard settings */}
-<Frame caption="Keyboard settings: shortcut customization">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-keyboard.png"
-    alt="Keyboard settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-keyboard-dark.png"
-    alt="Keyboard settings"
-  />
-</Frame>
-
-## History Settings (General Tab)
-
-### Maximum Entries
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Entries** | 10,000 | Maximum queries to keep |
-
-Set to `0` for unlimited.
-
-### Maximum Days
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Max Days** | 90 | Delete queries older than this |
-
-Set to `0` to keep history forever.
-
-### Auto Cleanup
-
-| Option | Description |
-|--------|-------------|
-| **On** | Automatically remove old entries (default) |
-| **Off** | Manual cleanup only |
+Built-in plugins can be disabled but not uninstalled.
 
 <Warning>
-Disabling auto cleanup with unlimited entries may cause the history database to grow very large over time.
+Only install plugins from sources you trust. Code-signature checks do not guarantee plugin behavior.
 </Warning>
 
-### Clear History
+## License & Account
 
-1. Open Settings > General
-2. Click **Clear All History**
-3. Confirm the action
+Activate, deactivate, or view your license under **Settings** > **Account**. Validation is local (cryptographic signature) and re-checks every 7 days. iCloud sync, linked folders, and account info live on the same tab. See [iCloud Sync](/features/icloud-sync).
 
-{/* Screenshot: History settings */}
-<Frame caption="History settings: retention and cleanup">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-history.png"
-    alt="History settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-history-dark.png"
-    alt="History settings"
-  />
-</Frame>
+## Data Grid
 
-## Terminal Settings
-
-Configure the embedded database terminal. See [Database Terminal](/features/terminal) for full documentation.
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Font** | Menlo | Monospace font for the terminal |
-| **Font size** | 13 | Font size (9-24 pt) |
-| **Cursor style** | Block | Block, bar, or underline |
-| **Cursor blink** | On | Animate the cursor |
-| **Scrollback lines** | 10,000 | Lines kept in scroll history (0 = unlimited) |
-| **Option as Meta** | On | Use Option key as Meta for terminal shortcuts |
-| **Theme** | Default | Terminal color theme (300+ built-in options) |
-| **CLI paths** | Auto-detect | Per-database override for CLI executable path |
-| **Terminal bell** | On | Play sound on bell character |
-
-## Plugins Settings
-
-Manage database driver plugins from the **Plugins** tab in Settings.
-
-### Installed Plugins
-
-Split-view: plugin list on the left, details on the right. Each row shows version, capability, and source (built-in or user-installed). Filter by name using the search field.
-
-TablePro ships with 6 built-in database driver plugins (MySQL, PostgreSQL, SQLite, ClickHouse, SQL Server, Redis) and 3 built-in export plugins (CSV, JSON, SQL). Additional plugins are available from the plugin registry and can be installed from the Browse tab or downloaded automatically when you select a database type:
-
-| Plugin | Database Types | Default Port | Distribution |
-|--------|---------------|--------------|--------------|
-| MySQL | MySQL, MariaDB | 3306 | Built-in |
-| PostgreSQL | PostgreSQL, Redshift | 5432 | Built-in |
-| SQLite | SQLite | -- | Built-in |
-| ClickHouse | ClickHouse | 8123 | Built-in |
-| SQL Server | SQL Server | 1433 | Built-in |
-| Redis | Redis | 6379 | Built-in |
-| MongoDB | MongoDB | 27017 | Registry |
-| DuckDB | DuckDB | -- | Registry |
-| Oracle | Oracle | 1521 | Registry |
-| Cassandra | Cassandra, ScyllaDB | 9042 | Registry |
-| Etcd | Etcd | 2379 | Registry |
-| Cloudflare D1 | Cloudflare D1 | -- | Registry |
-| DynamoDB | DynamoDB | -- | Registry |
-| BigQuery | BigQuery | -- | Registry |
-
-Toggle plugins on/off in the detail pane. Disabled plugins hide their database type from the connection dialog.
-
-### Plugin Details
-
-Select a plugin to view version, bundle ID, capabilities, database type, and default port. Driver plugins can provide custom settings panels in this view.
-
-### Browse plugins
-
-The **Browse** tab uses the same split-view. Each row shows version, author, download count, and install status. Filter by name or category. Click a plugin for details, or install directly from the list.
-
-### Installing Third-Party Plugins
-
-1. Click the **+** button below the plugin list
-2. Select a `.zip` archive containing a `.tableplugin` bundle
-3. TablePro verifies the code signature and installs the plugin
-
-You can also drag and drop a `.tableplugin` or `.zip` file onto the Plugins settings view to install it.
-
-<Warning>
-Only install plugins from sources you trust. TablePro checks the code signature of sideloaded plugins but cannot guarantee their behavior.
-</Warning>
-
-### Uninstalling Plugins
-
-Select a user-installed plugin and click **-**, or use **Uninstall** in the detail pane. Built-in plugins can only be disabled, not uninstalled.
-
-### Advanced Settings
-
-Some settings are available via `defaults write` for advanced users:
-
-| Setting | Command | Description |
-|---------|---------|-------------|
-| Custom plugin registry | `defaults write com.TablePro com.TablePro.customRegistryURL <url>` | Use a private plugin registry |
-| Clear custom registry | `defaults delete com.TablePro com.TablePro.customRegistryURL` | Revert to default registry |
-
-## Sync Settings (Account Tab)
-
-Manage iCloud sync from the **Account** tab in Settings. This is a Pro feature.
-
-### iCloud Sync toggle
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **iCloud Sync** | Off | Enable or disable iCloud sync across all Macs |
-
-### Status
-
-| Element | Description |
-|---------|-------------|
-| **iCloud Account** | Shows the current iCloud account status |
-| **Last Sync** | Timestamp of the most recent sync |
-| **Sync Now** | Manually trigger a sync |
-
-### Sync categories
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| **Connections** | On | Sync connection details (not passwords) |
-| **Groups & Tags** | On | Sync connection organization, including nested group hierarchy |
-| **App Settings** | On | Sync all 8 settings categories |
-| **Query History** | On | Sync query history |
-
-### History limit
-
-| Option | Description |
-|--------|-------------|
-| **100** | Sync last 100 queries |
-| **500** | Sync last 500 queries |
-| **1,000** | Sync last 1,000 queries |
-| **Unlimited** | Sync all query history |
-
-<Note>
-Passwords are never synced. They remain in each Mac's local Keychain.
-</Note>
-
-See [iCloud Sync](/features/icloud-sync) for full details on conflict resolution, sync behavior, and troubleshooting.
-
-{/* Screenshot: Sync settings */}
-<Frame caption="Sync settings: iCloud sync configuration">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-sync.png"
-    alt="Sync settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-sync-dark.png"
-    alt="Sync settings"
-  />
-</Frame>
-
-## License Settings (Account Tab)
-
-Manage your license from the **Account** tab in Settings.
-
-### Activating a License
-
-1. Open **Settings** (`Cmd+,`) and select the **Account** tab
-2. Enter your license key
-3. Click **Activate**
-
-Once activated, the tab shows your registered email and license key.
-
-### Deactivating a License
-
-1. Open **Settings** > **Account**
-2. Click **Deactivate...**
-3. Confirm
-
-<Note>
-Deactivating frees up the activation slot for use on a different machine.
-</Note>
-
-### Offline Use
-
-License validation is local (cryptographic signature). No internet needed after activation. Re-validates with the server every 7 days.
-
-{/* Screenshot: License settings */}
-<Frame caption="License activation and management">
-  <img
-    className="block dark:hidden"
-    src="/images/settings-license.png"
-    alt="License settings"
-  />
-  <img
-    className="hidden dark:block"
-    src="/images/settings-license-dark.png"
-    alt="License settings"
-  />
-</Frame>
+Data grid font, row height, date format, NULL display, page size, and row count estimation live on the **Editor** tab. See [Data Grid](/features/data-grid) for usage and behavior.
 
 ## Settings Storage
-
-Settings are stored in:
 
 ```
 ~/Library/Preferences/com.TablePro.plist
 ```
 
-### Resetting Settings
-
-To reset everything to defaults:
+Reset to defaults:
 
 ```bash
-# Remove preferences file
 rm ~/Library/Preferences/com.TablePro.plist
-
-# Remove cached settings
 rm -rf ~/Library/Caches/com.TablePro
 ```
-
-Then restart TablePro.
 
 <Warning>
 Resetting preferences does not affect saved connections or query history.
 </Warning>
 
-## Keyboard Shortcut
+## Defaults via `defaults write`
 
-| Action | Shortcut |
-|--------|----------|
-| Open Settings | `Cmd+,` |
+Advanced flags not exposed in the UI:
+
+| Setting | Command |
+|---------|---------|
+| Custom plugin registry | `defaults write com.TablePro com.TablePro.customRegistryURL <url>` |
+| Clear custom registry | `defaults delete com.TablePro com.TablePro.customRegistryURL` |

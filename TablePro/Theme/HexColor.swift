@@ -2,19 +2,18 @@ import AppKit
 import SwiftUI
 
 extension String {
-    /// Parse this hex color string to NSColor (sRGB). Returns gray for invalid input.
     var nsColor: NSColor {
         let hex = trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "#"))
 
         let hexLength = (hex as NSString).length
         guard hexLength == 6 || hexLength == 8 else {
-            return .gray
+            return .labelColor
         }
 
         var value: UInt64 = 0
         guard Scanner(string: hex).scanHexInt64(&value) else {
-            return .gray
+            return .labelColor
         }
 
         let r, g, b, a: CGFloat
@@ -34,19 +33,16 @@ extension String {
         return NSColor(srgbRed: r, green: g, blue: b, alpha: a)
     }
 
-    /// Parse this hex color string to SwiftUI Color.
     var swiftUIColor: Color {
         Color(nsColor: nsColor)
     }
 
-    /// Parse this hex color string to CGColor (sRGB).
     var cgColor: CGColor {
         nsColor.cgColor
     }
 }
 
 extension NSColor {
-    /// Convert this NSColor to a hex string "#RRGGBB" or "#RRGGBBAA" (if alpha < 1).
     var hexString: String {
         guard let converted = usingColorSpace(.sRGB) else {
             return "#808080"

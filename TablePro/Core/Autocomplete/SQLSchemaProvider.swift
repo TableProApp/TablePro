@@ -39,6 +39,7 @@ actor SQLSchemaProvider {
         if let existing = loadTask {
             Self.logger.debug("[schema] loadSchema awaiting existing in-flight task")
             let t0 = Date()
+            if let connection { self.connectionInfo = connection }
             await existing.value
             Self.logger.debug("[schema] loadSchema coalesced — awaited existing task ms=\(Int(Date().timeIntervalSince(t0) * 1_000)) tableCount=\(self.tables.count)")
             return
@@ -47,7 +48,7 @@ actor SQLSchemaProvider {
         Self.logger.info("[schema] loadSchema starting new fetch")
         let t0 = Date()
         self.cachedDriver = driver
-        self.connectionInfo = connection
+        if let connection { self.connectionInfo = connection }
         isLoading = true
         lastLoadError = nil
 
@@ -74,6 +75,11 @@ actor SQLSchemaProvider {
     private func setLoadError(_ error: Error) {
         lastLoadError = error
         isLoading = false
+    }
+
+    /// Get the current connection info
+    func getConnectionInfo() -> DatabaseConnection? {
+        connectionInfo
     }
 
     /// Get all tables

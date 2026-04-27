@@ -2,13 +2,10 @@
 //  FilterSettingsStorage.swift
 //  TablePro
 //
-//  Persistent storage for filter settings and last-used filters
-//
 
 import Foundation
 import os
 
-/// Default column selection for new filters
 enum FilterDefaultColumn: String, CaseIterable, Identifiable, Codable {
     case rawSQL = "rawSQL"
     case primaryKey = "primaryKey"
@@ -19,13 +16,12 @@ enum FilterDefaultColumn: String, CaseIterable, Identifiable, Codable {
     var displayName: String {
         switch self {
         case .rawSQL: return "Raw SQL"
-        case .primaryKey: return "Primary Key"
-        case .anyColumn: return "Any Column"
+        case .primaryKey: return String(localized: "Primary Key")
+        case .anyColumn: return String(localized: "Any Column")
         }
     }
 }
 
-/// Default operator for new filters
 enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {
     case equal = "equal"
     case contains = "contains"
@@ -46,7 +42,6 @@ enum FilterDefaultOperator: String, CaseIterable, Identifiable, Codable {
     }
 }
 
-/// Default panel state when opening a table
 enum FilterPanelDefaultState: String, CaseIterable, Identifiable, Codable {
     case restoreLast = "restoreLast"
     case alwaysShow = "alwaysShow"
@@ -56,14 +51,13 @@ enum FilterPanelDefaultState: String, CaseIterable, Identifiable, Codable {
 
     var displayName: String {
         switch self {
-        case .restoreLast: return "Restore Last Filter"
-        case .alwaysShow: return "Always Show"
-        case .alwaysHide: return "Always Hide"
+        case .restoreLast: return String(localized: "Restore Last Filter")
+        case .alwaysShow: return String(localized: "Always Show")
+        case .alwaysHide: return String(localized: "Always Hide")
         }
     }
 }
 
-/// Settings for filter behavior
 struct FilterSettings: Codable, Equatable {
     var defaultColumn: FilterDefaultColumn
     var defaultOperator: FilterDefaultOperator
@@ -80,50 +74,40 @@ struct FilterSettings: Codable, Equatable {
     }
 }
 
-/// Persistent storage for filter settings and per-table last-used filters
 @MainActor
 final class FilterSettingsStorage {
     static let shared = FilterSettingsStorage()
     private static let logger = Logger(subsystem: "com.TablePro", category: "FilterSettingsStorage")
 
+    private static let legacyLastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
+    private static let legacyKnownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"
+    private static let migrationCompleteKey = "com.TablePro.filterStateMigrationComplete"
+
     private let settingsKey = "com.TablePro.filter.settings"
-    private let lastFiltersKeyPrefix = "com.TablePro.filter.lastFilters."
-    /// Key used to persist the set of known per-table filter keys for efficient bulk removal.
-    private let knownFilterKeysKey = "com.TablePro.filter.knownFilterKeys"
     private let defaults = UserDefaults.standard
 
-    /// Cached settings to avoid repeated UserDefaults read + JSON decode
-    private var cachedSettings: FilterSettings?
-
-    /// Per-table filter cache to avoid JSON decode on every table switch
-    private var lastFiltersCache: [String: [TableFilter]] = [:]
-
-    /// In-memory cache for tracked filter keys. Lazy-loaded on first access
-    /// so that `trackKey`/`removeTrackedKey` avoid redundant UserDefaults reads.
-    private var _trackedKeys: Set<String>?
-
-    private var trackedKeys: Set<String> {
-        get {
-            if let cached = _trackedKeys { return cached }
-            let array = defaults.stringArray(forKey: knownFilterKeysKey) ?? []
-            let keys = Set(array)
-            _trackedKeys = keys
-            return keys
-        }
-        set {
-            _trackedKeys = newValue
-            defaults.set(Array(newValue), forKey: knownFilterKeysKey)
-        }
-    }
-
+    private let filterStateDirectory: URL
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private init() {}
+    private var cachedSettings: FilterSettings?
+    private var lastFiltersCache: [String: [TableFilter]] = [:]
 
-    // MARK: - Settings
+    private init() {
+        filterStateDirectory = Self.resolvedFilterStateDirectory()
 
-    /// Load filter settings (cached after first read)
+        do {
+            try FileManager.default.createDirectory(
+                at: filterStateDirectory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            Self.logger.error("Failed to create filter state directory: \(error.localizedDescription)")
+        }
+
+        Self.performMigrationIfNeeded(filterStateDirectory: filterStateDirectory)
+    }
+
     func loadSettings() -> FilterSettings {
         if let cached = cachedSettings { return cached }
 
@@ -145,7 +129,6 @@ final class FilterSettingsStorage {
         }
     }
 
-    /// Save filter settings
     func saveSettings(_ settings: FilterSettings) {
         cachedSettings = settings
         do {
@@ -156,92 +139,125 @@ final class FilterSettingsStorage {
         }
     }
 
-    // MARK: - Per-Table Last Filters
-
-    /// Load last-used filters for a specific table
     func loadLastFilters(for tableName: String) -> [TableFilter] {
-        let key = lastFiltersKeyPrefix + sanitizeTableName(tableName)
+        let sanitized = sanitizeTableName(tableName)
+        if let cached = lastFiltersCache[sanitized] { return cached }
 
-        if let cached = lastFiltersCache[key] {
-            return cached
-        }
-
-        guard let data = defaults.data(forKey: key) else {
+        let fileURL = fileURL(forSanitizedName: sanitized)
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            lastFiltersCache[sanitized] = []
             return []
         }
 
         do {
+            let data = try Data(contentsOf: fileURL)
             let filters = try decoder.decode([TableFilter].self, from: data)
-            lastFiltersCache[key] = filters
+            lastFiltersCache[sanitized] = filters
             return filters
         } catch {
-            Self.logger.error("Failed to decode last filters for \(tableName): \(error)")
+            Self.logger.error("Failed to load last filters for \(tableName): \(error)")
+            lastFiltersCache[sanitized] = []
             return []
         }
     }
 
-    /// Save last-used filters for a specific table
     func saveLastFilters(_ filters: [TableFilter], for tableName: String) {
-        let key = lastFiltersKeyPrefix + sanitizeTableName(tableName)
+        let sanitized = sanitizeTableName(tableName)
+        let fileURL = fileURL(forSanitizedName: sanitized)
 
-        // Only save non-empty filter configurations
         guard !filters.isEmpty else {
-            defaults.removeObject(forKey: key)
-            removeTrackedKey(key)
-            lastFiltersCache.removeValue(forKey: key)
+            removeFile(at: fileURL, label: tableName)
+            lastFiltersCache.removeValue(forKey: sanitized)
             return
         }
 
         do {
             let data = try encoder.encode(filters)
-            defaults.set(data, forKey: key)
-            trackKey(key)
-            lastFiltersCache[key] = filters
+            try data.write(to: fileURL, options: .atomic)
+            lastFiltersCache[sanitized] = filters
         } catch {
-            Self.logger.error("Failed to encode last filters for \(tableName): \(error)")
+            Self.logger.error("Failed to save last filters for \(tableName): \(error)")
         }
     }
 
-    /// Clear last filters for a specific table
     func clearLastFilters(for tableName: String) {
-        let key = lastFiltersKeyPrefix + sanitizeTableName(tableName)
-        defaults.removeObject(forKey: key)
-        removeTrackedKey(key)
-        lastFiltersCache.removeValue(forKey: key)
+        let sanitized = sanitizeTableName(tableName)
+        let fileURL = fileURL(forSanitizedName: sanitized)
+        removeFile(at: fileURL, label: tableName)
+        lastFiltersCache.removeValue(forKey: sanitized)
     }
 
-    /// Clear all stored last filters using the tracked key set instead of
-    /// loading the full UserDefaults plist via `dictionaryRepresentation()`.
     func clearAllLastFilters() {
-        for key in trackedKeys {
-            defaults.removeObject(forKey: key)
+        let fm = FileManager.default
+        do {
+            let files = try fm.contentsOfDirectory(at: filterStateDirectory, includingPropertiesForKeys: nil)
+            for file in files where file.pathExtension == "json" {
+                try? fm.removeItem(at: file)
+            }
+        } catch {
+            Self.logger.error("Failed to enumerate filter state directory: \(error.localizedDescription)")
         }
-        _trackedKeys = nil
-        defaults.removeObject(forKey: knownFilterKeysKey)
+        lastFiltersCache.removeAll()
     }
 
-    // MARK: - Key Tracking
+    private func fileURL(forSanitizedName sanitized: String) -> URL {
+        filterStateDirectory.appendingPathComponent("\(sanitized).json")
+    }
 
-    /// Add a key to the tracked set.
-    private func trackKey(_ key: String) {
-        var keys = trackedKeys
-        if keys.insert(key).inserted {
-            trackedKeys = keys
+    private func removeFile(at fileURL: URL, label: String) {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+        } catch {
+            Self.logger.error("Failed to remove last filters file for \(label): \(error.localizedDescription)")
         }
     }
 
-    /// Remove a key from the tracked set.
-    private func removeTrackedKey(_ key: String) {
-        var keys = trackedKeys
-        if keys.remove(key) != nil {
-            trackedKeys = keys
-        }
-    }
-
-    // MARK: - Helpers
-
-    /// Sanitize table name for use as UserDefaults key
     private func sanitizeTableName(_ tableName: String) -> String {
         tableName.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? tableName
+    }
+
+    private static func resolvedFilterStateDirectory() -> URL {
+        let appSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        return appSupport
+            .appendingPathComponent("TablePro", isDirectory: true)
+            .appendingPathComponent("FilterState", isDirectory: true)
+    }
+
+    private static func performMigrationIfNeeded(filterStateDirectory: URL) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: migrationCompleteKey) else { return }
+
+        let allKeys = defaults.dictionaryRepresentation().keys
+        let legacyKeys = allKeys.filter { $0.hasPrefix(legacyLastFiltersKeyPrefix) }
+
+        var migrated = 0
+        for key in legacyKeys {
+            let sanitized = String(key.dropFirst(legacyLastFiltersKeyPrefix.count))
+            guard !sanitized.isEmpty,
+                  let data = defaults.data(forKey: key) else {
+                defaults.removeObject(forKey: key)
+                continue
+            }
+
+            let fileURL = filterStateDirectory.appendingPathComponent("\(sanitized).json")
+            do {
+                try data.write(to: fileURL, options: .atomic)
+                migrated += 1
+            } catch {
+                logger.error("Failed to migrate last filters for \(sanitized): \(error.localizedDescription)")
+            }
+            defaults.removeObject(forKey: key)
+        }
+
+        defaults.removeObject(forKey: legacyKnownFilterKeysKey)
+        defaults.set(true, forKey: migrationCompleteKey)
+
+        if migrated > 0 {
+            logger.trace("Migrated \(migrated) per-table filter entries to file storage")
+        }
     }
 }

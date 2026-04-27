@@ -2,183 +2,244 @@
 //  AISettingsView.swift
 //  TablePro
 //
-//  Settings tab for AI provider configuration, feature routing, and context options.
+//  Single settings tab for AI: providers, active provider, inline suggestions,
+//  context, and privacy. Modeled after Xcode 26 Intelligence settings.
 //
 
 import SwiftUI
 
-/// AI settings tab in the Settings window
 struct AISettingsView: View {
     @Binding var settings: AISettings
 
-    @State private var selectedProviderID: UUID?
-    @State private var editingProvider: AIProviderConfig?
-    @State private var editingProviderAPIKey: String = ""
-    @State private var isAddingNewProvider: Bool = false
+    @State private var editingProviderID: UUID?
+    @State private var addingProviderType: AIProviderType?
+    @State private var pendingDeleteID: UUID?
+    @State private var copilotService = CopilotService.shared
+    @State private var providersWithKey: Set<UUID> = []
 
     var body: some View {
         Form {
-            Section {
-                Toggle(String(localized: "Enable AI Features"), isOn: $settings.enabled)
-            }
+            enableSection
             if settings.enabled {
+                activeProviderSection
                 providersSection
-                featureRoutingSection
-                contextSection
                 inlineSuggestionsSection
+                contextSection
                 privacySection
             }
         }
         .formStyle(.grouped)
-        .sheet(item: $editingProvider) { provider in
-            AIProviderEditorSheet(
+        .task { refreshKeyAvailability() }
+        .onChange(of: settings.providers.map(\.id)) {
+            refreshKeyAvailability()
+        }
+        .sheet(item: editingProviderBinding) { provider in
+            AIProviderDetailSheet(
                 provider: provider,
-                initialAPIKey: editingProviderAPIKey,
-                isNew: isAddingNewProvider,
-                onSave: { savedProvider, apiKey in
-                    saveProvider(savedProvider, apiKey: apiKey)
-                    editingProvider = nil
+                initialAPIKey: AIKeyStorage.shared.loadAPIKey(for: provider.id) ?? "",
+                isNew: false,
+                onSave: { saved, apiKey in
+                    saveProvider(saved, apiKey: apiKey, isNew: false)
+                    editingProviderID = nil
+                },
+                onDelete: {
+                    pendingDeleteID = provider.id
+                    editingProviderID = nil
                 },
                 onCancel: {
-                    if isAddingNewProvider {
-                        // Discard the provider that was never saved
-                    }
-                    editingProvider = nil
+                    editingProviderID = nil
                 }
             )
         }
+        .sheet(item: $addingProviderType) { type in
+            AIProviderDetailSheet(
+                provider: makeNewProvider(type: type),
+                initialAPIKey: "",
+                isNew: true,
+                onSave: { saved, apiKey in
+                    saveProvider(saved, apiKey: apiKey, isNew: true)
+                    addingProviderType = nil
+                },
+                onDelete: nil,
+                onCancel: {
+                    addingProviderType = nil
+                }
+            )
+        }
+        .alert(deleteAlertTitle, isPresented: deleteAlertBinding) {
+            Button(String(localized: "Remove"), role: .destructive) {
+                if let id = pendingDeleteID {
+                    removeProvider(id)
+                }
+                pendingDeleteID = nil
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                pendingDeleteID = nil
+            }
+        } message: {
+            Text(String(localized: "The API key will be permanently deleted."))
+        }
     }
 
-    // MARK: - Providers Section
+    // MARK: - Enable
+
+    private var enableSection: some View {
+        Section {
+            Toggle("Enable AI Features", isOn: $settings.enabled)
+        }
+    }
+
+    // MARK: - Active Provider
+
+    private var activeProviderSection: some View {
+        Section {
+            HStack {
+                Text("Active Provider")
+                Spacer()
+                Picker("", selection: $settings.activeProviderID) {
+                    Text("None").tag(UUID?.none)
+                    ForEach(settings.providers) { provider in
+                        Text(provider.displayName).tag(UUID?.some(provider.id))
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+                .disabled(settings.providers.isEmpty)
+            }
+        }
+    }
+
+    // MARK: - Providers
 
     private var providersSection: some View {
         Section {
-            VStack(spacing: 0) {
-                if settings.providers.isEmpty {
-                    Text(String(localized: "No providers configured"))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 12)
-                } else {
-                    List(selection: $selectedProviderID) {
-                        ForEach(settings.providers) { provider in
-                            providerRow(provider)
-                                .tag(provider.id)
-                                .simultaneousGesture(
-                                    TapGesture(count: 2).onEnded {
-                                        openEditSheet(for: provider)
-                                    }
-                                )
+            if settings.providers.isEmpty {
+                emptyProvidersRow
+            } else {
+                ForEach(settings.providers) { provider in
+                    Button {
+                        editingProviderID = provider.id
+                    } label: {
+                        providerRow(provider)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        Button(String(localized: "Edit")) {
+                            editingProviderID = provider.id
+                        }
+                        Button(String(localized: "Set as Active")) {
+                            settings.activeProviderID = provider.id
+                        }
+                        .disabled(settings.activeProviderID == provider.id)
+                        Divider()
+                        Button(String(localized: "Remove"), role: .destructive) {
+                            pendingDeleteID = provider.id
                         }
                     }
-                    .listStyle(.bordered(alternatesRowBackgrounds: true))
-                    .frame(height: max(80, min(CGFloat(settings.providers.count) * 48, 200)))
                 }
-
-                Divider()
-
-                HStack(spacing: 0) {
-                    Button {
-                        removeSelectedProvider()
-                    } label: {
-                        Image(systemName: "minus")
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(selectedProviderID == nil)
-                    .accessibilityLabel(String(localized: "Remove provider"))
-
-                    Divider()
-                        .frame(height: 16)
-
-                    Button {
-                        addProvider()
-                    } label: {
-                        Image(systemName: "plus")
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel(String(localized: "Add provider"))
-
-                    Spacer()
-
-                    Button {
-                        if let id = selectedProviderID,
-                           let provider = settings.providers.first(where: { $0.id == id }) {
-                            openEditSheet(for: provider)
-                        }
-                    } label: {
-                        Image(systemName: "pencil")
-                            .frame(width: 24, height: 24)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(selectedProviderID == nil)
-                    .accessibilityLabel(String(localized: "Edit provider"))
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
             }
+            addProviderMenu
         } header: {
             Text("Providers")
         }
     }
 
+    private var emptyProvidersRow: some View {
+        HStack {
+            Spacer()
+            Text("No providers configured")
+                .foregroundStyle(.secondary)
+                .font(.callout)
+            Spacer()
+        }
+        .padding(.vertical, 6)
+    }
+
     private func providerRow(_ provider: AIProviderConfig) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: iconForProviderType(provider.type))
-                .foregroundStyle(provider.isEnabled ? Color.accentColor : Color.secondary)
+        HStack(spacing: 10) {
+            ZStack {
+                if provider.id == settings.activeProviderID {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .frame(width: 14)
+
+            Image(systemName: provider.type.symbolName)
+                .foregroundStyle(.secondary)
                 .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(provider.name.isEmpty ? provider.type.displayName : provider.name)
-                    .fontWeight(.medium)
-                Text(provider.model.isEmpty ? String(localized: "No model selected") : provider.model)
+                Text(provider.displayName)
+                    .fontWeight(.regular)
+                Text(statusText(for: provider))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            if !provider.isEnabled {
-                Text("Disabled")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
+        .padding(.vertical, 2)
     }
 
-    // MARK: - Feature Routing Section
-
-    private var featureRoutingSection: some View {
-        Section {
-            ForEach(AIFeature.allCases) { feature in
-                HStack {
-                    Text(feature.displayName)
-                    Spacer()
-                    Picker("", selection: featureRouteBinding(for: feature)) {
-                        Text(String(localized: "Default")).tag(UUID?.none as UUID?)
-                        ForEach(settings.providers.filter(\.isEnabled)) { provider in
-                            Text(provider.name.isEmpty ? provider.type.displayName : provider.name)
-                                .tag(UUID?.some(provider.id) as UUID?)
-                        }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
+    private var addProviderMenu: some View {
+        Menu {
+            ForEach(orderedAddableTypes, id: \.self) { type in
+                Button {
+                    addingProviderType = type
+                } label: {
+                    Label(type.displayName, systemImage: type.symbolName)
                 }
             }
+            Divider()
+            Button {
+                addingProviderType = .custom
+            } label: {
+                Label(String(localized: "Add Custom Provider…"), systemImage: AIProviderType.custom.symbolName)
+            }
+        } label: {
+            Label(String(localized: "Add Provider…"), systemImage: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private var orderedAddableTypes: [AIProviderType] {
+        [.copilot, .claude, .openAI, .openRouter, .gemini, .ollama]
+    }
+
+    // MARK: - Inline Suggestions
+
+    private var inlineSuggestionsSection: some View {
+        Section {
+            Toggle("Enable inline suggestions while typing", isOn: $settings.inlineSuggestionsEnabled)
+                .disabled(!settings.hasActiveProvider)
+                .help(settings.hasActiveProvider
+                    ? ""
+                    : String(localized: "Configure an active provider to enable inline suggestions."))
         } header: {
-            Text("Feature Routing")
+            Text("Inline Suggestions")
+        } footer: {
+            Text("Inline SQL suggestions appear as you type. Press Tab to accept, Escape to dismiss.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
-    // MARK: - Context Section
+    // MARK: - Context
 
     private var contextSection: some View {
         Section {
-            Toggle(String(localized: "Include database schema"), isOn: $settings.includeSchema)
-            Toggle(String(localized: "Include current query"), isOn: $settings.includeCurrentQuery)
-            Toggle(String(localized: "Include query results"), isOn: $settings.includeQueryResults)
-
+            Toggle("Include database schema", isOn: $settings.includeSchema)
+            Toggle("Include current query", isOn: $settings.includeCurrentQuery)
+            Toggle("Include query results", isOn: $settings.includeQueryResults)
             Stepper(
                 String(format: String(localized: "Max schema tables: %d"), settings.maxSchemaTables),
                 value: $settings.maxSchemaTables,
@@ -189,409 +250,152 @@ struct AISettingsView: View {
         }
     }
 
-    // MARK: - Inline Suggestions Section
-
-    private var inlineSuggestionsSection: some View {
-        Section {
-            Toggle(String(localized: "Enable inline suggestions"), isOn: $settings.inlineSuggestEnabled)
-        } header: {
-            Text("Inline Suggestions")
-        } footer: {
-            Text("AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss.")
-        }
-    }
-
-    // MARK: - Privacy Section
+    // MARK: - Privacy
 
     private var privacySection: some View {
         Section {
-            Picker(
-                String(localized: "Default connection policy"),
-                selection: $settings.defaultConnectionPolicy
-            ) {
+            Picker("Connection policy", selection: $settings.defaultConnectionPolicy) {
                 ForEach(AIConnectionPolicy.allCases) { policy in
                     Text(policy.displayName).tag(policy)
                 }
             }
+            .pickerStyle(.menu)
         } header: {
             Text("Privacy")
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Bindings
 
-    private func addProvider() {
-        let newProvider = AIProviderConfig()
-        editingProviderAPIKey = ""
-        isAddingNewProvider = true
-        editingProvider = newProvider
-    }
-
-    private func removeSelectedProvider() {
-        guard let selectedID = selectedProviderID else { return }
-        removeProvider(selectedID)
-    }
-
-    private func removeProvider(_ id: UUID) {
-        settings.providers.removeAll { $0.id == id }
-        AIKeyStorage.shared.deleteAPIKey(for: id)
-        AIProviderFactory.invalidateCache(for: id)
-        if selectedProviderID == id {
-            selectedProviderID = nil
-        }
-        // Clean up feature routing references
-        for key in settings.featureRouting.keys {
-            if settings.featureRouting[key]?.providerID == id {
-                settings.featureRouting.removeValue(forKey: key)
-            }
-        }
-    }
-
-    private func openEditSheet(for provider: AIProviderConfig) {
-        editingProviderAPIKey = AIKeyStorage.shared.loadAPIKey(for: provider.id) ?? ""
-        isAddingNewProvider = false
-        editingProvider = provider
-    }
-
-    private func saveProvider(_ provider: AIProviderConfig, apiKey: String) {
-        // Save API key to Keychain
-        if provider.type.requiresAPIKey {
-            AIKeyStorage.shared.saveAPIKey(apiKey, for: provider.id)
-        }
-
-        // Update or append provider
-        if let existingIndex = settings.providers.firstIndex(where: { $0.id == provider.id }) {
-            settings.providers[existingIndex] = provider
-        } else {
-            settings.providers.append(provider)
-        }
-
-        AIProviderFactory.invalidateCache(for: provider.id)
-        isAddingNewProvider = false
-    }
-
-    // MARK: - Helpers
-
-    private func featureRouteBinding(for feature: AIFeature) -> Binding<UUID?> {
-        Binding(
-            get: { settings.featureRouting[feature.rawValue]?.providerID },
+    private var editingProviderBinding: Binding<AIProviderConfig?> {
+        Binding<AIProviderConfig?>(
+            get: {
+                guard let id = editingProviderID else { return nil }
+                return settings.providers.first(where: { $0.id == id })
+            },
             set: { newValue in
-                if let providerID = newValue {
-                    let model = settings.providers.first(where: { $0.id == providerID })?.model ?? ""
-                    settings.featureRouting[feature.rawValue] = AIFeatureRoute(
-                        providerID: providerID,
-                        model: model
-                    )
-                } else {
-                    settings.featureRouting.removeValue(forKey: feature.rawValue)
+                editingProviderID = newValue?.id
+            }
+        )
+    }
+
+    private var deleteAlertBinding: Binding<Bool> {
+        Binding<Bool>(
+            get: { pendingDeleteID != nil },
+            set: { isPresented in
+                if !isPresented {
+                    pendingDeleteID = nil
                 }
             }
         )
     }
 
-    private func iconForProviderType(_ type: AIProviderType) -> String {
-        switch type {
-        case .claude: return "brain"
-        case .openAI: return "cpu"
-        case .gemini: return "wand.and.stars"
-        case .ollama: return "desktopcomputer"
-        case .openRouter: return "globe"
-        case .custom: return "server.rack"
+    private var deleteAlertTitle: String {
+        guard let id = pendingDeleteID,
+              let provider = settings.providers.first(where: { $0.id == id }) else {
+            return String(localized: "Remove Provider?")
         }
-    }
-}
-
-// MARK: - Provider Editor Sheet
-
-/// Modal sheet for adding or editing an AI provider configuration.
-/// Operates on a draft copy; Cancel discards changes, Save commits them.
-private struct AIProviderEditorSheet: View {
-    private let initialProvider: AIProviderConfig
-    private let isNew: Bool
-    private let onSave: (AIProviderConfig, String) -> Void
-    private let onCancel: () -> Void
-
-    @State private var draft: AIProviderConfig
-    @State private var editingAPIKey: String
-    @State private var isTesting: Bool = false
-    @State private var testResult: TestResult?
-    @State private var fetchedModels: [String] = []
-    @State private var isFetchingModels: Bool = false
-    @State private var modelFetchError: String?
-    @State private var modelFetchTask: Task<Void, Never>?
-    @State private var testTask: Task<Void, Never>?
-
-    @Environment(\.dismiss) private var dismiss
-
-    private enum TestResult {
-        case success
-        case failure(String)
+        return String(format: String(localized: "Remove %@?"), provider.displayName)
     }
 
-    init(
-        provider: AIProviderConfig,
-        initialAPIKey: String,
-        isNew: Bool,
-        onSave: @escaping (AIProviderConfig, String) -> Void,
-        onCancel: @escaping () -> Void
-    ) {
-        self.initialProvider = provider
-        self.isNew = isNew
-        self.onSave = onSave
-        self.onCancel = onCancel
-        _draft = State(initialValue: provider)
-        _editingAPIKey = State(initialValue: initialAPIKey)
-    }
+    // MARK: - Status text
 
-    var body: some View {
-        VStack(spacing: 0) {
-            sheetForm
-            Divider()
-            sheetFooter
-        }
-        .navigationTitle(isNew ? String(localized: "Add Provider") : String(localized: "Edit Provider"))
-        .frame(minWidth: 420, minHeight: 400)
-        .onAppear {
-            fetchModels()
-        }
-        .onDisappear {
-            modelFetchTask?.cancel()
-            testTask?.cancel()
-        }
-    }
-
-    // MARK: - Form
-
-    private var sheetForm: some View {
-        Form {
-            Section {
-                typePicker
-                nameField
-                if draft.type.requiresAPIKey {
-                    apiKeyField
+    private func statusText(for provider: AIProviderConfig) -> String {
+        switch provider.type.authStyle {
+        case .oauth:
+            return copilotStatusText()
+        case .apiKey:
+            if provider.type == .custom {
+                return customStatusText(for: provider)
+            }
+            return providersWithKey.contains(provider.id)
+                ? String(localized: "API key set")
+                : String(localized: "Not configured")
+        case .none:
+            if provider.type == .ollama {
+                let endpoint = provider.endpoint.isEmpty ? provider.type.defaultEndpoint : provider.endpoint
+                if let host = URL(string: endpoint)?.host, host == "localhost" || host == "127.0.0.1" {
+                    return String(localized: "Local")
                 }
-                endpointField
-                modelField
-                enabledToggle
-                testRow
+                return endpoint
             }
-        }
-        .formStyle(.grouped)
-    }
-
-    private var typePicker: some View {
-        Picker(String(localized: "Type"), selection: $draft.type) {
-            ForEach(AIProviderType.allCases) { type in
-                Text(type.displayName).tag(type)
-            }
-        }
-        .onChange(of: draft.type) { _, newType in
-            let allDefaults = AIProviderType.allCases.map(\.defaultEndpoint)
-            if draft.endpoint.isEmpty || allDefaults.contains(draft.endpoint) {
-                draft.endpoint = newType.defaultEndpoint
-            }
-            AIProviderFactory.invalidateCache(for: draft.id)
-            fetchedModels = []
-            draft.model = ""
-            scheduleFetchModels()
+            return provider.endpoint.isEmpty
+                ? String(localized: "Not configured")
+                : provider.endpoint
         }
     }
 
-    private var nameField: some View {
-        TextField(String(localized: "Name"), text: $draft.name)
-            .textFieldStyle(.roundedBorder)
-    }
-
-    private var apiKeyField: some View {
-        SecureField("API Key", text: $editingAPIKey)
-            .textFieldStyle(.roundedBorder)
-            .onChange(of: editingAPIKey) {
-                testResult = nil
-                scheduleFetchModels()
-            }
-    }
-
-    private var endpointField: some View {
-        TextField("Endpoint", text: $draft.endpoint)
-            .textFieldStyle(.roundedBorder)
-            .onChange(of: draft.endpoint) {
-                testResult = nil
-                AIProviderFactory.invalidateCache(for: draft.id)
-                fetchedModels = []
-                scheduleFetchModels()
-            }
-    }
-
-    private var modelField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if isFetchingModels {
-                HStack {
-                    Text("Model")
-                    Spacer()
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            } else if fetchedModels.isEmpty {
-                HStack {
-                    Text("Model")
-                    Spacer()
-                    Button {
-                        fetchModels()
-                    } label: {
-                        Label(String(localized: "Load Models"), systemImage: "arrow.clockwise")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                }
-            } else {
-                Picker("Model", selection: $draft.model) {
-                    ForEach(fetchedModels, id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                }
-            }
-
-            if let error = modelFetchError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemRed))
-            }
+    private func copilotStatusText() -> String {
+        switch copilotService.authState {
+        case .signedIn(let username):
+            return String(format: String(localized: "Signed in as %@"), username)
+        case .signingIn:
+            return String(localized: "Signing in…")
+        case .signedOut:
+            return String(localized: "Not signed in")
         }
     }
 
-    private var enabledToggle: some View {
-        Toggle(String(localized: "Enabled"), isOn: $draft.isEnabled)
+    private func customStatusText(for provider: AIProviderConfig) -> String {
+        if providersWithKey.contains(provider.id) {
+            return String(localized: "API key set")
+        }
+        if let host = URL(string: provider.endpoint)?.host, !host.isEmpty {
+            return host
+        }
+        return String(localized: "Not configured")
     }
 
-    private var testRow: some View {
-        HStack {
-            Spacer()
-            Button {
-                testProvider()
-            } label: {
-                HStack(spacing: 4) {
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: testResultIcon)
-                            .foregroundStyle(testResultColor)
-                    }
-                    Text("Test")
-                }
-            }
-            .disabled(isTesting || (draft.type.requiresAPIKey && editingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
-
-            if case .success = testResult {
-                Text(String(localized: "Connection successful"))
-                    .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemGreen))
-            } else if case .failure(let message) = testResult {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(Color(nsColor: .systemRed))
-                    .lineLimit(2)
+    private func refreshKeyAvailability() {
+        var ids: Set<UUID> = []
+        for provider in settings.providers where provider.type.authStyle == .apiKey {
+            if let key = AIKeyStorage.shared.loadAPIKey(for: provider.id), !key.isEmpty {
+                ids.insert(provider.id)
             }
         }
+        providersWithKey = ids
     }
 
-    // MARK: - Footer
+    // MARK: - Mutations
 
-    private var sheetFooter: some View {
-        HStack {
-            Button(String(localized: "Cancel")) {
-                onCancel()
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
+    private func makeNewProvider(type: AIProviderType) -> AIProviderConfig {
+        AIProviderConfig(
+            id: UUID(),
+            name: "",
+            type: type,
+            model: "",
+            endpoint: type.defaultEndpoint,
+            maxOutputTokens: nil,
+            telemetryEnabled: type == .copilot ? true : false
+        )
+    }
 
-            Spacer()
-
-            Button(String(localized: "Save")) {
-                onSave(draft, editingAPIKey)
-                dismiss()
-            }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
+    private func saveProvider(_ provider: AIProviderConfig, apiKey: String, isNew: Bool) {
+        if provider.type.authStyle == .apiKey {
+            AIKeyStorage.shared.saveAPIKey(apiKey, for: provider.id)
         }
-        .padding()
-    }
 
-    // MARK: - Model Fetching
-
-    private func scheduleFetchModels() {
-        modelFetchTask?.cancel()
-        modelFetchTask = Task {
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            guard !Task.isCancelled else { return }
-            fetchModels()
+        if let index = settings.providers.firstIndex(where: { $0.id == provider.id }) {
+            settings.providers[index] = provider
+        } else {
+            settings.providers.append(provider)
         }
-    }
 
-    private func fetchModels() {
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: editingAPIKey)
+        AIProviderFactory.invalidateCache(for: provider.id)
+        refreshKeyAvailability()
 
-        isFetchingModels = true
-        modelFetchError = nil
-
-        modelFetchTask = Task {
-            do {
-                let models = try await provider.fetchAvailableModels()
-                fetchedModels = models
-
-                // Auto-select first model if none is selected
-                if draft.model.isEmpty, let first = models.first {
-                    draft.model = first
-                }
-
-                isFetchingModels = false
-            } catch {
-                modelFetchError = error.localizedDescription
-                isFetchingModels = false
-            }
+        if isNew, settings.activeProviderID == nil {
+            settings.activeProviderID = provider.id
         }
     }
 
-    // MARK: - Connection Test
-
-    func testProvider() {
-        guard !editingAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !draft.type.requiresAPIKey else {
-            testResult = .failure(String(localized: "API key is required"))
-            return
+    private func removeProvider(_ id: UUID) {
+        AIKeyStorage.shared.deleteAPIKey(for: id)
+        AIProviderFactory.invalidateCache(for: id)
+        settings.providers.removeAll { $0.id == id }
+        if settings.activeProviderID == id {
+            settings.activeProviderID = nil
         }
-
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: editingAPIKey)
-
-        isTesting = true
-        testResult = nil
-
-        testTask = Task {
-            do {
-                let success = try await provider.testConnection()
-                isTesting = false
-                testResult = success ? .success : .failure(String(localized: "Connection test failed"))
-            } catch {
-                isTesting = false
-                testResult = .failure(error.localizedDescription)
-            }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private var testResultIcon: String {
-        switch testResult {
-        case .success: return "checkmark.circle.fill"
-        case .failure: return "xmark.circle.fill"
-        case .none: return "bolt.horizontal"
-        }
-    }
-
-    private var testResultColor: Color {
-        switch testResult {
-        case .success: return Color(nsColor: .systemGreen)
-        case .failure: return Color(nsColor: .systemRed)
-        case .none: return .secondary
-        }
+        refreshKeyAvailability()
     }
 }

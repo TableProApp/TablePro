@@ -12,7 +12,7 @@ import TableProPluginKit
 @MainActor @Observable
 final class PluginManager {
     static let shared = PluginManager()
-    static let currentPluginKitVersion = 6
+    static let currentPluginKitVersion = 7
     private static let disabledPluginsKey = "com.TablePro.disabledPlugins"
     private static let legacyDisabledPluginsKey = "disabledPlugins"
 
@@ -53,7 +53,7 @@ final class PluginManager {
         }
     }
 
-    internal(set) var rejectedPlugins: [(name: String, reason: String)] = []
+    internal(set) var rejectedPlugins: [RejectedPlugin] = []
 
     private static let needsRestartKey = "com.TablePro.needsRestart"
 
@@ -105,13 +105,10 @@ final class PluginManager {
             .appendingPathComponent(pluginURL.lastPathComponent + ".metadata.json")
     }
 
-    nonisolated private static func readRegistryVersion(for pluginURL: URL) -> String? {
+    nonisolated private static func readRegistryMetadata(for pluginURL: URL) -> RegistryMetadata? {
         let url = metadataURL(for: pluginURL)
-        guard let data = try? Data(contentsOf: url),
-              let metadata = try? JSONDecoder().decode(RegistryMetadata.self, from: data) else {
-            return nil
-        }
-        return metadata.version
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(RegistryMetadata.self, from: data)
     }
 
     func saveRegistryMetadata(version: String, pluginId: String, pluginURL: URL) {
@@ -153,6 +150,9 @@ final class PluginManager {
         discoverAllPlugins()
         let pending = pendingPluginURLs
         Task {
+            if !self.rejectedPlugins.isEmpty {
+                await self.autoUpdateRejectedPlugins()
+            }
             let validated = await Self.validateAndLoadBundles(pending)
             self.pendingPluginURLs.removeAll()
             self.needsRestartStorage = false
@@ -251,9 +251,27 @@ final class PluginManager {
             return existing
         }
 
+        let rawDriverType = principalClass as? any DriverPlugin.Type
+        let pluginKitVersion = bundle.infoDictionary?["TableProPluginKitVersion"] as? Int ?? 0
+        if rawDriverType != nil, source == .userInstalled, pluginKitVersion != Self.currentPluginKitVersion {
+            assertionFailure(
+                "DriverPlugin '\(bundleId)' has TableProPluginKitVersion \(pluginKitVersion) but current is \(Self.currentPluginKitVersion); ABI mismatch would crash on static property access"
+            )
+            Self.logger.error("Plugin '\(bundleId)' DriverPlugin ABI mismatch: plist=\(pluginKitVersion) current=\(Self.currentPluginKitVersion). Rejecting to prevent crash.")
+            rejectedPlugins.append(RejectedPlugin(
+                url: url,
+                bundleId: bundleId,
+                registryId: Self.readRegistryMetadata(for: url)?.pluginId,
+                name: principalClass.pluginName,
+                reason: String(localized: "Incompatible plugin version"),
+                isOutdated: pluginKitVersion < Self.currentPluginKitVersion
+            ))
+            return nil
+        }
+
         let disabled = disabledPluginIds
-        let driverType = principalClass as? any DriverPlugin.Type
-        let version = Self.readRegistryVersion(for: url) ?? principalClass.pluginVersion
+        let driverType = rawDriverType
+        let version = Self.readRegistryMetadata(for: url)?.version ?? principalClass.pluginVersion
         let entry = PluginEntry(
             id: bundleId,
             bundle: bundle,
@@ -362,9 +380,14 @@ final class PluginManager {
             } catch {
                 Self.logger.error("Failed to discover plugin at \(itemURL.lastPathComponent): \(error.localizedDescription)")
                 if source == .userInstalled {
-                    rejectedPlugins.append((
+                    let bundle = Bundle(url: itemURL)
+                    rejectedPlugins.append(RejectedPlugin(
+                        url: itemURL,
+                        bundleId: bundle?.bundleIdentifier,
+                        registryId: Self.readRegistryMetadata(for: itemURL)?.pluginId,
                         name: itemURL.deletingPathExtension().lastPathComponent,
-                        reason: error.localizedDescription
+                        reason: error.localizedDescription,
+                        isOutdated: (error as? PluginError)?.isOutdated ?? false
                     ))
                 }
             }

@@ -142,6 +142,8 @@ public protocol PluginDatabaseDriver: AnyObject, Sendable {
     // Progressive loading
     func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult
     func fetchNextPage(query: String, offset: Int, limit: Int) async throws -> PluginPagedResult
+    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult
+    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult
 }
 
 public extension PluginDatabaseDriver {
@@ -447,19 +449,72 @@ public extension PluginDatabaseDriver {
         return sql
     }
 
-    /// Escape a parameter value for safe interpolation into SQL.
-    /// Numeric values are unquoted; strings are single-quoted with proper escaping.
-    private static func escapedParameterValue(_ value: String) -> String {
-        // Numeric: don't quote
-        if Int64(value) != nil || (Double(value) != nil && value.contains(".")) {
+    static func escapedParameterValue(_ value: String) -> String {
+        if isNumericLiteral(value) {
             return value
         }
-        // String: escape and quote
-        let escaped = value
-            .replacingOccurrences(of: "\0", with: "")
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "''")
-        return "'\(escaped)'"
+        var escaped = ""
+        escaped.reserveCapacity(value.count + 2)
+        escaped.append("'")
+        for char in value {
+            switch char {
+            case "'":
+                escaped.append("''")
+            case "\0":
+                continue
+            case "\\":
+                escaped.append("\\\\")
+            case "\n":
+                escaped.append("\\n")
+            case "\r":
+                escaped.append("\\r")
+            case "\t":
+                escaped.append("\\t")
+            case "\u{1A}":
+                escaped.append("\\Z")
+            default:
+                escaped.append(char)
+            }
+        }
+        escaped.append("'")
+        return escaped
+    }
+
+    static func isNumericLiteral(_ value: String) -> Bool {
+        guard !value.isEmpty else { return false }
+        var scanner = value.makeIterator()
+        var hasDigit = false
+        var hasDot = false
+        var hasE = false
+
+        var first = true
+        while let c = scanner.next() {
+            if first {
+                first = false
+                if c == "-" || c == "+" { continue }
+            }
+            if c.isNumber {
+                hasDigit = true
+                continue
+            }
+            if c == "." && !hasDot && !hasE {
+                hasDot = true
+                continue
+            }
+            if (c == "e" || c == "E") && hasDigit && !hasE {
+                hasE = true
+                hasDigit = false
+                if let next = scanner.next() {
+                    if next == "+" || next == "-" || next.isNumber {
+                        if next.isNumber { hasDigit = true }
+                        continue
+                    }
+                }
+                return false
+            }
+            return false
+        }
+        return hasDigit
     }
 
     func fetchFirstPage(query: String, limit: Int) async throws -> PluginPagedResult {
@@ -501,8 +556,52 @@ public extension PluginDatabaseDriver {
         )
     }
 
+    func fetchFirstPageParameterized(query: String, parameters: [String?], limit: Int) async throws -> PluginPagedResult {
+        guard limit > 0 else {
+            let result = try await executeParameterized(query: query, parameters: parameters)
+            return PluginPagedResult(
+                columns: result.columns,
+                columnTypeNames: result.columnTypeNames,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                hasMore: false,
+                nextOffset: result.rows.count
+            )
+        }
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET 0"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: rows.count
+        )
+    }
+
+    func fetchNextPageParameterized(query: String, parameters: [String?], offset: Int, limit: Int) async throws -> PluginPagedResult {
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let wrappedQuery = "SELECT * FROM (\(sanitized)) _t LIMIT \(limit + 1) OFFSET \(offset)"
+        let result = try await executeParameterized(query: wrappedQuery, parameters: parameters)
+        let hasMore = result.rows.count > limit
+        let rows = hasMore ? Array(result.rows.prefix(limit)) : result.rows
+        return PluginPagedResult(
+            columns: result.columns,
+            columnTypeNames: result.columnTypeNames,
+            rows: rows,
+            executionTime: result.executionTime,
+            hasMore: hasMore,
+            nextOffset: offset + rows.count
+        )
+    }
+
     func fetchRowCount(query: String) async throws -> Int {
-        let result = try await execute(query: "SELECT COUNT(*) FROM (\(query)) _t")
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        let result = try await execute(query: "SELECT COUNT(*) FROM (\(sanitized)) _t")
         guard let firstRow = result.rows.first, let value = firstRow.first, let countStr = value else {
             return 0
         }
@@ -510,7 +609,16 @@ public extension PluginDatabaseDriver {
     }
 
     func fetchRows(query: String, offset: Int, limit: Int) async throws -> PluginQueryResult {
-        try await execute(query: "\(query) LIMIT \(limit) OFFSET \(offset)")
+        let sanitized = Self.sanitizeQueryForWrapping(query)
+        return try await execute(query: "\(sanitized) LIMIT \(limit) OFFSET \(offset)")
+    }
+
+    private static func sanitizeQueryForWrapping(_ query: String) -> String {
+        var result = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        while result.hasSuffix(";") {
+            result = String(result.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return result
     }
 
     func streamRows(query: String) -> AsyncThrowingStream<PluginStreamElement, Error> {

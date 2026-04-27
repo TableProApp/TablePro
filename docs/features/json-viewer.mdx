@@ -1,0 +1,38 @@
+---
+title: JSON Viewer
+description: Open and edit JSON cell values with text and tree view modes, including a pop-out window for large payloads.
+---
+
+# JSON Viewer
+
+Open JSON values from cells in two view modes: Text and Tree.
+
+## Open
+
+- Double-click a cell whose value parses as JSON, or
+- Click the chevron in a JSON-typed column.
+
+The viewer opens as a popover anchored to the cell.
+
+## Modes
+
+Switch with the segmented control in the viewer toolbar.
+
+- **Text**: syntax-highlighted JSON. Editable when the cell is editable. Use the `{}` button to format (pretty-print).
+- **Tree**: collapsible tree with a search field. Read-only navigation.
+
+The default mode is set in Settings (`Cmd+,`) > Editor > **JSON Viewer** > **Default view**.
+
+If the document is too large to render as a tree, the tree mode shows an unavailability message and you stay in Text mode.
+
+## Open in Window
+
+Click the pop-out button in the toolbar to detach the viewer into its own resizable window. Useful for large payloads or side-by-side reading. The window supports fullscreen.
+
+## Editing
+
+In Text mode, edits are live in the binding. Click **Save** to commit the change through the standard change-tracking flow: the edit becomes a pending change in the data grid, previewed and applied via Save Changes. Click **Cancel** to drop the edit.
+
+If the edited text is not valid JSON when you save, the viewer prompts for confirmation before committing.
+
+See also: the **JSON** tab in the results status bar (`Data` / `Structure` / `JSON`) for whole-row JSON inspection.

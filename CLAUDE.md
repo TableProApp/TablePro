@@ -225,13 +225,17 @@ These have caused real production bugs:
 - **SQL dumps can have single lines with millions of characters** — cap regex/highlight ranges at 10k chars.
 - **Tab persistence**: `QueryTab.toPersistedTab()` truncates queries >500KB to prevent JSON freeze. `TabStateStorage.saveLastQuery()` skips writes >500KB.
 
-## Writing Style (Docs & Marketing Copy)
+## Writing Style
 
-Write like a developer, not a marketing AI. Be specific (numbers, tech names) over generic adjectives. Vary sentence rhythm. Cut filler.
+Applies to **everything**: docs, commit messages, CHANGELOG entries, UI strings, error messages, PR descriptions.
 
-**Banned words**: seamless, robust, comprehensive, intuitive, effortless, powerful (as filler), streamlined, leverage, elevate, harness, supercharge, unlock, unleash, dive into, game-changer, empower, delve. No "Absolutely!" / "Ready to dive in?" openers.
+**Write like a human developer.** Short sentences. Plain words. Say what it does, not how great it is. If a sentence works without a word, drop the word.
 
-**Em dashes**: minimize; use colons or periods instead. Use hyphens (-) in `<title>` tags, never em dashes (—).
+**No em dashes (—).** Anywhere. Use a comma, period, colon, or rewrite the sentence. Hyphens (-) for compound words are fine.
+
+**No AI-generated filler.** If it sounds like a chatbot wrote it, rewrite it. Banned words: seamless, robust, comprehensive, intuitive, effortless, powerful (as filler), streamlined, leverage, elevate, harness, supercharge, unlock, unleash, dive into, game-changer, empower, delve, utilize, facilitate. No "Absolutely!" / "Ready to dive in?" / "Let's get started!" openers.
+
+**Be specific.** Numbers, tech names, file paths. "Runs in 200ms" beats "runs fast". "Uses `PQexecParams`" beats "uses native binding".
 
 ## CI/CD
 

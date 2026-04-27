@@ -585,12 +585,22 @@ if [ "$NOTARIZE" = "true" ]; then
         ditto -c -k --keepParent "$app" "$zip_path"
 
         echo "   Submitting $name for notarization..."
-        if xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait; then
+        submit_output=$(xcrun notarytool submit "$zip_path" --keychain-profile "TablePro" --wait 2>&1)
+        submit_status=$?
+        echo "$submit_output"
+
+        submission_id=$(echo "$submit_output" | grep "id:" | head -1 | awk '{print $2}')
+
+        if [ $submit_status -eq 0 ] && echo "$submit_output" | grep -q "status: Accepted"; then
             echo "   Stapling $name..."
             xcrun stapler staple "$app"
             echo "   ✅ $name notarized and stapled"
         else
             echo "   ❌ Notarization failed for $name"
+            if [ -n "$submission_id" ]; then
+                echo "   📋 Fetching notarization log for $submission_id..."
+                xcrun notarytool log "$submission_id" --keychain-profile "TablePro" 2>&1 || true
+            fi
             exit 1
         fi
         rm -f "$zip_path"

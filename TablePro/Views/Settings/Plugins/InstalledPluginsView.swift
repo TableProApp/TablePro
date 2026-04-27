@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 
 struct InstalledPluginsView: View {
     private let pluginManager = PluginManager.shared
+    private let registryClient = RegistryClient.shared
+    private let installTracker = PluginInstallTracker.shared
 
     @State private var selectedPluginId: String?
     @State private var searchText = ""
@@ -34,6 +36,11 @@ struct InstalledPluginsView: View {
 
                 detailPane
                     .frame(minWidth: 340)
+            }
+        }
+        .task {
+            if registryClient.fetchState == .idle {
+                await registryClient.fetchManifest()
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
@@ -169,6 +176,12 @@ struct InstalledPluginsView: View {
 
             Spacer()
 
+            if pluginManager.registryUpdate(for: plugin.id) != nil {
+                Image(systemName: "arrow.up.circle.fill")
+                    .foregroundStyle(.blue)
+                    .font(.caption)
+            }
+
             Text(plugin.source == .builtIn ? String(localized: "Built-in") : String(localized: "User"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -205,6 +218,10 @@ struct InstalledPluginsView: View {
                     Text("v\(selected.version) · \(selected.source == .builtIn ? String(localized: "Built-in") : String(localized: "User-installed"))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+
+                    if let registryPlugin = pluginManager.registryUpdate(for: selected.id) {
+                        updateActionView(for: selected, registryPlugin: registryPlugin)
+                    }
 
                     if !selected.pluginDescription.isEmpty {
                         Text(selected.pluginDescription)
@@ -284,6 +301,72 @@ struct InstalledPluginsView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - Update
+
+    @ViewBuilder
+    private func updateActionView(for plugin: PluginEntry, registryPlugin: RegistryPlugin) -> some View {
+        if let progress = installTracker.state(for: plugin.id) {
+            switch progress.phase {
+            case .downloading(let fraction):
+                HStack(spacing: 8) {
+                    ProgressView(value: fraction)
+                    Text("\(Int(fraction * 100))%")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            case .installing:
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Updating...")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            case .completed:
+                Label(
+                    String(format: String(localized: "Updated to v%@"), registryPlugin.version),
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(Color(nsColor: .systemGreen))
+                .font(.callout)
+            case .failed:
+                Button(String(localized: "Retry Update")) { updatePlugin(registryPlugin) }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        } else {
+            HStack(spacing: 8) {
+                Text(String(format: String(localized: "v%@ available"), registryPlugin.version))
+                    .font(.callout)
+                    .foregroundStyle(.blue)
+                Button(String(localized: "Update")) { updatePlugin(registryPlugin) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func updatePlugin(_ registryPlugin: RegistryPlugin) {
+        Task {
+            installTracker.beginInstall(pluginId: registryPlugin.id)
+            do {
+                _ = try await pluginManager.updateFromRegistry(registryPlugin) { fraction in
+                    installTracker.updateProgress(pluginId: registryPlugin.id, fraction: fraction)
+                    if fraction >= 1.0 {
+                        installTracker.markInstalling(pluginId: registryPlugin.id)
+                    }
+                }
+                installTracker.completeInstall(pluginId: registryPlugin.id)
+            } catch {
+                installTracker.failInstall(pluginId: registryPlugin.id, error: error.localizedDescription)
+                errorAlertTitle = String(localized: "Plugin Update Failed")
+                errorAlertMessage = error.localizedDescription
+                showErrorAlert = true
+            }
         }
     }
 

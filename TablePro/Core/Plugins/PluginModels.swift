@@ -28,6 +28,15 @@ enum PluginSource {
     case userInstalled
 }
 
+struct RejectedPlugin {
+    let url: URL
+    let bundleId: String?
+    let registryId: String?
+    let name: String
+    let reason: String
+    let isOutdated: Bool
+}
+
 extension PluginEntry {
     var exportPlugin: (any ExportFormatPlugin.Type)? {
         bundle.principalClass as? any ExportFormatPlugin.Type

@@ -19,7 +19,12 @@ final class SchemaProviderRegistry {
     private var refCounts: [UUID: Int] = [:]
     private var removalTasks: [UUID: Task<Void, Never>] = [:]
 
+    #if DEBUG
+    /// Test-only init for `@testable` tests in DEBUG builds; release builds must use `.shared`.
+    internal init() {}
+    #else
     private init() {}
+    #endif
 
     func provider(for connectionId: UUID) -> SQLSchemaProvider? {
         providers[connectionId]

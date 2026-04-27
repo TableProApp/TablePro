@@ -81,7 +81,7 @@ struct SectionHeaderView<Actions: View>: View {
                 ThemeEngine.shared.colors.ui.controlBackgroundSwiftUI.opacity(0.5) :
                 Color.clear
         )
-        .cornerRadius(6)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
         .contentShape(Rectangle())
     }
 }

@@ -111,7 +111,7 @@ private extension HistoryPanelView {
                         .tag(entry.id)
                         .contextMenu { contextMenu(for: entry) }
                 }
-                .listStyle(.plain)
+                .listStyle(.sidebar)
                 .environment(\.defaultMinListRowHeight, 44)
                 .onDeleteCommand {
                     deleteSelectedEntry()

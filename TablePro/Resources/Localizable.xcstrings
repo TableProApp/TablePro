@@ -136,6 +136,9 @@
         }
       }
     },
+    ":%@" : {
+
+    },
     ".%@" : {
       "localizations" : {
         "tr" : {
@@ -459,6 +462,16 @@
         }
       }
     },
+    "(showing %d of %d rows)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "(showing %1$d of %2$d rows)"
+          }
+        }
+      }
+    },
     "(this Mac)" : {
       "localizations" : {
         "en" : {
@@ -554,6 +567,9 @@
         }
       }
     },
+    "%@ — Preview" : {
+
+    },
     "%@ (%@@%@)" : {
       "localizations" : {
         "en" : {
@@ -619,6 +635,9 @@
           }
         }
       }
+    },
+    "%@ (Copy)" : {
+
     },
     "%@ (Pro)" : {
       "localizations" : {
@@ -1042,6 +1061,9 @@
           }
         }
       }
+    },
+    "%@ Query" : {
+
     },
     "%@ requires a Pro license" : {
       "localizations" : {
@@ -3733,6 +3755,9 @@
         }
       }
     },
+    "Active Provider" : {
+
+    },
     "Active Queries" : {
       "localizations" : {
         "tr" : {
@@ -3820,6 +3845,9 @@
           }
         }
       }
+    },
+    "Add %@" : {
+
     },
     "Add as Copy" : {
 
@@ -3956,6 +3984,9 @@
           }
         }
       }
+    },
+    "Add Custom Provider…" : {
+
     },
     "Add filter" : {
       "localizations" : {
@@ -4157,6 +4188,7 @@
       }
     },
     "Add provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4179,6 +4211,7 @@
       }
     },
     "Add Provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -4199,6 +4232,9 @@
           }
         }
       }
+    },
+    "Add Provider…" : {
+
     },
     "Add Row" : {
       "localizations" : {
@@ -4265,6 +4301,9 @@
           }
         }
       }
+    },
+    "Advanced" : {
+
     },
     "Agent Socket" : {
       "localizations" : {
@@ -4488,6 +4527,7 @@
       }
     },
     "AI-powered SQL completions appear as ghost text while typing. Press Tab to accept, Escape to dismiss." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -5005,6 +5045,12 @@
         }
       }
     },
+    "Always Hide" : {
+
+    },
+    "Always Show" : {
+
+    },
     "An external link wants to add a database connection:\n\nName: %@\n%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5217,6 +5263,9 @@
         }
       }
     },
+    "Any Column" : {
+
+    },
     "API Key" : {
       "localizations" : {
         "tr" : {
@@ -5260,6 +5309,9 @@
           }
         }
       }
+    },
+    "API key set" : {
+
     },
     "API token" : {
       "localizations" : {
@@ -6031,6 +6083,9 @@
           }
         }
       }
+    },
+    "Authentication required" : {
+
     },
     "Authentication required to execute operations" : {
       "localizations" : {
@@ -7199,6 +7254,9 @@
         }
       }
     },
+    "Cannot save changes: connection is read-only" : {
+
+    },
     "Cannot save schema changes: connection is read-only." : {
       "localizations" : {
         "tr" : {
@@ -7583,6 +7641,7 @@
       }
     },
     "Chat" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -7791,6 +7850,9 @@
           }
         }
       }
+    },
+    "Clear All Conversations?" : {
+
     },
     "Clear all history" : {
       "localizations" : {
@@ -8420,7 +8482,11 @@
         }
       }
     },
+    "Close parameter panel" : {
+
+    },
     "Close preview" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -9123,6 +9189,9 @@
         }
       }
     },
+    "Complete Sign In" : {
+
+    },
     "Compress the file using Gzip" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9211,6 +9280,9 @@
           }
         }
       }
+    },
+    "Configure an active provider to enable inline suggestions." : {
+
     },
     "Configure an AI provider in Settings to start chatting." : {
       "localizations" : {
@@ -9663,6 +9735,9 @@
           }
         }
       }
+    },
+    "Connection policy" : {
+
     },
     "Connection Status" : {
       "extractionState" : "stale",
@@ -10154,6 +10229,15 @@
           }
         }
       }
+    },
+    "Copilot language server binary not found" : {
+
+    },
+    "Copilot server is not running" : {
+
+    },
+    "Copilot subscription inactive" : {
+
     },
     "Copy" : {
       "localizations" : {
@@ -10743,6 +10827,9 @@
           }
         }
       }
+    },
+    "Could not generate SQL for changes." : {
+
     },
     "Could not reach the license server. Check your internet connection and try again." : {
       "localizations" : {
@@ -12634,6 +12721,7 @@
       }
     },
     "Default connection policy" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14828,6 +14916,7 @@
       }
     },
     "Edit provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -14850,6 +14939,7 @@
       }
     },
     "Edit Provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15139,6 +15229,7 @@
       }
     },
     "Enable inline suggestions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15159,6 +15250,9 @@
           }
         }
       }
+    },
+    "Enable inline suggestions while typing" : {
+
     },
     "Enable MCP Server" : {
       "localizations" : {
@@ -15227,6 +15321,7 @@
       }
     },
     "Enabled" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -15606,6 +15701,9 @@
           }
         }
       }
+    },
+    "Enter this code on GitHub:" : {
+
     },
     "Enter your license key to unlock Pro features." : {
       "localizations" : {
@@ -18133,6 +18231,7 @@
 
     },
     "Feature Routing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -18850,6 +18949,7 @@
       }
     },
     "Fix Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -21055,6 +21155,9 @@
         }
       }
     },
+    "Incompatible plugin version" : {
+
+    },
     "Incorrect passphrase" : {
       "localizations" : {
         "tr" : {
@@ -21260,6 +21363,9 @@
           }
         }
       }
+    },
+    "Inline SQL suggestions appear as you type. Press Tab to accept, Escape to dismiss." : {
+
     },
     "Inline Suggestions" : {
       "localizations" : {
@@ -21970,6 +22076,9 @@
           }
         }
       }
+    },
+    "Invalid LSP response" : {
+
     },
     "Invalid MongoDB syntax: %@" : {
       "extractionState" : "stale",
@@ -23524,6 +23633,7 @@
       }
     },
     "Load Models" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -23813,6 +23923,9 @@
         }
       }
     },
+    "Local" : {
+
+    },
     "Local only" : {
 
     },
@@ -23881,6 +23994,25 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在历史记录中记录 MCP 查询"
+          }
+        }
+      }
+    },
+    "LSP process exited with code %d" : {
+
+    },
+    "LSP process is not running" : {
+
+    },
+    "LSP request was cancelled" : {
+
+    },
+    "LSP server error (%d): %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LSP server error (%1$d): %2$@"
           }
         }
       }
@@ -24150,6 +24282,9 @@
           }
         }
       }
+    },
+    "Max output tokens" : {
+
     },
     "Max schema tables: %d" : {
       "localizations" : {
@@ -24706,6 +24841,9 @@
           }
         }
       }
+    },
+    "Missing value for parameter: %@" : {
+
     },
     "Mode" : {
 
@@ -26669,6 +26807,7 @@
       }
     },
     "No model selected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -27361,6 +27500,9 @@
         }
       }
     },
+    "Not configured" : {
+
+    },
     "Not connected" : {
       "localizations" : {
         "tr" : {
@@ -27559,6 +27701,12 @@
           }
         }
       }
+    },
+    "Not signed in" : {
+
+    },
+    "Not signed in to GitHub Copilot" : {
+
     },
     "Not supported for this database." : {
       "localizations" : {
@@ -28406,6 +28554,9 @@
         }
       }
     },
+    "Open Plugin Settings" : {
+
+    },
     "Open Query" : {
       "localizations" : {
         "tr" : {
@@ -28607,6 +28758,7 @@
       }
     },
     "Optimize Query" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -29057,6 +29209,9 @@
           }
         }
       }
+    },
+    "Parameters" : {
+
     },
     "Parent Group" : {
       "localizations" : {
@@ -29916,6 +30071,9 @@
           }
         }
       }
+    },
+    "Plugin Update Failed" : {
+
     },
     "Plugin was built with PluginKit version %d, but version %d is required. Please update the plugin." : {
       "localizations" : {
@@ -31590,6 +31748,9 @@
         }
       }
     },
+    "Query parameters (:name syntax)" : {
+
+    },
     "Query Result Limit" : {
       "localizations" : {
         "tr" : {
@@ -32788,6 +32949,15 @@
         }
       }
     },
+    "Reload" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove %@?" : {
+
+    },
     "Remove all filters and reload" : {
       "localizations" : {
         "tr" : {
@@ -32987,6 +33157,7 @@
       }
     },
     "Remove provider" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -33007,6 +33178,12 @@
           }
         }
       }
+    },
+    "Remove Provider" : {
+
+    },
+    "Remove Provider?" : {
+
     },
     "Rename" : {
       "localizations" : {
@@ -33514,6 +33691,9 @@
         }
       }
     },
+    "Restore Last Filter" : {
+
+    },
     "Results" : {
       "localizations" : {
         "tr" : {
@@ -33624,6 +33804,9 @@
           }
         }
       }
+    },
+    "Retry Update" : {
+
     },
     "Retry Validation" : {
       "localizations" : {
@@ -34612,6 +34795,9 @@
         }
       }
     },
+    "Save failed: %@" : {
+
+    },
     "Save Filter Preset" : {
       "localizations" : {
         "tr" : {
@@ -35124,7 +35310,6 @@
       }
     },
     "Search shortcuts..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35147,7 +35332,6 @@
       }
     },
     "Search tables, views, databases..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35441,6 +35625,9 @@
           }
         }
       }
+    },
+    "Select a model" : {
+
     },
     "Select a Plugin" : {
       "localizations" : {
@@ -35831,6 +36018,9 @@
         }
       }
     },
+    "Send telemetry to GitHub" : {
+
+    },
     "Server" : {
       "localizations" : {
         "tr" : {
@@ -36024,6 +36214,9 @@
         }
       }
     },
+    "Service stopped" : {
+
+    },
     "Session Token" : {
       "localizations" : {
         "en" : {
@@ -36051,6 +36244,9 @@
           }
         }
       }
+    },
+    "Set as Active" : {
+
     },
     "Set DEFAULT" : {
       "localizations" : {
@@ -36789,6 +36985,24 @@
           }
         }
       }
+    },
+    "Sign in with GitHub" : {
+
+    },
+    "Sign Out" : {
+
+    },
+    "Sign-in cancelled" : {
+
+    },
+    "Sign-in timed out" : {
+
+    },
+    "Signed in as %@" : {
+
+    },
+    "Signing in…" : {
+
     },
     "Silent" : {
       "localizations" : {
@@ -38144,6 +38358,9 @@
           }
         }
       }
+    },
+    "Starting service…" : {
+
     },
     "Starting..." : {
       "localizations" : {
@@ -39988,6 +40205,7 @@
       }
     },
     "Test" : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40119,6 +40337,9 @@
         }
       }
     },
+    "The API key will be permanently deleted." : {
+
+    },
     "The authenticity of host '%@' can't be established.\n\n%@ key fingerprint is:\n%@\n\nAre you sure you want to continue connecting?" : {
       "localizations" : {
         "en" : {
@@ -40146,6 +40367,12 @@
           }
         }
       }
+    },
+    "The code expires in 15 minutes." : {
+
+    },
+    "The code has been copied to your clipboard." : {
+
     },
     "The encrypted file is corrupt or incomplete" : {
       "localizations" : {
@@ -40253,6 +40480,7 @@
       }
     },
     "The following plugins were rejected:\n\n%@\n\nPlease update them from the plugin registry." : {
+      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -40273,6 +40501,9 @@
           }
         }
       }
+    },
+    "The following plugins were rejected:\n\n%@\n\nYou can update them from the plugin registry in Settings." : {
+
     },
     "The license has been suspended." : {
       "localizations" : {
@@ -41186,6 +41417,9 @@
           }
         }
       }
+    },
+    "This will permanently delete all conversation history." : {
+
     },
     "This will permanently delete all data in partition '%@'." : {
       "localizations" : {
@@ -43103,6 +43337,9 @@
         }
       }
     },
+    "Update" : {
+
+    },
     "UPDATE Statement(s)" : {
       "localizations" : {
         "tr" : {
@@ -43125,6 +43362,9 @@
         }
       }
     },
+    "Update to v%@" : {
+
+    },
     "Updated" : {
       "localizations" : {
         "tr" : {
@@ -43146,6 +43386,12 @@
           }
         }
       }
+    },
+    "Updated to v%@" : {
+
+    },
+    "Updating..." : {
+
     },
     "Uptime" : {
       "localizations" : {
@@ -43571,6 +43817,9 @@
           }
         }
       }
+    },
+    "v%@ available" : {
+
     },
     "v%@+" : {
       "localizations" : {

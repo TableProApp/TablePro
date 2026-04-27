@@ -2,8 +2,6 @@
 //  AppDelegate+FileOpen.swift
 //  TablePro
 //
-//  URL and file open handling dispatched from application(_:open:)
-//
 
 import AppKit
 import os
@@ -207,8 +205,8 @@ extension AppDelegate {
 
         case .importConnection(let exportable):
             openWelcomeWindow()
-            pendingDeeplinkImport = exportable
-            NotificationCenter.default.post(name: .deeplinkImportRequested, object: nil)
+            PendingActionStore.shared.deeplinkImport = exportable
+            NotificationCenter.default.post(name: .deeplinkImportRequested, object: exportable)
         }
     }
 
@@ -239,12 +237,14 @@ extension AppDelegate {
         }
 
         let hadExistingMain = NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
+        let savedTabbing = NSWindow.allowsAutomaticWindowTabbing
         if hadExistingMain && !AppSettingsManager.shared.tabs.groupAllConnectionTabs {
             NSWindow.allowsAutomaticWindowTabbing = false
         }
 
         let deeplinkPayload = EditorTabPayload(connectionId: connection.id)
         WindowManager.shared.openTab(payload: deeplinkPayload)
+        NSWindow.allowsAutomaticWindowTabbing = savedTabbing
 
         Task {
             do {
@@ -280,7 +280,7 @@ extension AppDelegate {
 
     private func handleConnectionShareFile(_ url: URL) {
         openWelcomeWindow()
-        pendingConnectionShareURL = url
+        PendingActionStore.shared.connectionShareURL = url
         NotificationCenter.default.post(name: .connectionShareFileOpened, object: url)
     }
 

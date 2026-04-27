@@ -2,8 +2,6 @@
 //  AppDelegate+WindowConfig.swift
 //  TablePro
 //
-//  Window lifecycle, styling, dock menu, and auto-reconnect
-//
 
 import AppKit
 import os
@@ -138,6 +136,12 @@ extension AppDelegate {
     private func isConnectionFormWindow(_ window: NSWindow) -> Bool {
         guard let rawValue = window.identifier?.rawValue else { return false }
         return rawValue == WindowId.connectionForm || rawValue.hasPrefix("\(WindowId.connectionForm)-")
+    }
+
+    @objc func handleFocusConnectionForm() {
+        if let window = NSApp.windows.first(where: { isConnectionFormWindow($0) }) {
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 
     // MARK: - Welcome Window
@@ -393,7 +397,7 @@ extension AppDelegate {
     }
 
     func closeRestoredMainWindows() {
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             for window in NSApp.windows where self?.isMainWindow(window) == true {
                 window.close()
             }

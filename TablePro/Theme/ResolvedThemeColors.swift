@@ -16,8 +16,6 @@ struct ResolvedEditorColors {
     let lineNumberSwiftUI: Color
     let invisibles: NSColor
     let invisiblesSwiftUI: Color
-    let currentStatementHighlight: NSColor
-    let currentStatementHighlightSwiftUI: Color
 
     let keyword: NSColor
     let keywordSwiftUI: Color
@@ -51,8 +49,6 @@ struct ResolvedEditorColors {
         lineNumberSwiftUI = colors.lineNumber.swiftUIColor
         invisibles = colors.invisibles.nsColor
         invisiblesSwiftUI = colors.invisibles.swiftUIColor
-        currentStatementHighlight = colors.currentStatementHighlight.nsColor
-        currentStatementHighlightSwiftUI = colors.currentStatementHighlight.swiftUIColor
 
         keyword = colors.syntax.keyword.nsColor
         keywordSwiftUI = colors.syntax.keyword.swiftUIColor

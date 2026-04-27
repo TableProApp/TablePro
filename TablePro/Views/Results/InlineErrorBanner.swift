@@ -22,8 +22,7 @@ struct InlineErrorBanner: View {
                 .textSelection(.enabled)
             Spacer()
             Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(message, forType: .string)
+                ClipboardService.shared.writeText(message)
             } label: {
                 Image(systemName: "doc.on.doc")
                     .frame(width: 24, height: 24)

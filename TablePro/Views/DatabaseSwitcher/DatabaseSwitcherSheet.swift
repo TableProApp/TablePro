@@ -27,7 +27,6 @@ struct DatabaseSwitcherSheet: View {
     @State private var databaseToDrop: String?
 
     private enum FocusField {
-        case search
         case databaseList
     }
 
@@ -112,7 +111,6 @@ struct DatabaseSwitcherSheet: View {
             ? String(localized: "Open Schema")
             : String(localized: "Open Database"))
         .background(Color(nsColor: .windowBackgroundColor))
-        .defaultFocus($focus, .search)
         .task { await viewModel.fetchDatabases() }
         .sheet(isPresented: $showCreateDialog) {
             CreateDatabaseSheet(databaseType: databaseType, viewModel: viewModel)
@@ -153,22 +151,15 @@ struct DatabaseSwitcherSheet: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            // Search
-            SearchFieldView(
+            NativeSearchField(
+                text: $viewModel.searchText,
                 placeholder: isSchemaMode
                     ? String(localized: "Search schemas...")
                     : String(localized: "Search databases..."),
-                text: $viewModel.searchText
+                onMoveUp: { viewModel.moveUp() },
+                onMoveDown: { viewModel.moveDown() },
+                focusOnAppear: true
             )
-            .focused($focus, equals: .search)
-            .onKeyPress(.upArrow) {
-                viewModel.moveUp()
-                return .handled
-            }
-            .onKeyPress(.downArrow) {
-                viewModel.moveDown()
-                return .handled
-            }
 
             // Refresh
             Button(action: {

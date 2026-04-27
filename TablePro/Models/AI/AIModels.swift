@@ -2,65 +2,81 @@
 //  AIModels.swift
 //  TablePro
 //
-//  AI feature data models - provider configuration, chat messages, and settings.
+//  AI feature data models — provider configuration, chat messages, and settings.
 //
 
 import Foundation
 
 // MARK: - AI Provider Type
 
-/// Supported AI provider types
-enum AIProviderType: String, Codable, CaseIterable, Identifiable {
-    case claude = "claude"
-    case openAI = "openAI"
-    case openRouter = "openRouter"
-    case ollama = "ollama"
-    case gemini = "gemini"
-    case custom = "custom"
+enum AIProviderType: String, Codable, CaseIterable, Identifiable, Sendable {
+    case copilot
+    case claude
+    case openAI
+    case openRouter
+    case gemini
+    case ollama
+    case custom
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .claude: return "Claude"
-        case .openAI: return "OpenAI"
+        case .copilot:    return "GitHub Copilot"
+        case .claude:     return "Claude"
+        case .openAI:     return "OpenAI"
         case .openRouter: return "OpenRouter"
-        case .ollama: return "Ollama"
-        case .gemini: return "Gemini"
-        case .custom: return String(localized: "Custom")
+        case .gemini:     return "Gemini"
+        case .ollama:     return "Ollama"
+        case .custom:     return String(localized: "Custom")
         }
     }
 
     var defaultEndpoint: String {
         switch self {
-        case .claude: return "https://api.anthropic.com"
-        case .openAI: return "https://api.openai.com"
+        case .copilot:    return ""
+        case .claude:     return "https://api.anthropic.com"
+        case .openAI:     return "https://api.openai.com"
         case .openRouter: return "https://openrouter.ai/api"
-        case .ollama: return "http://localhost:11434"
-        case .gemini: return "https://generativelanguage.googleapis.com"
-        case .custom: return ""
+        case .gemini:     return "https://generativelanguage.googleapis.com"
+        case .ollama:     return "http://localhost:11434"
+        case .custom:     return ""
         }
     }
 
-    var requiresAPIKey: Bool {
+    enum AuthStyle: Sendable { case apiKey, oauth, none }
+
+    var authStyle: AuthStyle {
         switch self {
-        case .ollama: return false
-        default: return true
+        case .copilot: return .oauth
+        case .ollama:  return .none
+        default:       return .apiKey
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .copilot:    return "chevron.left.forwardslash.chevron.right"
+        case .claude:     return "brain"
+        case .openAI:     return "cpu"
+        case .openRouter: return "globe"
+        case .gemini:     return "wand.and.stars"
+        case .ollama:     return "desktopcomputer"
+        case .custom:     return "server.rack"
         }
     }
 }
 
 // MARK: - AI Provider Configuration
 
-/// Configuration for a single AI provider
-struct AIProviderConfig: Codable, Equatable, Identifiable {
+struct AIProviderConfig: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var name: String
     var type: AIProviderType
     var model: String
     var endpoint: String
-    var isEnabled: Bool
     var maxOutputTokens: Int?
+    var telemetryEnabled: Bool
 
     init(
         id: UUID = UUID(),
@@ -68,57 +84,41 @@ struct AIProviderConfig: Codable, Equatable, Identifiable {
         type: AIProviderType = .claude,
         model: String = "",
         endpoint: String = "",
-        isEnabled: Bool = true,
-        maxOutputTokens: Int? = nil
+        maxOutputTokens: Int? = nil,
+        telemetryEnabled: Bool = false
     ) {
         self.id = id
         self.name = name
         self.type = type
         self.model = model
         self.endpoint = endpoint.isEmpty ? type.defaultEndpoint : endpoint
-        self.isEnabled = isEnabled
         self.maxOutputTokens = maxOutputTokens
+        self.telemetryEnabled = telemetryEnabled
     }
-}
 
-// MARK: - AI Feature
-
-/// AI features that can be routed to specific providers
-enum AIFeature: String, Codable, CaseIterable, Identifiable {
-    case chat = "chat"
-    case explainQuery = "explainQuery"
-    case optimizeQuery = "optimizeQuery"
-    case fixError = "fixError"
-    case inlineSuggest = "inlineSuggest"
-
-    var id: String { rawValue }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        type = try container.decode(AIProviderType.self, forKey: .type)
+        model = try container.decodeIfPresent(String.self, forKey: .model) ?? ""
+        let rawEndpoint = try container.decodeIfPresent(String.self, forKey: .endpoint) ?? ""
+        endpoint = rawEndpoint.isEmpty ? type.defaultEndpoint : rawEndpoint
+        maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens)
+        telemetryEnabled = try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? false
+    }
 
     var displayName: String {
-        switch self {
-        case .chat: return String(localized: "Chat")
-        case .explainQuery: return String(localized: "Explain Query")
-        case .optimizeQuery: return String(localized: "Optimize Query")
-        case .fixError: return String(localized: "Fix Error")
-        case .inlineSuggest: return String(localized: "Inline Suggestions")
-        }
+        name.isEmpty ? type.displayName : name
     }
-}
-
-// MARK: - AI Feature Route
-
-/// Routes an AI feature to a specific provider and model
-struct AIFeatureRoute: Codable, Equatable {
-    var providerID: UUID
-    var model: String
 }
 
 // MARK: - AI Connection Policy
 
-/// Per-connection AI data sharing policy
-enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable {
-    case alwaysAllow = "alwaysAllow"
-    case askEachTime = "askEachTime"
-    case never = "never"
+enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable, Sendable {
+    case alwaysAllow
+    case askEachTime
+    case never
 
     var id: String { rawValue }
 
@@ -126,64 +126,64 @@ enum AIConnectionPolicy: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .alwaysAllow: return String(localized: "Always Allow")
         case .askEachTime: return String(localized: "Ask Each Time")
-        case .never: return String(localized: "Never")
+        case .never:       return String(localized: "Never")
         }
     }
 }
 
 // MARK: - AI Settings
 
-/// Global AI feature settings
-struct AISettings: Codable, Equatable {
+struct AISettings: Codable, Equatable, Sendable {
     var enabled: Bool
     var providers: [AIProviderConfig]
-    var featureRouting: [String: AIFeatureRoute]
+    var activeProviderID: UUID?
+    var inlineSuggestionsEnabled: Bool
     var includeSchema: Bool
     var includeCurrentQuery: Bool
     var includeQueryResults: Bool
     var maxSchemaTables: Int
     var defaultConnectionPolicy: AIConnectionPolicy
-    var inlineSuggestEnabled: Bool
 
     static let `default` = AISettings(
         enabled: true,
         providers: [],
-        featureRouting: [:],
+        activeProviderID: nil,
+        inlineSuggestionsEnabled: false,
         includeSchema: true,
         includeCurrentQuery: true,
         includeQueryResults: false,
         maxSchemaTables: 20,
-        defaultConnectionPolicy: .askEachTime,
-        inlineSuggestEnabled: false
+        defaultConnectionPolicy: .askEachTime
     )
 
     init(
         enabled: Bool = true,
         providers: [AIProviderConfig] = [],
-        featureRouting: [String: AIFeatureRoute] = [:],
+        activeProviderID: UUID? = nil,
+        inlineSuggestionsEnabled: Bool = false,
         includeSchema: Bool = true,
         includeCurrentQuery: Bool = true,
         includeQueryResults: Bool = false,
         maxSchemaTables: Int = 20,
-        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime,
-        inlineSuggestEnabled: Bool = false
+        defaultConnectionPolicy: AIConnectionPolicy = .askEachTime
     ) {
         self.enabled = enabled
         self.providers = providers
-        self.featureRouting = featureRouting
+        self.activeProviderID = activeProviderID
+        self.inlineSuggestionsEnabled = inlineSuggestionsEnabled
         self.includeSchema = includeSchema
         self.includeCurrentQuery = includeCurrentQuery
         self.includeQueryResults = includeQueryResults
         self.maxSchemaTables = maxSchemaTables
         self.defaultConnectionPolicy = defaultConnectionPolicy
-        self.inlineSuggestEnabled = inlineSuggestEnabled
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         providers = try container.decodeIfPresent([AIProviderConfig].self, forKey: .providers) ?? []
-        featureRouting = try container.decodeIfPresent([String: AIFeatureRoute].self, forKey: .featureRouting) ?? [:]
+        activeProviderID = try container.decodeIfPresent(UUID.self, forKey: .activeProviderID)
+        inlineSuggestionsEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestionsEnabled) ?? false
         includeSchema = try container.decodeIfPresent(Bool.self, forKey: .includeSchema) ?? true
         includeCurrentQuery = try container.decodeIfPresent(Bool.self, forKey: .includeCurrentQuery) ?? true
         includeQueryResults = try container.decodeIfPresent(Bool.self, forKey: .includeQueryResults) ?? false
@@ -191,14 +191,23 @@ struct AISettings: Codable, Equatable {
         defaultConnectionPolicy = try container.decodeIfPresent(
             AIConnectionPolicy.self, forKey: .defaultConnectionPolicy
         ) ?? .askEachTime
-        inlineSuggestEnabled = try container.decodeIfPresent(Bool.self, forKey: .inlineSuggestEnabled) ?? false
+    }
+
+    var activeProvider: AIProviderConfig? {
+        guard let activeProviderID else { return nil }
+        return providers.first(where: { $0.id == activeProviderID })
+    }
+
+    var hasActiveProvider: Bool { activeProvider != nil }
+
+    var hasCopilotConfigured: Bool {
+        providers.contains(where: { $0.type == .copilot })
     }
 }
 
 // MARK: - AI Chat Message
 
-/// A single message in an AI chat conversation
-struct AIChatMessage: Codable, Equatable, Identifiable {
+struct AIChatMessage: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     var role: AIChatRole
     var content: String
@@ -220,28 +229,19 @@ struct AIChatMessage: Codable, Equatable, Identifiable {
     }
 }
 
-// MARK: - AI Chat Role
-
-/// Role of a chat message participant
-enum AIChatRole: String, Codable {
+enum AIChatRole: String, Codable, Sendable {
     case user
     case assistant
     case system
 }
 
-// MARK: - AI Token Usage
-
-/// Token usage statistics from an AI response
-struct AITokenUsage: Codable, Equatable {
+struct AITokenUsage: Codable, Equatable, Sendable {
     var inputTokens: Int
     var outputTokens: Int
     var totalTokens: Int { inputTokens + outputTokens }
 }
 
-// MARK: - AI Stream Event
-
-/// Events emitted during AI response streaming
-enum AIStreamEvent {
+enum AIStreamEvent: Sendable {
     case text(String)
     case usage(AITokenUsage)
 }

@@ -67,25 +67,6 @@ struct DatabaseManagerVersionTests {
         manager.removeSession(for: id)
     }
 
-    @Test("sessionVersion returns connectionStatusVersion for backward compatibility")
-    func sessionVersionBackwardCompat() {
-        let manager = DatabaseManager.shared
-        #expect(manager.sessionVersion == manager.connectionStatusVersion)
-
-        let (id, session) = makeSession()
-        manager.injectSession(session, for: id)
-
-        #expect(manager.sessionVersion == manager.connectionStatusVersion)
-
-        manager.updateSession(id) { session in
-            session.status = .connected
-        }
-
-        #expect(manager.sessionVersion == manager.connectionStatusVersion)
-
-        manager.removeSession(for: id)
-    }
-
     @Test("Multiple rapid mutations increment counters correctly")
     func rapidMutationsIncrementCorrectly() {
         let manager = DatabaseManager.shared

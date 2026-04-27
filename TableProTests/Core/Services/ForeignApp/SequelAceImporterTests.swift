@@ -53,7 +53,7 @@ struct SequelAceImporterTests {
         colorIndex: Int = -1,
         sshHost: String = "",
         sshUser: String = "",
-        sshPort: String = "22",
+        sshPort: Any = 22 as Int,
         sshKeyEnabled: Int = 0,
         sshKeyLocation: String = "",
         useSSL: Int = 0,
@@ -166,7 +166,7 @@ struct SequelAceImporterTests {
                 id: 1,
                 sshHost: "bastion.example.com",
                 sshUser: "deploy",
-                sshPort: "2222",
+                sshPort: 2222,
                 sshKeyEnabled: 1,
                 sshKeyLocation: "~/.ssh/id_ed25519"
             )
@@ -365,7 +365,7 @@ struct SequelAceImporterTests {
                 id: 1,
                 sshHost: "bastion.com",
                 sshUser: "admin",
-                sshPort: "22",
+                sshPort: 22,
                 sshKeyEnabled: 0
             )
         ]
@@ -416,5 +416,45 @@ struct SequelAceImporterTests {
         let result = try importer.importConnections(includePasswords: false)
         // The inner group name should be used for the nested connection
         #expect(result.envelope.connections[0].groupName == "Inner")
+    }
+
+    @Test("importConnections SSH port parsed as Int")
+    func testImportConnections_sshPortParsedAsInt() throws {
+        let children: [[String: Any]] = [
+            makeConnection(
+                name: "SSH Int Port",
+                type: 2,
+                id: 1,
+                sshHost: "bastion.com",
+                sshUser: "deploy",
+                sshPort: 2222
+            )
+        ]
+        try writeFavorites(makeFavoritesRoot(children: children))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssh = result.envelope.connections[0].sshConfig
+
+        #expect(ssh?.port == 2222)
+    }
+
+    @Test("importConnections SSH port parsed as String fallback")
+    func testImportConnections_sshPortParsedAsString() throws {
+        let children: [[String: Any]] = [
+            makeConnection(
+                name: "SSH String Port",
+                type: 2,
+                id: 1,
+                sshHost: "bastion.com",
+                sshUser: "deploy",
+                sshPort: "3333"
+            )
+        ]
+        try writeFavorites(makeFavoritesRoot(children: children))
+
+        let result = try importer.importConnections(includePasswords: false)
+        let ssh = result.envelope.connections[0].sshConfig
+
+        #expect(ssh?.port == 3333)
     }
 }

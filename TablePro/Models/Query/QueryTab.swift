@@ -110,6 +110,9 @@ struct QueryTab: Identifiable, Equatable {
     // Whether this tab is a preview (temporary) tab that gets replaced on next navigation
     var isPreview: Bool
 
+    var queryParameters: [QueryParameter] = []
+    var isParameterPanelVisible: Bool = false
+
     // Multi-result-set support (Phase 0: added alongside existing single-result properties)
     var resultSets: [ResultSet] = []
     var activeResultSetId: UUID?
@@ -120,7 +123,6 @@ struct QueryTab: Identifiable, Equatable {
         return resultSets.first { $0.id == id }
     }
 
-    // Source file URL for .sql files opened from disk (used for deduplication)
     var sourceFileURL: URL?
 
     // Snapshot of file content at last save/load (nil for non-file tabs).
@@ -217,6 +219,8 @@ struct QueryTab: Identifiable, Equatable {
         self.filterState = TabFilterState()
         self.columnLayout = ColumnLayoutState()
         self.isPreview = false
+        self.queryParameters = persisted.queryParameters ?? []
+        self.isParameterPanelVisible = false
         self.sourceFileURL = persisted.sourceFileURL
         self.resultVersion = 0
         self.metadataVersion = 0
@@ -289,7 +293,8 @@ struct QueryTab: Identifiable, Equatable {
             databaseName: databaseName,
             schemaName: schemaName,
             sourceFileURL: sourceFileURL,
-            erDiagramSchemaKey: erDiagramSchemaKey
+            erDiagramSchemaKey: erDiagramSchemaKey,
+            queryParameters: queryParameters.isEmpty ? nil : queryParameters
         )
     }
 

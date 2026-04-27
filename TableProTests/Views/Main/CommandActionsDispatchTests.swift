@@ -98,7 +98,7 @@ struct CommandActionsDispatchTests {
 
         // Enable structure mode on the selected tab
         if let idx = coordinator.tabManager.selectedTabIndex {
-            coordinator.tabManager.tabs[idx].showStructure = true
+            coordinator.tabManager.tabs[idx].resultsViewMode = .structure
         }
 
         // Install a spy handler
@@ -121,7 +121,7 @@ struct CommandActionsDispatchTests {
 
         // Enable structure mode on the selected tab
         if let idx = coordinator.tabManager.selectedTabIndex {
-            coordinator.tabManager.tabs[idx].showStructure = true
+            coordinator.tabManager.tabs[idx].resultsViewMode = .structure
         }
 
         // Install a spy handler

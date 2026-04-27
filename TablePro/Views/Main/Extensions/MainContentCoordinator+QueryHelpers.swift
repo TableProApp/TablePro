@@ -77,6 +77,53 @@ extension MainContentCoordinator {
         }
     }
 
+    nonisolated static func fetchQueryDataParameterized(
+        driver: DatabaseDriver,
+        sql: String,
+        parameters: [Any?],
+        useProgressiveLoading: Bool,
+        progressiveLimit: Int
+    ) async throws -> QueryFetchResult {
+        if useProgressiveLoading && progressiveLimit > 0 {
+            let start = CFAbsoluteTimeGetCurrent()
+            progressLog.info("[fetchFirstPageParameterized] sql=\(sql.prefix(100), privacy: .public) limit=\(progressiveLimit) params=\(parameters.count)")
+            let pagedResult = try await driver.fetchFirstPageParameterized(
+                query: sql,
+                parameters: parameters,
+                limit: progressiveLimit
+            )
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            progressLog.info("[fetchFirstPageParameterized] rows=\(pagedResult.rows.count) hasMore=\(pagedResult.hasMore) driverTime=\(String(format: "%.3f", pagedResult.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
+            let pageContext: QueryPageContext? = pagedResult.hasMore
+                ? QueryPageContext(hasMore: true, nextOffset: pagedResult.nextOffset, baseQuery: sql)
+                : nil
+            return QueryFetchResult(
+                columns: pagedResult.columns,
+                columnTypes: pagedResult.columnTypes,
+                rows: pagedResult.rows,
+                executionTime: pagedResult.executionTime,
+                rowsAffected: 0,
+                statusMessage: nil,
+                pageContext: pageContext
+            )
+        } else {
+            let start = CFAbsoluteTimeGetCurrent()
+            progressLog.info("[executeParameterized] sql=\(sql.prefix(100), privacy: .public) params=\(parameters.count)")
+            let result = try await driver.executeParameterized(query: sql, parameters: parameters)
+            let elapsed = CFAbsoluteTimeGetCurrent() - start
+            progressLog.info("[executeParameterized] rows=\(result.rows.count) driverTime=\(String(format: "%.3f", result.executionTime))s totalTime=\(String(format: "%.3f", elapsed))s")
+            return QueryFetchResult(
+                columns: result.columns,
+                columnTypes: result.columnTypes,
+                rows: result.rows,
+                executionTime: result.executionTime,
+                rowsAffected: result.rowsAffected,
+                statusMessage: result.statusMessage,
+                pageContext: nil
+            )
+        }
+    }
+
     /// Determine whether progressive loading should be used for this query
     func resolveProgressiveLoading(sql: String, tabType: TabType) -> (useProgressive: Bool, limit: Int) {
         let dataGridSettings = AppSettingsManager.shared.dataGrid
@@ -195,7 +242,8 @@ extension MainContentCoordinator {
         hasSchema: Bool,
         sql: String,
         connection conn: DatabaseConnection,
-        queryPageContext: QueryPageContext? = nil
+        queryPageContext: QueryPageContext? = nil,
+        queryParameterValues: [QueryParameter]? = nil
     ) {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
@@ -312,7 +360,8 @@ extension MainContentCoordinator {
             executionTime: executionTime,
             rowCount: rows.count,
             wasSuccessful: true,
-            errorMessage: nil
+            errorMessage: nil,
+            parameterValues: queryParameterValues
         )
 
         // Clear stale edit state immediately so the save banner

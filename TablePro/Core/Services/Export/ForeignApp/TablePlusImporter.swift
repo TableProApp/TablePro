@@ -65,7 +65,7 @@ struct TablePlusImporter: ForeignAppImporter {
 
                 if includePasswords, let connId = entry["ID"] as? String {
                     let creds = readCredentials(for: connId)
-                    if creds.password != nil || creds.sshPassword != nil {
+                    if creds.password != nil || creds.sshPassword != nil || creds.keyPassphrase != nil {
                         credentials[String(index)] = creds
                     }
                 }
@@ -201,12 +201,21 @@ struct TablePlusImporter: ForeignAppImporter {
     }
 
     private func parseSSLConfig(_ entry: [String: Any]) -> ExportableSSLConfig? {
+        guard entry.keys.contains("tLSMode") else { return nil }
         let tlsMode = entry["tLSMode"] as? Int ?? 0
-        guard tlsMode != 0 else { return nil }
+
+        let mode: String
+        switch tlsMode {
+        case 0: mode = SSLMode.preferred.rawValue
+        case 1: mode = SSLMode.required.rawValue
+        case 2: mode = SSLMode.verifyCa.rawValue
+        case 3: mode = SSLMode.verifyIdentity.rawValue
+        default: return nil
+        }
 
         let paths = entry["TlsKeyPaths"] as? [String] ?? []
         return ExportableSSLConfig(
-            mode: "Required",
+            mode: mode,
             caCertificatePath: !paths.isEmpty ? paths[0] : nil,
             clientCertificatePath: paths.count > 1 ? paths[1] : nil,
             clientKeyPath: paths.count > 2 ? paths[2] : nil
@@ -222,10 +231,14 @@ struct TablePlusImporter: ForeignAppImporter {
             service: "com.tableplus.TablePlus",
             account: "\(connectionId)_server"
         )
+        let keyPassphrase = ForeignKeychainReader.readPassword(
+            service: "com.tableplus.TablePlus",
+            account: "\(connectionId)_server_key"
+        )
         return ExportableCredentials(
             password: dbPassword,
             sshPassword: sshPassword,
-            keyPassphrase: nil,
+            keyPassphrase: keyPassphrase,
             totpSecret: nil,
             pluginSecureFields: nil
         )

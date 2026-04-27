@@ -18,6 +18,7 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable {
     let rowCount: Int  // -1 if unknown
     let wasSuccessful: Bool
     let errorMessage: String?
+    let parameterValues: String?
 
     init(
         id: UUID = UUID(),
@@ -28,7 +29,8 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable {
         executionTime: TimeInterval,
         rowCount: Int,
         wasSuccessful: Bool,
-        errorMessage: String? = nil
+        errorMessage: String? = nil,
+        parameterValues: String? = nil
     ) {
         self.id = id
         self.query = query
@@ -39,6 +41,7 @@ struct QueryHistoryEntry: Identifiable, Codable, Hashable {
         self.rowCount = rowCount
         self.wasSuccessful = wasSuccessful
         self.errorMessage = errorMessage
+        self.parameterValues = parameterValues
     }
 
     /// Formatted execution time for display
