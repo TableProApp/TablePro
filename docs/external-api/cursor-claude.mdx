@@ -1,0 +1,109 @@
+---
+title: Cursor and Claude Desktop
+description: Wire stdio MCP into Cursor or Claude Desktop using the bundled tablepro-mcp CLI
+---
+
+# Cursor and Claude Desktop
+
+TablePro ships a stdio MCP bridge at `/Applications/TablePro.app/Contents/MacOS/tablepro-mcp`. Any MCP-aware client that supports the stdio transport can use it with no extension and no token.
+
+The bridge:
+
+1. Reads `~/Library/Application Support/com.TablePro/mcp-handshake.json` for the local port and bridge token.
+2. If the file is missing, fires `tablepro://integrations/start-mcp` to lazy-start the server, then waits up to 10 seconds for the handshake.
+3. Streams JSON-RPC over stdio and forwards each message to localhost HTTP with a bridge-specific bearer.
+
+Because the bridge reuses the in-app handshake, you do not need to mint a token for stdio. The TablePro app must be running. You can keep it minimized.
+
+## Cursor
+
+Edit `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "tablepro": {
+      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
+    }
+  }
+}
+```
+
+Restart Cursor. The TablePro tools appear under `@mcp` and are callable from chat.
+
+## Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "tablepro": {
+      "command": "/Applications/TablePro.app/Contents/MacOS/tablepro-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop. TablePro tools show up in the tool picker.
+
+## Claude Code
+
+Use the `claude mcp add` CLI:
+
+```bash
+claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mcp
+```
+
+This writes the same stdio config under the hood.
+
+## One-click setup
+
+TablePro can write these config files for you. Open **Settings > Integrations > Setup**:
+
+- **Setup for Cursor** writes `~/.cursor/mcp.json`.
+- **Setup for Claude Desktop** writes `claude_desktop_config.json`.
+- **Setup for Claude Code** runs the equivalent `claude mcp add` for the current user.
+
+If a config already exists, TablePro merges the `tablepro` entry into the existing `mcpServers` map.
+
+## HTTP instead of stdio
+
+If you prefer HTTP, mint a token in **Settings > Integrations > Tokens** and configure:
+
+```json
+{
+  "mcpServers": {
+    "tablepro": {
+      "url": "http://127.0.0.1:23508/mcp",
+      "headers": {
+        "Authorization": "Bearer tp_your_token_here"
+      }
+    }
+  }
+}
+```
+
+Replace `23508` with the port shown in **Settings > Integrations > Server**. HTTP is the right choice when:
+
+- The client and TablePro run on different machines (with TLS, see [MCP Server](/features/mcp#remote-access)).
+- You want a token with a tighter scope than the bridge token.
+- The client does not support stdio.
+
+The handshake-based stdio bridge is the better default on the same machine.
+
+## What the AI sees
+
+AI clients see the full [tool catalog](/external-api/mcp-tools). For an unfamiliar schema, the AI is expected to call `describe_table` before generating SQL. For mutating SQL, the AI must request user confirmation through the host's tool-confirmation mechanism. Cursor surfaces this as a "Run tool?" prompt. Claude Desktop and Claude Code use their own confirmation UI.
+
+The connection's `externalAccess` setting and the token scope still apply on top. A read-only connection rejects writes regardless of what the AI tries.
+
+## Troubleshooting
+
+**`tablepro-mcp` exits immediately.** TablePro is not running or the build is older than 0.37. Open TablePro and re-launch the client.
+
+**Bridge says "handshake timeout".** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations > Server** and click **Start Server**, then re-launch the client.
+
+**Tool calls return `403`.** The connection's `externalAccess` is `blocked` or `readOnly`. Open the connection editor in TablePro and adjust under **External Access**.
+
+**Tool calls return `401`.** The bridge token is stale (TablePro was reinstalled or the Application Support data was wiped). Quit and reopen TablePro to regenerate the handshake.

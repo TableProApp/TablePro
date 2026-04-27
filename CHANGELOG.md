@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- External API for Raycast, Cursor, Claude Desktop, and other MCP clients: URL scheme, stdio MCP transport, pairing flow, activity log
+- UUID-keyed deep links: `tablepro://connect/<uuid>`, `.../table/<name>`, `.../query?sql=...`, `tablepro://integrations/pair?...`, `tablepro://integrations/start-mcp`
+- stdio MCP transport via bundled `tablepro-mcp` CLI at `Contents/MacOS/tablepro-mcp`. Reads handshake file, no token needed
+- Per-connection `External Access` setting (`blocked`, `readOnly`, `readWrite`). Defaults to `readOnly`. Bounds token reach via `MIN(token.scope, connection.externalAccess)`
+- Pairing flow with PKCE code exchange. One-click token issuance for Raycast and other extensions
+- Activity log at `~/Library/Application Support/com.TablePro/mcp-audit.db`. Viewable in Settings > Integrations > Activity Log. 90-day retention
+- New MCP tools: `list_recent_tabs`, `search_query_history`, `open_connection_window`, `open_table_tab`, `focus_query_tab`
 - PostgreSQL ICU collation provider in Create Database (PG 15+). Provider picker is added when the server reports PG 15 or newer. ICU locale list comes from `pg_collation`. SQL emission is version-aware: PG 16+ uses unified `LOCALE`, PG 15 uses `ICU_LOCALE` with `LC_COLLATE 'C' LC_CTYPE 'C'`.
 - Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
 - Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
@@ -25,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- MCP server lazy-starts on first external request. Manual enable in Settings is no longer required
+- Settings tab renamed from "MCP" to "Integrations" with new sections for connected clients, activity log, and pairing
 - Create Database dialog is now driver-driven. Each driver discovers its own valid options (PostgreSQL queries `pg_collation` and `pg_database`, MySQL/MariaDB query `information_schema.character_sets`/`collations`). The hardcoded macOS-flavored locale list is gone. Engines that don't support creation hide the Create button instead of failing on click.
 - Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
 - DataGrid columns and cells refactored to use a persistent column pool and typed cell view hierarchy. CPU usage on table switch reduced significantly through proper NSTableView reuse pool retention.
@@ -63,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Data grid cell focus ring redraws when the user toggles Light or Dark mode mid-session, picking up the system's appearance-aware focus indicator color
 - Data grid keeps sortedIDs and cachedRowCount paired by calling updateCache() immediately after the SwiftUI bridge writes new sortedIDs to the coordinator, removing a window where the cached count and the sort permutation could disagree
 - Display formats memoized per tab on MainContentCoordinator keyed by schema version, smart-detection setting, and format-overrides version, so ValueDisplayDetector.detect runs once per result schema instead of on every SwiftUI body evaluation
+
+### Removed (BREAKING)
+
+- `tablepro://connect/<name>/...` deep links. Replace with UUID-keyed paths from "Copy Connection Deep Link" in the sidebar context menu. User-saved bookmarks must be regenerated
 
 ### Fixed
 

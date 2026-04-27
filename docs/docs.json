@@ -155,6 +155,20 @@
               "customization/appearance",
               "customization/editor-settings"
             ]
+          },
+          {
+            "group": "External API",
+            "pages": [
+              "external-api/index",
+              "external-api/url-scheme",
+              "external-api/mcp-tools",
+              "external-api/mcp-resources",
+              "external-api/pairing",
+              "external-api/tokens",
+              "external-api/raycast",
+              "external-api/cursor-claude",
+              "external-api/versioning"
+            ]
           }
         ]
       },

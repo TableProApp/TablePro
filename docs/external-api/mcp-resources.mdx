@@ -1,0 +1,121 @@
+---
+title: MCP Resources
+description: Read-only resources exposed by the MCP server
+---
+
+# MCP Resources
+
+Resources are read-only views of TablePro state. AI clients use them to discover what is available before calling tools. Every resource is scope-gated the same way as tools and respects the per-connection allowlist.
+
+URIs use the `tablepro://` scheme inside the MCP transport. Do not confuse them with shell-level [URL scheme deep links](/external-api/url-scheme).
+
+## `tablepro://connections`
+
+All saved connections with metadata.
+
+**Returns**:
+
+```json
+{
+  "connections": [
+    {
+      "id": "9f1f0c3e-2e3d-4b14-9c3a-1d2f4ad1f6f1",
+      "name": "Production",
+      "type": "PostgreSQL",
+      "host": "db.example.com",
+      "port": 5432,
+      "database": "app",
+      "isConnected": false,
+      "externalAccess": "readOnly",
+      "color": "blue",
+      "tagName": null,
+      "groupName": "Servers"
+    }
+  ]
+}
+```
+
+Connections with `externalAccess: blocked` are omitted. Connections outside the token's allowlist are omitted.
+
+**Scope**: `readOnly`.
+
+## `tablepro://connections/{id}/schema`
+
+Schema for a connection. Returns all databases, schemas, and tables visible to the user.
+
+**Path parameter**: `id` is the connection UUID.
+
+**Returns**:
+
+```json
+{
+  "connectionId": "9f1f...",
+  "databases": [
+    {
+      "name": "app",
+      "schemas": [
+        {
+          "name": "public",
+          "tables": [
+            {
+              "name": "users",
+              "type": "table",
+              "columns": [
+                { "name": "id", "type": "uuid", "nullable": false, "isPrimaryKey": true },
+                { "name": "email", "type": "text", "nullable": false }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Capped at 100 tables per schema. For larger schemas, call `list_tables` with paging.
+
+**Scope**: `readOnly`.
+
+## `tablepro://connections/{id}/history`
+
+Recent query history for a connection.
+
+**Path parameter**: `id` is the connection UUID.
+
+**Query parameters**:
+
+| Parameter | Description |
+|-----------|-------------|
+| `limit` | 1-500. Default 50. |
+| `search` | Full-text query string. |
+| `date_filter` | `today`, `thisWeek`, or `thisMonth`. |
+
+**Returns**:
+
+```json
+{
+  "connectionId": "9f1f...",
+  "entries": [
+    {
+      "id": "...",
+      "sql": "SELECT * FROM users WHERE active = true",
+      "executedAt": "2026-04-26T10:14:22Z",
+      "rowCount": 142,
+      "executionTimeMs": 18,
+      "source": "editor"
+    }
+  ]
+}
+```
+
+`source` is `editor`, `mcp`, or `terminal`.
+
+**Scope**: `readOnly`.
+
+## Errors
+
+| Code | Meaning |
+|------|---------|
+| `403` | Token allowlist rejects the connection, or `externalAccess` is `blocked`. |
+| `404` | Connection not found. |
