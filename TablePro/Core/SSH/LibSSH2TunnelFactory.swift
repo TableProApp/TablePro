@@ -674,11 +674,6 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    /// Resolve identity file paths for key file authentication.
-    /// Priority: user-configured path > SSH config IdentityFile(s) > default key paths.
-    /// Resolve identity file paths for key authentication.
-    /// Priority: explicit privateKeyPath > SSH config IdentityFile(s) > default key paths.
-    /// Respects `IdentitiesOnly` — skips default paths when set.
     private static func resolveIdentityFiles(
         privateKeyPath: String,
         configEntry: SSHConfigEntry?
