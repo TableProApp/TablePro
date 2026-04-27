@@ -59,6 +59,9 @@ pub struct BrowseTab {
     insert_button: gtk::Button,
     edit_row_button: gtk::Button,
     delete_button: gtk::Button,
+    save_button: gtk::Button,
+    discard_button: gtk::Button,
+    pending_label: gtk::Label,
     page_size_combo: gtk::DropDown,
     page_size_handler: Rc<RefCell<Option<glib::SignalHandlerId>>>,
     grid_sender: relm4::Sender<GridMsg>,
@@ -124,6 +127,21 @@ pub enum BrowseTabInput {
         row_position: u32,
     },
     GridCopyToClipboard(String),
+    /// User clicked Save — materialize tracker pending changes and
+    /// emit them as a single `BrowseTabOutput::ExecuteTransaction`
+    /// for atomic commit.
+    CommitSave,
+    /// User clicked Discard — clear all pending edits and refetch
+    /// the page so the grid shows committed values again.
+    DiscardAll,
+    /// Pending count changed (from tracker subscription) — refresh
+    /// the Save / Discard / counter visibility.
+    PendingCountChanged(usize),
+    /// Save command resolved successfully — clear tracker, refetch.
+    SaveCompleted,
+    /// Save command failed — surface error to the user; keep the
+    /// pending changeset intact so they can retry.
+    SaveFailed(String),
 }
 
 #[derive(Debug)]
@@ -181,6 +199,11 @@ pub enum BrowseTabOutput {
     SchemaWordsChanged(Vec<String>),
     /// Show a generic info dialog for "Cannot edit / select exactly one row".
     ShowSelectionAlert { title: String, body: String },
+    /// Run a sequence of pending-changeset statements inside a single
+    /// DB transaction. Materialised by the per-tab change tracker on
+    /// Save click. App routes this to `Connection::execute_in_transaction`
+    /// and dispatches `SaveCompleted` / `SaveFailed` back via input.
+    ExecuteTransaction { statements: Vec<(String, Vec<Value>)> },
 }
 
 impl BrowseTab {
@@ -345,19 +368,81 @@ impl BrowseTab {
         insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
         let sender_for_edit = sender.clone();
         edit_row_button.connect_clicked(move |_| sender_for_edit.input(BrowseTabInput::EditSelectedRow));
-        let sender_for_delete = sender;
+        let sender_for_delete = sender.clone();
         delete_button.connect_clicked(move |_| sender_for_delete.input(BrowseTabInput::DeleteSelectedRow));
+
+        // Pending-changeset cluster on pack_end: count label, Discard,
+        // Save. Hidden until any pending change exists. Subscribes
+        // are wired in `init`; this builder just lays them out.
+        let pending_label = gtk::Label::builder().visible(false).build();
+        pending_label.add_css_class("dim-label");
+        pending_label.add_css_class("caption");
+
+        let discard_button = gtk::Button::builder()
+            .label(crate::tr!("Discard"))
+            .visible(false)
+            .build();
+        let sender_for_discard = sender.clone();
+        discard_button.connect_clicked(move |_| sender_for_discard.input(BrowseTabInput::DiscardAll));
+
+        let save_button = gtk::Button::builder().label(crate::tr!("Save")).visible(false).build();
+        save_button.add_css_class("suggested-action");
+        let sender_for_save = sender;
+        save_button.connect_clicked(move |_| sender_for_save.input(BrowseTabInput::CommitSave));
 
         let bar = gtk::ActionBar::new();
         bar.pack_start(&insert_button);
-        bar.pack_end(&delete_button);
-        bar.pack_end(&edit_row_button);
+        bar.pack_start(&edit_row_button);
+        bar.pack_start(&delete_button);
+        bar.pack_end(&save_button);
+        bar.pack_end(&discard_button);
+        bar.pack_end(&pending_label);
         Mutations {
             bar,
             insert_button,
             edit_row_button,
             delete_button,
+            save_button,
+            discard_button,
+            pending_label,
         }
+    }
+
+    /// Toggle visibility / label of the pending-changeset cluster
+    /// in the mutation bar. Hidden when there are no pending edits;
+    /// shows "{n} unsaved" with Save (.suggested-action) + Discard
+    /// when there are. Mirrors GNOME Files' per-folder operation
+    /// strip pattern.
+    fn refresh_pending_bar(&self, count: usize) {
+        let visible = count > 0;
+        self.save_button.set_visible(visible);
+        self.discard_button.set_visible(visible);
+        self.pending_label.set_visible(visible);
+        if visible {
+            self.pending_label
+                .set_label(&crate::tr!("{n} unsaved").replace("{n}", &count.to_string()));
+        }
+    }
+
+    /// Build the (RowKey, current_values) pair for a row at the
+    /// given position in the current result. Returns None if the
+    /// table has no PK or the position is out of range.
+    fn row_key_at(&self, row_position: u32) -> Option<(crate::services::change_tracker::RowKey, Vec<Value>)> {
+        let result = self.current_result.as_ref()?;
+        let row = result.rows.get(row_position as usize)?;
+        let pk_indices: Vec<usize> = self
+            .current_columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.primary_key)
+            .map(|(i, _)| i)
+            .collect();
+        if pk_indices.is_empty() {
+            return None;
+        }
+        let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row[i].clone()).collect();
+        let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
+        Some((key, row.clone()))
     }
 
     fn refresh_crud_buttons(&self) {
@@ -589,12 +674,36 @@ impl SimpleComponent for BrowseTab {
             insert_button: mutations.insert_button,
             edit_row_button: mutations.edit_row_button,
             delete_button: mutations.delete_button,
+            save_button: mutations.save_button,
+            discard_button: mutations.discard_button,
+            pending_label: mutations.pending_label,
             page_size_combo: paginator.page_size_combo,
             page_size_handler: page_size_handler_slot,
             grid_sender,
             suppress_combo_emit,
         };
         model.refresh_crud_buttons();
+        model.refresh_pending_bar(0);
+
+        // Subscribe to the tracker so we can refresh the pending UI
+        // any time the user adds / undoes / commits a change. The
+        // channel is leaked into the GTK main loop via spawn_local,
+        // matching how the per-tab GridMsg channel above is wired.
+        let (tracker_sender, tracker_receiver) = relm4::channel::<crate::services::change_tracker::TrackerEvent>();
+        crate::services::change_tracker::with_tab(init.tab_id, |t| t.subscribe(tracker_sender));
+        let input_for_tracker = sender.input_sender().clone();
+        let tab_id_for_tracker = init.tab_id;
+        relm4::spawn_local(tracker_receiver.forward(input_for_tracker, move |event| match event {
+            crate::services::change_tracker::TrackerEvent::PendingCountChanged(n) => {
+                BrowseTabInput::PendingCountChanged(n)
+            }
+            crate::services::change_tracker::TrackerEvent::Cleared => BrowseTabInput::PendingCountChanged(0),
+            // ChangedRows would drive items_changed for visual refresh —
+            // wired in the next iteration when grid CSS overlay lands.
+            crate::services::change_tracker::TrackerEvent::ChangedRows(_) => BrowseTabInput::PendingCountChanged(
+                crate::services::change_tracker::with_tab_ref(tab_id_for_tracker, |t| t.pending_count()).unwrap_or(0),
+            ),
+        }));
         // Trigger the initial fetches the moment the parent attaches us.
         // The parent's forward closure wraps these in AppMsg::… with tab_id.
         let _ = sender.output(BrowseTabOutput::FetchColumns);
@@ -798,37 +907,101 @@ impl SimpleComponent for BrowseTab {
                 });
             }
             BrowseTabInput::GridCellEdited {
-                table,
+                table: _,
                 row_position,
                 col_index,
                 new_value,
             } => {
-                let _ = sender.output(BrowseTabOutput::CellEdited {
-                    table,
-                    row_position,
-                    col_index,
-                    new_value,
+                // Cell edits no longer commit immediately to the
+                // database. Route through the per-tab change tracker
+                // so the user can review / Save / Discard a batch.
+                let Some((key, row)) = self.row_key_at(row_position) else {
+                    return;
+                };
+                let original = row[col_index].clone();
+                // Parse new_value text into Value using the column's
+                // schema-declared type. For now treat it as Text;
+                // the driver layer coerces on commit. Empty string is
+                // preserved as-is (use Ctrl+Backspace for NULL).
+                let new = if new_value.is_empty() {
+                    Value::Text(String::new())
+                } else {
+                    Value::Text(new_value)
+                };
+                crate::services::change_tracker::with_tab(self.tab_id, |t| {
+                    t.track_cell_edit(key, col_index, original, new);
                 });
             }
             BrowseTabInput::GridSetCellNull {
-                table,
+                table: _,
                 row_position,
                 col_index,
             } => {
-                let _ = sender.output(BrowseTabOutput::SetCellNull {
-                    table,
-                    row_position,
-                    col_index,
+                let Some((key, row)) = self.row_key_at(row_position) else {
+                    return;
+                };
+                let original = row[col_index].clone();
+                crate::services::change_tracker::with_tab(self.tab_id, |t| {
+                    t.track_cell_edit(key, col_index, original, Value::Null);
                 });
             }
-            BrowseTabInput::GridDeleteRowAt { table, row_position } => {
-                let _ = sender.output(BrowseTabOutput::DeleteRowAt { table, row_position });
+            BrowseTabInput::GridDeleteRowAt { table: _, row_position } => {
+                let Some((key, row)) = self.row_key_at(row_position) else {
+                    return;
+                };
+                crate::services::change_tracker::with_tab(self.tab_id, |t| {
+                    t.track_delete(key, row);
+                });
             }
             BrowseTabInput::GridCopyRowAsInsert { row_position } => {
                 let _ = sender.output(BrowseTabOutput::CopyRowAsInsert { row_position });
             }
             BrowseTabInput::GridCopyToClipboard(text) => {
                 let _ = sender.output(BrowseTabOutput::CopyToClipboard(text));
+            }
+            BrowseTabInput::CommitSave => {
+                let columns = self.current_columns.clone();
+                let driver_id = self.driver_id.clone();
+                let schema = self.schema.clone();
+                let table = self.table.clone();
+                let result = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
+                    t.materialize(&driver_id, schema.as_deref(), &table, &columns)
+                });
+                match result {
+                    Some(Ok(statements)) if !statements.is_empty() => {
+                        let _ = sender.output(BrowseTabOutput::ExecuteTransaction { statements });
+                    }
+                    Some(Ok(_)) => {
+                        // Nothing to save (tracker empty) — refresh bar.
+                        self.refresh_pending_bar(0);
+                    }
+                    Some(Err(e)) => {
+                        let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
+                            title: crate::tr!("Cannot save"),
+                            body: format!("{e}"),
+                        });
+                    }
+                    None => {}
+                }
+            }
+            BrowseTabInput::DiscardAll => {
+                crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());
+                let _ = sender.output(BrowseTabOutput::FetchPage);
+            }
+            BrowseTabInput::PendingCountChanged(n) => {
+                self.refresh_pending_bar(n);
+            }
+            BrowseTabInput::SaveCompleted => {
+                crate::services::change_tracker::with_tab(self.tab_id, |t| t.clear());
+                self.refresh_pending_bar(0);
+                let _ = sender.output(BrowseTabOutput::FetchPage);
+                let _ = sender.output(BrowseTabOutput::FetchRowCount);
+            }
+            BrowseTabInput::SaveFailed(message) => {
+                let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
+                    title: crate::tr!("Save failed"),
+                    body: message,
+                });
             }
         }
         // Quark prevents accidental cross-page lookups; tab_id used by App
@@ -886,6 +1059,9 @@ struct Mutations {
     insert_button: gtk::Button,
     edit_row_button: gtk::Button,
     delete_button: gtk::Button,
+    save_button: gtk::Button,
+    discard_button: gtk::Button,
+    pending_label: gtk::Label,
 }
 
 #[cfg(test)]

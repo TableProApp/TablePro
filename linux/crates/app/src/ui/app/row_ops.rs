@@ -16,6 +16,48 @@ use super::{
 };
 
 impl App {
+    /// Atomic Save handler for the inline-spreadsheet pattern.
+    /// Receives a fully-materialised `Vec<(SQL, params)>` from a
+    /// BrowseTab's `TabChangeTracker` and runs them all inside one
+    /// transaction. On success, dispatches `BrowseTabInput::
+    /// SaveCompleted` so the tab clears its tracker + refetches. On
+    /// failure, the entire transaction has already been rolled back
+    /// by the driver; we just surface the error message.
+    pub(super) fn on_execute_browse_transaction(
+        &self,
+        tab_id: Uuid,
+        statements: Vec<(String, Vec<Value>)>,
+        sender: ComponentSender<App>,
+    ) {
+        let Some(conn) = crate::services::database_service::instance().active() else {
+            self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(crate::tr!("No active connection")));
+            return;
+        };
+        self.set_row_op_in_flight(true);
+        let sender_for_cmd = sender.clone();
+        sender.command(move |_, shutdown| {
+            shutdown
+                .register(async move {
+                    match conn.execute_in_transaction(&statements).await {
+                        Ok(_affected) => {
+                            sender_for_cmd.input(AppMsg::RowOpStarted);
+                            // Reuse the cell-edited "completed" path
+                            // for spinner reset + tab notification.
+                            sender_for_cmd.input(AppMsg::WorkspaceSchemaWordsChanged);
+                            // Dispatch the per-tab SaveCompleted so the
+                            // tab clears its tracker and refetches.
+                            sender_for_cmd.input(AppMsg::SaveCompletedForTab(tab_id));
+                        }
+                        Err(e) => {
+                            let msg = error_text::driver_message(&e);
+                            sender_for_cmd.input(AppMsg::SaveFailedForTab(tab_id, msg));
+                        }
+                    }
+                })
+                .drop_on_shutdown()
+        });
+    }
+
     pub(super) fn set_row_op_in_flight(&self, in_flight: bool) {
         self.row_op_spinner.set_visible(in_flight);
         if in_flight {

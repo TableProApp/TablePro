@@ -313,6 +313,9 @@ impl App {
                 BrowseTabOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
                 BrowseTabOutput::SchemaWordsChanged(_words) => AppMsg::WorkspaceSchemaWordsChanged,
                 BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
+                BrowseTabOutput::ExecuteTransaction { statements } => {
+                    AppMsg::ExecuteBrowseTransaction { tab_id, statements }
+                }
             });
 
         let page = tab_view.append(controller.widget());

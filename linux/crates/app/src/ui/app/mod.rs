@@ -227,6 +227,22 @@ pub enum AppMsg {
     /// triggers persistence (writes the current display order + each
     /// slot's state to workspace_state.json).
     WorkspaceTabsChanged,
+    /// Run a sequence of pending-changeset statements inside a single
+    /// DB transaction. Materialised by a BrowseTab's change tracker
+    /// when the user clicks Save. App calls
+    /// `Connection::execute_in_transaction` and dispatches
+    /// `BrowseTabInput::SaveCompleted` / `SaveFailed` back via the
+    /// per-tab controller.
+    ExecuteBrowseTransaction {
+        tab_id: Uuid,
+        statements: Vec<(String, Vec<Value>)>,
+    },
+    /// Inline-Save resolved successfully for a specific browse tab.
+    /// Routes through App.update so we can reset the row-op spinner
+    /// before forwarding `BrowseTabInput::SaveCompleted` to the tab.
+    SaveCompletedForTab(Uuid),
+    /// Inline-Save failed; transaction was already rolled back.
+    SaveFailedForTab(Uuid, String),
     /// Show insert dialog scoped to a specific browse tab.
     ShowInsertDialog {
         tab_id: Uuid,
@@ -791,6 +807,17 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
+            AppMsg::ExecuteBrowseTransaction { tab_id, statements } => {
+                self.on_execute_browse_transaction(tab_id, statements, sender);
+            }
+            AppMsg::SaveCompletedForTab(tab_id) => {
+                self.set_row_op_in_flight(false);
+                self.dispatch_to_tab(tab_id, BrowseTabInput::SaveCompleted);
+            }
+            AppMsg::SaveFailedForTab(tab_id, message) => {
+                self.set_row_op_in_flight(false);
+                self.dispatch_to_tab(tab_id, BrowseTabInput::SaveFailed(message));
+            }
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
