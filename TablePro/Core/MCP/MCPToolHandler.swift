@@ -22,6 +22,36 @@ final class MCPToolHandler: Sendable {
             try checkTokenToolPermission(token, toolName: name)
         }
 
+        do {
+            let result = try await dispatchTool(
+                name: name,
+                arguments: arguments,
+                sessionId: sessionId,
+                token: token
+            )
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: .success, error: nil)
+            return result
+        } catch let error as MCPError {
+            let outcome: AuditOutcome
+            if case .forbidden = error {
+                outcome = .denied
+            } else {
+                outcome = .error
+            }
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: outcome, error: error.message)
+            throw error
+        } catch {
+            logToolOutcome(name: name, token: token, arguments: arguments, outcome: .error, error: error.localizedDescription)
+            throw error
+        }
+    }
+
+    private func dispatchTool(
+        name: String,
+        arguments: JSONValue?,
+        sessionId: String,
+        token: MCPAuthToken?
+    ) async throws -> MCPToolResult {
         switch name {
         case "list_connections":
             return try await handleListConnections()
@@ -51,9 +81,37 @@ final class MCPToolHandler: Sendable {
             return try await handleSwitchDatabase(arguments, sessionId: sessionId, token: token)
         case "switch_schema":
             return try await handleSwitchSchema(arguments, sessionId: sessionId, token: token)
+        case "list_recent_tabs":
+            return try await handleListRecentTabs(arguments, token: token)
+        case "search_query_history":
+            return try await handleSearchQueryHistory(arguments, token: token)
+        case "open_connection_window":
+            return try await handleOpenConnectionWindow(arguments, token: token)
+        case "open_table_tab":
+            return try await handleOpenTableTab(arguments, token: token)
+        case "focus_query_tab":
+            return try await handleFocusQueryTab(arguments, token: token)
         default:
             throw MCPError.methodNotFound(name)
         }
+    }
+
+    private func logToolOutcome(
+        name: String,
+        token: MCPAuthToken?,
+        arguments: JSONValue?,
+        outcome: AuditOutcome,
+        error: String?
+    ) {
+        let connectionId = arguments?["connection_id"]?.stringValue.flatMap(UUID.init(uuidString:))
+        MCPAuditLogger.logToolCalled(
+            tokenId: token?.id,
+            tokenName: token?.name,
+            toolName: name,
+            connectionId: connectionId,
+            outcome: outcome,
+            errorMessage: error
+        )
     }
 
     private func checkTokenToolPermission(_ token: MCPAuthToken, toolName: String) throws {
@@ -70,14 +128,15 @@ final class MCPToolHandler: Sendable {
         switch toolName {
         case "confirm_destructive_operation":
             return .fullAccess
-        case "switch_database", "switch_schema", "export_data":
+        case "switch_database", "switch_schema", "export_data",
+             "open_connection_window", "open_table_tab", "focus_query_tab":
             return .readWrite
         default:
             return .readOnly
         }
     }
 
-    private func checkTokenConnectionAccess(_ token: MCPAuthToken, connectionId: UUID) throws {
+    func checkTokenConnectionAccess(_ token: MCPAuthToken, connectionId: UUID) throws {
         guard let allowed = token.allowedConnectionIds else { return }
         guard allowed.contains(connectionId) else {
             throw MCPError.forbidden("Token does not have access to this connection")
@@ -167,7 +226,8 @@ final class MCPToolHandler: Sendable {
             connectionId: connectionId,
             databaseName: databaseName,
             maxRows: maxRows,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            token: token
         )
 
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -241,7 +301,8 @@ final class MCPToolHandler: Sendable {
             connectionId: connectionId,
             databaseName: databaseName,
             maxRows: 0,
-            timeoutSeconds: timeoutSeconds
+            timeoutSeconds: timeoutSeconds,
+            token: token
         )
 
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -448,7 +509,8 @@ final class MCPToolHandler: Sendable {
         connectionId: UUID,
         databaseName: String,
         maxRows: Int,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        token: MCPAuthToken? = nil
     ) async throws -> JSONValue {
         let startTime = Date()
         do {
@@ -459,14 +521,24 @@ final class MCPToolHandler: Sendable {
                 timeoutSeconds: timeoutSeconds
             )
             let elapsed = Date().timeIntervalSince(startTime)
+            let rowCount = result["row_count"]?.intValue ?? 0
             await authGuard.logQuery(
                 sql: query,
                 connectionId: connectionId,
                 databaseName: databaseName,
                 executionTime: elapsed,
-                rowCount: result["row_count"]?.intValue ?? 0,
+                rowCount: rowCount,
                 wasSuccessful: true,
                 errorMessage: nil
+            )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: token?.id,
+                tokenName: token?.name,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1_000),
+                rowCount: rowCount,
+                outcome: .success
             )
             return result
         } catch {
@@ -480,11 +552,21 @@ final class MCPToolHandler: Sendable {
                 wasSuccessful: false,
                 errorMessage: error.localizedDescription
             )
+            MCPAuditLogger.logQueryExecuted(
+                tokenId: token?.id,
+                tokenName: token?.name,
+                connectionId: connectionId,
+                sql: query,
+                durationMs: Int(elapsed * 1_000),
+                rowCount: 0,
+                outcome: .error,
+                errorMessage: error.localizedDescription
+            )
             throw error
         }
     }
 
-    private func requireUUID(_ args: JSONValue?, key: String) throws -> UUID {
+    func requireUUID(_ args: JSONValue?, key: String) throws -> UUID {
         guard let value = args?[key]?.stringValue else {
             throw MCPError.invalidParams("Missing required parameter: \(key)")
         }
@@ -494,18 +576,18 @@ final class MCPToolHandler: Sendable {
         return uuid
     }
 
-    private func requireString(_ args: JSONValue?, key: String) throws -> String {
+    func requireString(_ args: JSONValue?, key: String) throws -> String {
         guard let value = args?[key]?.stringValue else {
             throw MCPError.invalidParams("Missing required parameter: \(key)")
         }
         return value
     }
 
-    private func optionalString(_ args: JSONValue?, key: String) -> String? {
+    func optionalString(_ args: JSONValue?, key: String) -> String? {
         args?[key]?.stringValue
     }
 
-    private func optionalInt(_ args: JSONValue?, key: String, default defaultValue: Int, clamp range: ClosedRange<Int>) -> Int {
+    func optionalInt(_ args: JSONValue?, key: String, default defaultValue: Int, clamp range: ClosedRange<Int>) -> Int {
         guard let value = args?[key]?.intValue else { return defaultValue }
         return min(max(value, range.lowerBound), range.upperBound)
     }
@@ -529,7 +611,7 @@ final class MCPToolHandler: Sendable {
         }
     }
 
-    private func encodeJSON(_ value: JSONValue) -> String {
+    func encodeJSON(_ value: JSONValue) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(value),

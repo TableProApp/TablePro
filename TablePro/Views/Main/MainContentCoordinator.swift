@@ -282,6 +282,11 @@ final class MainContentCoordinator {
             .flatMap { $0.tabManager.tabs }
     }
 
+    /// All currently active coordinators across windows.
+    static func allActiveCoordinators() -> [MainContentCoordinator] {
+        Array(activeCoordinators.values)
+    }
+
     /// Find the first coordinator for `connectionId` that owns a tab matching `predicate`.
     /// Used to dedup cross-window tabs (Server Dashboard singleton, ER Diagram reuse).
     static func coordinator(

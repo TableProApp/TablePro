@@ -860,6 +860,103 @@ extension MCPRouter {
             )
         ]
     }
+
+    private static func integrationTools() -> [MCPToolDefinition] {
+        [
+            MCPToolDefinition(
+                name: "list_recent_tabs",
+                description: "List currently open tabs across all TablePro windows. "
+                    + "Returns connection, tab type, table name, and titles for each tab.",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "limit": .object([
+                            "type": "integer",
+                            "description": "Maximum number of tabs to return (default 20, max 500)"
+                        ])
+                    ]),
+                    "required": .array([])
+                ])
+            ),
+            MCPToolDefinition(
+                name: "search_query_history",
+                description: "Search saved query history. "
+                    + "Returns matching entries with execution time, row count, and outcome.",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "query": .object([
+                            "type": "string",
+                            "description": "Search text (full-text matched against the query column)"
+                        ]),
+                        "connection_id": .object([
+                            "type": "string",
+                            "description": "Restrict to a specific connection (UUID, optional)"
+                        ]),
+                        "limit": .object([
+                            "type": "integer",
+                            "description": "Maximum number of entries to return (default 50, max 500)"
+                        ])
+                    ]),
+                    "required": .array([.string("query")])
+                ])
+            ),
+            MCPToolDefinition(
+                name: "open_connection_window",
+                description: "Open a TablePro window for a saved connection (focuses if already open).",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "connection_id": .object([
+                            "type": "string",
+                            "description": "UUID of the saved connection"
+                        ])
+                    ]),
+                    "required": .array([.string("connection_id")])
+                ])
+            ),
+            MCPToolDefinition(
+                name: "open_table_tab",
+                description: "Open a table tab in TablePro for the given connection.",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "connection_id": .object([
+                            "type": "string",
+                            "description": "UUID of the connection"
+                        ]),
+                        "table_name": .object([
+                            "type": "string",
+                            "description": "Table name to open"
+                        ]),
+                        "database_name": .object([
+                            "type": "string",
+                            "description": "Database name (uses connection's current database if omitted)"
+                        ]),
+                        "schema_name": .object([
+                            "type": "string",
+                            "description": "Schema name (for multi-schema databases)"
+                        ])
+                    ]),
+                    "required": .array([.string("connection_id"), .string("table_name")])
+                ])
+            ),
+            MCPToolDefinition(
+                name: "focus_query_tab",
+                description: "Focus an already-open tab by id (returned from list_recent_tabs).",
+                inputSchema: .object([
+                    "type": "object",
+                    "properties": .object([
+                        "tab_id": .object([
+                            "type": "string",
+                            "description": "UUID of the tab to focus"
+                        ])
+                    ]),
+                    "required": .array([.string("tab_id")])
+                ])
+            )
+        ]
+    }
 }
 
 extension MCPRouter {

@@ -30,6 +30,7 @@ struct MCPSection: View {
         if settings.enabled {
             configurationSection
             authenticationSection
+            activityLogSection
             networkSection
             setupSection
             connectedClientsSection
@@ -39,6 +40,14 @@ struct MCPSection: View {
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
+        }
+    }
+
+    // MARK: - Activity Log
+
+    private var activityLogSection: some View {
+        Section("Activity Log") {
+            MCPAuditLogView()
         }
     }
 
