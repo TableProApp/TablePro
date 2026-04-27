@@ -487,14 +487,11 @@ impl SimpleComponent for App {
                     .build(),
             )
             .forward(sender.input_sender(), |out| match out {
-                // Both default activation and Ctrl+click currently dispatch
-                // Default activation = smart-switch (Q1); Ctrl+click /
-                // right-click = always new tab.
-                SidebarRowOutput::Selected { schema, name } => AppMsg::SelectTable {
-                    schema,
-                    name,
-                    open_mode: OpenMode::SwitchOrAppend,
-                },
+                // Plain click + Enter activation route through the parent
+                // ListBox's `row-activated` signal (wired below), which is
+                // the only signal that fires for both mouse and keyboard.
+                // The factory only carries the Ctrl+click / right-click
+                // "open in new tab" path.
                 SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable {
                     schema,
                     name,
@@ -504,6 +501,23 @@ impl SimpleComponent for App {
 
         let sidebar_listbox = sidebar_factory.widget();
         widgets.sidebar_scroll.set_child(Some(sidebar_listbox));
+
+        // Plain click + Enter on focused row → SwitchOrAppend. This is
+        // the single source of truth for sidebar activation; per-row
+        // keybinding signals (gtk::ListBoxRow::activate) only fire on
+        // Enter and would miss mouse clicks.
+        let schemas_for_activate = sidebar_schemas.clone();
+        let activate_sender = sender.clone();
+        sidebar_listbox.connect_row_activated(move |_, row| {
+            let name = row.widget_name().to_string();
+            let idx = row.index() as usize;
+            let schema = schemas_for_activate.borrow().get(idx).cloned().unwrap_or(None);
+            activate_sender.input(AppMsg::SelectTable {
+                schema,
+                name,
+                open_mode: OpenMode::SwitchOrAppend,
+            });
+        });
 
         let search_for_filter = widgets.table_search.clone();
         sidebar_listbox.set_filter_func(move |row| {

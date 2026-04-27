@@ -14,17 +14,16 @@ pub struct SidebarRow {
 
 #[derive(Debug)]
 pub enum SidebarRowMsg {
-    Activated,
     OpenInNewTab,
 }
 
 #[derive(Debug)]
 pub enum SidebarRowOutput {
-    /// Default click — App treats as "switch-or-append": activate
-    /// existing tab for this table if any, otherwise append a new one.
-    Selected { schema: Option<String>, name: String },
     /// Ctrl+click or right-click "Open in new tab" — App always appends a
-    /// new tab even if the same table is already open.
+    /// new tab even if the same table is already open. Plain click /
+    /// Enter activation does NOT flow through here; it's handled at the
+    /// parent ListBox via the `row-activated` signal, which is the only
+    /// GTK signal that fires for both mouse and keyboard activation.
     OpenInNewTab { schema: Option<String>, name: String },
 }
 
@@ -45,10 +44,14 @@ impl FactoryComponent for SidebarRow {
         // does the rest of the visual work.
         gtk::ListBoxRow {
             set_activatable: true,
-            connect_activate => SidebarRowMsg::Activated,
+            // No connect_activate here: gtk::ListBoxRow::activate is a
+            // keybinding signal that fires only on Enter, not on mouse
+            // click. The unified handler lives on the parent ListBox
+            // (`row-activated`), which fires for both keyboard and mouse.
+            //
             // Stash the table name for filter_func / sync_sidebar_selection
-            // lookups. widget-name is unused for CSS in this app, so no
-            // styling collision risk.
+            // / row-activated lookup. widget-name is unused for CSS in
+            // this app, so no styling collision risk.
             set_widget_name: &self.info.name,
 
             #[wrap(Some)]
@@ -149,12 +152,6 @@ impl FactoryComponent for SidebarRow {
 
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
         match msg {
-            SidebarRowMsg::Activated => {
-                let _ = sender.output(SidebarRowOutput::Selected {
-                    schema: self.info.schema.clone(),
-                    name: self.info.name.clone(),
-                });
-            }
             SidebarRowMsg::OpenInNewTab => {
                 let _ = sender.output(SidebarRowOutput::OpenInNewTab {
                     schema: self.info.schema.clone(),
