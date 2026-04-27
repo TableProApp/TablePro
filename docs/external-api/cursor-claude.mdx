@@ -57,19 +57,13 @@ claude mcp add tablepro -- /Applications/TablePro.app/Contents/MacOS/tablepro-mc
 
 This writes the same stdio config under the hood.
 
-## One-click setup
+## Setup snippets in TablePro
 
-TablePro can write these config files for you. Open **Settings > Integrations > Setup**:
-
-- **Setup for Cursor** writes `~/.cursor/mcp.json`.
-- **Setup for Claude Desktop** writes `claude_desktop_config.json`.
-- **Setup for Claude Code** runs the equivalent `claude mcp add` for the current user.
-
-If a config already exists, TablePro merges the `tablepro` entry into the existing `mcpServers` map.
+Open **Settings > MCP > MCP Setup** and pick a client. TablePro shows the exact JSON or shell command to paste into the client's config.
 
 ## HTTP instead of stdio
 
-If you prefer HTTP, mint a token in **Settings > Integrations > Tokens** and configure:
+If you prefer HTTP, mint a token in **Settings > MCP > Authentication** and configure:
 
 ```json
 {
@@ -84,7 +78,7 @@ If you prefer HTTP, mint a token in **Settings > Integrations > Tokens** and con
 }
 ```
 
-Replace `23508` with the port shown in **Settings > Integrations > Server**. HTTP is the right choice when:
+Replace `23508` with the port shown in **Settings > MCP > MCP Configuration**. HTTP is the right choice when:
 
 - The client and TablePro run on different machines (with TLS, see [MCP Server](/features/mcp#remote-access)).
 - You want a token with a tighter scope than the bridge token.
@@ -102,7 +96,7 @@ The connection's `externalAccess` setting and the token scope still apply on top
 
 **`tablepro-mcp` exits immediately.** TablePro is not running or the build is older than 0.37. Open TablePro and re-launch the client.
 
-**Bridge says "handshake timeout".** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations > Server** and click **Start Server**, then re-launch the client.
+**Bridge says "handshake timeout".** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > MCP** and toggle **Enable MCP Server** off and on, then re-launch the client.
 
 **Tool calls return `403`.** The connection's `externalAccess` is `blocked` or `readOnly`. Open the connection editor in TablePro and adjust under **External Access**.
 

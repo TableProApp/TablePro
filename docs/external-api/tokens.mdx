@@ -67,7 +67,7 @@ A `fullAccess` token cannot mutate data on a `readOnly` connection. A token's re
 Tokens are created in three ways:
 
 1. **Pairing flow** (most common). See [Pairing](/external-api/pairing).
-2. **Settings UI**. **Settings > Integrations > Tokens > New Token**. Pick name, scope, allowlist, expiry. The plaintext is shown once in a reveal sheet.
+2. **Settings UI**. **Settings > MCP > Authentication**, then **Generate Token**. Pick name, scope, allowlist, expiry. The plaintext is shown once in a reveal sheet.
 3. **AppleScript-style URL** is not supported. Tokens are not exposed as a URL scheme action.
 
 The plaintext format is `tp_<base64url(32 bytes)>`. The first 8 chars are the prefix.
@@ -84,7 +84,7 @@ Recommended values:
 
 ## Revocation
 
-**Settings > Integrations > Tokens** lists all tokens with prefix, name, scope, allowlist, last-used time, and expiry. Each row has:
+**Settings > MCP > Authentication** lists all tokens with prefix, name, scope, allowlist, last-used time, and expiry. Each row has:
 
 - **Revoke**: marks the token inactive. Stays in the list with status `Revoked`. Cannot be reactivated.
 - **Delete**: removes the row entirely.
@@ -95,7 +95,7 @@ After revoking a token used by an extension, the extension shows an "unauthorize
 
 ## Audit log
 
-Every authentication, every tool call, every resource read is recorded in `~/Library/Application Support/com.TablePro/mcp-audit.db` with the token id (not the plaintext). The activity log view in **Settings > Integrations > Activity Log** shows:
+Every authentication, every tool call, every resource read is recorded in `~/Library/Application Support/com.TablePro/mcp-audit.db` with the token id (not the plaintext). The activity log view in **Settings > MCP > Activity Log** shows:
 
 | Field | Example |
 |-------|---------|
