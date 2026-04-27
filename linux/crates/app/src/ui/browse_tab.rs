@@ -19,6 +19,13 @@ use super::grid::{GridMsg, TabGridContext, build_column_view};
 
 const PAGE_SIZE_OPTIONS: &[u64] = &[100, 500, 1_000, 5_000, 10_000];
 const DEFAULT_PAGE_SIZE: u64 = 1_000;
+/// Bulk-delete safety net: when the user marks at least this many
+/// rows pending-delete in one shot, surface a confirmation dialog
+/// before tracking. The marker is reversible via Discard / Ctrl+Z,
+/// but a 200-row Ctrl+A → Delete sequence is destructive enough at
+/// a glance that an explicit confirmation matches GNOME Files'
+/// "Delete N items?" pattern.
+const BULK_DELETE_CONFIRM_THRESHOLD: usize = 10;
 
 pub struct BrowseTabInit {
     pub tab_id: Uuid,
@@ -194,6 +201,15 @@ pub enum BrowseTabInput {
     /// telling the user multi-row paste isn't supported. Cell-level
     /// paste continues to work via the normal text-editor path.
     PasteNotSupported,
+    /// Ctrl+A: select every visible row.
+    SelectAllRows,
+    /// Home / End: scroll-and-focus the first / last row of the
+    /// current page. Cell-level Home/End within a row would conflict
+    /// with the EditableLabel's text-edit behaviour, so we scope
+    /// these to row navigation only — matches how GtkColumnView
+    /// users expect Home/End to behave in a list context.
+    GoToFirstRow,
+    GoToLastRow,
 }
 
 #[derive(Debug)]
@@ -1216,6 +1232,57 @@ impl SimpleComponent for BrowseTab {
                 glib::Propagation::Stop
             }))
             .build();
+        // Ctrl+A: select every visible row. Standard "select all"
+        // affordance — gives the user a quick path into bulk-delete
+        // (which then triggers the M3 confirmation dialog when the
+        // count exceeds the threshold).
+        let sender_for_select_all = sender.clone();
+        let select_all_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>a").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_select_all.input(BrowseTabInput::SelectAllRows);
+                glib::Propagation::Stop
+            }))
+            .build();
+        // Page Up / Page Down on the BrowseTab navigate the paginator.
+        // GtkColumnView's built-in scrolling normally handles these,
+        // but our offset-based pagination means scrolling stops at
+        // the page boundary. Mapping PgUp/PgDn to Prev/Next page
+        // keeps the keyboard fluent across pages.
+        let sender_for_pgup = sender.clone();
+        let page_up_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("Page_Up").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_pgup.input(BrowseTabInput::PrevPage);
+                glib::Propagation::Stop
+            }))
+            .build();
+        let sender_for_pgdn = sender.clone();
+        let page_down_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("Page_Down").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_pgdn.input(BrowseTabInput::NextPage);
+                glib::Propagation::Stop
+            }))
+            .build();
+        // Home / End scoped to row navigation: jump to the first /
+        // last visible row of the current page.
+        let sender_for_home = sender.clone();
+        let home_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>Home").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_home.input(BrowseTabInput::GoToFirstRow);
+                glib::Propagation::Stop
+            }))
+            .build();
+        let sender_for_end = sender.clone();
+        let end_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>End").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_end.input(BrowseTabInput::GoToLastRow);
+                glib::Propagation::Stop
+            }))
+            .build();
 
         let esc_controller = gtk::ShortcutController::new();
         esc_controller.set_scope(gtk::ShortcutScope::Local);
@@ -1225,6 +1292,11 @@ impl SimpleComponent for BrowseTab {
         esc_controller.add_shortcut(null_shortcut);
         esc_controller.add_shortcut(copy_rows_shortcut);
         esc_controller.add_shortcut(paste_shortcut);
+        esc_controller.add_shortcut(select_all_shortcut);
+        esc_controller.add_shortcut(page_up_shortcut);
+        esc_controller.add_shortcut(page_down_shortcut);
+        esc_controller.add_shortcut(home_shortcut);
+        esc_controller.add_shortcut(end_shortcut);
         root.add_controller(esc_controller);
 
         // Wire the GridMsg receiver into this tab's input queue. Each
@@ -1516,18 +1588,59 @@ impl SimpleComponent for BrowseTab {
                     });
                     return;
                 }
-                let tab_id = self.tab_id;
-                crate::services::change_tracker::with_tab(tab_id, |t| {
-                    for pos in &positions {
-                        let Some(row) = result.rows.get(*pos as usize) else {
-                            continue;
-                        };
+                // Snapshot (key, row) pairs now so a background
+                // RowsLoaded between dialog open and confirmation
+                // can't shift positions out from under us. The tracker
+                // applies pending state by key, not by position.
+                let snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)> = positions
+                    .iter()
+                    .filter_map(|pos| {
+                        let row = result.rows.get(*pos as usize)?;
                         let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row[i].clone()).collect();
-                        if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
-                            t.track_delete(key, row.clone());
+                        let key = crate::services::change_tracker::RowKey::from_pk_values(&pk_values)?;
+                        Some((key, row.clone()))
+                    })
+                    .collect();
+                if snapshot.is_empty() {
+                    return;
+                }
+                let count = snapshot.len();
+                let tab_id = self.tab_id;
+                let commit_delete = move |snapshot: Vec<(crate::services::change_tracker::RowKey, Vec<Value>)>| {
+                    crate::services::change_tracker::with_tab(tab_id, |t| {
+                        for (key, row) in snapshot {
+                            t.track_delete(key, row);
                         }
-                    }
-                });
+                    });
+                };
+                if count >= BULK_DELETE_CONFIRM_THRESHOLD {
+                    // Dialog parent is any descendant of the toplevel
+                    // window — adw::AlertDialog walks up to find the
+                    // window. The inner_stack is always parented to
+                    // the BrowseTab's root toolbar, so it resolves
+                    // correctly while the tab is visible.
+                    let title = crate::tr!("Delete {n} rows?").replace("{n}", &count.to_string());
+                    let body =
+                        crate::tr!("These rows will be marked for deletion. They aren't removed until you click Save.");
+                    let dialog = adw::AlertDialog::new(Some(&title), Some(&body));
+                    dialog.add_response("cancel", &crate::tr!("Cancel"));
+                    dialog.add_response("delete", &crate::tr!("Delete"));
+                    dialog.set_response_appearance("delete", adw::ResponseAppearance::Destructive);
+                    dialog.set_default_response(Some("cancel"));
+                    dialog.set_close_response("cancel");
+                    let snapshot_for_resp = std::cell::RefCell::new(Some(snapshot));
+                    dialog.connect_response(None, move |dlg, response| {
+                        dlg.close();
+                        if response == "delete"
+                            && let Some(s) = snapshot_for_resp.borrow_mut().take()
+                        {
+                            commit_delete(s);
+                        }
+                    });
+                    dialog.present(Some(&self.inner_stack));
+                } else {
+                    commit_delete(snapshot);
+                }
             }
             BrowseTabInput::GridCellEdited {
                 table: _,
@@ -1549,8 +1662,24 @@ impl SimpleComponent for BrowseTab {
                 // the EditableLabel goes back to the canonical
                 // pre-edit display. The tracker stays untouched so
                 // a single bad keystroke can't sneak into the batch.
+                //
+                // GtkEditableLabel's underlying GtkText handles a
+                // multi-line clipboard paste inconsistently across
+                // GTK builds — some embed literal newlines, some
+                // strip them silently. Collapse newlines / carriage
+                // returns to spaces here so a paste-induced multi-
+                // line value never reaches the SQL layer. JSON
+                // columns aren't normalised: they need real newlines.
+                let normalized = match self
+                    .current_columns
+                    .get(col_index)
+                    .map(|c| classify_type(&c.data_type.to_ascii_lowercase()))
+                {
+                    Some(TypeKind::Json) => new_value,
+                    _ => normalize_single_line_input(&new_value),
+                };
                 let col = self.current_columns.get(col_index);
-                let new = match parse_input_for_column(&new_value, col) {
+                let new = match parse_input_for_column(&normalized, col) {
                     Ok(v) => v,
                     Err(message) => {
                         let _ = sender.output(BrowseTabOutput::ShowToast(message));
@@ -1642,6 +1771,44 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
                     "Pasting rows isn't supported yet"
                 )));
+            }
+            BrowseTabInput::SelectAllRows => {
+                if let Some(selection) = self.current_selection.as_ref() {
+                    let n = selection.n_items();
+                    if n > 0 {
+                        selection.select_all();
+                    }
+                }
+            }
+            BrowseTabInput::GoToFirstRow => {
+                let Some(cv) = self.current_column_view.as_ref() else {
+                    return;
+                };
+                let n = self.current_selection.as_ref().map(|s| s.n_items()).unwrap_or(0);
+                if n == 0 {
+                    return;
+                }
+                cv.scroll_to(
+                    0,
+                    None,
+                    gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                    None,
+                );
+            }
+            BrowseTabInput::GoToLastRow => {
+                let Some(cv) = self.current_column_view.as_ref() else {
+                    return;
+                };
+                let n = self.current_selection.as_ref().map(|s| s.n_items()).unwrap_or(0);
+                if n == 0 {
+                    return;
+                }
+                cv.scroll_to(
+                    n - 1,
+                    None,
+                    gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                    None,
+                );
             }
             BrowseTabInput::CommitSave => {
                 let columns = self.current_columns.clone();
@@ -1770,6 +1937,21 @@ fn escape_tsv_cell(text: &str) -> String {
         }
     }
     out
+}
+
+/// Collapse newlines / carriage returns to spaces, then squash any
+/// resulting consecutive whitespace runs to a single space. Applied
+/// at cell-edit commit time for non-JSON columns so a multi-line
+/// clipboard paste into a single-line cell never reaches the SQL
+/// layer with embedded `\n` — driver behaviour for that case is
+/// type-specific (text columns store literally; numeric / date
+/// columns parse-fail) and worth normalising up front.
+fn normalize_single_line_input(text: &str) -> String {
+    let replaced: String = text
+        .chars()
+        .map(|c| if matches!(c, '\n' | '\r') { ' ' } else { c })
+        .collect();
+    replaced.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {

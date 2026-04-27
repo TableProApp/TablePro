@@ -220,7 +220,7 @@ impl App {
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
         let active = self.selected_browse_slot_table();
         let table_pair = active.as_ref().map(|(s, t)| (s.as_deref(), t.as_str()));
-        let (os_title, subtitle) = match (connection_name, &self.current_driver_id, table_pair) {
+        let (mut os_title, subtitle) = match (connection_name, &self.current_driver_id, table_pair) {
             (Some(name), Some(driver), Some((schema, table))) => {
                 let label = qualified_label(schema, table);
                 (format!("{label} · {name} — TablePro"), format!("{name} · {driver}"))
@@ -229,6 +229,13 @@ impl App {
             (None, Some(driver), _) => (format!("{driver} — TablePro"), driver.clone()),
             _ => ("TablePro".to_string(), String::new()),
         };
+        // GNOME Text Editor convention: prefix the OS-level window
+        // title with "• " when any open document has unsaved changes,
+        // so the dirty state is visible from the Activities overview /
+        // Alt-Tab without needing the tab to be focused.
+        if crate::services::change_tracker::any_pending_globally() {
+            os_title = format!("• {os_title}");
+        }
         self.window.set_title(Some(&os_title));
         self.window_title.set_subtitle(&subtitle);
     }

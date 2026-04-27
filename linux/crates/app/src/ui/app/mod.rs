@@ -222,6 +222,13 @@ pub enum AppMsg {
     WorkspaceSchemaWordsChanged,
     /// User clicked the close-X on any workspace tab.
     WorkspaceTabClosed(Uuid),
+    /// Tab right-click "Close Other Tabs" → close every tab except
+    /// the one whose context menu was used (per-tab close path so
+    /// each tab still gets the unsaved-changes prompt if dirty).
+    CloseOtherWorkspaceTabs(Uuid),
+    /// Tab right-click "Close Tabs to the Right" → close every tab
+    /// after the targeted one in TabView display order.
+    CloseWorkspaceTabsToRight(Uuid),
     /// Drag-reorder / selection change / browse-tab-state-changed —
     /// triggers persistence (writes the current display order + each
     /// slot's state to workspace_state.json).
@@ -1015,6 +1022,8 @@ impl SimpleComponent for App {
                 }
             }
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
+            AppMsg::CloseOtherWorkspaceTabs(id) => self.close_other_workspace_tabs(id, sender),
+            AppMsg::CloseWorkspaceTabsToRight(id) => self.close_workspace_tabs_to_right(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
             AppMsg::ShowToast(msg) => self.show_toast(&msg),

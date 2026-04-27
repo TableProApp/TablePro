@@ -1,5 +1,8 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use relm4::adw::prelude::*;
-use relm4::gtk::glib;
+use relm4::gtk::{gio, glib};
 use relm4::{Component, ComponentController, ComponentSender, adw, gtk};
 
 use uuid::Uuid;
@@ -68,6 +71,49 @@ impl App {
             }
             glib::Propagation::Stop
         });
+
+        // Right-click tab → context menu. AdwTabView reads a menu model
+        // and fires `connect_setup_menu` with the target page just
+        // before the popover opens; we stash that page in a shared
+        // Cell so the action callbacks know which tab the user
+        // right-clicked. Setting `menu-model` on AdwTabView is the
+        // documented way to extend the per-tab popover.
+        let menu_target: Rc<RefCell<Option<adw::TabPage>>> = Rc::new(RefCell::new(None));
+        let menu_target_setup = menu_target.clone();
+        tab_view.connect_setup_menu(move |_view, page| {
+            *menu_target_setup.borrow_mut() = page.cloned();
+        });
+        let action_group = gio::SimpleActionGroup::new();
+        let close_others_action = gio::SimpleAction::new("close-others", None);
+        let menu_target_others = menu_target.clone();
+        let sender_close_others = sender.clone();
+        close_others_action.connect_activate(move |_, _| {
+            let target = menu_target_others.borrow().clone();
+            if let Some(page) = target
+                && let Some(id) = read_workspace_tab_id(&page)
+            {
+                sender_close_others.input(AppMsg::CloseOtherWorkspaceTabs(id));
+            }
+        });
+        action_group.add_action(&close_others_action);
+        let close_right_action = gio::SimpleAction::new("close-right", None);
+        let menu_target_right = menu_target;
+        let sender_close_right = sender.clone();
+        close_right_action.connect_activate(move |_, _| {
+            let target = menu_target_right.borrow().clone();
+            if let Some(page) = target
+                && let Some(id) = read_workspace_tab_id(&page)
+            {
+                sender_close_right.input(AppMsg::CloseWorkspaceTabsToRight(id));
+            }
+        });
+        action_group.add_action(&close_right_action);
+        tab_view.insert_action_group("tab", Some(&action_group));
+
+        let bulk_menu = gio::Menu::new();
+        bulk_menu.append(Some(&crate::tr!("Close Other Tabs")), Some("tab.close-others"));
+        bulk_menu.append(Some(&crate::tr!("Close Tabs to the Right")), Some("tab.close-right"));
+        tab_view.set_menu_model(Some(&bulk_menu));
 
         // Both selection-change AND any pages-list change (insert /
         // remove / drag-reorder) trigger persist + title-refresh.
@@ -446,6 +492,64 @@ impl App {
         let _ = sender;
     }
 
+    /// Close every workspace tab except `keep_id`. Each close goes
+    /// through the per-tab close path so dirty browse tabs still
+    /// trigger the unsaved-changes alert; the user can cancel the
+    /// dialog and the tab stays open while the others continue
+    /// closing in the background.
+    pub(super) fn close_other_workspace_tabs(&mut self, keep_id: Uuid, _sender: ComponentSender<Self>) {
+        let Some(tab_view) = self.workspace_tab_view.clone() else {
+            return;
+        };
+        let pages = tab_view.pages();
+        let mut targets: Vec<adw::TabPage> = Vec::with_capacity(pages.n_items() as usize);
+        for i in 0..pages.n_items() {
+            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
+                continue;
+            };
+            if read_workspace_tab_id(&page) == Some(keep_id) {
+                continue;
+            }
+            targets.push(page);
+        }
+        for page in targets {
+            tab_view.close_page(&page);
+        }
+    }
+
+    /// Close every workspace tab whose display position is greater
+    /// than the targeted one. Useful for rapidly trimming a long
+    /// session of throwaway tabs the user accumulated.
+    pub(super) fn close_workspace_tabs_to_right(&mut self, anchor_id: Uuid, _sender: ComponentSender<Self>) {
+        let Some(tab_view) = self.workspace_tab_view.clone() else {
+            return;
+        };
+        let pages = tab_view.pages();
+        let mut anchor_idx: Option<u32> = None;
+        for i in 0..pages.n_items() {
+            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
+                continue;
+            };
+            if read_workspace_tab_id(&page) == Some(anchor_id) {
+                anchor_idx = Some(i);
+                break;
+            }
+        }
+        let Some(anchor_idx) = anchor_idx else {
+            return;
+        };
+        let mut targets: Vec<adw::TabPage> = Vec::new();
+        for i in (anchor_idx + 1)..pages.n_items() {
+            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
+                continue;
+            };
+            targets.push(page);
+        }
+        for page in targets {
+            tab_view.close_page(&page);
+        }
+    }
+
     /// Sidebar-click dispatcher. Two behaviours:
     ///
     /// - `SwitchOrAppend` (plain click): if a Browse tab for
@@ -673,6 +777,13 @@ impl App {
     /// Mirrors GNOME Text Editor's leading "•" prefix convention for
     /// unsaved buffers. The base label is recomputed (not stored) so
     /// schema disambiguation stays correct if other tabs change.
+    ///
+    /// Also flips `set_needs_attention` on the AdwTabPage so the tab
+    /// bar's pulsing dot appears for background tabs that have unsaved
+    /// edits — matches AdwTabView's intended use and surfaces the
+    /// dirty state when the user is in another tab. The flag is
+    /// suppressed for the currently-selected tab since the user is
+    /// actively looking at it (the "•" title prefix is enough cue).
     pub(super) fn refresh_browse_tab_dirty(&self, tab_id: uuid::Uuid, dirty: bool) {
         let schemas_count = self.sidebar_schemas_distinct();
         let tabs = self.workspace_tabs.borrow();
@@ -682,6 +793,14 @@ impl App {
         let base = qualified_browse_tab_label(schemas_count, slot.schema.as_deref(), &slot.table);
         let title = if dirty { format!("• {base}") } else { base };
         slot.page.set_title(&title);
+        let is_selected = self
+            .workspace_tab_view
+            .as_ref()
+            .and_then(|tv| tv.selected_page())
+            .map(|p| p == slot.page)
+            .unwrap_or(false);
+        slot.page.set_needs_attention(dirty && !is_selected);
+        self.refresh_window_title();
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {
