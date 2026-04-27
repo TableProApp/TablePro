@@ -32,6 +32,14 @@ pub fn driver_message(error: &DriverError) -> String {
             crate::tr!("This connection is read-only. Reopen it without read-only mode to make changes.")
         }
         DriverError::Internal(detail) => crate::tr!("Internal driver error: {detail}").replace("{detail}", detail),
+        DriverError::Transaction {
+            statement_index,
+            source,
+        } => {
+            crate::tr!("Save failed at statement {n}: {error}. The transaction was rolled back; no rows were changed.")
+                .replace("{n}", &(statement_index + 1).to_string())
+                .replace("{error}", &driver_message(source))
+        }
     }
 }
 

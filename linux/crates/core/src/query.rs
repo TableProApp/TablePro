@@ -15,6 +15,22 @@ pub struct ColumnInfo {
     pub data_type: String,
     pub nullable: bool,
     pub primary_key: bool,
+    /// True for `SERIAL` / `BIGSERIAL` / `IDENTITY` (PG), `AUTO_INCREMENT`
+    /// (MySQL), `INTEGER PRIMARY KEY` / `AUTOINCREMENT` (SQLite). Used by
+    /// the inline-insert UX to skip these columns from the user-facing
+    /// draft form (DB assigns the value on commit).
+    #[serde(default)]
+    pub is_auto_increment: bool,
+    /// Server-side default expression as raw text (e.g. `now()`,
+    /// `gen_random_uuid()`, `'pending'`). When the user leaves a cell
+    /// empty in a draft row and the column has a default, omit the
+    /// column from the INSERT so the server applies its default.
+    #[serde(default)]
+    pub default_value: Option<String>,
+    /// True for `GENERATED ALWAYS AS ...` columns. Always read-only;
+    /// excluded from INSERT and UPDATE.
+    #[serde(default)]
+    pub is_generated: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

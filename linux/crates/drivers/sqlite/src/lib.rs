@@ -76,15 +76,49 @@ impl Connection for SqliteConnection {
     }
 
     async fn fetch_columns(&self, _schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError> {
-        let sql = format!("PRAGMA table_info({})", quote_ident(table));
-        let rows = sqlx::query(&sql).fetch_all(&self.pool).await.map_err(map_sqlx_error)?;
+        // PRAGMA table_xinfo includes the `hidden` column which we use
+        // to detect virtual / generated columns. Falls back to
+        // table_info on older SQLite (< 3.37) — both have the same
+        // first 6 columns: cid, name, type, notnull, dflt_value, pk.
+        let pragma_sql = format!("PRAGMA table_xinfo({})", quote_ident(table));
+        let rows = sqlx::query(&pragma_sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
+
+        // SQLite has no PRAGMA flag for AUTOINCREMENT — read the CREATE
+        // TABLE DDL once and check whether the keyword appears. INTEGER
+        // PRIMARY KEY (with or without AUTOINCREMENT) is a rowid alias
+        // that auto-increments; we treat both as auto_increment.
+        let ddl: Option<String> = sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type='table' AND name = ?")
+            .bind(table)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
+        let ddl_upper = ddl.unwrap_or_default().to_ascii_uppercase();
+        let table_has_autoincrement = ddl_upper.contains("AUTOINCREMENT");
+
         Ok(rows
             .into_iter()
-            .map(|r| ColumnInfo {
-                name: r.get::<String, _>(1),
-                data_type: r.get::<String, _>(2),
-                nullable: r.get::<i64, _>(3) == 0,
-                primary_key: r.get::<i64, _>(5) > 0,
+            .map(|r| {
+                let name: String = r.get(1);
+                let data_type: String = r.get(2);
+                let primary_key = r.get::<i64, _>(5) > 0;
+                let dflt: Option<String> = r.try_get::<Option<String>, _>(4).unwrap_or(None);
+                let hidden: i64 = r.try_get::<i64, _>(6).unwrap_or(0);
+                // hidden=2 → STORED generated; hidden=3 → VIRTUAL generated.
+                let is_generated = hidden == 2 || hidden == 3;
+                let is_int_type = data_type.eq_ignore_ascii_case("INTEGER");
+                let is_auto_increment = primary_key && is_int_type && (table_has_autoincrement || dflt.is_none());
+                ColumnInfo {
+                    name,
+                    data_type,
+                    nullable: r.get::<i64, _>(3) == 0,
+                    primary_key,
+                    is_auto_increment,
+                    default_value: dflt,
+                    is_generated,
+                }
             })
             .collect())
     }
@@ -112,28 +146,31 @@ impl Connection for SqliteConnection {
     }
 
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
-        let mut q = sqlx::query(sql);
-        for p in params {
-            q = match p {
-                Value::Null => q.bind(Option::<&str>::None),
-                Value::Bool(b) => q.bind(*b),
-                Value::Int(i) => q.bind(*i),
-                Value::Float(f) => q.bind(*f),
-                Value::Text(s) => q.bind(s.clone()),
-                Value::Bytes(b) => q.bind(b.clone()),
-                Value::Date(d) => q.bind(*d),
-                Value::Time(t) => q.bind(*t),
-                Value::DateTime(dt) => q.bind(*dt),
-                Value::TimestampTz(ts) => q.bind(*ts),
-                Value::Decimal(d) => q.bind(d.to_string()),
-                Value::Uuid(u) => q.bind(u.to_string()),
-                Value::Json(j) => q.bind(j.to_string()),
-            };
-        }
+        let q = bind_sqlite_params(sqlx::query(sql), params);
         let res = q.execute(&self.pool).await.map_err(map_sqlx_error)?;
         Ok(ExecResult {
             rows_affected: res.rows_affected(),
         })
+    }
+
+    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
+        let mut affected = Vec::with_capacity(statements.len());
+        for (idx, (sql, params)) in statements.iter().enumerate() {
+            let q = bind_sqlite_params(sqlx::query(sql), params);
+            match q.execute(&mut *tx).await {
+                Ok(res) => affected.push(res.rows_affected()),
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(DriverError::Transaction {
+                        statement_index: idx,
+                        source: Box::new(map_sqlx_error(e)),
+                    });
+                }
+            }
+        }
+        tx.commit().await.map_err(map_sqlx_error)?;
+        Ok(affected)
     }
 
     async fn ping(&self) -> Result<(), DriverError> {
@@ -177,6 +214,9 @@ async fn stream_into_result(pool: &Pool<Sqlite>, sql: &str, limit: usize) -> Res
             data_type: c.type_info().name().to_string(),
             nullable: true,
             primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
         })
         .collect();
     let data: Vec<Vec<Value>> = collected
@@ -214,6 +254,30 @@ fn extract_value(row: &SqliteRow, idx: usize) -> Value {
             .unwrap_or(Value::Null),
         _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
     }
+}
+
+fn bind_sqlite_params<'q>(
+    mut q: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+    params: &'q [Value],
+) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+    for p in params {
+        q = match p {
+            Value::Null => q.bind(Option::<&str>::None),
+            Value::Bool(b) => q.bind(*b),
+            Value::Int(i) => q.bind(*i),
+            Value::Float(f) => q.bind(*f),
+            Value::Text(s) => q.bind(s.clone()),
+            Value::Bytes(b) => q.bind(b.clone()),
+            Value::Date(d) => q.bind(*d),
+            Value::Time(t) => q.bind(*t),
+            Value::DateTime(dt) => q.bind(*dt),
+            Value::TimestampTz(ts) => q.bind(*ts),
+            Value::Decimal(d) => q.bind(d.to_string()),
+            Value::Uuid(u) => q.bind(u.to_string()),
+            Value::Json(j) => q.bind(j.to_string()),
+        };
+    }
+    q
 }
 
 fn quote_ident(name: &str) -> String {

@@ -78,7 +78,9 @@ impl Connection for MysqlConnection {
     async fn fetch_columns(&self, schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError> {
         let rows = sqlx::query(
             "SELECT CAST(column_name AS CHAR), CAST(data_type AS CHAR),
-                    CAST(is_nullable AS CHAR), CAST(column_key AS CHAR)
+                    CAST(is_nullable AS CHAR), CAST(column_key AS CHAR),
+                    CAST(extra AS CHAR), CAST(column_default AS CHAR),
+                    CAST(generation_expression AS CHAR)
              FROM information_schema.columns
              WHERE table_schema = COALESCE(?, DATABASE()) AND table_name = ?
              ORDER BY ordinal_position",
@@ -90,11 +92,19 @@ impl Connection for MysqlConnection {
         .map_err(map_sqlx_error)?;
         Ok(rows
             .into_iter()
-            .map(|r| ColumnInfo {
-                name: r.get::<String, _>(0),
-                data_type: r.get::<String, _>(1),
-                nullable: r.get::<String, _>(2) == "YES",
-                primary_key: r.get::<String, _>(3) == "PRI",
+            .map(|r| {
+                let extra = r.try_get::<String, _>(4).unwrap_or_default().to_ascii_lowercase();
+                let default_value: Option<String> = r.try_get::<Option<String>, _>(5).unwrap_or(None);
+                let generation_expr: Option<String> = r.try_get::<Option<String>, _>(6).unwrap_or(None);
+                ColumnInfo {
+                    name: r.get::<String, _>(0),
+                    data_type: r.get::<String, _>(1),
+                    nullable: r.get::<String, _>(2) == "YES",
+                    primary_key: r.get::<String, _>(3) == "PRI",
+                    is_auto_increment: extra.contains("auto_increment"),
+                    default_value,
+                    is_generated: generation_expr.is_some() || extra.contains("generated"),
+                }
             })
             .collect())
     }
@@ -125,28 +135,31 @@ impl Connection for MysqlConnection {
     }
 
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
-        let mut q = sqlx::query(sql);
-        for p in params {
-            q = match p {
-                Value::Null => q.bind(Option::<&str>::None),
-                Value::Bool(b) => q.bind(*b),
-                Value::Int(i) => q.bind(*i),
-                Value::Float(f) => q.bind(*f),
-                Value::Text(s) => q.bind(s.clone()),
-                Value::Bytes(b) => q.bind(b.clone()),
-                Value::Date(d) => q.bind(*d),
-                Value::Time(t) => q.bind(*t),
-                Value::DateTime(dt) => q.bind(*dt),
-                Value::TimestampTz(ts) => q.bind(*ts),
-                Value::Decimal(d) => q.bind(*d),
-                Value::Uuid(u) => q.bind(u.to_string()),
-                Value::Json(j) => q.bind(j.clone()),
-            };
-        }
+        let q = bind_mysql_params(sqlx::query(sql), params);
         let res = q.execute(&self.pool).await.map_err(map_sqlx_error)?;
         Ok(ExecResult {
             rows_affected: res.rows_affected(),
         })
+    }
+
+    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
+        let mut affected = Vec::with_capacity(statements.len());
+        for (idx, (sql, params)) in statements.iter().enumerate() {
+            let q = bind_mysql_params(sqlx::query(sql), params);
+            match q.execute(&mut *tx).await {
+                Ok(res) => affected.push(res.rows_affected()),
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(DriverError::Transaction {
+                        statement_index: idx,
+                        source: Box::new(map_sqlx_error(e)),
+                    });
+                }
+            }
+        }
+        tx.commit().await.map_err(map_sqlx_error)?;
+        Ok(affected)
     }
 
     async fn ping(&self) -> Result<(), DriverError> {
@@ -190,6 +203,9 @@ async fn stream_into_result(pool: &Pool<MySql>, sql: &str, limit: usize) -> Resu
             data_type: c.type_info().name().to_string(),
             nullable: true,
             primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
         })
         .collect();
     let data: Vec<Vec<Value>> = collected
@@ -240,6 +256,30 @@ fn extract_value(row: &MySqlRow, idx: usize) -> Value {
         }
         _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
     }
+}
+
+fn bind_mysql_params<'q>(
+    mut q: sqlx::query::Query<'q, MySql, sqlx::mysql::MySqlArguments>,
+    params: &'q [Value],
+) -> sqlx::query::Query<'q, MySql, sqlx::mysql::MySqlArguments> {
+    for p in params {
+        q = match p {
+            Value::Null => q.bind(Option::<&str>::None),
+            Value::Bool(b) => q.bind(*b),
+            Value::Int(i) => q.bind(*i),
+            Value::Float(f) => q.bind(*f),
+            Value::Text(s) => q.bind(s.clone()),
+            Value::Bytes(b) => q.bind(b.clone()),
+            Value::Date(d) => q.bind(*d),
+            Value::Time(t) => q.bind(*t),
+            Value::DateTime(dt) => q.bind(*dt),
+            Value::TimestampTz(ts) => q.bind(*ts),
+            Value::Decimal(d) => q.bind(*d),
+            Value::Uuid(u) => q.bind(u.to_string()),
+            Value::Json(j) => q.bind(j.clone()),
+        };
+    }
+    q
 }
 
 fn quote_ident(name: &str) -> String {

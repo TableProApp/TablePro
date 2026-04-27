@@ -530,6 +530,9 @@ mod tests {
             data_type: data_type.into(),
             nullable: true,
             primary_key,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
         }
     }
 

@@ -41,6 +41,14 @@ pub trait Connection: Send + Sync {
     async fn query(&self, sql: &str) -> Result<QueryResult, DriverError>;
     async fn execute(&self, sql: &str) -> Result<ExecResult, DriverError>;
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError>;
+    /// Run a sequence of parameterised statements inside a single
+    /// database transaction. Rolls back automatically if any
+    /// statement errors; returns `DriverError::Transaction` with the
+    /// failing statement's index. Returns one `rows_affected` value
+    /// per successful statement, in order. Used by the inline-edit
+    /// changeset Save flow so all pending row inserts / updates /
+    /// deletes commit atomically.
+    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError>;
     async fn ping(&self) -> Result<(), DriverError>;
     async fn close(self: Box<Self>) -> Result<(), DriverError>;
 }

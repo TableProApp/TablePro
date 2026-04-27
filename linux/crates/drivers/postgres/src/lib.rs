@@ -92,7 +92,10 @@ impl Connection for PgConnection {
                       AND kcu.table_name = c.table_name
                       AND kcu.table_schema = c.table_schema
                       AND kcu.column_name = c.column_name
-                ) AS is_pk
+                ) AS is_pk,
+                c.column_default,
+                c.is_identity,
+                c.is_generated
              FROM information_schema.columns c
              WHERE c.table_name = $1
                AND c.table_schema = COALESCE($2, current_schema())
@@ -105,11 +108,26 @@ impl Connection for PgConnection {
         .map_err(map_sqlx_error)?;
         Ok(rows
             .into_iter()
-            .map(|r| ColumnInfo {
-                name: r.get::<String, _>(0),
-                data_type: r.get::<String, _>(1),
-                nullable: r.get::<String, _>(2) == "YES",
-                primary_key: r.get::<bool, _>(3),
+            .map(|r| {
+                let default_value: Option<String> = r.try_get::<Option<String>, _>(4).unwrap_or(None);
+                let is_identity = r.try_get::<String, _>(5).map(|s| s == "YES").unwrap_or(false);
+                // SERIAL/BIGSERIAL columns set column_default to a
+                // `nextval(...)` expression but are not flagged as IDENTITY;
+                // detect both forms.
+                let is_serial = default_value
+                    .as_deref()
+                    .map(|d| d.starts_with("nextval("))
+                    .unwrap_or(false);
+                let is_generated = r.try_get::<String, _>(6).map(|s| s != "NEVER").unwrap_or(false);
+                ColumnInfo {
+                    name: r.get::<String, _>(0),
+                    data_type: r.get::<String, _>(1),
+                    nullable: r.get::<String, _>(2) == "YES",
+                    primary_key: r.get::<bool, _>(3),
+                    is_auto_increment: is_identity || is_serial,
+                    default_value,
+                    is_generated,
+                }
             })
             .collect())
     }
@@ -140,28 +158,31 @@ impl Connection for PgConnection {
     }
 
     async fn execute_params(&self, sql: &str, params: &[Value]) -> Result<ExecResult, DriverError> {
-        let mut q = sqlx::query(sql);
-        for p in params {
-            q = match p {
-                Value::Null => q.bind(Option::<&str>::None),
-                Value::Bool(b) => q.bind(*b),
-                Value::Int(i) => q.bind(*i),
-                Value::Float(f) => q.bind(*f),
-                Value::Text(s) => q.bind(s.clone()),
-                Value::Bytes(b) => q.bind(b.clone()),
-                Value::Date(d) => q.bind(*d),
-                Value::Time(t) => q.bind(*t),
-                Value::DateTime(dt) => q.bind(*dt),
-                Value::TimestampTz(ts) => q.bind(*ts),
-                Value::Decimal(d) => q.bind(*d),
-                Value::Uuid(u) => q.bind(*u),
-                Value::Json(j) => q.bind(j.clone()),
-            };
-        }
+        let q = bind_pg_params(sqlx::query(sql), params);
         let res = q.execute(&self.pool).await.map_err(map_sqlx_error)?;
         Ok(ExecResult {
             rows_affected: res.rows_affected(),
         })
+    }
+
+    async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+        let mut tx = self.pool.begin().await.map_err(map_sqlx_error)?;
+        let mut affected = Vec::with_capacity(statements.len());
+        for (idx, (sql, params)) in statements.iter().enumerate() {
+            let q = bind_pg_params(sqlx::query(sql), params);
+            match q.execute(&mut *tx).await {
+                Ok(res) => affected.push(res.rows_affected()),
+                Err(e) => {
+                    let _ = tx.rollback().await;
+                    return Err(DriverError::Transaction {
+                        statement_index: idx,
+                        source: Box::new(map_sqlx_error(e)),
+                    });
+                }
+            }
+        }
+        tx.commit().await.map_err(map_sqlx_error)?;
+        Ok(affected)
     }
 
     async fn ping(&self) -> Result<(), DriverError> {
@@ -205,6 +226,9 @@ async fn stream_into_result(pool: &Pool<Postgres>, sql: &str, limit: usize) -> R
             data_type: c.type_info().name().to_string(),
             nullable: true,
             primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
         })
         .collect();
     let data: Vec<Vec<Value>> = collected
@@ -267,6 +291,34 @@ fn extract_value(row: &PgRow, idx: usize) -> Value {
         "BYTEA" => row.try_get::<Vec<u8>, _>(idx).map(Value::Bytes).unwrap_or(Value::Null),
         _ => row.try_get::<String, _>(idx).map(Value::Text).unwrap_or(Value::Null),
     }
+}
+
+/// Bind a positional parameter list to a sqlx Postgres query in the
+/// same order as the `params` slice. Centralised here so
+/// `execute_params` and `execute_in_transaction` produce identical
+/// bindings without duplicating the variant match.
+fn bind_pg_params<'q>(
+    mut q: sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments>,
+    params: &'q [Value],
+) -> sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments> {
+    for p in params {
+        q = match p {
+            Value::Null => q.bind(Option::<&str>::None),
+            Value::Bool(b) => q.bind(*b),
+            Value::Int(i) => q.bind(*i),
+            Value::Float(f) => q.bind(*f),
+            Value::Text(s) => q.bind(s.clone()),
+            Value::Bytes(b) => q.bind(b.clone()),
+            Value::Date(d) => q.bind(*d),
+            Value::Time(t) => q.bind(*t),
+            Value::DateTime(dt) => q.bind(*dt),
+            Value::TimestampTz(ts) => q.bind(*ts),
+            Value::Decimal(d) => q.bind(*d),
+            Value::Uuid(u) => q.bind(*u),
+            Value::Json(j) => q.bind(j.clone()),
+        };
+    }
+    q
 }
 
 fn quote_ident(name: &str) -> String {

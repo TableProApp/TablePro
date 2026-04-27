@@ -140,6 +140,59 @@ pub fn build_full_row_update(
     Ok((sql, params))
 }
 
+/// Build an INSERT for a draft row collected by the inline-edit
+/// changeset. Skips auto-increment columns and generated columns
+/// entirely (the database supplies their values). For nullable
+/// columns whose `Value` is `Null` AND have a `default_value`,
+/// also skip the column so the server applies its default rather
+/// than receiving an explicit NULL.
+pub fn build_insert_from_draft(
+    driver_id: &str,
+    schema: Option<&str>,
+    table: &str,
+    columns: &[ColumnInfo],
+    values: &[Value],
+) -> Result<(String, Vec<Value>), BuildSqlError> {
+    if columns.len() != values.len() {
+        return Err(BuildSqlError::LengthMismatch {
+            expected: columns.len(),
+            got: values.len(),
+        });
+    }
+    let mut col_idents: Vec<String> = Vec::new();
+    let mut placeholders: Vec<String> = Vec::new();
+    let mut params: Vec<Value> = Vec::new();
+    for (i, col) in columns.iter().enumerate() {
+        if col.is_auto_increment || col.is_generated {
+            continue;
+        }
+        let value_is_null = matches!(values[i], Value::Null);
+        if value_is_null && col.default_value.is_some() {
+            // Let the server apply its default rather than overriding
+            // it with an explicit NULL — matters when the default is
+            // CURRENT_TIMESTAMP, gen_random_uuid(), etc.
+            continue;
+        }
+        col_idents.push(quote_ident(driver_id, &col.name));
+        placeholders.push(placeholder_for(driver_id, params.len()));
+        params.push(values[i].clone());
+    }
+    if col_idents.is_empty() {
+        return Err(BuildSqlError::NothingToUpdate);
+    }
+    let qualified = match schema {
+        Some(s) => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
+        None => quote_ident(driver_id, table),
+    };
+    let sql = format!(
+        "INSERT INTO {} ({}) VALUES ({})",
+        qualified,
+        col_idents.join(", "),
+        placeholders.join(", ")
+    );
+    Ok((sql, params))
+}
+
 fn collect_pk_indexes(columns: &[ColumnInfo]) -> Vec<usize> {
     columns
         .iter()
@@ -180,6 +233,9 @@ mod tests {
             data_type: "text".into(),
             nullable: false,
             primary_key: pk,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: false,
         }
     }
 
@@ -269,5 +325,94 @@ mod tests {
         let new_values = vec![Value::Int(1)];
         let err = build_full_row_update("postgres", "t", &columns, &original, &new_values).unwrap_err();
         assert!(matches!(err, BuildSqlError::LengthMismatch { expected: 2, got: 1 }));
+    }
+
+    fn col_auto(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: "integer".into(),
+            nullable: false,
+            primary_key: true,
+            is_auto_increment: true,
+            default_value: None,
+            is_generated: false,
+        }
+    }
+
+    fn col_with_default(name: &str, default: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: "timestamp".into(),
+            nullable: true,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: Some(default.into()),
+            is_generated: false,
+        }
+    }
+
+    fn col_generated(name: &str) -> ColumnInfo {
+        ColumnInfo {
+            name: name.into(),
+            data_type: "integer".into(),
+            nullable: false,
+            primary_key: false,
+            is_auto_increment: false,
+            default_value: None,
+            is_generated: true,
+        }
+    }
+
+    #[test]
+    fn insert_from_draft_skips_auto_increment_pk() {
+        let columns = vec![col_auto("id"), col("name", false)];
+        let values = vec![Value::Null, Value::Text("alice".into())];
+        let (sql, params) = build_insert_from_draft("postgres", None, "users", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO \"users\" (\"name\") VALUES ($1)");
+        assert_eq!(params, vec![Value::Text("alice".into())]);
+    }
+
+    #[test]
+    fn insert_from_draft_skips_generated_columns() {
+        let columns = vec![col("a", false), col_generated("total"), col("b", false)];
+        let values = vec![Value::Int(1), Value::Int(99), Value::Int(2)];
+        let (sql, params) = build_insert_from_draft("mysql", None, "t", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO `t` (`a`, `b`) VALUES (?, ?)");
+        assert_eq!(params, vec![Value::Int(1), Value::Int(2)]);
+    }
+
+    #[test]
+    fn insert_from_draft_omits_null_when_default_exists() {
+        // Cell is NULL and column has a server default (e.g., now()) →
+        // omit the column from INSERT so the server applies its default.
+        let columns = vec![col("name", false), col_with_default("created_at", "now()")];
+        let values = vec![Value::Text("bob".into()), Value::Null];
+        let (sql, _) = build_insert_from_draft("postgres", None, "u", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO \"u\" (\"name\") VALUES ($1)");
+    }
+
+    #[test]
+    fn insert_from_draft_keeps_explicit_null_without_default() {
+        let columns = vec![col("name", false), col("nickname", false)];
+        let values = vec![Value::Text("bob".into()), Value::Null];
+        let (sql, params) = build_insert_from_draft("postgres", None, "u", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO \"u\" (\"name\", \"nickname\") VALUES ($1, $2)");
+        assert_eq!(params, vec![Value::Text("bob".into()), Value::Null]);
+    }
+
+    #[test]
+    fn insert_from_draft_qualifies_with_schema() {
+        let columns = vec![col("id", true), col("name", false)];
+        let values = vec![Value::Int(1), Value::Text("a".into())];
+        let (sql, _) = build_insert_from_draft("postgres", Some("public"), "u", &columns, &values).unwrap();
+        assert_eq!(sql, "INSERT INTO \"public\".\"u\" (\"id\", \"name\") VALUES ($1, $2)");
+    }
+
+    #[test]
+    fn insert_from_draft_returns_error_when_only_auto_columns() {
+        let columns = vec![col_auto("id"), col_generated("calc")];
+        let values = vec![Value::Null, Value::Null];
+        let err = build_insert_from_draft("postgres", None, "t", &columns, &values).unwrap_err();
+        assert!(matches!(err, BuildSqlError::NothingToUpdate));
     }
 }

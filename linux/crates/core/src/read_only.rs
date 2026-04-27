@@ -46,6 +46,10 @@ impl Connection for ReadOnlyConnection {
         Err(DriverError::ReadOnly)
     }
 
+    async fn execute_in_transaction(&self, _statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+        Err(DriverError::ReadOnly)
+    }
+
     async fn ping(&self) -> Result<(), DriverError> {
         self.inner.ping().await
     }
@@ -98,6 +102,10 @@ mod tests {
         async fn execute_params(&self, _: &str, _: &[Value]) -> Result<ExecResult, DriverError> {
             *self.execute_calls.lock().unwrap() += 1;
             Ok(ExecResult { rows_affected: 1 })
+        }
+        async fn execute_in_transaction(&self, _: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
+            *self.execute_calls.lock().unwrap() += 1;
+            Ok(vec![])
         }
         async fn ping(&self) -> Result<(), DriverError> {
             Ok(())
