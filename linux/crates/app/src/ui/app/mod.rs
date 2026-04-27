@@ -1258,11 +1258,16 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
     browse.append(&shortcut_entry("F2", &crate::tr!("Edit focused cell")));
     browse.append(&shortcut_entry("Return", &crate::tr!("Edit focused cell")));
     browse.append(&shortcut_entry("Escape", &crate::tr!("Cancel edit")));
-    browse.append(&shortcut_entry("Tab", &crate::tr!("Commit edit and move to next cell")));
+    browse.append(&shortcut_entry(
+        "Tab",
+        &crate::tr!("Move to next cell (commits if editing)"),
+    ));
     browse.append(&shortcut_entry(
         "<Shift>Tab",
-        &crate::tr!("Commit edit and move to previous cell"),
+        &crate::tr!("Move to previous cell (commits if editing)"),
     ));
+    browse.append(&shortcut_entry("Left", &crate::tr!("Move to previous cell")));
+    browse.append(&shortcut_entry("Right", &crate::tr!("Move to next cell")));
     browse.append(&shortcut_entry("space", &crate::tr!("Toggle boolean cell")));
     browse.append(&shortcut_entry("<Primary>n", &crate::tr!("Insert row")));
     browse.append(&shortcut_entry("Delete", &crate::tr!("Delete selected row")));
@@ -1270,6 +1275,18 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         "<Primary><Shift>n",
         &crate::tr!("Set focused cell to NULL"),
     ));
+    browse.append(&shortcut_entry("<Primary>a", &crate::tr!("Select all rows")));
+    browse.append(&shortcut_entry("<Primary>c", &crate::tr!("Copy selected rows as TSV")));
+    browse.append(&shortcut_entry("Page_Up", &crate::tr!("Previous page")));
+    browse.append(&shortcut_entry("Page_Down", &crate::tr!("Next page")));
+    browse.append(&shortcut_entry(
+        "<Primary>Home",
+        &crate::tr!("Jump to first row of page"),
+    ));
+    browse.append(&shortcut_entry("<Primary>End", &crate::tr!("Jump to last row of page")));
+    browse.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending edits")));
+    browse.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo last change")));
+    browse.append(&shortcut_entry("<Primary><Shift>z", &crate::tr!("Redo last change")));
     section.append(&browse);
 
     let editor = gtk::ShortcutsGroup::builder().title(crate::tr!("SQL editor")).build();

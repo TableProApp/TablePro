@@ -667,7 +667,7 @@ impl BrowseTab {
             };
             if let Ok(label) = focused.dynamic_cast::<gtk::EditableLabel>() {
                 label.set_editable(true);
-                if label.text().as_str() == "<NULL>" {
+                if label.text().as_str() == super::grid::editable_null_sentinel() {
                     label.set_text("");
                 }
                 label.start_editing();

@@ -100,6 +100,19 @@ pub fn build_column_view(
         .show_column_separators(true)
         .build();
 
+    // For wide tables (~9+ columns) the default `expand: true` per
+    // column shares the viewport fractionally and produces 20-30px
+    // cells that can't show even short values. When a column has no
+    // persisted width we fall back to a minimum starting width so the
+    // grid is usable on first render; the user can still resize from
+    // there and the new width persists. Narrow tables (≤8 columns)
+    // keep the expand-to-fill behaviour because there's enough room
+    // for every column to render readably.
+    let default_min_width = if result.columns.len() > WIDE_TABLE_THRESHOLD {
+        Some(MIN_COLUMN_WIDTH_PX)
+    } else {
+        None
+    };
     let mut columns: Vec<gtk::ColumnViewColumn> = Vec::with_capacity(result.columns.len());
     for (i, column) in result.columns.iter().enumerate() {
         // `schema_columns` is preferred when populated (it carries
@@ -120,6 +133,7 @@ pub fn build_column_view(
             sort_sender.clone(),
             connection_id,
             tab_ctx.clone(),
+            default_min_width,
         );
         column_view.append_column(&col);
         columns.push(col);
@@ -170,6 +184,7 @@ fn build_column(
     sort_sender: Option<relm4::Sender<GridMsg>>,
     connection_id: Option<uuid::Uuid>,
     tab_ctx: TabGridContext,
+    default_min_width: Option<i32>,
 ) -> gtk::ColumnViewColumn {
     let factory = gtk::SignalListItemFactory::new();
     // Editable cells require a sender to dispatch CellEdited / SetCellNull /
@@ -236,7 +251,7 @@ fn build_column(
         // shows "NULL" in dim text.
         let text = if editable_for_bind {
             if is_null {
-                "<NULL>".to_string()
+                editable_null_sentinel()
             } else {
                 value_to_edit_text(&value)
             }
@@ -425,6 +440,12 @@ fn build_column(
     if let Some(id) = connection_id {
         if let Some(saved) = crate::services::column_widths::load(id, &table_for_persist, &info.name) {
             column.set_fixed_width(saved);
+        } else if let Some(min) = default_min_width {
+            // No persisted width: seed with the wide-table fallback so
+            // the column starts readable. The user can still resize,
+            // and connect_fixed_width_notify will persist the new
+            // value the moment it changes.
+            column.set_fixed_width(min);
         }
         let column_for_save = column.clone();
         let column_name = info.name.clone();
@@ -434,6 +455,10 @@ fn build_column(
                 crate::services::column_widths::save(id, &table_for_persist, &column_name, width);
             }
         });
+    } else if let Some(min) = default_min_width {
+        // Editor result grids run without a connection_id (no
+        // persistence), but the wide-table problem still applies.
+        column.set_fixed_width(min);
     }
     column
 }
@@ -541,10 +566,26 @@ fn setup_bool_cell(
 /// (double-click, F2, Enter, context-menu Edit) behaves the same.
 fn enter_edit_mode(label: &gtk::EditableLabel) {
     label.set_editable(true);
-    if label.text().as_str() == "<NULL>" {
+    if label.text().as_str() == editable_null_sentinel() {
         label.set_text("");
     }
     label.start_editing();
+}
+
+/// The user-visible "NULL" sentinel rendered in editable cells. Goes
+/// through `tr!` so locales that prefer a different convention can
+/// translate it; the bracketed form is the canonical English variant
+/// that keeps the sentinel visually distinct from a literal "NULL"
+/// text value.
+pub(crate) fn editable_null_sentinel() -> String {
+    crate::tr!("<NULL>")
+}
+
+/// Read-only NULL rendering. Separate from the editable sentinel so
+/// translators can localise both forms independently — read-only
+/// cells dim the text and don't need the angle-bracket disambig.
+pub(crate) fn readonly_null_sentinel() -> String {
+    crate::tr!("NULL")
 }
 
 /// Detect whether a column's declared data_type is boolean. Mirrors
@@ -587,6 +628,18 @@ fn clear_pending_classes(widget: &gtk::Widget) {
 /// tooltip on every NULL would be visual noise on a column of
 /// nullable values.
 const TOOLTIP_MIN_CHARS: usize = 40;
+
+/// Column count above which a per-column minimum starting width is
+/// applied (in absence of persisted widths). Below this threshold,
+/// the default `expand: true` shares the viewport without producing
+/// unreadably-narrow cells; above it, fractional sharing becomes the
+/// dominant problem.
+const WIDE_TABLE_THRESHOLD: usize = 8;
+/// Per-column minimum width applied when a wide table has no saved
+/// widths. Picked to fit ~14 chars at the standard GTK font scale
+/// (a typical short identifier or numeric value); the user can
+/// resize from there and the new value persists.
+const MIN_COLUMN_WIDTH_PX: i32 = 120;
 
 fn apply_cell_tooltip(widget: &gtk::Widget, text: &str, is_null: bool) {
     if is_null || text.chars().take(TOOLTIP_MIN_CHARS + 1).count() <= TOOLTIP_MIN_CHARS {
@@ -1449,7 +1502,7 @@ const DISPLAY_TEXT_BYTES_THRESHOLD: usize = DISPLAY_TEXT_MAX_CHARS * 4;
 
 pub fn value_to_display_text(value: &Value) -> String {
     match value {
-        Value::Null => "NULL".into(),
+        Value::Null => readonly_null_sentinel(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
