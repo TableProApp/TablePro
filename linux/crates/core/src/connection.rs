@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use secrecy::SecretString;
 
 use crate::error::DriverError;
-use crate::query::{ColumnInfo, ExecResult, QueryResult, TableInfo, Value};
+use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
 
 #[derive(Debug, Clone)]
 pub struct ConnectOptions {
@@ -49,6 +49,22 @@ pub trait Connection: Send + Sync {
     /// changeset Save flow so all pending row inserts / updates /
     /// deletes commit atomically.
     async fn execute_in_transaction(&self, statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError>;
+    /// Indexes defined on `table`. Implementations may include the
+    /// implicit primary-key index with `primary = true` so the UI can
+    /// render it as read-only. Default returns empty so existing
+    /// drivers compile before they're filled in.
+    async fn fetch_indexes(&self, _schema: Option<&str>, _table: &str) -> Result<Vec<IndexInfo>, DriverError> {
+        Ok(Vec::new())
+    }
+    /// Foreign-key constraints declared on `table`. Default returns
+    /// empty for the same reason as `fetch_indexes`.
+    async fn fetch_foreign_keys(
+        &self,
+        _schema: Option<&str>,
+        _table: &str,
+    ) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        Ok(Vec::new())
+    }
     async fn ping(&self) -> Result<(), DriverError>;
     async fn close(self: Box<Self>) -> Result<(), DriverError>;
 }

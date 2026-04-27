@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use crate::connection::Connection;
 use crate::error::DriverError;
-use crate::query::{ColumnInfo, ExecResult, QueryResult, TableInfo, Value};
+use crate::query::{ColumnInfo, ExecResult, ForeignKeyInfo, IndexInfo, QueryResult, TableInfo, Value};
 
 pub struct ReadOnlyConnection {
     inner: Box<dyn Connection>,
@@ -48,6 +48,14 @@ impl Connection for ReadOnlyConnection {
 
     async fn execute_in_transaction(&self, _statements: &[(String, Vec<Value>)]) -> Result<Vec<u64>, DriverError> {
         Err(DriverError::ReadOnly)
+    }
+
+    async fn fetch_indexes(&self, schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
+        self.inner.fetch_indexes(schema, table).await
+    }
+
+    async fn fetch_foreign_keys(&self, schema: Option<&str>, table: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        self.inner.fetch_foreign_keys(schema, table).await
     }
 
     async fn ping(&self) -> Result<(), DriverError> {
