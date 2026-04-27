@@ -520,7 +520,46 @@ impl SimpleComponent for App {
         if restored.maximized {
             widgets.window.maximize();
         }
-        widgets.window.connect_close_request(|w| {
+        // Window-close handler. Two responsibilities: persist window
+        // size + maximize state, and (when any open tab has pending
+        // changes) show an AdwAlertDialog that lets the user Cancel
+        // or Discard the unsaved batch. Save-and-close stays a
+        // separate manual flow (Ctrl+S, then close) because async
+        // commit during close has poor failure modes.
+        let force_close: std::rc::Rc<std::cell::Cell<bool>> = std::rc::Rc::new(std::cell::Cell::new(false));
+        let force_close_for_close = force_close.clone();
+        widgets.window.connect_close_request(move |w| {
+            // Already-confirmed close path (set by the dialog handler
+            // below) — skip the guard, save state, allow close.
+            if !force_close_for_close.get() && crate::services::change_tracker::any_pending_globally() {
+                let dialog = adw::AlertDialog::new(
+                    Some(&crate::tr!("Discard pending changes?")),
+                    Some(&crate::tr!(
+                        "One or more tabs have unsaved edits. Cancel to keep them and save manually, or Discard to close anyway."
+                    )),
+                );
+                dialog.add_response("cancel", &crate::tr!("Cancel"));
+                dialog.add_response("discard", &crate::tr!("Discard"));
+                dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+                dialog.set_default_response(Some("cancel"));
+                dialog.set_close_response("cancel");
+                let force_close_for_resp = force_close_for_close.clone();
+                let window_for_resp = w.clone();
+                dialog.connect_response(None, move |dlg, response| {
+                    dlg.close();
+                    if response == "discard" {
+                        for tab_id in crate::services::change_tracker::pending_tabs() {
+                            crate::services::change_tracker::with_tab(tab_id, |t| t.clear());
+                        }
+                        force_close_for_resp.set(true);
+                        // Re-fire close_request — guard sees the flag,
+                        // saves window state, returns Proceed.
+                        window_for_resp.close();
+                    }
+                });
+                dialog.present(Some(w));
+                return glib::Propagation::Stop;
+            }
             let (width, height) = if w.is_maximized() {
                 (w.default_width(), w.default_height())
             } else {
