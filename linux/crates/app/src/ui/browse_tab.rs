@@ -447,6 +447,11 @@ impl SimpleComponent for BrowseTab {
     }
 
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
+        // Open this tab's pending-changeset tracker. Closed in
+        // workspace_tabs::close_workspace_tab_by_id when the tab is
+        // removed. Idempotent — calling twice is a no-op.
+        crate::services::change_tracker::open_tab(init.tab_id);
+
         let suppress_combo_emit = Rc::new(std::cell::Cell::new(true));
         let page_size_handler_slot: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::new(RefCell::new(None));
 

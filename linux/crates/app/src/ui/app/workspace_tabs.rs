@@ -392,8 +392,15 @@ impl App {
             return;
         };
         // For editor tabs, cancel any running query before tearing down.
-        if let WorkspaceTab::Editor(slot) = &removed {
-            let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
+        // For browse tabs, close the per-tab pending-changeset tracker
+        // so its memory is reclaimed.
+        match &removed {
+            WorkspaceTab::Editor(slot) => {
+                let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
+            }
+            WorkspaceTab::Browse(slot) => {
+                crate::services::change_tracker::close_tab(slot.id);
+            }
         }
         let page = match &removed {
             WorkspaceTab::Browse(s) => s.page.clone(),
@@ -599,6 +606,14 @@ impl App {
     pub(super) fn teardown_workspace_tabs(&mut self) {
         self.persist_workspace_state();
         self.cancel_all_editor_runs();
+        // Drop per-tab pending-change trackers — disconnecting wipes
+        // the connection and its row identities, so any pending edits
+        // would no longer be commitable.
+        for tab in self.workspace_tabs.borrow().values() {
+            if let WorkspaceTab::Browse(slot) = tab {
+                crate::services::change_tracker::close_tab(slot.id);
+            }
+        }
         if let Some(root) = self.workspace_root.take()
             && self.workspace_root_added.get()
         {

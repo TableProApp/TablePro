@@ -465,6 +465,33 @@ impl SimpleComponent for App {
     fn init(registry: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         let widgets = view_output!();
 
+        // Custom CSS for pending-changeset visual states. Native
+        // Adwaita classes (.warning, .success, .error) don't compose
+        // cleanly on grid cells (background colour washes the row);
+        // these rules use the same accent-tinted alpha approach
+        // GNOME Builder uses for diff markers.
+        if let Some(display) = gtk::gdk::Display::default() {
+            let provider = gtk::CssProvider::new();
+            provider.load_from_string(
+                "label.tp-cell-modified, editablelabel.tp-cell-modified {\
+                    background: alpha(@warning_color, 0.15);\
+                }\
+                label.tp-row-pending-insert, editablelabel.tp-row-pending-insert {\
+                    background: alpha(@success_color, 0.12);\
+                }\
+                label.tp-row-pending-delete, editablelabel.tp-row-pending-delete {\
+                    text-decoration: line-through;\
+                    color: alpha(@error_color, 0.7);\
+                    background: alpha(@error_color, 0.08);\
+                }\
+                label.tp-null-sentinel {\
+                    font-style: italic;\
+                    opacity: 0.55;\
+                }",
+            );
+            gtk::style_context_add_provider_for_display(&display, &provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+        }
+
         let restored = crate::services::window_state::load();
         widgets.window.set_default_size(restored.width, restored.height);
         if restored.maximized {
