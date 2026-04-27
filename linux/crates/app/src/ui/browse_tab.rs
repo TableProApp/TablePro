@@ -185,6 +185,15 @@ pub enum BrowseTabInput {
     /// isn't on the current page (paginated past it, sorted away),
     /// the alert dialog still tells the user which statement failed.
     FlashErrorRow(crate::services::change_tracker::StatementSource),
+    /// Ctrl+C with row(s) selected: serialize each selected row as
+    /// tab-separated cells and push to the system clipboard. Falls
+    /// through to GTK's default Ctrl+C if no rows are selected so
+    /// inline cell-text selection still copies the highlighted text.
+    CopySelectedRowsAsTsv,
+    /// Ctrl+V on the grid (focus not in a cell editor): show a toast
+    /// telling the user multi-row paste isn't supported. Cell-level
+    /// paste continues to work via the normal text-editor path.
+    PasteNotSupported,
 }
 
 #[derive(Debug)]
@@ -793,7 +802,19 @@ impl BrowseTab {
         self.prev_button.set_sensitive(self.current_offset > 0);
         let n_rows = result.rows.len() as u64;
         self.next_button.set_sensitive(n_rows == self.page_size);
-        self.inner_stack.set_visible_child_name("grid");
+
+        // Empty-state: zero rows on the first page with no drafts →
+        // show a status page instead of an empty grid rectangle. As
+        // soon as the user inserts a draft, the next ChangedRows
+        // event re-binds and we flip back to "grid".
+        let has_drafts =
+            crate::services::change_tracker::with_tab_ref(self.tab_id, |t| !t.drafts().is_empty()).unwrap_or(false);
+        if result.rows.is_empty() && self.current_offset == 0 && !has_drafts {
+            self.show_empty_inner();
+            self.inner_stack.set_visible_child_name("empty");
+        } else {
+            self.inner_stack.set_visible_child_name("grid");
+        }
         self.suppress_combo_emit.set(false);
     }
 
@@ -948,6 +969,35 @@ impl BrowseTab {
             .description(message)
             .build();
         self.replace_status_child("error", &page);
+    }
+
+    /// Empty-state placeholder for tables with no rows on offset 0 and
+    /// no pending drafts. AdwStatusPage with a context-appropriate
+    /// description: "Press Ctrl+N to add the first row" for editable
+    /// tables, "Use the SQL editor to add rows" for read-only ones.
+    fn show_empty_inner(&self) {
+        let (title, description) = if self.read_only {
+            (
+                crate::tr!("No rows yet"),
+                crate::tr!("This table is empty. Use the SQL editor to add rows."),
+            )
+        } else if !self.has_primary_key() {
+            (
+                crate::tr!("No rows yet"),
+                crate::tr!("This table has no primary key. Use the SQL editor to add rows."),
+            )
+        } else {
+            (
+                crate::tr!("No rows yet"),
+                crate::tr!("Press Ctrl+N to add the first row."),
+            )
+        };
+        let page = adw::StatusPage::builder()
+            .icon_name("view-grid-symbolic")
+            .title(&title)
+            .description(&description)
+            .build();
+        self.replace_status_child("empty", &page);
     }
 }
 
@@ -1140,12 +1190,41 @@ impl SimpleComponent for BrowseTab {
             }))
             .build();
 
+        // Ctrl+C: when row(s) are selected and focus is NOT inside a
+        // text-editor (cell edit mode, search entry, draft input), copy
+        // the selection as TSV. Bubble-phase Local scope: GtkText
+        // consumes Ctrl+C while editing so the cell-text-selection
+        // copy still works without our handler interfering.
+        let sender_for_copy = sender.clone();
+        let copy_rows_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>c").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_copy.input(BrowseTabInput::CopySelectedRowsAsTsv);
+                glib::Propagation::Stop
+            }))
+            .build();
+        // Ctrl+V on the grid (focus not inside a text editor): show a
+        // toast explaining multi-row paste isn't supported. Cell-level
+        // paste (focus inside an EditableLabel's GtkText) is consumed
+        // by the entry first, so this only fires for grid-level paste
+        // attempts.
+        let sender_for_paste = sender.clone();
+        let paste_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary>v").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new(move |_, _| {
+                sender_for_paste.input(BrowseTabInput::PasteNotSupported);
+                glib::Propagation::Stop
+            }))
+            .build();
+
         let esc_controller = gtk::ShortcutController::new();
         esc_controller.set_scope(gtk::ShortcutScope::Local);
         esc_controller.add_shortcut(esc_shortcut);
         esc_controller.add_shortcut(delete_shortcut);
         esc_controller.add_shortcut(insert_shortcut);
         esc_controller.add_shortcut(null_shortcut);
+        esc_controller.add_shortcut(copy_rows_shortcut);
+        esc_controller.add_shortcut(paste_shortcut);
         root.add_controller(esc_controller);
 
         // Wire the GridMsg receiver into this tab's input queue. Each
@@ -1295,7 +1374,17 @@ impl SimpleComponent for BrowseTab {
                 );
             }
             BrowseTabInput::ShowError(message) => {
+                // Clear any cached page state so a follow-up refresh
+                // doesn't render against the stale snapshot before
+                // RowsLoaded arrives. Paginator label is left empty
+                // until next RowCountLoaded.
+                self.current_result = None;
+                self.current_total_rows = None;
+                self.paginator_label.set_label("");
+                self.prev_button.set_sensitive(false);
+                self.next_button.set_sensitive(false);
                 self.show_error_inner(&message);
+                self.inner_stack.set_visible_child_name("error");
             }
             BrowseTabInput::Refresh => {
                 self.capture_focus_for_restore();
@@ -1518,6 +1607,42 @@ impl SimpleComponent for BrowseTab {
             BrowseTabInput::GridCopyToClipboard(text) => {
                 let _ = sender.output(BrowseTabOutput::CopyToClipboard(text));
             }
+            BrowseTabInput::CopySelectedRowsAsTsv => {
+                let Some(selection) = self.current_selection.as_ref() else {
+                    return;
+                };
+                let positions = selected_positions(selection);
+                if positions.is_empty() {
+                    return;
+                }
+                let model = match selection.model() {
+                    Some(m) => m,
+                    None => return,
+                };
+                let mut rows: Vec<String> = Vec::with_capacity(positions.len());
+                for pos in &positions {
+                    let Some(item) = model.item(*pos) else { continue };
+                    let Ok(row) = item.downcast::<super::row_object::RowObject>() else {
+                        continue;
+                    };
+                    let cells = row.cells_clone();
+                    let line: Vec<String> = cells
+                        .iter()
+                        .map(|v| escape_tsv_cell(&super::grid::value_to_display_text(v)))
+                        .collect();
+                    rows.push(line.join("\t"));
+                }
+                if rows.is_empty() {
+                    return;
+                }
+                let tsv = rows.join("\n");
+                let _ = sender.output(BrowseTabOutput::CopyToClipboard(tsv));
+            }
+            BrowseTabInput::PasteNotSupported => {
+                let _ = sender.output(BrowseTabOutput::ShowToast(crate::tr!(
+                    "Pasting rows isn't supported yet"
+                )));
+            }
             BrowseTabInput::CommitSave => {
                 let columns = self.current_columns.clone();
                 let driver_id = self.driver_id.clone();
@@ -1628,6 +1753,23 @@ fn clear_box(b: &gtk::Box) {
     while let Some(child) = b.first_child() {
         b.remove(&child);
     }
+}
+
+/// TSV cells can't carry literal tab / newline / CR without breaking
+/// the row-or-column boundary. Spreadsheet apps (LibreOffice Calc,
+/// Excel) interpret these as field separators on paste, so a cell
+/// containing one would silently split. Replace with a single space
+/// to preserve the row structure on paste; the user can paste into
+/// a plain text view to see the originals.
+fn escape_tsv_cell(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\t' | '\n' | '\r' => out.push(' '),
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {

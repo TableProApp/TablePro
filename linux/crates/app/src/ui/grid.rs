@@ -313,6 +313,7 @@ fn build_column(
         let Some(child) = item.child() else { return };
         if let Ok(label) = child.clone().downcast::<gtk::EditableLabel>() {
             label.set_text(&text);
+            apply_cell_tooltip(label.upcast_ref(), &text, is_null);
             if is_null && !editable_for_bind {
                 label.add_css_class("dim-label");
             } else {
@@ -369,6 +370,7 @@ fn build_column(
             POSITION_SLOT.set(&checkbox, item.position());
         } else if let Ok(label) = child.downcast::<gtk::Label>() {
             label.set_text(&text);
+            apply_cell_tooltip(label.upcast_ref(), &text, is_null);
             if is_null {
                 label.add_css_class("dim-label");
             } else {
@@ -569,6 +571,28 @@ const PENDING_CSS_CLASSES: &[&str] = &[
 fn clear_pending_classes(widget: &gtk::Widget) {
     for cls in PENDING_CSS_CLASSES {
         widget.remove_css_class(cls);
+    }
+}
+
+/// Set a tooltip on a cell widget when its text is long enough that
+/// the column may visibly truncate it. The cell label uses Pango
+/// ellipsization (`set_ellipsize(EllipsizeMode::End)`) — once a column
+/// is narrower than the text, the trailing characters disappear with
+/// a "…". The tooltip lets the user hover to see the full value.
+///
+/// Threshold: `TOOLTIP_MIN_CHARS` covers typical 200px column widths
+/// at standard font scaling. Below it the text reliably fits and the
+/// tooltip would be redundant. NULL cells skip the tooltip — the
+/// rendered "NULL" / "<NULL>" sentinels are already short and a
+/// tooltip on every NULL would be visual noise on a column of
+/// nullable values.
+const TOOLTIP_MIN_CHARS: usize = 40;
+
+fn apply_cell_tooltip(widget: &gtk::Widget, text: &str, is_null: bool) {
+    if is_null || text.chars().take(TOOLTIP_MIN_CHARS + 1).count() <= TOOLTIP_MIN_CHARS {
+        widget.set_tooltip_text(None);
+    } else {
+        widget.set_tooltip_text(Some(text));
     }
 }
 
@@ -797,6 +821,28 @@ fn install_edit_triggers(
             match keyval {
                 gtk::gdk::Key::F2 | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
                     trigger_for_key(&label_for_key);
+                    return glib::Propagation::Stop;
+                }
+                // Tab / Shift+Tab when NOT editing: traverse cells.
+                // Without this they'd fall through to GTK's default
+                // focus chain and escape the grid to the paginator.
+                gtk::gdk::Key::Tab if !shift => {
+                    move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab if shift => {
+                    move_focus(&label_for_key, gtk::DirectionType::TabBackward);
+                    return glib::Propagation::Stop;
+                }
+                // Left / Right arrow cell navigation. ColumnView's
+                // built-in Up/Down handles row selection; we add the
+                // horizontal axis to match spreadsheet convention.
+                gtk::gdk::Key::Right => {
+                    move_focus(&label_for_key, gtk::DirectionType::TabForward);
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Left => {
+                    move_focus(&label_for_key, gtk::DirectionType::TabBackward);
                     return glib::Propagation::Stop;
                 }
                 _ => {}
