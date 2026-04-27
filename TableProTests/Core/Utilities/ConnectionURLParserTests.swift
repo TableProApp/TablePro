@@ -496,6 +496,26 @@ struct ConnectionURLParserTests {
         #expect(parsed.safeModeLevel == nil)
     }
 
+    @Test("SafeModeLevel mapping for invalid integer")
+    func testSafeModeLevelInvalidValue() {
+        #expect(SafeModeLevel.from(urlInteger: 99) == nil)
+        #expect(SafeModeLevel.from(urlInteger: -1) == nil)
+        #expect(SafeModeLevel.from(urlInteger: 0) == .silent)
+        #expect(SafeModeLevel.from(urlInteger: 1) == .alert)
+        #expect(SafeModeLevel.from(urlInteger: 2) == .readOnly)
+    }
+
+    @Test("Redis URL parses database index from path")
+    func testRedisDatabaseIndexParsed() {
+        let result = ConnectionURLParser.parse("redis://localhost:6379/3")
+        guard case .success(let parsed) = result else {
+            Issue.record("Expected success"); return
+        }
+        #expect(parsed.type == .redis)
+        #expect(parsed.redisDatabase == 3)
+        #expect(parsed.database == "")
+    }
+
     @Test("Query params are case-insensitive")
     func testQueryParamsCaseInsensitive() {
         let result = ConnectionURLParser.parse("postgresql://user:pass@host/db?SSLMODE=require&STATUSCOLOR=FF3B30")

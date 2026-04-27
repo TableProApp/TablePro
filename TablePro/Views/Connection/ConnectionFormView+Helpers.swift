@@ -635,13 +635,8 @@ extension ConnectionFormView {
             } else if name.isEmpty {
                 name = parsed.suggestedName
             }
-            if let level = parsed.safeModeLevel {
-                switch level {
-                case 0: safeModeLevel = .silent
-                case 1: safeModeLevel = .alert
-                case 2: safeModeLevel = .readOnly
-                default: break
-                }
+            if let level = parsed.safeModeLevel, let mode = SafeModeLevel.from(urlInteger: level) {
+                safeModeLevel = mode
             }
         case .failure(let error):
             urlParseError = error.localizedDescription

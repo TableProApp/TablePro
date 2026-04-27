@@ -14987,9 +14987,6 @@
         }
       }
     },
-    "Edit Values..." : {
-
-    },
     "Edit View Definition" : {
       "localizations" : {
         "tr" : {
@@ -18329,7 +18326,6 @@
       }
     },
     "FIELDS" : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {
@@ -35183,9 +35179,6 @@
         }
       }
     },
-    "Search fields..." : {
-
-    },
     "Search for connection..." : {
       "localizations" : {
         "tr" : {
@@ -35209,7 +35202,6 @@
       }
     },
     "Search for field..." : {
-      "extractionState" : "stale",
       "localizations" : {
         "tr" : {
           "stringUnit" : {

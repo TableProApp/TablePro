@@ -549,16 +549,7 @@ extension AppDelegate {
             tagId = ConnectionURLParser.tagId(fromEnvName: envName)
         }
 
-        let resolvedSafeMode: SafeModeLevel
-        if let level = parsed.safeModeLevel {
-            switch level {
-            case 1: resolvedSafeMode = .alert
-            case 2: resolvedSafeMode = .readOnly
-            default: resolvedSafeMode = .silent
-            }
-        } else {
-            resolvedSafeMode = .silent
-        }
+        let resolvedSafeMode = parsed.safeModeLevel.flatMap(SafeModeLevel.from(urlInteger:)) ?? .silent
 
         var connection = DatabaseConnection(
             name: parsed.connectionName ?? parsed.suggestedName,
