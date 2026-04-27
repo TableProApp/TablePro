@@ -56,18 +56,16 @@ extension ConnectionFormView {
                 }
 
                 if isNew {
-                    Menu {
-                        Button(String(localized: "Save Only")) {
-                            saveConnection(connect: false)
-                        }
-                    } label: {
-                        Text(String(localized: "Save & Connect"))
-                    } primaryAction: {
+                    Button(String(localized: "Save")) {
+                        saveConnection(connect: false)
+                    }
+                    .disabled(isInstallingPlugin || !isValid)
+
+                    Button(String(localized: "Save & Connect")) {
                         saveConnection(connect: true)
                     }
-                    .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return)
-                    .fixedSize()
+                    .buttonStyle(.borderedProminent)
                     .disabled(isInstallingPlugin || !isValid)
                 } else {
                     Button(String(localized: "Save")) {
