@@ -168,7 +168,7 @@ extension ConnectionFormView {
         }
     }
 
-    func saveConnection() {
+    func saveConnection(connect: Bool = true) {
         let sshConfig = sshState.buildSSHConfig()
 
         let sslConfig = SSLConfiguration(
@@ -279,7 +279,9 @@ extension ConnectionFormView {
             }
             NSApplication.shared.closeWindows(withId: "connection-form")
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
-            connectToDatabase(connectionToSave)
+            if connect {
+                connectToDatabase(connectionToSave)
+            }
         } else {
             if let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) {
                 savedConnections[index] = connectionToSave

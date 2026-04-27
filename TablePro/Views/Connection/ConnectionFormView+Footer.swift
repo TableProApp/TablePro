@@ -55,13 +55,29 @@ extension ConnectionFormView {
                     NSApplication.shared.closeWindows(withId: "connection-form")
                 }
 
-                // Save
-                Button(isNew ? String(localized: "Create") : String(localized: "Save")) {
-                    saveConnection()
+                if isNew {
+                    Menu {
+                        Button(String(localized: "Save Only")) {
+                            saveConnection(connect: false)
+                        }
+                    } label: {
+                        Text(String(localized: "Save & Connect"))
+                    } primaryAction: {
+                        saveConnection(connect: true)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return)
+                    .fixedSize()
+                    .disabled(isInstallingPlugin || !isValid)
+                } else {
+                    Button(String(localized: "Save")) {
+                        saveConnection()
+                    }
+                    .keyboardShortcut(.return)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isInstallingPlugin || !isValid)
                 }
-                .keyboardShortcut(.return)
-                .buttonStyle(.borderedProminent)
-                .disabled(isInstallingPlugin || !isValid)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
