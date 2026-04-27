@@ -368,28 +368,54 @@ impl SimpleComponent for App {
                     set_max_sidebar_width: 280.0,
                     set_show_sidebar: false,
 
+                    // Sidebar wrapped in its own AdwToolbarView so it can
+                    // carry a sidebar-local AdwHeaderBar with a search
+                    // toggle — same structure GNOME Files uses for its
+                    // Places sidebar. Window-decoration buttons live on
+                    // the outer (main) header bar already, so we hide
+                    // them here.
                     #[wrap(Some)]
                     #[name = "sidebar_root"]
-                    set_sidebar = &gtk::Box {
-                        set_orientation: gtk::Orientation::Vertical,
-
-                        #[name = "table_search_bar"]
-                        gtk::SearchBar {
-                            set_show_close_button: true,
-                            set_search_mode: false,
+                    set_sidebar = &adw::ToolbarView {
+                        #[name = "sidebar_header"]
+                        add_top_bar = &adw::HeaderBar {
+                            set_show_start_title_buttons: false,
+                            set_show_end_title_buttons: false,
 
                             #[wrap(Some)]
-                            #[name = "table_search"]
-                            set_child = &gtk::SearchEntry {
-                                set_placeholder_text: Some(crate::tr!("Filter tables…").as_str()),
-                                set_hexpand: true,
+                            set_title_widget = &adw::WindowTitle {
+                                set_title: &crate::tr!("Tables"),
+                            },
+
+                            #[name = "table_search_toggle"]
+                            pack_end = &gtk::ToggleButton {
+                                set_icon_name: "system-search-symbolic",
+                                set_tooltip_text: Some(crate::tr!("Search tables").as_str()),
                             },
                         },
 
-                        #[name = "sidebar_scroll"]
-                        gtk::ScrolledWindow {
-                            set_hscrollbar_policy: gtk::PolicyType::Never,
-                            set_vexpand: true,
+                        #[wrap(Some)]
+                        set_content = &gtk::Box {
+                            set_orientation: gtk::Orientation::Vertical,
+
+                            #[name = "table_search_bar"]
+                            gtk::SearchBar {
+                                set_show_close_button: true,
+                                set_search_mode: false,
+
+                                #[wrap(Some)]
+                                #[name = "table_search"]
+                                set_child = &gtk::SearchEntry {
+                                    set_placeholder_text: Some(crate::tr!("Filter tables…").as_str()),
+                                    set_hexpand: true,
+                                },
+                            },
+
+                            #[name = "sidebar_scroll"]
+                            gtk::ScrolledWindow {
+                                set_hscrollbar_policy: gtk::PolicyType::Never,
+                                set_vexpand: true,
+                            },
                         },
                     },
 
@@ -485,9 +511,9 @@ impl SimpleComponent for App {
             if query.is_empty() {
                 return true;
             }
-            row.downcast_ref::<adw::ActionRow>()
-                .map(|r| r.title().to_lowercase().contains(&query))
-                .unwrap_or(true)
+            // SidebarRow stashes its table name in widget-name; same
+            // identifier is read by sync_sidebar_selection.
+            row.widget_name().to_lowercase().contains(&query)
         });
         let listbox_for_invalidate = sidebar_listbox.clone();
         widgets.table_search.connect_search_changed(move |_| {
@@ -497,6 +523,16 @@ impl SimpleComponent for App {
         widgets
             .table_search_bar
             .set_key_capture_widget(Some(&widgets.sidebar_root));
+
+        // Two-way bind the sidebar header's search toggle to the SearchBar.
+        // Click toggle → SearchBar reveals + entry focuses; press Esc →
+        // SearchBar hides → toggle deactivates.
+        widgets
+            .table_search_toggle
+            .bind_property("active", &widgets.table_search_bar, "search-mode-enabled")
+            .bidirectional()
+            .sync_create()
+            .build();
 
         let schemas_for_header = sidebar_schemas.clone();
         sidebar_listbox.set_header_func(move |row, before| {

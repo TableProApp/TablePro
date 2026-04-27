@@ -535,16 +535,15 @@ impl App {
         while let Some(row) = listbox.row_at_index(idx) {
             // The factory builds one row per TableInfo, in the same order
             // as `sidebar_schemas`, so we can pair each row with its
-            // schema-Option by index.
-            if let Some(action_row) = row.downcast_ref::<adw::ActionRow>() {
-                let row_table = action_row.title().to_string();
-                let row_schema = schemas.get(idx as usize).cloned().unwrap_or(None);
-                if row_table == table && row_schema.as_deref() == schema.as_deref() {
-                    // select_row doesn't trigger row-activated (user-only
-                    // signal), so this won't recurse into SelectTable.
-                    listbox.select_row(Some(action_row));
-                    return;
-                }
+            // schema-Option by index. SidebarRow stashes its table name
+            // in widget-name (no CSS conflict, no qdata machinery).
+            let row_table = row.widget_name();
+            let row_schema = schemas.get(idx as usize).cloned().unwrap_or(None);
+            if row_table.as_str() == table && row_schema.as_deref() == schema.as_deref() {
+                // select_row doesn't trigger row-activated (user-only
+                // signal), so this won't recurse into SelectTable.
+                listbox.select_row(Some(&row));
+                return;
             }
             idx += 1;
         }

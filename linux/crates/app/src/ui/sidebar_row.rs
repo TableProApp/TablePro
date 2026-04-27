@@ -1,8 +1,9 @@
-use relm4::adw::prelude::*;
 use relm4::factory::{DynamicIndex, FactoryComponent, FactorySender};
+use relm4::gtk;
 use relm4::gtk::gdk;
 use relm4::gtk::glib;
-use relm4::{adw, gtk};
+use relm4::gtk::pango;
+use relm4::gtk::prelude::*;
 
 use tablepro_core::TableInfo;
 
@@ -19,8 +20,8 @@ pub enum SidebarRowMsg {
 
 #[derive(Debug)]
 pub enum SidebarRowOutput {
-    /// Default click — App treats as "smart switch": activate existing tab
-    /// for this table if any, otherwise replace the active tab in place.
+    /// Default click — App treats as "switch-or-append": activate
+    /// existing tab for this table if any, otherwise append a new one.
     Selected { schema: Option<String>, name: String },
     /// Ctrl+click or right-click "Open in new tab" — App always appends a
     /// new tab even if the same table is already open.
@@ -36,14 +37,40 @@ impl FactoryComponent for SidebarRow {
     type ParentWidget = gtk::ListBox;
 
     view! {
-        adw::ActionRow {
-            set_title: &self.info.name,
+        // Compact navigation row matching GNOME Files / Builder density
+        // (~36-40px). AdwActionRow was the wrong widget here — it's for
+        // settings entries (title + subtitle + suffix) and forces
+        // ~50px height even with single-line content. The parent
+        // ListBox carries the `.navigation-sidebar` style class which
+        // does the rest of the visual work.
+        gtk::ListBoxRow {
             set_activatable: true,
-            connect_activated => SidebarRowMsg::Activated,
+            connect_activate => SidebarRowMsg::Activated,
+            // Stash the table name for filter_func / sync_sidebar_selection
+            // lookups. widget-name is unused for CSS in this app, so no
+            // styling collision risk.
+            set_widget_name: &self.info.name,
 
-            add_prefix = &gtk::Image {
-                set_icon_name: Some("view-list-symbolic"),
-                set_pixel_size: 16,
+            #[wrap(Some)]
+            set_child = &gtk::Box {
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 12,
+                set_margin_start: 12,
+                set_margin_end: 12,
+                set_margin_top: 6,
+                set_margin_bottom: 6,
+
+                gtk::Image {
+                    set_icon_name: Some("view-list-symbolic"),
+                    set_pixel_size: 16,
+                },
+
+                gtk::Label {
+                    set_label: &self.info.name,
+                    set_xalign: 0.0,
+                    set_hexpand: true,
+                    set_ellipsize: pango::EllipsizeMode::End,
+                },
             },
         }
     }
@@ -62,10 +89,9 @@ impl FactoryComponent for SidebarRow {
         let widgets = view_output!();
 
         // Ctrl+click → "Open in new tab". A button=1 GestureClick fires
-        // before connect_activated, so we can intercept and short-circuit
-        // when CONTROL is held, falling through to the default activation
-        // path otherwise. Without claiming the gesture, normal clicks
-        // continue to work.
+        // before the ListBoxRow's own activate signal, so we can intercept
+        // and short-circuit when CONTROL is held; without claiming the
+        // gesture, normal clicks fall through to connect_activate.
         let click_gesture = gtk::GestureClick::builder().button(1).build();
         let sender_for_ctrl = sender.clone();
         click_gesture.connect_pressed(move |gesture, _, _, _| {
