@@ -440,10 +440,11 @@ struct MainEditorContentView: View {
                     .frame(maxHeight: .infinity)
                 }
             case .json:
+                let jsonBuffer = coordinator.rowDataStore.buffer(for: tab.id)
                 ResultsJsonView(
-                    columns: tab.resultColumns,
-                    columnTypes: tab.columnTypes,
-                    rows: tab.resultRows,
+                    columns: jsonBuffer.columns,
+                    columnTypes: jsonBuffer.columnTypes,
+                    rows: jsonBuffer.rows,
                     selectedRowIndices: selectionState.indices
                 )
             case .data:
@@ -467,6 +468,7 @@ struct MainEditorContentView: View {
                     }
 
                     // Content: success view OR filter+grid
+                    let resolvedBuffer = coordinator.rowDataStore.buffer(for: tab.id)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
                        rs.errorMessage == nil, tab.execution.lastExecutedAt != nil, !tab.execution.isExecuting
                     {
@@ -475,7 +477,7 @@ struct MainEditorContentView: View {
                             executionTime: rs.executionTime,
                             statusMessage: rs.statusMessage
                         )
-                    } else if tab.resultColumns.isEmpty && tab.execution.errorMessage == nil
+                    } else if resolvedBuffer.columns.isEmpty && tab.execution.errorMessage == nil
                         && tab.execution.lastExecutedAt != nil && !tab.execution.isExecuting
                     {
                         if tab.display.resultSets.isEmpty {
@@ -492,7 +494,7 @@ struct MainEditorContentView: View {
                         if filterStateManager.isVisible && tab.tabType == .table {
                             FilterPanelView(
                                 filterState: filterStateManager,
-                                columns: tab.resultColumns,
+                                columns: resolvedBuffer.columns,
                                 primaryKeyColumn: changeManager.primaryKeyColumn,
                                 databaseType: connection.type,
                                 onApply: onApplyFilters,
@@ -501,8 +503,8 @@ struct MainEditorContentView: View {
                             Divider()
                         }
 
-                        if tab.tabType == .query && !tab.resultColumns.isEmpty
-                            && tab.resultRows.isEmpty && tab.execution.lastExecutedAt != nil
+                        if tab.tabType == .query && !resolvedBuffer.columns.isEmpty
+                            && resolvedBuffer.rows.isEmpty && tab.execution.lastExecutedAt != nil
                             && !tab.execution.isExecuting && !filterStateManager.hasAppliedFilters
                         {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
@@ -586,7 +588,8 @@ struct MainEditorContentView: View {
     }
 
     private func rowProvider(for tab: QueryTab) -> InMemoryRowProvider {
-        if tab.rowBuffer.isEvicted {
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        if buffer.isEvicted {
             Task { @MainActor in tabProviderCache.removeValue(forKey: tab.id) }
             return makeRowProvider(for: tab)
         }
@@ -635,15 +638,16 @@ struct MainEditorContentView: View {
                 columnNullable: rs.columnNullable
             )
         } else {
+            let buffer = coordinator.rowDataStore.buffer(for: tab.id)
             provider = InMemoryRowProvider(
-                rowBuffer: tab.rowBuffer,
+                rowBuffer: buffer,
                 sortIndices: sortIndicesForTab(tab),
-                columns: tab.resultColumns,
-                columnDefaults: tab.columnDefaults,
-                columnTypes: tab.columnTypes,
-                columnForeignKeys: tab.columnForeignKeys,
-                columnEnumValues: tab.columnEnumValues,
-                columnNullable: tab.columnNullable
+                columns: buffer.columns,
+                columnDefaults: buffer.columnDefaults,
+                columnTypes: buffer.columnTypes,
+                columnForeignKeys: buffer.columnForeignKeys,
+                columnEnumValues: buffer.columnEnumValues,
+                columnNullable: buffer.columnNullable
             )
         }
 
@@ -663,7 +667,7 @@ struct MainEditorContentView: View {
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if settings.enableSmartValueDetection {
             let sampleRows: [[String?]]? = {
-                let rows = tab.display.activeResultSet?.resultRows ?? tab.resultRows
+                let rows = tab.display.activeResultSet?.resultRows ?? coordinator.rowDataStore.buffer(for: tab.id).rows
                 return rows.isEmpty ? nil : Array(rows.prefix(10))
             }()
             detected = ValueDisplayDetector.detect(
@@ -718,9 +722,10 @@ struct MainEditorContentView: View {
             rows = rs.resultRows
             colTypes = rs.columnTypes
         } else {
-            rowBuffer = tab.rowBuffer
-            rows = tab.resultRows
-            colTypes = tab.columnTypes
+            let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+            rowBuffer = buffer
+            rows = buffer.rows
+            colTypes = buffer.columnTypes
         }
 
         guard !rowBuffer.isEvicted else { return nil }
@@ -823,11 +828,12 @@ struct MainEditorContentView: View {
     // MARK: - Status Bar
 
     private func statusBar(tab: QueryTab) -> some View {
-        MainStatusBarView(
-            snapshot: StatusBarSnapshot(tab: tab),
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        return MainStatusBarView(
+            snapshot: StatusBarSnapshot(tab: tab, buffer: buffer),
             filterStateManager: filterStateManager,
             columnVisibilityManager: columnVisibilityManager,
-            allColumns: tab.resultColumns,
+            allColumns: buffer.columns,
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
             onFirstPage: onFirstPage,

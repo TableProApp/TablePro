@@ -100,13 +100,12 @@ extension MainContentView {
     }
 
     private func buildQueryResultsSummary() -> String? {
-        guard let tab = currentTab,
-            !tab.resultColumns.isEmpty,
-            !tab.resultRows.isEmpty
-        else { return nil }
+        guard let tab = currentTab else { return nil }
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        guard !buffer.columns.isEmpty, !buffer.rows.isEmpty else { return nil }
 
-        let columns = tab.resultColumns
-        let rows = tab.resultRows
+        let columns = buffer.columns
+        let rows = buffer.rows
         let maxRows = 10
         let displayRows = Array(rows.prefix(maxRows))
 

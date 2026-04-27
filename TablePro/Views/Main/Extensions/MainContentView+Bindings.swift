@@ -15,19 +15,20 @@ extension MainContentView {
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
         guard let tab = coordinator.tabManager.selectedTab,
               !coordinator.selectionState.indices.isEmpty,
-              let firstIndex = coordinator.selectionState.indices.min(),
-              firstIndex < tab.resultRows.count else { return nil }
+              let firstIndex = coordinator.selectionState.indices.min() else { return nil }
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        guard firstIndex < buffer.rows.count else { return nil }
 
-        let row = tab.resultRows[firstIndex]
+        let row = buffer.rows[firstIndex]
         var data: [(column: String, value: String?, type: String)] = []
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
         let tblName = tab.tableContext.tableName
 
-        for (i, col) in tab.resultColumns.enumerated() {
+        for (i, col) in buffer.columns.enumerated() {
             var value = i < row.count ? row[i] : nil
-            let type = i < tab.columnTypes.count ? tab.columnTypes[i].displayName : "string"
+            let type = i < buffer.columnTypes.count ? buffer.columnTypes[i].displayName : "string"
 
             // Apply display format if active
             if let rawValue = value {

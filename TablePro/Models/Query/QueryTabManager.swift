@@ -226,7 +226,6 @@ final class QueryTabManager {
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
         var tab = tabs[selectedIndex]
-        tab.rowBuffer = RowBuffer()
         tab.tabType = .table
         tab.title = tableName
         tab.tableContext.tableName = tableName

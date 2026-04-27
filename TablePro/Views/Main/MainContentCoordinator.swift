@@ -87,6 +87,7 @@ final class MainContentCoordinator {
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
+    let rowDataStore = RowDataStore()
 
     // MARK: - Services
 
@@ -162,7 +163,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
     @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
-    /// Set during handleTabChange to suppress redundant onChange(of: resultColumns) reconfiguration
+    /// Set during handleTabChange to suppress redundant column-change reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
     @ObservationIgnored var isUpdatingColumnLayout = false
 
@@ -336,12 +337,10 @@ final class MainContentCoordinator {
     /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
-        for tab in tabManager.tabs where !tab.rowBuffer.isEvicted
-            && !tab.resultRows.isEmpty
-            && !tab.pendingChanges.hasChanges
-            && tab.id != selectedId
-        {
-            tab.rowBuffer.evict()
+        for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
+            guard let buffer = rowDataStore.existingBuffer(for: tab.id),
+                  !buffer.isEvicted, !buffer.rows.isEmpty else { continue }
+            buffer.evict()
         }
     }
 
@@ -585,9 +584,7 @@ final class MainContentCoordinator {
         )
 
         // Release heavy data so memory drops even if SwiftUI delays deallocation
-        for tab in tabManager.tabs {
-            tab.rowBuffer.evict()
-        }
+        rowDataStore.tearDown()
         querySortCache.removeAll()
         cachedTableColumnTypes.removeAll()
         cachedTableColumnNames.removeAll()
@@ -1310,7 +1307,8 @@ final class MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        guard columnIndex >= 0 && columnIndex < tab.resultColumns.count else { return }
+        let buffer = rowDataStore.buffer(for: tab.id)
+        guard columnIndex >= 0 && columnIndex < buffer.columns.count else { return }
 
         var currentSort = tab.sortState
         let newDirection: SortDirection = ascending ? .ascending : .descending
@@ -1338,7 +1336,7 @@ final class MainContentCoordinator {
             // When more rows are available server-side, re-execute with ORDER BY
             // instead of sorting locally (we only have a partial result set)
             if tab.pagination.hasMoreRows {
-                let columnName = tab.resultColumns[columnIndex]
+                let columnName = buffer.columns[columnIndex]
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
@@ -1355,11 +1353,11 @@ final class MainContentCoordinator {
             tabManager.tabs[tabIndex].sortState = currentSort
             tabManager.tabs[tabIndex].hasUserInteraction = true
             tabManager.tabs[tabIndex].pagination.reset()
-            let rows = tab.resultRows
+            let rows = buffer.rows
             let tabId = tab.id
             let schemaVersion = tab.schemaVersion
             let sortColumns = currentSort.columns
-            let colTypes = tab.columnTypes
+            let colTypes = buffer.columnTypes
 
             if rows.count > 1_000 {
                 // Sort on background thread to avoid UI freeze
@@ -1411,7 +1409,7 @@ final class MainContentCoordinator {
         let tabId = tab.id
         let capturedSort = currentSort
         let capturedQuery = tab.content.query
-        let capturedColumns = tab.resultColumns
+        let capturedColumns = buffer.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed,
                   let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }

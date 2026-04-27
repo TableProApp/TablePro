@@ -234,15 +234,14 @@ extension MainContentCoordinator {
                 tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
-            updatedTab.resultColumns = safeColumns
-            updatedTab.columnTypes = safeColumnTypes
-            updatedTab.resultRows = safeRows
+            rowDataStore.setBuffer(
+                RowBuffer(rows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
+                for: updatedTab.id
+            )
             updatedTab.tableContext.tableName = tableName
             updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
-            updatedTab.resultColumns = []
-            updatedTab.columnTypes = []
-            updatedTab.resultRows = []
+            rowDataStore.setBuffer(RowBuffer(), for: updatedTab.id)
             if updatedTab.tabType != .table {
                 updatedTab.tableContext.tableName = nil
             }

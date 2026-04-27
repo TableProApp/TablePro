@@ -11,6 +11,7 @@ import Testing
 @testable import TablePro
 
 @Suite("Tab Eviction")
+@MainActor
 struct TabEvictionTests {
 
     // MARK: - Helpers
@@ -19,35 +20,44 @@ struct TabEvictionTests {
         (0..<count).map { ["value_\($0)"] }
     }
 
+    private struct TestTab {
+        let tab: QueryTab
+        let buffer: RowBuffer
+    }
+
     private func makeTestTab(
+        store: RowDataStore,
         id: UUID = UUID(),
         tabType: TabType = .table,
         rowCount: Int = 0,
         lastExecutedAt: Date? = nil,
         isEvicted: Bool = false,
         hasUnsavedChanges: Bool = false
-    ) -> QueryTab {
+    ) -> TestTab {
         var tab = QueryTab(id: id, title: "Test", query: "SELECT 1", tabType: tabType)
         tab.execution.lastExecutedAt = lastExecutedAt
 
+        let buffer: RowBuffer
         if rowCount > 0 {
-            let rows = makeTestRows(count: rowCount)
-            tab.rowBuffer = RowBuffer(
-                rows: rows,
+            buffer = RowBuffer(
+                rows: makeTestRows(count: rowCount),
                 columns: ["col1"],
                 columnTypes: [.text(rawType: "VARCHAR")]
             )
+        } else {
+            buffer = RowBuffer()
         }
+        store.setBuffer(buffer, for: tab.id)
 
         if isEvicted {
-            tab.rowBuffer.evict()
+            buffer.evict()
         }
 
         if hasUnsavedChanges {
             tab.pendingChanges.deletedRowIndices = [0]
         }
 
-        return tab
+        return TestTab(tab: tab, buffer: buffer)
     }
 
     // MARK: - RowBuffer Eviction
@@ -109,67 +119,72 @@ struct TabEvictionTests {
 
     @Test("Tabs with pending changes are excluded from eviction candidates")
     func tabsWithPendingChangesExcluded() {
-        let tab = makeTestTab(
+        let store = RowDataStore()
+        let entry = makeTestTab(
+            store: store,
             rowCount: 10,
             lastExecutedAt: Date(),
             hasUnsavedChanges: true
         )
 
-        let isCandidate = !tab.rowBuffer.isEvicted
-            && !tab.resultRows.isEmpty
-            && tab.execution.lastExecutedAt != nil
-            && !tab.pendingChanges.hasChanges
+        let isCandidate = !entry.buffer.isEvicted
+            && !entry.buffer.rows.isEmpty
+            && entry.tab.execution.lastExecutedAt != nil
+            && !entry.tab.pendingChanges.hasChanges
 
         #expect(isCandidate == false)
     }
 
     @Test("Eviction candidate filter excludes active, evicted, empty, and unsaved tabs")
     func evictionCandidateFiltering() {
+        let store = RowDataStore()
         let activeId = UUID()
-        let tabA = makeTestTab(id: activeId, rowCount: 10, lastExecutedAt: Date())
-        let tabB = makeTestTab(rowCount: 10, lastExecutedAt: Date(), isEvicted: true)
-        let tabC = makeTestTab(rowCount: 0, lastExecutedAt: Date())
-        let tabD = makeTestTab(rowCount: 10, lastExecutedAt: Date(), hasUnsavedChanges: true)
-        let tabE = makeTestTab(rowCount: 10, lastExecutedAt: Date())
+        let entryA = makeTestTab(store: store, id: activeId, rowCount: 10, lastExecutedAt: Date())
+        let entryB = makeTestTab(store: store, rowCount: 10, lastExecutedAt: Date(), isEvicted: true)
+        let entryC = makeTestTab(store: store, rowCount: 0, lastExecutedAt: Date())
+        let entryD = makeTestTab(store: store, rowCount: 10, lastExecutedAt: Date(), hasUnsavedChanges: true)
+        let entryE = makeTestTab(store: store, rowCount: 10, lastExecutedAt: Date())
 
         let activeTabIds: Set<UUID> = [activeId]
-        let allTabs = [tabA, tabB, tabC, tabD, tabE]
+        let allEntries = [entryA, entryB, entryC, entryD, entryE]
 
-        let candidates = allTabs.filter {
-            !activeTabIds.contains($0.id)
-                && !$0.rowBuffer.isEvicted
-                && !$0.resultRows.isEmpty
-                && $0.execution.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+        let candidates = allEntries.filter {
+            !activeTabIds.contains($0.tab.id)
+                && !$0.buffer.isEvicted
+                && !$0.buffer.rows.isEmpty
+                && $0.tab.execution.lastExecutedAt != nil
+                && !$0.tab.pendingChanges.hasChanges
         }
 
         #expect(candidates.count == 1)
-        #expect(candidates.first?.id == tabE.id)
+        #expect(candidates.first?.tab.id == entryE.tab.id)
     }
 
     // MARK: - Budget-Based Eviction
 
     @Test("Eviction keeps the 2 most recently executed inactive tabs")
     func evictionKeepsTwoMostRecent() {
+        let store = RowDataStore()
         let now = Date()
-        let tabs = (0..<5).map { i in
+        let entries = (0..<5).map { i in
             makeTestTab(
+                store: store,
                 rowCount: 10,
                 lastExecutedAt: now.addingTimeInterval(Double(i) * 60)
             )
         }
 
         let activeTabIds: Set<UUID> = []
-        let candidates = tabs.filter {
-            !activeTabIds.contains($0.id)
-                && !$0.rowBuffer.isEvicted
-                && !$0.resultRows.isEmpty
-                && $0.execution.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+        let candidates = entries.filter {
+            !activeTabIds.contains($0.tab.id)
+                && !$0.buffer.isEvicted
+                && !$0.buffer.rows.isEmpty
+                && $0.tab.execution.lastExecutedAt != nil
+                && !$0.tab.pendingChanges.hasChanges
         }
 
         let sorted = candidates.sorted {
-            ($0.execution.lastExecutedAt ?? .distantFuture) < ($1.execution.lastExecutedAt ?? .distantFuture)
+            ($0.tab.execution.lastExecutedAt ?? .distantFuture) < ($1.tab.execution.lastExecutedAt ?? .distantFuture)
         }
 
         let maxInactiveLoaded = 2
@@ -177,45 +192,47 @@ struct TabEvictionTests {
 
         #expect(toEvict.count == 3)
 
-        for tab in toEvict {
-            tab.rowBuffer.evict()
+        for entry in toEvict {
+            entry.buffer.evict()
         }
 
-        let evictedIds = Set(toEvict.map(\.id))
+        let evictedIds = Set(toEvict.map(\.tab.id))
 
         // The 2 newest (index 3 and 4) should NOT be evicted
-        #expect(!evictedIds.contains(tabs[3].id))
-        #expect(!evictedIds.contains(tabs[4].id))
+        #expect(!evictedIds.contains(entries[3].tab.id))
+        #expect(!evictedIds.contains(entries[4].tab.id))
 
         // The 3 oldest (index 0, 1, 2) should be evicted
-        #expect(tabs[0].rowBuffer.isEvicted == true)
-        #expect(tabs[1].rowBuffer.isEvicted == true)
-        #expect(tabs[2].rowBuffer.isEvicted == true)
-        #expect(tabs[3].rowBuffer.isEvicted == false)
-        #expect(tabs[4].rowBuffer.isEvicted == false)
+        #expect(entries[0].buffer.isEvicted == true)
+        #expect(entries[1].buffer.isEvicted == true)
+        #expect(entries[2].buffer.isEvicted == true)
+        #expect(entries[3].buffer.isEvicted == false)
+        #expect(entries[4].buffer.isEvicted == false)
     }
 
     @Test("No tabs evicted when candidates are within budget")
     func noEvictionWithinBudget() {
+        let store = RowDataStore()
         let now = Date()
-        let tabs = (0..<2).map { i in
+        let entries = (0..<2).map { i in
             makeTestTab(
+                store: store,
                 rowCount: 10,
                 lastExecutedAt: now.addingTimeInterval(Double(i) * 60)
             )
         }
 
         let activeTabIds: Set<UUID> = []
-        let candidates = tabs.filter {
-            !activeTabIds.contains($0.id)
-                && !$0.rowBuffer.isEvicted
-                && !$0.resultRows.isEmpty
-                && $0.execution.lastExecutedAt != nil
-                && !$0.pendingChanges.hasChanges
+        let candidates = entries.filter {
+            !activeTabIds.contains($0.tab.id)
+                && !$0.buffer.isEvicted
+                && !$0.buffer.rows.isEmpty
+                && $0.tab.execution.lastExecutedAt != nil
+                && !$0.tab.pendingChanges.hasChanges
         }
 
         let sorted = candidates.sorted {
-            ($0.execution.lastExecutedAt ?? .distantFuture) < ($1.execution.lastExecutedAt ?? .distantFuture)
+            ($0.tab.execution.lastExecutedAt ?? .distantFuture) < ($1.tab.execution.lastExecutedAt ?? .distantFuture)
         }
 
         let maxInactiveLoaded = 2
@@ -223,10 +240,9 @@ struct TabEvictionTests {
 
         #expect(shouldEvict == false)
 
-        // Verify no tabs were evicted
-        for tab in tabs {
-            #expect(tab.rowBuffer.isEvicted == false)
-            #expect(tab.resultRows.count == 10)
+        for entry in entries {
+            #expect(entry.buffer.isEvicted == false)
+            #expect(entry.buffer.rows.count == 10)
         }
     }
 }

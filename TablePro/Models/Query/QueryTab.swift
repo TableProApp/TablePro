@@ -20,43 +20,6 @@ struct QueryTab: Identifiable, Equatable {
     var tableContext: TabTableContext
     var display: TabDisplayState
 
-    var rowBuffer: RowBuffer
-
-    var resultColumns: [String] {
-        get { rowBuffer.columns }
-        set { rowBuffer.columns = newValue }
-    }
-
-    var columnTypes: [ColumnType] {
-        get { rowBuffer.columnTypes }
-        set { rowBuffer.columnTypes = newValue }
-    }
-
-    var columnDefaults: [String: String?] {
-        get { rowBuffer.columnDefaults }
-        set { rowBuffer.columnDefaults = newValue }
-    }
-
-    var columnForeignKeys: [String: ForeignKeyInfo] {
-        get { rowBuffer.columnForeignKeys }
-        set { rowBuffer.columnForeignKeys = newValue }
-    }
-
-    var columnEnumValues: [String: [String]] {
-        get { rowBuffer.columnEnumValues }
-        set { rowBuffer.columnEnumValues = newValue }
-    }
-
-    var columnNullable: [String: Bool] {
-        get { rowBuffer.columnNullable }
-        set { rowBuffer.columnNullable = newValue }
-    }
-
-    var resultRows: [[String?]] {
-        get { rowBuffer.rows }
-        set { rowBuffer.rows = newValue }
-    }
-
     var pendingChanges: TabPendingChanges
     var selectedRowIndices: Set<Int>
     var sortState: SortState
@@ -83,7 +46,6 @@ struct QueryTab: Identifiable, Equatable {
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(tableName: tableName, isEditable: tabType == .table)
         self.display = TabDisplayState()
-        self.rowBuffer = RowBuffer()
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
         self.sortState = SortState()
@@ -115,7 +77,6 @@ struct QueryTab: Identifiable, Equatable {
             isView: persisted.isView
         )
         self.display = TabDisplayState(erDiagramSchemaKey: persisted.erDiagramSchemaKey)
-        self.rowBuffer = RowBuffer()
         self.pendingChanges = TabPendingChanges()
         self.selectedRowIndices = []
         self.sortState = SortState()

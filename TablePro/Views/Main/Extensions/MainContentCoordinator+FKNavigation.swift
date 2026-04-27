@@ -83,6 +83,8 @@ extension MainContentCoordinator {
         )
 
         if needsQuery, let tabIndex = tabManager.selectedTabIndex {
+            let tabId = tabManager.tabs[tabIndex].id
+            rowDataStore.setBuffer(RowBuffer(), for: tabId)
             tabManager.tabs[tabIndex].pagination.reset()
         }
 
@@ -98,11 +100,12 @@ extension MainContentCoordinator {
             // New tab — build filtered query directly, run once
             guard let tabIndex = tabManager.selectedTabIndex else { return }
             let tab = tabManager.tabs[tabIndex]
+            let buffer = rowDataStore.buffer(for: tab.id)
             let filteredQuery = queryBuilder.buildFilteredQuery(
                 tableName: referencedTable,
                 schemaName: fkInfo.referencedSchema,
                 filters: [filter],
-                columns: tab.resultColumns,
+                columns: buffer.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )

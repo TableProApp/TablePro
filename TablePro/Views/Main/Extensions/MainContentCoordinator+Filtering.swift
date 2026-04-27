@@ -26,13 +26,14 @@ extension MainContentCoordinator {
             self.tabManager.tabs[capturedTabIndex].pagination.reset()
 
             let tab = self.tabManager.tabs[capturedTabIndex]
+            let buffer = self.rowDataStore.buffer(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
                 filters: capturedFilters,
                 logicMode: self.filterStateManager.filterLogicMode,
                 sortState: tab.sortState,
-                columns: tab.resultColumns,
+                columns: buffer.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset,
                 columnExclusions: exclusions
@@ -63,11 +64,12 @@ extension MainContentCoordinator {
             guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
             let tab = self.tabManager.tabs[capturedTabIndex]
+            let buffer = self.rowDataStore.buffer(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
                 sortState: tab.sortState,
-                columns: tab.resultColumns,
+                columns: buffer.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset,
                 columnExclusions: exclusions
@@ -93,6 +95,7 @@ extension MainContentCoordinator {
               let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = tabManager.tabs[tabIndex]
+        let buffer = rowDataStore.buffer(for: tab.id)
         let hasFilters = filterStateManager.hasAppliedFilters
         let exclusions = columnExclusions(for: tableName)
 
@@ -103,7 +106,7 @@ extension MainContentCoordinator {
                 filters: filterStateManager.appliedFilters,
                 logicMode: filterStateManager.filterLogicMode,
                 sortState: tab.sortState,
-                columns: tab.resultColumns,
+                columns: buffer.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset,
                 columnExclusions: exclusions
@@ -112,7 +115,7 @@ extension MainContentCoordinator {
             newQuery = queryBuilder.buildBaseQuery(
                 tableName: tableName,
                 sortState: tab.sortState,
-                columns: tab.resultColumns,
+                columns: buffer.columns,
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset,
                 columnExclusions: exclusions

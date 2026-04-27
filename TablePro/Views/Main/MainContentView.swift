@@ -180,7 +180,7 @@ struct MainContentView: View {
                         isPresented: dismissBinding,
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
-                            rowBuffer: tab.rowBuffer,
+                            rowBuffer: coordinator.rowDataStore.buffer(for: tab.id),
                             suggestedFileName: fileName
                         )
                     )
@@ -350,8 +350,9 @@ struct MainContentView: View {
             .onChange(of: tabManager.tabStructureVersion) { _, _ in
                 handleStructureChange()
             }
-            .onChange(of: currentTab?.resultColumns) { _, newColumns in
-                handleColumnsChange(newColumns: newColumns)
+            .onChange(of: currentTab?.schemaVersion) { _, _ in
+                let columns = currentTab.map { coordinator.rowDataStore.buffer(for: $0.id).columns }
+                handleColumnsChange(newColumns: columns)
             }
             .task { handleConnectionStatusChange() }
             .onReceive(
