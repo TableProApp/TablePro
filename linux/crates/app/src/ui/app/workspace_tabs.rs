@@ -242,6 +242,15 @@ impl App {
                 WorkspaceTabRecord::Editor { query } => {
                     self.append_editor_tab(Some(query.clone()), sender.clone());
                 }
+                WorkspaceTabRecord::Structure { schema: _, table: _ } => {
+                    // Structure tabs are wired up later in the rollout
+                    // (steps 11-13). For now restore is a no-op so a
+                    // workspace_state.json carrying a Structure record
+                    // doesn't crash on load before the UI catches up.
+                }
+                WorkspaceTabRecord::Unknown => {
+                    // Forward-compat: silently skip unknown tab kinds.
+                }
             }
         }
         if let Some(tab_view) = self.workspace_tab_view.as_ref()

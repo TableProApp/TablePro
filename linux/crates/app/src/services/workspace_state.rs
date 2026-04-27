@@ -53,6 +53,16 @@ pub enum WorkspaceTabRecord {
         #[serde(default)]
         query: String,
     },
+    /// Persisted Structure tab (Edit mode only — `New` mode tabs are
+    /// drafts for tables that don't exist yet, so they don't survive
+    /// a disconnect).
+    Structure { schema: Option<String>, table: String },
+    /// Forward-compat: an older binary reading a workspace_state.json
+    /// written by a newer binary lands tabs of unrecognised kinds in
+    /// this variant. `clamp_connection` and `restore_workspace_tabs`
+    /// drop them silently rather than failing the entire load.
+    #[serde(other)]
+    Unknown,
 }
 
 fn default_page_size() -> u64 {
@@ -101,6 +111,9 @@ fn clamp(state: &mut WorkspaceState) {
 }
 
 fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
+    // Drop forward-compat Unknown variants up front so they never
+    // contribute to the tab count or the active_idx selection.
+    conn.tabs.retain(|t| !matches!(t, WorkspaceTabRecord::Unknown));
     if conn.tabs.len() > MAX_TABS_PER_CONNECTION {
         conn.tabs.truncate(MAX_TABS_PER_CONNECTION);
     }
@@ -131,6 +144,22 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
                     let boundary = floor_char_boundary(query, MAX_QUERY_BYTES);
                     query.truncate(boundary);
                 }
+            }
+            WorkspaceTabRecord::Structure { schema, table } => {
+                if table.len() > MAX_TABLE_NAME_BYTES {
+                    let boundary = floor_char_boundary(table, MAX_TABLE_NAME_BYTES);
+                    table.truncate(boundary);
+                }
+                if let Some(s) = schema.as_mut()
+                    && s.len() > MAX_SCHEMA_NAME_BYTES
+                {
+                    let boundary = floor_char_boundary(s, MAX_SCHEMA_NAME_BYTES);
+                    s.truncate(boundary);
+                }
+            }
+            WorkspaceTabRecord::Unknown => {
+                // unreachable after the retain() above, but exhaustive
+                // matching keeps the compiler honest.
             }
         }
     }
