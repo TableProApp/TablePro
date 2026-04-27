@@ -382,3 +382,13 @@ Click **Reset to Defaults** to restore all shortcuts to their original values.
 Tab switching shortcuts (`Cmd+1` through `Cmd+9`) follow standard macOS convention and cannot be customized.
 </Note>
 
+## Outside The App
+
+TablePro can also be driven from outside the running app. None of these are macOS keyboard shortcuts in the strict sense, but they cover the same fast-navigation use cases.
+
+| Entry point | Use |
+|-------------|-----|
+| [Raycast extension](/external-api/raycast) | Trigger commands from Raycast's own hotkey: search connections, open tables, run queries, search query history, focus tabs. |
+| [`tablepro://` URL scheme](/external-api/url-scheme) | `open tablepro://...` from the terminal, browser, or another app to open a connection, table, or query tab. Bind in Raycast Quicklinks, Alfred, or Shortcuts.app. |
+| [MCP clients](/external-api/mcp-clients) | Claude Desktop, Cursor, Claude Code, Cline, Continue, Zed, Windsurf, Goose. Each client decides its own hotkey for invoking AI; tools call back into TablePro. |
+
