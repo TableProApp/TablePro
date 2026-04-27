@@ -7,9 +7,30 @@
 
 import SwiftUI
 
-/// Status bar at the bottom of the results section
+struct StatusBarSnapshot: Equatable {
+    let tabId: UUID?
+    let tabType: TabType?
+    let hasRows: Bool
+    let hasColumns: Bool
+    let rowCount: Int
+    let hasTableName: Bool
+    let pagination: PaginationState
+    let statusMessage: String?
+
+    init(tab: QueryTab?) {
+        self.tabId = tab?.id
+        self.tabType = tab?.tabType
+        self.hasRows = !(tab?.resultRows.isEmpty ?? true)
+        self.hasColumns = !(tab?.resultColumns.isEmpty ?? true)
+        self.rowCount = tab?.resultRows.count ?? 0
+        self.hasTableName = tab?.tableContext.tableName != nil
+        self.pagination = tab?.pagination ?? PaginationState()
+        self.statusMessage = tab?.execution.statusMessage
+    }
+}
+
 struct MainStatusBarView: View {
-    let tab: QueryTab?
+    let snapshot: StatusBarSnapshot
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager
     let allColumns: [String]
@@ -33,9 +54,8 @@ struct MainStatusBarView: View {
 
     var body: some View {
         HStack {
-            // Left: View mode toggle
-            if let tab = tab {
-                if tab.tabType == .table, tab.tableContext.tableName != nil {
+            if snapshot.tabId != nil {
+                if snapshot.tabType == .table, snapshot.hasTableName {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
@@ -45,7 +65,7 @@ struct MainStatusBarView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 260)
                     .controlSize(.small)
-                } else if !tab.resultColumns.isEmpty {
+                } else if snapshot.hasColumns {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("JSON", systemImage: "curlybraces").tag(ResultsViewMode.json)
@@ -60,21 +80,21 @@ struct MainStatusBarView: View {
             Spacer()
 
             // Center: Row info (selection or pagination summary) and status message
-            if let tab = tab, !tab.resultRows.isEmpty {
+            if snapshot.hasRows {
                 HStack(spacing: 4) {
-                    if tab.pagination.isLoadingMore {
+                    if snapshot.pagination.isLoadingMore {
                         ProgressView()
                             .controlSize(.mini)
                         Text("Loading…")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else {
-                        Text(rowInfoText(for: tab))
+                        Text(rowInfoText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
 
-                    if tab.tabType == .query && tab.pagination.hasMoreRows && !tab.pagination.isLoadingMore {
+                    if snapshot.tabType == .query && snapshot.pagination.hasMoreRows && !snapshot.pagination.isLoadingMore {
                         Text("—")
                             .font(.caption)
                             .foregroundStyle(.quaternary)
@@ -100,7 +120,7 @@ struct MainStatusBarView: View {
                         .foregroundStyle(.secondary)
                     }
 
-                    if let statusMessage = tab.execution.statusMessage {
+                    if let statusMessage = snapshot.statusMessage {
                         Text("·")
                             .foregroundStyle(.tertiary)
                         Text(statusMessage)
@@ -115,7 +135,7 @@ struct MainStatusBarView: View {
             // Right: Columns, Filters toggle and Pagination controls
             HStack(spacing: 8) {
                 // Columns visibility button (works for both table and query tabs)
-                if let tab = tab, !tab.resultColumns.isEmpty {
+                if snapshot.hasColumns {
                     Button {
                         showColumnPopover.toggle()
                     } label: {
@@ -141,7 +161,7 @@ struct MainStatusBarView: View {
                 }
 
                 // Filters toggle button
-                if let tab = tab, tab.tabType == .table, tab.tableContext.tableName != nil {
+                if snapshot.tabType == .table, snapshot.hasTableName {
                     Toggle(isOn: Binding(
                         get: { filterStateManager.isVisible },
                         set: { _ in filterStateManager.toggle() }
@@ -163,10 +183,10 @@ struct MainStatusBarView: View {
                 }
 
                 // Pagination controls for table tabs
-                if let tab = tab, tab.tabType == .table, tab.tableContext.tableName != nil,
-                   let total = tab.pagination.totalRowCount, total > 0 {
+                if snapshot.tabType == .table, snapshot.hasTableName,
+                   let total = snapshot.pagination.totalRowCount, total > 0 {
                     PaginationControlsView(
-                        pagination: tab.pagination,
+                        pagination: snapshot.pagination,
                         onFirst: onFirstPage,
                         onPrevious: onPreviousPage,
                         onNext: onNextPage,
@@ -181,16 +201,16 @@ struct MainStatusBarView: View {
         .padding(.horizontal, 0)
         .padding(.vertical, 4)
         .background(Color(nsColor: .controlBackgroundColor))
-        .onChange(of: tab?.id) { _, _ in
+        .onChange(of: snapshot.tabId) { _, _ in
             showColumnPopover = false
         }
     }
 
     /// Generate row info text based on selection and pagination state
-    private func rowInfoText(for tab: QueryTab) -> String {
-        let loadedCount = tab.resultRows.count
+    private var rowInfoText: String {
+        let loadedCount = snapshot.rowCount
         let selectedCount = selectedRowIndices.count
-        let pagination = tab.pagination
+        let pagination = snapshot.pagination
         let total = pagination.totalRowCount
 
         if selectedCount > 0 {
@@ -199,7 +219,7 @@ struct MainStatusBarView: View {
             } else {
                 return String(format: String(localized: "%d of %d rows selected"), selectedCount, loadedCount)
             }
-        } else if tab.tabType == .query && pagination.hasMoreRows {
+        } else if snapshot.tabType == .query && pagination.hasMoreRows {
             let formattedCount = loadedCount.formatted(.number.grouping(.automatic))
             if let total = total, total > 0 {
                 let formattedTotal = total.formatted(.number.grouping(.automatic))
@@ -207,7 +227,7 @@ struct MainStatusBarView: View {
                 return String(format: String(localized: "%@ of %@%@ rows"), formattedCount, prefix, formattedTotal)
             }
             return String(format: String(localized: "%@ rows (more available)"), formattedCount)
-        } else if tab.tabType == .table, let total = total, total > 0 {
+        } else if snapshot.tabType == .table, let total = total, total > 0 {
             let formattedTotal = total.formatted(.number.grouping(.automatic))
             let prefix = pagination.isApproximateRowCount ? "~" : ""
 

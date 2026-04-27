@@ -273,8 +273,7 @@ struct DataGridView: NSViewRepresentable {
         // Only do full reload if row/column count changed, columns changed, or result version changed
         // For cell edits (versionChanged but same count), use granular reload
         let structureChanged = oldRowCount != newRowCount || oldColumnCount != newColumnCount
-        let resultVersionChanged = previousIdentity.map { $0.resultVersion != resultVersion } ?? false
-        let needsFullReload = structureChanged || resultVersionChanged
+        let needsFullReload = structureChanged
 
         coordinator.rowProvider = rowProvider
 
@@ -564,19 +563,14 @@ struct DataGridView: NSViewRepresentable {
                 }
             }
         } else if versionChanged {
-            // Granular reload: only reload rows that changed
             let changedRows = changeManager.consumeChangedRowIndices()
             if changedRows.count > 500 {
-                // Too many changed rows — full reload is faster than granular
                 tableView.reloadData()
             } else if !changedRows.isEmpty {
-                // Some rows changed → granular reload for performance
                 let rowIndexSet = IndexSet(changedRows)
                 let columnIndexSet = IndexSet(integersIn: 0..<tableView.numberOfColumns)
                 tableView.reloadData(forRowIndexes: rowIndexSet, columnIndexes: columnIndexSet)
-            } else {
-                // Version changed but no specific rows tracked → full reload
-                // Covers: undo/redo operations, cleared changes (refresh), etc.
+            } else if !changeManager.hasChanges {
                 tableView.reloadData()
             }
         }

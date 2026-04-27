@@ -268,7 +268,22 @@ extension MainContentView {
             }
         }
 
-        // Lazy-load full values for excluded columns when a single row is selected
+    }
+
+    func lazyLoadExcludedColumnsIfNeeded() {
+        guard let tab = coordinator.tabManager.selectedTab else { return }
+        let selectedIndices = coordinator.selectionState.indices
+
+        let excludedNames: Set<String>
+        if let tableName = tab.tableContext.tableName {
+            excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
+        } else {
+            excludedNames = []
+        }
+
+        let capturedCoordinator = coordinator
+        let capturedEditState = rightPanelState.editState
+
         if !excludedNames.isEmpty,
             selectedIndices.count == 1,
             let tableName = tab.tableContext.tableName,

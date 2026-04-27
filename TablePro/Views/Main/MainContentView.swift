@@ -425,7 +425,7 @@ struct MainContentView: View {
                 {
                     coordinator.inspectorProxy?.showInspector()
                 }
-                scheduleInspectorUpdate()
+                scheduleInspectorUpdate(lazyLoadExcludedColumns: true)
             },
             onFilterColumn: { columnName in
                 filterStateManager.addFilterForColumn(columnName)

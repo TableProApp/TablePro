@@ -807,7 +807,7 @@ struct MainEditorContentView: View {
 
     private func statusBar(tab: QueryTab) -> some View {
         MainStatusBarView(
-            tab: tab,
+            snapshot: StatusBarSnapshot(tab: tab),
             filterStateManager: filterStateManager,
             columnVisibilityManager: columnVisibilityManager,
             allColumns: tab.resultColumns,
