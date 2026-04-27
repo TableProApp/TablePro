@@ -900,6 +900,11 @@ impl SimpleComponent for BrowseTab {
                 });
             }
             BrowseTabInput::DeleteSelectedRow => {
+                // Toolbar Delete now marks the selected rows for
+                // pending deletion (red strikethrough via tracker
+                // overlay). User reviews + clicks Save to commit, or
+                // Discard / Ctrl+Z to revert. Replaces the previous
+                // confirm-dialog-then-immediate-DELETE flow.
                 let Some(selection) = self.current_selection.as_ref() else {
                     return;
                 };
@@ -910,12 +915,31 @@ impl SimpleComponent for BrowseTab {
                 if positions.is_empty() {
                     return;
                 }
-                let _ = sender.output(BrowseTabOutput::DeleteSelected {
-                    columns: self.current_columns.clone(),
-                    table: self.table.clone(),
-                    driver_id: self.driver_id.clone(),
-                    positions,
-                    rows: result.rows.clone(),
+                let pk_indices: Vec<usize> = self
+                    .current_columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, c)| c.primary_key)
+                    .map(|(i, _)| i)
+                    .collect();
+                if pk_indices.is_empty() {
+                    let _ = sender.output(BrowseTabOutput::ShowSelectionAlert {
+                        title: crate::tr!("Cannot delete"),
+                        body: crate::tr!("This table has no primary key — editing is disabled."),
+                    });
+                    return;
+                }
+                let tab_id = self.tab_id;
+                crate::services::change_tracker::with_tab(tab_id, |t| {
+                    for pos in &positions {
+                        let Some(row) = result.rows.get(*pos as usize) else {
+                            continue;
+                        };
+                        let pk_values: Vec<Value> = pk_indices.iter().map(|&i| row[i].clone()).collect();
+                        if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
+                            t.track_delete(key, row.clone());
+                        }
+                    }
                 });
             }
             BrowseTabInput::GridCellEdited {

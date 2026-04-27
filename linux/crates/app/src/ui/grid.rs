@@ -181,8 +181,16 @@ fn build_column(
         };
         let value = row.cell_value(idx);
         let is_null = matches!(value, Value::Null);
+        // Editable cells render NULL as the italic <NULL> sentinel —
+        // distinguishes a true NULL from an empty string visually.
+        // Read-only cells use the regular display path which already
+        // shows "NULL" in dim text.
         let text = if editable_for_bind {
-            value_to_edit_text(&value)
+            if is_null {
+                "<NULL>".to_string()
+            } else {
+                value_to_edit_text(&value)
+            }
         } else {
             value_to_display_text(&value)
         };
@@ -225,6 +233,13 @@ fn build_column(
                 label.add_css_class("dim-label");
             } else {
                 label.remove_css_class("dim-label");
+            }
+            // Italic-dim render of <NULL> in editable cells
+            // distinguishes true NULL from empty string at a glance.
+            if is_null && editable_for_bind {
+                label.add_css_class("tp-null-sentinel");
+            } else {
+                label.remove_css_class("tp-null-sentinel");
             }
             for cls in ["tp-cell-modified", "tp-row-pending-delete", "tp-row-pending-insert"] {
                 label.remove_css_class(cls);

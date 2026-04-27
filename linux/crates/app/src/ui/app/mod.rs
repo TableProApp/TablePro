@@ -246,6 +246,10 @@ pub enum AppMsg {
     /// Ctrl+S — fire CommitSave on the active browse tab. No-op if
     /// the active tab is an Editor or there's no active connection.
     SaveActiveBrowseTab,
+    /// Ctrl+Z — undo the last pending change in the active tab.
+    UndoActiveBrowseTab,
+    /// Ctrl+Y — redo a previously undone change in the active tab.
+    RedoActiveBrowseTab,
     /// Show insert dialog scoped to a specific browse tab.
     ShowInsertDialog {
         tab_id: Uuid,
@@ -826,6 +830,16 @@ impl SimpleComponent for App {
                     self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
                 }
             }
+            AppMsg::UndoActiveBrowseTab => {
+                if let Some(id) = self.selected_browse_tab_id() {
+                    crate::services::change_tracker::with_tab(id, |t| t.undo());
+                }
+            }
+            AppMsg::RedoActiveBrowseTab => {
+                if let Some(id) = self.selected_browse_tab_id() {
+                    crate::services::change_tracker::with_tab(id, |t| t.redo());
+                }
+            }
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
             AppMsg::CloseActiveWorkspaceTab => self.close_active_workspace_tab(sender),
             AppMsg::ShowAlert { title, body } => self.show_error_alert(&title, &body),
@@ -1184,6 +1198,8 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("export-csv", AppMsg::ExportCsv),
         input_action!("export-json", AppMsg::ExportJson),
         input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
+        input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
+        input_action!("redo-change", AppMsg::RedoActiveBrowseTab),
     ]);
     window.insert_action_group("win", Some(&group));
     let disconnect_action: gio::SimpleAction = group
@@ -1208,6 +1224,9 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>comma", "win.preferences"));
     controller.add_shortcut(make_shortcut("<Primary>h", "win.show-history"));
     controller.add_shortcut(make_shortcut("<Primary>s", "win.save-changes"));
+    controller.add_shortcut(make_shortcut("<Primary>z", "win.undo-change"));
+    controller.add_shortcut(make_shortcut("<Primary>y", "win.redo-change"));
+    controller.add_shortcut(make_shortcut("<Primary><Shift>z", "win.redo-change"));
     window.add_controller(controller);
 }
 
@@ -1232,6 +1251,8 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
     general.append(&shortcut_entry("<Primary>comma", &crate::tr!("Open Preferences")));
     general.append(&shortcut_entry("<Primary>h", &crate::tr!("Open Query History")));
     general.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending changes")));
+    general.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo pending change")));
+    general.append(&shortcut_entry("<Primary>y", &crate::tr!("Redo pending change")));
     general.append(&shortcut_entry(
         "<Primary>question",
         &crate::tr!("Show keyboard shortcuts"),
