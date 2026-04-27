@@ -17,7 +17,7 @@ struct MainStatusBarLayoutTests {
         let filterManager = FilterStateManager()
         let colVisManager = ColumnVisibilityManager()
         let view = MainStatusBarView(
-            tab: nil,
+            snapshot: StatusBarSnapshot(tab: nil),
             filterStateManager: filterManager,
             columnVisibilityManager: colVisManager,
             allColumns: [],
@@ -31,7 +31,6 @@ struct MainStatusBarLayoutTests {
             onOffsetChange: { _ in },
             onPaginationGo: {}
         )
-        // Smoke test: view constructs without error
         #expect(type(of: view.body) != Never.self)
     }
 }
