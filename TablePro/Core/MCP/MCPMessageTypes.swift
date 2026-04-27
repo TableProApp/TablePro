@@ -286,6 +286,9 @@ enum MCPError: Error, Sendable {
     case timeout(String, context: [String: String]? = nil)
     case resultTooLarge
     case serverDisabled
+    case notFound(String)
+    case expired(String)
+    case userCancelled
 
     var code: Int {
         switch self {
@@ -299,6 +302,9 @@ enum MCPError: Error, Sendable {
         case .timeout: -32_002
         case .resultTooLarge: -32_003
         case .serverDisabled: -32_004
+        case .notFound: -32_005
+        case .expired: -32_006
+        case .userCancelled: -32_007
         }
     }
 
@@ -324,6 +330,12 @@ enum MCPError: Error, Sendable {
             "Result too large"
         case .serverDisabled:
             "MCP server is disabled"
+        case .notFound(let detail):
+            "Not found: \(detail)"
+        case .expired(let detail):
+            "Expired: \(detail)"
+        case .userCancelled:
+            "User cancelled"
         }
     }
 
@@ -349,6 +361,15 @@ enum MCPError: Error, Sendable {
             error: JSONRPCErrorDetail(code: code, message: message, data: contextData)
         )
     }
+
+    var isUserCancelled: Bool {
+        if case .userCancelled = self { return true }
+        return false
+    }
+}
+
+extension MCPError: LocalizedError {
+    var errorDescription: String? { message }
 }
 
 // MARK: - MCP Initialize

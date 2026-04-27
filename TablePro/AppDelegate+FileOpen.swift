@@ -212,11 +212,22 @@ extension AppDelegate {
             PendingActionStore.shared.deeplinkImport = exportable
             NotificationCenter.default.post(name: .deeplinkImportRequested, object: exportable)
 
-        case .pairIntegration:
-            fileOpenLogger.info("Pair integration deep link received; Stream B will implement")
+        case .pairIntegration(let request):
+            do {
+                try await MCPPairingService.shared.startPairing(request)
+            } catch let error as MCPError where error.isUserCancelled {
+                fileOpenLogger.info("Pairing cancelled by user")
+            } catch {
+                fileOpenLogger.error("Pairing failed: \(error.localizedDescription)")
+                AlertHelper.showErrorSheet(
+                    title: String(localized: "Pairing Failed"),
+                    message: error.localizedDescription,
+                    window: NSApp.keyWindow
+                )
+            }
 
         case .exchangePairing:
-            fileOpenLogger.info("Exchange pairing deep link received; Stream B will implement")
+            fileOpenLogger.warning("Exchange pairing received via URL scheme; ignored (use HTTP endpoint)")
 
         case .startMCP:
             await MCPServerManager.shared.lazyStart()

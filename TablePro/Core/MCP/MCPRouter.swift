@@ -34,6 +34,12 @@ final class MCPRouter: Sendable {
             return .httpError(status: 404, message: "Not found")
         }
 
+        if request.path == "/v1/integrations/exchange"
+            || request.path.hasPrefix("/v1/integrations/exchange?")
+        {
+            return await handleIntegrationsExchange(request)
+        }
+
         guard request.path == "/mcp" || request.path.hasPrefix("/mcp?") else {
             return .httpError(status: 404, message: "Not found")
         }
@@ -551,7 +557,7 @@ final class MCPRouter: Sendable {
 
 extension MCPRouter {
     static func toolDefinitions() -> [MCPToolDefinition] {
-        connectionTools() + schemaTools() + queryAndExportTools()
+        connectionTools() + schemaTools() + queryAndExportTools() + integrationTools()
     }
 
     private static func connectionTools() -> [MCPToolDefinition] {
@@ -853,6 +859,78 @@ extension MCPRouter {
                 ])
             )
         ]
+    }
+}
+
+extension MCPRouter {
+    private struct ExchangeRequestBody: Decodable {
+        let code: String
+        let codeVerifier: String
+
+        enum CodingKeys: String, CodingKey {
+            case code
+            case codeVerifier = "code_verifier"
+        }
+    }
+
+    private struct ExchangeResponseBody: Encodable {
+        let token: String
+    }
+
+    func handleIntegrationsExchange(_ request: HTTPRequest) async -> RouteResult {
+        guard request.method == .post else {
+            return .httpError(status: 405, message: "Method not allowed")
+        }
+
+        guard let body = request.body else {
+            return .httpError(status: 400, message: "Missing request body")
+        }
+
+        let parsed: ExchangeRequestBody
+        do {
+            parsed = try decoder.decode(ExchangeRequestBody.self, from: body)
+        } catch {
+            return .httpError(status: 400, message: "Invalid JSON body")
+        }
+
+        guard !parsed.code.isEmpty, !parsed.codeVerifier.isEmpty else {
+            return .httpError(status: 400, message: "Missing code or code_verifier")
+        }
+
+        let token: String
+        do {
+            token = try await MainActor.run {
+                try MCPPairingService.shared.exchange(
+                    PairingExchange(code: parsed.code, verifier: parsed.codeVerifier)
+                )
+            }
+        } catch let mcpError as MCPError {
+            return mapExchangeError(mcpError)
+        } catch {
+            Self.logger.error("Pairing exchange failed: \(error.localizedDescription)")
+            return .httpError(status: 500, message: "Internal error")
+        }
+
+        do {
+            let data = try encoder.encode(ExchangeResponseBody(token: token))
+            return .json(data, sessionId: nil)
+        } catch {
+            Self.logger.error("Failed to encode exchange response: \(error.localizedDescription)")
+            return .httpError(status: 500, message: "Internal error")
+        }
+    }
+
+    private func mapExchangeError(_ error: MCPError) -> RouteResult {
+        switch error {
+        case .notFound:
+            return .httpError(status: 404, message: "Pairing code not found")
+        case .expired:
+            return .httpError(status: 410, message: "Pairing code expired")
+        case .forbidden:
+            return .httpError(status: 403, message: "Challenge mismatch")
+        default:
+            return .httpError(status: 500, message: "Internal error")
+        }
     }
 }
 
