@@ -1,10 +1,3 @@
-// gtk::ComboBoxText is the simplest dropdown-with-free-text widget
-// for the type column. GTK4 deprecated it in 4.10 in favour of
-// gtk::DropDown, but DropDown doesn't natively support free-text
-// editing — replicating that requires a custom factory + entry.
-// Keep ComboBoxText until a GTK release actually removes it.
-#![allow(deprecated)]
-
 //! Structure workspace tab — full schema-management UI for CREATE /
 //! DROP / ALTER TABLE, indexes, and foreign keys.
 //!
@@ -33,7 +26,6 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
-use relm4::gtk::glib;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, adw, gtk};
 
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
@@ -394,12 +386,14 @@ fn build_column_row(
     });
     row.append(&name_entry);
 
-    // Type combo
-    let type_combo = gtk::ComboBoxText::with_entry();
-    for ty in driver_types(driver_id) {
-        type_combo.append_text(ty);
-    }
-    if let Some(entry) = type_combo.child().and_then(|c| c.dynamic_cast::<gtk::Entry>().ok()) {
+    // Type combo. ComboBoxText was soft-deprecated in GTK 4.10 in
+    // favour of gtk::DropDown — but DropDown doesn't natively support
+    // dropdown-with-free-text without a custom factory + entry. The
+    // narrow allow covers ONLY the construction + property access on
+    // ComboBoxText so a future deprecation elsewhere in the file
+    // still surfaces a warning.
+    let type_combo = build_type_combo(driver_id);
+    if let Some(entry) = combo_entry(&type_combo) {
         entry.set_text(&col.data_type);
         let sender_for_type = sender.clone();
         entry.connect_changed(move |e| {
@@ -491,6 +485,7 @@ fn build_column_row(
         .tooltip_text(crate::tr!("Remove column"))
         .build();
     remove_button.add_css_class("flat");
+    remove_button.add_css_class("destructive-action");
     if is_existing && !driver_can_drop_column(driver_id) {
         remove_button.set_sensitive(false);
     }
@@ -548,6 +543,7 @@ fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<Struct
         .tooltip_text(crate::tr!("Remove index"))
         .build();
     remove_button.add_css_class("flat");
+    remove_button.add_css_class("destructive-action");
     // Primary index isn't user-droppable — it's owned by the PK
     // column constraint and removing it breaks the table.
     if idx.primary {
@@ -607,6 +603,7 @@ fn build_fk_row(
         .tooltip_text(crate::tr!("Remove foreign key"))
         .build();
     remove_button.add_css_class("flat");
+    remove_button.add_css_class("destructive-action");
     if !driver_can_drop_foreign_key(driver_id) {
         remove_button.set_sensitive(false);
         remove_button.set_tooltip_text(Some(&crate::tr!("Dropping a foreign key isn't supported by SQLite.")));
@@ -815,6 +812,9 @@ fn present_fk_dialog(parent: &gtk::Box, columns: &[DraftColumn], sender: Compone
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
+        if ref_cols.is_empty() {
+            return;
+        }
         let (ref_schema, ref_table_only) = match ref_table.split_once('.') {
             Some((s, t)) => (Some(s.trim().to_string()), t.trim().to_string()),
             None => (None, ref_table),
@@ -1027,9 +1027,13 @@ impl SimpleComponent for StructureTab {
             .visible(matches!(init.mode, StructureMode::Edit))
             .build();
         drop_button.add_css_class("destructive-action");
+        // Drop sits at the start of the action bar, spatially
+        // separated from the Discard / Save pair on the end. Mixing
+        // a destructive action with the primary action invites
+        // misclicks; HIG groups them by intent.
+        action_bar.pack_start(&drop_button);
         action_bar.pack_end(&save_button);
         action_bar.pack_end(&discard_button);
-        action_bar.pack_end(&drop_button);
 
         let sender_for_save = sender.clone();
         save_button.connect_clicked(move |_| sender_for_save.input(StructureTabInput::Save));
@@ -1481,7 +1485,6 @@ impl SimpleComponent for StructureTab {
                 });
             }
         }
-        let _ = glib::Type::INVALID;
     }
 }
 
@@ -1556,6 +1559,27 @@ impl StructureTab {
             }
         });
     }
+}
+
+/// Build the per-column type combo box with curated suggestions for
+/// `driver_id`. ComboBoxText is soft-deprecated since GTK 4.10; the
+/// allow attribute is scoped to this builder so the file's other
+/// deprecation warnings (if any future API gets soft-removed) stay
+/// visible.
+#[allow(deprecated)]
+fn build_type_combo(driver_id: &str) -> gtk::ComboBoxText {
+    let combo = gtk::ComboBoxText::with_entry();
+    for ty in driver_types(driver_id) {
+        combo.append_text(ty);
+    }
+    combo
+}
+
+/// Pull the inner `gtk::Entry` out of a `gtk::ComboBoxText` so callers
+/// can wire change signals on the editable text field.
+#[allow(deprecated)]
+fn combo_entry(combo: &gtk::ComboBoxText) -> Option<gtk::Entry> {
+    combo.child().and_then(|c| c.dynamic_cast::<gtk::Entry>().ok())
 }
 
 fn driver_display_name(driver_id: &str) -> &'static str {

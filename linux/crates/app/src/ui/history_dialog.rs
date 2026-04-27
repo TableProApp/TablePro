@@ -769,6 +769,7 @@ impl HistoryDialog {
             .tooltip_text(crate::tr!("Delete"))
             .build();
         delete_btn.add_css_class("flat");
+        delete_btn.add_css_class("destructive-action");
         let s_del = sender.clone();
         delete_btn.connect_clicked(move |_| s_del.input(HistoryDialogInput::Delete(id)));
         row.add_suffix(&delete_btn);

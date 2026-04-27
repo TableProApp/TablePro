@@ -348,13 +348,24 @@ impl StructureChangeTracker {
             }
             for key in order {
                 if let Some(col) = latest.get(&key) {
-                    out.push(build_alter_column(driver_id, key.0.as_deref(), &key.1, col)?);
+                    match build_alter_column(driver_id, key.0.as_deref(), &key.1, col) {
+                        Ok(sql) => out.push(sql),
+                        // NoChange means the post-edit state matches the
+                        // original — no statement to emit. Real errors
+                        // still propagate.
+                        Err(BuildDdlError::NoChange) => {}
+                        Err(e) => return Err(e),
+                    }
                 }
             }
         } else {
             for op in &self.ops {
                 if let StructureOp::AlterColumn { schema, table, column } = op {
-                    out.push(build_alter_column(driver_id, schema.as_deref(), table, column)?);
+                    match build_alter_column(driver_id, schema.as_deref(), table, column) {
+                        Ok(sql) => out.push(sql),
+                        Err(BuildDdlError::NoChange) => {}
+                        Err(e) => return Err(e),
+                    }
                 }
             }
         }

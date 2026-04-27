@@ -43,6 +43,7 @@ impl FactoryComponent for ConnectionRow {
                 set_valign: gtk::Align::Center,
                 set_tooltip_text: Some(crate::tr!("Remove connection").as_str()),
                 add_css_class: "flat",
+                add_css_class: "destructive-action",
                 connect_clicked => ConnectionRowMsg::Delete,
             },
         }

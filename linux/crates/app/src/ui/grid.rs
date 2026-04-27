@@ -1115,10 +1115,13 @@ fn show_json_popover(label: &gtk::EditableLabel, col_index: usize, table: &str, 
 /// per-cell `POPOVER_SLOT`. Used by all three editor popovers
 /// (calendar, spin button, JSON sourceview) to share one lifecycle.
 fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popover) {
-    let popover_for_close = popover.clone();
     let label_for_close = label.clone();
-    popover.connect_closed(move |_| {
-        popover_for_close.unparent();
+    // Use the callback's first parameter rather than a captured clone
+    // so the closure doesn't hold a strong reference back to the
+    // popover. A self-capture would form an Rc cycle that delays the
+    // popover's finalisation past popdown.
+    popover.connect_closed(move |p| {
+        p.unparent();
         POPOVER_SLOT.take(&label_for_close);
     });
 }
@@ -1374,10 +1377,7 @@ fn present_cell_popover(anchor: &gtk::Widget, menu: &gio::Menu, pointing_to: Opt
     if let Some(rect) = pointing_to {
         popover.set_pointing_to(Some(rect));
     }
-    let popover_for_close = popover.clone();
-    popover.connect_closed(move |_| {
-        popover_for_close.unparent();
-    });
+    popover.connect_closed(|p| p.unparent());
     popover.popup();
 }
 

@@ -45,6 +45,9 @@ pub enum BuildDdlError {
 
     #[error("unsupported driver: {0}")]
     UnsupportedDriver(String),
+
+    #[error("nothing changed — alter is a no-op")]
+    NoChange,
 }
 
 /// User-edited column draft. Carries both the original (loaded from
@@ -270,16 +273,6 @@ pub fn build_rename_table(
 ) -> Result<String, BuildDdlError> {
     validate_table(old_name)?;
     validate_table(new_name)?;
-    if driver_id == "mysql" {
-        // MySQL accepts both `ALTER TABLE ... RENAME TO ...` and
-        // `RENAME TABLE ... TO ...`. The latter accepts cross-schema
-        // moves; the former is enough for our same-schema case.
-        return Ok(format!(
-            "ALTER TABLE {} RENAME TO {}",
-            qualified_table(driver_id, schema, old_name),
-            quote_ident(driver_id, new_name)
-        ));
-    }
     Ok(format!(
         "ALTER TABLE {} RENAME TO {}",
         qualified_table(driver_id, schema, old_name),
@@ -427,16 +420,11 @@ pub fn build_alter_column(
                     ),
                 });
             }
-            // Nothing actually changed — caller mistake. Produce a
-            // no-op SET TYPE so cargo doesn't have to model the
-            // empty-diff case anywhere upstream; the driver will
-            // accept it and report 0 affected.
-            Ok(format!(
-                "ALTER TABLE {} ALTER COLUMN {} TYPE {}",
-                qualified,
-                quote_ident(driver_id, &column.name),
-                column.data_type
-            ))
+            // Nothing actually changed — surface as NoChange so the
+            // caller can skip emission. Previously we emitted a no-op
+            // ALTER COLUMN ... TYPE that risked an unnecessary table
+            // rewrite on Postgres versions where USING is required.
+            Err(BuildDdlError::NoChange)
         }
         "sqlite" => Err(BuildDdlError::SqliteNotSupported(
             "ALTER COLUMN (type / nullable / default change)",
