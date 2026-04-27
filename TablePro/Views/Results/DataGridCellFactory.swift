@@ -259,11 +259,9 @@ final class DataGridCellFactory {
             gridCellView.changeBackgroundColor = nil
         }
 
-        if isLargeDataset {
-            gridCellView.layer?.borderWidth = 0
-        } else if isFocused {
+        if isFocused && !isLargeDataset {
             gridCellView.layer?.borderWidth = 2
-            gridCellView.layer?.borderColor = ThemeEngine.shared.colors.dataGrid.focusBorderCG
+            gridCellView.layer?.borderColor = NSColor.keyboardFocusIndicatorColor.cgColor
         } else {
             gridCellView.layer?.borderWidth = 0
         }
