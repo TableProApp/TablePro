@@ -387,6 +387,16 @@ fn install_double_click_to_edit(label: &gtk::EditableLabel) {
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
         label_for_press.set_editable(true);
+        // Clear the "<NULL>" sentinel before entering edit mode so the
+        // user types into an empty entry — without this, double-clicking
+        // a NULL cell shows the literal "<NULL>" string selected, and
+        // any commit-without-changes would write "<NULL>" as a literal
+        // value. BrowseTab's commit handler converts empty input back
+        // to Value::Null for nullable columns, so the round-trip
+        // preserves NULL when the user just enters edit and exits.
+        if label_for_press.text().as_str() == "<NULL>" {
+            label_for_press.set_text("");
+        }
         label_for_press.start_editing();
     });
     label.add_controller(gesture);

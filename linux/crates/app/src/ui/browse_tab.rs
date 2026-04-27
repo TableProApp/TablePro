@@ -904,11 +904,16 @@ impl SimpleComponent for BrowseTab {
                 // Cell edits no longer commit immediately to the
                 // database. Route through the per-tab change tracker
                 // so the user can review / Save / Discard a batch.
-                let new = if new_value.is_empty() {
-                    Value::Text(String::new())
-                } else {
-                    Value::Text(new_value)
-                };
+                //
+                // Empty input on a nullable column → Value::Null
+                // (canonical SQL convention for "user cleared the
+                // cell"). Non-empty input is parsed against the
+                // column's data_type so INT / BOOL / DECIMAL columns
+                // commit as the right native type instead of failing
+                // at transaction time with a driver type-coercion
+                // error that aborts the whole batch.
+                let col = self.current_columns.get(col_index);
+                let new = parse_input_for_column(&new_value, col);
                 let row_obj = self.row_object_at(row_position);
                 if let Some(row_obj) = &row_obj
                     && let Some(draft_id) = row_obj.draft_id()
@@ -1040,6 +1045,47 @@ fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
     }
     out.sort_unstable();
     out
+}
+
+/// Parse a user-typed cell value against the column's declared data
+/// type. Empty input on a nullable column becomes `Value::Null`;
+/// otherwise we coerce to a native variant (Int, Float, Decimal,
+/// Bool) when the column's `data_type` looks like a numeric or boolean
+/// type. Unrecognised types and parse failures fall through to
+/// `Value::Text` so the driver can attempt its own coercion. Date /
+/// Time / Uuid / Json columns stay as text — they round-trip through
+/// the driver's text binding without precision loss.
+fn parse_input_for_column(text: &str, col: Option<&ColumnInfo>) -> Value {
+    let Some(col) = col else {
+        return Value::Text(text.to_string());
+    };
+    if text.is_empty() && col.nullable {
+        return Value::Null;
+    }
+    let dt = col.data_type.to_ascii_lowercase();
+    let is_int = ["int", "serial", "bigint", "smallint", "tinyint", "integer"]
+        .iter()
+        .any(|k| dt.contains(k));
+    if is_int && let Ok(i) = text.parse::<i64>() {
+        return Value::Int(i);
+    }
+    let is_float = ["float", "double", "real"].iter().any(|k| dt.contains(k));
+    if is_float && let Ok(f) = text.parse::<f64>() {
+        return Value::Float(f);
+    }
+    let is_decimal = ["decimal", "numeric", "money"].iter().any(|k| dt.contains(k));
+    if is_decimal && let Ok(d) = text.parse::<rust_decimal::Decimal>() {
+        return Value::Decimal(d);
+    }
+    let is_bool = matches!(dt.as_str(), "bool" | "boolean" | "tinyint(1)") || dt.contains("bool");
+    if is_bool {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "true" | "t" | "1" | "yes" | "y" => return Value::Bool(true),
+            "false" | "f" | "0" | "no" | "n" => return Value::Bool(false),
+            _ => {}
+        }
+    }
+    Value::Text(text.to_string())
 }
 
 /// Format a positive integer with thousands separators (1000 → 1,000).
