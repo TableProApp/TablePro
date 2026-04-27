@@ -180,18 +180,9 @@ final class DataGridCellFactory {
             gridCellView.addSubview(chevron)
             gridCellView.chevronButton = chevron
 
-            let trailingToFK = cell.trailingAnchor.constraint(equalTo: fkButton.leadingAnchor, constant: -2)
-            let trailingToChevron = cell.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -2)
-            let trailingToCell = cell.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4)
-            trailingToFK.isActive = false
-            trailingToChevron.isActive = false
-            trailingToCell.isActive = true
-            gridCellView.textFieldTrailingToFK = trailingToFK
-            gridCellView.textFieldTrailingToChevron = trailingToChevron
-            gridCellView.textFieldTrailingToCell = trailingToCell
-
             NSLayoutConstraint.activate([
                 cell.leadingAnchor.constraint(equalTo: gridCellView.leadingAnchor, constant: 4),
+                cell.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4),
                 cell.centerYAnchor.constraint(equalTo: gridCellView.centerYAnchor),
 
                 fkButton.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4),
@@ -233,10 +224,6 @@ final class DataGridCellFactory {
                 chevron.action = chevronAction
             }
         }
-
-        gridCellView.textFieldTrailingToFK?.isActive = showFK
-        gridCellView.textFieldTrailingToChevron?.isActive = showChevron && !showFK
-        gridCellView.textFieldTrailingToCell?.isActive = !showFK && !showChevron
 
         cell.isEditable = isEditable
         cell.delegate = delegate

@@ -12,9 +12,6 @@ import AppKit
 final class DataGridCellView: NSTableCellView {
     var fkArrowButton: FKArrowButton?
     var chevronButton: CellChevronButton?
-    var textFieldTrailingToFK: NSLayoutConstraint?
-    var textFieldTrailingToChevron: NSLayoutConstraint?
-    var textFieldTrailingToCell: NSLayoutConstraint?
 
     private lazy var backgroundView: NSView = {
         let view = NSView()
