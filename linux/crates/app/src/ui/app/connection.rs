@@ -121,14 +121,11 @@ impl App {
     pub(super) fn on_delete_connection(&self, id: Uuid, sender: ComponentSender<Self>) {
         // Connection deletion wipes the saved entry and ALL associated
         // keyring credentials (db password, SSH password, SSH passphrase).
-        // It's irreversible — Undo can't recover the keyring entries — so
-        // we confirm before acting (gated by preferences::confirm_destructive
-        // to match the row-delete pattern).
-        if !crate::services::preferences::load().confirm_destructive {
-            execute_delete_connection(id, sender);
-            return;
-        }
-
+        // Irreversible (no Undo can recover keyring entries) so we
+        // confirm unconditionally — the previous `confirm_destructive`
+        // preference gate let users skip it, but per HIG (and GNOME
+        // Files' bookmark-delete behaviour) destructive keyring writes
+        // need confirmation regardless of preferences.
         let connection_name = self
             .saved_connections
             .iter()
@@ -211,9 +208,14 @@ impl App {
     }
 
     pub(super) fn refresh_window_title(&self) {
-        // Subtitle: "<table> · <connection> · <driver>" when a browse tab
-        // is active; "<connection> · <driver>" otherwise. Window title
-        // keeps the "— TablePro" suffix for shell window-list identity.
+        // Subtitle: "<connection> · <driver>" when connected, empty
+        // otherwise. The active table goes in the tab title (where it
+        // already lives) — duplicating it in the WindowTitle subtitle
+        // both overruns the slot's intended ~7-word capacity and
+        // pretends the subtitle is the canonical "where am I?" widget
+        // when the tab strip already serves that role. Matches GNOME
+        // Builder (subtitle = branch name only) and Text Editor
+        // (subtitle = filename only) — short, single-purpose.
         let metadata = database_service::instance().active_metadata();
         let connection_name = metadata.as_ref().map(|m| m.name.as_str());
         let active = self.selected_browse_slot_table();
@@ -221,10 +223,7 @@ impl App {
         let (os_title, subtitle) = match (connection_name, &self.current_driver_id, table_pair) {
             (Some(name), Some(driver), Some((schema, table))) => {
                 let label = qualified_label(schema, table);
-                (
-                    format!("{label} · {name} — TablePro"),
-                    format!("{label} · {name} · {driver}"),
-                )
+                (format!("{label} · {name} — TablePro"), format!("{name} · {driver}"))
             }
             (Some(name), Some(driver), None) => (format!("{name} — TablePro"), format!("{name} · {driver}")),
             (None, Some(driver), _) => (format!("{driver} — TablePro"), driver.clone()),

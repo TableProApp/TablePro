@@ -67,9 +67,12 @@ impl App {
 
     pub(super) fn show_error_alert(&self, title: &str, message: &str) {
         let dialog = adw::AlertDialog::new(Some(title), Some(message));
-        dialog.add_response("ok", "OK");
-        dialog.set_default_response(Some("ok"));
-        dialog.set_close_response("ok");
+        // GNOME HIG dismiss-only alert: "Close" reads cleaner than "OK"
+        // (which implies acknowledgement of an action the user took)
+        // and matches GNOME Settings' info-alert convention.
+        dialog.add_response("close", &crate::tr!("Close"));
+        dialog.set_default_response(Some("close"));
+        dialog.set_close_response("close");
         dialog.present(Some(&self.window));
     }
 

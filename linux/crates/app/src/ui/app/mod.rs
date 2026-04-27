@@ -331,12 +331,23 @@ impl SimpleComponent for App {
                         set_title: "TablePro",
                     },
 
-                    #[name = "connection_split_button"]
-                    pack_start = &adw::SplitButton {
+                    // Two distinct affordances → two distinct buttons.
+                    // SplitButton would imply they're variants of the
+                    // same action, but "new connection" and "open
+                    // saved" are semantically different (matches GNOME
+                    // Files' "New" + "History" pattern, not the
+                    // SplitButton-as-Save-with-format pattern).
+                    #[name = "new_connection_button"]
+                    pack_start = &gtk::Button {
                         set_icon_name: "list-add-symbolic",
                         set_tooltip_text: Some(crate::tr!("New connection").as_str()),
-                        set_dropdown_tooltip: crate::tr!("Open saved connection").as_str(),
                         connect_clicked => AppMsg::OpenConnect,
+                    },
+
+                    #[name = "saved_connections_button"]
+                    pack_start = &gtk::MenuButton {
+                        set_icon_name: "document-open-symbolic",
+                        set_tooltip_text: Some(crate::tr!("Open saved connection").as_str()),
 
                         #[wrap(Some)]
                         #[name = "connections_popover"]
@@ -436,13 +447,14 @@ impl SimpleComponent for App {
                                 set_use_markup: false,
                                 set_button_label: Some(crate::tr!("Retry").as_str()),
                             },
-
-                            #[wrap(Some)]
-                            set_content = &adw::StatusPage {
-                                set_icon_name: Some("network-server-symbolic"),
-                                set_title: &crate::tr!("Connect to a database"),
-                                set_description: Some(crate::tr!("Click the server icon for a new connection or the folder icon to open a saved one.").as_str()),
-                            },
+                            // Content is set imperatively at the end of
+                            // init() — show_welcome_page swaps in the
+                            // WelcomeView for the disconnected state,
+                            // and on_connected swaps in the workspace
+                            // tab strip on connect. The previously-
+                            // inlined "Connect to a database" StatusPage
+                            // here was dead UI: built once, replaced
+                            // immediately, never seen.
                         },
                     },
                 },
@@ -699,8 +711,11 @@ impl SimpleComponent for App {
         model.show_welcome_page(sender.clone());
 
         widgets
-            .connection_split_button
+            .new_connection_button
             .update_property(&[gtk::accessible::Property::Label("New connection")]);
+        widgets
+            .saved_connections_button
+            .update_property(&[gtk::accessible::Property::Label("Open saved connection")]);
         widgets
             .primary_menu_button
             .update_property(&[gtk::accessible::Property::Label("Main menu")]);
