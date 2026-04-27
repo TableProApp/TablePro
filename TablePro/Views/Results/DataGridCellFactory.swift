@@ -259,14 +259,8 @@ final class DataGridCellFactory {
             gridCellView.changeBackgroundColor = nil
         }
 
-        if isLargeDataset {
-            gridCellView.layer?.borderWidth = 0
-        } else if isFocused {
-            gridCellView.layer?.borderWidth = 2
-            gridCellView.layer?.borderColor = ThemeEngine.shared.colors.dataGrid.focusBorderCG
-        } else {
-            gridCellView.layer?.borderWidth = 0
-        }
+        gridCellView.layer?.borderWidth = 0
+        gridCellView.isFocusedCell = isFocused
 
         CATransaction.commit()
 

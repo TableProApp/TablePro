@@ -5,14 +5,17 @@
 
 import AppKit
 
-/// Custom cell view that uses a background subview for change-state coloring.
-/// AppKit's `NSTableRowView` sets `backgroundStyle` to `.emphasized` when the
-/// row is selected — we hide the background view so the native selection highlight
-/// shows through.
 final class DataGridCellView: NSTableCellView {
     var fkArrowButton: FKArrowButton?
     var chevronButton: CellChevronButton?
     var textFieldTrailing: NSLayoutConstraint?
+
+    var isFocusedCell: Bool = false {
+        didSet {
+            guard oldValue != isFocusedCell else { return }
+            noteFocusRingMaskChanged()
+        }
+    }
 
     private lazy var backgroundView: NSView = {
         let view = NSView()
@@ -44,5 +47,14 @@ final class DataGridCellView: NSTableCellView {
         didSet {
             backgroundView.isHidden = (backgroundStyle == .emphasized) || (changeBackgroundColor == nil)
         }
+    }
+
+    override var focusRingMaskBounds: NSRect {
+        isFocusedCell ? bounds : .zero
+    }
+
+    override func drawFocusRingMask() {
+        guard isFocusedCell else { return }
+        bounds.fill()
     }
 }
