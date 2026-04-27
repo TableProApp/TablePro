@@ -65,7 +65,6 @@ extension ConnectionFormView {
                     } primaryAction: {
                         saveConnection(connect: true)
                     }
-                    .menuStyle(.borderlessButton)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return)
                     .fixedSize()
