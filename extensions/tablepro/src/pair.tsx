@@ -319,7 +319,7 @@ async function persistToken(token: string): Promise<void> {
         },
     });
     await open(
-        `raycast://extensions/datlechin/tablepro?token=${encodeURIComponent(token)}`,
+        `raycast://extensions/ngoquocdat/tablepro?token=${encodeURIComponent(token)}`,
     ).catch(() => undefined);
 }
 

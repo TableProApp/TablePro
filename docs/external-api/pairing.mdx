@@ -58,7 +58,7 @@ import { open } from "@raycast/api";
 const params = new URLSearchParams({
   client: `Raycast on ${require("os").hostname()}`,
   challenge,
-  redirect: "raycast://extensions/datlechin/tablepro/pair-callback",
+  redirect: "raycast://extensions/ngoquocdat/tablepro/pair-callback",
   scopes: "readOnly,readWrite",
 });
 await open(`tablepro://integrations/pair?${params}`);

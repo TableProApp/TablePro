@@ -4,7 +4,7 @@
   "title": "TablePro",
   "description": "Open and search your TablePro database connections, browse schema, and run queries.",
   "icon": "icon.png",
-  "author": "datlechin",
+  "author": "ngoquocdat",
   "categories": ["Developer Tools", "Productivity"],
   "platforms": ["macOS"],
   "license": "MIT",

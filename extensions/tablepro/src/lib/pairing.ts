@@ -22,7 +22,7 @@ export function generatePKCE(): PKCEPair {
 }
 
 export const PAIR_CALLBACK_URL =
-    "raycast://extensions/datlechin/tablepro/pair-callback";
+    "raycast://extensions/ngoquocdat/tablepro/pair-callback";
 
 export const STORAGE_KEYS = {
     pendingVerifier: "pairing.pendingVerifier",
