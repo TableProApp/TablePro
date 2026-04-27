@@ -896,6 +896,14 @@ extension MCPRouter {
                         "limit": .object([
                             "type": "integer",
                             "description": "Maximum number of entries to return (default 50, max 500)"
+                        ]),
+                        "since": .object([
+                            "type": "number",
+                            "description": "Earliest executed_at to include, Unix epoch seconds (inclusive, optional)"
+                        ]),
+                        "until": .object([
+                            "type": "number",
+                            "description": "Latest executed_at to include, Unix epoch seconds (inclusive, optional)"
                         ])
                     ]),
                     "required": .array([.string("query")])

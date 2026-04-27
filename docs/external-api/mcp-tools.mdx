@@ -432,11 +432,13 @@ Full-text search over the query history database.
 {
   "query": "users active",
   "connection_id": "9f1f...",
-  "limit": 50
+  "limit": 50,
+  "since": 1745577262,
+  "until": 1745663662
 }
 ```
 
-`connection_id` is optional. `limit` is 1-500, default 50.
+`connection_id` is optional. `limit` is 1-500, default 50. `since` and `until` are optional Unix epoch seconds; both bounds are inclusive. Either may be set on its own. Pass an empty `query` ("") to skip the full-text filter and only narrow by date or connection.
 
 **Output**:
 

@@ -281,14 +281,19 @@ actor QueryHistoryStorage {
         offset: Int = 0,
         connectionId: UUID? = nil,
         searchText: String? = nil,
-        dateFilter: DateFilter = .all
+        dateFilter: DateFilter = .all,
+        since: Date? = nil,
+        until: Date? = nil
     ) -> [QueryHistoryEntry] {
         var entries: [QueryHistoryEntry] = []
+
+        let effectiveSince = [dateFilter.startDate, since].compactMap { $0 }.max()
 
         var sql: String
         var bindIndex: Int32 = 1
         var hasConnectionFilter = false
-        var hasDateFilter = false
+        var hasSinceFilter = false
+        var hasUntilFilter = false
 
         if let searchText = searchText, !searchText.isEmpty {
             sql = """
@@ -303,9 +308,14 @@ actor QueryHistoryStorage {
                 hasConnectionFilter = true
             }
 
-            if dateFilter.startDate != nil {
+            if effectiveSince != nil {
                 sql += " AND h.executed_at >= ?"
-                hasDateFilter = true
+                hasSinceFilter = true
+            }
+
+            if until != nil {
+                sql += " AND h.executed_at <= ?"
+                hasUntilFilter = true
             }
         } else {
             sql =
@@ -318,9 +328,14 @@ actor QueryHistoryStorage {
                 hasConnectionFilter = true
             }
 
-            if dateFilter.startDate != nil {
+            if effectiveSince != nil {
                 whereClauses.append("executed_at >= ?")
-                hasDateFilter = true
+                hasSinceFilter = true
+            }
+
+            if until != nil {
+                whereClauses.append("executed_at <= ?")
+                hasUntilFilter = true
             }
 
             if !whereClauses.isEmpty {
@@ -350,8 +365,13 @@ actor QueryHistoryStorage {
             bindIndex += 1
         }
 
-        if let startDate = dateFilter.startDate, hasDateFilter {
-            sqlite3_bind_double(statement, bindIndex, startDate.timeIntervalSince1970)
+        if let effectiveSince, hasSinceFilter {
+            sqlite3_bind_double(statement, bindIndex, effectiveSince.timeIntervalSince1970)
+            bindIndex += 1
+        }
+
+        if let until, hasUntilFilter {
+            sqlite3_bind_double(statement, bindIndex, until.timeIntervalSince1970)
             bindIndex += 1
         }
 

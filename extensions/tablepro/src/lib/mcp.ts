@@ -509,16 +509,31 @@ interface RawHistoryEntry {
     error_message?: string;
 }
 
+export interface SearchHistoryOptions {
+    /** Earliest executed_at to include, Unix epoch seconds (inclusive). */
+    since?: number;
+    /** Latest executed_at to include, Unix epoch seconds (inclusive). */
+    until?: number;
+}
+
 export async function searchHistory(
     query: string,
     limit = 50,
+    options: SearchHistoryOptions = {},
 ): Promise<QueryHistoryEntry[]> {
+    const args: Record<string, unknown> = {
+        query,
+        limit,
+    };
+    if (options.since !== undefined) {
+        args.since = options.since;
+    }
+    if (options.until !== undefined) {
+        args.until = options.until;
+    }
     const envelope = await callTool<{ entries: RawHistoryEntry[] }>(
         "search_query_history",
-        {
-            query,
-            limit,
-        },
+        args,
     );
     return (envelope.entries ?? []).map((entry) => ({
         id: entry.id,

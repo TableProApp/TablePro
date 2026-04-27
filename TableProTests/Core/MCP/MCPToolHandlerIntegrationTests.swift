@@ -158,6 +158,76 @@ struct MCPToolHandlerIntegrationTests {
         #expect(payload.contains("\"entries\""))
     }
 
+    @Test("search_query_history rejects since greater than until")
+    func searchQueryHistoryRejectsInvertedWindow() async {
+        let handler = makeHandler()
+        do {
+            _ = try await handler.handleToolCall(
+                name: "search_query_history",
+                arguments: .object([
+                    "query": .string(""),
+                    "since": .double(2_000),
+                    "until": .double(1_000)
+                ]),
+                sessionId: "test-session",
+                token: nil
+            )
+            Issue.record("Expected MCPError.invalidParams when since > until")
+        } catch let error as MCPError {
+            if case .invalidParams = error { return }
+            Issue.record("Expected invalidParams, got \(error)")
+        } catch {
+            Issue.record("Expected MCPError, got \(error)")
+        }
+    }
+
+    @Test("search_query_history with since/until filters by executed_at window")
+    func searchQueryHistorySinceUntilFilters() async throws {
+        let handler = makeHandler()
+        let connId = UUID()
+        let now = Date()
+        let oneHourAgo = now.addingTimeInterval(-3_600)
+        let twoHoursAgo = now.addingTimeInterval(-7_200)
+        let marker = UUID().uuidString
+
+        let outside = QueryHistoryEntry(
+            query: "SELECT outside_\(marker)",
+            connectionId: connId,
+            databaseName: "testdb",
+            executedAt: twoHoursAgo,
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        let inside = QueryHistoryEntry(
+            query: "SELECT inside_\(marker)",
+            connectionId: connId,
+            databaseName: "testdb",
+            executedAt: oneHourAgo,
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        _ = await QueryHistoryStorage.shared.addHistory(outside)
+        _ = await QueryHistoryStorage.shared.addHistory(inside)
+
+        let result = try await handler.handleToolCall(
+            name: "search_query_history",
+            arguments: .object([
+                "query": .string(marker),
+                "connection_id": .string(connId.uuidString),
+                "since": .double(now.addingTimeInterval(-5_400).timeIntervalSince1970),
+                "until": .double(now.timeIntervalSince1970)
+            ]),
+            sessionId: "test-session",
+            token: nil
+        )
+        #expect(result.isError == nil)
+        let payload = result.content.first?.text ?? ""
+        #expect(payload.contains("inside_\(marker)"))
+        #expect(!payload.contains("outside_\(marker)"))
+    }
+
     // MARK: - open_connection_window
 
     @Test("open_connection_window rejects missing connection_id")

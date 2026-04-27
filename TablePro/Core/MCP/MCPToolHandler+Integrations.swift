@@ -55,6 +55,12 @@ extension MCPToolHandler {
         let query = try requireString(args, key: "query")
         let connectionIdString = optionalString(args, key: "connection_id")
         let limit = optionalInt(args, key: "limit", default: 50, clamp: 1...500)
+        let since = args?["since"]?.doubleValue.map { Date(timeIntervalSince1970: $0) }
+        let until = args?["until"]?.doubleValue.map { Date(timeIntervalSince1970: $0) }
+
+        if let since, let until, since > until {
+            throw MCPError.invalidParams("'since' must be less than or equal to 'until'")
+        }
 
         let connectionId: UUID?
         if let connectionIdString {
@@ -72,7 +78,9 @@ extension MCPToolHandler {
             offset: 0,
             connectionId: connectionId,
             searchText: query.isEmpty ? nil : query,
-            dateFilter: .all
+            dateFilter: .all,
+            since: since,
+            until: until
         )
 
         let allowed = token?.allowedConnectionIds
