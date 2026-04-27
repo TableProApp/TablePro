@@ -46,7 +46,6 @@ final class QueryTabManager {
     }
 
     init() {
-        // Start with no tabs - shows empty state
         tabs = []
         selectedTabId = nil
     }

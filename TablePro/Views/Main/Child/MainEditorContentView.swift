@@ -135,6 +135,7 @@ struct MainEditorContentView: View {
             updateHasQueryText()
 
             guard let tab = tabManager.selectedTab else { return }
+            guard !coordinator.rowDataStore.buffer(for: tab.id).isEvicted else { return }
             if providerCache.provider(
                 for: tab.id,
                 schemaVersion: tab.schemaVersion,

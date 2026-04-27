@@ -111,7 +111,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         return menu
     }
 
-    weak var tableViewCoordinator: TableViewCoordinator?
+    weak var tableViewCoordinator: (any RowDeltaApplying)?
 
     func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
         self.tableViewCoordinator = tableViewCoordinator
