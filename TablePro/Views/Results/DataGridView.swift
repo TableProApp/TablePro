@@ -33,19 +33,10 @@ struct DataGridIdentity: Equatable {
     let rowCount: Int
     let columnCount: Int
     let isEditable: Bool
+    let tabType: TabType?
+    let tableName: String?
+    let primaryKeyColumns: [String]
     let hiddenColumns: Set<String>
-
-    init(reloadVersion: Int, schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
-         rowCount: Int, columnCount: Int, isEditable: Bool, hiddenColumns: Set<String>) {
-        self.reloadVersion = reloadVersion
-        self.schemaVersion = schemaVersion
-        self.metadataVersion = metadataVersion
-        self.paginationVersion = paginationVersion
-        self.rowCount = rowCount
-        self.columnCount = columnCount
-        self.isEditable = isEditable
-        self.hiddenColumns = hiddenColumns
-    }
 
     init(reloadVersion: Int, schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
          rowCount: Int, columnCount: Int, isEditable: Bool, configuration: DataGridConfiguration) {
@@ -56,6 +47,9 @@ struct DataGridIdentity: Equatable {
         self.rowCount = rowCount
         self.columnCount = columnCount
         self.isEditable = isEditable
+        self.tabType = configuration.tabType
+        self.tableName = configuration.tableName
+        self.primaryKeyColumns = configuration.primaryKeyColumns
         self.hiddenColumns = configuration.hiddenColumns
     }
 }

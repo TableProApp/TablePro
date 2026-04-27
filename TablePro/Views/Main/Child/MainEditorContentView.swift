@@ -157,6 +157,8 @@ struct MainEditorContentView: View {
             if let tab = tabManager.selectedTab {
                 cacheRowProvider(for: tab)
             }
+            wireDataTabDelegateStableRefs()
+            refreshDataTabDelegateMutableRefs()
             coordinator.dataTabDelegate = dataTabDelegate
             coordinator.onTeardown = { [self] in
                 tabProviderCache.removeAll()
@@ -180,6 +182,42 @@ struct MainEditorContentView: View {
         .onChange(of: selectionState.indices) { _, newIndices in
             onSelectionChange(newIndices)
         }
+        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: coordinator.safeModeLevel) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+    }
+
+    private func wireDataTabDelegateStableRefs() {
+        dataTabDelegate.coordinator = coordinator
+        dataTabDelegate.columnVisibilityManager = columnVisibilityManager
+        dataTabDelegate.selectionState = selectionState
+        dataTabDelegate.editingCell = $editingCell
+        dataTabDelegate.onCellEdit = onCellEdit
+        dataTabDelegate.onSort = onSort
+        dataTabDelegate.onUndoInsert = onUndoInsert
+        dataTabDelegate.onFilterColumn = onFilterColumn
+        dataTabDelegate.onRefresh = onRefresh
+    }
+
+    private func refreshDataTabDelegateMutableRefs() {
+        dataTabDelegate.onAddRow = currentTabAllowsAddRow ? onAddRow : nil
+    }
+
+    private var currentTabAllowsAddRow: Bool {
+        guard let tab = tabManager.selectedTab else { return false }
+        let isEditable = tab.tableContext.isEditable
+            && !tab.tableContext.isView
+            && !coordinator.safeModeLevel.blocksAllWrites
+        return isEditable && tab.tableContext.tableName != nil
     }
 
     // MARK: - Tab Content
@@ -518,21 +556,6 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
         let isEditable = tab.tableContext.isEditable && !tab.tableContext.isView && !coordinator.safeModeLevel.blocksAllWrites
-        let showEmptySpaceMenu = isEditable && tab.tableContext.tableName != nil
-
-        // Update delegate state for current render
-        let _ = { // swiftlint:disable:this redundant_discardable_let
-            dataTabDelegate.coordinator = coordinator
-            dataTabDelegate.columnVisibilityManager = columnVisibilityManager
-            dataTabDelegate.selectionState = selectionState
-            dataTabDelegate.editingCell = $editingCell
-            dataTabDelegate.onCellEdit = onCellEdit
-            dataTabDelegate.onSort = onSort
-            dataTabDelegate.onAddRow = showEmptySpaceMenu ? onAddRow : nil
-            dataTabDelegate.onUndoInsert = onUndoInsert
-            dataTabDelegate.onFilterColumn = onFilterColumn
-            dataTabDelegate.onRefresh = onRefresh
-        }()
 
         DataGridView(
             rowProvider: rowProvider(for: tab),
