@@ -165,7 +165,7 @@
               "external-api/pairing",
               "external-api/tokens",
               "external-api/raycast",
-              "external-api/cursor-claude",
+              "external-api/mcp-clients",
               "external-api/versioning"
             ]
           }
