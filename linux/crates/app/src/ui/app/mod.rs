@@ -98,6 +98,13 @@ pub struct App {
     /// blocks while this is > 0 so an async transaction never commits
     /// after the tab / window has been torn down.
     in_flight_saves: std::rc::Rc<std::cell::Cell<usize>>,
+    /// Debounce flag for `persist_workspace_state`. Active tabs fire
+    /// `WorkspaceTabsChanged` on every selection / drag-reorder /
+    /// page-size change / state-changed event; without coalescing,
+    /// each one triggers a load-modify-write of the entire
+    /// connections JSON. This flag stays `true` while a 500ms timer
+    /// is pending; subsequent persist requests in the window no-op.
+    persist_pending: std::rc::Rc<std::cell::Cell<bool>>,
 }
 
 pub struct EditorTabSlot {
@@ -882,6 +889,7 @@ impl SimpleComponent for App {
             close_after_save: close_after_save_handle,
             close_window_after_save: close_window_after_save_handle,
             in_flight_saves: in_flight_saves_handle,
+            persist_pending: std::rc::Rc::new(std::cell::Cell::new(false)),
         };
         sender.input(AppMsg::ReloadConnections);
         model.show_welcome_page(sender.clone());

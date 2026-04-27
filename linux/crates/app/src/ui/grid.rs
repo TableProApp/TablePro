@@ -1338,13 +1338,24 @@ pub(crate) fn focused_cell_coords(widget: &impl IsA<gtk::Widget>) -> Option<(u32
     Some((position, column))
 }
 
+/// Maximum characters rendered into a single grid cell. A million-
+/// character TEXT or JSON column would otherwise hang the GTK main
+/// thread inside Pango layout. The full value stays in the model
+/// (and the JSON popover renders the unabridged text via
+/// SourceView), so no editable data is lost — only the in-grid
+/// preview is capped.
+const DISPLAY_TEXT_MAX_CHARS: usize = 10_000;
+/// Quick byte-length pre-check that avoids an O(n) `chars().count()`
+/// call on safely-short strings. Worst-case UTF-8 is 4 bytes/char.
+const DISPLAY_TEXT_BYTES_THRESHOLD: usize = DISPLAY_TEXT_MAX_CHARS * 4;
+
 pub fn value_to_display_text(value: &Value) -> String {
     match value {
         Value::Null => "NULL".into(),
         Value::Bool(b) => b.to_string(),
         Value::Int(i) => i.to_string(),
         Value::Float(f) => f.to_string(),
-        Value::Text(s) => s.clone(),
+        Value::Text(s) => truncate_for_display(s),
         Value::Bytes(b) => format!("<{} bytes>", b.len()),
         Value::Date(d) => d.format("%Y-%m-%d").to_string(),
         Value::Time(t) => t.format("%H:%M:%S").to_string(),
@@ -1352,7 +1363,7 @@ pub fn value_to_display_text(value: &Value) -> String {
         Value::TimestampTz(ts) => ts.format("%Y-%m-%d %H:%M:%S%:z").to_string(),
         Value::Decimal(d) => d.to_string(),
         Value::Uuid(u) => u.to_string(),
-        Value::Json(j) => j.to_string(),
+        Value::Json(j) => truncate_for_display(&j.to_string()),
     }
 }
 
@@ -1361,6 +1372,31 @@ pub fn value_to_edit_text(value: &Value) -> String {
         Value::Null => String::new(),
         other => value_to_display_text(other),
     }
+}
+
+/// Cap a string at `DISPLAY_TEXT_MAX_CHARS` for display purposes.
+/// Short strings pass through unchanged (no allocation). Long strings
+/// are truncated at a UTF-8 char boundary with a `… (+N more chars)`
+/// suffix so the user knows there's content beyond what's shown.
+fn truncate_for_display(s: &str) -> String {
+    if s.len() < DISPLAY_TEXT_BYTES_THRESHOLD {
+        return s.to_string();
+    }
+    // Find the byte index of the (DISPLAY_TEXT_MAX_CHARS+1)-th char so
+    // we slice on a valid UTF-8 boundary.
+    let mut cut = s.len();
+    for (i, (byte_idx, _)) in s.char_indices().enumerate() {
+        if i >= DISPLAY_TEXT_MAX_CHARS {
+            cut = byte_idx;
+            break;
+        }
+    }
+    if cut >= s.len() {
+        return s.to_string();
+    }
+    let head = &s[..cut];
+    let remaining = s[cut..].chars().count();
+    format!("{head}… (+{remaining} more chars)")
 }
 
 #[cfg(test)]
@@ -1486,5 +1522,42 @@ mod tests {
             value_to_edit_text(&Value::Uuid(id)),
             "550e8400-e29b-41d4-a716-446655440000"
         );
+    }
+
+    #[test]
+    fn truncate_short_text_passes_through() {
+        let s = "hello world";
+        assert_eq!(truncate_for_display(s), "hello world");
+    }
+
+    #[test]
+    fn truncate_caps_long_text_at_char_boundary() {
+        // 100k ASCII chars: should truncate to ~10k + suffix.
+        let s = "a".repeat(100_000);
+        let out = truncate_for_display(&s);
+        assert!(out.starts_with(&"a".repeat(10_000)));
+        assert!(out.contains("more chars"));
+        assert!(out.len() < 10_500); // ~10k chars + suffix bytes
+    }
+
+    #[test]
+    fn truncate_handles_multibyte_boundary() {
+        // 30k 4-byte emoji (120k bytes) — truncation must land on a
+        // char boundary, not mid-codepoint.
+        let s = "🦀".repeat(30_000);
+        let out = truncate_for_display(&s);
+        // Must be valid UTF-8.
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+        // First DISPLAY_TEXT_MAX_CHARS chars should be 🦀 plus the
+        // suffix appended after.
+        assert!(out.contains("more chars"));
+    }
+
+    #[test]
+    fn display_text_truncates_huge_text_value() {
+        let huge = "x".repeat(1_000_000);
+        let display = value_to_display_text(&Value::Text(huge));
+        assert!(display.len() < 100_000); // bounded
+        assert!(display.contains("more chars"));
     }
 }

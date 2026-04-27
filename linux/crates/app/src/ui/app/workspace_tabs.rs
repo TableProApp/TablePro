@@ -508,53 +508,83 @@ impl App {
     /// Persist workspace tabs for the active connection. Walks
     /// `tab_view.pages()` for canonical display order (HashMap is
     /// unordered; user can drag-reorder).
+    /// Debounced entry point. Coalesces rapid call sites
+    /// (selection-change, drag-reorder, page-size change, state-
+    /// changed) into a single write 500ms after the last call.
     pub(super) fn persist_workspace_state(&self) {
-        let Some(connection_id) = database_service::instance().active_id() else {
+        if self.persist_pending.get() {
             return;
-        };
-        let tabs = self.workspace_tabs.borrow();
-        let Some(tab_view) = self.workspace_tab_view.as_ref() else {
-            return;
-        };
-        let pages = tab_view.pages();
-        let n = pages.n_items();
-        let active_page = tab_view.selected_page();
-        let mut tab_records: Vec<WorkspaceTabRecord> = Vec::with_capacity(n as usize);
-        let mut active_idx: u32 = 0;
-        for i in 0..n {
-            let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
-                continue;
-            };
-            if active_page.as_ref() == Some(&page) {
-                active_idx = i;
-            }
-            let Some(id) = read_workspace_tab_id(&page) else {
-                continue;
-            };
-            let Some(slot) = tabs.get(&id) else { continue };
-            tab_records.push(match slot {
-                WorkspaceTab::Browse(s) => {
-                    let model = s.controller.model();
-                    let sort = model.current_sort();
-                    WorkspaceTabRecord::Browse {
-                        schema: s.schema.clone(),
-                        table: s.table.clone(),
-                        offset: model.current_offset(),
-                        page_size: model.page_size(),
-                        sort_col: sort.map(|(c, _)| c),
-                        sort_asc: sort.map(|(_, a)| a),
-                    }
-                }
-                WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor { query: s.query.clone() },
-            });
         }
-        let conn_state = ConnectionWorkspaceState {
-            tabs: tab_records,
-            active_idx,
-        };
-        workspace_state::save_connection(connection_id, conn_state);
+        self.persist_pending.set(true);
+        let pending = self.persist_pending.clone();
+        let workspace_tabs = self.workspace_tabs.clone();
+        let tab_view = self.workspace_tab_view.clone();
+        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+            pending.set(false);
+            do_persist_workspace_state(&workspace_tabs, tab_view.as_ref());
+        });
     }
 
+    /// Actual write. Reads the latest tab state, builds the on-disk
+    /// record, hands it to `workspace_state::save_connection`. Called
+    /// only via `persist_workspace_state`'s debounced timer or
+    /// directly from teardown paths that need a synchronous flush.
+    pub(super) fn do_persist_workspace_state_now(&self) {
+        do_persist_workspace_state(&self.workspace_tabs, self.workspace_tab_view.as_ref());
+    }
+}
+
+fn do_persist_workspace_state(
+    workspace_tabs: &std::rc::Rc<std::cell::RefCell<std::collections::HashMap<Uuid, WorkspaceTab>>>,
+    tab_view: Option<&adw::TabView>,
+) {
+    let Some(connection_id) = database_service::instance().active_id() else {
+        return;
+    };
+    let tabs = workspace_tabs.borrow();
+    let Some(tab_view) = tab_view else {
+        return;
+    };
+    let pages = tab_view.pages();
+    let n = pages.n_items();
+    let active_page = tab_view.selected_page();
+    let mut tab_records: Vec<WorkspaceTabRecord> = Vec::with_capacity(n as usize);
+    let mut active_idx: u32 = 0;
+    for i in 0..n {
+        let Some(page) = pages.item(i).and_downcast::<adw::TabPage>() else {
+            continue;
+        };
+        if active_page.as_ref() == Some(&page) {
+            active_idx = i;
+        }
+        let Some(id) = read_workspace_tab_id(&page) else {
+            continue;
+        };
+        let Some(slot) = tabs.get(&id) else { continue };
+        tab_records.push(match slot {
+            WorkspaceTab::Browse(s) => {
+                let model = s.controller.model();
+                let sort = model.current_sort();
+                WorkspaceTabRecord::Browse {
+                    schema: s.schema.clone(),
+                    table: s.table.clone(),
+                    offset: model.current_offset(),
+                    page_size: model.page_size(),
+                    sort_col: sort.map(|(c, _)| c),
+                    sort_asc: sort.map(|(_, a)| a),
+                }
+            }
+            WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor { query: s.query.clone() },
+        });
+    }
+    let conn_state = ConnectionWorkspaceState {
+        tabs: tab_records,
+        active_idx,
+    };
+    workspace_state::save_connection(connection_id, conn_state);
+}
+
+impl App {
     /// Single handler for `WorkspaceTabsChanged`. Persists tab state,
     /// refreshes the window title (so tab switches update the subtitle),
     /// and syncs the sidebar selection to the active Browse tab's table.
@@ -655,7 +685,9 @@ impl App {
     }
 
     pub(super) fn teardown_workspace_tabs(&mut self) {
-        self.persist_workspace_state();
+        // Synchronous flush — debouncer would skip the write since
+        // teardown drops state before the 500ms timer would fire.
+        self.do_persist_workspace_state_now();
         self.cancel_all_editor_runs();
         // Drop per-tab pending-change trackers — disconnecting wipes
         // the connection and its row identities, so any pending edits

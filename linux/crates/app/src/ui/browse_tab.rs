@@ -54,6 +54,12 @@ pub struct BrowseTab {
     /// on every `RowsLoaded`. Used by the inline-Insert flow to
     /// scroll-to-and-focus the freshly-prepended draft row.
     current_column_view: Option<gtk::ColumnView>,
+    /// Column count at the time `current_column_view` was last built.
+    /// `render_grid_if_ready` compares this to `current_columns.len()`
+    /// to decide whether the cached view can be reused or needs a
+    /// full rebuild. Within a single tab the count never changes
+    /// after the first ColumnsLoaded; mismatch implies cold-path.
+    rendered_column_count: std::cell::Cell<usize>,
     /// Persistent-state banners (per HIG: banners for state, toasts
     /// for events). Visibility is driven by SetReadOnly / ColumnsLoaded
     /// / PendingCountChanged respectively.
@@ -681,6 +687,24 @@ impl BrowseTab {
             return;
         }
 
+        // Fast path: column structure hasn't changed since the last
+        // render (typical for sort flips / page changes / save reloads
+        // within one tab). Reuse the existing `ColumnView` and only
+        // refresh the underlying `ListStore`. Saves O(N×M) factory
+        // recreations and selection rebuilds per page change.
+        if self.column_view_matches_current_columns()
+            && let Some(store) = self.list_store()
+        {
+            self.refresh_grid_data(&result, &store);
+            self.refresh_grid_chrome(&result);
+            self.restore_focused_row();
+            let _ = sender.output(BrowseTabOutput::StateChanged);
+            return;
+        }
+
+        // Cold path: first render for this tab, or column structure
+        // changed (rare in practice — would require schema migration
+        // mid-session). Build the full column-view scaffolding.
         clear_box(&self.grid_holder);
         let edit_sender = if self.read_only {
             None
@@ -719,25 +743,14 @@ impl BrowseTab {
         filter_setter(&self.grid_search.text());
         self.current_selection = Some(selection);
         self.current_column_view = Some(column_view.clone());
+        self.rendered_column_count.set(self.current_columns.len());
 
         // Re-prepend any pending draft rows so they survive page changes,
         // sort flips, and F5 refresh. The tracker is the canonical source
         // of truth for drafts; the grid model is rebuilt fresh on every
         // RowsLoaded so without this step the drafts vanish visually
         // while the tracker still holds them, leading to confused state.
-        if let Some(store) = self.list_store() {
-            let drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
-                t.drafts()
-                    .iter()
-                    .map(|d| (d.draft_id, d.values.clone()))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-            for (draft_id, values) in drafts {
-                let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
-                store.insert(0, &draft_row);
-            }
-        }
+        self.reprepend_drafts();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&column_view)
@@ -745,6 +758,36 @@ impl BrowseTab {
             .vexpand(true)
             .build();
         self.grid_holder.append(&scrolled);
+        self.refresh_grid_chrome(&result);
+        self.restore_focused_row();
+        let _ = sender.output(BrowseTabOutput::StateChanged);
+    }
+
+    /// True when the cached `ColumnView` is structurally compatible
+    /// with `current_columns` and can have its data swapped without a
+    /// full rebuild. Within a single tab this is always true after
+    /// the first render — `current_columns` only mutates on
+    /// ColumnsLoaded, which fires once per (table, connection) open.
+    fn column_view_matches_current_columns(&self) -> bool {
+        self.current_column_view.is_some() && self.rendered_column_count.get() == self.current_columns.len()
+    }
+
+    /// Replace the rows in the existing `ListStore` without touching
+    /// the columns / factories / selection model. Drafts are
+    /// re-prepended so they survive the swap.
+    fn refresh_grid_data(&self, result: &QueryResult, store: &gtk::gio::ListStore) {
+        store.remove_all();
+        for row in &result.rows {
+            store.append(&super::row_object::RowObject::new(row.clone()));
+        }
+        self.reprepend_drafts();
+        // Re-apply the search filter against the new data.
+        self.grid_search.emit_by_name::<()>("search-changed", &[]);
+    }
+
+    /// Update paginator label, button sensitivity, and stack child —
+    /// chrome that depends on the result but not the column structure.
+    fn refresh_grid_chrome(&self, result: &QueryResult) {
         self.refresh_crud_buttons();
         self.update_paginator_label();
         self.prev_button.set_sensitive(self.current_offset > 0);
@@ -752,8 +795,27 @@ impl BrowseTab {
         self.next_button.set_sensitive(n_rows == self.page_size);
         self.inner_stack.set_visible_child_name("grid");
         self.suppress_combo_emit.set(false);
-        self.restore_focused_row();
-        let _ = sender.output(BrowseTabOutput::StateChanged);
+    }
+
+    /// Walk `tracker.drafts()` and prepend each as a draft `RowObject`
+    /// at the top of the grid's `ListStore`. Forward iteration with
+    /// `insert(0, …)` preserves the original insertion order: newest
+    /// at the top, then older drafts beneath, then persisted rows.
+    fn reprepend_drafts(&self) {
+        let Some(store) = self.list_store() else {
+            return;
+        };
+        let drafts = crate::services::change_tracker::with_tab_ref(self.tab_id, |t| {
+            t.drafts()
+                .iter()
+                .map(|d| (d.draft_id, d.values.clone()))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+        for (draft_id, values) in drafts {
+            let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
+            store.insert(0, &draft_row);
+        }
     }
 
     /// Force a single-row re-bind via `items_changed(pos, 1, 1)` on the
@@ -1136,6 +1198,7 @@ impl SimpleComponent for BrowseTab {
             inner_stack,
             grid_holder,
             current_column_view: None,
+            rendered_column_count: std::cell::Cell::new(0),
             read_only_banner,
             no_pk_banner,
             pending_banner,
