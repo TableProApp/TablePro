@@ -41,10 +41,13 @@ extension AppDelegate {
         }
 
         let connection: DatabaseConnection
+        let isTransient: Bool
         if let matched = matchedConnection {
             connection = matched
+            isTransient = false
         } else {
             connection = buildTransientConnection(from: parsed)
+            isTransient = true
         }
 
         if !parsed.password.isEmpty {
@@ -98,6 +101,10 @@ extension AppDelegate {
                 self.handlePostConnectionActions(parsed, connectionId: connection.id)
             } catch {
                 connectionLogger.error("Database URL connect failed: \(error.localizedDescription)")
+                if isTransient {
+                    ConnectionStorage.shared.deletePassword(for: connection.id)
+                    ConnectionStorage.shared.deleteSSHPassword(for: connection.id)
+                }
                 await self.handleConnectionFailure(error)
             }
         }

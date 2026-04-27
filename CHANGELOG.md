@@ -7,10 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
+- Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
+- SSH Private Key auth resolves keys from `~/.ssh/config` and default locations (`id_ed25519`, `id_rsa`, `id_ecdsa`) when no explicit key path is set
+
 ### Changed
 
 - Inspector: dense field list, PK/FK key icons, Set NULL/DEFAULT in picker dropdowns, toolbar tracking separator
 - OpenSSL shared as dylib across app and plugins, saving ~15MB in bundle size
+
+### Fixed
+
+- Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
+- Transient connections from URL clean up keychain entries on connection failure
 
 ## [0.36.0] - 2026-04-27
 
