@@ -8,8 +8,8 @@ use sqlx::{Column, Pool, Row, Sqlite, TypeInfo};
 use futures::stream::StreamExt;
 
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, MAX_QUERY_ROWS, QueryResult,
-    TableInfo, Value,
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
+    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
 };
 
 pub struct SqliteDriver;
@@ -194,6 +194,100 @@ impl Connection for SqliteConnection {
         }
         tx.commit().await.map_err(map_sqlx_error)?;
         Ok(affected)
+    }
+
+    async fn fetch_indexes(&self, _schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
+        // SQLite catalog access is via PRAGMAs — they're scoped to the
+        // current database file (no schema parameter needed). For each
+        // entry from index_list we issue an index_info to get column
+        // ordering. PK index doesn't always show up in index_list (a
+        // bare INTEGER PRIMARY KEY uses the rowid alias, no real
+        // index), so we synthesise one from table_info if missing.
+        let list = sqlx::query(&format!("PRAGMA index_list({})", quote_ident(table)))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
+        let mut out: Vec<IndexInfo> = Vec::with_capacity(list.len());
+        let mut saw_primary = false;
+        for r in list {
+            let name: String = r.try_get(1).map_err(map_sqlx_error)?;
+            let unique: i64 = r.try_get(2).unwrap_or(0);
+            let origin: String = r.try_get(3).unwrap_or_default();
+            let primary = origin == "pk";
+            if primary {
+                saw_primary = true;
+            }
+            let info_rows = sqlx::query(&format!("PRAGMA index_info({})", quote_ident(&name)))
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_sqlx_error)?;
+            let columns: Vec<String> = info_rows
+                .into_iter()
+                .map(|c| c.try_get::<String, _>(2).unwrap_or_default())
+                .collect();
+            out.push(IndexInfo {
+                name,
+                columns,
+                unique: unique == 1,
+                primary,
+            });
+        }
+        if !saw_primary {
+            // Synthesise the implicit PK index from PRAGMA table_info
+            // so the UI can render PK columns even when SQLite chose
+            // the rowid-alias path.
+            let table_info = sqlx::query(&format!("PRAGMA table_info({})", quote_ident(table)))
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_sqlx_error)?;
+            let pk_cols: Vec<String> = table_info
+                .into_iter()
+                .filter(|r| r.try_get::<i64, _>(5).unwrap_or(0) > 0)
+                .map(|r| r.try_get::<String, _>(1).unwrap_or_default())
+                .collect();
+            if !pk_cols.is_empty() {
+                out.push(IndexInfo {
+                    name: "PRIMARY".into(),
+                    columns: pk_cols,
+                    unique: true,
+                    primary: true,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    async fn fetch_foreign_keys(&self, _schema: Option<&str>, table: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        // PRAGMA foreign_key_list returns one row per (constraint, ordinal)
+        // grouped by the synthetic `id` field. Constraint names aren't
+        // stored by SQLite, so we synthesise "fk_{table}_{id}" — stable
+        // across re-runs of the same schema. Group by id and build
+        // ForeignKeyInfo.
+        let rows = sqlx::query(&format!("PRAGMA foreign_key_list({})", quote_ident(table)))
+            .fetch_all(&self.pool)
+            .await
+            .map_err(map_sqlx_error)?;
+        let mut by_id: std::collections::BTreeMap<i64, ForeignKeyInfo> = std::collections::BTreeMap::new();
+        for r in rows {
+            let id: i64 = r.try_get(0).unwrap_or(0);
+            let ref_table: String = r.try_get(2).unwrap_or_default();
+            let from_col: String = r.try_get(3).unwrap_or_default();
+            let to_col: String = r.try_get(4).unwrap_or_default();
+            let on_update: String = r.try_get(5).unwrap_or_default();
+            let on_delete: String = r.try_get(6).unwrap_or_default();
+            let entry = by_id.entry(id).or_insert_with(|| ForeignKeyInfo {
+                name: format!("fk_{table}_{id}"),
+                columns: Vec::new(),
+                ref_schema: None,
+                ref_table,
+                ref_columns: Vec::new(),
+                on_delete: Some(on_delete.clone()).filter(|s| !s.is_empty() && s != "NO ACTION"),
+                on_update: Some(on_update.clone()).filter(|s| !s.is_empty() && s != "NO ACTION"),
+            });
+            entry.columns.push(from_col);
+            entry.ref_columns.push(to_col);
+        }
+        Ok(by_id.into_values().collect())
     }
 
     async fn ping(&self) -> Result<(), DriverError> {

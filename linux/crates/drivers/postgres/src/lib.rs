@@ -8,8 +8,8 @@ use sqlx::{Column, Pool, Postgres, Row, TypeInfo};
 use futures::stream::StreamExt;
 
 use tablepro_core::{
-    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, MAX_QUERY_ROWS, QueryResult,
-    TableInfo, Value,
+    ColumnInfo, ConnectOptions, Connection, DatabaseDriver, DriverError, ExecResult, ForeignKeyInfo, IndexInfo,
+    MAX_QUERY_ROWS, QueryResult, TableInfo, Value,
 };
 
 pub struct PgDriver;
@@ -207,6 +207,95 @@ impl Connection for PgConnection {
         Ok(affected)
     }
 
+    async fn fetch_indexes(&self, schema: Option<&str>, table: &str) -> Result<Vec<IndexInfo>, DriverError> {
+        // pg_index + pg_class + pg_attribute join. `array_agg ORDER BY
+        // ordinality` keeps the column order deterministic; pg_index
+        // stores `indkey` as an int2vector positional reference so we
+        // unnest with `WITH ORDINALITY` to capture position.
+        let rows = sqlx::query(
+            "SELECT
+                i.relname AS index_name,
+                ix.indisunique,
+                ix.indisprimary,
+                array_agg(a.attname ORDER BY k.ordinality) AS columns
+            FROM pg_catalog.pg_class t
+            JOIN pg_catalog.pg_namespace n ON t.relnamespace = n.oid
+            JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
+            JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+            JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ordinality) ON true
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+            WHERE n.nspname = COALESCE($2, current_schema())
+              AND t.relname = $1
+              AND a.attnum > 0
+            GROUP BY i.relname, ix.indisunique, ix.indisprimary
+            ORDER BY i.relname",
+        )
+        .bind(table)
+        .bind(schema)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| IndexInfo {
+                name: r.get::<String, _>(0),
+                unique: r.get::<bool, _>(1),
+                primary: r.get::<bool, _>(2),
+                columns: r.get::<Vec<String>, _>(3),
+            })
+            .collect())
+    }
+
+    async fn fetch_foreign_keys(&self, schema: Option<&str>, table: &str) -> Result<Vec<ForeignKeyInfo>, DriverError> {
+        // pg_constraint with contype = 'f'. confkey arrays are parallel
+        // to conkey via ordinality; the LATERAL join pairs them so the
+        // FK column ↔ referenced column mapping survives composite
+        // FKs. confdeltype / confupdtype are single chars normalised
+        // to canonical SQL keyword strings.
+        let rows = sqlx::query(
+            "SELECT
+                c.conname AS fk_name,
+                array_agg(a.attname ORDER BY kf.ordinality) AS columns,
+                fn_class.relname AS ref_table,
+                fn_ns.nspname AS ref_schema,
+                array_agg(fa.attname ORDER BY kf.ordinality) AS ref_columns,
+                c.confdeltype,
+                c.confupdtype
+            FROM pg_catalog.pg_constraint c
+            JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+            JOIN pg_catalog.pg_class fn_class ON fn_class.oid = c.confrelid
+            JOIN pg_catalog.pg_namespace fn_ns ON fn_ns.oid = fn_class.relnamespace
+            JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS kf(attnum, ordinality) ON true
+            JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = kf.attnum
+            JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS kfr(attnum, ordinality)
+                ON kfr.ordinality = kf.ordinality
+            JOIN pg_catalog.pg_attribute fa ON fa.attrelid = c.confrelid AND fa.attnum = kfr.attnum
+            WHERE c.contype = 'f'
+              AND n.nspname = COALESCE($2, current_schema())
+              AND t.relname = $1
+            GROUP BY c.conname, fn_class.relname, fn_ns.nspname, c.confdeltype, c.confupdtype
+            ORDER BY c.conname",
+        )
+        .bind(table)
+        .bind(schema)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(map_sqlx_error)?;
+        Ok(rows
+            .into_iter()
+            .map(|r| ForeignKeyInfo {
+                name: r.get::<String, _>(0),
+                columns: r.get::<Vec<String>, _>(1),
+                ref_table: r.get::<String, _>(2),
+                ref_schema: r.try_get::<Option<String>, _>(3).unwrap_or(None),
+                ref_columns: r.get::<Vec<String>, _>(4),
+                on_delete: pg_action_char_to_keyword(r.try_get::<String, _>(5).ok().as_deref().unwrap_or("a")),
+                on_update: pg_action_char_to_keyword(r.try_get::<String, _>(6).ok().as_deref().unwrap_or("a")),
+            })
+            .collect())
+    }
+
     async fn ping(&self) -> Result<(), DriverError> {
         sqlx::query("SELECT 1")
             .execute(&self.pool)
@@ -386,6 +475,21 @@ fn qualified(schema: Option<&str>, table: &str) -> String {
     match schema {
         Some(s) => format!("{}.{}", quote_ident(s), quote_ident(table)),
         None => quote_ident(table),
+    }
+}
+
+/// Map `pg_constraint.confdeltype` / `confupdtype` single-char codes
+/// to canonical SQL action keywords. Returns `None` for the default
+/// "no action" so the FK builder can omit the redundant ON clause.
+fn pg_action_char_to_keyword(code: &str) -> Option<String> {
+    match code {
+        "r" => Some("RESTRICT".into()),
+        "c" => Some("CASCADE".into()),
+        "n" => Some("SET NULL".into()),
+        "d" => Some("SET DEFAULT".into()),
+        // 'a' = NO ACTION is the default; surface as None so the
+        // generated DDL stays clean.
+        _ => None,
     }
 }
 
