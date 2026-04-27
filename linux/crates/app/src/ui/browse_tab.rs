@@ -424,6 +424,24 @@ impl BrowseTab {
         }
     }
 
+    /// Walk the selection → FilterListModel → ListStore chain to
+    /// expose the underlying store for direct mutation (used by the
+    /// inline-Insert path to prepend a draft row).
+    fn list_store(&self) -> Option<gtk::gio::ListStore> {
+        let selection = self.current_selection.as_ref()?;
+        let filter_model = selection.model()?.downcast::<gtk::FilterListModel>().ok()?;
+        filter_model.model()?.downcast::<gtk::gio::ListStore>().ok()
+    }
+
+    /// Look up the live `RowObject` at a filter-model position. Used
+    /// to detect whether a row is a draft (`draft_id().is_some()`)
+    /// vs a persisted row, and to mutate draft cells in place when
+    /// the user types into them.
+    fn row_object_at(&self, position: u32) -> Option<super::row_object::RowObject> {
+        let model = self.current_selection.as_ref()?.model()?;
+        model.item(position)?.downcast::<super::row_object::RowObject>().ok()
+    }
+
     /// Build the (RowKey, current_values) pair for a row at the
     /// given position in the current result. Returns None if the
     /// table has no PK or the position is out of range.
@@ -866,11 +884,25 @@ impl SimpleComponent for BrowseTab {
                 if self.current_columns.is_empty() {
                     return;
                 }
-                let _ = sender.output(BrowseTabOutput::OpenInsertDialog {
-                    columns: self.current_columns.clone(),
-                    table: self.table.clone(),
-                    driver_id: self.driver_id.clone(),
-                });
+                // Inline draft: track in the changeset (returns a
+                // RowKey::Draft(N) handle), then prepend a fresh
+                // RowObject tagged with the same draft id to the
+                // grid's ListStore. The new row appears at the top
+                // with a green tint and editable cells; user fills
+                // them inline and clicks Save to commit.
+                let default_values: Vec<Value> = self.current_columns.iter().map(|_| Value::Null).collect();
+                let key_opt =
+                    crate::services::change_tracker::with_tab(self.tab_id, |t| t.track_insert(default_values.clone()));
+                let Some(key) = key_opt else {
+                    return;
+                };
+                let crate::services::change_tracker::RowKey::Draft(draft_id) = key else {
+                    return;
+                };
+                if let Some(store) = self.list_store() {
+                    let draft_row = super::row_object::RowObject::new_draft(draft_id, default_values);
+                    store.insert(0, &draft_row);
+                }
             }
             BrowseTabInput::EditSelectedRow => {
                 let Some(selection) = self.current_selection.as_ref() else {
@@ -951,19 +983,29 @@ impl SimpleComponent for BrowseTab {
                 // Cell edits no longer commit immediately to the
                 // database. Route through the per-tab change tracker
                 // so the user can review / Save / Discard a batch.
-                let Some((key, row)) = self.row_key_at(row_position) else {
-                    return;
-                };
-                let original = row[col_index].clone();
-                // Parse new_value text into Value using the column's
-                // schema-declared type. For now treat it as Text;
-                // the driver layer coerces on commit. Empty string is
-                // preserved as-is (use Ctrl+Backspace for NULL).
                 let new = if new_value.is_empty() {
                     Value::Text(String::new())
                 } else {
                     Value::Text(new_value)
                 };
+                let row_obj = self.row_object_at(row_position);
+                if let Some(row_obj) = &row_obj
+                    && let Some(draft_id) = row_obj.draft_id()
+                {
+                    // Draft row — mutate the tracker's draft buffer
+                    // directly. The RowObject's own cells are also
+                    // updated so the grid's display reflects the
+                    // pending value without waiting for re-fetch.
+                    crate::services::change_tracker::with_tab(self.tab_id, |t| {
+                        t.track_draft_cell_edit(draft_id, col_index, new.clone());
+                    });
+                    row_obj.set_cell(col_index, new);
+                    return;
+                }
+                let Some((key, row)) = self.row_key_at(row_position) else {
+                    return;
+                };
+                let original = row[col_index].clone();
                 crate::services::change_tracker::with_tab(self.tab_id, |t| {
                     t.track_cell_edit(key, col_index, original, new);
                 });

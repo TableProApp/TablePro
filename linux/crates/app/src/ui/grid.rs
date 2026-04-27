@@ -69,6 +69,12 @@ pub fn build_column_view(
         let Some(row) = item.downcast_ref::<RowObject>() else {
             return true;
         };
+        // Always show draft rows regardless of search text — their
+        // initial NULL values would otherwise hide them from view
+        // the moment the user types anything in the find bar.
+        if row.draft_id().is_some() {
+            return true;
+        }
         let needle = query.to_lowercase();
         row.cells_clone()
             .iter()
@@ -200,28 +206,37 @@ fn build_column(
         // tp-row-pending-insert CSS classes accordingly. Done at bind
         // time so scroll-recycled widgets always reflect current
         // tracker state without needing per-cell signal subscriptions.
-        let pending_classes: &[&str] = if let Some(tab_id) = tab_ctx_for_bind.tab_id {
-            let pk_values: Vec<Value> = tab_ctx_for_bind
-                .pk_col_indices
-                .iter()
-                .map(|&i| row.cell_value(i))
-                .collect();
-            crate::services::change_tracker::with_tab_ref(tab_id, |t| {
-                if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
-                    let row_state = t.row_state(&key);
-                    let cell_state = t.cell_state(&key, idx);
-                    use crate::services::change_tracker::{CellState, RowState};
-                    match (row_state, cell_state) {
-                        (RowState::PendingDelete, _) => &["tp-row-pending-delete"][..],
-                        (RowState::InsertDraft, _) => &["tp-row-pending-insert"][..],
-                        (_, CellState::Modified) => &["tp-cell-modified"][..],
-                        _ => &[][..],
+        //
+        // Draft rows are detected via RowObject's draft_id field
+        // (set when the row was created via the inline-Insert flow).
+        // Persisted rows are keyed by PK column values via
+        // RowKey::from_pk_values.
+        let pending_classes: &[&str] = if let Some(_tab_id) = tab_ctx_for_bind.tab_id {
+            if row.draft_id().is_some() {
+                &["tp-row-pending-insert"][..]
+            } else {
+                let pk_values: Vec<Value> = tab_ctx_for_bind
+                    .pk_col_indices
+                    .iter()
+                    .map(|&i| row.cell_value(i))
+                    .collect();
+                crate::services::change_tracker::with_tab_ref(_tab_id, |t| {
+                    if let Some(key) = crate::services::change_tracker::RowKey::from_pk_values(&pk_values) {
+                        let row_state = t.row_state(&key);
+                        let cell_state = t.cell_state(&key, idx);
+                        use crate::services::change_tracker::{CellState, RowState};
+                        match (row_state, cell_state) {
+                            (RowState::PendingDelete, _) => &["tp-row-pending-delete"][..],
+                            (RowState::InsertDraft, _) => &["tp-row-pending-insert"][..],
+                            (_, CellState::Modified) => &["tp-cell-modified"][..],
+                            _ => &[][..],
+                        }
+                    } else {
+                        &[][..]
                     }
-                } else {
-                    &[][..]
-                }
-            })
-            .unwrap_or(&[][..])
+                })
+                .unwrap_or(&[][..])
+            }
         } else {
             &[][..]
         };
