@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Crash on macOS 26 when opening SQL Preview (NSColor.cgColor calls deprecated colorSpaceName)
 - Connection form: `usePrivateKey=true` from URL no longer disables Test/Create buttons
 - Transient connections from URL clean up keychain entries on connection failure
 
