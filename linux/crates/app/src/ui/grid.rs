@@ -145,90 +145,14 @@ fn build_column(
     let table_for_setup = table.clone();
     let table_for_persist = table;
 
-    let context_sender = sender.clone();
-    let context_table = table_for_setup.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
         if editable_for_setup {
-            // Double-click-to-edit, matching GNOME Files filename rename.
-            // Single-click triggering edit is destructive in a database
-            // grid: an accidental row-selection click would commit the
-            // user into edit mode on the cell they happened to land on.
-            // Pattern: keep editable=false at rest so the EditableLabel's
-            // internal click→edit path is inert; flip true on double-click,
-            // call start_editing(), and flip back to false on
-            // editing-notify exit.
-            let label = gtk::EditableLabel::builder()
-                .xalign(0.0)
-                .hexpand(true)
-                .margin_start(8)
-                .margin_end(8)
-                .build();
-            label.set_editable(false);
-            item.set_child(Some(&label));
-
-            let dbl_click = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
-            let label_for_dbl = label.clone();
-            dbl_click.connect_pressed(move |gesture, n_press, _, _| {
-                if n_press == 2 {
-                    gesture.set_state(gtk::EventSequenceState::Claimed);
-                    label_for_dbl.set_editable(true);
-                    label_for_dbl.start_editing();
-                }
-            });
-            label.add_controller(dbl_click);
-
-            if let Some(ctx_sender) = context_sender.clone() {
-                attach_context_menu(label.upcast_ref(), idx, context_table.clone(), ctx_sender);
-            }
-
-            let Some(sender_clone) = sender_for_setup.clone() else {
-                return;
-            };
-            let table_clone = table_for_setup.clone();
-            label.connect_editing_notify(move |label| {
-                if label.is_editing() {
-                    label.add_css_class("accent");
-                    let position = POSITION_SLOT.get(label).unwrap_or(0);
-                    let original = label.text().to_string();
-                    SNAPSHOT_SLOT.set(label, EditSnapshot { position, original });
-                    return;
-                }
-                label.remove_css_class("accent");
-                // Reset to display-only so the next click won't enter
-                // edit mode via EditableLabel's internal handler.
-                label.set_editable(false);
-                let Some(snap) = SNAPSHOT_SLOT.take(label) else {
-                    return;
-                };
-                let new_value = label.text().to_string();
-                if new_value == snap.original {
-                    return;
-                }
-                sender_clone
-                    .send(GridMsg::CellEdited {
-                        table: table_clone.clone(),
-                        row_position: snap.position,
-                        col_index: idx,
-                        new_value,
-                    })
-                    .ok();
-            });
+            setup_editable_cell(item, idx, table_for_setup.clone(), sender_for_setup.clone());
         } else {
-            let label = gtk::Label::builder()
-                .xalign(0.0)
-                .hexpand(true)
-                .selectable(true)
-                .ellipsize(gtk::pango::EllipsizeMode::End)
-                .margin_start(8)
-                .margin_end(8)
-                .build();
-            item.set_child(Some(&label));
-            if let Some(ctx_sender) = context_sender.clone() {
-                attach_context_menu(label.upcast_ref(), idx, context_table.clone(), ctx_sender);
-            }
+            setup_readonly_cell(item, idx, table_for_setup.clone(), sender_for_setup.clone());
         }
     });
 
@@ -311,8 +235,117 @@ fn build_column(
     column
 }
 
-fn attach_context_menu(widget: &gtk::Widget, idx: usize, table: String, sender: relm4::Sender<GridMsg>) {
-    let editable = widget.is::<gtk::EditableLabel>();
+/// Setup an editable cell. Display widget is `gtk::EditableLabel` —
+/// the same compact widget GNOME Files uses for inline filename
+/// rename. `editable=false` at rest keeps EditableLabel's built-in
+/// click-to-edit path inert; the dedicated double-click GestureClick
+/// flips it true and calls `start_editing()`. The editing-notify
+/// handler resets editable=false on exit and emits `CellEdited` if the
+/// text actually changed.
+///
+/// We require a deliberate double-click rather than the widget default
+/// (focus-then-click) because clicks in a data grid are routinely
+/// row-selection clicks — a single-click trigger would silently drop
+/// the user into edit mode on the cell they happened to land on.
+fn setup_editable_cell(item: &gtk::ListItem, idx: usize, table: String, sender: Option<relm4::Sender<GridMsg>>) {
+    let label = gtk::EditableLabel::builder()
+        .xalign(0.0)
+        .hexpand(true)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    label.set_editable(false);
+    item.set_child(Some(&label));
+
+    install_double_click_to_edit(&label);
+
+    if let Some(sender) = sender {
+        attach_context_menu(label.upcast_ref(), idx, table.clone(), sender.clone(), true);
+        install_edit_commit_handler(&label, idx, table, sender);
+    }
+}
+
+/// Setup a read-only cell — plain `gtk::Label` with selectable text +
+/// ellipsis on overflow, plus the context menu (Copy value, Copy row
+/// as INSERT) for non-mutating actions.
+fn setup_readonly_cell(item: &gtk::ListItem, idx: usize, table: String, sender: Option<relm4::Sender<GridMsg>>) {
+    let label = gtk::Label::builder()
+        .xalign(0.0)
+        .hexpand(true)
+        .selectable(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .margin_start(8)
+        .margin_end(8)
+        .build();
+    item.set_child(Some(&label));
+    if let Some(sender) = sender {
+        attach_context_menu(label.upcast_ref(), idx, table, sender, false);
+    }
+}
+
+/// Capture-phase double-click GestureClick that flips the
+/// `EditableLabel` into edit mode. Capture phase is required because
+/// `ColumnView`'s row-selection logic absorbs press events in the
+/// default Bubble phase before they can reach this cell-level
+/// controller.
+fn install_double_click_to_edit(label: &gtk::EditableLabel) {
+    let gesture = gtk::GestureClick::builder().button(gtk::gdk::BUTTON_PRIMARY).build();
+    gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let label_for_press = label.clone();
+    gesture.connect_pressed(move |gesture, n_press, _, _| {
+        if n_press != 2 {
+            return;
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        label_for_press.set_editable(true);
+        label_for_press.start_editing();
+    });
+    label.add_controller(gesture);
+}
+
+/// Wire the editing-notify signal: snapshot the original text on
+/// entry, commit (or skip if unchanged) on exit, and reset
+/// `editable=false` so the next click can't enter edit mode via
+/// `EditableLabel`'s built-in click-to-edit path.
+fn install_edit_commit_handler(
+    label: &gtk::EditableLabel,
+    col_index: usize,
+    table: String,
+    sender: relm4::Sender<GridMsg>,
+) {
+    label.connect_editing_notify(move |label| {
+        if label.is_editing() {
+            let position = POSITION_SLOT.get(label).unwrap_or(0);
+            let original = label.text().to_string();
+            SNAPSHOT_SLOT.set(label, EditSnapshot { position, original });
+            return;
+        }
+        label.set_editable(false);
+        let Some(snap) = SNAPSHOT_SLOT.take(label) else {
+            return;
+        };
+        let new_value = label.text().to_string();
+        if new_value == snap.original {
+            return;
+        }
+        sender
+            .send(GridMsg::CellEdited {
+                table: table.clone(),
+                row_position: snap.position,
+                col_index,
+                new_value,
+            })
+            .ok();
+    });
+}
+
+fn attach_context_menu(
+    widget: &gtk::Widget,
+    idx: usize,
+    table: String,
+    sender: relm4::Sender<GridMsg>,
+    editable: bool,
+) {
     let menu = gio::Menu::new();
     menu.append(Some(&crate::tr!("Copy value")), Some("cell.copy-value"));
     menu.append(Some(&crate::tr!("Copy row as INSERT")), Some("cell.copy-row-insert"));
