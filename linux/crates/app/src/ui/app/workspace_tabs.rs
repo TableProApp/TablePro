@@ -386,17 +386,71 @@ impl App {
         self.persist_workspace_state();
     }
 
-    pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid, _sender: ComponentSender<Self>) {
+    pub(super) fn close_workspace_tab_by_id(&mut self, id: Uuid, sender: ComponentSender<Self>) {
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
         };
+
+        // If this is a Browse tab with pending changeset, intercept the
+        // close with an AdwAlertDialog (Discard / Cancel). The user can
+        // also cancel close, save manually, then close — no Save-and-
+        // close branch keeps the async commit logic out of this path.
+        let pending = self
+            .workspace_tabs
+            .borrow()
+            .get(&id)
+            .and_then(|t| match t {
+                WorkspaceTab::Browse(s) => crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()),
+                _ => None,
+            })
+            .unwrap_or(false);
+        if pending {
+            let page = self.workspace_tabs.borrow().get(&id).map(|t| match t {
+                WorkspaceTab::Browse(s) => s.page.clone(),
+                WorkspaceTab::Editor(s) => s.page.clone(),
+            });
+            let Some(page) = page else { return };
+            let dialog = adw::AlertDialog::new(
+                Some(&crate::tr!("Discard pending changes?")),
+                Some(&crate::tr!(
+                    "This tab has unsaved edits. Cancel to keep them and save manually, or Discard to close anyway."
+                )),
+            );
+            dialog.add_response("cancel", &crate::tr!("Cancel"));
+            dialog.add_response("discard", &crate::tr!("Discard"));
+            dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+            dialog.set_default_response(Some("cancel"));
+            dialog.set_close_response("cancel");
+            let tab_view_for_resp = tab_view.clone();
+            let page_for_resp = page.clone();
+            let sender_for_resp = sender.clone();
+            dialog.connect_response(None, move |dlg, response| {
+                dlg.close();
+                if response == "discard" {
+                    crate::services::change_tracker::with_tab(id, |t| t.clear());
+                    sender_for_resp.input(AppMsg::WorkspaceTabClosed(id));
+                } else {
+                    // Revert AdwTabView's "closing" state so the page
+                    // stays open. Without this the X click would still
+                    // dismiss the page (close-page-finish was deferred
+                    // by `close_sender.input(WorkspaceTabClosed(id))`).
+                    tab_view_for_resp.close_page_finish(&page_for_resp, false);
+                }
+            });
+            dialog.present(Some(&self.window));
+            return;
+        }
+
+        self.finish_close_workspace_tab(id, &tab_view);
+    }
+
+    /// Tear down a tab without prompting. Internal helper called once
+    /// the close-with-pending dialog (if any) has resolved.
+    fn finish_close_workspace_tab(&mut self, id: Uuid, tab_view: &adw::TabView) {
         let removed = self.workspace_tabs.borrow_mut().remove(&id);
         let Some(removed) = removed else {
             return;
         };
-        // For editor tabs, cancel any running query before tearing down.
-        // For browse tabs, close the per-tab pending-changeset tracker
-        // so its memory is reclaimed.
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
