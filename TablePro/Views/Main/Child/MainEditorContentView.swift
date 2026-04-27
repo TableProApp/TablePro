@@ -89,7 +89,7 @@ struct MainEditorContentView: View {
         }
         // Fallback before onAppear initializes cachedChangeManager.
         // Safe: onAppear fires before any user interaction needs it.
-        return AnyChangeManager(dataManager: changeManager)
+        return AnyChangeManager(changeManager)
     }
 
     // MARK: - Body
@@ -152,7 +152,7 @@ struct MainEditorContentView: View {
         }
         .onAppear {
             updateHasQueryText()
-            cachedChangeManager = AnyChangeManager(dataManager: changeManager)
+            cachedChangeManager = AnyChangeManager(changeManager)
             if let tab = tabManager.selectedTab {
                 cacheRowProvider(for: tab)
             }

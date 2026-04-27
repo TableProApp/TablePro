@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- AnyChangeManager uses ChangeManaging protocol instead of closure-based type erasure, removing all runtime `[Any]` downcasts
 - Row selection state moved from MainContentView @State to GridSelectionState @Observable class, preventing full view tree invalidation on every row click
 - QueryTab decomposed into focused sub-types: TabExecutionState, TabTableContext, TabQueryContent, TabDisplayState
 - Inspector: dense field list, PK/FK key icons, Set NULL/DEFAULT in picker dropdowns, toolbar tracking separator

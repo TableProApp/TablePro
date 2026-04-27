@@ -312,8 +312,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             return
         }
 
-        for change in changeManager.changes {
-            guard let rowChange = change as? RowChange else { continue }
+        for rowChange in changeManager.rowChanges {
             let rowIndex = rowChange.rowIndex
             let isDeleted = rowChange.type == .delete
             let isInserted = rowChange.type == .insert

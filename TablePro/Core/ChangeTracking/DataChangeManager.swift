@@ -23,9 +23,10 @@ struct UndoResult {
 /// @MainActor ensures thread-safe access - critical for avoiding EXC_BAD_ACCESS
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
-final class DataChangeManager {
+final class DataChangeManager: ChangeManaging {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
     var changes: [RowChange] = []
+    var rowChanges: [RowChange] { changes }
     var hasChanges: Bool = false
     var reloadVersion: Int = 0
 

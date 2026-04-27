@@ -281,8 +281,7 @@ struct DataGridView: NSViewRepresentable {
         // Re-apply pending cell edits only when changes have been modified
         if changeManager.reloadVersion != coordinator.lastReapplyVersion {
             coordinator.lastReapplyVersion = changeManager.reloadVersion
-            for change in changeManager.changes {
-                guard let rowChange = change as? RowChange else { continue }
+            for rowChange in changeManager.rowChanges {
                 for cellChange in rowChange.cellChanges {
                     coordinator.rowProvider.updateValue(
                         cellChange.newValue,
@@ -730,7 +729,7 @@ struct DataGridView: NSViewRepresentable {
             ],
             columns: ["id", "name", "email"]
         ),
-        changeManager: AnyChangeManager(dataManager: DataChangeManager()),
+        changeManager: AnyChangeManager(DataChangeManager()),
         isEditable: true,
         selectedRowIndices: .constant([]),
         sortState: .constant(SortState()),
