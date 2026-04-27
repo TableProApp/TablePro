@@ -237,6 +237,14 @@ struct TabExecutionState: Equatable {
     var errorMessage: String?
     var rowsAffected: Int = 0
     var lastExecutedAt: Date?
+
+    static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
+        lhs.isExecuting == rhs.isExecuting
+            && lhs.executionTime == rhs.executionTime
+            && lhs.statusMessage == rhs.statusMessage
+            && lhs.errorMessage == rhs.errorMessage
+            && lhs.rowsAffected == rhs.rowsAffected
+    }
 }
 
 struct TabTableContext: Equatable {
