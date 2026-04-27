@@ -235,7 +235,7 @@ final class DataChangeManager: ChangeManaging {
             undoManager.registerUndo(withTarget: self) { target in
                 target.applyDataUndo(.cellEdit(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: oldValue, newValue: newValue
+                    previousValue: oldValue, newValue: newValue, originalRow: nil
                 ))
             }
             undoManager.setActionName(String(localized: "Edit Cell"))
@@ -290,7 +290,7 @@ final class DataChangeManager: ChangeManaging {
         undoManager.registerUndo(withTarget: self) { target in
             target.applyDataUndo(.cellEdit(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                previousValue: oldValue, newValue: newValue
+                previousValue: oldValue, newValue: newValue, originalRow: originalRow
             ))
         }
         undoManager.setActionName(String(localized: "Edit Cell"))
@@ -505,11 +505,11 @@ final class DataChangeManager: ChangeManaging {
     // swiftlint:disable:next function_body_length
     private func applyDataUndo(_ action: UndoAction) {
         switch action {
-        case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue):
+        case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue, let originalRow):
             undoManager.registerUndo(withTarget: self) { target in
                 target.applyDataUndo(.cellEdit(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: newValue, newValue: previousValue
+                    previousValue: newValue, newValue: previousValue, originalRow: originalRow
                 ))
             }
             undoManager.setActionName(String(localized: "Edit Cell"))
@@ -559,7 +559,7 @@ final class DataChangeManager: ChangeManaging {
             } else {
                 recordCellChangeForRedo(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    oldValue: newValue, newValue: previousValue
+                    oldValue: newValue, newValue: previousValue, originalRow: originalRow
                 )
             }
             changedRowIndices.insert(rowIndex)
@@ -709,7 +709,8 @@ final class DataChangeManager: ChangeManaging {
         columnIndex: Int,
         columnName: String,
         oldValue: String?,
-        newValue: String?
+        newValue: String?,
+        originalRow: [String?]?
     ) {
         let cellChange = CellChange(
             rowIndex: rowIndex,
@@ -759,7 +760,8 @@ final class DataChangeManager: ChangeManaging {
             }
         } else {
             let rowChange = RowChange(
-                rowIndex: rowIndex, type: .update, cellChanges: [cellChange]
+                rowIndex: rowIndex, type: .update, cellChanges: [cellChange],
+                originalRow: originalRow
             )
             changes.append(rowChange)
             changeIndex[updateKey] = changes.count - 1
