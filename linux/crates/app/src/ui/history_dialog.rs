@@ -20,9 +20,15 @@ pub struct HistoryDialog {
     stack: gtk::Stack,
     status_page: adw::StatusPage,
 
-    filter_connection: gtk::DropDown,
-    filter_status: gtk::DropDown,
-    filter_window: gtk::DropDown,
+    filter_connection: adw::ComboRow,
+    filter_status: adw::ComboRow,
+    filter_window: adw::ComboRow,
+    /// Pending debounced search timeout. Replaces the previous fire-
+    /// on-every-keystroke behaviour: typing or flipping a filter
+    /// schedules a Refresh 150 ms later and cancels any earlier
+    /// scheduled one, so we send a single SQL search per pause —
+    /// matches GNOME Files' search debounce.
+    filter_debounce: std::rc::Rc<std::cell::RefCell<Option<gtk::glib::SourceId>>>,
 
     selection_bar: gtk::Revealer,
     selection_label: gtk::Label,
@@ -105,7 +111,11 @@ impl Component for HistoryDialog {
             .chain(connections.iter().map(|m| m.name.clone()))
             .collect();
         let conn_strings_ref: Vec<&str> = conn_strings.iter().map(String::as_str).collect();
-        let filter_connection = gtk::DropDown::from_strings(&conn_strings_ref);
+        let conn_model = gtk::StringList::new(&conn_strings_ref);
+        let filter_connection = adw::ComboRow::builder()
+            .title(crate::tr!("Connection"))
+            .model(&conn_model)
+            .build();
 
         let status_strings = [
             crate::tr!("Any"),
@@ -114,7 +124,11 @@ impl Component for HistoryDialog {
             crate::tr!("Cancelled"),
         ];
         let status_strings_ref: Vec<&str> = status_strings.iter().map(String::as_str).collect();
-        let filter_status = gtk::DropDown::from_strings(&status_strings_ref);
+        let status_model = gtk::StringList::new(&status_strings_ref);
+        let filter_status = adw::ComboRow::builder()
+            .title(crate::tr!("Status"))
+            .model(&status_model)
+            .build();
 
         let window_strings = [
             crate::tr!("Any time"),
@@ -123,9 +137,17 @@ impl Component for HistoryDialog {
             crate::tr!("Last 30 days"),
         ];
         let window_strings_ref: Vec<&str> = window_strings.iter().map(String::as_str).collect();
-        let filter_window = gtk::DropDown::from_strings(&window_strings_ref);
+        let window_model = gtk::StringList::new(&window_strings_ref);
+        let filter_window = adw::ComboRow::builder()
+            .title(crate::tr!("Time window"))
+            .model(&window_model)
+            .build();
 
-        let reset_button = gtk::Button::builder().label(crate::tr!("Reset")).build();
+        let reset_button = gtk::Button::builder()
+            .label(crate::tr!("Reset"))
+            .halign(gtk::Align::End)
+            .margin_top(6)
+            .build();
         reset_button.add_css_class("flat");
         let reset_conn = filter_connection.clone();
         let reset_status = filter_status.clone();
@@ -136,38 +158,31 @@ impl Component for HistoryDialog {
             reset_window.set_selected(0);
         });
 
-        let popover_grid = gtk::Grid::builder()
-            .row_spacing(12)
-            .column_spacing(12)
+        // Native popover content: a single AdwPreferencesGroup of
+        // AdwComboRow filters, with the Reset button below. Replaces
+        // the gtk::Grid + paired labels (the GTK3-era pattern) —
+        // ComboRows carry their own titles, so the Grid column of
+        // labels was redundant.
+        let filter_group = adw::PreferencesGroup::new();
+        filter_group.add(&filter_connection);
+        filter_group.add(&filter_status);
+        filter_group.add(&filter_window);
+
+        let popover_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
             .margin_top(12)
             .margin_bottom(12)
             .margin_start(12)
             .margin_end(12)
             .build();
-        let conn_label = gtk::Label::builder()
-            .label(crate::tr!("Connection"))
-            .xalign(0.0)
-            .build();
-        let status_label_widget = gtk::Label::builder().label(crate::tr!("Status")).xalign(0.0).build();
-        let window_label = gtk::Label::builder()
-            .label(crate::tr!("Time window"))
-            .xalign(0.0)
-            .build();
-        for label in [&conn_label, &status_label_widget, &window_label] {
-            label.add_css_class("dim-label");
-        }
-        popover_grid.attach(&conn_label, 0, 0, 1, 1);
-        popover_grid.attach(&filter_connection, 1, 0, 1, 1);
-        popover_grid.attach(&status_label_widget, 0, 1, 1, 1);
-        popover_grid.attach(&filter_status, 1, 1, 1, 1);
-        popover_grid.attach(&window_label, 0, 2, 1, 1);
-        popover_grid.attach(&filter_window, 1, 2, 1, 1);
-        popover_grid.attach(&reset_button, 1, 3, 1, 1);
-        filter_popover.set_child(Some(&popover_grid));
+        popover_box.append(&filter_group);
+        popover_box.append(&reset_button);
+        filter_popover.set_child(Some(&popover_box));
 
-        for dropdown in [&filter_connection, &filter_status, &filter_window] {
+        for combo in [&filter_connection, &filter_status, &filter_window] {
             let s = sender.clone();
-            dropdown.connect_selected_notify(move |_| s.input(HistoryDialogInput::FiltersChanged));
+            combo.connect_selected_notify(move |_| s.input(HistoryDialogInput::FiltersChanged));
         }
 
         header.pack_start(&filter_button);
@@ -370,6 +385,7 @@ impl Component for HistoryDialog {
             filter_connection,
             filter_status,
             filter_window,
+            filter_debounce: std::rc::Rc::new(std::cell::RefCell::new(None)),
             selection_bar,
             selection_label,
             connections,
@@ -387,23 +403,14 @@ impl Component for HistoryDialog {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
-            HistoryDialogInput::Refresh | HistoryDialogInput::SearchChanged | HistoryDialogInput::FiltersChanged => {
-                let filter = self.build_filter();
-                let s = sender.clone();
-                sender.command(move |out, shutdown| {
-                    shutdown
-                        .register(async move {
-                            let _ = s;
-                            match query_history::search(filter).await {
-                                Ok(entries) => out.send(HistoryDialogCmd::Loaded(entries)).ok(),
-                                Err(e) => {
-                                    tracing::warn!(error = %e, "history search failed");
-                                    out.send(HistoryDialogCmd::Loaded(Vec::new())).ok()
-                                }
-                            }
-                        })
-                        .drop_on_shutdown()
-                });
+            HistoryDialogInput::Refresh => self.run_search(sender),
+            // SearchChanged + FiltersChanged go through the debounce —
+            // every keystroke and every dropdown flip would otherwise
+            // fire its own SQL search. After a 150 ms idle window the
+            // scheduled timeout re-enters update with Refresh, which
+            // does the actual work.
+            HistoryDialogInput::SearchChanged | HistoryDialogInput::FiltersChanged => {
+                self.schedule_debounced_search(sender);
             }
 
             HistoryDialogInput::Activate(id) => {
@@ -558,6 +565,42 @@ impl Component for HistoryDialog {
 impl HistoryDialog {
     pub fn dialog(&self) -> &adw::Dialog {
         &self.root
+    }
+
+    /// Run the search immediately. Triggered by Refresh (initial load
+    /// + after any mutation) and by the debounced timeout firing.
+    fn run_search(&self, sender: ComponentSender<Self>) {
+        let filter = self.build_filter();
+        sender.command(move |out, shutdown| {
+            shutdown
+                .register(async move {
+                    match query_history::search(filter).await {
+                        Ok(entries) => out.send(HistoryDialogCmd::Loaded(entries)).ok(),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "history search failed");
+                            out.send(HistoryDialogCmd::Loaded(Vec::new())).ok()
+                        }
+                    }
+                })
+                .drop_on_shutdown()
+        });
+    }
+
+    /// Cancel any pending debounce timeout and schedule a new Refresh
+    /// 150 ms from now. The 150 ms idle threshold matches GNOME Files'
+    /// search-typing debounce — short enough to feel responsive, long
+    /// enough that a fast typer never fires more than one query.
+    fn schedule_debounced_search(&self, sender: ComponentSender<Self>) {
+        if let Some(prev) = self.filter_debounce.borrow_mut().take() {
+            prev.remove();
+        }
+        let s = sender.clone();
+        let slot = self.filter_debounce.clone();
+        let id = gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(150), move || {
+            slot.borrow_mut().take();
+            s.input(HistoryDialogInput::Refresh);
+        });
+        *self.filter_debounce.borrow_mut() = Some(id);
     }
 
     fn build_filter(&self) -> SearchFilter {
