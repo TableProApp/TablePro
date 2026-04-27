@@ -11,10 +11,17 @@ import os
 @MainActor @Observable
 final class QueryTabManager {
     var tabs: [QueryTab] = [] {
-        didSet { _tabIndexMapDirty = true }
+        didSet {
+            _tabIndexMapDirty = true
+            if oldValue.map(\.id) != tabs.map(\.id) {
+                tabStructureVersion += 1
+            }
+        }
     }
 
     var selectedTabId: UUID?
+
+    var tabStructureVersion: Int = 0
 
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
@@ -39,7 +46,6 @@ final class QueryTabManager {
     }
 
     init() {
-        // Start with no tabs - shows empty state
         tabs = []
         selectedTabId = nil
     }
@@ -212,12 +218,11 @@ final class QueryTabManager {
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
         var tab = tabs[selectedIndex]
-        tab.rowBuffer = RowBuffer()
         tab.tabType = .table
         tab.title = tableName
         tab.tableContext.tableName = tableName
         tab.content.query = query
-        tab.resultVersion += 1
+        tab.schemaVersion += 1
         tab.execution.executionTime = nil
         tab.execution.statusMessage = nil
         tab.execution.errorMessage = nil
@@ -236,6 +241,7 @@ final class QueryTabManager {
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
+        tabStructureVersion += 1
         return true
     }
 
@@ -243,6 +249,11 @@ final class QueryTabManager {
         if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
             tabs[index] = tab
         }
+    }
+
+    func markTabRenamed(_ tabId: UUID) {
+        guard tabs.contains(where: { $0.id == tabId }) else { return }
+        tabStructureVersion += 1
     }
 
     deinit {

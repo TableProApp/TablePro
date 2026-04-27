@@ -188,19 +188,20 @@ extension MainContentCoordinator {
             return false
         }
         let tab = tabManager.tabs[idx]
+        let buffer = rowDataStore.buffer(for: tab.id)
         guard tab.tableContext.tableName == tableName,
-              !tab.columnDefaults.isEmpty,
+              !buffer.columnDefaults.isEmpty,
               !tab.tableContext.primaryKeyColumns.isEmpty else {
             return false
         }
         // Ensure every ENUM/SET column has its allowed values loaded
-        let enumSetColumnNames: [String] = tab.resultColumns.enumerated().compactMap { i, name in
-            guard i < tab.columnTypes.count,
-                  tab.columnTypes[i].isEnumType || tab.columnTypes[i].isSetType else { return nil }
+        let enumSetColumnNames: [String] = buffer.columns.enumerated().compactMap { i, name in
+            guard i < buffer.columnTypes.count,
+                  buffer.columnTypes[i].isEnumType || buffer.columnTypes[i].isSetType else { return nil }
             return name
         }
         if !enumSetColumnNames.isEmpty,
-           !enumSetColumnNames.allSatisfy({ tab.columnEnumValues[$0] != nil }) {
+           !enumSetColumnNames.allSatisfy({ buffer.columnEnumValues[$0] != nil }) {
             return false
         }
         return true
@@ -248,10 +249,8 @@ extension MainContentCoordinator {
         guard let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
 
         var updatedTab = tabManager.tabs[idx]
-        updatedTab.resultColumns = columns
-        updatedTab.columnTypes = columnTypes
-        updatedTab.resultRows = rows
-        updatedTab.resultVersion += 1
+        let newBuffer = RowBuffer(rows: rows, columns: columns, columnTypes: columnTypes)
+        updatedTab.schemaVersion += 1
         updatedTab.execution.executionTime = executionTime
         updatedTab.execution.rowsAffected = rowsAffected
         updatedTab.execution.statusMessage = statusMessage
@@ -260,19 +259,19 @@ extension MainContentCoordinator {
         updatedTab.tableContext.tableName = tableName
         updatedTab.tableContext.isEditable = isEditable
         // Populate enum values from column types for the enum popover
-        for (index, colType) in updatedTab.columnTypes.enumerated() {
-            if case .enumType(_, let values) = colType, let vals = values, index < updatedTab.resultColumns.count {
-                updatedTab.columnEnumValues[updatedTab.resultColumns[index]] = vals
+        for (index, colType) in newBuffer.columnTypes.enumerated() {
+            if case .enumType(_, let values) = colType, let vals = values, index < newBuffer.columns.count {
+                newBuffer.columnEnumValues[newBuffer.columns[index]] = vals
             }
         }
 
         // Merge FK metadata into the same update if available
         if let metadata {
-            updatedTab.columnDefaults = metadata.columnDefaults
-            updatedTab.columnForeignKeys = metadata.columnForeignKeys
-            updatedTab.columnNullable = metadata.columnNullable
+            newBuffer.columnDefaults = metadata.columnDefaults
+            newBuffer.columnForeignKeys = metadata.columnForeignKeys
+            newBuffer.columnNullable = metadata.columnNullable
             for (col, vals) in metadata.columnEnumValues {
-                updatedTab.columnEnumValues[col] = vals
+                newBuffer.columnEnumValues[col] = vals
             }
             if let approxCount = metadata.approximateRowCount, approxCount > 0 {
                 updatedTab.pagination.totalRowCount = approxCount
@@ -283,15 +282,16 @@ extension MainContentCoordinator {
             updatedTab.metadataVersion += 1
         }
 
+        rowDataStore.setBuffer(newBuffer, for: updatedTab.id)
+
         // Create a ResultSet for this single-statement execution
         let rs = ResultSet(label: tableName ?? "Result")
-        rs.rowBuffer = updatedTab.rowBuffer
+        rs.rowBuffer = newBuffer
         rs.executionTime = updatedTab.execution.executionTime
         rs.rowsAffected = updatedTab.execution.rowsAffected
         rs.statusMessage = updatedTab.execution.statusMessage
         rs.tableName = updatedTab.tableContext.tableName
         rs.isEditable = updatedTab.tableContext.isEditable
-        rs.resultVersion = updatedTab.resultVersion
         rs.metadataVersion = updatedTab.metadataVersion
 
         // Keep pinned results, replace unpinned
@@ -466,13 +466,13 @@ extension MainContentCoordinator {
                 guard capturedGeneration == queryGeneration else { return }
                 guard !Task.isCancelled else { return }
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    let existing = tabManager.tabs[idx].columnEnumValues
+                    let buffer = rowDataStore.buffer(for: tabId)
                     let hasNewValues = columnEnumValues.contains { key, value in
-                        existing[key] != value
+                        buffer.columnEnumValues[key] != value
                     }
                     if hasNewValues {
                         for (col, vals) in columnEnumValues {
-                            tabManager.tabs[idx].columnEnumValues[col] = vals
+                            buffer.columnEnumValues[col] = vals
                         }
                         tabManager.tabs[idx].metadataVersion += 1
                     }

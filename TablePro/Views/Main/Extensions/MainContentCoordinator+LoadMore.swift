@@ -96,23 +96,21 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    tab.rowBuffer.rows.append(contentsOf: pagedResult.rows)
-                    tab.resultVersion += 1
+                    let buffer = rowDataStore.buffer(for: tab.id)
+                    buffer.rows.append(contentsOf: pagedResult.rows)
+                    tab.schemaVersion += 1
                     tab.pagination.loadMoreOffset = pagedResult.nextOffset
                     tab.pagination.hasMoreRows = pagedResult.hasMore
                     tab.pagination.isLoadingMore = false
                     if !pagedResult.hasMore {
                         tab.pagination.baseQueryForMore = nil
                     }
-                    if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.resultVersion
-                    }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil
                     }
-                    progressLog.info("[loadMore] applied totalRows=\(tab.rowBuffer.rows.count)")
+                    progressLog.info("[loadMore] applied totalRows=\(buffer.rows.count)")
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -138,7 +136,7 @@ extension MainContentCoordinator {
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
-        let loadedCount = tab.resultRows.count
+        let loadedCount = rowDataStore.buffer(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
 
         let message: String
@@ -219,13 +217,11 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    tab.rowBuffer.rows = result.rows
+                    let buffer = rowDataStore.buffer(for: tab.id)
+                    buffer.rows = result.rows
                     tab.execution.executionTime = result.executionTime
-                    tab.resultVersion += 1
+                    tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()
-                    if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.resultVersion
-                    }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = result.executionTime

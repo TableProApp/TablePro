@@ -18,16 +18,18 @@ extension MainContentCoordinator {
         let tab = tabManager.tabs[tabIndex]
         guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
 
+        let buffer = rowDataStore.buffer(for: tab.id)
         guard let result = rowOperationsManager.addNewRow(
-            columns: tab.resultColumns,
-            columnDefaults: tab.columnDefaults,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            columns: buffer.columns,
+            columnDefaults: buffer.columnDefaults,
+            resultRows: &buffer.rows
         ) else { return }
 
         selectionState.indices = [result.rowIndex]
         editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
+        querySortCache.removeValue(forKey: tab.id)
+        dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(integer: result.rowIndex))
     }
 
     func deleteSelectedRows(indices: Set<Int>) {
@@ -37,19 +39,28 @@ extension MainContentCoordinator {
               tabManager.tabs[tabIndex].tableContext.isEditable,
               !indices.isEmpty else { return }
 
-        let nextRow = rowOperationsManager.deleteSelectedRows(
+        let tabId = tabManager.tabs[tabIndex].id
+        let buffer = rowDataStore.buffer(for: tabId)
+        let result = rowOperationsManager.deleteSelectedRows(
             selectedIndices: indices,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            resultRows: &buffer.rows
         )
 
-        if nextRow >= 0 && nextRow < tabManager.tabs[tabIndex].resultRows.count {
-            selectionState.indices = [nextRow]
+        if result.nextRowToSelect >= 0
+            && result.nextRowToSelect < buffer.rows.count {
+            selectionState.indices = [result.nextRowToSelect]
         } else {
             selectionState.indices.removeAll()
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
+
+        if !result.physicallyRemovedIndices.isEmpty {
+            querySortCache.removeValue(forKey: tabId)
+            dataTabDelegate?.dataGridDidRemoveRows(
+                at: IndexSet(result.physicallyRemovedIndices)
+            )
+        }
     }
 
     func duplicateSelectedRow(index: Int, editingCell: inout CellPosition?) {
@@ -58,45 +69,53 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil,
-              index < tab.resultRows.count else { return }
+        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
+        let buffer = rowDataStore.buffer(for: tab.id)
+        guard index < buffer.rows.count else { return }
 
         guard let result = rowOperationsManager.duplicateRow(
             sourceRowIndex: index,
-            columns: tab.resultColumns,
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            columns: buffer.columns,
+            resultRows: &buffer.rows
         ) else { return }
 
         selectionState.indices = [result.rowIndex]
         editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
+        querySortCache.removeValue(forKey: tab.id)
+        dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(integer: result.rowIndex))
     }
 
     func undoInsertRow(at rowIndex: Int) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
+        let tabId = tabManager.tabs[tabIndex].id
+        let buffer = rowDataStore.buffer(for: tabId)
         selectionState.indices = rowOperationsManager.undoInsertRow(
             at: rowIndex,
-            resultRows: &tabManager.tabs[tabIndex].resultRows,
+            resultRows: &buffer.rows,
             selectedIndices: selectionState.indices
         )
-        tabManager.tabs[tabIndex].resultVersion += 1
+        querySortCache.removeValue(forKey: tabId)
+        dataTabDelegate?.dataGridDidRemoveRows(at: IndexSet(integer: rowIndex))
     }
 
     func undoLastChange() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
+        let tabId = tabManager.tabs[tabIndex].id
+        let buffer = rowDataStore.buffer(for: tabId)
         if let adjustedSelection = rowOperationsManager.undoLastChange(
-            resultRows: &tabManager.tabs[tabIndex].resultRows
+            resultRows: &buffer.rows
         ) {
             selectionState.indices = adjustedSelection
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
+        querySortCache.removeValue(forKey: tabId)
+        dataTabDelegate?.dataGridDidReplaceAllRows()
     }
 
     func redoLastChange() {
@@ -104,13 +123,15 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
+        let buffer = rowDataStore.buffer(for: tab.id)
         _ = rowOperationsManager.redoLastChange(
-            resultRows: &tabManager.tabs[tabIndex].resultRows,
-            columns: tab.resultColumns
+            resultRows: &buffer.rows,
+            columns: buffer.columns
         )
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
-        tabManager.tabs[tabIndex].resultVersion += 1
+        querySortCache.removeValue(forKey: tab.id)
+        dataTabDelegate?.dataGridDidReplaceAllRows()
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
@@ -118,9 +139,10 @@ extension MainContentCoordinator {
               !indices.isEmpty else { return }
 
         let tab = tabManager.tabs[index]
+        let buffer = rowDataStore.buffer(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            resultRows: tab.resultRows
+            resultRows: buffer.rows
         )
     }
 
@@ -129,10 +151,11 @@ extension MainContentCoordinator {
               !indices.isEmpty else { return }
 
         let tab = tabManager.tabs[index]
+        let buffer = rowDataStore.buffer(for: tab.id)
         rowOperationsManager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            resultRows: tab.resultRows,
-            columns: tab.resultColumns,
+            resultRows: buffer.rows,
+            columns: buffer.columns,
             includeHeaders: true
         )
     }
@@ -141,14 +164,15 @@ extension MainContentCoordinator {
         guard let index = tabManager.selectedTabIndex,
               !indices.isEmpty else { return }
         let tab = tabManager.tabs[index]
+        let buffer = rowDataStore.buffer(for: tab.id)
         let rows = indices.sorted().compactMap { idx -> [String?]? in
-            guard idx < tab.resultRows.count else { return nil }
-            return tab.resultRows[idx]
+            guard idx < buffer.rows.count else { return nil }
+            return buffer.rows[idx]
         }
         guard !rows.isEmpty else { return }
         let converter = JsonRowConverter(
-            columns: tab.resultColumns,
-            columnTypes: tab.columnTypes
+            columns: buffer.columns,
+            columnTypes: buffer.columnTypes
         )
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
@@ -157,18 +181,16 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites,
               let index = tabManager.selectedTabIndex else { return }
 
-        var tab = tabManager.tabs[index]
+        let tab = tabManager.tabs[index]
 
         guard tab.tabType == .table else { return }
 
+        let buffer = rowDataStore.buffer(for: tab.id)
         let pastedRows = rowOperationsManager.pasteRowsFromClipboard(
-            columns: tab.resultColumns,
+            columns: buffer.columns,
             primaryKeyColumns: changeManager.primaryKeyColumns,
-            resultRows: &tab.resultRows
+            resultRows: &buffer.rows
         )
-
-        tabManager.tabs[index].resultRows = tab.resultRows
-        tabManager.tabs[index].resultVersion += 1
 
         if !pastedRows.isEmpty {
             let newIndices = Set(pastedRows.map { $0.rowIndex })
@@ -176,16 +198,20 @@ extension MainContentCoordinator {
 
             tabManager.tabs[index].selectedRowIndices = newIndices
             tabManager.tabs[index].hasUserInteraction = true
+            querySortCache.removeValue(forKey: tab.id)
+            dataTabDelegate?.dataGridDidInsertRows(at: IndexSet(newIndices))
         }
     }
 
     // MARK: - Cell Operations
 
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
-        guard let index = tabManager.selectedTabIndex,
-              rowIndex < tabManager.tabs[index].resultRows.count else { return }
+        guard let index = tabManager.selectedTabIndex else { return }
+        let tabId = tabManager.tabs[index].id
+        let buffer = rowDataStore.buffer(for: tabId)
+        guard rowIndex < buffer.rows.count else { return }
 
-        tabManager.tabs[index].resultRows[rowIndex][columnIndex] = value
+        buffer.rows[rowIndex][columnIndex] = value
         tabManager.tabs[index].hasUserInteraction = true
     }
 }

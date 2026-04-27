@@ -110,4 +110,22 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         menu.addItem(item)
         return menu
     }
+
+    weak var tableViewCoordinator: (any RowDeltaApplying)?
+
+    func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {
+        self.tableViewCoordinator = tableViewCoordinator
+    }
+
+    func dataGridDidInsertRows(at indices: IndexSet) {
+        tableViewCoordinator?.applyInsertedRows(indices)
+    }
+
+    func dataGridDidRemoveRows(at indices: IndexSet) {
+        tableViewCoordinator?.applyRemovedRows(indices)
+    }
+
+    func dataGridDidReplaceAllRows() {
+        tableViewCoordinator?.applyFullReplace()
+    }
 }

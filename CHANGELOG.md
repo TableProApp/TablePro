@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenSSL shared as dylib across app and plugins, saving ~15MB in bundle size
 - Data grid uses single cell reuse identifier with typed stored properties instead of 3 identifiers and viewWithTag
 - Boolean dropdown menu includes Set NULL option for nullable columns
+- Tab persistence triggers on a structural counter, not on every tabs write. Cell edits, row mutations, and per-keystroke query text no longer invoke disk I/O.
+- Inspector sidebar edit state runs inside the existing 50ms debounce instead of synchronously per row click.
+- Row add, delete, duplicate, undo, redo, and paste drive NSTableView insertRows / removeRows directly through the data grid delegate. SwiftUI no longer re-evaluates the editor view tree on row mutations.
+- QueryTab.resultVersion split: schemaVersion (column shape) on QueryTab, row mutations through delegate deltas, sort completion through a single delegate replace call. Pin toggle, sort completion, and applyMultiStatementResults no longer fan out a redundant reload signal.
+- Row data lives in a per-coordinator RowDataStore keyed by tab.id rather than on QueryTab itself, so SwiftUI's @Observable tracking on tabManager.tabs no longer fires for row writes.
+- DataGridConfiguration is Equatable; DataGridIdentity covers tabType, tableName, and primaryKeyColumns so updateNSView short-circuits when nothing structural changed. DataTabGridDelegate properties are wired in onAppear / onChange instead of in the body.
 
 ### Fixed
 

@@ -94,7 +94,6 @@ extension MainContentCoordinator {
                     rs.rowsAffected = result.rowsAffected
                     rs.statusMessage = result.statusMessage
                     rs.tableName = stmtTableName
-                    rs.resultVersion = 1
                     newResultSets.append(rs)
 
                     let historySQL = sql.hasSuffix(";") ? sql : sql + ";"
@@ -234,22 +233,21 @@ extension MainContentCoordinator {
                 tableName = lastSelectSQL.flatMap { extractTableName(from: $0) }
             }
 
-            updatedTab.resultColumns = safeColumns
-            updatedTab.columnTypes = safeColumnTypes
-            updatedTab.resultRows = safeRows
+            rowDataStore.setBuffer(
+                RowBuffer(rows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
+                for: updatedTab.id
+            )
             updatedTab.tableContext.tableName = tableName
             updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
-            updatedTab.resultColumns = []
-            updatedTab.columnTypes = []
-            updatedTab.resultRows = []
+            rowDataStore.setBuffer(RowBuffer(), for: updatedTab.id)
             if updatedTab.tabType != .table {
                 updatedTab.tableContext.tableName = nil
             }
             updatedTab.tableContext.isEditable = false
         }
 
-        updatedTab.resultVersion += 1
+        updatedTab.schemaVersion += 1
         updatedTab.execution.executionTime = cumulativeTime
         updatedTab.execution.rowsAffected = totalRowsAffected
         updatedTab.execution.isExecuting = false
@@ -268,7 +266,6 @@ extension MainContentCoordinator {
 
         if tabManager.selectedTabId == tabId {
             changeManager.clearChangesAndUndoHistory()
-            changeManager.reloadVersion += 1
         }
     }
 }

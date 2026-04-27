@@ -240,6 +240,30 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         cachedColumnCount = rowProvider.columns.count
     }
 
+    func applyInsertedRows(_ indices: IndexSet) {
+        guard let tableView else { return }
+        rebuildVisualStateCache()
+        updateCache()
+        tableView.insertRows(at: indices, withAnimation: .slideDown)
+        lastIdentity = nil
+    }
+
+    func applyRemovedRows(_ indices: IndexSet) {
+        guard let tableView else { return }
+        rebuildVisualStateCache()
+        updateCache()
+        tableView.removeRows(at: indices, withAnimation: .slideUp)
+        lastIdentity = nil
+    }
+
+    func applyFullReplace() {
+        guard let tableView else { return }
+        rebuildVisualStateCache()
+        updateCache()
+        tableView.reloadData()
+        lastIdentity = nil
+    }
+
     func rebuildColumnMetadataCache() {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()

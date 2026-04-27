@@ -63,11 +63,11 @@ extension MainContentView {
     // MARK: - Inspector Context
 
     func scheduleInspectorUpdate(lazyLoadExcludedColumns: Bool = false) {
-        updateSidebarEditState()
         inspectorUpdateTask?.cancel()
         inspectorUpdateTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(50))
             guard !Task.isCancelled else { return }
+            updateSidebarEditState()
             updateInspectorContext()
             if lazyLoadExcludedColumns {
                 lazyLoadExcludedColumnsIfNeeded()
@@ -90,23 +90,22 @@ extension MainContentView {
     private func cachedQueryResultsSummary() -> String? {
         guard let tab = currentTab else { return nil }
         if let cache = queryResultsSummaryCache,
-            cache.tabId == tab.id, cache.version == tab.resultVersion
+            cache.tabId == tab.id, cache.version == tab.schemaVersion
         {
             return cache.summary
         }
         let summary = buildQueryResultsSummary()
-        queryResultsSummaryCache = (tabId: tab.id, version: tab.resultVersion, summary: summary)
+        queryResultsSummaryCache = (tabId: tab.id, version: tab.schemaVersion, summary: summary)
         return summary
     }
 
     private func buildQueryResultsSummary() -> String? {
-        guard let tab = currentTab,
-            !tab.resultColumns.isEmpty,
-            !tab.resultRows.isEmpty
-        else { return nil }
+        guard let tab = currentTab else { return nil }
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        guard !buffer.columns.isEmpty, !buffer.rows.isEmpty else { return nil }
 
-        let columns = tab.resultColumns
-        let rows = tab.resultRows
+        let columns = buffer.columns
+        let rows = buffer.rows
         let maxRows = 10
         let displayRows = Array(rows.prefix(maxRows))
 

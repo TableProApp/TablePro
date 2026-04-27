@@ -91,16 +91,18 @@ final class RowOperationsManager {
 
     // MARK: - Delete Rows
 
-    /// Delete selected rows
-    /// - Parameters:
-    ///   - selectedIndices: Indices of rows to delete
-    ///   - resultRows: Current rows (will be mutated)
-    /// - Returns: Next row index to select after deletion, or -1 if no rows left
+    struct DeleteRowsResult {
+        let nextRowToSelect: Int
+        let physicallyRemovedIndices: [Int]
+    }
+
     func deleteSelectedRows(
         selectedIndices: Set<Int>,
         resultRows: inout [[String?]]
-    ) -> Int {
-        guard !selectedIndices.isEmpty else { return -1 }
+    ) -> DeleteRowsResult {
+        guard !selectedIndices.isEmpty else {
+            return DeleteRowsResult(nextRowToSelect: -1, physicallyRemovedIndices: [])
+        }
 
         var insertedRowsToDelete: [Int] = []
         var existingRowsToDelete: [(rowIndex: Int, originalRow: [String?])] = []
@@ -118,40 +120,40 @@ final class RowOperationsManager {
             }
         }
 
-        // Process inserted rows deletion
-        if !insertedRowsToDelete.isEmpty {
-            let sortedInsertedRows = insertedRowsToDelete.sorted(by: >)
+        let sortedInsertedRows = insertedRowsToDelete.sorted(by: >)
 
-            // Remove from resultRows first (descending order)
+        if !sortedInsertedRows.isEmpty {
             for rowIndex in sortedInsertedRows {
                 guard rowIndex < resultRows.count else { continue }
                 resultRows.remove(at: rowIndex)
             }
-
-            // Update changeManager for ALL deleted inserted rows at once
             changeManager.undoBatchRowInsertion(rowIndices: sortedInsertedRows)
         }
 
-        // Record batch deletion for existing rows (single undo action for all rows)
         if !existingRowsToDelete.isEmpty {
             changeManager.recordBatchRowDeletion(rows: existingRowsToDelete)
         }
 
-        // Calculate next row selection, accounting for deleted inserted rows
         let totalRows = resultRows.count
-        let rowsDeleted = insertedRowsToDelete.count
+        let rowsDeleted = sortedInsertedRows.count
         let adjustedMaxRow = maxSelectedRow - rowsDeleted
-        let adjustedMinRow = minSelectedRow - insertedRowsToDelete.count(where: { $0 < minSelectedRow })
+        let adjustedMinRow = minSelectedRow - sortedInsertedRows.count(where: { $0 < minSelectedRow })
 
+        let nextRow: Int
         if adjustedMaxRow + 1 < totalRows {
-            return min(adjustedMaxRow + 1, totalRows - 1)
+            nextRow = min(adjustedMaxRow + 1, totalRows - 1)
         } else if adjustedMinRow > 0 {
-            return adjustedMinRow - 1
+            nextRow = adjustedMinRow - 1
         } else if totalRows > 0 {
-            return 0
+            nextRow = 0
         } else {
-            return -1
+            nextRow = -1
         }
+
+        return DeleteRowsResult(
+            nextRowToSelect: nextRow,
+            physicallyRemovedIndices: sortedInsertedRows
+        )
     }
 
     // MARK: - Undo/Redo

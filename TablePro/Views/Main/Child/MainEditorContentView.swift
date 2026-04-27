@@ -15,7 +15,7 @@ private struct SortedRowsCache {
     let sortedIndices: [Int]
     let columnIndex: Int
     let direction: SortDirection
-    let resultVersion: Int
+    let schemaVersion: Int
 }
 
 /// Main editor content with tab bar and content switching
@@ -117,7 +117,8 @@ struct MainEditorContentView: View {
             guard let query = notification.userInfo?["query"] as? String else { return }
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
-        .onChange(of: tabManager.tabIds) { _, newIds in
+        .onChange(of: tabManager.tabStructureVersion) { _, _ in
+            let newIds = tabManager.tabIds
             guard !sortCache.isEmpty || !providerCache.isEmpty || !erDiagramViewModels.isEmpty
                 || !serverDashboardViewModels.isEmpty else {
                 coordinator.cleanupSortCache(openTabIds: Set(newIds))
@@ -133,10 +134,12 @@ struct MainEditorContentView: View {
         .onChange(of: tabManager.selectedTabId) { _, _ in
             updateHasQueryText()
 
-            guard let tab = tabManager.selectedTab else { return }
+            guard let tab = tabManager.selectedTab,
+                  let existing = coordinator.rowDataStore.existingBuffer(for: tab.id),
+                  !existing.isEvicted else { return }
             if providerCache.provider(
                 for: tab.id,
-                resultVersion: tab.resultVersion,
+                schemaVersion: tab.schemaVersion,
                 metadataVersion: tab.metadataVersion,
                 sortState: tab.sortState
             ) == nil {
@@ -146,16 +149,22 @@ struct MainEditorContentView: View {
         .onAppear {
             updateHasQueryText()
             cachedChangeManager = AnyChangeManager(changeManager)
-            if let tab = tabManager.selectedTab {
+            if let tab = tabManager.selectedTab,
+               let existing = coordinator.rowDataStore.existingBuffer(for: tab.id),
+               !existing.isEvicted {
                 cacheRowProvider(for: tab)
             }
+            wireDataTabDelegateStableRefs()
+            refreshDataTabDelegateMutableRefs()
+            coordinator.dataTabDelegate = dataTabDelegate
             coordinator.onTeardown = { [self] in
                 providerCache.removeAll()
                 sortCache.removeAll()
                 cachedChangeManager = nil
+                coordinator.dataTabDelegate = nil
             }
         }
-        .onChange(of: tabManager.selectedTab?.resultVersion) { _, newVersion in
+        .onChange(of: tabManager.selectedTab?.schemaVersion) { _, newVersion in
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
@@ -170,6 +179,42 @@ struct MainEditorContentView: View {
         .onChange(of: selectionState.indices) { _, newIndices in
             onSelectionChange(newIndices)
         }
+        .onChange(of: tabManager.selectedTab?.tableContext.isEditable) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: tabManager.selectedTab?.tableContext.isView) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: tabManager.selectedTab?.tableContext.tableName) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+        .onChange(of: coordinator.safeModeLevel) { _, _ in
+            refreshDataTabDelegateMutableRefs()
+        }
+    }
+
+    private func wireDataTabDelegateStableRefs() {
+        dataTabDelegate.coordinator = coordinator
+        dataTabDelegate.columnVisibilityManager = columnVisibilityManager
+        dataTabDelegate.selectionState = selectionState
+        dataTabDelegate.editingCell = $editingCell
+        dataTabDelegate.onCellEdit = onCellEdit
+        dataTabDelegate.onSort = onSort
+        dataTabDelegate.onUndoInsert = onUndoInsert
+        dataTabDelegate.onFilterColumn = onFilterColumn
+        dataTabDelegate.onRefresh = onRefresh
+    }
+
+    private func refreshDataTabDelegateMutableRefs() {
+        dataTabDelegate.onAddRow = currentTabAllowsAddRow ? onAddRow : nil
+    }
+
+    private var currentTabAllowsAddRow: Bool {
+        guard let tab = tabManager.selectedTab else { return false }
+        let isEditable = tab.tableContext.isEditable
+            && !tab.tableContext.isView
+            && !coordinator.safeModeLevel.blocksAllWrites
+        return isEditable && tab.tableContext.tableName != nil
     }
 
     // MARK: - Tab Content
@@ -335,7 +380,6 @@ struct MainEditorContentView: View {
 
                 tabManager.tabs[index].content.query = newValue
 
-                // Update window dirty indicator and toolbar for file-backed tabs
                 if tabManager.tabs[index].content.sourceFileURL != nil {
                     let isDirty = tabManager.tabs[index].content.isFileDirty
                     Task { @MainActor in
@@ -344,13 +388,6 @@ struct MainEditorContentView: View {
                         }
                     }
                 }
-
-                // Skip persistence for very large queries (e.g., imported SQL dumps).
-                // JSON-encoding 40MB freezes the main thread.
-                let queryLength = (newValue as NSString).length
-                guard queryLength < TabQueryContent.maxPersistableQuerySize else { return }
-
-                coordinator.persistence.saveLastQuery(newValue)
             }
         )
     }
@@ -400,10 +437,11 @@ struct MainEditorContentView: View {
                     .frame(maxHeight: .infinity)
                 }
             case .json:
+                let jsonBuffer = coordinator.rowDataStore.buffer(for: tab.id)
                 ResultsJsonView(
-                    columns: tab.resultColumns,
-                    columnTypes: tab.columnTypes,
-                    rows: tab.resultRows,
+                    columns: jsonBuffer.columns,
+                    columnTypes: jsonBuffer.columnTypes,
+                    rows: jsonBuffer.rows,
                     selectedRowIndices: selectionState.indices
                 )
             case .data:
@@ -427,6 +465,7 @@ struct MainEditorContentView: View {
                     }
 
                     // Content: success view OR filter+grid
+                    let resolvedBuffer = coordinator.rowDataStore.buffer(for: tab.id)
                     if let rs = tab.display.activeResultSet, rs.resultColumns.isEmpty,
                        rs.errorMessage == nil, tab.execution.lastExecutedAt != nil, !tab.execution.isExecuting
                     {
@@ -435,7 +474,7 @@ struct MainEditorContentView: View {
                             executionTime: rs.executionTime,
                             statusMessage: rs.statusMessage
                         )
-                    } else if tab.resultColumns.isEmpty && tab.execution.errorMessage == nil
+                    } else if resolvedBuffer.columns.isEmpty && tab.execution.errorMessage == nil
                         && tab.execution.lastExecutedAt != nil && !tab.execution.isExecuting
                     {
                         if tab.display.resultSets.isEmpty {
@@ -452,7 +491,7 @@ struct MainEditorContentView: View {
                         if filterStateManager.isVisible && tab.tabType == .table {
                             FilterPanelView(
                                 filterState: filterStateManager,
-                                columns: tab.resultColumns,
+                                columns: resolvedBuffer.columns,
                                 primaryKeyColumn: changeManager.primaryKeyColumn,
                                 databaseType: connection.type,
                                 onApply: onApplyFilters,
@@ -461,8 +500,8 @@ struct MainEditorContentView: View {
                             Divider()
                         }
 
-                        if tab.tabType == .query && !tab.resultColumns.isEmpty
-                            && tab.resultRows.isEmpty && tab.execution.lastExecutedAt != nil
+                        if tab.tabType == .query && !resolvedBuffer.columns.isEmpty
+                            && resolvedBuffer.rows.isEmpty && tab.execution.lastExecutedAt != nil
                             && !tab.execution.isExecuting && !filterStateManager.hasAppliedFilters
                         {
                             emptyResultView(executionTime: tab.display.activeResultSet?.executionTime ?? tab.execution.executionTime)
@@ -497,7 +536,6 @@ struct MainEditorContentView: View {
             onPin: { id in
                 guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
                 coordinator.tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }?.isPinned.toggle()
-                coordinator.tabManager.tabs[tabIdx].resultVersion += 1
             }
         )
     }
@@ -517,26 +555,11 @@ struct MainEditorContentView: View {
     @ViewBuilder
     private func dataGridView(tab: QueryTab) -> some View {
         let isEditable = tab.tableContext.isEditable && !tab.tableContext.isView && !coordinator.safeModeLevel.blocksAllWrites
-        let showEmptySpaceMenu = isEditable && tab.tableContext.tableName != nil
-
-        // Update delegate state for current render
-        let _ = { // swiftlint:disable:this redundant_discardable_let
-            dataTabDelegate.coordinator = coordinator
-            dataTabDelegate.columnVisibilityManager = columnVisibilityManager
-            dataTabDelegate.selectionState = selectionState
-            dataTabDelegate.editingCell = $editingCell
-            dataTabDelegate.onCellEdit = onCellEdit
-            dataTabDelegate.onSort = onSort
-            dataTabDelegate.onAddRow = showEmptySpaceMenu ? onAddRow : nil
-            dataTabDelegate.onUndoInsert = onUndoInsert
-            dataTabDelegate.onFilterColumn = onFilterColumn
-            dataTabDelegate.onRefresh = onRefresh
-        }()
 
         DataGridView(
             rowProvider: rowProvider(for: tab),
             changeManager: currentChangeManager,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             paginationVersion: tab.paginationVersion,
             isEditable: isEditable,
@@ -562,13 +585,14 @@ struct MainEditorContentView: View {
     }
 
     private func rowProvider(for tab: QueryTab) -> InMemoryRowProvider {
-        if tab.rowBuffer.isEvicted {
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        if buffer.isEvicted {
             providerCache.remove(for: tab.id)
             return makeRowProvider(for: tab)
         }
         if let cached = providerCache.provider(
             for: tab.id,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             sortState: tab.sortState
         ) {
@@ -578,7 +602,7 @@ struct MainEditorContentView: View {
         providerCache.store(
             provider,
             for: tab.id,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             sortState: tab.sortState
         )
@@ -590,7 +614,7 @@ struct MainEditorContentView: View {
         providerCache.store(
             provider,
             for: tab.id,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             sortState: tab.sortState
         )
@@ -612,15 +636,16 @@ struct MainEditorContentView: View {
                 columnNullable: rs.columnNullable
             )
         } else {
+            let buffer = coordinator.rowDataStore.buffer(for: tab.id)
             provider = InMemoryRowProvider(
-                rowBuffer: tab.rowBuffer,
+                rowBuffer: buffer,
                 sortIndices: sortIndicesForTab(tab),
-                columns: tab.resultColumns,
-                columnDefaults: tab.columnDefaults,
-                columnTypes: tab.columnTypes,
-                columnForeignKeys: tab.columnForeignKeys,
-                columnEnumValues: tab.columnEnumValues,
-                columnNullable: tab.columnNullable
+                columns: buffer.columns,
+                columnDefaults: buffer.columnDefaults,
+                columnTypes: buffer.columnTypes,
+                columnForeignKeys: buffer.columnForeignKeys,
+                columnEnumValues: buffer.columnEnumValues,
+                columnNullable: buffer.columnNullable
             )
         }
 
@@ -640,7 +665,7 @@ struct MainEditorContentView: View {
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if settings.enableSmartValueDetection {
             let sampleRows: [[String?]]? = {
-                let rows = tab.display.activeResultSet?.resultRows ?? tab.resultRows
+                let rows = tab.display.activeResultSet?.resultRows ?? coordinator.rowDataStore.buffer(for: tab.id).rows
                 return rows.isEmpty ? nil : Array(rows.prefix(10))
             }()
             detected = ValueDisplayDetector.detect(
@@ -695,9 +720,10 @@ struct MainEditorContentView: View {
             rows = rs.resultRows
             colTypes = rs.columnTypes
         } else {
-            rowBuffer = tab.rowBuffer
-            rows = tab.resultRows
-            colTypes = tab.columnTypes
+            let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+            rowBuffer = buffer
+            rows = buffer.rows
+            colTypes = buffer.columnTypes
         }
 
         guard !rowBuffer.isEvicted else { return nil }
@@ -716,7 +742,7 @@ struct MainEditorContentView: View {
         if let cached = coordinator.querySortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
-            cached.resultVersion == tab.resultVersion
+            cached.schemaVersion == tab.schemaVersion
         {
             return cached.sortedIndices
         }
@@ -730,7 +756,7 @@ struct MainEditorContentView: View {
         if let cached = sortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
-            cached.resultVersion == tab.resultVersion
+            cached.schemaVersion == tab.schemaVersion
         {
             return cached.sortedIndices
         }
@@ -764,7 +790,7 @@ struct MainEditorContentView: View {
             sortedIndices: sortedIndices,
             columnIndex: tab.sortState.columnIndex ?? -1,
             direction: tab.sortState.direction,
-            resultVersion: tab.resultVersion
+            schemaVersion: tab.schemaVersion
         )
 
         return sortedIndices
@@ -800,11 +826,12 @@ struct MainEditorContentView: View {
     // MARK: - Status Bar
 
     private func statusBar(tab: QueryTab) -> some View {
-        MainStatusBarView(
-            snapshot: StatusBarSnapshot(tab: tab),
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
+        return MainStatusBarView(
+            snapshot: StatusBarSnapshot(tab: tab, buffer: buffer),
             filterStateManager: filterStateManager,
             columnVisibilityManager: columnVisibilityManager,
-            allColumns: tab.resultColumns,
+            allColumns: buffer.columns,
             selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
             onFirstPage: onFirstPage,

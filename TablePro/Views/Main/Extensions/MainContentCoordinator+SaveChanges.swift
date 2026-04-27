@@ -248,6 +248,9 @@ extension MainContentCoordinator {
                         if !tabIdsToRemove.isEmpty {
                             let firstRemovedIndex = tabManager.tabs
                                 .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
+                            for tabId in tabIdsToRemove {
+                                rowDataStore.removeBuffer(for: tabId)
+                            }
                             tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
                             if !tabManager.tabs.isEmpty {
                                 let neighborIndex = min(firstRemovedIndex, tabManager.tabs.count - 1)

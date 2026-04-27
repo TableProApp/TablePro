@@ -40,9 +40,10 @@ extension MainContentCoordinator {
             DatabaseManager.shared.activeSessions[connectionId]?.isConnected ?? false
         let needsLazyLoad =
             tabManager.selectedTab.map { tab in
-                tab.tabType == .table
-                    && (tab.resultRows.isEmpty || tab.rowBuffer.isEvicted)
-                    && (tab.execution.lastExecutedAt == nil || tab.rowBuffer.isEvicted)
+                let buffer = rowDataStore.buffer(for: tab.id)
+                return tab.tabType == .table
+                    && (buffer.rows.isEmpty || buffer.isEvicted)
+                    && (tab.execution.lastExecutedAt == nil || buffer.isEvicted)
                     && tab.execution.errorMessage == nil
                     && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             } ?? false

@@ -261,20 +261,19 @@ struct SaveCompletionTests {
             tabManager.tabs[index].tableContext.tableName = "users"
         }
 
-        var selectedRows: Set<Int> = []
         var editingCell: CellPosition?
 
-        coordinator.addNewRow(selectedRowIndices: &selectedRows, editingCell: &editingCell)
-        #expect(selectedRows.isEmpty)
+        coordinator.addNewRow(editingCell: &editingCell)
+        #expect(coordinator.selectionState.indices.isEmpty)
         #expect(editingCell == nil)
 
-        selectedRows = [0]
-        coordinator.deleteSelectedRows(indices: Set([0]), selectedRowIndices: &selectedRows)
-        #expect(selectedRows == [0])
+        coordinator.selectionState.indices = [0]
+        coordinator.deleteSelectedRows(indices: Set([0]))
+        #expect(coordinator.selectionState.indices == [0])
 
-        selectedRows = []
-        coordinator.duplicateSelectedRow(index: 0, selectedRowIndices: &selectedRows, editingCell: &editingCell)
-        #expect(selectedRows.isEmpty)
+        coordinator.selectionState.indices = []
+        coordinator.duplicateSelectedRow(index: 0, editingCell: &editingCell)
+        #expect(coordinator.selectionState.indices.isEmpty)
         #expect(editingCell == nil)
     }
 
@@ -287,11 +286,9 @@ struct SaveCompletionTests {
             tabManager.tabs[index].tableContext.tableName = "users"
         }
 
-        var selectedRows: Set<Int> = []
         var editingCell: CellPosition?
 
-        // Alert level doesn't block row staging — only gates at execution time
-        coordinator.addNewRow(selectedRowIndices: &selectedRows, editingCell: &editingCell)
+        coordinator.addNewRow(editingCell: &editingCell)
         #expect(tabManager.tabs.first?.execution.errorMessage == nil)
     }
 }

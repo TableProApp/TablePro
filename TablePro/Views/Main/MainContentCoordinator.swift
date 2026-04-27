@@ -26,7 +26,7 @@ struct QuerySortCacheEntry {
     let sortedIndices: [Int]
     let columnIndex: Int
     let direction: SortDirection
-    let resultVersion: Int
+    let schemaVersion: Int
 }
 
 /// Sidebar table loading state — single source of truth for sidebar UI
@@ -87,6 +87,7 @@ final class MainContentCoordinator {
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
+    let rowDataStore = RowDataStore()
 
     // MARK: - Services
 
@@ -110,6 +111,10 @@ final class MainContentCoordinator {
 
     /// Direct reference to right panel state — enables showing AI panel programmatically
     @ObservationIgnored weak var rightPanelState: RightPanelState?
+
+    /// Direct reference to the data tab grid delegate — enables row mutation operations to
+    /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
+    @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
 
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
@@ -138,7 +143,7 @@ final class MainContentCoordinator {
     var sidebarLoadingState: SidebarLoadingState = .idle
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
-    @ObservationIgnored private(set) var querySortCache: [UUID: QuerySortCacheEntry] = [:]
+    @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
 
     // MARK: - Internal State
 
@@ -158,7 +163,7 @@ final class MainContentCoordinator {
     @ObservationIgnored private var fileWatcher: DatabaseFileWatcher?
     @ObservationIgnored private var lastSchemaRefreshDate = Date.distantPast
 
-    /// Set during handleTabChange to suppress redundant onChange(of: resultColumns) reconfiguration
+    /// Set during handleTabChange to suppress redundant column-change reconfiguration
     @ObservationIgnored internal var isHandlingTabSwitch = false
     @ObservationIgnored var isUpdatingColumnLayout = false
 
@@ -332,12 +337,10 @@ final class MainContentCoordinator {
     /// Background tabs are re-fetched automatically when selected.
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
-        for tab in tabManager.tabs where !tab.rowBuffer.isEvicted
-            && !tab.resultRows.isEmpty
-            && !tab.pendingChanges.hasChanges
-            && tab.id != selectedId
-        {
-            tab.rowBuffer.evict()
+        for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
+            guard let buffer = rowDataStore.existingBuffer(for: tab.id),
+                  !buffer.isEvicted, !buffer.rows.isEmpty else { continue }
+            buffer.evict()
         }
     }
 
@@ -581,9 +584,7 @@ final class MainContentCoordinator {
         )
 
         // Release heavy data so memory drops even if SwiftUI delays deallocation
-        for tab in tabManager.tabs {
-            tab.rowBuffer.evict()
-        }
+        rowDataStore.tearDown()
         querySortCache.removeAll()
         cachedTableColumnTypes.removeAll()
         cachedTableColumnNames.removeAll()
@@ -769,6 +770,7 @@ final class MainContentCoordinator {
                     return
                 }
 
+                tabManager.tabStructureVersion += 1
                 dispatchParameterizedStatements(
                     paramStatements,
                     parameters: reconciled,
@@ -781,6 +783,7 @@ final class MainContentCoordinator {
         let statements = SQLStatementScanner.allStatements(in: sql)
         guard !statements.isEmpty else { return }
 
+        tabManager.tabStructureVersion += 1
         dispatchStatements(statements, tabIndex: index)
     }
 
@@ -1304,7 +1307,8 @@ final class MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        guard columnIndex >= 0 && columnIndex < tab.resultColumns.count else { return }
+        let buffer = rowDataStore.buffer(for: tab.id)
+        guard columnIndex >= 0 && columnIndex < buffer.columns.count else { return }
 
         var currentSort = tab.sortState
         let newDirection: SortDirection = ascending ? .ascending : .descending
@@ -1332,7 +1336,7 @@ final class MainContentCoordinator {
             // When more rows are available server-side, re-execute with ORDER BY
             // instead of sorting locally (we only have a partial result set)
             if tab.pagination.hasMoreRows {
-                let columnName = tab.resultColumns[columnIndex]
+                let columnName = buffer.columns[columnIndex]
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
@@ -1349,11 +1353,11 @@ final class MainContentCoordinator {
             tabManager.tabs[tabIndex].sortState = currentSort
             tabManager.tabs[tabIndex].hasUserInteraction = true
             tabManager.tabs[tabIndex].pagination.reset()
-            let rows = tab.resultRows
+            let rows = buffer.rows
             let tabId = tab.id
-            let resultVersion = tab.resultVersion
+            let schemaVersion = tab.schemaVersion
             let sortColumns = currentSort.columns
-            let colTypes = tab.columnTypes
+            let colTypes = buffer.columnTypes
 
             if rows.count > 1_000 {
                 // Sort on background thread to avoid UI freeze
@@ -1383,7 +1387,7 @@ final class MainContentCoordinator {
                             sortedIndices: sortedIndices,
                             columnIndex: sortColumns.first?.columnIndex ?? 0,
                             direction: sortColumns.first?.direction ?? .ascending,
-                            resultVersion: resultVersion
+                            schemaVersion: schemaVersion
                         )
                         var sortedTab = self.tabManager.tabs[idx]
                         sortedTab.execution.isExecuting = false
@@ -1392,13 +1396,12 @@ final class MainContentCoordinator {
                         self.toolbarState.setExecuting(false)
                         self.toolbarState.lastQueryDuration = sortDuration
                         self.activeSortTasks.removeValue(forKey: tabId)
-                        self.changeManager.reloadVersion += 1
+                        self.dataTabDelegate?.dataGridDidReplaceAllRows()
                     }
                 }
                 activeSortTasks[tabId] = task
             } else {
-                // Small dataset: view sorts synchronously, just trigger reload
-                changeManager.reloadVersion += 1
+                dataTabDelegate?.dataGridDidReplaceAllRows()
             }
             return
         }
@@ -1406,7 +1409,7 @@ final class MainContentCoordinator {
         let tabId = tab.id
         let capturedSort = currentSort
         let capturedQuery = tab.content.query
-        let capturedColumns = tab.resultColumns
+        let capturedColumns = buffer.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed,
                   let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }

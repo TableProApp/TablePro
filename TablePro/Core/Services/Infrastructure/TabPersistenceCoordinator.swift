@@ -120,21 +120,6 @@ internal final class TabPersistenceCoordinator {
         )
     }
 
-    // MARK: - Last Query
-
-    /// Save the editor's last query text for this connection.
-    internal func saveLastQuery(_ query: String) {
-        let connId = connectionId
-        Task {
-            await TabDiskActor.shared.saveLastQuery(query, for: connId)
-        }
-    }
-
-    /// Load the editor's last query text for this connection.
-    internal func loadLastQuery() async -> String? {
-        await TabDiskActor.shared.loadLastQuery(for: connectionId)
-    }
-
     // MARK: - Private
 
     private func convertToPersistedTab(_ tab: QueryTab) -> PersistedTab {

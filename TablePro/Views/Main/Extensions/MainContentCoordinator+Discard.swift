@@ -72,17 +72,19 @@ extension MainContentCoordinator {
     ) {
         let originalValues = changeManager.getOriginalValues()
         if let index = tabManager.selectedTabIndex {
+            let tabId = tabManager.tabs[index].id
+            let buffer = rowDataStore.buffer(for: tabId)
             for (rowIndex, columnIndex, originalValue) in originalValues {
-                if rowIndex < tabManager.tabs[index].resultRows.count,
-                   columnIndex < tabManager.tabs[index].resultRows[rowIndex].count {
-                    tabManager.tabs[index].resultRows[rowIndex][columnIndex] = originalValue
+                if rowIndex < buffer.rows.count,
+                   columnIndex < buffer.rows[rowIndex].count {
+                    buffer.rows[rowIndex][columnIndex] = originalValue
                 }
             }
 
             let insertedIndices = changeManager.insertedRowIndices.sorted(by: >)
             for rowIndex in insertedIndices {
-                if rowIndex < tabManager.tabs[index].resultRows.count {
-                    tabManager.tabs[index].resultRows.remove(at: rowIndex)
+                if rowIndex < buffer.rows.count {
+                    buffer.rows.remove(at: rowIndex)
                 }
             }
         }

@@ -41,15 +41,13 @@ extension MainContentView {
         )
     }
 
-    func handleTabsChange(_ newTabs: [QueryTab]) {
+    func handleStructureChange() {
         guard !coordinator.isTearingDown else {
-            MainContentView.lifecycleLogger.debug("[switch] handleTabsChange SKIPPED (tearingDown) tabCount=\(newTabs.count) connId=\(coordinator.connectionId, privacy: .public)")
+            MainContentView.lifecycleLogger.debug("[switch] handleStructureChange SKIPPED (tearingDown) tabCount=\(tabManager.tabs.count) connId=\(coordinator.connectionId, privacy: .public)")
             return
         }
         let t0 = Date()
 
-        // Only update title when the tab array changes independently of a tab switch.
-        // During a tab switch, handleTabSelectionChange already updates the title.
         if !coordinator.isHandlingTabSwitch {
             updateWindowTitleAndFileState()
         }
@@ -60,7 +58,7 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        let persistableTabs = newTabs.filter { !$0.isPreview }
+        let persistableTabs = tabManager.tabs.filter { !$0.isPreview }
         if persistableTabs.isEmpty {
             coordinator.persistence.clearSavedState()
         } else {
@@ -73,7 +71,7 @@ extension MainContentView {
             )
         }
         MainContentView.lifecycleLogger.debug(
-            "[switch] handleTabsChange tabCount=\(newTabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+            "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
     }
 
@@ -178,18 +176,19 @@ extension MainContentView {
             rightPanelState.editState.onFieldChanged = nil
             return
         }
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
 
         var allRows: [[String?]] = []
         for index in selectedIndices.sorted() {
-            if index < tab.resultRows.count {
-                allRows.append(tab.resultRows[index])
+            if index < buffer.rows.count {
+                allRows.append(buffer.rows[index])
             }
         }
 
         // Enrich column types with loaded enum values from Phase 2b
-        var columnTypes = tab.columnTypes
-        for (i, col) in tab.resultColumns.enumerated() where i < columnTypes.count {
-            if let values = tab.columnEnumValues[col], !values.isEmpty {
+        var columnTypes = buffer.columnTypes
+        for (i, col) in buffer.columns.enumerated() where i < columnTypes.count {
+            if let values = buffer.columnEnumValues[col], !values.isEmpty {
                 let ct = columnTypes[i]
                 if ct.isEnumType {
                     columnTypes[i] = .enumType(rawType: ct.rawType, values: values)
@@ -218,12 +217,12 @@ extension MainContentView {
         }
 
         let pkColumns = Set(tab.tableContext.primaryKeyColumns)
-        let fkColumns = Set(tab.columnForeignKeys.keys)
+        let fkColumns = Set(buffer.columnForeignKeys.keys)
 
         rightPanelState.editState.configure(
             selectedRowIndices: selectedIndices,
             allRows: allRows,
-            columns: tab.resultColumns,
+            columns: buffer.columns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
             excludedColumnNames: excludedNames,
@@ -240,12 +239,13 @@ extension MainContentView {
         let capturedEditState = rightPanelState.editState
         rightPanelState.editState.onFieldChanged = { columnIndex, newValue in
             guard let tab = capturedCoordinator.tabManager.selectedTab else { return }
+            let buffer = capturedCoordinator.rowDataStore.buffer(for: tab.id)
             let columnName =
-                columnIndex < tab.resultColumns.count ? tab.resultColumns[columnIndex] : ""
+                columnIndex < buffer.columns.count ? buffer.columns[columnIndex] : ""
 
             for rowIndex in capturedEditState.selectedRowIndices {
-                guard rowIndex < tab.resultRows.count else { continue }
-                let originalRow = tab.resultRows[rowIndex]
+                guard rowIndex < buffer.rows.count else { continue }
+                let originalRow = buffer.rows[rowIndex]
 
                 // Use full (lazy-loaded) original value if available, not truncated row data
                 let oldValue: String?
@@ -267,7 +267,6 @@ extension MainContentView {
                 )
             }
         }
-
     }
 
     func lazyLoadExcludedColumnsIfNeeded() {
@@ -284,15 +283,16 @@ extension MainContentView {
         let capturedCoordinator = coordinator
         let capturedEditState = rightPanelState.editState
 
+        let buffer = coordinator.rowDataStore.buffer(for: tab.id)
         if !excludedNames.isEmpty,
             selectedIndices.count == 1,
             let tableName = tab.tableContext.tableName,
             let pkColumn = tab.tableContext.primaryKeyColumn,
             let rowIndex = selectedIndices.first,
-            rowIndex < tab.resultRows.count
+            rowIndex < buffer.rows.count
         {
-            let row = tab.resultRows[rowIndex]
-            if let pkColIndex = tab.resultColumns.firstIndex(of: pkColumn),
+            let row = buffer.rows[rowIndex]
+            if let pkColIndex = buffer.columns.firstIndex(of: pkColumn),
                 pkColIndex < row.count,
                 let pkValue = row[pkColIndex]
             {

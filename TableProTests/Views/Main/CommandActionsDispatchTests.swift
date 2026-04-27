@@ -20,7 +20,6 @@ struct CommandActionsDispatchTests {
         let state = SessionStateFactory.create(connection: connection, payload: nil)
         let coordinator = state.coordinator
 
-        var selectedRowIndices: Set<Int> = []
         var selectedTables: Set<TableInfo> = []
         var pendingTruncates: Set<String> = []
         var pendingDeletes: Set<String> = []
@@ -32,7 +31,7 @@ struct CommandActionsDispatchTests {
             coordinator: coordinator,
             filterStateManager: state.filterStateManager,
             connection: connection,
-            selectedRowIndices: Binding(get: { selectedRowIndices }, set: { selectedRowIndices = $0 }),
+            selectionState: coordinator.selectionState,
             selectedTables: Binding(get: { selectedTables }, set: { selectedTables = $0 }),
             pendingTruncates: Binding(get: { pendingTruncates }, set: { pendingTruncates = $0 }),
             pendingDeletes: Binding(get: { pendingDeletes }, set: { pendingDeletes = $0 }),

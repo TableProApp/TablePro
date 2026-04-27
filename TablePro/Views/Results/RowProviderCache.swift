@@ -4,7 +4,7 @@ import Foundation
 final class RowProviderCache {
     private struct Entry {
         let provider: InMemoryRowProvider
-        let resultVersion: Int
+        let schemaVersion: Int
         let metadataVersion: Int
         let sortState: SortState
     }
@@ -13,12 +13,12 @@ final class RowProviderCache {
 
     func provider(
         for tabId: UUID,
-        resultVersion: Int,
+        schemaVersion: Int,
         metadataVersion: Int,
         sortState: SortState
     ) -> InMemoryRowProvider? {
         guard let entry = entries[tabId],
-              entry.resultVersion == resultVersion,
+              entry.schemaVersion == schemaVersion,
               entry.metadataVersion == metadataVersion,
               entry.sortState == sortState
         else {
@@ -30,13 +30,13 @@ final class RowProviderCache {
     func store(
         _ provider: InMemoryRowProvider,
         for tabId: UUID,
-        resultVersion: Int,
+        schemaVersion: Int,
         metadataVersion: Int,
         sortState: SortState
     ) {
         entries[tabId] = Entry(
             provider: provider,
-            resultVersion: resultVersion,
+            schemaVersion: schemaVersion,
             metadataVersion: metadataVersion,
             sortState: sortState
         )

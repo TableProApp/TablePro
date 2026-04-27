@@ -237,18 +237,69 @@ struct RowOperationsManagerTests {
         let (manager, _) = makeManager()
         var rows = TestFixtures.makeRows(count: 5)
 
-        // Insert a row, then delete it — next selection should be valid
         _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
         #expect(rows.count == 6)
 
-        let nextRow = manager.deleteSelectedRows(
+        let result = manager.deleteSelectedRows(
             selectedIndices: [5],
             resultRows: &rows
         )
 
-        // After removing the last row, should select the new last row
-        #expect(nextRow >= 0)
-        #expect(nextRow < rows.count)
+        #expect(result.nextRowToSelect >= 0)
+        #expect(result.nextRowToSelect < rows.count)
+    }
+
+    @Test("deleteSelectedRows returns empty physicallyRemovedIndices for empty selection")
+    func deleteSelectedRowsEmptySelection() {
+        let (manager, _) = makeManager()
+        var rows = TestFixtures.makeRows(count: 3)
+
+        let result = manager.deleteSelectedRows(selectedIndices: [], resultRows: &rows)
+
+        #expect(result.physicallyRemovedIndices.isEmpty)
+        #expect(result.nextRowToSelect == -1)
+        #expect(rows.count == 3)
+    }
+
+    @Test("deleteSelectedRows: deleting only existing rows leaves physicallyRemovedIndices empty")
+    func deleteSelectedRowsExistingOnly() {
+        let (manager, _) = makeManager()
+        var rows = TestFixtures.makeRows(count: 5)
+
+        let result = manager.deleteSelectedRows(selectedIndices: [1, 3], resultRows: &rows)
+
+        #expect(result.physicallyRemovedIndices.isEmpty)
+        #expect(rows.count == 5)
+    }
+
+    @Test("deleteSelectedRows: deleting only inserted rows reports each in physicallyRemovedIndices")
+    func deleteSelectedRowsInsertedOnly() {
+        let (manager, _) = makeManager()
+        var rows = TestFixtures.makeRows(count: 2)
+
+        _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
+        _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
+        _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
+        #expect(rows.count == 5)
+
+        let result = manager.deleteSelectedRows(selectedIndices: [2, 3, 4], resultRows: &rows)
+
+        #expect(result.physicallyRemovedIndices == [4, 3, 2])
+        #expect(rows.count == 2)
+    }
+
+    @Test("deleteSelectedRows: mixed inserted and existing rows reports only inserted indices")
+    func deleteSelectedRowsMixed() {
+        let (manager, _) = makeManager()
+        var rows = TestFixtures.makeRows(count: 3)
+
+        _ = manager.addNewRow(columns: ["id", "name", "email"], columnDefaults: [:], resultRows: &rows)
+        #expect(rows.count == 4)
+
+        let result = manager.deleteSelectedRows(selectedIndices: [0, 3], resultRows: &rows)
+
+        #expect(result.physicallyRemovedIndices == [3])
+        #expect(rows.count == 3)
     }
 
     // MARK: - Integration Tests

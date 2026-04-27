@@ -180,7 +180,7 @@ struct MainContentView: View {
                         isPresented: dismissBinding,
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
-                            rowBuffer: tab.rowBuffer,
+                            rowBuffer: coordinator.rowDataStore.buffer(for: tab.id),
                             suggestedFileName: fileName
                         )
                     )
@@ -242,10 +242,9 @@ struct MainContentView: View {
                 }
             }
             .task(id: currentTab?.tableContext.tableName) {
-                // Only load metadata after the tab has executed at least once —
-                // avoids a redundant DB query racing with the initial data query
                 guard currentTab?.execution.lastExecutedAt != nil else { return }
                 await loadTableMetadataIfNeeded()
+                scheduleInspectorUpdate()
             }
             .onChange(of: inspectorTrigger) {
                 scheduleInspectorUpdate()
@@ -348,11 +347,12 @@ struct MainContentView: View {
                 (viewWindow?.windowController as? TabWindowController)?.refreshUserActivity()
                 handleTabSelectionChange(from: oldTabId, to: newTabId)
             }
-            .onChange(of: tabManager.tabs) { _, newTabs in
-                handleTabsChange(newTabs)
+            .onChange(of: tabManager.tabStructureVersion) { _, _ in
+                handleStructureChange()
             }
-            .onChange(of: currentTab?.resultColumns) { _, newColumns in
-                handleColumnsChange(newColumns: newColumns)
+            .onChange(of: currentTab?.schemaVersion) { _, _ in
+                let columns = currentTab.map { coordinator.rowDataStore.buffer(for: $0.id).columns }
+                handleColumnsChange(newColumns: columns)
             }
             .task { handleConnectionStatusChange() }
             .onReceive(

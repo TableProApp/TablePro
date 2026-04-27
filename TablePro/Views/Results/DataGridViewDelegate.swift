@@ -29,6 +29,10 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridVisualState(forRow row: Int) -> RowVisualState?
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView?
     func dataGridEmptySpaceMenu() -> NSMenu?
+    func dataGridDidInsertRows(at indices: IndexSet)
+    func dataGridDidRemoveRows(at indices: IndexSet)
+    func dataGridDidReplaceAllRows()
+    func dataGridAttach(tableViewCoordinator: TableViewCoordinator)
 }
 
 extension DataGridViewDelegate {
@@ -52,4 +56,8 @@ extension DataGridViewDelegate {
     func dataGridVisualState(forRow row: Int) -> RowVisualState? { nil }
     func dataGridRowView(for tableView: NSTableView, row: Int, coordinator: TableViewCoordinator) -> NSTableRowView? { nil }
     func dataGridEmptySpaceMenu() -> NSMenu? { nil }
+    func dataGridDidInsertRows(at indices: IndexSet) {}
+    func dataGridDidRemoveRows(at indices: IndexSet) {}
+    func dataGridDidReplaceAllRows() {}
+    func dataGridAttach(tableViewCoordinator: TableViewCoordinator) {}
 }
