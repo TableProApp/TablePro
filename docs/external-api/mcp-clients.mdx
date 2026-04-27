@@ -163,7 +163,7 @@ For most desktop clients, stdio is the right default. Use HTTP when the client l
 
 ## HTTP transport
 
-If your client cannot use stdio, mint a token in **Settings > MCP > Authentication** and configure HTTP directly. The shape varies by client; here is the Cursor form:
+If your client cannot use stdio, mint a token in **Settings > Integrations > Authentication** and configure HTTP directly. The shape varies by client; here is the Cursor form:
 
 ```json
 {
@@ -178,11 +178,11 @@ If your client cannot use stdio, mint a token in **Settings > MCP > Authenticati
 }
 ```
 
-Replace `23508` with the port shown in **Settings > MCP > MCP Configuration**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
+Replace `23508` with the port shown in **Settings > Integrations > MCP Configuration**. Other clients use the same `url` plus `headers` shape, sometimes under `type: streamable-http`. Check the client's docs.
 
 ## Setup snippets in TablePro
 
-Open **Settings > MCP > MCP Setup** and pick a client. TablePro shows the exact JSON or shell command to paste into the client's config, with the correct paths for your install.
+Open **Settings > Integrations > MCP Setup** and pick a client. TablePro shows the exact JSON or shell command to paste into the client's config, with the correct paths for your install.
 
 ## What the AI sees
 
@@ -205,7 +205,7 @@ If the call fails, the response code tells you which layer rejected it:
 
 ## Troubleshooting
 
-**Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > MCP** and toggle **Enable MCP Server** off and on, then re-launch the client.
+**Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations** and toggle **Enable MCP Server** off and on, then re-launch the client.
 
 **Stale handshake file.** Delete `~/Library/Application Support/com.TablePro/mcp-handshake.json` and reopen TablePro. The app rewrites the file on launch.
 

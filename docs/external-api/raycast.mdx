@@ -86,7 +86,7 @@ The token is stored in the Keychain via Raycast's password preference type.
 
 **Token revoked (`401`).** The extension clears the stored token and shows the pair CTA.
 
-**Connection rejected (`403`).** The connection's `externalAccess` is `blocked` or the token's allowlist excludes it. Open **Settings > MCP** in TablePro to inspect.
+**Connection rejected (`403`).** The connection's `externalAccess` is `blocked` or the token's allowlist excludes it. Open **Settings > Integrations** in TablePro to inspect.
 
 **Read-only error (`403 Connection is read-only for external clients`).** The connection's `externalAccess` is `readOnly` and the SQL is a write. Either change the connection's external access in TablePro, or run the query in TablePro's editor.
 

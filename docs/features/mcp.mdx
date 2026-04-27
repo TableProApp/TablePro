@@ -7,7 +7,7 @@ description: Built-in Model Context Protocol server that exposes TablePro to AI 
 
 TablePro includes a built-in [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets AI clients query your databases through TablePro's saved connections. The MCP server is one of three pillars of the [External API](/external-api), alongside the URL scheme and the pairing flow.
 
-This page covers the in-app **Settings > MCP** UI. For protocol details, see the External API section.
+This page covers the in-app **Settings > Integrations** UI. For protocol details, see the External API section.
 
 <CardGroup cols={2}>
   <Card title="Tool catalog" icon="plug" href="/external-api/mcp-tools">
@@ -36,7 +36,7 @@ The MCP server lazy-starts on first use. Pairing an extension or hitting `tablep
 
 When the server starts, it picks a free port in the `51000-52000` range and writes a handshake file at `~/Library/Application Support/com.TablePro/mcp-handshake.json`. The `tablepro-mcp` CLI and the Raycast extension read this file to find the port; you do not need to configure it manually.
 
-To start it manually or keep it running between launches, open **Settings > MCP** and toggle **Enable MCP Server**.
+To start it manually or keep it running between launches, open **Settings > Integrations** and toggle **Enable MCP Server**.
 
 <Frame caption="MCP server settings">
   <img
@@ -60,7 +60,7 @@ Settings on the same tab:
 
 ## MCP setup snippets
 
-**Settings > MCP > MCP Setup** writes the config for popular clients in one click:
+**Settings > Integrations > MCP Setup** writes the config for popular clients in one click:
 
 - **Setup for Claude Code** uses the stdio bridge, no token needed.
 - **Setup for Claude Desktop** writes to `~/Library/Application Support/Claude/claude_desktop_config.json`.
@@ -70,13 +70,13 @@ For manual configuration, see [MCP Clients](/external-api/mcp-clients). The HTTP
 
 ## Authentication
 
-Tokens are managed under **Settings > MCP > Authentication**. The pairing flow, scopes, allowlists, expiry, and revocation are documented in [Tokens](/external-api/tokens).
+Tokens are managed under **Settings > Integrations > Authentication**. The pairing flow, scopes, allowlists, expiry, and revocation are documented in [Tokens](/external-api/tokens).
 
-The activity log under **Settings > MCP > Activity Log** shows every authentication, tool call, and resource read with the token id, category, action, connection, and outcome. Entries are kept for 90 days.
+The activity log under **Settings > Integrations > Activity Log** shows every authentication, tool call, and resource read with the token id, category, action, connection, and outcome. Entries are kept for 90 days.
 
 ## Remote access
 
-The MCP server is localhost-only by default. Toggle **Remote access** under **Settings > MCP > Network** to accept connections from other machines.
+The MCP server is localhost-only by default. Toggle **Remote access** under **Settings > Integrations > Network** to accept connections from other machines.
 
 Enabling remote access automatically requires authentication and TLS.
 
@@ -108,7 +108,7 @@ macOS firewall allows TablePro automatically (Developer ID signed).
 
 When remote access is enabled, TablePro generates a self-signed certificate valid for 1 year.
 
-- The SHA-256 fingerprint shows in **Settings > MCP > Network**.
+- The SHA-256 fingerprint shows in **Settings > Integrations > Network**.
 - **Copy Certificate (PEM)** exports the certificate for client trust stores.
 - **Regenerate** creates a new certificate (invalidates existing trust).
 
@@ -149,12 +149,12 @@ The reachable surface is the [tool catalog](/external-api/mcp-tools) and the [UR
 
 **App must be running**: the MCP server only runs while TablePro is open. The stdio bridge fires `tablepro://integrations/start-mcp` to launch the app on cold start.
 
-**Connection refused**: check the green status indicator in **Settings > MCP**. Verify the URL and port match the handshake file.
+**Connection refused**: check the green status indicator in **Settings > Integrations**. Verify the URL and port match the handshake file.
 
-**`401 Unauthorized`**: the token is missing, expired, or revoked. Generate a new one in **Settings > MCP > Authentication**, or run the pair command in your extension.
+**`401 Unauthorized`**: the token is missing, expired, or revoked. Generate a new one in **Settings > Integrations > Authentication**, or run the pair command in your extension.
 
 **`403 Forbidden`**: the token's allowlist excludes the connection, the connection's `externalAccess` is `blocked`, or the SQL is a write against a `readOnly` connection.
 
-**Certificate trust error**: export the PEM from **Settings > MCP > Network** and add it to your client's trust store, or use fingerprint pinning.
+**Certificate trust error**: export the PEM from **Settings > Integrations > Network** and add it to your client's trust store, or use fingerprint pinning.
 
 **`429 Too Many Requests`**: too many failed auth attempts. The lockout escalates to 5 minutes and resets on the next successful auth.
