@@ -98,7 +98,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Debounced task for persisting column layout after resize/reorder
     var layoutPersistTask: Task<Void, Never>?
 
-    private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
     internal var pendingDropdownRow: Int = 0
     internal var pendingDropdownColumn: Int = 0

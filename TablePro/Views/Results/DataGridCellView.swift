@@ -10,6 +10,12 @@ import AppKit
 /// row is selected — we hide the background view so the native selection highlight
 /// shows through.
 final class DataGridCellView: NSTableCellView {
+    var fkArrowButton: FKArrowButton?
+    var chevronButton: CellChevronButton?
+    var textFieldTrailingToFK: NSLayoutConstraint?
+    var textFieldTrailingToChevron: NSLayoutConstraint?
+    var textFieldTrailingToCell: NSLayoutConstraint?
+
     private lazy var backgroundView: NSView = {
         let view = NSView()
         view.wantsLayer = true

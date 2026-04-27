@@ -128,9 +128,6 @@ final class DataGridCellFactory {
 
     // MARK: - Data Cell
 
-    private static let chevronTag = 999
-    private static let fkArrowTag = 998
-
     func makeDataCell(
         tableView: NSTableView,
         row: Int,
@@ -149,27 +146,17 @@ final class DataGridCellFactory {
         chevronAction: Selector? = nil,
         delegate: NSTextFieldDelegate
     ) -> NSView {
-        let cellViewId: NSUserInterfaceItemIdentifier
-        if isDropdown {
-            cellViewId = NSUserInterfaceItemIdentifier("DropdownCellView")
-        } else if isFKColumn {
-            cellViewId = NSUserInterfaceItemIdentifier("FKArrowCellView")
-        } else {
-            cellViewId = NSUserInterfaceItemIdentifier("DataCellView")
-        }
-        let cellView: NSTableCellView
+        let gridCellView: DataGridCellView
         let cell: NSTextField
-        let isNewCell: Bool
 
-        if let reused = tableView.makeView(withIdentifier: cellViewId, owner: nil) as? NSTableCellView,
+        if let reused = tableView.makeView(withIdentifier: cellIdentifier, owner: nil) as? DataGridCellView,
            let textField = reused.textField {
-            cellView = reused
+            gridCellView = reused
             cell = textField
-            isNewCell = false
         } else {
-            cellView = DataGridCellView()
-            cellView.identifier = cellViewId
-            cellView.wantsLayer = true
+            gridCellView = DataGridCellView()
+            gridCellView.identifier = cellIdentifier
+            gridCellView.wantsLayer = true
 
             cell = CellTextField()
             cell.font = ThemeEngine.shared.dataGridFonts.regular
@@ -182,89 +169,74 @@ final class DataGridCellFactory {
             cell.cell?.usesSingleLineMode = true
             cell.translatesAutoresizingMaskIntoConstraints = false
 
-            cellView.textField = cell
-            cellView.addSubview(cell)
+            gridCellView.textField = cell
+            gridCellView.addSubview(cell)
 
-            if isDropdown {
-                let chevron = CellChevronButton()
-                chevron.tag = Self.chevronTag
-                chevron.bezelStyle = .inline
-                chevron.isBordered = false
-                chevron.image = NSImage(systemSymbolName: "chevron.up.chevron.down", accessibilityDescription: String(localized: "Open editor"))
-                chevron.contentTintColor = .tertiaryLabelColor
-                chevron.translatesAutoresizingMaskIntoConstraints = false
-                chevron.setContentHuggingPriority(.required, for: .horizontal)
-                chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
-                chevron.imageScaling = .scaleProportionallyDown
-                cellView.addSubview(chevron)
+            let fkButton = createFKArrowButton()
+            gridCellView.addSubview(fkButton)
+            gridCellView.fkArrowButton = fkButton
 
-                NSLayoutConstraint.activate([
-                    cell.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
-                    cell.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -2),
-                    cell.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                    chevron.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
-                    chevron.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                    chevron.widthAnchor.constraint(equalToConstant: 10),
-                    chevron.heightAnchor.constraint(equalToConstant: 12),
-                ])
-            } else if isFKColumn {
-                let button = FKArrowButton()
-                button.tag = Self.fkArrowTag
-                button.bezelStyle = .inline
-                button.isBordered = false
-                button.image = NSImage(systemSymbolName: "arrow.right.circle.fill", accessibilityDescription: String(localized: "Navigate to referenced row"))
-                button.contentTintColor = .tertiaryLabelColor
-                button.translatesAutoresizingMaskIntoConstraints = false
-                button.setContentHuggingPriority(.required, for: .horizontal)
-                button.setContentCompressionResistancePriority(.required, for: .horizontal)
-                button.imageScaling = .scaleProportionallyDown
-                cellView.addSubview(button)
+            let chevron = createChevronButton()
+            gridCellView.addSubview(chevron)
+            gridCellView.chevronButton = chevron
 
-                NSLayoutConstraint.activate([
-                    cell.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
-                    cell.trailingAnchor.constraint(equalTo: button.leadingAnchor, constant: -2),
-                    cell.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                    button.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
-                    button.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                    button.widthAnchor.constraint(equalToConstant: 16),
-                    button.heightAnchor.constraint(equalToConstant: 16),
-                ])
-            } else {
-                NSLayoutConstraint.activate([
-                    cell.leadingAnchor.constraint(equalTo: cellView.leadingAnchor, constant: 4),
-                    cell.trailingAnchor.constraint(equalTo: cellView.trailingAnchor, constant: -4),
-                    cell.centerYAnchor.constraint(equalTo: cellView.centerYAnchor),
-                ])
+            let trailingToFK = cell.trailingAnchor.constraint(equalTo: fkButton.leadingAnchor, constant: -2)
+            let trailingToChevron = cell.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -2)
+            let trailingToCell = cell.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4)
+            trailingToFK.isActive = false
+            trailingToChevron.isActive = false
+            trailingToCell.isActive = true
+            gridCellView.textFieldTrailingToFK = trailingToFK
+            gridCellView.textFieldTrailingToChevron = trailingToChevron
+            gridCellView.textFieldTrailingToCell = trailingToCell
+
+            NSLayoutConstraint.activate([
+                cell.leadingAnchor.constraint(equalTo: gridCellView.leadingAnchor, constant: 4),
+                cell.centerYAnchor.constraint(equalTo: gridCellView.centerYAnchor),
+
+                fkButton.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4),
+                fkButton.centerYAnchor.constraint(equalTo: gridCellView.centerYAnchor),
+                fkButton.widthAnchor.constraint(equalToConstant: 16),
+                fkButton.heightAnchor.constraint(equalToConstant: 16),
+
+                chevron.trailingAnchor.constraint(equalTo: gridCellView.trailingAnchor, constant: -4),
+                chevron.centerYAnchor.constraint(equalTo: gridCellView.centerYAnchor),
+                chevron.widthAnchor.constraint(equalToConstant: 10),
+                chevron.heightAnchor.constraint(equalToConstant: 12),
+            ])
+        }
+
+        cell.lineBreakMode = .byTruncatingTail
+        cell.maximumNumberOfLines = 1
+        cell.cell?.truncatesLastVisibleLine = true
+        cell.cell?.usesSingleLineMode = true
+
+        let showFK = isFKColumn && rawValue != nil && rawValue?.isEmpty != true
+        let showChevron = isDropdown
+
+        if let fkButton = gridCellView.fkArrowButton {
+            fkButton.isHidden = !showFK
+            if showFK {
+                fkButton.target = fkArrowTarget
+                fkButton.action = fkArrowAction
+                fkButton.fkRow = row
+                fkButton.fkColumnIndex = columnIndex
             }
-            isNewCell = true
         }
 
-        if !isNewCell && (
-            cell.lineBreakMode != .byTruncatingTail ||
-            cell.maximumNumberOfLines != 1 ||
-            cell.cell?.truncatesLastVisibleLine != true ||
-            cell.cell?.usesSingleLineMode != true
-        ) {
-            cell.lineBreakMode = .byTruncatingTail
-            cell.maximumNumberOfLines = 1
-            cell.cell?.truncatesLastVisibleLine = true
-            cell.cell?.usesSingleLineMode = true
+        if let chevron = gridCellView.chevronButton {
+            chevron.isHidden = !showChevron
+            if showChevron {
+                chevron.cellRow = row
+                chevron.cellColumnIndex = columnIndex
+                chevron.target = chevronTarget
+                chevron.action = chevronAction
+            }
         }
 
-        if isFKColumn, let button = cellView.viewWithTag(Self.fkArrowTag) as? FKArrowButton {
-            button.target = fkArrowTarget
-            button.action = fkArrowAction
-            button.fkRow = row
-            button.fkColumnIndex = columnIndex
-            button.isHidden = (rawValue == nil || rawValue?.isEmpty == true)
-        }
-
-        if isDropdown, let chevronButton = cellView.viewWithTag(Self.chevronTag) as? CellChevronButton {
-            chevronButton.cellRow = row
-            chevronButton.cellColumnIndex = columnIndex
-            chevronButton.target = chevronTarget
-            chevronButton.action = chevronAction
-        }
+        gridCellView.textFieldTrailingToFK?.isActive = showFK
+        gridCellView.textFieldTrailingToChevron?.isActive = showChevron && !showFK
+        gridCellView.textFieldTrailingToCell?.isActive = !showFK && !showChevron
 
         cell.isEditable = isEditable
         cell.delegate = delegate
@@ -276,36 +248,30 @@ final class DataGridCellFactory {
 
         configureTextContent(cell: cell, displayValue: displayValue, rawValue: rawValue, isLargeDataset: isLargeDataset)
 
-        // Batch layer updates to avoid implicit animations
         CATransaction.begin()
         CATransaction.setDisableActions(true)
 
-        // Update background color for change states (drawn via DataGridCellView.draw)
-        if let gridCell = cellView as? DataGridCellView {
-            if isDeleted {
-                gridCell.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.deleted
-            } else if isInserted {
-                gridCell.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.inserted
-            } else if isModified {
-                gridCell.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.modified
-            } else {
-                gridCell.changeBackgroundColor = nil
-            }
+        if isDeleted {
+            gridCellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.deleted
+        } else if isInserted {
+            gridCellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.inserted
+        } else if isModified {
+            gridCellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.modified
+        } else {
+            gridCellView.changeBackgroundColor = nil
         }
 
-        // Focus ring
         if isLargeDataset {
-            cellView.layer?.borderWidth = 0
+            gridCellView.layer?.borderWidth = 0
         } else if isFocused {
-            cellView.layer?.borderWidth = 2
-            cellView.layer?.borderColor = ThemeEngine.shared.colors.dataGrid.focusBorderCG
+            gridCellView.layer?.borderWidth = 2
+            gridCellView.layer?.borderColor = ThemeEngine.shared.colors.dataGrid.focusBorderCG
         } else {
-            cellView.layer?.borderWidth = 0
+            gridCellView.layer?.borderWidth = 0
         }
 
         CATransaction.commit()
 
-        // Accessibility: describe cell content for VoiceOver
         if !isLargeDataset && Self.cachedVoiceOverEnabled {
             let accessibilityValue = rawValue ?? String(localized: "NULL")
             cell.setAccessibilityLabel(
@@ -313,7 +279,43 @@ final class DataGridCellFactory {
             )
         }
 
-        return cellView
+        return gridCellView
+    }
+
+    // MARK: - Button Creation
+
+    private func createFKArrowButton() -> FKArrowButton {
+        let button = FKArrowButton()
+        button.bezelStyle = .inline
+        button.isBordered = false
+        button.image = NSImage(
+            systemSymbolName: "arrow.right.circle.fill",
+            accessibilityDescription: String(localized: "Navigate to referenced row")
+        )
+        button.contentTintColor = .tertiaryLabelColor
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.imageScaling = .scaleProportionallyDown
+        button.isHidden = true
+        return button
+    }
+
+    private func createChevronButton() -> CellChevronButton {
+        let chevron = CellChevronButton()
+        chevron.bezelStyle = .inline
+        chevron.isBordered = false
+        chevron.image = NSImage(
+            systemSymbolName: "chevron.up.chevron.down",
+            accessibilityDescription: String(localized: "Open editor")
+        )
+        chevron.contentTintColor = .tertiaryLabelColor
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        chevron.setContentCompressionResistancePriority(.required, for: .horizontal)
+        chevron.imageScaling = .scaleProportionallyDown
+        chevron.isHidden = true
+        return chevron
     }
 
     // MARK: - Cell Text Content
