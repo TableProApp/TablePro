@@ -103,30 +103,19 @@ extension MainContentView {
 
     // MARK: - Consolidated onChange Triggers
 
-    /// Trigger for inspector updates — combines result version and table metadata name.
-    /// Replaces separate handlers for `currentTab?.resultRows` and
-    /// `coordinator.tableMetadata?.tableName` that both only called `scheduleInspectorUpdate()`.
-    /// Uses `resultVersion` instead of the full `resultRows` array to avoid deep equality checks.
     var inspectorTrigger: InspectorTrigger {
         InspectorTrigger(
             tableName: currentTab?.tableContext.tableName,
             resultVersion: currentTab?.resultVersion ?? -1,
-            metadataVersion: currentTab?.metadataVersion ?? -1,
-            metadataTableName: coordinator.tableMetadata?.tableName
+            metadataVersion: currentTab?.metadataVersion ?? -1
         )
     }
 }
 
-// MARK: - Equatable Trigger Types
-
-/// Lightweight equatable value combining tab table name, result version, and metadata table name
-/// for consolidated inspector onChange observation. Folding `tableName` here avoids a separate
-/// `onChange(of: currentTab?.tableName)` handler that would cascade with this trigger.
 struct InspectorTrigger: Equatable {
     let tableName: String?
     let resultVersion: Int
     let metadataVersion: Int
-    let metadataTableName: String?
 }
 
 /// Lightweight equatable value combining all pending-change sources

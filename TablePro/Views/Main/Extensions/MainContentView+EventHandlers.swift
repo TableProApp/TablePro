@@ -41,15 +41,13 @@ extension MainContentView {
         )
     }
 
-    func handleTabsChange(_ newTabs: [QueryTab]) {
+    func handleStructureChange() {
         guard !coordinator.isTearingDown else {
-            MainContentView.lifecycleLogger.debug("[switch] handleTabsChange SKIPPED (tearingDown) tabCount=\(newTabs.count) connId=\(coordinator.connectionId, privacy: .public)")
+            MainContentView.lifecycleLogger.debug("[switch] handleStructureChange SKIPPED (tearingDown) tabCount=\(tabManager.tabs.count) connId=\(coordinator.connectionId, privacy: .public)")
             return
         }
         let t0 = Date()
 
-        // Only update title when the tab array changes independently of a tab switch.
-        // During a tab switch, handleTabSelectionChange already updates the title.
         if !coordinator.isHandlingTabSwitch {
             updateWindowTitleAndFileState()
         }
@@ -60,7 +58,7 @@ extension MainContentView {
             coordinator.promotePreviewTab()
         }
 
-        let persistableTabs = newTabs.filter { !$0.isPreview }
+        let persistableTabs = tabManager.tabs.filter { !$0.isPreview }
         if persistableTabs.isEmpty {
             coordinator.persistence.clearSavedState()
         } else {
@@ -73,7 +71,7 @@ extension MainContentView {
             )
         }
         MainContentView.lifecycleLogger.debug(
-            "[switch] handleTabsChange tabCount=\(newTabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
+            "[switch] handleStructureChange tabCount=\(tabManager.tabs.count) persistableCount=\(persistableTabs.count) ms=\(Int(Date().timeIntervalSince(t0) * 1_000))"
         )
     }
 
@@ -267,7 +265,6 @@ extension MainContentView {
                 )
             }
         }
-
     }
 
     func lazyLoadExcludedColumnsIfNeeded() {

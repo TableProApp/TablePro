@@ -11,10 +11,17 @@ import os
 @MainActor @Observable
 final class QueryTabManager {
     var tabs: [QueryTab] = [] {
-        didSet { _tabIndexMapDirty = true }
+        didSet {
+            _tabIndexMapDirty = true
+            if oldValue.map(\.id) != tabs.map(\.id) {
+                tabStructureVersion += 1
+            }
+        }
     }
 
     var selectedTabId: UUID?
+
+    var tabStructureVersion: Int = 0
 
     @ObservationIgnored private var _tabIndexMap: [UUID: Int] = [:]
     @ObservationIgnored private var _tabIndexMapDirty = true
@@ -85,6 +92,7 @@ final class QueryTabManager {
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addTableTab(
@@ -114,6 +122,7 @@ final class QueryTabManager {
         newTab.tableContext.databaseName = databaseName
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addCreateTableTab(databaseName: String = "") {
@@ -124,6 +133,7 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addERDiagramTab(schemaKey: String, databaseName: String = "") {
@@ -135,6 +145,7 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addServerDashboardTab() {
@@ -148,6 +159,7 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addTerminalTab(databaseName: String = "") {
@@ -162,6 +174,7 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     func addPreviewTableTab(
@@ -185,6 +198,7 @@ final class QueryTabManager {
         newTab.isPreview = true
         tabs.append(newTab)
         selectedTabId = newTab.id
+        tabStructureVersion += 1
     }
 
     /// Replace the currently selected tab's content with a new table.
@@ -236,6 +250,7 @@ final class QueryTabManager {
         tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
+        tabStructureVersion += 1
         return true
     }
 
@@ -243,6 +258,11 @@ final class QueryTabManager {
         if let index = tabs.firstIndex(where: { $0.id == tab.id }) {
             tabs[index] = tab
         }
+    }
+
+    func markTabRenamed(_ tabId: UUID) {
+        guard tabs.contains(where: { $0.id == tabId }) else { return }
+        tabStructureVersion += 1
     }
 
     deinit {

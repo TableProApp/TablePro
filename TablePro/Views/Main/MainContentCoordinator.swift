@@ -769,6 +769,7 @@ final class MainContentCoordinator {
                     return
                 }
 
+                tabManager.tabStructureVersion += 1
                 dispatchParameterizedStatements(
                     paramStatements,
                     parameters: reconciled,
@@ -781,6 +782,7 @@ final class MainContentCoordinator {
         let statements = SQLStatementScanner.allStatements(in: sql)
         guard !statements.isEmpty else { return }
 
+        tabManager.tabStructureVersion += 1
         dispatchStatements(statements, tabIndex: index)
     }
 

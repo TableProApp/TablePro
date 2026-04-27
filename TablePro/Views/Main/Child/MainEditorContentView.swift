@@ -126,7 +126,8 @@ struct MainEditorContentView: View {
             guard let query = notification.userInfo?["query"] as? String else { return }
             favoriteDialogQuery = FavoriteDialogQuery(query: query)
         }
-        .onChange(of: tabManager.tabIds) { _, newIds in
+        .onChange(of: tabManager.tabStructureVersion) { _, _ in
+            let newIds = tabManager.tabIds
             guard !sortCache.isEmpty || !tabProviderCache.isEmpty || !erDiagramViewModels.isEmpty
                 || !serverDashboardViewModels.isEmpty else {
                 coordinator.cleanupSortCache(openTabIds: Set(newIds))
@@ -342,7 +343,6 @@ struct MainEditorContentView: View {
 
                 tabManager.tabs[index].content.query = newValue
 
-                // Update window dirty indicator and toolbar for file-backed tabs
                 if tabManager.tabs[index].content.sourceFileURL != nil {
                     let isDirty = tabManager.tabs[index].content.isFileDirty
                     Task { @MainActor in
@@ -351,13 +351,6 @@ struct MainEditorContentView: View {
                         }
                     }
                 }
-
-                // Skip persistence for very large queries (e.g., imported SQL dumps).
-                // JSON-encoding 40MB freezes the main thread.
-                let queryLength = (newValue as NSString).length
-                guard queryLength < TabQueryContent.maxPersistableQuerySize else { return }
-
-                coordinator.persistence.saveLastQuery(newValue)
             }
         )
     }
