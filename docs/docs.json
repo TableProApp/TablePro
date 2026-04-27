@@ -121,8 +121,7 @@
                   "features/tabs",
                   "features/query-history",
                   "features/sql-favorites",
-                  "features/keyboard-shortcuts",
-                  "features/deep-links"
+                  "features/keyboard-shortcuts"
                 ]
               },
               {
