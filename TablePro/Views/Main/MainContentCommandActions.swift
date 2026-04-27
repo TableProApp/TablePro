@@ -28,7 +28,7 @@ final class MainContentCommandActions {
 
     // MARK: - Bindings
 
-    @ObservationIgnored private let selectedRowIndices: Binding<Set<Int>>
+    @ObservationIgnored private let selectionState: GridSelectionState
     @ObservationIgnored private let selectedTables: Binding<Set<TableInfo>>
     @ObservationIgnored private let pendingTruncates: Binding<Set<String>>
     @ObservationIgnored private let pendingDeletes: Binding<Set<String>>
@@ -50,7 +50,7 @@ final class MainContentCommandActions {
         coordinator: MainContentCoordinator,
         filterStateManager: FilterStateManager,
         connection: DatabaseConnection,
-        selectedRowIndices: Binding<Set<Int>>,
+        selectionState: GridSelectionState,
         selectedTables: Binding<Set<TableInfo>>,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -61,7 +61,7 @@ final class MainContentCommandActions {
         self.coordinator = coordinator
         self.filterStateManager = filterStateManager
         self.connection = connection
-        self.selectedRowIndices = selectedRowIndices
+        self.selectionState = selectionState
         self.selectedTables = selectedTables
         self.pendingTruncates = pendingTruncates
         self.pendingDeletes = pendingDeletes
@@ -121,7 +121,6 @@ final class MainContentCommandActions {
             Task {
                 do {
                     try await self.coordinator?.saveSidebarEdits(
-                        selectedRowIndices: self.selectedRowIndices.wrappedValue,
                         editState: self.rightPanelState.editState
                     )
                 } catch {
@@ -166,16 +165,14 @@ final class MainContentCommandActions {
         // the public methods re-post these notifications for structure view.
         observeKeyWindowOnly(.copySelectedRows) { [weak self] _ in
             guard let self else { return }
-            let indices = self.selectedRowIndices.wrappedValue
+            let indices = self.selectionState.indices
             self.coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
 
         observeKeyWindowOnly(.pasteRows) { [weak self] _ in
             guard let self else { return }
-            var indices = self.selectedRowIndices.wrappedValue
             var cell = self.editingCell.wrappedValue
-            self.coordinator?.pasteRows(selectedRowIndices: &indices, editingCell: &cell)
-            self.selectedRowIndices.wrappedValue = indices
+            self.coordinator?.pasteRows(editingCell: &cell)
             self.editingCell.wrappedValue = cell
         }
     }
@@ -183,23 +180,17 @@ final class MainContentCommandActions {
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        var indices = selectedRowIndices.wrappedValue
         var cell = editingCell.wrappedValue
-        coordinator?.addNewRow(selectedRowIndices: &indices, editingCell: &cell)
-        selectedRowIndices.wrappedValue = indices
+        coordinator?.addNewRow(editingCell: &cell)
         editingCell.wrappedValue = cell
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
-        // When rowIndices is provided (from data grid), use them directly
-        // This avoids relying on SwiftUI binding sync timing
         let fromDataGrid = rowIndices != nil
 
-        let indices = rowIndices ?? selectedRowIndices.wrappedValue
+        let indices = rowIndices ?? selectionState.indices
         if !indices.isEmpty {
-            var mutableIndices = indices
-            coordinator?.deleteSelectedRows(indices: indices, selectedRowIndices: &mutableIndices)
-            selectedRowIndices.wrappedValue = mutableIndices
+            coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
             // Only toggle table deletion when the call did NOT originate from
             // the data grid (e.g., from the app menu Cmd+Delete with no rows selected)
@@ -221,13 +212,11 @@ final class MainContentCommandActions {
     }
 
     func duplicateRow() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         guard let selectedIndex = indices.first, indices.count == 1 else { return }
 
-        var mutableIndices = indices
         var cell = editingCell.wrappedValue
-        coordinator?.duplicateSelectedRow(index: selectedIndex, selectedRowIndices: &mutableIndices, editingCell: &cell)
-        selectedRowIndices.wrappedValue = mutableIndices
+        coordinator?.duplicateSelectedRow(index: selectedIndex, editingCell: &cell)
         editingCell.wrappedValue = cell
     }
 
@@ -235,18 +224,18 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
-            let indices = selectedRowIndices.wrappedValue
+            let indices = selectionState.indices
             coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
     }
 
     func copySelectedRowsWithHeaders() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         coordinator?.copySelectedRowsWithHeaders(indices: indices)
     }
 
     func copySelectedRowsAsJson() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         coordinator?.copySelectedRowsAsJson(indices: indices)
     }
 
@@ -254,10 +243,8 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
-            var indices = selectedRowIndices.wrappedValue
             var cell = editingCell.wrappedValue
-            coordinator?.pasteRows(selectedRowIndices: &indices, editingCell: &cell)
-            selectedRowIndices.wrappedValue = indices
+            coordinator?.pasteRows(editingCell: &cell)
             editingCell.wrappedValue = cell
         }
     }
@@ -290,7 +277,7 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
-        !selectedRowIndices.wrappedValue.isEmpty
+        !selectionState.indices.isEmpty
     }
 
     var hasTableSelection: Bool {
@@ -734,9 +721,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
-            var indices = selectedRowIndices.wrappedValue
-            coordinator?.undoLastChange(selectedRowIndices: &indices)
-            selectedRowIndices.wrappedValue = indices
+            coordinator?.undoLastChange()
         }
     }
 

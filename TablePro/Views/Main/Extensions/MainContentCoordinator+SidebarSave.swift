@@ -11,11 +11,10 @@ extension MainContentCoordinator {
     // MARK: - Sidebar Save
 
     func saveSidebarEdits(
-        selectedRowIndices: Set<Int>,
         editState: MultiRowEditState
     ) async throws {
         guard let tab = tabManager.selectedTab,
-            !selectedRowIndices.isEmpty,
+            !selectionState.indices.isEmpty,
             tab.tableContext.tableName != nil
         else {
             return
@@ -24,8 +23,7 @@ extension MainContentCoordinator {
         let editedFields = editState.getEditedFields()
         guard !editedFields.isEmpty else { return }
 
-        // Build RowChange array from sidebar edits
-        let changes: [RowChange] = selectedRowIndices.sorted().compactMap { rowIndex in
+        let changes: [RowChange] = selectionState.indices.sorted().compactMap { rowIndex in
             guard rowIndex < tab.resultRows.count else { return nil }
             let originalRow = tab.resultRows[rowIndex]
             return RowChange(

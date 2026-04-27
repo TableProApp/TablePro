@@ -275,7 +275,7 @@ extension MainContentView {
             coordinator: coordinator,
             filterStateManager: filterStateManager,
             connection: connection,
-            selectedRowIndices: $selectedRowIndices,
+            selectionState: coordinator.selectionState,
             selectedTables: Binding(
                 get: { sidebarState.selectedTables },
                 set: { sidebarState.selectedTables = $0 }

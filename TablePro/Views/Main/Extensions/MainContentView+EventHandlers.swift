@@ -21,7 +21,6 @@ extension MainContentView {
         coordinator.handleTabChange(
             from: oldTabId,
             to: newTabId,
-            selectedRowIndices: &selectedRowIndices,
             tabs: tabManager.tabs
         )
         let t1 = Date()
@@ -136,7 +135,7 @@ extension MainContentView {
         case .skip:
             return
         case .openInPlace:
-            selectedRowIndices = []
+            coordinator.selectionState.indices = []
             coordinator.openTableTab(tableName, isView: isView)
         case .revertAndOpenNewWindow:
             coordinator.openTableTab(tableName, isView: isView)
@@ -171,8 +170,9 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        let selectedIndices = coordinator.selectionState.indices
         guard let tab = coordinator.tabManager.selectedTab,
-            !selectedRowIndices.isEmpty
+            !selectedIndices.isEmpty
         else {
             rightPanelState.editState.fields = []
             rightPanelState.editState.onFieldChanged = nil
@@ -180,7 +180,7 @@ extension MainContentView {
         }
 
         var allRows: [[String?]] = []
-        for index in selectedRowIndices.sorted() {
+        for index in selectedIndices.sorted() {
             if index < tab.resultRows.count {
                 allRows.append(tab.resultRows[index])
             }
@@ -206,7 +206,7 @@ extension MainContentView {
 
         // Collect columns modified in data grid so sidebar shows green dots
         var modifiedColumns = Set<Int>()
-        for rowIndex in selectedRowIndices {
+        for rowIndex in selectedIndices {
             modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
         }
 
@@ -221,7 +221,7 @@ extension MainContentView {
         let fkColumns = Set(tab.columnForeignKeys.keys)
 
         rightPanelState.editState.configure(
-            selectedRowIndices: selectedRowIndices,
+            selectedRowIndices: selectedIndices,
             allRows: allRows,
             columns: tab.resultColumns,
             columnTypes: columnTypes,
@@ -270,10 +270,10 @@ extension MainContentView {
 
         // Lazy-load full values for excluded columns when a single row is selected
         if !excludedNames.isEmpty,
-            selectedRowIndices.count == 1,
+            selectedIndices.count == 1,
             let tableName = tab.tableContext.tableName,
             let pkColumn = tab.tableContext.primaryKeyColumn,
-            let rowIndex = selectedRowIndices.first,
+            let rowIndex = selectedIndices.first,
             rowIndex < tab.resultRows.count
         {
             let row = tab.resultRows[rowIndex]

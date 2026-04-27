@@ -5,6 +5,11 @@
 
 import Foundation
 
+@MainActor @Observable
+final class GridSelectionState {
+    var indices: Set<Int> = []
+}
+
 /// Type of tab
 enum TabType: Equatable, Codable, Hashable {
     case query            // SQL editor tab

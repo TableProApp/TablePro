@@ -14,8 +14,8 @@ extension MainContentView {
     /// Compute selected row data for right sidebar display
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
         guard let tab = coordinator.tabManager.selectedTab,
-              !selectedRowIndices.isEmpty,
-              let firstIndex = selectedRowIndices.min(),
+              !coordinator.selectionState.indices.isEmpty,
+              let firstIndex = coordinator.selectionState.indices.min(),
               firstIndex < tab.resultRows.count else { return nil }
 
         let row = tab.resultRows[firstIndex]
@@ -50,15 +50,14 @@ extension MainContentView {
         guard !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
               tab.tabType == .table || tab.tableContext.tableName != nil,
-              !selectedRowIndices.isEmpty else {
+              !coordinator.selectionState.indices.isEmpty else {
             return false
         }
         return true
     }
 
-    /// Check if selected row is deleted
     var isSelectedRowDeleted: Bool {
-        guard let firstIndex = selectedRowIndices.min() else { return false }
+        guard let firstIndex = coordinator.selectionState.indices.min() else { return false }
         return coordinator.changeManager.isRowDeleted(firstIndex)
     }
 

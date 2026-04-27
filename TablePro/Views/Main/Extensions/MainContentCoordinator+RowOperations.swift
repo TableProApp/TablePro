@@ -10,7 +10,7 @@ import Foundation
 extension MainContentCoordinator {
     // MARK: - Row Operations
 
-    func addNewRow(selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
+    func addNewRow(editingCell: inout CellPosition?) {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
@@ -24,13 +24,13 @@ extension MainContentCoordinator {
             resultRows: &tabManager.tabs[tabIndex].resultRows
         ) else { return }
 
-        selectedRowIndices = [result.rowIndex]
+        selectionState.indices = [result.rowIndex]
         editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
         tabManager.tabs[tabIndex].resultVersion += 1
     }
 
-    func deleteSelectedRows(indices: Set<Int>, selectedRowIndices: inout Set<Int>) {
+    func deleteSelectedRows(indices: Set<Int>) {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
@@ -43,16 +43,16 @@ extension MainContentCoordinator {
         )
 
         if nextRow >= 0 && nextRow < tabManager.tabs[tabIndex].resultRows.count {
-            selectedRowIndices = [nextRow]
+            selectionState.indices = [nextRow]
         } else {
-            selectedRowIndices.removeAll()
+            selectionState.indices.removeAll()
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
         tabManager.tabs[tabIndex].resultVersion += 1
     }
 
-    func duplicateSelectedRow(index: Int, selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
+    func duplicateSelectedRow(index: Int, editingCell: inout CellPosition?) {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
@@ -67,32 +67,32 @@ extension MainContentCoordinator {
             resultRows: &tabManager.tabs[tabIndex].resultRows
         ) else { return }
 
-        selectedRowIndices = [result.rowIndex]
+        selectionState.indices = [result.rowIndex]
         editingCell = CellPosition(row: result.rowIndex, column: 0)
         tabManager.tabs[tabIndex].hasUserInteraction = true
         tabManager.tabs[tabIndex].resultVersion += 1
     }
 
-    func undoInsertRow(at rowIndex: Int, selectedRowIndices: inout Set<Int>) {
+    func undoInsertRow(at rowIndex: Int) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
-        selectedRowIndices = rowOperationsManager.undoInsertRow(
+        selectionState.indices = rowOperationsManager.undoInsertRow(
             at: rowIndex,
             resultRows: &tabManager.tabs[tabIndex].resultRows,
-            selectedIndices: selectedRowIndices
+            selectedIndices: selectionState.indices
         )
         tabManager.tabs[tabIndex].resultVersion += 1
     }
 
-    func undoLastChange(selectedRowIndices: inout Set<Int>) {
+    func undoLastChange() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
         if let adjustedSelection = rowOperationsManager.undoLastChange(
             resultRows: &tabManager.tabs[tabIndex].resultRows
         ) {
-            selectedRowIndices = adjustedSelection
+            selectionState.indices = adjustedSelection
         }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
@@ -153,13 +153,12 @@ extension MainContentCoordinator {
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    func pasteRows(selectedRowIndices: inout Set<Int>, editingCell: inout CellPosition?) {
+    func pasteRows(editingCell: inout CellPosition?) {
         guard !safeModeLevel.blocksAllWrites,
               let index = tabManager.selectedTabIndex else { return }
 
         var tab = tabManager.tabs[index]
 
-        // Only paste in table tabs (not query tabs)
         guard tab.tabType == .table else { return }
 
         let pastedRows = rowOperationsManager.pasteRowsFromClipboard(
@@ -171,19 +170,12 @@ extension MainContentCoordinator {
         tabManager.tabs[index].resultRows = tab.resultRows
         tabManager.tabs[index].resultVersion += 1
 
-        // Select pasted rows and scroll to first one
         if !pastedRows.isEmpty {
             let newIndices = Set(pastedRows.map { $0.rowIndex })
-            selectedRowIndices = newIndices
+            selectionState.indices = newIndices
 
             tabManager.tabs[index].selectedRowIndices = newIndices
             tabManager.tabs[index].hasUserInteraction = true
-
-            // Scroll to first pasted row
-            if pastedRows.first?.rowIndex != nil {
-                // Trigger scroll via notification if needed
-                // For now, selection change will handle visibility
-            }
         }
     }
 

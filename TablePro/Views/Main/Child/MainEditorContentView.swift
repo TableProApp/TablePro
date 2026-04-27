@@ -39,9 +39,9 @@ struct MainEditorContentView: View {
     let windowId: UUID
     let connectionId: UUID
 
-    // MARK: - Bindings
+    // MARK: - Selection State
 
-    @Binding var selectedRowIndices: Set<Int>
+    let selectionState: GridSelectionState
     @Binding var editingCell: CellPosition?
 
     // MARK: - Callbacks
@@ -50,6 +50,7 @@ struct MainEditorContentView: View {
     let onSort: (Int, Bool, Bool) -> Void
     let onAddRow: () -> Void
     let onUndoInsert: (Int) -> Void
+    let onSelectionChange: (Set<Int>) -> Void
     let onFilterColumn: (String) -> Void
     let onApplyFilters: ([TableFilter]) -> Void
     let onClearFilters: () -> Void
@@ -172,6 +173,9 @@ struct MainEditorContentView: View {
         .onChange(of: tabManager.selectedTab?.display.activeResultSetId) { _, _ in
             guard let tab = tabManager.selectedTab else { return }
             cacheRowProvider(for: tab)
+        }
+        .onChange(of: selectionState.indices) { _, newIndices in
+            onSelectionChange(newIndices)
         }
     }
 
@@ -407,7 +411,7 @@ struct MainEditorContentView: View {
                     columns: tab.resultColumns,
                     columnTypes: tab.columnTypes,
                     rows: tab.resultRows,
-                    selectedRowIndices: selectedRowIndices
+                    selectedRowIndices: selectionState.indices
                 )
             case .data:
                 if let explainText = tab.display.explainText {
@@ -526,7 +530,7 @@ struct MainEditorContentView: View {
         let _ = { // swiftlint:disable:this redundant_discardable_let
             dataTabDelegate.coordinator = coordinator
             dataTabDelegate.columnVisibilityManager = columnVisibilityManager
-            dataTabDelegate.selectedRowIndices = $selectedRowIndices
+            dataTabDelegate.selectionState = selectionState
             dataTabDelegate.editingCell = $editingCell
             dataTabDelegate.onCellEdit = onCellEdit
             dataTabDelegate.onSort = onSort
@@ -553,7 +557,10 @@ struct MainEditorContentView: View {
                 hiddenColumns: columnVisibilityManager.hiddenColumns
             ),
             delegate: dataTabDelegate,
-            selectedRowIndices: $selectedRowIndices,
+            selectedRowIndices: Binding(
+                get: { selectionState.indices },
+                set: { selectionState.indices = $0 }
+            ),
             sortState: sortStateBinding(for: tab),
             editingCell: $editingCell,
             columnLayout: columnLayoutBinding(for: tab)
@@ -804,7 +811,7 @@ struct MainEditorContentView: View {
             filterStateManager: filterStateManager,
             columnVisibilityManager: columnVisibilityManager,
             allColumns: tab.resultColumns,
-            selectedRowIndices: selectedRowIndices,
+            selectedRowIndices: selectionState.indices,
             viewMode: resultsViewModeBinding(for: tab),
             onFirstPage: onFirstPage,
             onPreviousPage: onPreviousPage,

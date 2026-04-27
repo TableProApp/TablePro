@@ -80,9 +80,8 @@ final class MainContentCoordinator {
 
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
-    /// Live safe mode level — reads from toolbar state (user-editable),
-    /// not from the immutable connection snapshot.
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
     let filterStateManager: FilterStateManager
@@ -1300,7 +1299,7 @@ final class MainContentCoordinator {
 
     // MARK: - Sorting
 
-    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false, selectedRowIndices: inout Set<Int>) {
+    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 

@@ -13,7 +13,6 @@ extension MainContentCoordinator {
     func handleTabChange(
         from oldTabId: UUID?,
         to newTabId: UUID?,
-        selectedRowIndices: inout Set<Int>,
         tabs: [QueryTab]
     ) {
         let start = Date()
@@ -65,7 +64,7 @@ extension MainContentCoordinator {
             // Restore column visibility for new tab
             columnVisibilityManager.restoreFromColumnLayout(newTab.columnLayout.hiddenColumns)
 
-            selectedRowIndices = newTab.selectedRowIndices
+            selectionState.indices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table
             toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
 

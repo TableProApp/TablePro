@@ -14,7 +14,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     weak var coordinator: MainContentCoordinator?
     var columnVisibilityManager: ColumnVisibilityManager?
 
-    var selectedRowIndices: Binding<Set<Int>>?
+    var selectionState: GridSelectionState?
     var editingCell: Binding<CellPosition?>?
 
     var onCellEdit: ((Int, Int, String?) -> Void)?
@@ -71,10 +71,7 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridUndo() {
-        guard let selectedRowIndices else { return }
-        var indices = selectedRowIndices.wrappedValue
-        coordinator?.undoLastChange(selectedRowIndices: &indices)
-        selectedRowIndices.wrappedValue = indices
+        coordinator?.undoLastChange()
     }
 
     func dataGridRedo() {

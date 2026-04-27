@@ -47,7 +47,6 @@ struct MainContentView: View {
 
     // MARK: - Local State
 
-    @State var selectedRowIndices: Set<Int> = []
     @State var editingCell: CellPosition?
     @State var commandActions: MainContentCommandActions?
     @State var queryResultsSummaryCache: (tabId: UUID, version: Int, summary: String?)?
@@ -386,16 +385,6 @@ struct MainContentView: View {
                     sidebarState.selectedTables = [match]
                 }
             }
-            .onChange(of: selectedRowIndices) { _, newIndices in
-                if !newIndices.isEmpty,
-                    AppSettingsManager.shared.dataGrid.autoShowInspector,
-                    tabManager.selectedTab?.tabType == .table
-                {
-                    coordinator.inspectorProxy?.showInspector()
-                }
-                // Deferred: expensive inspector rebuild coalesced with other triggers
-                scheduleInspectorUpdate()
-            }
     }
 
     // MARK: - Main Content
@@ -411,7 +400,7 @@ struct MainContentView: View {
             connection: connection,
             windowId: windowId,
             connectionId: connection.id,
-            selectedRowIndices: $selectedRowIndices,
+            selectionState: coordinator.selectionState,
             editingCell: $editingCell,
             onCellEdit: { rowIndex, colIndex, value in
                 coordinator.updateCellInTab(
@@ -421,15 +410,22 @@ struct MainContentView: View {
             onSort: { columnIndex, ascending, isMultiSort in
                 coordinator.handleSort(
                     columnIndex: columnIndex, ascending: ascending,
-                    isMultiSort: isMultiSort,
-                    selectedRowIndices: &selectedRowIndices)
+                    isMultiSort: isMultiSort)
             },
             onAddRow: {
-                coordinator.addNewRow(
-                    selectedRowIndices: &selectedRowIndices, editingCell: &editingCell)
+                coordinator.addNewRow(editingCell: &editingCell)
             },
             onUndoInsert: { rowIndex in
-                coordinator.undoInsertRow(at: rowIndex, selectedRowIndices: &selectedRowIndices)
+                coordinator.undoInsertRow(at: rowIndex)
+            },
+            onSelectionChange: { newIndices in
+                if !newIndices.isEmpty,
+                    AppSettingsManager.shared.dataGrid.autoShowInspector,
+                    tabManager.selectedTab?.tabType == .table
+                {
+                    coordinator.inspectorProxy?.showInspector()
+                }
+                scheduleInspectorUpdate()
             },
             onFilterColumn: { columnName in
                 filterStateManager.addFilterForColumn(columnName)
