@@ -92,7 +92,6 @@ final class QueryTabManager {
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addTableTab(
@@ -122,7 +121,6 @@ final class QueryTabManager {
         newTab.tableContext.databaseName = databaseName
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addCreateTableTab(databaseName: String = "") {
@@ -133,7 +131,6 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addERDiagramTab(schemaKey: String, databaseName: String = "") {
@@ -145,7 +142,6 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addServerDashboardTab() {
@@ -159,7 +155,6 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addTerminalTab(databaseName: String = "") {
@@ -174,7 +169,6 @@ final class QueryTabManager {
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     func addPreviewTableTab(
@@ -198,7 +192,6 @@ final class QueryTabManager {
         newTab.isPreview = true
         tabs.append(newTab)
         selectedTabId = newTab.id
-        tabStructureVersion += 1
     }
 
     /// Replace the currently selected tab's content with a new table.

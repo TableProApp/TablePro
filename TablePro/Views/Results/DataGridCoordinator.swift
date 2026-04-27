@@ -243,24 +243,24 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func applyInsertedRows(_ indices: IndexSet) {
         guard let tableView else { return }
         rebuildVisualStateCache()
-        tableView.insertRows(at: indices, withAnimation: .slideDown)
         updateCache()
+        tableView.insertRows(at: indices, withAnimation: .slideDown)
         lastIdentity = nil
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
         guard let tableView else { return }
         rebuildVisualStateCache()
-        tableView.removeRows(at: indices, withAnimation: .slideUp)
         updateCache()
+        tableView.removeRows(at: indices, withAnimation: .slideUp)
         lastIdentity = nil
     }
 
     func applyFullReplace() {
         guard let tableView else { return }
         rebuildVisualStateCache()
-        tableView.reloadData()
         updateCache()
+        tableView.reloadData()
         lastIdentity = nil
     }
 
