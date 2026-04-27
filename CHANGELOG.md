@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - QueryTab decomposed into focused sub-types: TabExecutionState, TabTableContext, TabQueryContent, TabDisplayState
 - Inspector: dense field list, PK/FK key icons, Set NULL/DEFAULT in picker dropdowns, toolbar tracking separator
+- Feedback dialog uses NSWindow instead of NSPanel, shortcut recorder uses CALayer, query split uses NSSplitViewController
+- Feedback dialog uses NSWindow instead of NSPanel, shortcut recorder uses CALayer instead of NSBezierPath, query split uses NSSplitViewController
 - OpenSSL shared as dylib across app and plugins, saving ~15MB in bundle size
 - Data grid uses single cell reuse identifier with typed stored properties instead of 3 identifiers and viewWithTag
 - Boolean dropdown menu includes Set NULL option for nullable columns
