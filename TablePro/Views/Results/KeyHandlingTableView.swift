@@ -59,7 +59,6 @@ final class KeyHandlingTableView: NSTableView {
     // MARK: - TablePlus-Style Cell Focus
 
     override func mouseDown(with event: NSEvent) {
-        // Become first responder to capture keyboard events (especially Delete key)
         window?.makeFirstResponder(self)
 
         let point = convert(event.locationInWindow, from: nil)
@@ -71,22 +70,24 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        // Reset anchor/pivot when clicking without Shift
         if clickedRow >= 0 && !event.modifierFlags.contains(.shift) {
             selectionAnchor = clickedRow
             selectionPivot = clickedRow
         }
 
+        let alreadyFocusedHere = clickedRow >= 0
+            && clickedColumn >= 0
+            && clickedRow == focusedRow
+            && clickedColumn == focusedColumn
+
         super.mouseDown(with: event)
 
-        // Only handle editing for valid clicks on data cells (not row number column)
         guard clickedRow >= 0,
               clickedColumn >= 0,
               clickedColumn < numberOfColumns else {
             return
         }
 
-        // Skip row number column
         let column = tableColumns[clickedColumn]
         if column.identifier.rawValue == "__rowNumber__" {
             focusedRow = -1
@@ -94,9 +95,15 @@ final class KeyHandlingTableView: NSTableView {
             return
         }
 
-        // Update focus (edit mode is triggered by double-click, not single click)
         focusedRow = clickedRow
         focusedColumn = clickedColumn
+
+        if alreadyFocusedHere && event.clickCount == 1 {
+            let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn)
+            if coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
+                editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
+            }
+        }
     }
 
     // MARK: - Standard Edit Menu Actions

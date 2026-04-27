@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
 - Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
 - SSH Private Key auth resolves keys from `~/.ssh/config` and default locations (`id_ed25519`, `id_rsa`, `id_ecdsa`) when no explicit key path is set
+- Click a focused cell to start editing without a second click
+- Boolean columns render as native checkboxes; NULL shows as mixed state. Right-click "Set Value > NULL" sets the cell back to NULL on nullable columns.
+- Data grid focus ring follows the system accent color and contrast settings
+- Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
 
 ### Changed
 
@@ -30,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - QueryTab.resultVersion split: schemaVersion (column shape) on QueryTab, row mutations through delegate deltas, sort completion through a single delegate replace call. Pin toggle, sort completion, and applyMultiStatementResults no longer fan out a redundant reload signal.
 - Row data lives in a per-coordinator RowDataStore keyed by tab.id rather than on QueryTab itself, so SwiftUI's @Observable tracking on tabManager.tabs no longer fires for row writes.
 - DataGridConfiguration is Equatable; DataGridIdentity covers tabType, tableName, and primaryKeyColumns so updateNSView short-circuits when nothing structural changed. DataTabGridDelegate properties are wired in onAppear / onChange instead of in the body.
+- Date picker popover font follows the data grid font setting
 
 ### Fixed
 

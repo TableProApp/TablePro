@@ -7,6 +7,38 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
+    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
+        guard isEditable else { return false }
+        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return false }
+        guard !changeManager.isRowDeleted(row) else { return false }
+
+        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
+        if immutable.contains(rowProvider.columns[columnIndex]) {
+            return false
+        }
+
+        let columnName = rowProvider.columns[columnIndex]
+        if rowProvider.columnForeignKeys[columnName] != nil { return false }
+
+        if columnIndex < rowProvider.columnTypes.count {
+            let ct = rowProvider.columnTypes[columnIndex]
+            if ct.isBooleanType || ct.isDateType || ct.isJsonType
+                || ct.isBlobType || ct.isEnumType || ct.isSetType {
+                return false
+            }
+        }
+
+        if dropdownColumns?.contains(columnIndex) == true { return false }
+        if typePickerColumns?.contains(columnIndex) == true { return false }
+
+        if let value = rowProvider.value(atRow: row, column: columnIndex) {
+            if value.containsLineBreak { return false }
+            if value.looksLikeJson { return false }
+        }
+
+        return true
+    }
+
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
         guard isEditable,
               let tableColumn = tableColumn else { return false }
