@@ -62,13 +62,14 @@ extension MainContentView {
 
     // MARK: - Inspector Context
 
-    /// Synchronously updates inspector state. Previously deferred by 100ms to coalesce
-    /// multiple onChange calls, but the deferred Task caused a double layout pass.
     func scheduleInspectorUpdate() {
-        inspectorUpdateTask?.cancel()
-        inspectorUpdateTask = nil
         updateSidebarEditState()
-        updateInspectorContext()
+        inspectorUpdateTask?.cancel()
+        inspectorUpdateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            updateInspectorContext()
+        }
     }
 
     func updateInspectorContext() {
