@@ -30,13 +30,7 @@ extension TableViewCoordinator {
                 currentValue: currentValue,
                 onCommit: { newValue in
                     guard let self else { return }
-                    self.commitPopoverEdit(
-                        tableView: tableView,
-                        row: row,
-                        column: column,
-                        columnIndex: columnIndex,
-                        newValue: newValue
-                    )
+                    self.commitPopoverEdit(row: row, columnIndex: columnIndex, newValue: newValue)
                 },
                 onDismiss: dismiss
             )

@@ -39,7 +39,12 @@ private final class EditorWindow: NSWindow {
 internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private static let lifecycleLogger = Logger(subsystem: "com.TablePro", category: "NativeTabLifecycle")
 
-    /// Payload identifying what content this window should display.
+    private lazy var dataGridFieldEditor: DataGridFieldEditor = {
+        let editor = DataGridFieldEditor()
+        editor.isFieldEditor = true
+        return editor
+    }()
+
     internal let payload: EditorTabPayload
 
     /// Stable identifier for this controller. Distinct from the
@@ -115,6 +120,11 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     }
 
     // MARK: - NSWindowDelegate
+
+    func windowWillReturnFieldEditor(_ sender: NSWindow, to client: Any?) -> Any? {
+        guard client is CellTextField else { return nil }
+        return dataGridFieldEditor
+    }
 
     internal func windowDidBecomeKey(_ notification: Notification) {
         let seq = MainContentCoordinator.nextSwitchSeq()
@@ -192,7 +202,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private func updateUserActivity(coordinator: MainContentCoordinator) {
         let connection = coordinator.connection
         let selectedTab = coordinator.tabManager.selectedTab
-        let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableName : nil
+        let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableContext.tableName : nil
         let activityType = tableName != nil ? "com.TablePro.viewTable" : "com.TablePro.viewConnection"
 
         // Recreate when the activity type flips between viewConnection and

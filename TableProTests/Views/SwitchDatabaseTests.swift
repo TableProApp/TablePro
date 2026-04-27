@@ -108,7 +108,7 @@ struct SwitchDatabaseTests {
         coordinator.openTableTab("users")
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.tableName == "users")
+        #expect(tabManager.tabs.first?.tableContext.tableName == "users")
     }
 
     // MARK: - openTableTab fast path (same table + same database)

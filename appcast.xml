@@ -3,6 +3,87 @@
     <channel>
         <title>TablePro</title>
         <item>
+            <title>0.36.0</title>
+            <pubDate>Mon, 27 Apr 2026 04:27:41 +0000</pubDate>
+            <sparkle:version>75</sparkle:version>
+            <sparkle:shortVersionString>0.36.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>GitHub Copilot: inline suggestions, chat, OAuth sign-in, schema context</li>
+<li>Query parameters: `:name` placeholders in SQL with inline value panel and native prepared statement binding</li>
+<li>Plugin auto-update at launch and one-click update in Settings</li>
+<li>Connection sharing: Copy Connection String, Copy TablePro Link, Copy as JSON via Share menu</li>
+<li>MCP server: token auth with permission tiers, TLS, remote access, rate limiting, stdio bridge, one-click setup for Claude Code/Desktop/Cursor</li>
+<li>Edit > Find menu item (Cmd+F)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>AI settings rewritten as single tab with one active provider, per-provider config sheets</li>
+<li>Filter value field uses native SwiftUI suggestion dropdown</li>
+<li>MCP bridge pins TLS certificate fingerprint</li>
+<li>Native NSSearchField in keyboard shortcuts, database switcher, quick switcher</li>
+<li>About window uses standard macOS panel</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Plugin ABI mismatch guard for user-installed plugins</li>
+<li>SQL parameter escaping for control characters and edge-case formats</li>
+<li>Query parameter conversion for Bool, Date, Data, non-finite numbers</li>
+<li>Filter preset duplicate name overwrite</li>
+<li>Raw SQL filter injection and destructive statement validation</li>
+<li>IME input (Chinese, Japanese, Korean) in filter value field</li>
+<li>MCP server shutdown on app quit and access policy enforcement</li>
+<li>Foreign app import: SSL/SSH parsing for TablePlus, DBeaver, Sequel Ace</li>
+<li>Export race condition, missing confirmation dialog, empty state</li>
+<li>Window position restore, connection error display, list selection clicks</li>
+<li>Localization for error messages, connection labels, filter options</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.36.0/TablePro-0.36.0-arm64.zip" length="25509856" type="application/octet-stream" sparkle:edSignature="kmajEYE5ukmZKAEyW0aMKj9YfiIz5+D1p0XcujmAGfrca9MdKBEX4uP36P1FX51ARX0JuIbCr+6109cgjBahAQ=="/>
+        </item>
+        <item>
+            <title>0.36.0</title>
+            <pubDate>Mon, 27 Apr 2026 04:56:06 +0000</pubDate>
+            <sparkle:version>75</sparkle:version>
+            <sparkle:shortVersionString>0.36.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h3>Added</h3>
+<ul>
+<li>GitHub Copilot: inline suggestions, chat, OAuth sign-in, schema context</li>
+<li>Query parameters: `:name` placeholders in SQL with inline value panel and native prepared statement binding</li>
+<li>Plugin auto-update at launch and one-click update in Settings</li>
+<li>Connection sharing: Copy Connection String, Copy TablePro Link, Copy as JSON via Share menu</li>
+<li>MCP server: token auth with permission tiers, TLS, remote access, rate limiting, stdio bridge, one-click setup for Claude Code/Desktop/Cursor</li>
+<li>Edit > Find menu item (Cmd+F)</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li>AI settings rewritten as single tab with one active provider, per-provider config sheets</li>
+<li>Filter value field uses native SwiftUI suggestion dropdown</li>
+<li>MCP bridge pins TLS certificate fingerprint</li>
+<li>Native NSSearchField in keyboard shortcuts, database switcher, quick switcher</li>
+<li>About window uses standard macOS panel</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li>Plugin ABI mismatch guard for user-installed plugins</li>
+<li>SQL parameter escaping for control characters and edge-case formats</li>
+<li>Query parameter conversion for Bool, Date, Data, non-finite numbers</li>
+<li>Filter preset duplicate name overwrite</li>
+<li>Raw SQL filter injection and destructive statement validation</li>
+<li>IME input (Chinese, Japanese, Korean) in filter value field</li>
+<li>MCP server shutdown on app quit and access policy enforcement</li>
+<li>Foreign app import: SSL/SSH parsing for TablePlus, DBeaver, Sequel Ace</li>
+<li>Export race condition, missing confirmation dialog, empty state</li>
+<li>Window position restore, connection error display, list selection clicks</li>
+<li>Localization for error messages, connection labels, filter options</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/TableProApp/TablePro/releases/download/v0.36.0/TablePro-0.36.0-x86_64.zip" length="25876370" type="application/octet-stream" sparkle:edSignature="JMkm/ILxbhUJzC+4pGEPnW53WDXhAnfj2IlfwrJDcuHRpsZxVVUU6zt55u3SSMqoHxZacUSpushG49uWUcJrBw=="/>
+        </item>
+        <item>
             <title>0.35.0</title>
             <pubDate>Sat, 25 Apr 2026 11:04:54 +0000</pubDate>
             <sparkle:version>74</sparkle:version>

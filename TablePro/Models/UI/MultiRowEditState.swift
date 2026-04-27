@@ -17,25 +17,21 @@ struct FieldEditState: Identifiable {
     let columnTypeEnum: ColumnType
     let isLongText: Bool
 
-    /// Original values from all selected rows (nil if multiple different values)
+    var isPrimaryKey: Bool = false
+    var isForeignKey: Bool = false
+
     var originalValue: String?
 
-    /// Flag indicating if selected rows have different values for this field
     let hasMultipleValues: Bool
 
-    /// Pending new value (nil if not edited yet)
     var pendingValue: String?
 
-    /// Whether user has explicitly set this field to NULL
     var isPendingNull: Bool
 
-    /// Whether user has explicitly set this field to DEFAULT
     var isPendingDefault: Bool
 
-    /// Whether this field's value was truncated by column exclusion policy
     var isTruncated: Bool = false
 
-    /// Whether full value is currently being lazy-loaded
     var isLoadingFullValue: Bool = false
 
     var hasEdit: Bool {
@@ -76,7 +72,9 @@ final class MultiRowEditState {
         columns: [String],
         columnTypes: [ColumnType],
         externallyModifiedColumns: Set<Int> = [],
-        excludedColumnNames: Set<String> = []
+        excludedColumnNames: Set<String> = [],
+        primaryKeyColumns: Set<String> = [],
+        foreignKeyColumns: Set<String> = []
     ) {
         // Check if the underlying data has changed (not just edits)
         let columnsChanged = self.columns != columns
@@ -151,6 +149,8 @@ final class MultiRowEditState {
                 columnName: columnName,
                 columnTypeEnum: columnTypeEnum,
                 isLongText: isLongText,
+                isPrimaryKey: primaryKeyColumns.contains(columnName),
+                isForeignKey: foreignKeyColumns.contains(columnName),
                 originalValue: preservedOriginalValue,
                 hasMultipleValues: hasMultipleValues,
                 pendingValue: pendingValue,
@@ -237,6 +237,8 @@ final class MultiRowEditState {
                 columnName: fields[i].columnName,
                 columnTypeEnum: fields[i].columnTypeEnum,
                 isLongText: fields[i].isLongText,
+                isPrimaryKey: fields[i].isPrimaryKey,
+                isForeignKey: fields[i].isForeignKey,
                 originalValue: fullValue,
                 hasMultipleValues: fields[i].hasMultipleValues,
                 pendingValue: fields[i].pendingValue,

@@ -21,7 +21,6 @@ extension MainContentView {
         coordinator.handleTabChange(
             from: oldTabId,
             to: newTabId,
-            selectedRowIndices: &selectedRowIndices,
             tabs: tabManager.tabs
         )
         let t1 = Date()
@@ -94,14 +93,14 @@ extension MainContentView {
 
         // Reconfigure if columns changed OR table name changed (switching tables)
         let columnsChanged = changeManager.columns != newColumns
-        let tableChanged = changeManager.tableName != (tab.tableName ?? "")
+        let tableChanged = changeManager.tableName != (tab.tableContext.tableName ?? "")
 
         guard columnsChanged || tableChanged else { return }
 
         changeManager.configureForTable(
-            tableName: tab.tableName ?? "",
+            tableName: tab.tableContext.tableName ?? "",
             columns: newColumns,
-            primaryKeyColumns: tab.primaryKeyColumns,
+            primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type
         )
     }
@@ -126,7 +125,7 @@ extension MainContentView {
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: tableName,
-            currentTabTableName: tabManager.selectedTab?.tableName,
+            currentTabTableName: tabManager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !tabManager.tabs.isEmpty,
             isPreviewTabMode: isPreviewMode,
             hasPreviewTab: hasPreview
@@ -136,7 +135,7 @@ extension MainContentView {
         case .skip:
             return
         case .openInPlace:
-            selectedRowIndices = []
+            coordinator.selectionState.indices = []
             coordinator.openTableTab(tableName, isView: isView)
         case .revertAndOpenNewWindow:
             coordinator.openTableTab(tableName, isView: isView)
@@ -155,7 +154,7 @@ extension MainContentView {
         guard coordinator.isKeyWindow else { return }
         let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
         let target: Set<TableInfo>
-        if let currentTableName = tabManager.selectedTab?.tableName,
+        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
             let match = liveTables.first(where: { $0.name == currentTableName })
         {
             target = [match]
@@ -171,8 +170,9 @@ extension MainContentView {
     // MARK: - Sidebar Edit Handling
 
     func updateSidebarEditState() {
+        let selectedIndices = coordinator.selectionState.indices
         guard let tab = coordinator.tabManager.selectedTab,
-            !selectedRowIndices.isEmpty
+            !selectedIndices.isEmpty
         else {
             rightPanelState.editState.fields = []
             rightPanelState.editState.onFieldChanged = nil
@@ -180,7 +180,7 @@ extension MainContentView {
         }
 
         var allRows: [[String?]] = []
-        for index in selectedRowIndices.sorted() {
+        for index in selectedIndices.sorted() {
             if index < tab.resultRows.count {
                 allRows.append(tab.resultRows[index])
             }
@@ -206,24 +206,29 @@ extension MainContentView {
 
         // Collect columns modified in data grid so sidebar shows green dots
         var modifiedColumns = Set<Int>()
-        for rowIndex in selectedRowIndices {
+        for rowIndex in selectedIndices {
             modifiedColumns.formUnion(changeManager.getModifiedColumnsForRow(rowIndex))
         }
 
         let excludedNames: Set<String>
-        if let tableName = tab.tableName {
+        if let tableName = tab.tableContext.tableName {
             excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
         } else {
             excludedNames = []
         }
 
+        let pkColumns = Set(tab.tableContext.primaryKeyColumns)
+        let fkColumns = Set(tab.columnForeignKeys.keys)
+
         rightPanelState.editState.configure(
-            selectedRowIndices: selectedRowIndices,
+            selectedRowIndices: selectedIndices,
             allRows: allRows,
             columns: tab.resultColumns,
             columnTypes: columnTypes,
             externallyModifiedColumns: modifiedColumns,
-            excludedColumnNames: excludedNames
+            excludedColumnNames: excludedNames,
+            primaryKeyColumns: pkColumns,
+            foreignKeyColumns: fkColumns
         )
 
         guard isSidebarEditable else {
@@ -263,12 +268,27 @@ extension MainContentView {
             }
         }
 
-        // Lazy-load full values for excluded columns when a single row is selected
+    }
+
+    func lazyLoadExcludedColumnsIfNeeded() {
+        guard let tab = coordinator.tabManager.selectedTab else { return }
+        let selectedIndices = coordinator.selectionState.indices
+
+        let excludedNames: Set<String>
+        if let tableName = tab.tableContext.tableName {
+            excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
+        } else {
+            excludedNames = []
+        }
+
+        let capturedCoordinator = coordinator
+        let capturedEditState = rightPanelState.editState
+
         if !excludedNames.isEmpty,
-            selectedRowIndices.count == 1,
-            let tableName = tab.tableName,
-            let pkColumn = tab.primaryKeyColumn,
-            let rowIndex = selectedRowIndices.first,
+            selectedIndices.count == 1,
+            let tableName = tab.tableContext.tableName,
+            let pkColumn = tab.tableContext.primaryKeyColumn,
+            let rowIndex = selectedIndices.first,
             rowIndex < tab.resultRows.count
         {
             let row = tab.resultRows[rowIndex]

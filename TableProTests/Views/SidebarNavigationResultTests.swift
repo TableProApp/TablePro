@@ -161,7 +161,7 @@ struct SidebarNavigationResultTests {
         // Fresh manager has no tabs
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .openInPlace)
@@ -174,7 +174,7 @@ struct SidebarNavigationResultTests {
         manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .skip)
@@ -187,7 +187,7 @@ struct SidebarNavigationResultTests {
         manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "orders",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .revertAndOpenNewWindow)
@@ -200,7 +200,7 @@ struct SidebarNavigationResultTests {
         manager.addTab(databaseName: "mydb")   // query tab — no tableName
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "products",
-            currentTabTableName: manager.selectedTab?.tableName,  // nil for query tab
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,  // nil for query tab
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .revertAndOpenNewWindow)
@@ -238,7 +238,7 @@ struct SidebarNavigationResultTests {
     func syncClearsSelectionForQueryTab() {
         let manager = QueryTabManager()
         manager.addTab(databaseName: "mydb")          // query tab: tableName == nil
-        let currentTableName = manager.selectedTab?.tableName
+        let currentTableName = manager.selectedTab?.tableContext.tableName
         // When tableName is nil, syncSidebarToCurrentTab sets selectedTables = []
         #expect(currentTableName == nil)
     }
@@ -248,7 +248,7 @@ struct SidebarNavigationResultTests {
     func syncSetsSelectionForTableTab() {
         let manager = QueryTabManager()
         manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
-        let currentTableName = manager.selectedTab?.tableName
+        let currentTableName = manager.selectedTab?.tableContext.tableName
         #expect(currentTableName == "users")
         // syncSidebarToCurrentTab will find "users" in tables and set selectedTables = [users]
     }

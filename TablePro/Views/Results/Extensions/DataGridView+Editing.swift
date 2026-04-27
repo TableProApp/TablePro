@@ -17,8 +17,7 @@ extension TableViewCoordinator {
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         if !immutable.isEmpty,
-           columnId.hasPrefix("col_"),
-           let columnIndex = Int(columnId.dropFirst(4)),
+           let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier),
            columnIndex < rowProvider.columns.count,
            immutable.contains(rowProvider.columns[columnIndex]) {
             return false
@@ -26,8 +25,7 @@ extension TableViewCoordinator {
 
         // Popover-editor columns (date/FK/JSON) are only editable via
         // double-click (handleDoubleClick). Block inline editing for them.
-        if columnId.hasPrefix("col_"),
-           let columnIndex = Int(columnId.dropFirst(4)) {
+        if let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) {
             if columnIndex < rowProvider.columns.count {
                 let columnName = rowProvider.columns[columnIndex]
                 if rowProvider.columnForeignKeys[columnName] != nil { return false }
@@ -80,24 +78,7 @@ extension TableViewCoordinator {
     }
 
     func commitOverlayEdit(row: Int, columnIndex: Int, newValue: String) {
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
-        guard oldValue != newValue else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowProvider.rowValues(at: row) ?? []
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-        let tableColumnIndex = columnIndex + 1
-        tableView?.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: tableColumnIndex))
+        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
     }
 
     func handleOverlayTabNavigation(row: Int, column: Int, forward: Bool) {
@@ -147,7 +128,7 @@ extension TableViewCoordinator {
 
         guard row >= 0, column > 0 else { return true }
 
-        let columnIndex = column - 1
+        let columnIndex = DataGridView.dataColumnIndex(for: column)
 
         if isEscapeCancelling {
             isEscapeCancelling = false
@@ -157,28 +138,11 @@ extension TableViewCoordinator {
             return true
         }
 
-        let newValue: String? = textField.stringValue
-
+        let rawInput = textField.stringValue
         let oldValue = rowProvider.value(atRow: row, column: columnIndex)
+        let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
-        guard oldValue != newValue else { return true }
-
-        let columnName = rowProvider.columns[columnIndex]
-        changeManager.recordCellChange(
-            rowIndex: row,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: newValue,
-            originalRow: rowProvider.rowValues(at: row) ?? []
-        )
-
-        rowProvider.updateValue(newValue, at: row, columnIndex: columnIndex)
-        delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-
-        Task { @MainActor in
-            tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
-        }
+        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
 
         (control as? CellTextField)?.restoreTruncatedDisplay()
 

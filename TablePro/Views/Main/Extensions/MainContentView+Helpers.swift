@@ -12,7 +12,7 @@ extension MainContentView {
     // MARK: - Helper Methods
 
     func loadTableMetadataIfNeeded() async {
-        guard let tableName = currentTab?.tableName,
+        guard let tableName = currentTab?.tableContext.tableName,
             coordinator.tableMetadata?.tableName != tableName
         else { return }
         await coordinator.loadTableMetadata(tableName: tableName)
@@ -28,12 +28,12 @@ extension MainContentView {
             guard !hasPendingEdits else { return }
             coordinator.needsLazyLoad = false
             if let selectedTab = tabManager.selectedTab,
-                !selectedTab.databaseName.isEmpty,
-                selectedTab.databaseName != session.activeDatabase
+                !selectedTab.tableContext.databaseName.isEmpty,
+                selectedTab.tableContext.databaseName != session.activeDatabase
             {
-                Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
+                Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
             } else if let selectedTab = tabManager.selectedTab,
-                let tabSchema = selectedTab.schemaName,
+                let tabSchema = selectedTab.tableContext.schemaName,
                 !tabSchema.isEmpty,
                 tabSchema != session.currentSchema
             {
@@ -62,23 +62,27 @@ extension MainContentView {
 
     // MARK: - Inspector Context
 
-    /// Synchronously updates inspector state. Previously deferred by 100ms to coalesce
-    /// multiple onChange calls, but the deferred Task caused a double layout pass.
-    func scheduleInspectorUpdate() {
-        inspectorUpdateTask?.cancel()
-        inspectorUpdateTask = nil
+    func scheduleInspectorUpdate(lazyLoadExcludedColumns: Bool = false) {
         updateSidebarEditState()
-        updateInspectorContext()
+        inspectorUpdateTask?.cancel()
+        inspectorUpdateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            updateInspectorContext()
+            if lazyLoadExcludedColumns {
+                lazyLoadExcludedColumnsIfNeeded()
+            }
+        }
     }
 
     func updateInspectorContext() {
         rightPanelState.inspectorContext = InspectorContext(
-            tableName: currentTab?.tableName,
+            tableName: currentTab?.tableContext.tableName,
             tableMetadata: coordinator.tableMetadata,
             selectedRowData: selectedRowDataForSidebar,
             isEditable: isSidebarEditable,
             isRowDeleted: isSelectedRowDeleted,
-            currentQuery: coordinator.tabManager.selectedTab?.query,
+            currentQuery: coordinator.tabManager.selectedTab?.content.query,
             queryResults: cachedQueryResultsSummary()
         )
     }

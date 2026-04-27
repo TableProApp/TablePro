@@ -68,6 +68,20 @@ public enum KeyCode: UInt16 {
     /// Right arrow
     case rightArrow = 124
 
+    // MARK: - Navigation Keys
+
+    /// Home key
+    case home = 115
+
+    /// End key
+    case end = 119
+
+    /// Page Up key
+    case pageUp = 116
+
+    /// Page Down key
+    case pageDown = 121
+
     // MARK: - Letter Keys (for Cmd+ shortcuts)
 
     case a = 0

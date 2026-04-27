@@ -172,6 +172,22 @@ struct ConnectionURLFormatterTests {
         #expect(url == "mysql+ssh://sshuser@sshhost:1234/dbuser:dbpass@127.0.0.1/db")
     }
 
+    @Test("SSH tunnel URL with SSH password")
+    func testSSHTunnelURLWithSSHPassword() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "sshhost"
+        sshConfig.port = 1_234
+        sshConfig.username = "sshuser"
+
+        let conn = DatabaseConnection(
+            name: "", host: "127.0.0.1", port: 3_306, database: "db",
+            username: "dbuser", type: .mysql, sshConfig: sshConfig
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "dbpass", sshPassword: "sshpass")
+        #expect(url == "mysql+ssh://sshuser:sshpass@sshhost:1234/dbuser:dbpass@127.0.0.1/db")
+    }
+
     @Test("SSH with default port omitted")
     func testSSHDefaultPortOmitted() {
         var sshConfig = SSHConfiguration()
@@ -285,6 +301,34 @@ struct ConnectionURLFormatterTests {
         #expect(parsed.connectionName == "Production DB")
     }
 
+    @Test("Round-trip with SSH password")
+    func testRoundTripWithSSHPassword() {
+        var sshConfig = SSHConfiguration()
+        sshConfig.enabled = true
+        sshConfig.host = "jumpbox.example.com"
+        sshConfig.port = 2_222
+        sshConfig.username = "deploy"
+
+        let original = DatabaseConnection(
+            name: "Test", host: "10.0.0.5", port: 5_433, database: "appdb",
+            username: "admin", type: .postgresql, sshConfig: sshConfig
+        )
+        let password = "s3cret"
+        let sshPassword = "sshpass"
+
+        let url = ConnectionURLFormatter.format(original, password: password, sshPassword: sshPassword)
+        let parseResult = ConnectionURLParser.parse(url)
+
+        guard case .success(let parsed) = parseResult else {
+            Issue.record("Expected successful parse"); return
+        }
+
+        #expect(parsed.sshUsername == "deploy")
+        #expect(parsed.sshPassword == "sshpass")
+        #expect(parsed.username == "admin")
+        #expect(parsed.password == password)
+    }
+
     // MARK: - MariaDB
 
     @Test("MariaDB uses mariadb scheme")
@@ -344,5 +388,72 @@ struct ConnectionURLFormatterTests {
         let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
         #expect(url.contains("useSSHAgent=true"))
         #expect(!url.contains("agentSocket"))
+    }
+
+    // MARK: - Redis Database Index
+
+    @Test("Redis URL includes database index")
+    func testRedisURLIncludesDatabaseIndex() {
+        let conn = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "",
+            username: "", type: .redis, redisDatabase: 3
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "redis://localhost/3")
+    }
+
+    @Test("Redis URL omits database index when zero")
+    func testRedisURLOmitsDatabaseIndexWhenZero() {
+        let conn = DatabaseConnection(
+            name: "", host: "localhost", port: 6_379, database: "",
+            username: "", type: .redis, redisDatabase: 0
+        )
+        let url = ConnectionURLFormatter.format(conn, password: nil, sshPassword: nil)
+        #expect(url == "redis://localhost/")
+    }
+
+    // MARK: - MongoDB Auth Params
+
+    @Test("MongoDB URL includes authSource")
+    func testMongoDBAuthSource() {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "mydb",
+            username: "user", type: .mongodb, mongoAuthSource: "admin"
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("authSource=admin"))
+    }
+
+    @Test("MongoDB URL includes authMechanism")
+    func testMongoDBAuthMechanism() {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "mydb",
+            username: "user", type: .mongodb, mongoAuthMechanism: "SCRAM-SHA-256"
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("authMechanism=SCRAM-SHA-256"))
+    }
+
+    @Test("MongoDB URL includes replicaSet")
+    func testMongoDBReplicaSet() {
+        let conn = DatabaseConnection(
+            name: "", host: "host", port: 27_017, database: "mydb",
+            username: "user", type: .mongodb, mongoReplicaSet: "rs0"
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("replicaSet=rs0"))
+    }
+
+    // MARK: - MongoDB Multi-Host
+
+    @Test("MongoDB URL uses multi-host from additionalFields")
+    func testMongoDBMultiHost() {
+        let conn = DatabaseConnection(
+            name: "", host: "host1", port: 27_017, database: "mydb",
+            username: "user", type: .mongodb,
+            additionalFields: ["mongoHosts": "host1:27017,host2:27018,host3:27019"]
+        )
+        let url = ConnectionURLFormatter.format(conn, password: "pass", sshPassword: nil)
+        #expect(url.contains("host1:27017,host2:27018,host3:27019"))
     }
 }

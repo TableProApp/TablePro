@@ -47,9 +47,9 @@ class LineFoldPlaceholder: TextAttachment {
         let centerY = rect.midY - (size / 2.0)
 
         if isSelected {
-            context.setFillColor(delegate.placeholderSelectedColor().cgColor)
+            context.setFillColor(delegate.placeholderSelectedColor().safeCGColor)
         } else {
-            context.setFillColor(delegate.placeholderBackgroundColor().cgColor)
+            context.setFillColor(delegate.placeholderBackgroundColor().safeCGColor)
         }
 
         context.addPath(
@@ -62,9 +62,9 @@ class LineFoldPlaceholder: TextAttachment {
         context.fillPath()
 
         if isSelected {
-            context.setFillColor(delegate.placeholderSelectedTextColor().cgColor)
+            context.setFillColor(delegate.placeholderSelectedTextColor().safeCGColor)
         } else {
-            context.setFillColor(delegate.placeholderTextColor().cgColor)
+            context.setFillColor(delegate.placeholderTextColor().safeCGColor)
         }
         context.addEllipse(
             in: CGRect(x: rect.minX + (charWidth * 2) - size, y: centerY, width: size, height: size)

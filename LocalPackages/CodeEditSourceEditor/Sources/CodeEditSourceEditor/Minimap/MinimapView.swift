@@ -119,7 +119,7 @@ public class MinimapView: FlippedNSView {
 
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = theme.background.cgColor
+        layer?.backgroundColor = theme.background.safeCGColor
 
         setUpLayoutManager(textView: textView)
         setUpSelectionManager(textView: textView)
@@ -320,13 +320,13 @@ public class MinimapView: FlippedNSView {
     ///
     /// - Parameter theme: The selected theme.
     public func setTheme(_ theme: EditorTheme) {
-        let isLightMode = theme.background.brightnessComponent > 0.5
+        let isLightMode = (theme.background.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0.0) > 0.5
         documentVisibleView.layer?.backgroundColor = isLightMode
             ? NSColor.black.withAlphaComponent(0.065).cgColor
             : NSColor.white.withAlphaComponent(0.065).cgColor
         separatorView.layer?.backgroundColor = isLightMode
             ? NSColor.black.withAlphaComponent(0.1).cgColor
             : NSColor.white.withAlphaComponent(0.1).cgColor
-        layer?.backgroundColor = theme.background.cgColor
+        layer?.backgroundColor = theme.background.safeCGColor
     }
 }

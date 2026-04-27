@@ -87,7 +87,7 @@ extension MainContentCoordinator {
             }
         }
 
-        if let tableName = tabManager.selectedTab?.tableName {
+        if let tableName = tabManager.selectedTab?.tableContext.tableName {
             filterStateManager.saveLastFilters(for: tableName)
         }
 

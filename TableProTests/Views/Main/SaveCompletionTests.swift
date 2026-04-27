@@ -42,7 +42,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        #expect(tabManager.tabs.first?.errorMessage == nil)
+        #expect(tabManager.tabs.first?.execution.errorMessage == nil)
     }
 
     // MARK: - Read-Only Connection
@@ -64,7 +64,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        let errorMessage = tabManager.tabs.first?.errorMessage
+        let errorMessage = tabManager.tabs.first?.execution.errorMessage
         #expect(errorMessage != nil)
         #expect(errorMessage?.contains("read-only") == true)
     }
@@ -107,7 +107,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        let errorMessage = tabManager.tabs.first?.errorMessage
+        let errorMessage = tabManager.tabs.first?.execution.errorMessage
         #expect(errorMessage != nil)
     }
 
@@ -128,7 +128,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        let errorMessage = tabManager.tabs.first?.errorMessage
+        let errorMessage = tabManager.tabs.first?.execution.errorMessage
         #expect(errorMessage != nil)
         #expect(errorMessage?.contains("read-only") == true)
         #expect(truncates.contains("users"))
@@ -167,7 +167,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        #expect(tabManager.tabs.first?.errorMessage == nil)
+        #expect(tabManager.tabs.first?.execution.errorMessage == nil)
         #expect(truncates.isEmpty)
         #expect(deletes.isEmpty)
     }
@@ -226,7 +226,7 @@ struct SaveCompletionTests {
             tableOperationOptions: &options
         )
 
-        #expect(tabManager.tabs.first?.errorMessage == nil)
+        #expect(tabManager.tabs.first?.execution.errorMessage == nil)
         #expect(truncates.isEmpty)
         #expect(deletes.isEmpty)
     }
@@ -257,8 +257,8 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .readOnly)
         tabManager.addTab(databaseName: "testdb")
         if let index = tabManager.selectedTabIndex {
-            tabManager.tabs[index].isEditable = true
-            tabManager.tabs[index].tableName = "users"
+            tabManager.tabs[index].tableContext.isEditable = true
+            tabManager.tabs[index].tableContext.tableName = "users"
         }
 
         var selectedRows: Set<Int> = []
@@ -283,8 +283,8 @@ struct SaveCompletionTests {
         let (coordinator, tabManager, _) = makeCoordinator(safeModeLevel: .alert)
         tabManager.addTab(databaseName: "testdb")
         if let index = tabManager.selectedTabIndex {
-            tabManager.tabs[index].isEditable = true
-            tabManager.tabs[index].tableName = "users"
+            tabManager.tabs[index].tableContext.isEditable = true
+            tabManager.tabs[index].tableContext.tableName = "users"
         }
 
         var selectedRows: Set<Int> = []
@@ -292,6 +292,6 @@ struct SaveCompletionTests {
 
         // Alert level doesn't block row staging — only gates at execution time
         coordinator.addNewRow(selectedRowIndices: &selectedRows, editingCell: &editingCell)
-        #expect(tabManager.tabs.first?.errorMessage == nil)
+        #expect(tabManager.tabs.first?.execution.errorMessage == nil)
     }
 }

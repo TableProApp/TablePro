@@ -61,7 +61,7 @@ extension TextSelectionManager {
         ).pixelAligned
 
         if selectionRect.intersects(rect) {
-            context.setFillColor(selectedLineBackgroundColor.cgColor)
+            context.setFillColor(selectedLineBackgroundColor.safeCGColor)
             context.fill(selectionRect)
         }
         context.restoreGState()
@@ -76,8 +76,8 @@ extension TextSelectionManager {
         context.saveGState()
 
         let fillColor = (textView?.isFirstResponder ?? false)
-        ? selectionBackgroundColor.cgColor
-        : selectionBackgroundColor.grayscale.cgColor
+        ? selectionBackgroundColor.safeCGColor
+        : selectionBackgroundColor.grayscale.safeCGColor
 
         context.setFillColor(fillColor)
 

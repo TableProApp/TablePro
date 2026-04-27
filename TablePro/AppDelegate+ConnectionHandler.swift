@@ -41,14 +41,21 @@ extension AppDelegate {
         }
 
         let connection: DatabaseConnection
+        let isTransient: Bool
         if let matched = matchedConnection {
             connection = matched
+            isTransient = false
         } else {
             connection = buildTransientConnection(from: parsed)
+            isTransient = true
         }
 
         if !parsed.password.isEmpty {
             ConnectionStorage.shared.savePassword(parsed.password, for: connection.id)
+        }
+
+        if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
+            ConnectionStorage.shared.saveSSHPassword(sshPass, for: connection.id)
         }
 
         // Check if already connected or connecting (by ID or by params).
@@ -94,6 +101,10 @@ extension AppDelegate {
                 self.handlePostConnectionActions(parsed, connectionId: connection.id)
             } catch {
                 connectionLogger.error("Database URL connect failed: \(error.localizedDescription)")
+                if isTransient {
+                    ConnectionStorage.shared.deletePassword(for: connection.id)
+                    ConnectionStorage.shared.deleteSSHPassword(for: connection.id)
+                }
                 await self.handleConnectionFailure(error)
             }
         }
@@ -545,6 +556,8 @@ extension AppDelegate {
             tagId = ConnectionURLParser.tagId(fromEnvName: envName)
         }
 
+        let resolvedSafeMode = parsed.safeModeLevel.flatMap(SafeModeLevel.from(urlInteger:)) ?? .silent
+
         var connection = DatabaseConnection(
             name: parsed.connectionName ?? parsed.suggestedName,
             host: parsed.host,
@@ -556,6 +569,7 @@ extension AppDelegate {
             sslConfig: sslConfig,
             color: color,
             tagId: tagId,
+            safeModeLevel: resolvedSafeMode,
             mongoAuthSource: parsed.authSource,
             mongoUseSrv: parsed.useSrv,
             mongoAuthMechanism: parsed.mongoQueryParams["authMechanism"],

@@ -23,9 +23,10 @@ struct UndoResult {
 /// @MainActor ensures thread-safe access - critical for avoiding EXC_BAD_ACCESS
 /// when multiple queries complete simultaneously (e.g., rapid sorting over SSH tunnel)
 @MainActor @Observable
-final class DataChangeManager {
+final class DataChangeManager: ChangeManaging {
     private static let logger = Logger(subsystem: "com.TablePro", category: "DataChangeManager")
     var changes: [RowChange] = []
+    var rowChanges: [RowChange] { changes }
     var hasChanges: Bool = false
     var reloadVersion: Int = 0
 
@@ -234,7 +235,7 @@ final class DataChangeManager {
             undoManager.registerUndo(withTarget: self) { target in
                 target.applyDataUndo(.cellEdit(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: oldValue, newValue: newValue
+                    previousValue: oldValue, newValue: newValue, originalRow: nil
                 ))
             }
             undoManager.setActionName(String(localized: "Edit Cell"))
@@ -289,7 +290,7 @@ final class DataChangeManager {
         undoManager.registerUndo(withTarget: self) { target in
             target.applyDataUndo(.cellEdit(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                previousValue: oldValue, newValue: newValue
+                previousValue: oldValue, newValue: newValue, originalRow: originalRow
             ))
         }
         undoManager.setActionName(String(localized: "Edit Cell"))
@@ -504,11 +505,11 @@ final class DataChangeManager {
     // swiftlint:disable:next function_body_length
     private func applyDataUndo(_ action: UndoAction) {
         switch action {
-        case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue):
+        case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue, let originalRow):
             undoManager.registerUndo(withTarget: self) { target in
                 target.applyDataUndo(.cellEdit(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    previousValue: newValue, newValue: previousValue
+                    previousValue: newValue, newValue: previousValue, originalRow: originalRow
                 ))
             }
             undoManager.setActionName(String(localized: "Edit Cell"))
@@ -558,7 +559,7 @@ final class DataChangeManager {
             } else {
                 recordCellChangeForRedo(
                     rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    oldValue: newValue, newValue: previousValue
+                    oldValue: newValue, newValue: previousValue, originalRow: originalRow
                 )
             }
             changedRowIndices.insert(rowIndex)
@@ -708,7 +709,8 @@ final class DataChangeManager {
         columnIndex: Int,
         columnName: String,
         oldValue: String?,
-        newValue: String?
+        newValue: String?,
+        originalRow: [String?]?
     ) {
         let cellChange = CellChange(
             rowIndex: rowIndex,
@@ -758,7 +760,8 @@ final class DataChangeManager {
             }
         } else {
             let rowChange = RowChange(
-                rowIndex: rowIndex, type: .update, cellChanges: [cellChange]
+                rowIndex: rowIndex, type: .update, cellChanges: [cellChange],
+                originalRow: originalRow
             )
             changes.append(rowChange)
             changeIndex[updateKey] = changes.count - 1

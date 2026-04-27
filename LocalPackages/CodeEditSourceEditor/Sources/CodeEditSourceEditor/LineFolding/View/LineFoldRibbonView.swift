@@ -43,37 +43,37 @@ class LineFoldRibbonView: NSView {
     var markerColor = NSColor(
         light: NSColor(deviceWhite: 0.0, alpha: 0.1),
         dark: NSColor(deviceWhite: 1.0, alpha: 0.2)
-    ).cgColor
+    ).safeCGColor
 
     @Invalidating(.display)
     var markerBorderColor = NSColor(
         light: NSColor(deviceWhite: 1.0, alpha: 0.4),
         dark: NSColor(deviceWhite: 0.0, alpha: 0.4)
-    ).cgColor
+    ).safeCGColor
 
     @Invalidating(.display)
     var hoverFillColor = NSColor(
         light: NSColor(deviceWhite: 1.0, alpha: 1.0),
         dark: NSColor(deviceWhite: 0.17, alpha: 1.0)
-    ).cgColor
+    ).safeCGColor
 
     @Invalidating(.display)
     var hoverBorderColor = NSColor(
         light: NSColor(deviceWhite: 0.8, alpha: 1.0),
         dark: NSColor(deviceWhite: 0.4, alpha: 1.0)
-    ).cgColor
+    ).safeCGColor
 
     @Invalidating(.display)
     var foldedIndicatorColor = NSColor(
         light: NSColor(deviceWhite: 0.0, alpha: 0.3),
         dark: NSColor(deviceWhite: 1.0, alpha: 0.6)
-    ).cgColor
+    ).safeCGColor
 
     @Invalidating(.display)
     var foldedIndicatorChevronColor = NSColor(
         light: NSColor(deviceWhite: 1.0, alpha: 1.0),
         dark: NSColor(deviceWhite: 0.0, alpha: 1.0)
-    ).cgColor
+    ).safeCGColor
 
     override public var isFlipped: Bool {
         true

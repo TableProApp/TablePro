@@ -11,7 +11,7 @@ import Observation
 
 /// Manager for tracking and applying schema changes
 @MainActor @Observable
-final class StructureChangeManager {
+final class StructureChangeManager: ChangeManaging {
     private(set) var pendingChanges: [SchemaChangeIdentifier: SchemaChange] = [:]
     @ObservationIgnored private var changeOrder: [SchemaChangeIdentifier] = []
     private(set) var validationErrors: [SchemaChangeIdentifier: String] = [:]
@@ -882,6 +882,25 @@ final class StructureChangeManager {
         let tab: StructureTab
         let row: Int
     }
+
+    // MARK: - ChangeManaging Conformance (Data-Specific No-Ops)
+
+    var rowChanges: [RowChange] { [] }
+
+    func isRowDeleted(_ rowIndex: Int) -> Bool { false }
+
+    func recordCellChange(
+        rowIndex: Int,
+        columnIndex: Int,
+        columnName: String,
+        oldValue: String?,
+        newValue: String?,
+        originalRow: [String?]?
+    ) {}
+
+    func undoRowDeletion(rowIndex: Int) {}
+
+    func undoRowInsertion(rowIndex: Int) {}
 }
 
 // MARK: - Schema Undo Action

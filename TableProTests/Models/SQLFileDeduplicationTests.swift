@@ -20,16 +20,16 @@ struct QueryTabSourceFileURLTests {
     func storesSourceFileURL() {
         var tab = QueryTab(title: "Test", tabType: .query)
         let url = URL(fileURLWithPath: "/tmp/test.sql")
-        tab.sourceFileURL = url
+        tab.content.sourceFileURL = url
 
-        #expect(tab.sourceFileURL == url)
+        #expect(tab.content.sourceFileURL == url)
     }
 
     @Test("QueryTab sourceFileURL defaults to nil")
     func defaultsToNil() {
         let tab = QueryTab(title: "Test", tabType: .query)
 
-        #expect(tab.sourceFileURL == nil)
+        #expect(tab.content.sourceFileURL == nil)
     }
 }
 
@@ -46,7 +46,7 @@ struct QueryTabManagerDeduplicationTests {
         tabManager.addTab(initialQuery: "SELECT 1", sourceFileURL: url)
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.sourceFileURL == url)
+        #expect(tabManager.tabs.first?.content.sourceFileURL == url)
     }
 
     @Test("addTab with same sourceFileURL selects existing tab instead of creating duplicate")
@@ -96,7 +96,7 @@ struct QueryTabManagerDeduplicationTests {
         tabManager.addTab(initialQuery: "SELECT 2", sourceFileURL: url)
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.query == "SELECT 2")
+        #expect(tabManager.tabs.first?.content.query == "SELECT 2")
     }
 }
 
@@ -149,7 +149,7 @@ struct SessionStateFactorySourceFileURLTests {
         let state = SessionStateFactory.create(connection: conn, payload: payload)
 
         #expect(state.tabManager.tabs.count == 1)
-        #expect(state.tabManager.tabs.first?.sourceFileURL == url)
+        #expect(state.tabManager.tabs.first?.content.sourceFileURL == url)
     }
 }
 

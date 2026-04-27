@@ -49,7 +49,7 @@ struct SessionStateFactoryTests {
         let state = SessionStateFactory.create(connection: conn, payload: payload)
 
         #expect(state.tabManager.tabs.count == 1)
-        #expect(state.tabManager.tabs.first?.tableName == "users")
+        #expect(state.tabManager.tabs.first?.tableContext.tableName == "users")
         #expect(state.tabManager.tabs.first?.tabType == .table)
     }
 
@@ -67,7 +67,7 @@ struct SessionStateFactoryTests {
         let state = SessionStateFactory.create(connection: conn, payload: payload)
 
         #expect(state.tabManager.tabs.count == 1)
-        #expect(state.tabManager.tabs.first?.query == query)
+        #expect(state.tabManager.tabs.first?.content.query == query)
         #expect(state.tabManager.tabs.first?.tabType == .query)
     }
 
@@ -88,7 +88,7 @@ struct SessionStateFactoryTests {
             Issue.record("Expected at least one tab")
             return
         }
-        #expect(tab.resultsViewMode == .structure)
+        #expect(tab.display.resultsViewMode == .structure)
     }
 
     @Test("Payload with isView sets isView and clears isEditable")
@@ -108,8 +108,8 @@ struct SessionStateFactoryTests {
             Issue.record("Expected at least one tab")
             return
         }
-        #expect(tab.isView == true)
-        #expect(tab.isEditable == false)
+        #expect(tab.tableContext.isView == true)
+        #expect(tab.tableContext.isEditable == false)
     }
 
     @Test("Nil payload creates empty tab manager")
@@ -164,7 +164,7 @@ struct SessionStateFactoryTests {
 
         // Equivalent content
         #expect(state1.tabManager.tabs.count == state2.tabManager.tabs.count)
-        #expect(state1.tabManager.tabs.first?.tableName == state2.tabManager.tabs.first?.tableName)
+        #expect(state1.tabManager.tabs.first?.tableContext.tableName == state2.tabManager.tabs.first?.tableContext.tableName)
     }
 
     @Test("Coordinator receives the factory's tabManager")

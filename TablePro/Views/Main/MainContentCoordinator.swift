@@ -80,9 +80,8 @@ final class MainContentCoordinator {
 
     let connection: DatabaseConnection
     var connectionId: UUID { connection.id }
-    /// Live safe mode level — reads from toolbar state (user-editable),
-    /// not from the immutable connection snapshot.
     var safeModeLevel: SafeModeLevel { toolbarState.safeModeLevel }
+    let selectionState = GridSelectionState()
     let tabManager: QueryTabManager
     let changeManager: DataChangeManager
     let filterStateManager: FilterStateManager
@@ -724,11 +723,10 @@ final class MainContentCoordinator {
 
     func runQuery() {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].query
+        let fullQuery = tabManager.tabs[index].content.query
 
-        // For table tabs, use the full query. For query tabs, extract at cursor
         let sql: String
         if tabManager.tabs[index].tabType == .table {
             sql = fullQuery
@@ -762,12 +760,12 @@ final class MainContentCoordinator {
             if !detectedNames.isEmpty {
                 let reconciled = detectAndReconcileParameters(
                     sql: combinedSQL,
-                    existing: tabManager.tabs[index].queryParameters
+                    existing: tabManager.tabs[index].content.queryParameters
                 )
-                tabManager.tabs[index].queryParameters = reconciled
+                tabManager.tabs[index].content.queryParameters = reconciled
 
-                if !tabManager.tabs[index].isParameterPanelVisible {
-                    tabManager.tabs[index].isParameterPanelVisible = true
+                if !tabManager.tabs[index].content.isParameterPanelVisible {
+                    tabManager.tabs[index].content.isParameterPanelVisible = true
                     return
                 }
 
@@ -791,14 +789,14 @@ final class MainContentCoordinator {
     /// checks but still respect safe mode levels that apply to all queries.
     func executeTableTabQueryDirectly() {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
-        let sql = tabManager.tabs[index].query
+        let sql = tabManager.tabs[index].content.query
         guard !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let level = safeModeLevel
         if level.appliesToAllQueries && level.requiresConfirmation,
-           tabManager.tabs[index].lastExecutedAt == nil
+           tabManager.tabs[index].execution.lastExecutedAt == nil
         {
             guard !isShowingSafeModePrompt else { return }
             isShowingSafeModePrompt = true
@@ -818,7 +816,7 @@ final class MainContentCoordinator {
                     executeQueryInternal(sql)
                 case .blocked(let reason):
                     if index < tabManager.tabs.count {
-                        tabManager.tabs[index].errorMessage = reason
+                        tabManager.tabs[index].execution.errorMessage = reason
                     }
                 }
             }
@@ -833,7 +831,7 @@ final class MainContentCoordinator {
         if let tabIndex = tabManager.selectedTabIndex,
            tabIndex < tabManager.tabs.count,
            tabManager.tabs[tabIndex].tabType == .query {
-            tabManager.tabs[tabIndex].query = query
+            tabManager.tabs[tabIndex].content.query = query
             tabManager.tabs[tabIndex].hasUserInteraction = true
         } else {
             let payload = EditorTabPayload(
@@ -849,11 +847,11 @@ final class MainContentCoordinator {
         if let tabIndex = tabManager.selectedTabIndex,
            tabIndex < tabManager.tabs.count,
            tabManager.tabs[tabIndex].tabType == .query {
-            let existingQuery = tabManager.tabs[tabIndex].query
+            let existingQuery = tabManager.tabs[tabIndex].content.query
             if existingQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                tabManager.tabs[tabIndex].query = query
+                tabManager.tabs[tabIndex].content.query = query
             } else {
-                tabManager.tabs[tabIndex].query = existingQuery + "\n\n" + query
+                tabManager.tabs[tabIndex].content.query = existingQuery + "\n\n" + query
             }
             tabManager.tabs[tabIndex].hasUserInteraction = true
         } else if tabManager.tabs.isEmpty {
@@ -871,11 +869,10 @@ final class MainContentCoordinator {
     /// Run EXPLAIN on the current query (database-type-aware prefix)
     func runExplainQuery() {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].query
+        let fullQuery = tabManager.tabs[index].content.query
 
-        // Extract query the same way as runQuery()
         let sql: String
         if tabManager.tabs[index].tabType == .table {
             sql = fullQuery
@@ -935,7 +932,7 @@ final class MainContentCoordinator {
         guard let adapter = DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter,
               let explainSQL = adapter.buildExplainQuery(stmt) else {
             if let index = tabManager.selectedTabIndex {
-                tabManager.tabs[index].errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
+                tabManager.tabs[index].execution.errorMessage = String(localized: "EXPLAIN is not supported for this database type.")
             }
             return
         }
@@ -967,7 +964,7 @@ final class MainContentCoordinator {
         _ sql: String
     ) {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
@@ -984,11 +981,11 @@ final class MainContentCoordinator {
         // Batch mutations into a single array write to avoid multiple @Published
         // notifications — each notification triggers a full SwiftUI update cycle.
         var tab = tabManager.tabs[index]
-        tab.isExecuting = true
-        tab.executionTime = nil
-        tab.errorMessage = nil
-        tab.explainText = nil
-        tab.explainPlan = nil
+        tab.execution.isExecuting = true
+        tab.execution.executionTime = nil
+        tab.execution.errorMessage = nil
+        tab.display.explainText = nil
+        tab.display.explainPlan = nil
         tabManager.tabs[index] = tab
         toolbarState.setExecuting(true)
 
@@ -1088,7 +1085,7 @@ final class MainContentCoordinator {
                     // Always reset isExecuting even if generation is stale
                     if capturedGeneration != queryGeneration || Task.isCancelled {
                         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                            tabManager.tabs[idx].isExecuting = false
+                            tabManager.tabs[idx].execution.isExecuting = false
                         }
                         return
                     }
@@ -1146,7 +1143,7 @@ final class MainContentCoordinator {
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         var tab = tabManager.tabs[idx]
-                        tab.isExecuting = false
+                        tab.execution.isExecuting = false
                         tab.pagination.isLoadingMore = false
                         tabManager.tabs[idx] = tab
                     }
@@ -1163,7 +1160,7 @@ final class MainContentCoordinator {
     @MainActor
     internal func resetExecutionState(tabId: UUID, executionTime: TimeInterval) {
         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-            tabManager.tabs[idx].isExecuting = false
+            tabManager.tabs[idx].execution.isExecuting = false
         }
         currentQueryTask = nil
         toolbarState.setExecuting(false)
@@ -1175,9 +1172,9 @@ final class MainContentCoordinator {
             || (DatabaseManager.shared.driver(for: connectionId) as? PluginDriverAdapter)?
                 .queryBuildingPluginDriver != nil
         if usesNoSQLBrowsing {
-            let name = tabManager.selectedTab?.tableName
+            let name = tabManager.selectedTab?.tableContext.tableName
             return (name, name != nil)
-        } else if tab.tabType == .table, let existingName = tab.tableName {
+        } else if tab.tabType == .table, let existingName = tab.tableContext.tableName {
             return (existingName, true)
         } else {
             let name = extractTableName(from: sql)
@@ -1302,7 +1299,7 @@ final class MainContentCoordinator {
 
     // MARK: - Sorting
 
-    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false, selectedRowIndices: inout Set<Int>) {
+    func handleSort(columnIndex: Int, ascending: Bool, isMultiSort: Bool = false) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
@@ -1337,14 +1334,14 @@ final class MainContentCoordinator {
             if tab.pagination.hasMoreRows {
                 let columnName = tab.resultColumns[columnIndex]
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
-                let baseQuery = tab.pagination.baseQueryForMore ?? tab.query
+                let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
                 let quotedColumn = queryBuilder.quoteIdentifier(columnName)
                 let orderQuery = "\(strippedQuery) ORDER BY \(quotedColumn) \(direction)"
                 tabManager.tabs[tabIndex].sortState = currentSort
                 tabManager.tabs[tabIndex].hasUserInteraction = true
                 tabManager.tabs[tabIndex].pagination.resetLoadMore()
-                tabManager.tabs[tabIndex].query = orderQuery
+                tabManager.tabs[tabIndex].content.query = orderQuery
                 runQuery()
                 return
             }
@@ -1362,7 +1359,7 @@ final class MainContentCoordinator {
                 // Sort on background thread to avoid UI freeze
                 activeSortTasks[tabId]?.cancel()
                 activeSortTasks.removeValue(forKey: tabId)
-                tabManager.tabs[tabIndex].isExecuting = true
+                tabManager.tabs[tabIndex].execution.isExecuting = true
                 toolbarState.setExecuting(true)
                 querySortCache.removeValue(forKey: tabId)
 
@@ -1389,8 +1386,8 @@ final class MainContentCoordinator {
                             resultVersion: resultVersion
                         )
                         var sortedTab = self.tabManager.tabs[idx]
-                        sortedTab.isExecuting = false
-                        sortedTab.executionTime = sortDuration
+                        sortedTab.execution.isExecuting = false
+                        sortedTab.execution.executionTime = sortDuration
                         self.tabManager.tabs[idx] = sortedTab
                         self.toolbarState.setExecuting(false)
                         self.toolbarState.lastQueryDuration = sortDuration
@@ -1408,7 +1405,7 @@ final class MainContentCoordinator {
 
         let tabId = tab.id
         let capturedSort = currentSort
-        let capturedQuery = tab.query
+        let capturedQuery = tab.content.query
         let capturedColumns = tab.resultColumns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed,
@@ -1421,7 +1418,7 @@ final class MainContentCoordinator {
                 sortState: capturedSort,
                 columns: capturedColumns
             )
-            self.tabManager.tabs[idx].query = newQuery
+            self.tabManager.tabs[idx].content.query = newQuery
             self.runQuery()
         }
     }

@@ -23,9 +23,9 @@ extension MainContentCoordinator {
         }
         toolbarState.setExecuting(false)
         for idx in tabManager.tabs.indices {
-            if tabManager.tabs[idx].isExecuting || tabManager.tabs[idx].pagination.isLoadingMore {
+            if tabManager.tabs[idx].execution.isExecuting || tabManager.tabs[idx].pagination.isLoadingMore {
                 var tab = tabManager.tabs[idx]
-                tab.isExecuting = false
+                tab.execution.isExecuting = false
                 tab.pagination.isLoadingMore = false
                 tabManager.tabs[idx] = tab
             }
@@ -38,7 +38,7 @@ extension MainContentCoordinator {
         guard let idx = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[idx]
         guard !tab.pagination.isLoadingMore,
-              !tab.isExecuting,
+              !tab.execution.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
@@ -104,7 +104,7 @@ extension MainContentCoordinator {
                     if !pagedResult.hasMore {
                         tab.pagination.baseQueryForMore = nil
                     }
-                    if let rs = tab.activeResultSet {
+                    if let rs = tab.display.activeResultSet {
                         rs.resultVersion = tab.resultVersion
                     }
                     tabManager.tabs[idx] = tab
@@ -134,7 +134,7 @@ extension MainContentCoordinator {
         guard let idx = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[idx]
         guard !tab.pagination.isLoadingMore,
-              !tab.isExecuting,
+              !tab.execution.isExecuting,
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
@@ -220,10 +220,10 @@ extension MainContentCoordinator {
 
                     var tab = tabManager.tabs[idx]
                     tab.rowBuffer.rows = result.rows
-                    tab.executionTime = result.executionTime
+                    tab.execution.executionTime = result.executionTime
                     tab.resultVersion += 1
                     tab.pagination.resetLoadMore()
-                    if let rs = tab.activeResultSet {
+                    if let rs = tab.display.activeResultSet {
                         rs.resultVersion = tab.resultVersion
                     }
                     tabManager.tabs[idx] = tab

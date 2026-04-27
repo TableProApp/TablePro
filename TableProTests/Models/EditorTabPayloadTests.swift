@@ -134,10 +134,10 @@ struct EditorTabPayloadTests {
         let payload = EditorTabPayload(from: tab, connectionId: connectionId)
         #expect(payload.connectionId == connectionId)
         #expect(payload.tabType == tab.tabType)
-        #expect(payload.tableName == tab.tableName)
-        #expect(payload.databaseName == tab.databaseName)
-        #expect(payload.initialQuery == tab.query)
-        #expect(payload.isView == tab.isView)
-        #expect(payload.showStructure == (tab.resultsViewMode == .structure))
+        #expect(payload.tableName == tab.tableContext.tableName)
+        #expect(payload.databaseName == tab.tableContext.databaseName)
+        #expect(payload.initialQuery == tab.content.query)
+        #expect(payload.isView == tab.tableContext.isView)
+        #expect(payload.showStructure == (tab.display.resultsViewMode == .structure))
     }
 }

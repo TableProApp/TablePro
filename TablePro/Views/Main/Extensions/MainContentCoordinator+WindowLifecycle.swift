@@ -42,9 +42,9 @@ extension MainContentCoordinator {
             tabManager.selectedTab.map { tab in
                 tab.tabType == .table
                     && (tab.resultRows.isEmpty || tab.rowBuffer.isEvicted)
-                    && (tab.lastExecutedAt == nil || tab.rowBuffer.isEvicted)
-                    && tab.errorMessage == nil
-                    && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && (tab.execution.lastExecutedAt == nil || tab.rowBuffer.isEvicted)
+                    && tab.execution.errorMessage == nil
+                    && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             } ?? false
         // Skip lazy-load if this is a menu-interaction bounce (resign+become within 200ms).
         let isMenuBounce = Date().timeIntervalSince(lastResignKeyDate) < 0.2

@@ -14,8 +14,8 @@ extension MainContentView {
     /// Compute selected row data for right sidebar display
     var selectedRowDataForSidebar: [(column: String, value: String?, type: String)]? {
         guard let tab = coordinator.tabManager.selectedTab,
-              !selectedRowIndices.isEmpty,
-              let firstIndex = selectedRowIndices.min(),
+              !coordinator.selectionState.indices.isEmpty,
+              let firstIndex = coordinator.selectionState.indices.min(),
               firstIndex < tab.resultRows.count else { return nil }
 
         let row = tab.resultRows[firstIndex]
@@ -23,7 +23,7 @@ extension MainContentView {
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
-        let tblName = tab.tableName
+        let tblName = tab.tableContext.tableName
 
         for (i, col) in tab.resultColumns.enumerated() {
             var value = i < row.count ? row[i] : nil
@@ -49,16 +49,15 @@ extension MainContentView {
     var isSidebarEditable: Bool {
         guard !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
-              tab.tabType == .table || tab.tableName != nil,
-              !selectedRowIndices.isEmpty else {
+              tab.tabType == .table || tab.tableContext.tableName != nil,
+              !coordinator.selectionState.indices.isEmpty else {
             return false
         }
         return true
     }
 
-    /// Check if selected row is deleted
     var isSelectedRowDeleted: Bool {
-        guard let firstIndex = selectedRowIndices.min() else { return false }
+        guard let firstIndex = coordinator.selectionState.indices.min() else { return false }
         return coordinator.changeManager.isRowDeleted(firstIndex)
     }
 
@@ -86,10 +85,10 @@ extension MainContentView {
     /// Binding for resultsViewMode state
     var resultsViewModeBinding: Binding<ResultsViewMode> {
         Binding(
-            get: { coordinator.tabManager.selectedTab?.resultsViewMode ?? .data },
+            get: { coordinator.tabManager.selectedTab?.display.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].resultsViewMode = newValue
+                    coordinator.tabManager.tabs[index].display.resultsViewMode = newValue
                 }
             }
         )
@@ -110,7 +109,7 @@ extension MainContentView {
     /// Uses `resultVersion` instead of the full `resultRows` array to avoid deep equality checks.
     var inspectorTrigger: InspectorTrigger {
         InspectorTrigger(
-            tableName: currentTab?.tableName,
+            tableName: currentTab?.tableContext.tableName,
             resultVersion: currentTab?.resultVersion ?? -1,
             metadataVersion: currentTab?.metadataVersion ?? -1,
             metadataTableName: coordinator.tableMetadata?.tableName

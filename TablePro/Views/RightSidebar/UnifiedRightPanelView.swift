@@ -22,7 +22,6 @@ struct UnifiedRightPanelView: View {
             selectedRowData: ctx.selectedRowData,
             isEditable: ctx.isEditable,
             isRowDeleted: ctx.isRowDeleted,
-            onSave: { state.onSave?() },
             editState: state.editState,
             databaseType: connection.type
         )
@@ -41,6 +40,8 @@ struct UnifiedRightPanelView: View {
                 .labelsHidden()
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
+
+                Divider()
 
                 switch state.activeTab {
                 case .details:

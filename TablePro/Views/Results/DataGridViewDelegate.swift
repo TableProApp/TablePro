@@ -21,6 +21,8 @@ protocol DataGridViewDelegate: AnyObject {
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool)
     func dataGridFilterColumn(_ columnName: String)
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo)
+    func dataGridDuplicateRow()
+    func dataGridExportResults()
     func dataGridHideColumn(_ columnName: String)
     func dataGridShowAllColumns()
     func dataGridRefresh()
@@ -42,6 +44,8 @@ extension DataGridViewDelegate {
     func dataGridSort(column: Int, ascending: Bool, isMultiSort: Bool) {}
     func dataGridFilterColumn(_ columnName: String) {}
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {}
+    func dataGridDuplicateRow() {}
+    func dataGridExportResults() {}
     func dataGridHideColumn(_ columnName: String) {}
     func dataGridShowAllColumns() {}
     func dataGridRefresh() {}

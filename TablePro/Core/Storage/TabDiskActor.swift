@@ -113,7 +113,7 @@ internal actor TabDiskActor {
 
     /// Save the last query text for a connection. Skips if query exceeds 500KB.
     internal func saveLastQuery(_ query: String, for connectionId: UUID) {
-        guard (query as NSString).length < QueryTab.maxPersistableQuerySize else { return }
+        guard (query as NSString).length < TabQueryContent.maxPersistableQuerySize else { return }
 
         let fileURL = lastQueryFileURL(for: connectionId)
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)

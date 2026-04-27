@@ -60,7 +60,7 @@ extension ConnectionFormView {
             let sshValid = !sshState.host.isEmpty && !sshState.username.isEmpty && sshPortValid
             let authValid =
                 sshState.authMethod == .password || sshState.authMethod == .sshAgent
-                || sshState.authMethod == .keyboardInteractive || !sshState.privateKeyPath.isEmpty
+                || sshState.authMethod == .keyboardInteractive || sshState.authMethod == .privateKey
             let jumpValid = sshState.jumpHosts.allSatisfy(\.isValid)
             return basicValid && sshValid && authValid && jumpValid
         }
@@ -168,7 +168,7 @@ extension ConnectionFormView {
         }
     }
 
-    func saveConnection() {
+    func saveConnection(connect: Bool = true) {
         let sshConfig = sshState.buildSSHConfig()
 
         let sslConfig = SSLConfiguration(
@@ -279,7 +279,9 @@ extension ConnectionFormView {
             }
             NSApplication.shared.closeWindows(withId: "connection-form")
             NotificationCenter.default.post(name: .connectionUpdated, object: nil)
-            connectToDatabase(connectionToSave)
+            if connect {
+                connectToDatabase(connectionToSave)
+            }
         } else {
             if let index = savedConnections.firstIndex(where: { $0.id == connectionToSave.id }) {
                 savedConnections[index] = connectionToSave
@@ -564,6 +566,9 @@ extension ConnectionFormView {
                 sshState.host = sshHostValue
                 sshState.port = parsed.sshPort.map(String.init) ?? "22"
                 sshState.username = parsed.sshUsername ?? ""
+                if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
+                    sshState.password = sshPass
+                }
                 if parsed.usePrivateKey == true {
                     sshState.authMethod = .privateKey
                 }
@@ -631,6 +636,9 @@ extension ConnectionFormView {
                 name = connectionName
             } else if name.isEmpty {
                 name = parsed.suggestedName
+            }
+            if let level = parsed.safeModeLevel, let mode = SafeModeLevel.from(urlInteger: level) {
+                safeModeLevel = mode
             }
         case .failure(let error):
             urlParseError = error.localizedDescription

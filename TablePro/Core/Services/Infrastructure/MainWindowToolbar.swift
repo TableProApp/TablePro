@@ -90,7 +90,7 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
     private static let filters = NSToolbarItem.Identifier("com.TablePro.toolbar.filters")
     private static let previewSQL = NSToolbarItem.Identifier("com.TablePro.toolbar.previewSQL")
     private static let results = NSToolbarItem.Identifier("com.TablePro.toolbar.results")
-    private static let inspector = NSToolbarItem.Identifier("com.TablePro.toolbar.inspector")
+    private static let inspector = NSToolbarItem.Identifier.toggleInspector
     private static let dashboard = NSToolbarItem.Identifier("com.TablePro.toolbar.dashboard")
     private static let history = NSToolbarItem.Identifier("com.TablePro.toolbar.history")
     private static let exportTables = NSToolbarItem.Identifier("com.TablePro.toolbar.export")
@@ -183,8 +183,10 @@ internal final class MainWindowToolbar: NSObject, NSToolbarDelegate {
             return hostingItem(id: itemIdentifier, label: String(localized: "Results"),
                                content: ResultsToolbarButton(coordinator: coordinator))
         case Self.inspector:
-            return hostingItem(id: itemIdentifier, label: String(localized: "Inspector"),
-                               content: InspectorToolbarButton(coordinator: coordinator))
+            let item = NSToolbarItem(itemIdentifier: Self.inspector)
+            item.label = String(localized: "Inspector")
+            item.paletteLabel = String(localized: "Inspector")
+            return item
         case Self.dashboard:
             return hostingItem(id: itemIdentifier, label: String(localized: "Dashboard"),
                                content: DashboardToolbarButton(coordinator: coordinator))
@@ -427,21 +429,6 @@ private struct ResultsToolbarButton: View {
             .help(String(localized: "Toggle Results (⌘⌥R)"))
             .disabled(state.connectionState != .connected)
         }
-    }
-}
-
-private struct InspectorToolbarButton: View {
-    let coordinator: MainContentCoordinator
-
-    var body: some View {
-        let state = coordinator.toolbarState
-        Button {
-            coordinator.inspectorProxy?.toggleInspector()
-        } label: {
-            Label("Inspector", systemImage: "sidebar.trailing")
-        }
-        .help(String(localized: "Toggle Inspector (⌘⌥I)"))
-        .disabled(state.connectionState != .connected)
     }
 }
 

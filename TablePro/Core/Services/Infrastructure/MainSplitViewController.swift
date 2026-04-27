@@ -134,8 +134,8 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
         inspectorHosting = NSHostingController(rootView: AnyView(buildInspectorView()))
         inspectorSplitItem = NSSplitViewItem(inspectorWithViewController: inspectorHosting)
         inspectorSplitItem.canCollapse = true
-        inspectorSplitItem.minimumThickness = 280
-        inspectorSplitItem.maximumThickness = 500
+        inspectorSplitItem.minimumThickness = 270
+        inspectorSplitItem.maximumThickness = 400
         addSplitViewItem(inspectorSplitItem)
 
         if currentSession == nil {
@@ -328,7 +328,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                     let isView = table.type == .view
                     if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
                        let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                        if previewCoordinator.tabManager.selectedTab?.tableName == table.name {
+                        if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
                             previewCoordinator.promotePreviewTab()
                         } else {
                             previewCoordinator.promotePreviewTab()
@@ -391,7 +391,6 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                 connection: currentSession.connection,
                 tables: currentSession.tables
             )
-            .background(Color(nsColor: .windowBackgroundColor))
         } else {
             Color.clear
         }
@@ -458,6 +457,10 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
     func hideInspector() {
         inspectorSplitItem?.animator().isCollapsed = true
         UserDefaults.standard.set(false, forKey: Self.inspectorPresentedKey)
+    }
+
+    @objc override func toggleInspector(_ sender: Any?) {
+        toggleInspector()
     }
 
     // MARK: - Sidebar

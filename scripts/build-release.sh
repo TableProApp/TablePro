@@ -315,6 +315,10 @@ build_for_arch() {
     prepare_libmongoc "$arch"
     prepare_hiredis "$arch"
 
+    # Create OpenSSL shared dylibs for this architecture
+    echo "📦 Creating OpenSSL shared dylibs for $arch..."
+    scripts/create-openssl-dylibs.sh "$arch"
+
     # Persistent SPM package cache (speeds up CI on self-hosted runners)
     SPM_CACHE_DIR="${HOME}/.spm-cache"
     mkdir -p "$SPM_CACHE_DIR"
@@ -345,6 +349,11 @@ build_for_arch() {
         CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
         CODE_SIGN_STYLE=Manual \
         DEVELOPMENT_TEAM="$TEAM_ID" \
+        GCC_OPTIMIZATION_LEVEL=s \
+        SWIFT_OPTIMIZATION_LEVEL=-O \
+        LLVM_LTO=YES_THIN \
+        CLANG_COVERAGE_MAPPING=NO \
+        ENABLE_CODE_COVERAGE=NO \
         ${ANALYTICS_HMAC_SECRET:+ANALYTICS_HMAC_SECRET="$ANALYTICS_HMAC_SECRET"} \
         -skipPackagePluginValidation \
         -clonedSourcePackagesDirPath "$SPM_CACHE_DIR" \
@@ -429,6 +438,20 @@ build_for_arch() {
         echo "🔪 Main binary: $before → $after"
     fi
 
+    # Strip helper executables in Contents/MacOS
+    for helper in "$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS"/*; do
+        [ -f "$helper" ] || continue
+        [ "$(basename "$helper")" = "TablePro" ] && continue
+        local hname
+        hname=$(basename "$helper")
+        local before
+        before=$(ls -lh "$helper" | awk '{print $5}')
+        strip -x "$helper"
+        local after
+        after=$(ls -lh "$helper" | awk '{print $5}')
+        echo "   $hname: $before → $after"
+    done
+
     # Strip PluginKit framework
     local pluginkit_binary="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks/TableProPluginKit.framework/Versions/A/TableProPluginKit"
     if [ -f "$pluginkit_binary" ]; then
@@ -436,11 +459,52 @@ build_for_arch() {
         echo "   TableProPluginKit framework stripped"
     fi
 
-    # Bundle non-system dynamic libraries (libpq, OpenSSL, etc.)
+    # Remove development rpaths (absolute source paths) from all binaries
+    echo "🔧 Stripping development rpaths..."
+    for binary in "$main_binary" \
+        "$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS"/* \
+        "$PLUGINS_DIR"/*.tableplugin/Contents/MacOS/*; do
+        [ -f "$binary" ] || continue
+        otool -l "$binary" 2>/dev/null | grep "Libs/dylibs" | awk '{print $2}' | while read -r rpath; do
+            install_name_tool -delete_rpath "$rpath" "$binary" 2>/dev/null || true
+        done
+    done
+
+    # Strip Sparkle helper binaries
+    local sparkle_dir="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks/Sparkle.framework/Versions/B"
+    for sparkle_bin in \
+        "$sparkle_dir/Autoupdate" \
+        "$sparkle_dir/Updater.app/Contents/MacOS/Updater"; do
+        if [ -f "$sparkle_bin" ]; then
+            strip -x "$sparkle_bin"
+            echo "   $(basename "$sparkle_bin") (Sparkle) stripped"
+        fi
+    done
+
+    # Remove Sparkle XPC services (not needed for non-sandboxed apps)
+    if [ -d "$sparkle_dir/XPCServices" ]; then
+        rm -rf "$sparkle_dir/XPCServices"
+        echo "   Removed Sparkle XPC services (non-sandboxed app)"
+    fi
+
+    # Copy shared OpenSSL dylibs into Frameworks
+    echo "📦 Copying OpenSSL shared dylibs to Frameworks/..."
+    FRAMEWORKS_EMBED_DIR="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks"
+    mkdir -p "$FRAMEWORKS_EMBED_DIR"
+    for lib in libcrypto.3.dylib libssl.3.dylib; do
+        if [ -f "Libs/dylibs/$lib" ]; then
+            cp -f "Libs/dylibs/$lib" "$FRAMEWORKS_EMBED_DIR/$lib"
+            chmod 644 "$FRAMEWORKS_EMBED_DIR/$lib"
+            echo "   Copied $lib"
+        else
+            echo "   WARNING: Libs/dylibs/$lib not found"
+        fi
+    done
+
+    # Bundle non-system dynamic libraries (libpq, etc.)
     bundle_dylibs "$BUILD_DIR/$OUTPUT_NAME"
 
     # Sign the entire app bundle with Developer ID.
-    # Must deep-sign all nested executables (Sparkle has XPC services, helper apps).
     # Sign from inside out: nested binaries → frameworks → dylibs → app.
     echo "🔏 Signing app bundle with: $SIGN_IDENTITY"
     FRAMEWORKS_DIR="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks"
@@ -488,6 +552,14 @@ build_for_arch() {
             codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$plugin"
         done
     fi
+
+    # Sign helper executables in Contents/MacOS (e.g., mcp-server)
+    MACOS_DIR="$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS"
+    for helper in "$MACOS_DIR"/*; do
+        [ -f "$helper" ] || continue
+        [ "$(basename "$helper")" = "TablePro" ] && continue
+        codesign -fs "$SIGN_IDENTITY" --force --options runtime --timestamp "$helper"
+    done
 
     # Embed provisioning profile (required for iCloud entitlements)
     PROFILE=$(find ~/Library/MobileDevice/Provisioning\ Profiles -name "*.provisionprofile" -print -quit 2>/dev/null)

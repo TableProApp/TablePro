@@ -42,9 +42,9 @@ extension MainContentCoordinator {
         // Fast path: referenced table is already the active tab — just apply filter
         if let current = tabManager.selectedTab,
            current.tabType == .table,
-           current.tableName == referencedTable,
-           current.databaseName == currentDatabase,
-           current.schemaName == targetSchema {
+           current.tableContext.tableName == referencedTable,
+           current.tableContext.databaseName == currentDatabase,
+           current.tableContext.schemaName == targetSchema {
             applyFKFilter(filter, for: referencedTable)
             // Persist so tab switch restore picks it up
             if let idx = tabManager.selectedTabIndex {
@@ -106,7 +106,7 @@ extension MainContentCoordinator {
                 limit: tab.pagination.pageSize,
                 offset: tab.pagination.currentOffset
             )
-            tabManager.tabs[tabIndex].query = filteredQuery
+            tabManager.tabs[tabIndex].content.query = filteredQuery
 
             updateFilterState(filter, for: referencedTable)
 

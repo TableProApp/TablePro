@@ -13,7 +13,7 @@ extension MainContentCoordinator {
     func applyFilters(_ filters: [TableFilter]) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
-              let tableName = tabManager.tabs[tabIndex].tableName else { return }
+              let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
@@ -38,7 +38,7 @@ extension MainContentCoordinator {
                 columnExclusions: exclusions
             )
 
-            self.tabManager.tabs[capturedTabIndex].query = newQuery
+            self.tabManager.tabs[capturedTabIndex].content.query = newQuery
 
             if !capturedFilters.isEmpty {
                 self.filterStateManager.saveLastFilters(for: capturedTableName)
@@ -54,7 +54,7 @@ extension MainContentCoordinator {
     func clearFiltersAndReload() {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
-              let tableName = tabManager.tabs[tabIndex].tableName else { return }
+              let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let capturedTabIndex = tabIndex
         let capturedTableName = tableName
@@ -73,7 +73,7 @@ extension MainContentCoordinator {
                 columnExclusions: exclusions
             )
 
-            self.tabManager.tabs[capturedTabIndex].query = newQuery
+            self.tabManager.tabs[capturedTabIndex].content.query = newQuery
             self.tabManager.tabs[capturedTabIndex].filterState = self.filterStateManager.saveToTabState()
             self.runQuery()
         }
@@ -90,7 +90,7 @@ extension MainContentCoordinator {
 
     func rebuildTableQuery(at tabIndex: Int) {
         guard tabIndex < tabManager.tabs.count,
-              let tableName = tabManager.tabs[tabIndex].tableName else { return }
+              let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = tabManager.tabs[tabIndex]
         let hasFilters = filterStateManager.hasAppliedFilters
@@ -119,6 +119,6 @@ extension MainContentCoordinator {
             )
         }
 
-        tabManager.tabs[tabIndex].query = newQuery
+        tabManager.tabs[tabIndex].content.query = newQuery
     }
 }

@@ -28,12 +28,30 @@ final class ResultSet: Identifiable {
     var pagination = PaginationState()
     var columnLayout = ColumnLayoutState()
 
-    // Column metadata
-    var columnTypes: [ColumnType] = []
-    var columnDefaults: [String: String?] = [:]
-    var columnForeignKeys: [String: ForeignKeyInfo] = [:]
-    var columnEnumValues: [String: [String]] = [:]
-    var columnNullable: [String: Bool] = [:]
+    var columnTypes: [ColumnType] {
+        get { rowBuffer.columnTypes }
+        set { rowBuffer.columnTypes = newValue }
+    }
+
+    var columnDefaults: [String: String?] {
+        get { rowBuffer.columnDefaults }
+        set { rowBuffer.columnDefaults = newValue }
+    }
+
+    var columnForeignKeys: [String: ForeignKeyInfo] {
+        get { rowBuffer.columnForeignKeys }
+        set { rowBuffer.columnForeignKeys = newValue }
+    }
+
+    var columnEnumValues: [String: [String]] {
+        get { rowBuffer.columnEnumValues }
+        set { rowBuffer.columnEnumValues = newValue }
+    }
+
+    var columnNullable: [String: Bool] {
+        get { rowBuffer.columnNullable }
+        set { rowBuffer.columnNullable = newValue }
+    }
 
     var resultColumns: [String] { rowBuffer.columns }
     var resultRows: [[String?]] { rowBuffer.rows }

@@ -56,7 +56,7 @@ struct CreateTableView: View {
 
         let manager = StructureChangeManager()
         _structureChangeManager = State(wrappedValue: manager)
-        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(structureManager: manager))
+        _wrappedChangeManager = State(wrappedValue: AnyChangeManager(manager))
         _gridDelegate = State(wrappedValue: CreateTableGridDelegate(
             structureChangeManager: manager,
             structureTab: .columns,

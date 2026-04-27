@@ -482,20 +482,27 @@ internal enum LibSSH2TunnelFactory {
             return PasswordAuthenticator(password: sshPassword)
 
         case .privateKey:
-            let primary = buildKeyFileAuthenticator(
-                keyPath: config.privateKeyPath,
-                providedPassphrase: credentials.keyPassphrase,
-                configEntry: configEntry,
-                canPrompt: true
-            )
+            let keyPaths = resolveIdentityFiles(privateKeyPath: config.privateKeyPath, configEntry: configEntry)
+            guard !keyPaths.isEmpty else {
+                throw SSHTunnelError.authenticationFailed
+            }
+            var authenticators: [any SSHAuthenticator] = keyPaths.map { keyPath in
+                buildKeyFileAuthenticator(
+                    keyPath: keyPath,
+                    providedPassphrase: credentials.keyPassphrase,
+                    configEntry: configEntry,
+                    canPrompt: true
+                )
+            }
             if config.totpMode != .none {
-                let totpAuth = KeyboardInteractiveAuthenticator(
+                authenticators.append(KeyboardInteractiveAuthenticator(
                     password: nil,
                     totpProvider: buildTOTPProvider(config: config, credentials: credentials)
-                )
-                return CompositeAuthenticator(authenticators: [primary, totpAuth])
+                ))
             }
-            return primary
+            return authenticators.count == 1
+                ? authenticators[0]
+                : CompositeAuthenticator(authenticators: authenticators)
 
         case .sshAgent:
             // Resolve agent socket: UI config > SSH config IdentityAgent > system default
@@ -511,7 +518,7 @@ internal enum LibSSH2TunnelFactory {
             var authenticators: [any SSHAuthenticator] = [AgentAuthenticator(socketPath: socketPath)]
 
             // Fallback: try key files if agent has no loaded identities
-            for keyPath in resolveIdentityFiles(config: config, configEntry: configEntry) {
+            for keyPath in resolveIdentityFiles(privateKeyPath: config.privateKeyPath, configEntry: configEntry) {
                 authenticators.append(buildKeyFileAuthenticator(
                     keyPath: keyPath,
                     providedPassphrase: credentials.keyPassphrase,
@@ -634,13 +641,22 @@ internal enum LibSSH2TunnelFactory {
 
         switch jumpHost.authMethod {
         case .privateKey:
-            return KeyFileAuthenticator(
-                keyPath: jumpHost.privateKeyPath,
-                providedPassphrase: nil,
-                canPrompt: true,
-                useKeychain: configEntry?.useKeychain ?? true,
-                addKeysToAgent: configEntry?.addKeysToAgent ?? false
-            )
+            let keyPaths = resolveIdentityFiles(privateKeyPath: jumpHost.privateKeyPath, configEntry: configEntry)
+            guard !keyPaths.isEmpty else {
+                throw SSHTunnelError.authenticationFailed
+            }
+            let authenticators = keyPaths.map { path in
+                KeyFileAuthenticator(
+                    keyPath: path,
+                    providedPassphrase: nil,
+                    canPrompt: true,
+                    useKeychain: configEntry?.useKeychain ?? true,
+                    addKeysToAgent: configEntry?.addKeysToAgent ?? false
+                )
+            }
+            return authenticators.count == 1
+                ? authenticators[0]
+                : CompositeAuthenticator(authenticators: authenticators)
         case .sshAgent:
             let socketPath = configEntry?.identityAgent
             let agent = AgentAuthenticator(socketPath: socketPath)
@@ -658,37 +674,25 @@ internal enum LibSSH2TunnelFactory {
         }
     }
 
-    /// Resolve identity file paths for key file authentication.
-    /// Priority: user-configured path > SSH config IdentityFile(s) > default key paths.
-    /// Respects `IdentitiesOnly` — skips default paths when set.
-    /// Returns multiple paths when SSH config has multiple IdentityFile directives.
     private static func resolveIdentityFiles(
-        config: SSHConfiguration,
+        privateKeyPath: String,
         configEntry: SSHConfigEntry?
     ) -> [String] {
-        // User-configured path in the connection UI always takes priority
-        if !config.privateKeyPath.isEmpty {
-            return [config.privateKeyPath]
+        if !privateKeyPath.isEmpty {
+            return [privateKeyPath]
         }
-
-        // SSH config IdentityFile(s) — try all in order
         if let files = configEntry?.identityFiles, !files.isEmpty {
             return files
         }
-
-        // When IdentitiesOnly is set, don't try default key paths
         if configEntry?.identitiesOnly == true {
             return []
         }
-
-        // Fall back to default key paths
         let sshDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh", isDirectory: true)
         return ["id_ed25519", "id_rsa", "id_ecdsa"]
             .map { sshDir.appendingPathComponent($0).path }
             .filter { FileManager.default.isReadableFile(atPath: $0) }
     }
-
 
     private static func buildTOTPProvider(
         config: SSHConfiguration,

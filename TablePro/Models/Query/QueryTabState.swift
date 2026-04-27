@@ -5,6 +5,11 @@
 
 import Foundation
 
+@MainActor @Observable
+final class GridSelectionState {
+    var indices: Set<Int> = []
+}
+
 /// Type of tab
 enum TabType: Equatable, Codable, Hashable {
     case query            // SQL editor tab
@@ -228,4 +233,73 @@ struct ColumnLayoutState: Equatable {
     var columnWidths: [String: CGFloat] = [:]
     var columnOrder: [String]?
     var hiddenColumns: Set<String> = []
+}
+
+struct TabExecutionState: Equatable {
+    var isExecuting: Bool = false
+    var executionTime: TimeInterval?
+    var statusMessage: String?
+    var errorMessage: String?
+    var rowsAffected: Int = 0
+    var lastExecutedAt: Date?
+
+    static func == (lhs: TabExecutionState, rhs: TabExecutionState) -> Bool {
+        lhs.isExecuting == rhs.isExecuting
+            && lhs.executionTime == rhs.executionTime
+            && lhs.statusMessage == rhs.statusMessage
+            && lhs.errorMessage == rhs.errorMessage
+            && lhs.rowsAffected == rhs.rowsAffected
+    }
+}
+
+struct TabTableContext: Equatable {
+    var tableName: String?
+    var databaseName: String = ""
+    var schemaName: String?
+    var primaryKeyColumns: [String] = []
+    var isEditable: Bool = false
+    var isView: Bool = false
+
+    var primaryKeyColumn: String? { primaryKeyColumns.first }
+}
+
+struct TabQueryContent: Equatable {
+    var query: String = ""
+    var queryParameters: [QueryParameter] = []
+    var isParameterPanelVisible: Bool = false
+    var sourceFileURL: URL?
+    var savedFileContent: String?
+
+    static let maxPersistableQuerySize = 500_000
+
+    var isFileDirty: Bool {
+        guard sourceFileURL != nil, let saved = savedFileContent else { return false }
+        let queryNS = query as NSString
+        let savedNS = saved as NSString
+        if queryNS.length != savedNS.length { return true }
+        return queryNS != savedNS
+    }
+}
+
+struct TabDisplayState: Equatable {
+    var resultsViewMode: ResultsViewMode = .data
+    var erDiagramSchemaKey: String?
+    var explainText: String?
+    var explainExecutionTime: TimeInterval?
+    var explainPlan: QueryPlan?
+    var isResultsCollapsed: Bool = false
+    var resultSets: [ResultSet] = []
+    var activeResultSetId: UUID?
+
+    var activeResultSet: ResultSet? {
+        guard let id = activeResultSetId else { return resultSets.last }
+        return resultSets.first { $0.id == id }
+    }
+
+    static func == (lhs: TabDisplayState, rhs: TabDisplayState) -> Bool {
+        lhs.resultsViewMode == rhs.resultsViewMode
+            && lhs.isResultsCollapsed == rhs.isResultsCollapsed
+            && lhs.resultSets.map(\.id) == rhs.resultSets.map(\.id)
+            && lhs.activeResultSetId == rhs.activeResultSetId
+    }
 }

@@ -379,6 +379,10 @@ extension PluginManager {
         return dialect.autoLimitStyle
     }
 
+    func usesTrueFalseBooleans(for databaseType: DatabaseType) -> Bool {
+        sqlDialect(for: databaseType)?.booleanLiteralStyle == .truefalse
+    }
+
     func paginationStyle(for databaseType: DatabaseType) -> SQLDialectDescriptor.PaginationStyle {
         sqlDialect(for: databaseType)?.paginationStyle ?? .limit
     }

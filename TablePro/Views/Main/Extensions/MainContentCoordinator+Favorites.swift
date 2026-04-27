@@ -16,12 +16,12 @@ extension MainContentCoordinator {
 
         if let tabIndex = tabManager.selectedTabIndex,
            tabManager.tabs[tabIndex].tabType == .query {
-            let existing = tabManager.tabs[tabIndex].query
+            let existing = tabManager.tabs[tabIndex].content.query
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             if existing.isEmpty {
-                tabManager.tabs[tabIndex].query = favorite.query
+                tabManager.tabs[tabIndex].content.query = favorite.query
             } else {
-                tabManager.tabs[tabIndex].query += "\n\n" + favorite.query
+                tabManager.tabs[tabIndex].content.query += "\n\n" + favorite.query
             }
         } else {
             runFavoriteInNewTab(favorite)
@@ -31,7 +31,7 @@ extension MainContentCoordinator {
     func saveCurrentQueryAsFavorite() {
         guard let tab = tabManager.selectedTab,
               tab.tabType == .query else { return }
-        let query = tab.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
         NotificationCenter.default.post(
             name: .saveAsFavoriteRequested,
@@ -49,8 +49,8 @@ extension MainContentCoordinator {
 
         if let tabIndex = tabManager.selectedTabIndex,
            tabManager.tabs[tabIndex].tabType == .query,
-           tabManager.tabs[tabIndex].query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            tabManager.tabs[tabIndex].query = favorite.query
+           tabManager.tabs[tabIndex].content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            tabManager.tabs[tabIndex].content.query = favorite.query
             return
         }
 

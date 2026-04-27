@@ -21,7 +21,7 @@ extension TableViewCoordinator {
             )
         }
 
-        guard columnId.hasPrefix("col_"), let columnIndex = Int(columnId.dropFirst(4)) else { return nil }
+        guard let columnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return nil }
 
         guard row >= 0 && row < cachedRowCount,
               columnIndex >= 0 && columnIndex < cachedColumnCount else {
@@ -32,7 +32,7 @@ extension TableViewCoordinator {
         let displayValue = rowProvider.displayValue(atRow: row, column: columnIndex)
         let state = visualState(for: row)
 
-        let tableColumnIndex = columnIndex + 1
+        let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
         let isFocused: Bool = {
             guard let keyTableView = tableView as? KeyHandlingTableView,
                   keyTableView.focusedRow == row,

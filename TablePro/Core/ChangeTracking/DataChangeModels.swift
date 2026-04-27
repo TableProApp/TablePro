@@ -75,7 +75,8 @@ enum UndoAction {
             columnIndex: Int,
             columnName: String,
             previousValue: String?,
-            newValue: String?
+            newValue: String?,
+            originalRow: [String?]?
          )
     case rowInsertion(rowIndex: Int)
     case rowDeletion(rowIndex: Int, originalRow: [String?])

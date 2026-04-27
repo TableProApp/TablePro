@@ -55,9 +55,15 @@ extension ConnectionFormView {
                     NSApplication.shared.closeWindows(withId: "connection-form")
                 }
 
-                // Save
-                Button(isNew ? String(localized: "Create") : String(localized: "Save")) {
-                    saveConnection()
+                if isNew {
+                    Button(String(localized: "Save")) {
+                        saveConnection(connect: false)
+                    }
+                    .disabled(isInstallingPlugin || !isValid)
+                }
+
+                Button(isNew ? String(localized: "Save & Connect") : String(localized: "Save")) {
+                    saveConnection(connect: isNew)
                 }
                 .keyboardShortcut(.return)
                 .buttonStyle(.borderedProminent)

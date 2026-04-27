@@ -62,9 +62,9 @@ final class QueryTabManager {
 
     func addTab(initialQuery: String? = nil, title: String? = nil, databaseName: String = "", sourceFileURL: URL? = nil) {
         if let sourceFileURL,
-           let existingIndex = tabs.firstIndex(where: { $0.sourceFileURL == sourceFileURL }) {
+           let existingIndex = tabs.firstIndex(where: { $0.content.sourceFileURL == sourceFileURL }) {
             if let query = initialQuery {
-                tabs[existingIndex].query = query
+                tabs[existingIndex].content.query = query
             }
             selectedTabId = tabs[existingIndex].id
             return
@@ -74,14 +74,14 @@ final class QueryTabManager {
         var newTab = QueryTab(title: tabTitle, tabType: .query)
 
         if let query = initialQuery {
-            newTab.query = query
+            newTab.content.query = query
             newTab.hasUserInteraction = true
         }
 
-        newTab.databaseName = databaseName
-        newTab.sourceFileURL = sourceFileURL
+        newTab.tableContext.databaseName = databaseName
+        newTab.content.sourceFileURL = sourceFileURL
         if sourceFileURL != nil {
-            newTab.savedFileContent = newTab.query
+            newTab.content.savedFileContent = newTab.content.query
         }
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -93,9 +93,8 @@ final class QueryTabManager {
         databaseName: String = "",
         quoteIdentifier: ((String) -> String)? = nil
     ) {
-        // Check if table tab already exists (match on databaseName)
         if let existingTab = tabs.first(where: {
-            $0.tabType == .table && $0.tableName == tableName && $0.databaseName == databaseName
+            $0.tabType == .table && $0.tableContext.tableName == tableName && $0.tableContext.databaseName == databaseName
         }) {
             selectedTabId = existingTab.id
             return
@@ -112,7 +111,7 @@ final class QueryTabManager {
             tableName: tableName
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
-        newTab.databaseName = databaseName
+        newTab.tableContext.databaseName = databaseName
         tabs.append(newTab)
         selectedTabId = newTab.id
     }
@@ -120,8 +119,8 @@ final class QueryTabManager {
     func addCreateTableTab(databaseName: String = "") {
         let tabTitle = String(localized: "Create Table")
         var newTab = QueryTab(title: tabTitle, tabType: .createTable)
-        newTab.databaseName = databaseName
-        newTab.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -130,9 +129,9 @@ final class QueryTabManager {
     func addERDiagramTab(schemaKey: String, databaseName: String = "") {
         let tabTitle = String(localized: "ER Diagram")
         var newTab = QueryTab(title: tabTitle, tabType: .erDiagram)
-        newTab.databaseName = databaseName
-        newTab.erDiagramSchemaKey = schemaKey
-        newTab.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.display.erDiagramSchemaKey = schemaKey
+        newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -145,7 +144,7 @@ final class QueryTabManager {
         }
         let tabTitle = String(localized: "Server Dashboard")
         var newTab = QueryTab(title: tabTitle, tabType: .serverDashboard)
-        newTab.isEditable = false
+        newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -158,8 +157,8 @@ final class QueryTabManager {
         }
         let tabTitle = String(localized: "Terminal")
         var newTab = QueryTab(title: tabTitle, tabType: .terminal)
-        newTab.databaseName = databaseName
-        newTab.isEditable = false
+        newTab.tableContext.databaseName = databaseName
+        newTab.tableContext.isEditable = false
         newTab.hasUserInteraction = true
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -182,7 +181,7 @@ final class QueryTabManager {
             tableName: tableName
         )
         newTab.pagination = PaginationState(pageSize: pageSize)
-        newTab.databaseName = databaseName
+        newTab.tableContext.databaseName = databaseName
         newTab.isPreview = true
         tabs.append(newTab)
         selectedTabId = newTab.id
@@ -212,30 +211,29 @@ final class QueryTabManager {
         )
         let pageSize = AppSettingsManager.shared.dataGrid.defaultPageSize
 
-        // Build locally and write back once to avoid 14 CoW copies (UI-11).
         var tab = tabs[selectedIndex]
         tab.rowBuffer = RowBuffer()
         tab.tabType = .table
         tab.title = tableName
-        tab.tableName = tableName
-        tab.query = query
+        tab.tableContext.tableName = tableName
+        tab.content.query = query
         tab.resultVersion += 1
-        tab.executionTime = nil
-        tab.statusMessage = nil
-        tab.errorMessage = nil
-        tab.lastExecutedAt = nil
-        tab.resultsViewMode = .data
+        tab.execution.executionTime = nil
+        tab.execution.statusMessage = nil
+        tab.execution.errorMessage = nil
+        tab.execution.lastExecutedAt = nil
+        tab.display.resultsViewMode = .data
         tab.sortState = SortState()
         tab.selectedRowIndices = []
         tab.pendingChanges = TabPendingChanges()
         tab.hasUserInteraction = false
-        tab.isView = isView
-        tab.isEditable = !isView
+        tab.tableContext.isView = isView
+        tab.tableContext.isEditable = !isView
         tab.filterState = TabFilterState()
         tab.columnLayout = ColumnLayoutState()
         tab.pagination = PaginationState(pageSize: pageSize)
-        tab.databaseName = databaseName
-        tab.schemaName = schemaName
+        tab.tableContext.databaseName = databaseName
+        tab.tableContext.schemaName = schemaName
         tab.isPreview = isPreview
         tabs[selectedIndex] = tab
         return true

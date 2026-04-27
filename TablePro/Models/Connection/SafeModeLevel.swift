@@ -78,4 +78,13 @@ internal extension SafeModeLevel {
         case .safeMode, .safeModeFull, .readOnly: return Color(nsColor: .systemRed)
         }
     }
+
+    static func from(urlInteger value: Int) -> SafeModeLevel? {
+        switch value {
+        case 0: return .silent
+        case 1: return .alert
+        case 2: return .readOnly
+        default: return nil
+        }
+    }
 }

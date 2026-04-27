@@ -28,7 +28,7 @@ final class MainContentCommandActions {
 
     // MARK: - Bindings
 
-    @ObservationIgnored private let selectedRowIndices: Binding<Set<Int>>
+    @ObservationIgnored private let selectionState: GridSelectionState
     @ObservationIgnored private let selectedTables: Binding<Set<TableInfo>>
     @ObservationIgnored private let pendingTruncates: Binding<Set<String>>
     @ObservationIgnored private let pendingDeletes: Binding<Set<String>>
@@ -50,7 +50,7 @@ final class MainContentCommandActions {
         coordinator: MainContentCoordinator,
         filterStateManager: FilterStateManager,
         connection: DatabaseConnection,
-        selectedRowIndices: Binding<Set<Int>>,
+        selectionState: GridSelectionState,
         selectedTables: Binding<Set<TableInfo>>,
         pendingTruncates: Binding<Set<String>>,
         pendingDeletes: Binding<Set<String>>,
@@ -61,7 +61,7 @@ final class MainContentCommandActions {
         self.coordinator = coordinator
         self.filterStateManager = filterStateManager
         self.connection = connection
-        self.selectedRowIndices = selectedRowIndices
+        self.selectionState = selectionState
         self.selectedTables = selectedTables
         self.pendingTruncates = pendingTruncates
         self.pendingDeletes = pendingDeletes
@@ -121,7 +121,6 @@ final class MainContentCommandActions {
             Task {
                 do {
                     try await self.coordinator?.saveSidebarEdits(
-                        selectedRowIndices: self.selectedRowIndices.wrappedValue,
                         editState: self.rightPanelState.editState
                     )
                 } catch {
@@ -166,16 +165,14 @@ final class MainContentCommandActions {
         // the public methods re-post these notifications for structure view.
         observeKeyWindowOnly(.copySelectedRows) { [weak self] _ in
             guard let self else { return }
-            let indices = self.selectedRowIndices.wrappedValue
+            let indices = self.selectionState.indices
             self.coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
 
         observeKeyWindowOnly(.pasteRows) { [weak self] _ in
             guard let self else { return }
-            var indices = self.selectedRowIndices.wrappedValue
             var cell = self.editingCell.wrappedValue
-            self.coordinator?.pasteRows(selectedRowIndices: &indices, editingCell: &cell)
-            self.selectedRowIndices.wrappedValue = indices
+            self.coordinator?.pasteRows(editingCell: &cell)
             self.editingCell.wrappedValue = cell
         }
     }
@@ -183,23 +180,17 @@ final class MainContentCommandActions {
     // MARK: - Row Operations (Group A — Called Directly)
 
     func addNewRow() {
-        var indices = selectedRowIndices.wrappedValue
         var cell = editingCell.wrappedValue
-        coordinator?.addNewRow(selectedRowIndices: &indices, editingCell: &cell)
-        selectedRowIndices.wrappedValue = indices
+        coordinator?.addNewRow(editingCell: &cell)
         editingCell.wrappedValue = cell
     }
 
     func deleteSelectedRows(rowIndices: Set<Int>? = nil) {
-        // When rowIndices is provided (from data grid), use them directly
-        // This avoids relying on SwiftUI binding sync timing
         let fromDataGrid = rowIndices != nil
 
-        let indices = rowIndices ?? selectedRowIndices.wrappedValue
+        let indices = rowIndices ?? selectionState.indices
         if !indices.isEmpty {
-            var mutableIndices = indices
-            coordinator?.deleteSelectedRows(indices: indices, selectedRowIndices: &mutableIndices)
-            selectedRowIndices.wrappedValue = mutableIndices
+            coordinator?.deleteSelectedRows(indices: indices)
         } else if !fromDataGrid, !selectedTables.wrappedValue.isEmpty {
             // Only toggle table deletion when the call did NOT originate from
             // the data grid (e.g., from the app menu Cmd+Delete with no rows selected)
@@ -221,43 +212,39 @@ final class MainContentCommandActions {
     }
 
     func duplicateRow() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         guard let selectedIndex = indices.first, indices.count == 1 else { return }
 
-        var mutableIndices = indices
         var cell = editingCell.wrappedValue
-        coordinator?.duplicateSelectedRow(index: selectedIndex, selectedRowIndices: &mutableIndices, editingCell: &cell)
-        selectedRowIndices.wrappedValue = mutableIndices
+        coordinator?.duplicateSelectedRow(index: selectedIndex, editingCell: &cell)
         editingCell.wrappedValue = cell
     }
 
     func copySelectedRows() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
-            let indices = selectedRowIndices.wrappedValue
+            let indices = selectionState.indices
             coordinator?.copySelectedRowsToClipboard(indices: indices)
         }
     }
 
     func copySelectedRowsWithHeaders() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         coordinator?.copySelectedRowsWithHeaders(indices: indices)
     }
 
     func copySelectedRowsAsJson() {
-        let indices = selectedRowIndices.wrappedValue
+        let indices = selectionState.indices
         coordinator?.copySelectedRowsAsJson(indices: indices)
     }
 
     func pasteRows() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
-            var indices = selectedRowIndices.wrappedValue
             var cell = editingCell.wrappedValue
-            coordinator?.pasteRows(selectedRowIndices: &indices, editingCell: &cell)
-            selectedRowIndices.wrappedValue = indices
+            coordinator?.pasteRows(editingCell: &cell)
             editingCell.wrappedValue = cell
         }
     }
@@ -282,7 +269,7 @@ final class MainContentCommandActions {
     }
 
     var isCurrentTabEditable: Bool {
-        coordinator?.tabManager.selectedTab?.isEditable == true
+        coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
     }
 
     var isTableTab: Bool {
@@ -290,7 +277,7 @@ final class MainContentCommandActions {
     }
 
     var hasRowSelection: Bool {
-        !selectedRowIndices.wrappedValue.isEmpty
+        !selectionState.indices.isEmpty
     }
 
     var hasTableSelection: Bool {
@@ -298,7 +285,7 @@ final class MainContentCommandActions {
     }
 
     var hasQueryText: Bool {
-        !(coordinator?.tabManager.selectedTab?.query.isEmpty ?? true)
+        !(coordinator?.tabManager.selectedTab?.content.query.isEmpty ?? true)
     }
 
     /// Whether there are pending data changes that the SQL preview can show.
@@ -325,7 +312,7 @@ final class MainContentCommandActions {
         let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty
         let hasSidebarEdits = rightPanelState.editState.hasEdits
-        let hasFileDirty = coordinator?.tabManager.selectedTab?.isFileDirty ?? false
+        let hasFileDirty = coordinator?.tabManager.selectedTab?.content.isFileDirty ?? false
         return hasEditedCells || hasPendingTableOps || hasSidebarEdits || hasFileDirty
     }
 
@@ -410,7 +397,7 @@ final class MainContentCommandActions {
         }
 
         // Structure view saves via direct coordinator call
-        if coordinator.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
             performClose()
             return
@@ -439,7 +426,7 @@ final class MainContentCommandActions {
         }
 
         // File save (query editor with source file)
-        if coordinator.tabManager.selectedTab?.isFileDirty == true {
+        if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
             performClose()
             return
@@ -450,13 +437,13 @@ final class MainContentCommandActions {
 
     private func saveFileToSourceURL() {
         guard let tab = coordinator?.tabManager.selectedTab,
-              let url = tab.sourceFileURL else { return }
-        let content = tab.query
+              let url = tab.content.sourceFileURL else { return }
+        let content = tab.content.query
         Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
                 if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].savedFileContent = content
+                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
                 }
             } catch {
                 // File may have been deleted or become inaccessible
@@ -530,7 +517,7 @@ final class MainContentCommandActions {
 
     func saveChanges() {
         // Check if we're in structure view mode
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()
         } else if coordinator?.changeManager.hasChanges == true
             || !pendingTruncates.wrappedValue.isEmpty
@@ -555,13 +542,13 @@ final class MainContentCommandActions {
         }
         // File save: write query back to source file
         else if let tab = coordinator?.tabManager.selectedTab,
-                tab.sourceFileURL != nil, tab.isFileDirty {
+                tab.content.sourceFileURL != nil, tab.content.isFileDirty {
             saveFileToSourceURL()
         }
         // Save As: untitled query tab with content
         else if let tab = coordinator?.tabManager.selectedTab,
-                tab.tabType == .query, tab.sourceFileURL == nil,
-                !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                tab.tabType == .query, tab.content.sourceFileURL == nil,
+                !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             saveFileAs()
         }
     }
@@ -569,15 +556,15 @@ final class MainContentCommandActions {
     func saveFileAs() {
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .query else { return }
-        let content = tab.query
-        let suggestedName = tab.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
+        let content = tab.content.query
+        let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
         Task {
             guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
                 if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].sourceFileURL = url
-                    coordinator?.tabManager.tabs[index].savedFileContent = content
+                    coordinator?.tabManager.tabs[index].content.sourceFileURL = url
+                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
                     coordinator?.tabManager.tabs[index].title = url.deletingPathExtension().lastPathComponent
                 }
             } catch {
@@ -598,13 +585,13 @@ final class MainContentCommandActions {
     }
 
     func aiExplainQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
         coordinator?.showAIChatPanel()
         coordinator?.aiViewModel?.handleExplainSelection(query)
     }
 
     func aiOptimizeQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
         coordinator?.showAIChatPanel()
         coordinator?.aiViewModel?.handleOptimizeSelection(query)
     }
@@ -631,7 +618,7 @@ final class MainContentCommandActions {
 
     var canSaveAsFavorite: Bool {
         guard let tab = coordinator?.tabManager.selectedTab else { return false }
-        return tab.tabType == .query && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return tab.tabType == .query && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func previewSQL() {
@@ -664,12 +651,12 @@ final class MainContentCommandActions {
 
         do {
             let result = try formatter.format(
-                tab.query,
+                tab.content.query,
                 dialect: dbType,
                 cursorOffset: 0,
                 options: options
             )
-            coordinator.tabManager.tabs[tabIndex].query = result.formattedSQL
+            coordinator.tabManager.tabs[tabIndex].content.query = result.formattedSQL
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
@@ -687,34 +674,34 @@ final class MainContentCommandActions {
 
     func toggleResults() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        coordinator.tabManager.tabs[tabIndex].isResultsCollapsed.toggle()
-        coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].isResultsCollapsed
+        coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
+        coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 
     func previousResultTab() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
         let tab = coordinator.tabManager.tabs[tabIndex]
-        guard tab.resultSets.count > 1,
-              let currentId = tab.activeResultSetId ?? tab.resultSets.last?.id,
-              let currentIndex = tab.resultSets.firstIndex(where: { $0.id == currentId }),
+        guard tab.display.resultSets.count > 1,
+              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
+              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex > 0 else { return }
-        coordinator.tabManager.tabs[tabIndex].activeResultSetId = tab.resultSets[currentIndex - 1].id
+        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex - 1].id
     }
 
     func nextResultTab() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
         let tab = coordinator.tabManager.tabs[tabIndex]
-        guard tab.resultSets.count > 1,
-              let currentId = tab.activeResultSetId ?? tab.resultSets.last?.id,
-              let currentIndex = tab.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex < tab.resultSets.count - 1 else { return }
-        coordinator.tabManager.tabs[tabIndex].activeResultSetId = tab.resultSets[currentIndex + 1].id
+        guard tab.display.resultSets.count > 1,
+              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
+              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
+              currentIndex < tab.display.resultSets.count - 1 else { return }
+        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex + 1].id
     }
 
     func closeResultTab() {
         guard let coordinator else { return }
         let tab = coordinator.tabManager.selectedTab
-        guard let activeId = tab?.activeResultSetId ?? tab?.resultSets.last?.id else { return }
+        guard let activeId = tab?.display.activeResultSetId ?? tab?.display.resultSets.last?.id else { return }
         coordinator.closeResultSet(id: activeId)
     }
 
@@ -731,17 +718,15 @@ final class MainContentCommandActions {
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
-            var indices = selectedRowIndices.wrappedValue
-            coordinator?.undoLastChange(selectedRowIndices: &indices)
-            selectedRowIndices.wrappedValue = indices
+            coordinator?.undoLastChange()
         }
     }
 
     func redoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
         } else {
             coordinator?.redoLastChange()

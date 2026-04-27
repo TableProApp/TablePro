@@ -26,19 +26,19 @@ struct SSHConfigurationTests {
         #expect(config.isValid == true)
     }
 
-    @Test("Private key auth requires non-empty key path")
-    func testPrivateKeyAuthRequiresPath() {
-        let invalid = SSHConfiguration(
+    @Test("Private key auth valid without explicit key path")
+    func testPrivateKeyAuthValidWithoutPath() {
+        let config = SSHConfiguration(
             enabled: true, host: "example.com", username: "admin",
             authMethod: .privateKey, privateKeyPath: ""
         )
-        #expect(invalid.isValid == false)
+        #expect(config.isValid == true)
 
-        let valid = SSHConfiguration(
+        let withPath = SSHConfiguration(
             enabled: true, host: "example.com", username: "admin",
             authMethod: .privateKey, privateKeyPath: "~/.ssh/id_rsa"
         )
-        #expect(valid.isValid == true)
+        #expect(withPath.isValid == true)
     }
 
     @Test("SSH Agent auth is valid without any key path")

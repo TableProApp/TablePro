@@ -18,6 +18,7 @@ struct ParsedConnectionURL {
     let sshHost: String?
     let sshPort: Int?
     let sshUsername: String?
+    let sshPassword: String?
     let usePrivateKey: Bool?
     let useSSHAgent: Bool?
     let agentSocket: String?
@@ -33,6 +34,7 @@ struct ParsedConnectionURL {
     let filterValue: String?
     let filterCondition: String?
     let oracleServiceName: String?
+    let safeModeLevel: Int?
     let useSrv: Bool
     let mongoQueryParams: [String: String]
     let multiHost: String?
@@ -118,6 +120,7 @@ struct ConnectionURLParser {
                 sshHost: nil,
                 sshPort: nil,
                 sshUsername: nil,
+                sshPassword: nil,
                 usePrivateKey: nil,
                 useSSHAgent: nil,
                 agentSocket: nil,
@@ -133,6 +136,7 @@ struct ConnectionURLParser {
                 filterValue: nil,
                 filterCondition: nil,
                 oracleServiceName: nil,
+                safeModeLevel: nil,
                 useSrv: false,
                 mongoQueryParams: [:],
                 multiHost: nil
@@ -221,6 +225,7 @@ struct ConnectionURLParser {
             sshHost: nil,
             sshPort: nil,
             sshUsername: nil,
+            sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
             agentSocket: nil,
@@ -236,6 +241,7 @@ struct ConnectionURLParser {
             filterValue: ext.filterValue,
             filterCondition: ext.filterCondition,
             oracleServiceName: oracleServiceName,
+            safeModeLevel: ext.safeModeLevel,
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil
@@ -297,10 +303,19 @@ struct ConnectionURLParser {
         let dbPart = String(mainPart[mainPart.index(after: firstSlash)...])
 
         var sshUsername: String?
+        var sshPassword: String?
         var sshHostPort: String
         if let atIndex = sshPart.firstIndex(of: "@") {
-            sshUsername = String(sshPart[sshPart.startIndex..<atIndex])
-                .removingPercentEncoding
+            let userinfo = String(sshPart[sshPart.startIndex..<atIndex])
+            if let colonIndex = userinfo.firstIndex(of: ":") {
+                sshUsername = String(userinfo[userinfo.startIndex..<colonIndex])
+                    .removingPercentEncoding
+                let rawPass = String(userinfo[userinfo.index(after: colonIndex)...])
+                    .removingPercentEncoding ?? ""
+                sshPassword = rawPass.isEmpty ? nil : rawPass
+            } else {
+                sshUsername = userinfo.removingPercentEncoding
+            }
             sshHostPort = String(sshPart[sshPart.index(after: atIndex)...])
         } else {
             sshHostPort = sshPart
@@ -386,6 +401,7 @@ struct ConnectionURLParser {
             sshHost: sshHost,
             sshPort: sshPort,
             sshUsername: sshUsername,
+            sshPassword: sshPassword,
             usePrivateKey: ext.usePrivateKey,
             useSSHAgent: ext.useSSHAgent,
             agentSocket: ext.agentSocket,
@@ -401,6 +417,7 @@ struct ConnectionURLParser {
             filterValue: ext.filterValue,
             filterCondition: ext.filterCondition,
             oracleServiceName: oracleServiceName,
+            safeModeLevel: ext.safeModeLevel,
             useSrv: ext.useSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: nil
@@ -482,6 +499,7 @@ struct ConnectionURLParser {
             sshHost: nil,
             sshPort: nil,
             sshUsername: nil,
+            sshPassword: nil,
             usePrivateKey: nil,
             useSSHAgent: nil,
             agentSocket: nil,
@@ -497,6 +515,7 @@ struct ConnectionURLParser {
             filterValue: ext.filterValue,
             filterCondition: ext.filterCondition,
             oracleServiceName: nil,
+            safeModeLevel: ext.safeModeLevel,
             useSrv: isSrv,
             mongoQueryParams: ext.mongoQueryParams,
             multiHost: multiHost
@@ -521,6 +540,7 @@ struct ConnectionURLParser {
         var filterOperation: String?
         var filterValue: String?
         var filterCondition: String?
+        var safeModeLevel: Int?
         var useSrv: Bool = false
         var mongoQueryParams: [String: String] = [:]
     }
@@ -544,15 +564,16 @@ struct ConnectionURLParser {
             guard let key = parts.first else { continue }
             let value = parts.count > 1 ? String(parts[1]) : nil
             guard let value else { continue }
-            if String(key) == "usePrivateKey" {
+            let keyStr = String(key).lowercased()
+            if keyStr == "useprivatekey" {
                 ext.usePrivateKey = value.lowercased() == "true"
                 continue
             }
-            if String(key) == "useSSHAgent" {
+            if keyStr == "usesshagent" {
                 ext.useSSHAgent = value.lowercased() == "true"
                 continue
             }
-            if String(key) == "agentSocket" {
+            if keyStr == "agentsocket" {
                 ext.agentSocket = value.removingPercentEncoding ?? value
                 continue
             }
@@ -561,13 +582,14 @@ struct ConnectionURLParser {
         return ext
     }
 
-    private static func applyQueryParam(key: String, value: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+    private static func applyQueryParam(key rawKey: String, value: String, to ext: inout ExtendedParams, dbType: DatabaseType? = nil) {
+        let key = rawKey.lowercased()
         switch key {
         case "sslmode":
             ext.sslMode = parseSSLMode(value)
-        case "authSource", "authsource":
+        case "authsource":
             ext.authSource = value
-        case "statusColor", "statuscolor":
+        case "statuscolor":
             ext.statusColor = value
         case "env":
             ext.envTag = value.removingPercentEncoding ?? value
@@ -593,7 +615,7 @@ struct ConnectionURLParser {
         case "condition", "raw", "query":
             ext.filterCondition = value.replacingOccurrences(of: "+", with: " ")
                 .removingPercentEncoding ?? value
-        case "tLSMode", "tlsmode":
+        case "tlsmode":
             if ext.sslMode == nil, let intValue = Int(value) {
                 ext.sslMode = parseTlsModeInteger(intValue)
             }
@@ -601,13 +623,15 @@ struct ConnectionURLParser {
             if value.lowercased() == "true" && ext.sslMode == nil {
                 ext.sslMode = .required
             }
-        case "authMechanism", "authmechanism":
+        case "authmechanism":
             ext.mongoQueryParams["authMechanism"] = value
-        case "replicaSet", "replicaset":
+        case "replicaset":
             ext.mongoQueryParams["replicaSet"] = value
+        case "safemodelevel":
+            ext.safeModeLevel = Int(value)
         default:
             if dbType == .mongodb {
-                ext.mongoQueryParams[key] = value
+                ext.mongoQueryParams[rawKey] = value
             }
         }
     }

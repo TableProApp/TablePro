@@ -74,28 +74,7 @@ extension TableViewCoordinator {
 
     @MainActor
     func setCellValueAtColumn(_ value: String?, at rowIndex: Int, columnIndex: Int) {
-        guard let tableView = tableView else { return }
-        guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
-
-        let columnName = rowProvider.columns[columnIndex]
-        let oldValue = rowProvider.value(atRow: rowIndex, column: columnIndex)
-        let originalRow = rowProvider.rowValues(at: rowIndex) ?? []
-
-        changeManager.recordCellChange(
-            rowIndex: rowIndex,
-            columnIndex: columnIndex,
-            columnName: columnName,
-            oldValue: oldValue,
-            newValue: value,
-            originalRow: originalRow
-        )
-
-        rowProvider.updateValue(value, at: rowIndex, columnIndex: columnIndex)
-
-        let tableColumnIndex = columnIndex + 1
-        tableView.reloadData(
-            forRowIndexes: IndexSet(integer: rowIndex),
-            columnIndexes: IndexSet(integer: tableColumnIndex))
+        commitCellEdit(row: rowIndex, columnIndex: columnIndex, newValue: value)
     }
 
     func copyCellValue(at rowIndex: Int, columnIndex: Int) {

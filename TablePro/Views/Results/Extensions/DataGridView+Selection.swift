@@ -42,6 +42,9 @@ extension TableViewCoordinator {
             if newSelection.isEmpty {
                 keyTableView.focusedRow = -1
                 keyTableView.focusedColumn = -1
+            } else if keyTableView.focusedRow < 0, let firstRow = newSelection.min() {
+                keyTableView.focusedRow = firstRow
+                keyTableView.focusedColumn = 1
             }
         }
     }

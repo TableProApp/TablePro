@@ -17,11 +17,6 @@
     "twitter:card": "summary_large_image",
     "twitter:image": "https://tablepro.app/og.png"
   },
-  "api": {
-    "playground": {
-      "display": "interactive"
-    }
-  },
   "navigation": {
     "tabs": [
       {
@@ -164,20 +159,6 @@
         ]
       },
       {
-        "tab": "API",
-        "groups": [
-          {
-            "group": "API reference",
-            "pages": ["api/overview"]
-          },
-          {
-            "group": "License",
-            "icon": "key",
-            "pages": ["api/activate", "api/validate", "api/deactivate"]
-          }
-        ]
-      },
-      {
         "tab": "Development",
         "groups": [
           {
@@ -202,8 +183,8 @@
           "icon": "github"
         },
         {
-          "anchor": "Releases",
-          "href": "https://github.com/TableProApp/TablePro/releases",
+          "anchor": "Download",
+          "href": "https://tablepro.app/download",
           "icon": "download"
         },
         {
@@ -221,10 +202,15 @@
   },
   "logo": {
     "light": "/logo/logo.png",
-    "dark": "/logo/logo.png"
+    "dark": "/logo/logo.png",
+    "href": "https://tablepro.app"
   },
   "navbar": {
     "links": [
+      {
+        "label": "Website",
+        "href": "https://tablepro.app"
+      },
       {
         "label": "Support",
         "href": "mailto:datlechin@gmail.com"
@@ -233,7 +219,7 @@
     "primary": {
       "type": "button",
       "label": "Download",
-      "href": "https://github.com/TableProApp/TablePro/releases"
+      "href": "https://tablepro.app/download"
     }
   },
   "contextual": {
@@ -249,6 +235,7 @@
   },
   "footer": {
     "socials": {
+      "website": "https://tablepro.app",
       "github": "https://github.com/TableProApp/TablePro",
       "discord": "https://discord.gg/hCNmUUbnD4",
       "telegram": "https://t.me/tablepro_app"
