@@ -95,7 +95,7 @@ struct SSHJumpHost: Codable, Hashable, Identifiable {
 
     var isValid: Bool {
         !host.isEmpty && !username.isEmpty &&
-        (authMethod == .sshAgent || !privateKeyPath.isEmpty)
+        (authMethod == .sshAgent || authMethod == .privateKey || !privateKeyPath.isEmpty)
     }
 
     var proxyJumpString: String {
@@ -129,7 +129,7 @@ struct SSHConfiguration: Codable, Hashable {
         case .password:
             authValid = true
         case .privateKey:
-            authValid = !privateKeyPath.isEmpty
+            authValid = true
         case .sshAgent:
             authValid = true
         case .keyboardInteractive:

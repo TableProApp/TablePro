@@ -60,7 +60,7 @@ extension ConnectionFormView {
             let sshValid = !sshState.host.isEmpty && !sshState.username.isEmpty && sshPortValid
             let authValid =
                 sshState.authMethod == .password || sshState.authMethod == .sshAgent
-                || sshState.authMethod == .keyboardInteractive || !sshState.privateKeyPath.isEmpty
+                || sshState.authMethod == .keyboardInteractive || sshState.authMethod == .privateKey
             let jumpValid = sshState.jumpHosts.allSatisfy(\.isValid)
             return basicValid && sshValid && authValid && jumpValid
         }
@@ -564,6 +564,9 @@ extension ConnectionFormView {
                 sshState.host = sshHostValue
                 sshState.port = parsed.sshPort.map(String.init) ?? "22"
                 sshState.username = parsed.sshUsername ?? ""
+                if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
+                    sshState.password = sshPass
+                }
                 if parsed.usePrivateKey == true {
                     sshState.authMethod = .privateKey
                 }
@@ -631,6 +634,14 @@ extension ConnectionFormView {
                 name = connectionName
             } else if name.isEmpty {
                 name = parsed.suggestedName
+            }
+            if let level = parsed.safeModeLevel {
+                switch level {
+                case 0: safeModeLevel = .silent
+                case 1: safeModeLevel = .alert
+                case 2: safeModeLevel = .readOnly
+                default: break
+                }
             }
         case .failure(let error):
             urlParseError = error.localizedDescription

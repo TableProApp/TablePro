@@ -25,7 +25,7 @@ struct ConnectionURLFormatter {
 
         let ssh = connection.resolvedSSHConfig
         if ssh.enabled {
-            return formatSSH(connection, sshConfig: ssh, scheme: scheme, password: password)
+            return formatSSH(connection, sshConfig: ssh, scheme: scheme, password: password, sshPassword: sshPassword)
         }
 
         return formatStandard(connection, scheme: scheme, password: password)
@@ -56,12 +56,17 @@ struct ConnectionURLFormatter {
         _ connection: DatabaseConnection,
         sshConfig ssh: SSHConfiguration,
         scheme: String,
-        password: String?
+        password: String?,
+        sshPassword: String?
     ) -> String {
         var result = "\(scheme)+ssh://"
 
         if !ssh.username.isEmpty {
-            result += "\(percentEncodeUserinfo(ssh.username))@"
+            result += percentEncodeUserinfo(ssh.username)
+            if let sshPassword, !sshPassword.isEmpty {
+                result += ":\(percentEncodeUserinfo(sshPassword))"
+            }
+            result += "@"
         }
         result += ssh.host
         if ssh.port != 22 {
@@ -83,9 +88,12 @@ struct ConnectionURLFormatter {
             result += ":\(connection.port)"
         }
 
-        let sshPathComponent = connection.type == .oracle
+        var sshPathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
+        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
+            sshPathComponent = String(redisDb)
+        }
         result += "/\(sshPathComponent)"
 
         let query = buildQueryString(connection, sshConfig: ssh)
@@ -111,14 +119,22 @@ struct ConnectionURLFormatter {
             result += "@"
         }
 
-        result += connection.host
-        if connection.port != connection.type.defaultPort {
-            result += ":\(connection.port)"
+        if connection.type.pluginTypeId == "MongoDB",
+           let mongoHosts = connection.additionalFields["mongoHosts"], !mongoHosts.isEmpty {
+            result += mongoHosts
+        } else {
+            result += connection.host
+            if connection.port != connection.type.defaultPort {
+                result += ":\(connection.port)"
+            }
         }
 
-        let pathComponent = connection.type == .oracle
+        var pathComponent = connection.type == .oracle
             ? (connection.oracleServiceName ?? connection.database)
             : connection.database
+        if connection.type == .redis, let redisDb = connection.redisDatabase, redisDb > 0 {
+            pathComponent = String(redisDb)
+        }
         result += "/\(pathComponent)"
 
         let query = buildQueryString(connection)
@@ -178,6 +194,19 @@ struct ConnectionURLFormatter {
             params.append("env=\(encoded)")
         }
 
+        if let authSource = connection.mongoAuthSource, !authSource.isEmpty {
+            params.append("authSource=\(percentEncodeQueryValue(authSource))")
+        }
+        if let authMech = connection.mongoAuthMechanism, !authMech.isEmpty {
+            params.append("authMechanism=\(percentEncodeQueryValue(authMech))")
+        }
+        if let replicaSet = connection.mongoReplicaSet, !replicaSet.isEmpty {
+            params.append("replicaSet=\(percentEncodeQueryValue(replicaSet))")
+        }
+        if connection.mongoUseSrv {
+            params.append("mongoUseSrv=true")
+        }
+
         return params.joined(separator: "&")
     }
 
@@ -209,5 +238,12 @@ struct ConnectionURLFormatter {
         var allowed = CharacterSet.urlUserAllowed
         allowed.remove(charactersIn: ":@")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+
+    private static func percentEncodeQueryValue(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)?
+            .replacingOccurrences(of: "&", with: "%26")
+            .replacingOccurrences(of: "=", with: "%3D")
+            ?? value
     }
 }

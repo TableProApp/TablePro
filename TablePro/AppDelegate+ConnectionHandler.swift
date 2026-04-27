@@ -51,6 +51,10 @@ extension AppDelegate {
             ConnectionStorage.shared.savePassword(parsed.password, for: connection.id)
         }
 
+        if let sshPass = parsed.sshPassword, !sshPass.isEmpty {
+            ConnectionStorage.shared.saveSSHPassword(sshPass, for: connection.id)
+        }
+
         // Check if already connected or connecting (by ID or by params).
         // This catches duplicates from URL handler, auto-reconnect, or any other source.
         if DatabaseManager.shared.activeSessions[connection.id] != nil {
@@ -545,6 +549,17 @@ extension AppDelegate {
             tagId = ConnectionURLParser.tagId(fromEnvName: envName)
         }
 
+        let resolvedSafeMode: SafeModeLevel
+        if let level = parsed.safeModeLevel {
+            switch level {
+            case 1: resolvedSafeMode = .alert
+            case 2: resolvedSafeMode = .readOnly
+            default: resolvedSafeMode = .silent
+            }
+        } else {
+            resolvedSafeMode = .silent
+        }
+
         var connection = DatabaseConnection(
             name: parsed.connectionName ?? parsed.suggestedName,
             host: parsed.host,
@@ -556,6 +571,7 @@ extension AppDelegate {
             sslConfig: sslConfig,
             color: color,
             tagId: tagId,
+            safeModeLevel: resolvedSafeMode,
             mongoAuthSource: parsed.authSource,
             mongoUseSrv: parsed.useSrv,
             mongoAuthMechanism: parsed.mongoQueryParams["authMechanism"],

@@ -209,6 +209,11 @@ struct ConnectionSSHTunnelView: View {
                         }
                     }
                     SecureField(String(localized: "Passphrase"), text: $sshState.keyPassphrase)
+                    if sshState.privateKeyPath.isEmpty {
+                        Text(String(localized: "Auto-detects from ~/.ssh/config and default key locations."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
