@@ -223,20 +223,16 @@ impl BrowseTab {
         &self.driver_id
     }
 
+    /// Build the navigation toolbar — Prev / Next / page label / page
+    /// size dropdown / Export. Mutation actions (Insert / Edit /
+    /// Delete) live in a separate `gtk::ActionBar` (see
+    /// `build_mutation_bar`) so destructive controls aren't sitting
+    /// next to navigation arrows in misclick range.
     fn build_paginator(
         sender: ComponentSender<Self>,
         page_size: u64,
         page_size_handler_slot: Rc<RefCell<Option<glib::SignalHandlerId>>>,
-    ) -> (
-        gtk::Box,
-        gtk::Button,
-        gtk::Button,
-        gtk::Label,
-        gtk::Button,
-        gtk::Button,
-        gtk::Button,
-        gtk::DropDown,
-    ) {
+    ) -> Paginator {
         let prev_button = gtk::Button::builder()
             .icon_name("go-previous-symbolic")
             .tooltip_text(crate::tr!("Previous page"))
@@ -251,16 +247,12 @@ impl BrowseTab {
         paginator_label.add_css_class("dim-label");
         paginator_label.set_accessible_role(gtk::AccessibleRole::Status);
 
-        let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS
-            .iter()
-            .map(|n| {
-                if *n >= 1_000 {
-                    format!("{} K", n / 1_000)
-                } else {
-                    n.to_string()
-                }
-            })
-            .collect();
+        // Use thousands-separated labels (100 / 500 / 1,000 / 5,000 /
+        // 10,000) instead of "1 K" abbreviations. With a visible
+        // "Rows:" label inline (below) the dropdown's purpose is
+        // obvious without needing a tooltip, matching how Evince
+        // labels its zoom dropdown.
+        let page_size_labels: Vec<String> = PAGE_SIZE_OPTIONS.iter().map(|n| format_thousands(*n)).collect();
         let page_size_strs: Vec<&str> = page_size_labels.iter().map(String::as_str).collect();
         let page_size_combo = gtk::DropDown::from_strings(&page_size_strs);
         let initial_idx = PAGE_SIZE_OPTIONS
@@ -273,7 +265,6 @@ impl BrowseTab {
                     .unwrap_or(2)
             }) as u32;
         page_size_combo.set_selected(initial_idx);
-        page_size_combo.set_tooltip_text(Some(&crate::tr!("Rows per page")));
         let sender_for_size = sender.clone();
         let id = page_size_combo.connect_selected_notify(move |dd| {
             let idx = dd.selected() as usize;
@@ -282,33 +273,13 @@ impl BrowseTab {
             }
         });
         *page_size_handler_slot.borrow_mut() = Some(id);
+        let page_size_label = gtk::Label::builder().label(crate::tr!("Rows:")).build();
+        page_size_label.add_css_class("dim-label");
 
         let sender_for_prev = sender.clone();
         prev_button.connect_clicked(move |_| sender_for_prev.input(BrowseTabInput::PrevPage));
-        let sender_for_next = sender.clone();
+        let sender_for_next = sender;
         next_button.connect_clicked(move |_| sender_for_next.input(BrowseTabInput::NextPage));
-
-        let insert_button = gtk::Button::builder()
-            .icon_name("list-add-symbolic")
-            .tooltip_text(crate::tr!("Insert row"))
-            .sensitive(false)
-            .build();
-        let edit_row_button = gtk::Button::builder()
-            .icon_name("document-edit-symbolic")
-            .tooltip_text(crate::tr!("Edit selected row"))
-            .sensitive(false)
-            .build();
-        let delete_button = gtk::Button::builder()
-            .icon_name("user-trash-symbolic")
-            .tooltip_text(crate::tr!("Delete selected row"))
-            .sensitive(false)
-            .build();
-        let sender_for_insert = sender.clone();
-        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
-        let sender_for_edit = sender.clone();
-        edit_row_button.connect_clicked(move |_| sender_for_edit.input(BrowseTabInput::EditSelectedRow));
-        let sender_for_delete = sender;
-        delete_button.connect_clicked(move |_| sender_for_delete.input(BrowseTabInput::DeleteSelectedRow));
 
         let spacer = gtk::Box::builder().hexpand(true).build();
 
@@ -337,22 +308,56 @@ impl BrowseTab {
         paginator_bar.append(&next_button);
         paginator_bar.append(&paginator_label);
         paginator_bar.append(&spacer);
+        paginator_bar.append(&page_size_label);
         paginator_bar.append(&page_size_combo);
         paginator_bar.append(&export_button);
-        paginator_bar.append(&insert_button);
-        paginator_bar.append(&edit_row_button);
-        paginator_bar.append(&delete_button);
 
-        (
-            paginator_bar,
+        Paginator {
+            bar: paginator_bar,
             prev_button,
             next_button,
             paginator_label,
+            page_size_combo,
+        }
+    }
+
+    /// Mutation actions in their own `gtk::ActionBar` (the Adwaita
+    /// widget for selection-dependent toolbars). Visually separated
+    /// from the paginator so a misclick on Next never lands on Delete.
+    fn build_mutation_bar(sender: ComponentSender<Self>) -> Mutations {
+        let insert_button = gtk::Button::builder()
+            .icon_name("list-add-symbolic")
+            .tooltip_text(crate::tr!("Insert row"))
+            .sensitive(false)
+            .build();
+        let edit_row_button = gtk::Button::builder()
+            .icon_name("document-edit-symbolic")
+            .tooltip_text(crate::tr!("Edit selected row"))
+            .sensitive(false)
+            .build();
+        let delete_button = gtk::Button::builder()
+            .icon_name("user-trash-symbolic")
+            .tooltip_text(crate::tr!("Delete selected row"))
+            .sensitive(false)
+            .build();
+        delete_button.add_css_class("destructive-action");
+        let sender_for_insert = sender.clone();
+        insert_button.connect_clicked(move |_| sender_for_insert.input(BrowseTabInput::InsertRow));
+        let sender_for_edit = sender.clone();
+        edit_row_button.connect_clicked(move |_| sender_for_edit.input(BrowseTabInput::EditSelectedRow));
+        let sender_for_delete = sender;
+        delete_button.connect_clicked(move |_| sender_for_delete.input(BrowseTabInput::DeleteSelectedRow));
+
+        let bar = gtk::ActionBar::new();
+        bar.pack_start(&insert_button);
+        bar.pack_end(&delete_button);
+        bar.pack_end(&edit_row_button);
+        Mutations {
+            bar,
             insert_button,
             edit_row_button,
             delete_button,
-            page_size_combo,
-        )
+        }
     }
 
     fn refresh_crud_buttons(&self) {
@@ -485,20 +490,16 @@ impl SimpleComponent for BrowseTab {
         inner_stack.add_named(&initial_loading, Some("loading"));
         inner_stack.set_visible_child_name("loading");
 
-        let (
-            paginator_bar,
-            prev_button,
-            next_button,
-            paginator_label,
-            insert_button,
-            edit_row_button,
-            delete_button,
-            page_size_combo,
-        ) = Self::build_paginator(sender.clone(), init.page_size, page_size_handler_slot.clone());
+        let paginator = Self::build_paginator(sender.clone(), init.page_size, page_size_handler_slot.clone());
+        let mutations = Self::build_mutation_bar(sender.clone());
 
         root.add_top_bar(&grid_search_bar);
         root.set_content(Some(&inner_stack));
-        root.add_bottom_bar(&paginator_bar);
+        // Mutations bar sits below the paginator (call order = stack
+        // order in AdwToolbarView's add_bottom_bar) so the visual
+        // hierarchy is: grid → paginator → mutations.
+        root.add_bottom_bar(&paginator.bar);
+        root.add_bottom_bar(&mutations.bar);
         grid_search_bar.set_key_capture_widget(Some(&root));
 
         // SearchBar's built-in Escape handler only fires while the
@@ -577,13 +578,13 @@ impl SimpleComponent for BrowseTab {
             grid_search,
             grid_search_bar,
             grid_search_handler: None,
-            paginator_label,
-            prev_button,
-            next_button,
-            insert_button,
-            edit_row_button,
-            delete_button,
-            page_size_combo,
+            paginator_label: paginator.paginator_label,
+            prev_button: paginator.prev_button,
+            next_button: paginator.next_button,
+            insert_button: mutations.insert_button,
+            edit_row_button: mutations.edit_row_button,
+            delete_button: mutations.delete_button,
+            page_size_combo: paginator.page_size_combo,
             page_size_handler: page_size_handler_slot,
             grid_sender,
             suppress_combo_emit,
@@ -845,4 +846,61 @@ fn selected_positions(selection: &gtk::MultiSelection) -> Vec<u32> {
     }
     out.sort_unstable();
     out
+}
+
+/// Format a positive integer with thousands separators (1000 → 1,000).
+/// Used for page-size dropdown labels so they read naturally instead
+/// of the abbreviated "1 K" / "5 K" form.
+fn format_thousands(n: u64) -> String {
+    let s = n.to_string();
+    let bytes = s.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, b) in bytes.iter().enumerate() {
+        if i > 0 && (len - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(*b as char);
+    }
+    out
+}
+
+/// Bundle of widgets returned by `build_paginator` so the builder
+/// signature stays narrow.
+struct Paginator {
+    bar: gtk::Box,
+    prev_button: gtk::Button,
+    next_button: gtk::Button,
+    paginator_label: gtk::Label,
+    page_size_combo: gtk::DropDown,
+}
+
+/// Bundle of widgets returned by `build_mutation_bar`.
+struct Mutations {
+    bar: gtk::ActionBar,
+    insert_button: gtk::Button,
+    edit_row_button: gtk::Button,
+    delete_button: gtk::Button,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_thousands;
+
+    #[test]
+    fn format_thousands_handles_common_page_sizes() {
+        assert_eq!(format_thousands(100), "100");
+        assert_eq!(format_thousands(500), "500");
+        assert_eq!(format_thousands(1_000), "1,000");
+        assert_eq!(format_thousands(5_000), "5,000");
+        assert_eq!(format_thousands(10_000), "10,000");
+        assert_eq!(format_thousands(1_000_000), "1,000,000");
+    }
+
+    #[test]
+    fn format_thousands_handles_edges() {
+        assert_eq!(format_thousands(0), "0");
+        assert_eq!(format_thousands(1), "1");
+        assert_eq!(format_thousands(999), "999");
+    }
 }

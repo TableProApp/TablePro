@@ -55,6 +55,15 @@ impl SimpleComponent for SqlEditor {
 
     view! {
         adw::ToolbarView {
+            // Top bar: cursor + status pushed right by an empty
+            // spacer; Run on the trailing edge with Cancel beside it
+            // when a query is in flight. The decorative "SQL" label
+            // was removed — the tab title carries that context, and
+            // GNOME Builder / Text Editor don't label their editor
+            // areas by language either. Cancel is flat (not
+            // destructive-action) because cancelling a running query
+            // doesn't destroy data; .destructive-action is reserved
+            // for irreversible operations.
             add_top_bar = &gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
@@ -63,11 +72,8 @@ impl SimpleComponent for SqlEditor {
                 set_margin_start: 8,
                 set_margin_end: 8,
 
-                gtk::Label {
-                    set_label: "SQL",
-                    set_halign: gtk::Align::Start,
+                gtk::Box {
                     set_hexpand: true,
-                    add_css_class: "heading",
                 },
 
                 #[name = "cursor_info"]
@@ -95,7 +101,7 @@ impl SimpleComponent for SqlEditor {
                 gtk::Button {
                     set_label: &crate::tr!("Cancel"),
                     set_visible: false,
-                    add_css_class: "destructive-action",
+                    add_css_class: "flat",
                     connect_clicked => SqlEditorInput::Cancel,
                 },
 
