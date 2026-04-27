@@ -9,7 +9,7 @@ extension MainContentCoordinator {
     func saveColumnLayoutForTable() {
         guard let index = tabManager.selectedTabIndex else { return }
         let tab = tabManager.tabs[index]
-        guard tab.tabType == .table, let tableName = tab.tableName, !tableName.isEmpty else { return }
+        guard tab.tabType == .table, let tableName = tab.tableContext.tableName, !tableName.isEmpty else { return }
 
         ColumnLayoutStorage.shared.save(tab.columnLayout, for: tableName, connectionId: connectionId)
         columnVisibilityManager.saveLastHiddenColumns(for: tableName, connectionId: connectionId)

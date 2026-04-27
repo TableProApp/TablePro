@@ -149,17 +149,17 @@ internal struct EditorTabPayload: Codable, Hashable {
         self.id = UUID()
         self.connectionId = connectionId
         self.tabType = tab.tabType
-        self.tableName = tab.tableName
-        self.databaseName = tab.databaseName
-        self.schemaName = tab.schemaName
-        self.initialQuery = tab.query
-        self.isView = tab.isView
-        self.showStructure = tab.resultsViewMode == .structure
+        self.tableName = tab.tableContext.tableName
+        self.databaseName = tab.tableContext.databaseName
+        self.schemaName = tab.tableContext.schemaName
+        self.initialQuery = tab.content.query
+        self.isView = tab.tableContext.isView
+        self.showStructure = tab.display.resultsViewMode == .structure
         self.skipAutoExecute = skipAutoExecute
         self.isPreview = false
         self.initialFilterState = nil
-        self.sourceFileURL = tab.sourceFileURL
-        self.erDiagramSchemaKey = tab.erDiagramSchemaKey
+        self.sourceFileURL = tab.content.sourceFileURL
+        self.erDiagramSchemaKey = tab.display.erDiagramSchemaKey
         self.tabTitle = tab.title
         self.intent = .openContent
     }

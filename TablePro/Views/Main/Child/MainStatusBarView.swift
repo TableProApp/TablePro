@@ -35,7 +35,7 @@ struct MainStatusBarView: View {
         HStack {
             // Left: View mode toggle
             if let tab = tab {
-                if tab.tabType == .table, tab.tableName != nil {
+                if tab.tabType == .table, tab.tableContext.tableName != nil {
                     Picker(String(localized: "View Mode"), selection: $viewMode) {
                         Label("Data", systemImage: "tablecells").tag(ResultsViewMode.data)
                         Label("Structure", systemImage: "list.bullet.rectangle").tag(ResultsViewMode.structure)
@@ -100,7 +100,7 @@ struct MainStatusBarView: View {
                         .foregroundStyle(.secondary)
                     }
 
-                    if let statusMessage = tab.statusMessage {
+                    if let statusMessage = tab.execution.statusMessage {
                         Text("·")
                             .foregroundStyle(.tertiary)
                         Text(statusMessage)
@@ -141,7 +141,7 @@ struct MainStatusBarView: View {
                 }
 
                 // Filters toggle button
-                if let tab = tab, tab.tabType == .table, tab.tableName != nil {
+                if let tab = tab, tab.tabType == .table, tab.tableContext.tableName != nil {
                     Toggle(isOn: Binding(
                         get: { filterStateManager.isVisible },
                         set: { _ in filterStateManager.toggle() }
@@ -163,7 +163,7 @@ struct MainStatusBarView: View {
                 }
 
                 // Pagination controls for table tabs
-                if let tab = tab, tab.tabType == .table, tab.tableName != nil,
+                if let tab = tab, tab.tabType == .table, tab.tableContext.tableName != nil,
                    let total = tab.pagination.totalRowCount, total > 0 {
                     PaginationControlsView(
                         pagination: tab.pagination,

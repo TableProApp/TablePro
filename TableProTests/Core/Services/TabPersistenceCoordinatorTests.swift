@@ -59,7 +59,7 @@ struct TabPersistenceCoordinatorTests {
         for (original, restored) in zip(tabs, result.tabs) {
             #expect(restored.id == original.id)
             #expect(restored.title == original.title)
-            #expect(restored.query == original.query)
+            #expect(restored.content.query == original.content.query)
             #expect(restored.tabType == original.tabType)
         }
 
@@ -120,7 +120,7 @@ struct TabPersistenceCoordinatorTests {
         #expect(result.tabs.count == 2)
         #expect(result.selectedTabId == selectedId)
         #expect(result.tabs[0].title == "P1")
-        #expect(result.tabs[1].tableName == "users")
+        #expect(result.tabs[1].tableContext.tableName == "users")
         #expect(result.source == .disk)
 
         coordinator.clearSavedState()
@@ -157,7 +157,7 @@ struct TabPersistenceCoordinatorTests {
         let coordinator = makeCoordinator()
         let largeQuery = String(repeating: "A", count: 600_000)
         var tab = QueryTab(id: UUID(), title: "Big", query: largeQuery, tabType: .query)
-        tab.query = largeQuery
+        tab.content.query = largeQuery
 
         coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
         await sleep()
@@ -165,7 +165,7 @@ struct TabPersistenceCoordinatorTests {
         let result = await coordinator.restoreFromDisk()
 
         #expect(result.tabs.count == 1)
-        #expect(result.tabs[0].query == "")
+        #expect(result.tabs[0].content.query == "")
         #expect(result.tabs[0].title == "Big")
 
         coordinator.clearSavedState()
@@ -297,8 +297,8 @@ struct TabPersistenceCoordinatorTests {
         let coordinator = makeCoordinator()
 
         var tab = QueryTab(id: UUID(), title: "users", query: "SELECT * FROM users", tabType: .table, tableName: "users")
-        tab.isView = true
-        tab.databaseName = "production"
+        tab.tableContext.isView = true
+        tab.tableContext.databaseName = "production"
 
         coordinator.saveNow(tabs: [tab], selectedTabId: tab.id)
         await sleep()
@@ -307,9 +307,9 @@ struct TabPersistenceCoordinatorTests {
 
         #expect(result.tabs.count == 1)
         let restored = result.tabs[0]
-        #expect(restored.tableName == "users")
-        #expect(restored.isView == true)
-        #expect(restored.databaseName == "production")
+        #expect(restored.tableContext.tableName == "users")
+        #expect(restored.tableContext.isView == true)
+        #expect(restored.tableContext.databaseName == "production")
         #expect(restored.id == tab.id)
         #expect(restored.tabType == .table)
 

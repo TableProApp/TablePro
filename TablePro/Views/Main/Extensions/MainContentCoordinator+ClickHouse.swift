@@ -26,9 +26,9 @@ extension MainContentCoordinator {
     /// Accepts the plugin-kit `ExplainVariant` type for generic dispatch.
     func runVariantExplain(_ variant: ExplainVariant) {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
-        let fullQuery = tabManager.tabs[index].query
+        let fullQuery = tabManager.tabs[index].content.query
 
         let sql: String
         if tabManager.tabs[index].tabType == .table {
@@ -62,7 +62,7 @@ extension MainContentCoordinator {
             guard let driver = DatabaseManager.shared.driver(for: connectionId) else { return }
 
             if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                tabManager.tabs[idx].isExecuting = true
+                tabManager.tabs[idx].execution.isExecuting = true
             }
             toolbarState.setExecuting(true)
 
@@ -76,21 +76,21 @@ extension MainContentCoordinator {
                 }.joined(separator: "\n")
 
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].explainText = text
-                    tabManager.tabs[idx].explainExecutionTime = duration
+                    tabManager.tabs[idx].display.explainText = text
+                    tabManager.tabs[idx].display.explainExecutionTime = duration
 
                     if let parser = QueryPlanParserFactory.parser(for: connection.type) {
-                        tabManager.tabs[idx].explainPlan = parser.parse(rawText: text)
+                        tabManager.tabs[idx].display.explainPlan = parser.parse(rawText: text)
                     } else {
-                        tabManager.tabs[idx].explainPlan = nil
+                        tabManager.tabs[idx].display.explainPlan = nil
                     }
-                    tabManager.tabs[idx].isExecuting = false
+                    tabManager.tabs[idx].execution.isExecuting = false
                 }
             } catch {
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].explainText = "Error: \(error.localizedDescription)"
-                    tabManager.tabs[idx].explainPlan = nil
-                    tabManager.tabs[idx].isExecuting = false
+                    tabManager.tabs[idx].display.explainText = "Error: \(error.localizedDescription)"
+                    tabManager.tabs[idx].display.explainPlan = nil
+                    tabManager.tabs[idx].execution.isExecuting = false
                 }
             }
 

@@ -16,7 +16,7 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        guard tab.isEditable, tab.tableName != nil else { return }
+        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil else { return }
 
         guard let result = rowOperationsManager.addNewRow(
             columns: tab.resultColumns,
@@ -34,7 +34,7 @@ extension MainContentCoordinator {
         guard !safeModeLevel.blocksAllWrites,
               let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count,
-              tabManager.tabs[tabIndex].isEditable,
+              tabManager.tabs[tabIndex].tableContext.isEditable,
               !indices.isEmpty else { return }
 
         let nextRow = rowOperationsManager.deleteSelectedRows(
@@ -58,7 +58,7 @@ extension MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        guard tab.isEditable, tab.tableName != nil,
+        guard tab.tableContext.isEditable, tab.tableContext.tableName != nil,
               index < tab.resultRows.count else { return }
 
         guard let result = rowOperationsManager.duplicateRow(

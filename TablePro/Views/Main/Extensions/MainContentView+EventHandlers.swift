@@ -94,14 +94,14 @@ extension MainContentView {
 
         // Reconfigure if columns changed OR table name changed (switching tables)
         let columnsChanged = changeManager.columns != newColumns
-        let tableChanged = changeManager.tableName != (tab.tableName ?? "")
+        let tableChanged = changeManager.tableName != (tab.tableContext.tableName ?? "")
 
         guard columnsChanged || tableChanged else { return }
 
         changeManager.configureForTable(
-            tableName: tab.tableName ?? "",
+            tableName: tab.tableContext.tableName ?? "",
             columns: newColumns,
-            primaryKeyColumns: tab.primaryKeyColumns,
+            primaryKeyColumns: tab.tableContext.primaryKeyColumns,
             databaseType: connection.type
         )
     }
@@ -126,7 +126,7 @@ extension MainContentView {
 
         let result = SidebarNavigationResult.resolve(
             clickedTableName: tableName,
-            currentTabTableName: tabManager.selectedTab?.tableName,
+            currentTabTableName: tabManager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !tabManager.tabs.isEmpty,
             isPreviewTabMode: isPreviewMode,
             hasPreviewTab: hasPreview
@@ -155,7 +155,7 @@ extension MainContentView {
         guard coordinator.isKeyWindow else { return }
         let liveTables = DatabaseManager.shared.session(for: connection.id)?.tables ?? []
         let target: Set<TableInfo>
-        if let currentTableName = tabManager.selectedTab?.tableName,
+        if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
             let match = liveTables.first(where: { $0.name == currentTableName })
         {
             target = [match]
@@ -211,13 +211,13 @@ extension MainContentView {
         }
 
         let excludedNames: Set<String>
-        if let tableName = tab.tableName {
+        if let tableName = tab.tableContext.tableName {
             excludedNames = Set(coordinator.columnExclusions(for: tableName).map(\.columnName))
         } else {
             excludedNames = []
         }
 
-        let pkColumns = Set(tab.primaryKeyColumns)
+        let pkColumns = Set(tab.tableContext.primaryKeyColumns)
         let fkColumns = Set(tab.columnForeignKeys.keys)
 
         rightPanelState.editState.configure(
@@ -271,8 +271,8 @@ extension MainContentView {
         // Lazy-load full values for excluded columns when a single row is selected
         if !excludedNames.isEmpty,
             selectedRowIndices.count == 1,
-            let tableName = tab.tableName,
-            let pkColumn = tab.primaryKeyColumn,
+            let tableName = tab.tableContext.tableName,
+            let pkColumn = tab.tableContext.primaryKeyColumn,
             let rowIndex = selectedRowIndices.first,
             rowIndex < tab.resultRows.count
         {

@@ -16,7 +16,7 @@ extension MainContentCoordinator {
     ) async throws {
         guard let tab = tabManager.selectedTab,
             !selectedRowIndices.isEmpty,
-            tab.tableName != nil
+            tab.tableContext.tableName != nil
         else {
             return
         }

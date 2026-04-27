@@ -188,9 +188,9 @@ extension MainContentCoordinator {
             return false
         }
         let tab = tabManager.tabs[idx]
-        guard tab.tableName == tableName,
+        guard tab.tableContext.tableName == tableName,
               !tab.columnDefaults.isEmpty,
-              !tab.primaryKeyColumns.isEmpty else {
+              !tab.tableContext.primaryKeyColumns.isEmpty else {
             return false
         }
         // Ensure every ENUM/SET column has its allowed values loaded
@@ -252,13 +252,13 @@ extension MainContentCoordinator {
         updatedTab.columnTypes = columnTypes
         updatedTab.resultRows = rows
         updatedTab.resultVersion += 1
-        updatedTab.executionTime = executionTime
-        updatedTab.rowsAffected = rowsAffected
-        updatedTab.statusMessage = statusMessage
-        updatedTab.isExecuting = false
-        updatedTab.lastExecutedAt = Date()
-        updatedTab.tableName = tableName
-        updatedTab.isEditable = isEditable
+        updatedTab.execution.executionTime = executionTime
+        updatedTab.execution.rowsAffected = rowsAffected
+        updatedTab.execution.statusMessage = statusMessage
+        updatedTab.execution.isExecuting = false
+        updatedTab.execution.lastExecutedAt = Date()
+        updatedTab.tableContext.tableName = tableName
+        updatedTab.tableContext.isEditable = isEditable
         // Populate enum values from column types for the enum popover
         for (index, colType) in updatedTab.columnTypes.enumerated() {
             if case .enumType(_, let values) = colType, let vals = values, index < updatedTab.resultColumns.count {
@@ -286,11 +286,11 @@ extension MainContentCoordinator {
         // Create a ResultSet for this single-statement execution
         let rs = ResultSet(label: tableName ?? "Result")
         rs.rowBuffer = updatedTab.rowBuffer
-        rs.executionTime = updatedTab.executionTime
-        rs.rowsAffected = updatedTab.rowsAffected
-        rs.statusMessage = updatedTab.statusMessage
-        rs.tableName = updatedTab.tableName
-        rs.isEditable = updatedTab.isEditable
+        rs.executionTime = updatedTab.execution.executionTime
+        rs.rowsAffected = updatedTab.execution.rowsAffected
+        rs.statusMessage = updatedTab.execution.statusMessage
+        rs.tableName = updatedTab.tableContext.tableName
+        rs.isEditable = updatedTab.tableContext.isEditable
         rs.resultVersion = updatedTab.resultVersion
         rs.metadataVersion = updatedTab.metadataVersion
         rs.columnTypes = updatedTab.columnTypes
@@ -300,9 +300,9 @@ extension MainContentCoordinator {
         rs.columnNullable = updatedTab.columnNullable
 
         // Keep pinned results, replace unpinned
-        let pinned = updatedTab.resultSets.filter(\.isPinned)
-        updatedTab.resultSets = pinned + [rs]
-        updatedTab.activeResultSetId = rs.id
+        let pinned = updatedTab.display.resultSets.filter(\.isPinned)
+        updatedTab.display.resultSets = pinned + [rs]
+        updatedTab.display.activeResultSetId = rs.id
 
         // Update progressive loading state
         if let context = queryPageContext {
@@ -315,8 +315,8 @@ extension MainContentCoordinator {
         }
 
         // Auto-expand results panel when new data arrives
-        if updatedTab.isResultsCollapsed {
-            updatedTab.isResultsCollapsed = false
+        if updatedTab.display.isResultsCollapsed {
+            updatedTab.display.isResultsCollapsed = false
         }
         toolbarState.isResultsCollapsed = false
 
@@ -337,11 +337,11 @@ extension MainContentCoordinator {
             resolvedPKs = [defaultPK]
         } else {
             // Preserve existing PKs when metadata is cached and not re-fetched
-            resolvedPKs = tabManager.tabs[idx].primaryKeyColumns
+            resolvedPKs = tabManager.tabs[idx].tableContext.primaryKeyColumns
         }
 
         if !resolvedPKs.isEmpty {
-            tabManager.tabs[idx].primaryKeyColumns = resolvedPKs
+            tabManager.tabs[idx].tableContext.primaryKeyColumns = resolvedPKs
         }
 
         if tabManager.selectedTabId == tabId {
@@ -556,9 +556,9 @@ extension MainContentCoordinator {
         currentQueryTask = nil
         if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
             var errTab = tabManager.tabs[idx]
-            errTab.errorMessage = error.localizedDescription
-            errTab.isExecuting = false
-            errTab.lastExecutedAt = Date()
+            errTab.execution.errorMessage = error.localizedDescription
+            errTab.execution.isExecuting = false
+            errTab.execution.lastExecutedAt = Date()
             tabManager.tabs[idx] = errTab
         }
         toolbarState.setExecuting(false)

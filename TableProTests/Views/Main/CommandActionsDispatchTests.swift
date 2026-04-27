@@ -57,7 +57,7 @@ struct CommandActionsDispatchTests {
         actions.loadQueryIntoEditor("SELECT 1")
 
         let tab = coordinator.tabManager.selectedTab
-        #expect(tab?.query == "SELECT 1")
+        #expect(tab?.content.query == "SELECT 1")
     }
 
     // MARK: - insertQueryFromAI
@@ -70,7 +70,7 @@ struct CommandActionsDispatchTests {
         actions.insertQueryFromAI("SELECT 2")
 
         let tab = coordinator.tabManager.selectedTab
-        #expect(tab?.query == "SELECT 2")
+        #expect(tab?.content.query == "SELECT 2")
     }
 
     @Test("insertQueryFromAI appends to existing query")
@@ -80,13 +80,13 @@ struct CommandActionsDispatchTests {
 
         // Set an initial query on the tab
         if let idx = coordinator.tabManager.selectedTabIndex {
-            coordinator.tabManager.tabs[idx].query = "SELECT 1"
+            coordinator.tabManager.tabs[idx].content.query = "SELECT 1"
         }
 
         actions.insertQueryFromAI("SELECT 2")
 
         let tab = coordinator.tabManager.selectedTab
-        #expect(tab?.query == "SELECT 1\n\nSELECT 2")
+        #expect(tab?.content.query == "SELECT 1\n\nSELECT 2")
     }
 
     // MARK: - copySelectedRows (structure mode)
@@ -98,7 +98,7 @@ struct CommandActionsDispatchTests {
 
         // Enable structure mode on the selected tab
         if let idx = coordinator.tabManager.selectedTabIndex {
-            coordinator.tabManager.tabs[idx].resultsViewMode = .structure
+            coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
         }
 
         // Install a spy handler
@@ -121,7 +121,7 @@ struct CommandActionsDispatchTests {
 
         // Enable structure mode on the selected tab
         if let idx = coordinator.tabManager.selectedTabIndex {
-            coordinator.tabManager.tabs[idx].resultsViewMode = .structure
+            coordinator.tabManager.tabs[idx].display.resultsViewMode = .structure
         }
 
         // Install a spy handler

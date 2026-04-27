@@ -43,7 +43,7 @@ struct PreviewTabTests {
         manager.addPreviewTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         #expect(manager.tabs.count == 1)
         #expect(manager.selectedTab?.isPreview == true)
-        #expect(manager.selectedTab?.tableName == "users")
+        #expect(manager.selectedTab?.tableContext.tableName == "users")
     }
 
     @Test("replaceTabContent can set isPreview flag")
@@ -59,7 +59,7 @@ struct PreviewTabTests {
         )
         #expect(replaced == true)
         #expect(manager.selectedTab?.isPreview == true)
-        #expect(manager.selectedTab?.tableName == "orders")
+        #expect(manager.selectedTab?.tableContext.tableName == "orders")
     }
 
     @Test("replaceTabContent defaults to non-preview")

@@ -29,7 +29,7 @@ extension MainContentCoordinator {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         if let firstMissing = missing.first {
-            tabManager.tabs[index].errorMessage = String(
+            tabManager.tabs[index].execution.errorMessage = String(
                 format: String(localized: "Missing value for parameter: %@"),
                 ":\(firstMissing.name)"
             )
@@ -60,7 +60,7 @@ extension MainContentCoordinator {
         originalParameters: [QueryParameter]
     ) {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
         if currentQueryTask != nil {
             currentQueryTask?.cancel()
@@ -75,11 +75,11 @@ extension MainContentCoordinator {
         let capturedGeneration = queryGeneration
 
         var tab = tabManager.tabs[index]
-        tab.isExecuting = true
-        tab.executionTime = nil
-        tab.errorMessage = nil
-        tab.explainText = nil
-        tab.explainPlan = nil
+        tab.execution.isExecuting = true
+        tab.execution.executionTime = nil
+        tab.execution.errorMessage = nil
+        tab.display.explainText = nil
+        tab.display.explainPlan = nil
         tabManager.tabs[index] = tab
         toolbarState.setExecuting(true)
 
@@ -210,7 +210,7 @@ extension MainContentCoordinator {
                     guard let self else { return }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                         var tab = tabManager.tabs[idx]
-                        tab.isExecuting = false
+                        tab.execution.isExecuting = false
                         tab.pagination.isLoadingMore = false
                         tabManager.tabs[idx] = tab
                     }
@@ -225,13 +225,13 @@ extension MainContentCoordinator {
 
     func executeMultipleStatementsWithParameters(_ statements: [String], parameters: [QueryParameter]) {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
 
         let missing = parameters.filter {
             !$0.isNull && $0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         if let firstMissing = missing.first {
-            tabManager.tabs[index].errorMessage = String(
+            tabManager.tabs[index].execution.errorMessage = String(
                 format: String(localized: "Missing value for parameter: %@"),
                 ":\(firstMissing.name)"
             )
@@ -247,9 +247,9 @@ extension MainContentCoordinator {
         let capturedGeneration = queryGeneration
 
         var tab = tabManager.tabs[index]
-        tab.isExecuting = true
-        tab.executionTime = nil
-        tab.errorMessage = nil
+        tab.execution.isExecuting = true
+        tab.execution.executionTime = nil
+        tab.execution.errorMessage = nil
         tabManager.tabs[index] = tab
         toolbarState.setExecuting(true)
 
@@ -286,7 +286,7 @@ extension MainContentCoordinator {
                         }
                     }
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].isExecuting = false
+                        tabManager.tabs[idx].execution.isExecuting = false
                     }
                     currentQueryTask = nil
                     toolbarState.setExecuting(false)
@@ -416,7 +416,7 @@ extension MainContentCoordinator {
 
             if capturedGeneration != queryGeneration || Task.isCancelled {
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].isExecuting = false
+                    tabManager.tabs[idx].execution.isExecuting = false
                 }
                 return
             }
@@ -470,7 +470,7 @@ extension MainContentCoordinator {
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                    tabManager.tabs[idx].isExecuting = false
+                    tabManager.tabs[idx].execution.isExecuting = false
                 }
                 currentQueryTask = nil
                 toolbarState.setExecuting(false)
@@ -494,13 +494,13 @@ extension MainContentCoordinator {
 
             if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
                 var errTab = tabManager.tabs[idx]
-                errTab.errorMessage = contextMsg
-                errTab.isExecuting = false
-                errTab.executionTime = cumulativeTime
+                errTab.execution.errorMessage = contextMsg
+                errTab.execution.isExecuting = false
+                errTab.execution.executionTime = cumulativeTime
 
-                let pinnedResults = errTab.resultSets.filter(\.isPinned)
-                errTab.resultSets = pinnedResults + capturedResultSets
-                errTab.activeResultSetId = capturedResultSets.last?.id
+                let pinnedResults = errTab.display.resultSets.filter(\.isPinned)
+                errTab.display.resultSets = pinnedResults + capturedResultSets
+                errTab.display.activeResultSetId = capturedResultSets.last?.id
 
                 tabManager.tabs[idx] = errTab
             }

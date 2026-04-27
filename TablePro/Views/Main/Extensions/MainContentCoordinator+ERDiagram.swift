@@ -18,7 +18,7 @@ extension MainContentCoordinator {
         let schemaKey = "\(dbName).\(schemaName ?? "default")"
 
         if let existing = Self.coordinator(forConnection: connectionId, tabMatching: {
-            $0.tabType == .erDiagram && $0.erDiagramSchemaKey == schemaKey
+            $0.tabType == .erDiagram && $0.display.erDiagramSchemaKey == schemaKey
         }) {
             existing.contentWindow?.makeKeyAndOrderFront(nil)
             return

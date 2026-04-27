@@ -37,7 +37,7 @@ extension MainContentCoordinator {
                 tabManager.tabs[oldIndex].pendingChanges = changeManager.saveState()
             }
             tabManager.tabs[oldIndex].filterState = filterStateManager.saveToTabState()
-            if let tableName = tabManager.tabs[oldIndex].tableName {
+            if let tableName = tabManager.tabs[oldIndex].tableContext.tableName {
                 filterStateManager.saveLastFilters(for: tableName)
             }
             saveColumnVisibilityToTab()
@@ -67,20 +67,18 @@ extension MainContentCoordinator {
 
             selectedRowIndices = newTab.selectedRowIndices
             toolbarState.isTableTab = newTab.tabType == .table
-            toolbarState.isResultsCollapsed = newTab.isResultsCollapsed
+            toolbarState.isResultsCollapsed = newTab.display.isResultsCollapsed
 
-            // Configure change manager without triggering reload yet — we'll fire a single
-            // reloadVersion bump below after everything is set up.
             let pendingState = newTab.pendingChanges
             if pendingState.hasChanges {
-                changeManager.restoreState(from: pendingState, tableName: newTab.tableName ?? "", databaseType: connection.type)
+                changeManager.restoreState(from: pendingState, tableName: newTab.tableContext.tableName ?? "", databaseType: connection.type)
             } else {
                 changeManager.configureForTable(
-                    tableName: newTab.tableName ?? "",
+                    tableName: newTab.tableContext.tableName ?? "",
                     columns: newTab.resultColumns,
-                    primaryKeyColumns: newTab.primaryKeyColumns.isEmpty
+                    primaryKeyColumns: newTab.tableContext.primaryKeyColumns.isEmpty
                         ? newTab.resultColumns.prefix(1).map { $0 }
-                        : newTab.primaryKeyColumns,
+                        : newTab.tableContext.primaryKeyColumns,
                     databaseType: connection.type,
                     triggerReload: false
                 )
@@ -91,7 +89,7 @@ extension MainContentCoordinator {
                 "[switch] handleTabChange phases: saveOutgoing=\(saveMs)ms evict=\(evictMs)ms restoreIncoming=\(restoreMs)ms"
             )
 
-            if !newTab.databaseName.isEmpty {
+            if !newTab.tableContext.databaseName.isEmpty {
                 let currentDatabase: String
                 if let session = DatabaseManager.shared.session(for: connectionId) {
                     currentDatabase = session.activeDatabase
@@ -99,13 +97,13 @@ extension MainContentCoordinator {
                     currentDatabase = connection.database
                 }
 
-                if newTab.databaseName != currentDatabase {
+                if newTab.tableContext.databaseName != currentDatabase {
                     Self.lifecycleLogger.debug(
-                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.databaseName, privacy: .public)"
+                        "[switch] handleTabChange triggering switchDatabase from=\(currentDatabase, privacy: .public) to=\(newTab.tableContext.databaseName, privacy: .public)"
                     )
                     changeManager.reloadVersion += 1
                     Task {
-                        await switchDatabase(to: newTab.databaseName)
+                        await switchDatabase(to: newTab.tableContext.databaseName)
                     }
                     return  // switchDatabase will re-execute the query
                 }
@@ -114,22 +112,22 @@ extension MainContentCoordinator {
             // If the tab shows isExecuting but has no results, the previous query was
             // likely cancelled when the user rapidly switched away. Force-clear the stale
             // flag so the lazy-load check below can re-execute the query.
-            if newTab.isExecuting && newTab.resultRows.isEmpty && newTab.lastExecutedAt == nil {
+            if newTab.execution.isExecuting && newTab.resultRows.isEmpty && newTab.execution.lastExecutedAt == nil {
                 let tabId = newId
                 Task { [weak self] in
                     guard let self,
                           let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-                          self.tabManager.tabs[idx].isExecuting else { return }
-                    self.tabManager.tabs[idx].isExecuting = false
+                          self.tabManager.tabs[idx].execution.isExecuting else { return }
+                    self.tabManager.tabs[idx].execution.isExecuting = false
                 }
             }
 
             let isEvicted = newTab.rowBuffer.isEvicted
             let needsLazyQuery = newTab.tabType == .table
                 && (newTab.resultRows.isEmpty || isEvicted)
-                && (newTab.lastExecutedAt == nil || isEvicted)
-                && newTab.errorMessage == nil
-                && !newTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (newTab.execution.lastExecutedAt == nil || isEvicted)
+                && newTab.execution.errorMessage == nil
+                && !newTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
             if needsLazyQuery {
                 if let session = DatabaseManager.shared.session(for: connectionId), session.isConnected {
@@ -160,14 +158,13 @@ extension MainContentCoordinator {
             !activeTabIds.contains($0.id)
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
-                && $0.lastExecutedAt != nil
+                && $0.execution.lastExecutedAt != nil
                 && !$0.pendingChanges.hasChanges
         }
 
-        // Sort by oldest first, breaking ties by largest estimated footprint first
         let sorted = candidates.sorted {
-            let t0 = $0.lastExecutedAt ?? .distantFuture
-            let t1 = $1.lastExecutedAt ?? .distantFuture
+            let t0 = $0.execution.lastExecutedAt ?? .distantFuture
+            let t1 = $1.execution.lastExecutedAt ?? .distantFuture
             if t0 != t1 { return t0 < t1 }
             let size0 = MemoryPressureAdvisor.estimatedFootprint(
                 rowCount: $0.rowBuffer.rows.count,

@@ -281,6 +281,6 @@ struct CoordinatorConnectionIsolationTests {
         coordinator.openTableTab("orders")
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.databaseName == "db_a")
+        #expect(tabManager.tabs.first?.tableContext.databaseName == "db_a")
     }
 }

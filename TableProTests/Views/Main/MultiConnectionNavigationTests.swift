@@ -52,11 +52,11 @@ struct MultiConnectionNavigationTests {
             Issue.record("Expected selected tab index")
             return
         }
-        #expect(tabManager.tabs[idx].resultsViewMode != .structure)
+        #expect(tabManager.tabs[idx].display.resultsViewMode != .structure)
 
         coordinator.openTableTab("users", showStructure: true)
 
-        #expect(tabManager.tabs[idx].resultsViewMode == .structure)
+        #expect(tabManager.tabs[idx].display.resultsViewMode == .structure)
     }
 
     // MARK: - openTableTab: isView marks tab correctly
@@ -75,8 +75,8 @@ struct MultiConnectionNavigationTests {
             Issue.record("Expected a tab to be added")
             return
         }
-        #expect(tab.isView == true)
-        #expect(tab.isEditable == false)
+        #expect(tab.tableContext.isView == true)
+        #expect(tab.tableContext.isEditable == false)
     }
 
     // MARK: - openTableTab: databaseName from connection
@@ -95,7 +95,7 @@ struct MultiConnectionNavigationTests {
             Issue.record("Expected a tab to be added")
             return
         }
-        #expect(tab.databaseName == "primary_db")
+        #expect(tab.tableContext.databaseName == "primary_db")
     }
 
     // Note: sidebarLoadingState guard test lives in SwitchDatabaseTests.swift
@@ -113,8 +113,8 @@ struct MultiConnectionNavigationTests {
         coordinator.openTableTab("accounts")
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.tableName == "accounts")
-        #expect(tabManager.tabs.first?.databaseName == "pg_db")
+        #expect(tabManager.tabs.first?.tableContext.tableName == "accounts")
+        #expect(tabManager.tabs.first?.tableContext.databaseName == "pg_db")
     }
 
     @Test("openTableTab with sqlite connection adds tab")
@@ -128,8 +128,8 @@ struct MultiConnectionNavigationTests {
         coordinator.openTableTab("items")
 
         #expect(tabManager.tabs.count == 1)
-        #expect(tabManager.tabs.first?.tableName == "items")
-        #expect(tabManager.tabs.first?.databaseName == "local.db")
+        #expect(tabManager.tabs.first?.tableContext.tableName == "items")
+        #expect(tabManager.tabs.first?.tableContext.databaseName == "local.db")
     }
 
     // MARK: - SidebarNavigationResult: skip for all database types
@@ -141,7 +141,7 @@ struct MultiConnectionNavigationTests {
         manager.addTableTab(tableName: "users", databaseType: .mysql, databaseName: "mydb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "users",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .skip)
@@ -154,7 +154,7 @@ struct MultiConnectionNavigationTests {
         manager.addTableTab(tableName: "accounts", databaseType: .postgresql, databaseName: "pgdb")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "accounts",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .skip)
@@ -167,7 +167,7 @@ struct MultiConnectionNavigationTests {
         manager.addTableTab(tableName: "items", databaseType: .sqlite, databaseName: "local.db")
         let result = SidebarNavigationResult.resolve(
             clickedTableName: "items",
-            currentTabTableName: manager.selectedTab?.tableName,
+            currentTabTableName: manager.selectedTab?.tableContext.tableName,
             hasExistingTabs: !manager.tabs.isEmpty
         )
         #expect(result == .skip)
@@ -223,8 +223,8 @@ struct MultiConnectionNavigationTests {
 
         #expect(tabManagerA.tabs.count == 1)
         #expect(tabManagerB.tabs.count == 2)
-        #expect(tabManagerA.tabs.first?.tableName == "users")
-        #expect(tabManagerB.tabs.first?.tableName == "orders")
+        #expect(tabManagerA.tabs.first?.tableContext.tableName == "users")
+        #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
     }
 
     @Test("openTableTab on coordinator A does not affect coordinator B's tabs")
@@ -244,6 +244,6 @@ struct MultiConnectionNavigationTests {
 
         #expect(tabManagerA.tabs.count == 1)
         #expect(tabManagerB.tabs.count == tabCountBefore)
-        #expect(tabManagerB.tabs.first?.tableName == "orders")
+        #expect(tabManagerB.tabs.first?.tableContext.tableName == "orders")
     }
 }

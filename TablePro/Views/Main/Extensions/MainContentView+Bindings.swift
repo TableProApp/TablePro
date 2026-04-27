@@ -23,7 +23,7 @@ extension MainContentView {
 
         let service = ValueDisplayFormatService.shared
         let connId = coordinator.connection.id
-        let tblName = tab.tableName
+        let tblName = tab.tableContext.tableName
 
         for (i, col) in tab.resultColumns.enumerated() {
             var value = i < row.count ? row[i] : nil
@@ -49,7 +49,7 @@ extension MainContentView {
     var isSidebarEditable: Bool {
         guard !coordinator.safeModeLevel.blocksAllWrites,
               let tab = coordinator.tabManager.selectedTab,
-              tab.tabType == .table || tab.tableName != nil,
+              tab.tabType == .table || tab.tableContext.tableName != nil,
               !selectedRowIndices.isEmpty else {
             return false
         }
@@ -86,10 +86,10 @@ extension MainContentView {
     /// Binding for resultsViewMode state
     var resultsViewModeBinding: Binding<ResultsViewMode> {
         Binding(
-            get: { coordinator.tabManager.selectedTab?.resultsViewMode ?? .data },
+            get: { coordinator.tabManager.selectedTab?.display.resultsViewMode ?? .data },
             set: { newValue in
                 if let index = coordinator.tabManager.selectedTabIndex {
-                    coordinator.tabManager.tabs[index].resultsViewMode = newValue
+                    coordinator.tabManager.tabs[index].display.resultsViewMode = newValue
                 }
             }
         )
@@ -110,7 +110,7 @@ extension MainContentView {
     /// Uses `resultVersion` instead of the full `resultRows` array to avoid deep equality checks.
     var inspectorTrigger: InspectorTrigger {
         InspectorTrigger(
-            tableName: currentTab?.tableName,
+            tableName: currentTab?.tableContext.tableName,
             resultVersion: currentTab?.resultVersion ?? -1,
             metadataVersion: currentTab?.metadataVersion ?? -1,
             metadataTableName: coordinator.tableMetadata?.tableName

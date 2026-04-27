@@ -35,7 +35,7 @@ struct EvictionTests {
         let rows = TestFixtures.makeRows(count: 10)
         tabManager.tabs[index].rowBuffer.rows = rows
         tabManager.tabs[index].rowBuffer.columns = ["id", "name", "email"]
-        tabManager.tabs[index].lastExecutedAt = Date()
+        tabManager.tabs[index].execution.lastExecutedAt = Date()
     }
 
     @Test("evictInactiveRowData evicts loaded tabs without pending changes")

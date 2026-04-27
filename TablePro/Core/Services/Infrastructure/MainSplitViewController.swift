@@ -328,7 +328,7 @@ internal final class MainSplitViewController: NSSplitViewController, InspectorVi
                     let isView = table.type == .view
                     if let preview = WindowLifecycleMonitor.shared.previewWindow(for: connectionId),
                        let previewCoordinator = MainContentCoordinator.coordinator(for: preview.windowId) {
-                        if previewCoordinator.tabManager.selectedTab?.tableName == table.name {
+                        if previewCoordinator.tabManager.selectedTab?.tableContext.tableName == table.name {
                             previewCoordinator.promotePreviewTab()
                         } else {
                             previewCoordinator.promotePreviewTab()

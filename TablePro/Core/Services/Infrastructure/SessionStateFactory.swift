@@ -89,11 +89,11 @@ enum SessionStateFactory {
                             )
                         }
                         if let index = tabMgr.selectedTabIndex {
-                            tabMgr.tabs[index].isView = payload.isView
-                            tabMgr.tabs[index].isEditable = !payload.isView
-                            tabMgr.tabs[index].schemaName = payload.schemaName
+                            tabMgr.tabs[index].tableContext.isView = payload.isView
+                            tabMgr.tabs[index].tableContext.isEditable = !payload.isView
+                            tabMgr.tabs[index].tableContext.schemaName = payload.schemaName
                             if payload.showStructure {
-                                tabMgr.tabs[index].resultsViewMode = .structure
+                                tabMgr.tabs[index].display.resultsViewMode = .structure
                             }
                             if let initialFilter = payload.initialFilterState {
                                 tabMgr.tabs[index].filterState = initialFilter

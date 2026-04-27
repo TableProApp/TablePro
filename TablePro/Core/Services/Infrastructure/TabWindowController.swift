@@ -192,7 +192,7 @@ internal final class TabWindowController: NSWindowController, NSWindowDelegate {
     private func updateUserActivity(coordinator: MainContentCoordinator) {
         let connection = coordinator.connection
         let selectedTab = coordinator.tabManager.selectedTab
-        let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableName : nil
+        let tableName: String? = (selectedTab?.tabType == .table) ? selectedTab?.tableContext.tableName : nil
         let activityType = tableName != nil ? "com.TablePro.viewTable" : "com.TablePro.viewConnection"
 
         // Recreate when the activity type flips between viewConnection and

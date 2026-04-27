@@ -166,7 +166,7 @@ struct MainContentView: View {
             )
         case .exportQueryResults:
             if let tab = coordinator.tabManager.selectedTab {
-                let fileName = tab.tableName ?? "query_results"
+                let fileName = tab.tableContext.tableName ?? "query_results"
                 if tab.pagination.hasMoreRows, let baseQuery = tab.pagination.baseQueryForMore {
                     ExportDialog(
                         isPresented: dismissBinding,
@@ -230,7 +230,7 @@ struct MainContentView: View {
             pendingTruncates: pendingTruncates,
             pendingDeletes: pendingDeletes,
             hasStructureChanges: toolbarState.hasStructureChanges,
-            isFileDirty: tabManager.selectedTab?.isFileDirty ?? false
+            isFileDirty: tabManager.selectedTab?.content.isFileDirty ?? false
         )
     }
 
@@ -242,10 +242,10 @@ struct MainContentView: View {
                     configureWindow(window)
                 }
             }
-            .task(id: currentTab?.tableName) {
+            .task(id: currentTab?.tableContext.tableName) {
                 // Only load metadata after the tab has executed at least once —
                 // avoids a redundant DB query racing with the initial data query
-                guard currentTab?.lastExecutedAt != nil else { return }
+                guard currentTab?.execution.lastExecutedAt != nil else { return }
                 await loadTableMetadataIfNeeded()
             }
             .onChange(of: inspectorTrigger) {
@@ -288,7 +288,7 @@ struct MainContentView: View {
                     let liveTables = DatabaseManager.shared
                         .session(for: connectionId)?.tables ?? []
                     let target: Set<TableInfo>
-                    if let currentTableName = tabManager.selectedTab?.tableName,
+                    if let currentTableName = tabManager.selectedTab?.tableContext.tableName,
                        let match = liveTables.first(where: { $0.name == currentTableName }) {
                         target = [match]
                     } else {
@@ -378,7 +378,7 @@ struct MainContentView: View {
                 let syncAction = SidebarSyncAction.resolveOnTablesLoad(
                     newTables: newTables,
                     selectedTables: sidebarState.selectedTables,
-                    currentTabTableName: tabManager.selectedTab?.tableName
+                    currentTabTableName: tabManager.selectedTab?.tableContext.tableName
                 )
                 if case .select(let tableName) = syncAction,
                     let match = newTables.first(where: { $0.name == tableName })

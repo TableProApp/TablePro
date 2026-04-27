@@ -12,7 +12,7 @@ extension MainContentView {
     // MARK: - Helper Methods
 
     func loadTableMetadataIfNeeded() async {
-        guard let tableName = currentTab?.tableName,
+        guard let tableName = currentTab?.tableContext.tableName,
             coordinator.tableMetadata?.tableName != tableName
         else { return }
         await coordinator.loadTableMetadata(tableName: tableName)
@@ -28,12 +28,12 @@ extension MainContentView {
             guard !hasPendingEdits else { return }
             coordinator.needsLazyLoad = false
             if let selectedTab = tabManager.selectedTab,
-                !selectedTab.databaseName.isEmpty,
-                selectedTab.databaseName != session.activeDatabase
+                !selectedTab.tableContext.databaseName.isEmpty,
+                selectedTab.tableContext.databaseName != session.activeDatabase
             {
-                Task { await coordinator.switchDatabase(to: selectedTab.databaseName) }
+                Task { await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName) }
             } else if let selectedTab = tabManager.selectedTab,
-                let tabSchema = selectedTab.schemaName,
+                let tabSchema = selectedTab.tableContext.schemaName,
                 !tabSchema.isEmpty,
                 tabSchema != session.currentSchema
             {
@@ -73,12 +73,12 @@ extension MainContentView {
 
     func updateInspectorContext() {
         rightPanelState.inspectorContext = InspectorContext(
-            tableName: currentTab?.tableName,
+            tableName: currentTab?.tableContext.tableName,
             tableMetadata: coordinator.tableMetadata,
             selectedRowData: selectedRowDataForSidebar,
             isEditable: isSidebarEditable,
             isRowDeleted: isSelectedRowDeleted,
-            currentQuery: coordinator.tabManager.selectedTab?.query,
+            currentQuery: coordinator.tabManager.selectedTab?.content.query,
             queryResults: cachedQueryResultsSummary()
         )
     }

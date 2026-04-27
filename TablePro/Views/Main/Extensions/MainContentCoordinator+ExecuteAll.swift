@@ -9,10 +9,10 @@ import Foundation
 extension MainContentCoordinator {
     func runAllStatements() {
         guard let index = tabManager.selectedTabIndex else { return }
-        guard !tabManager.tabs[index].isExecuting else { return }
+        guard !tabManager.tabs[index].execution.isExecuting else { return }
         guard tabManager.tabs[index].tabType == .query else { return }
 
-        let fullQuery = tabManager.tabs[index].query
+        let fullQuery = tabManager.tabs[index].content.query
         guard !fullQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let statements = SQLStatementScanner.allStatements(in: fullQuery)
@@ -25,12 +25,12 @@ extension MainContentCoordinator {
             if !detectedNames.isEmpty {
                 let reconciled = detectAndReconcileParameters(
                     sql: combinedSQL,
-                    existing: tabManager.tabs[index].queryParameters
+                    existing: tabManager.tabs[index].content.queryParameters
                 )
-                tabManager.tabs[index].queryParameters = reconciled
+                tabManager.tabs[index].content.queryParameters = reconciled
 
-                if !tabManager.tabs[index].isParameterPanelVisible {
-                    tabManager.tabs[index].isParameterPanelVisible = true
+                if !tabManager.tabs[index].content.isParameterPanelVisible {
+                    tabManager.tabs[index].content.isParameterPanelVisible = true
                     return
                 }
 
@@ -48,7 +48,7 @@ extension MainContentCoordinator {
         if level == .readOnly {
             let writeStatements = statements.filter { isWriteQuery($0) }
             if !writeStatements.isEmpty {
-                tabManager.tabs[index].errorMessage =
+                tabManager.tabs[index].execution.errorMessage =
                     String(localized: "Cannot execute write queries: connection is read-only")
                 return
             }
@@ -96,7 +96,7 @@ extension MainContentCoordinator {
                     }
                 case .blocked(let reason):
                     if index < tabManager.tabs.count {
-                        tabManager.tabs[index].errorMessage = reason
+                        tabManager.tabs[index].execution.errorMessage = reason
                     }
                 }
             }
@@ -119,7 +119,7 @@ extension MainContentCoordinator {
         if level == .readOnly {
             let writeStatements = statements.filter { isWriteQuery($0) }
             if !writeStatements.isEmpty {
-                tabManager.tabs[index].errorMessage =
+                tabManager.tabs[index].execution.errorMessage =
                     String(localized: "Cannot execute write queries: connection is read-only")
                 return
             }
@@ -161,7 +161,7 @@ extension MainContentCoordinator {
                     executeParameterizedAfterSafeMode(statements, parameters: parameters)
                 case .blocked(let reason):
                     if let idx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) {
-                        tabManager.tabs[idx].errorMessage = reason
+                        tabManager.tabs[idx].execution.errorMessage = reason
                     }
                 }
             }

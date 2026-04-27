@@ -46,18 +46,18 @@ extension MainContentView {
             }
             if let selectedTab = tabManager.selectedTab,
                 selectedTab.tabType == .table,
-                !selectedTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                !selectedTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
-                    if !selectedTab.databaseName.isEmpty,
-                        selectedTab.databaseName != session.activeDatabase
+                    if !selectedTab.tableContext.databaseName.isEmpty,
+                        selectedTab.tableContext.databaseName != session.activeDatabase
                     {
-                        await coordinator.switchDatabase(to: selectedTab.databaseName)
+                        await coordinator.switchDatabase(to: selectedTab.tableContext.databaseName)
                     } else {
                         if !selectedTab.filterState.appliedFilters.isEmpty,
-                            let tableName = selectedTab.tableName,
+                            let tableName = selectedTab.tableContext.tableName,
                             let tabIndex = tabManager.selectedTabIndex
                         {
                             let filteredQuery = coordinator.queryBuilder.buildFilteredQuery(
@@ -67,9 +67,9 @@ extension MainContentView {
                                 limit: selectedTab.pagination.pageSize,
                                 offset: selectedTab.pagination.currentOffset
                             )
-                            tabManager.tabs[tabIndex].query = filteredQuery
+                            tabManager.tabs[tabIndex].content.query = filteredQuery
                         }
-                        if let tableName = selectedTab.tableName {
+                        if let tableName = selectedTab.tableContext.tableName {
                             coordinator.restoreColumnLayoutForTable(tableName)
                         }
                         coordinator.executeTableTabQueryDirectly()
@@ -114,11 +114,11 @@ extension MainContentView {
         if !result.tabs.isEmpty {
             var restoredTabs = result.tabs
             for i in restoredTabs.indices where restoredTabs[i].tabType == .table {
-                if let tableName = restoredTabs[i].tableName {
-                    restoredTabs[i].query = QueryTab.buildBaseTableQuery(
+                if let tableName = restoredTabs[i].tableContext.tableName {
+                    restoredTabs[i].content.query = QueryTab.buildBaseTableQuery(
                         tableName: tableName,
                         databaseType: connection.type,
-                        schemaName: restoredTabs[i].schemaName
+                        schemaName: restoredTabs[i].tableContext.schemaName
                     )
                 }
             }
@@ -150,17 +150,17 @@ extension MainContentView {
             }
 
             if firstTab.tabType == .table,
-                !firstTab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                !firstTab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             {
                 if let session = DatabaseManager.shared.activeSessions[connection.id],
                     session.isConnected
                 {
-                    if !firstTab.databaseName.isEmpty,
-                        firstTab.databaseName != session.activeDatabase
+                    if !firstTab.tableContext.databaseName.isEmpty,
+                        firstTab.tableContext.databaseName != session.activeDatabase
                     {
-                        Task { await coordinator.switchDatabase(to: firstTab.databaseName) }
+                        Task { await coordinator.switchDatabase(to: firstTab.tableContext.databaseName) }
                     } else {
-                        if let tableName = firstTab.tableName {
+                        if let tableName = firstTab.tableContext.tableName {
                             coordinator.restoreColumnLayoutForTable(tableName)
                         }
                         coordinator.executeTableTabQueryDirectly()
@@ -180,7 +180,7 @@ extension MainContentView {
             || !pendingTruncates.isEmpty
             || !pendingDeletes.isEmpty
             || toolbarState.hasStructureChanges
-        let hasFileChanges = tabManager.selectedTab?.isFileDirty ?? false
+        let hasFileChanges = tabManager.selectedTab?.content.isFileDirty ?? false
         toolbarState.hasDataPendingChanges = hasDataChanges
         toolbarState.hasPendingChanges = hasDataChanges || hasFileChanges
     }
@@ -196,17 +196,17 @@ extension MainContentView {
             windowTitle = String(localized: "ER Diagram")
         } else if selectedTab?.tabType == .terminal {
             windowTitle = String(localized: "Terminal")
-        } else if let fileURL = selectedTab?.sourceFileURL {
+        } else if let fileURL = selectedTab?.content.sourceFileURL {
             windowTitle = fileURL.deletingPathExtension().lastPathComponent
         } else {
             let langName = PluginManager.shared.queryLanguageName(for: connection.type)
             let queryLabel = String(format: String(localized: "%@ Query"), langName)
-            windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableName : nil)
+            windowTitle = (selectedTab?.tabType == .table ? selectedTab?.tableContext.tableName : nil)
                 ?? selectedTab?.title
                 ?? (tabManager.tabs.isEmpty ? connection.name : queryLabel)
         }
-        viewWindow?.representedURL = selectedTab?.sourceFileURL
-        viewWindow?.isDocumentEdited = selectedTab?.isFileDirty ?? false
+        viewWindow?.representedURL = selectedTab?.content.sourceFileURL
+        viewWindow?.isDocumentEdited = selectedTab?.content.isFileDirty ?? false
     }
 
     /// Configure the hosting NSWindow — called by WindowAccessor when the window is available.
@@ -238,8 +238,8 @@ extension MainContentView {
         coordinator.isKeyWindow = window.isKeyWindow
 
         // Native proxy icon (Cmd+click shows path in Finder) and dirty dot
-        window.representedURL = tabManager.selectedTab?.sourceFileURL
-        window.isDocumentEdited = tabManager.selectedTab?.isFileDirty ?? false
+        window.representedURL = tabManager.selectedTab?.content.sourceFileURL
+        window.isDocumentEdited = tabManager.selectedTab?.content.isFileDirty ?? false
 
         // Update command actions window reference now that it's available
         commandActions?.window = window

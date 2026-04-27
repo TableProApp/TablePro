@@ -39,10 +39,10 @@ extension MainContentCoordinator {
         // Fast path: if this table is already the active tab in the same database, skip all work
         if let current = tabManager.selectedTab,
            current.tabType == .table,
-           current.tableName == tableName,
-           current.databaseName == currentDatabase {
+           current.tableContext.tableName == tableName,
+           current.tableContext.databaseName == currentDatabase {
             if showStructure, let idx = tabManager.selectedTabIndex {
-                tabManager.tabs[idx].resultsViewMode = .structure
+                tabManager.tabs[idx].display.resultsViewMode = .structure
             }
             return
         }
@@ -92,9 +92,9 @@ extension MainContentCoordinator {
                 )
             }
             if let tabIndex = tabManager.selectedTabIndex {
-                tabManager.tabs[tabIndex].isView = isView
-                tabManager.tabs[tabIndex].isEditable = !isView
-                tabManager.tabs[tabIndex].schemaName = currentSchema
+                tabManager.tabs[tabIndex].tableContext.isView = isView
+                tabManager.tabs[tabIndex].tableContext.isEditable = !isView
+                tabManager.tabs[tabIndex].tableContext.schemaName = currentSchema
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }
@@ -113,7 +113,7 @@ extension MainContentCoordinator {
         // In-place navigation: replace current tab content rather than
         // opening new native window tabs (e.g. Redis database switching).
         if navigationModel == .inPlace {
-            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableName {
+            if let oldTab = tabManager.selectedTab, let oldTableName = oldTab.tableContext.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
             if tabManager.replaceTabContent(
@@ -185,13 +185,13 @@ extension MainContentCoordinator {
             if let previewCoordinator = Self.coordinator(for: preview.windowId) {
                 // Skip if preview tab already shows this table
                 if let current = previewCoordinator.tabManager.selectedTab,
-                   current.tableName == tableName,
-                   current.databaseName == databaseName {
+                   current.tableContext.tableName == tableName,
+                   current.tableContext.databaseName == databaseName {
                     preview.window.makeKeyAndOrderFront(nil)
                     return
                 }
                 if let oldTab = previewCoordinator.tabManager.selectedTab,
-                   let oldTableName = oldTab.tableName {
+                   let oldTableName = oldTab.tableContext.tableName {
                     previewCoordinator.filterStateManager.saveLastFilters(for: oldTableName)
                 }
                 previewCoordinator.tabManager.replaceTabContent(
@@ -204,7 +204,7 @@ extension MainContentCoordinator {
                 )
                 previewCoordinator.filterStateManager.clearAll()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
-                    previewCoordinator.tabManager.tabs[tabIndex].resultsViewMode = showStructure ? .structure : .data
+                    previewCoordinator.tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                     previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
                     previewCoordinator.toolbarState.isTableTab = true
                 }
@@ -228,20 +228,20 @@ extension MainContentCoordinator {
                 return true
             }
             // Empty/default query tab (no user content, no results, never executed)
-            if tab.tabType == .query && tab.lastExecutedAt == nil
-                && tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if tab.tabType == .query && tab.execution.lastExecutedAt == nil
+                && tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return true
             }
             return false
         }()
         if let selectedTab = tabManager.selectedTab, isReusableTab {
             // Skip if already showing this table
-            if selectedTab.tableName == tableName, selectedTab.databaseName == databaseName {
+            if selectedTab.tableContext.tableName == tableName, selectedTab.tableContext.databaseName == databaseName {
                 return
             }
             // If preview tab has active work, promote it and open new tab instead
             let hasUnsavedQuery = tabManager.selectedTab.map { tab in
-                tab.tabType == .query && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                tab.tabType == .query && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             } ?? false
             let previewHasWork = changeManager.hasChanges
                 || filterStateManager.hasAppliedFilters
@@ -261,7 +261,7 @@ extension MainContentCoordinator {
                 WindowManager.shared.openTab(payload: payload)
                 return
             }
-            if let oldTableName = selectedTab.tableName {
+            if let oldTableName = selectedTab.tableContext.tableName {
                 filterStateManager.saveLastFilters(for: oldTableName)
             }
             tabManager.replaceTabContent(
@@ -274,7 +274,7 @@ extension MainContentCoordinator {
             )
             filterStateManager.clearAll()
             if let tabIndex = tabManager.selectedTabIndex {
-                tabManager.tabs[tabIndex].resultsViewMode = showStructure ? .structure : .data
+                tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
                 toolbarState.isTableTab = true
             }

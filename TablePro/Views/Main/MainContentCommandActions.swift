@@ -232,7 +232,7 @@ final class MainContentCommandActions {
     }
 
     func copySelectedRows() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.copyRows?()
         } else {
             let indices = selectedRowIndices.wrappedValue
@@ -251,7 +251,7 @@ final class MainContentCommandActions {
     }
 
     func pasteRows() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.pasteRows?()
         } else {
             var indices = selectedRowIndices.wrappedValue
@@ -282,7 +282,7 @@ final class MainContentCommandActions {
     }
 
     var isCurrentTabEditable: Bool {
-        coordinator?.tabManager.selectedTab?.isEditable == true
+        coordinator?.tabManager.selectedTab?.tableContext.isEditable == true
     }
 
     var isTableTab: Bool {
@@ -298,7 +298,7 @@ final class MainContentCommandActions {
     }
 
     var hasQueryText: Bool {
-        !(coordinator?.tabManager.selectedTab?.query.isEmpty ?? true)
+        !(coordinator?.tabManager.selectedTab?.content.query.isEmpty ?? true)
     }
 
     /// Whether there are pending data changes that the SQL preview can show.
@@ -325,7 +325,7 @@ final class MainContentCommandActions {
         let hasPendingTableOps = !pendingTruncates.wrappedValue.isEmpty
             || !pendingDeletes.wrappedValue.isEmpty
         let hasSidebarEdits = rightPanelState.editState.hasEdits
-        let hasFileDirty = coordinator?.tabManager.selectedTab?.isFileDirty ?? false
+        let hasFileDirty = coordinator?.tabManager.selectedTab?.content.isFileDirty ?? false
         return hasEditedCells || hasPendingTableOps || hasSidebarEdits || hasFileDirty
     }
 
@@ -410,7 +410,7 @@ final class MainContentCommandActions {
         }
 
         // Structure view saves via direct coordinator call
-        if coordinator.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator.structureActions?.saveChanges?()
             performClose()
             return
@@ -439,7 +439,7 @@ final class MainContentCommandActions {
         }
 
         // File save (query editor with source file)
-        if coordinator.tabManager.selectedTab?.isFileDirty == true {
+        if coordinator.tabManager.selectedTab?.content.isFileDirty == true {
             saveFileToSourceURL()
             performClose()
             return
@@ -450,13 +450,13 @@ final class MainContentCommandActions {
 
     private func saveFileToSourceURL() {
         guard let tab = coordinator?.tabManager.selectedTab,
-              let url = tab.sourceFileURL else { return }
-        let content = tab.query
+              let url = tab.content.sourceFileURL else { return }
+        let content = tab.content.query
         Task {
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
                 if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].savedFileContent = content
+                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
                 }
             } catch {
                 // File may have been deleted or become inaccessible
@@ -530,7 +530,7 @@ final class MainContentCommandActions {
 
     func saveChanges() {
         // Check if we're in structure view mode
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.saveChanges?()
         } else if coordinator?.changeManager.hasChanges == true
             || !pendingTruncates.wrappedValue.isEmpty
@@ -555,13 +555,13 @@ final class MainContentCommandActions {
         }
         // File save: write query back to source file
         else if let tab = coordinator?.tabManager.selectedTab,
-                tab.sourceFileURL != nil, tab.isFileDirty {
+                tab.content.sourceFileURL != nil, tab.content.isFileDirty {
             saveFileToSourceURL()
         }
         // Save As: untitled query tab with content
         else if let tab = coordinator?.tabManager.selectedTab,
-                tab.tabType == .query, tab.sourceFileURL == nil,
-                !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                tab.tabType == .query, tab.content.sourceFileURL == nil,
+                !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             saveFileAs()
         }
     }
@@ -569,15 +569,15 @@ final class MainContentCommandActions {
     func saveFileAs() {
         guard let tab = coordinator?.tabManager.selectedTab,
               tab.tabType == .query else { return }
-        let content = tab.query
-        let suggestedName = tab.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
+        let content = tab.content.query
+        let suggestedName = tab.content.sourceFileURL?.lastPathComponent ?? "\(tab.title).sql"
         Task {
             guard let url = await SQLFileService.showSavePanel(suggestedName: suggestedName) else { return }
             do {
                 try await SQLFileService.writeFile(content: content, to: url)
                 if let index = coordinator?.tabManager.tabs.firstIndex(where: { $0.id == tab.id }) {
-                    coordinator?.tabManager.tabs[index].sourceFileURL = url
-                    coordinator?.tabManager.tabs[index].savedFileContent = content
+                    coordinator?.tabManager.tabs[index].content.sourceFileURL = url
+                    coordinator?.tabManager.tabs[index].content.savedFileContent = content
                     coordinator?.tabManager.tabs[index].title = url.deletingPathExtension().lastPathComponent
                 }
             } catch {
@@ -598,13 +598,13 @@ final class MainContentCommandActions {
     }
 
     func aiExplainQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
         coordinator?.showAIChatPanel()
         coordinator?.aiViewModel?.handleExplainSelection(query)
     }
 
     func aiOptimizeQuery() {
-        guard let query = coordinator?.tabManager.selectedTab?.query, !query.isEmpty else { return }
+        guard let query = coordinator?.tabManager.selectedTab?.content.query, !query.isEmpty else { return }
         coordinator?.showAIChatPanel()
         coordinator?.aiViewModel?.handleOptimizeSelection(query)
     }
@@ -631,7 +631,7 @@ final class MainContentCommandActions {
 
     var canSaveAsFavorite: Bool {
         guard let tab = coordinator?.tabManager.selectedTab else { return false }
-        return tab.tabType == .query && !tab.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return tab.tabType == .query && !tab.content.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     func previewSQL() {
@@ -664,12 +664,12 @@ final class MainContentCommandActions {
 
         do {
             let result = try formatter.format(
-                tab.query,
+                tab.content.query,
                 dialect: dbType,
                 cursorOffset: 0,
                 options: options
             )
-            coordinator.tabManager.tabs[tabIndex].query = result.formattedSQL
+            coordinator.tabManager.tabs[tabIndex].content.query = result.formattedSQL
         } catch {
             Self.logger.error("SQL Formatting error: \(error.localizedDescription, privacy: .public)")
         }
@@ -687,34 +687,34 @@ final class MainContentCommandActions {
 
     func toggleResults() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
-        coordinator.tabManager.tabs[tabIndex].isResultsCollapsed.toggle()
-        coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].isResultsCollapsed
+        coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed.toggle()
+        coordinator.toolbarState.isResultsCollapsed = coordinator.tabManager.tabs[tabIndex].display.isResultsCollapsed
     }
 
     func previousResultTab() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
         let tab = coordinator.tabManager.tabs[tabIndex]
-        guard tab.resultSets.count > 1,
-              let currentId = tab.activeResultSetId ?? tab.resultSets.last?.id,
-              let currentIndex = tab.resultSets.firstIndex(where: { $0.id == currentId }),
+        guard tab.display.resultSets.count > 1,
+              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
+              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex > 0 else { return }
-        coordinator.tabManager.tabs[tabIndex].activeResultSetId = tab.resultSets[currentIndex - 1].id
+        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex - 1].id
     }
 
     func nextResultTab() {
         guard let coordinator, let tabIndex = coordinator.tabManager.selectedTabIndex else { return }
         let tab = coordinator.tabManager.tabs[tabIndex]
-        guard tab.resultSets.count > 1,
-              let currentId = tab.activeResultSetId ?? tab.resultSets.last?.id,
-              let currentIndex = tab.resultSets.firstIndex(where: { $0.id == currentId }),
-              currentIndex < tab.resultSets.count - 1 else { return }
-        coordinator.tabManager.tabs[tabIndex].activeResultSetId = tab.resultSets[currentIndex + 1].id
+        guard tab.display.resultSets.count > 1,
+              let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
+              let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
+              currentIndex < tab.display.resultSets.count - 1 else { return }
+        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex + 1].id
     }
 
     func closeResultTab() {
         guard let coordinator else { return }
         let tab = coordinator.tabManager.selectedTab
-        guard let activeId = tab?.activeResultSetId ?? tab?.resultSets.last?.id else { return }
+        guard let activeId = tab?.display.activeResultSetId ?? tab?.display.resultSets.last?.id else { return }
         coordinator.closeResultSet(id: activeId)
     }
 
@@ -731,7 +731,7 @@ final class MainContentCommandActions {
     // MARK: - Undo/Redo (Group A — Called Directly)
 
     func undoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
             var indices = selectedRowIndices.wrappedValue
@@ -741,7 +741,7 @@ final class MainContentCommandActions {
     }
 
     func redoChange() {
-        if coordinator?.tabManager.selectedTab?.resultsViewMode == .structure {
+        if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
         } else {
             coordinator?.redoLastChange()

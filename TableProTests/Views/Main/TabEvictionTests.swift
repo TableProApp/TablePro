@@ -28,7 +28,7 @@ struct TabEvictionTests {
         hasUnsavedChanges: Bool = false
     ) -> QueryTab {
         var tab = QueryTab(id: id, title: "Test", query: "SELECT 1", tabType: tabType)
-        tab.lastExecutedAt = lastExecutedAt
+        tab.execution.lastExecutedAt = lastExecutedAt
 
         if rowCount > 0 {
             let rows = makeTestRows(count: rowCount)
@@ -117,7 +117,7 @@ struct TabEvictionTests {
 
         let isCandidate = !tab.rowBuffer.isEvicted
             && !tab.resultRows.isEmpty
-            && tab.lastExecutedAt != nil
+            && tab.execution.lastExecutedAt != nil
             && !tab.pendingChanges.hasChanges
 
         #expect(isCandidate == false)
@@ -139,7 +139,7 @@ struct TabEvictionTests {
             !activeTabIds.contains($0.id)
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
-                && $0.lastExecutedAt != nil
+                && $0.execution.lastExecutedAt != nil
                 && !$0.pendingChanges.hasChanges
         }
 
@@ -164,12 +164,12 @@ struct TabEvictionTests {
             !activeTabIds.contains($0.id)
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
-                && $0.lastExecutedAt != nil
+                && $0.execution.lastExecutedAt != nil
                 && !$0.pendingChanges.hasChanges
         }
 
         let sorted = candidates.sorted {
-            ($0.lastExecutedAt ?? .distantFuture) < ($1.lastExecutedAt ?? .distantFuture)
+            ($0.execution.lastExecutedAt ?? .distantFuture) < ($1.execution.lastExecutedAt ?? .distantFuture)
         }
 
         let maxInactiveLoaded = 2
@@ -210,12 +210,12 @@ struct TabEvictionTests {
             !activeTabIds.contains($0.id)
                 && !$0.rowBuffer.isEvicted
                 && !$0.resultRows.isEmpty
-                && $0.lastExecutedAt != nil
+                && $0.execution.lastExecutedAt != nil
                 && !$0.pendingChanges.hasChanges
         }
 
         let sorted = candidates.sorted {
-            ($0.lastExecutedAt ?? .distantFuture) < ($1.lastExecutedAt ?? .distantFuture)
+            ($0.execution.lastExecutedAt ?? .distantFuture) < ($1.execution.lastExecutedAt ?? .distantFuture)
         }
 
         let maxInactiveLoaded = 2
