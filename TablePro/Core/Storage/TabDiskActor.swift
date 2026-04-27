@@ -20,9 +20,6 @@ internal struct TabDiskState: Codable {
 ///
 /// Data is stored as individual JSON files per connection in:
 ///   `~/Library/Application Support/TablePro/TabState/`
-///
-/// Last-query strings are stored in a sibling directory:
-///   `~/Library/Application Support/TablePro/LastQuery/`
 internal actor TabDiskActor {
     internal static let shared = TabDiskActor()
 
