@@ -459,6 +459,17 @@ build_for_arch() {
         echo "   TableProPluginKit framework stripped"
     fi
 
+    # Remove development rpaths (absolute source paths) from all binaries
+    echo "🔧 Stripping development rpaths..."
+    for binary in "$main_binary" \
+        "$BUILD_DIR/$OUTPUT_NAME/Contents/MacOS"/* \
+        "$PLUGINS_DIR"/*.tableplugin/Contents/MacOS/*; do
+        [ -f "$binary" ] || continue
+        otool -l "$binary" 2>/dev/null | grep "Libs/dylibs" | awk '{print $2}' | while read -r rpath; do
+            install_name_tool -delete_rpath "$rpath" "$binary" 2>/dev/null || true
+        done
+    done
+
     # Strip Sparkle helper binaries
     local sparkle_dir="$BUILD_DIR/$OUTPUT_NAME/Contents/Frameworks/Sparkle.framework/Versions/B"
     for sparkle_bin in \

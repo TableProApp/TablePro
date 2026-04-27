@@ -41,6 +41,7 @@ create_dylibs_for_arch() {
         -o "$OUT_DIR/libcrypto.3${suffix}.dylib" \
         -Wl,-all_load "$crypto_static" \
         -install_name @rpath/libcrypto.3.dylib \
+        -compatibility_version 3.0.0 -current_version 3.4.0 \
         -lz -framework Security -framework CoreFoundation \
         -mmacosx-version-min="$MIN_MACOS"
 
@@ -50,6 +51,7 @@ create_dylibs_for_arch() {
         -Wl,-all_load "$ssl_static" \
         -L"$OUT_DIR" -lcrypto.3"$suffix" \
         -install_name @rpath/libssl.3.dylib \
+        -compatibility_version 3.0.0 -current_version 3.4.0 \
         -mmacosx-version-min="$MIN_MACOS"
 }
 
