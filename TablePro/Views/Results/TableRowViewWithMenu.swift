@@ -130,7 +130,6 @@ final class TableRowViewWithMenu: NSTableRowView {
                 menu.addItem(NSMenuItem.separator())
             }
 
-            // Set Value (editable + column clicked)
             if coordinator.isEditable && dataColumnIndex >= 0 {
                 let setValueMenu = NSMenu()
 
@@ -140,17 +139,33 @@ final class TableRowViewWithMenu: NSTableRowView {
                 emptyItem.target = self
                 setValueMenu.addItem(emptyItem)
 
-                let nullItem = NSMenuItem(
-                    title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
-                nullItem.representedObject = dataColumnIndex
-                nullItem.target = self
-                setValueMenu.addItem(nullItem)
+                let columnName = dataColumnIndex < coordinator.rowProvider.columns.count
+                    ? coordinator.rowProvider.columns[dataColumnIndex]
+                    : nil
 
-                let defaultItem = NSMenuItem(
-                    title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
-                defaultItem.representedObject = dataColumnIndex
-                defaultItem.target = self
-                setValueMenu.addItem(defaultItem)
+                let isNullable = columnName.flatMap { coordinator.rowProvider.columnNullable[$0] } ?? true
+                if isNullable {
+                    let nullItem = NSMenuItem(
+                        title: String(localized: "NULL"), action: #selector(setNullValue(_:)), keyEquivalent: "")
+                    nullItem.representedObject = dataColumnIndex
+                    nullItem.target = self
+                    setValueMenu.addItem(nullItem)
+                }
+
+                let hasDefault: Bool = {
+                    guard let columnName else { return false }
+                    if let value = coordinator.rowProvider.columnDefaults[columnName], value != nil {
+                        return true
+                    }
+                    return false
+                }()
+                if hasDefault {
+                    let defaultItem = NSMenuItem(
+                        title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")
+                    defaultItem.representedObject = dataColumnIndex
+                    defaultItem.target = self
+                    setValueMenu.addItem(defaultItem)
+                }
 
                 let setValueItem = NSMenuItem(title: String(localized: "Set Value"), action: nil, keyEquivalent: "")
                 setValueItem.submenu = setValueMenu

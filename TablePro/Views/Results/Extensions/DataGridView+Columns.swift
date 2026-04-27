@@ -46,10 +46,27 @@ extension TableViewCoordinator {
         let isEnumOrSet = enumOrSetColumns.contains(columnIndex)
         let isFKColumn = fkColumns.contains(columnIndex)
 
+        let columnType: ColumnType? = columnIndex < rowProvider.columnTypes.count
+            ? rowProvider.columnTypes[columnIndex]
+            : nil
+
+        if let columnType, columnType.isBooleanType, !isDropdown, !isTypePicker {
+            return cellFactory.makeBooleanCell(
+                tableView: tableView,
+                row: row,
+                columnIndex: columnIndex,
+                rawValue: rawValue,
+                visualState: state,
+                isEditable: isEditable,
+                isFocused: isFocused,
+                target: self,
+                action: #selector(handleBooleanCellToggle(_:))
+            )
+        }
+
         let hasSpecialEditor: Bool = {
-            guard columnIndex < rowProvider.columnTypes.count else { return false }
-            let ct = rowProvider.columnTypes[columnIndex]
-            return ct.isBooleanType || ct.isDateType || ct.isJsonType || ct.isBlobType
+            guard let columnType else { return false }
+            return columnType.isDateType || columnType.isJsonType || columnType.isBlobType
         }()
 
         return cellFactory.makeDataCell(
