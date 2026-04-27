@@ -60,21 +60,14 @@ extension ConnectionFormView {
                         saveConnection(connect: false)
                     }
                     .disabled(isInstallingPlugin || !isValid)
-
-                    Button(String(localized: "Save & Connect")) {
-                        saveConnection(connect: true)
-                    }
-                    .keyboardShortcut(.return)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isInstallingPlugin || !isValid)
-                } else {
-                    Button(String(localized: "Save")) {
-                        saveConnection()
-                    }
-                    .keyboardShortcut(.return)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isInstallingPlugin || !isValid)
                 }
+
+                Button(isNew ? String(localized: "Save & Connect") : String(localized: "Save")) {
+                    saveConnection(connect: isNew)
+                }
+                .keyboardShortcut(.return)
+                .buttonStyle(.borderedProminent)
+                .disabled(isInstallingPlugin || !isValid)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
