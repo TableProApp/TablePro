@@ -123,7 +123,7 @@ struct DataGridView: NSViewRepresentable {
         // Add data columns (suppress resize notifications during setup)
         context.coordinator.isRebuildingColumns = true
         for (index, columnName) in rowProvider.columns.enumerated() {
-            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col_\(index)"))
+            let column = NSTableColumn(identifier: Self.columnIdentifier(for: index))
             column.title = columnName
             if index < rowProvider.columnTypes.count {
                 let typeName = rowProvider.columnTypes[index].rawType ?? rowProvider.columnTypes[index].displayName
@@ -140,14 +140,17 @@ struct DataGridView: NSViewRepresentable {
             column.minWidth = 30
             column.resizingMask = .userResizingMask
             column.isEditable = isEditable
-            column.sortDescriptorPrototype = NSSortDescriptor(key: "col_\(index)", ascending: true)
+            column.sortDescriptorPrototype = NSSortDescriptor(
+                key: Self.columnIdentifier(for: index).rawValue,
+                ascending: true
+            )
             tableView.addTableColumn(column)
         }
 
         // Apply saved column widths (from user resizing)
         if !columnLayout.columnWidths.isEmpty {
             for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                guard let colIndex = Self.columnIndex(from: column.identifier),
+                guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                       colIndex < rowProvider.columns.count else { continue }
                 let baseName = rowProvider.columns[colIndex]
                 if let savedWidth = columnLayout.columnWidths[baseName] {
@@ -320,7 +323,7 @@ struct DataGridView: NSViewRepresentable {
         // Check if columns changed (by name or structure)
         let currentDataColumns = tableView.tableColumns.dropFirst()
         let currentColumnIds = currentDataColumns.map { $0.identifier.rawValue }
-        let expectedColumnIds = rowProvider.columns.indices.map { "col_\($0)" }
+        let expectedColumnIds = rowProvider.columns.indices.map { Self.columnIdentifier(for: $0).rawValue }
         let columnsChanged = !rowProvider.columns.isEmpty && (currentColumnIds != expectedColumnIds)
 
         // Only recalculate column widths when transitioning from 0 rows (initial data load).
@@ -377,7 +380,7 @@ struct DataGridView: NSViewRepresentable {
 
                 let willRestoreWidths = !columnLayout.columnWidths.isEmpty
                 for (index, columnName) in rowProvider.columns.enumerated() {
-                    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("col_\(index)"))
+                    let column = NSTableColumn(identifier: Self.columnIdentifier(for: index))
                     column.title = columnName
                     if index < rowProvider.columnTypes.count {
                         let typeName = rowProvider.columnTypes[index].rawType
@@ -399,14 +402,17 @@ struct DataGridView: NSViewRepresentable {
                     column.minWidth = 30
                     column.resizingMask = .userResizingMask
                     column.isEditable = isEditable
-                    column.sortDescriptorPrototype = NSSortDescriptor(key: "col_\(index)", ascending: true)
+                    column.sortDescriptorPrototype = NSSortDescriptor(
+                        key: Self.columnIdentifier(for: index).rawValue,
+                        ascending: true
+                    )
                     tableView.addTableColumn(column)
                 }
             } else {
                 // Same column count — lightweight in-place update (avoids remove/add overhead)
                 let hasSavedWidths = !columnLayout.columnWidths.isEmpty
                 for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.columnIndex(from: column.identifier),
+                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                           colIndex < rowProvider.columns.count else { continue }
                     let columnName = rowProvider.columns[colIndex]
                     column.title = columnName
@@ -430,7 +436,7 @@ struct DataGridView: NSViewRepresentable {
             // Restore saved column widths after rebuild (from user resize or persisted layout)
             if hasSavedLayout {
                 for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.columnIndex(from: column.identifier),
+                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                           colIndex < rowProvider.columns.count else { continue }
                     let baseName = rowProvider.columns[colIndex]
                     if let savedWidth = columnLayout.columnWidths[baseName] {
@@ -452,7 +458,7 @@ struct DataGridView: NSViewRepresentable {
             if !coordinator.hasUserResizedColumns, !hasSavedLayout {
                 var newWidths: [String: CGFloat] = [:]
                 for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.columnIndex(from: column.identifier),
+                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                           colIndex < rowProvider.columns.count else { continue }
                     newWidths[rowProvider.columns[colIndex]] = column.width
                 }
@@ -481,7 +487,7 @@ struct DataGridView: NSViewRepresentable {
                 var currentWidths: [String: CGFloat] = [:]
                 var currentOrder: [String] = []
                 for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-                    guard let colIndex = Self.columnIndex(from: column.identifier),
+                    guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                           colIndex < rowProvider.columns.count else { continue }
                     let baseName = rowProvider.columns[colIndex]
                     currentWidths[baseName] = column.width
@@ -518,7 +524,7 @@ struct DataGridView: NSViewRepresentable {
         } else if let firstSort = sortState.columns.first,
                   firstSort.columnIndex >= 0 && firstSort.columnIndex < rowProvider.columns.count {
             // Sync with first sort column for NSTableView's built-in sort indicators
-            let key = "col_\(firstSort.columnIndex)"
+            let key = Self.columnIdentifier(for: firstSort.columnIndex).rawValue
             let ascending = firstSort.direction == .ascending
             let currentDescriptor = tableView.sortDescriptors.first
             if currentDescriptor?.key != key || currentDescriptor?.ascending != ascending {
@@ -547,7 +553,7 @@ struct DataGridView: NSViewRepresentable {
             let fkColumnIndices = IndexSet(
                 tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
                     guard tableColumn.identifier.rawValue != "__rowNumber__",
-                          let modelIndex = Self.columnIndex(from: tableColumn.identifier),
+                          let modelIndex = Self.dataColumnIndex(from: tableColumn.identifier),
                           modelIndex < rowProvider.columns.count else { return nil }
                     let columnName = rowProvider.columns[modelIndex]
                     return rowProvider.columnForeignKeys[columnName] != nil ? displayIndex : nil
@@ -593,7 +599,7 @@ struct DataGridView: NSViewRepresentable {
 
         // Handle editingCell
         if let cell = editingCell {
-            let tableColumn = cell.column + 1
+            let tableColumn = DataGridView.tableColumnIndex(for: cell.column)
             if cell.row < tableView.numberOfRows && tableColumn < tableView.numberOfColumns {
                 tableView.scrollRowToVisible(cell.row)
                 Task { @MainActor [weak tableView] in
@@ -615,7 +621,7 @@ struct DataGridView: NSViewRepresentable {
     /// Apply hidden column state to the table view
     private func applyColumnVisibility(to tableView: NSTableView) {
         for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-            guard let colIndex = Self.columnIndex(from: column.identifier),
+            guard let colIndex = Self.dataColumnIndex(from: column.identifier),
                   colIndex < rowProvider.columns.count else { continue }
             let columnName = rowProvider.columns[colIndex]
             let shouldHide = configuration.hiddenColumns.contains(columnName)
@@ -627,8 +633,19 @@ struct DataGridView: NSViewRepresentable {
 
     // MARK: - Column Layout Helpers
 
-    /// Extract column index from a stable identifier like "col_3"
-    static func columnIndex(from identifier: NSUserInterfaceItemIdentifier) -> Int? {
+    static func columnIdentifier(for dataIndex: Int) -> NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("col_\(dataIndex)")
+    }
+
+    static func tableColumnIndex(for dataIndex: Int) -> Int {
+        dataIndex + 1
+    }
+
+    static func dataColumnIndex(for tableColumnIndex: Int) -> Int {
+        tableColumnIndex - 1
+    }
+
+    static func dataColumnIndex(from identifier: NSUserInterfaceItemIdentifier) -> Int? {
         let raw = identifier.rawValue
         guard raw.hasPrefix("col_") else { return nil }
         return Int(raw.dropFirst(4))
@@ -643,7 +660,7 @@ struct DataGridView: NSViewRepresentable {
         // Build name→column map for O(1) lookup
         var columnMap: [String: NSTableColumn] = [:]
         for col in dataColumns {
-            if let idx = columnIndex(from: col.identifier), idx < columns.count {
+            if let idx = dataColumnIndex(from: col.identifier), idx < columns.count {
                 columnMap[columns[idx]] = col
             }
         }
@@ -651,7 +668,7 @@ struct DataGridView: NSViewRepresentable {
         for (targetIndex, columnName) in order.enumerated() {
             guard let sourceColumn = columnMap[columnName],
                   let currentIndex = tableView.tableColumns.firstIndex(of: sourceColumn) else { continue }
-            let targetTableIndex = targetIndex + 1  // +1 for row number column
+            let targetTableIndex = tableColumnIndex(for: targetIndex)
             if currentIndex != targetTableIndex && targetTableIndex < tableView.numberOfColumns {
                 tableView.moveColumn(currentIndex, toColumn: targetTableIndex)
             }
@@ -662,9 +679,8 @@ struct DataGridView: NSViewRepresentable {
 
     /// Update column header titles to show multi-sort priority indicators (e.g., "name 1▲", "age 2▼")
     private static func updateSortIndicators(tableView: NSTableView, sortState: SortState, columns: [String]) {
-        for column in tableView.tableColumns where column.identifier.rawValue.hasPrefix("col_") {
-            let idString = column.identifier.rawValue
-            guard let colIndex = Int(idString.dropFirst(4)),
+        for column in tableView.tableColumns {
+            guard let colIndex = dataColumnIndex(from: column.identifier),
                   colIndex < columns.count else { continue }
 
             let baseName = columns[colIndex]

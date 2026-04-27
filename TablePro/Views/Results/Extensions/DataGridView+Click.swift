@@ -16,7 +16,7 @@ extension TableViewCoordinator {
         let column = sender.clickedColumn
         guard row >= 0, column > 0 else { return }
 
-        let columnIndex = column - 1
+        let columnIndex = DataGridView.dataColumnIndex(for: column)
         guard !changeManager.isRowDeleted(row) else { return }
 
         // Single click only selects the row. Chevron buttons handle dropdown/picker actions.
@@ -29,7 +29,7 @@ extension TableViewCoordinator {
         let column = sender.clickedColumn
         guard row >= 0, column > 0 else { return }
 
-        let columnIndex = column - 1
+        let columnIndex = DataGridView.dataColumnIndex(for: column)
         guard !changeManager.isRowDeleted(row) else { return }
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
@@ -94,7 +94,7 @@ extension TableViewCoordinator {
             current = view.superview
         }
         guard let tableView else { return }
-        let column = columnIndex + 1
+        let column = DataGridView.tableColumnIndex(for: columnIndex)
 
         // Structure view: dropdown and type picker columns take priority
         if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {

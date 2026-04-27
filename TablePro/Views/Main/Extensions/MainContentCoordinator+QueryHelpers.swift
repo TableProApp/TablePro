@@ -293,11 +293,6 @@ extension MainContentCoordinator {
         rs.isEditable = updatedTab.tableContext.isEditable
         rs.resultVersion = updatedTab.resultVersion
         rs.metadataVersion = updatedTab.metadataVersion
-        rs.columnTypes = updatedTab.columnTypes
-        rs.columnDefaults = updatedTab.columnDefaults
-        rs.columnForeignKeys = updatedTab.columnForeignKeys
-        rs.columnEnumValues = updatedTab.columnEnumValues
-        rs.columnNullable = updatedTab.columnNullable
 
         // Keep pinned results, replace unpinned
         let pinned = updatedTab.display.resultSets.filter(\.isPinned)
