@@ -145,7 +145,7 @@ final class MinimapLineFragmentView: LineFragmentView {
                 width: CGFloat(run.range.length) * 1.5,
                 height: 2.0
             )
-            context.setFillColor(run.color.cgColor)
+            context.setFillColor(run.color.safeCGColor)
             context.fill(rect.pixelAligned)
         }
 

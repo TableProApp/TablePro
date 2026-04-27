@@ -104,7 +104,7 @@ final class CellOverlayEditor: NSObject, NSTextViewDelegate {
         // Visual border to indicate editing state
         sv.wantsLayer = true
         sv.layer?.borderWidth = 2
-        sv.layer?.borderColor = NSColor.selectedControlColor.cgColor
+        sv.layer?.borderColor = NSColor.selectedControlColor.safeCGColor
         sv.layer?.cornerRadius = 2
 
         tableView.addSubview(sv)

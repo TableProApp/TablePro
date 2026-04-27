@@ -219,7 +219,7 @@ public final class EmphasisManager {
         switch emphasis.style {
         case .standard:
             layer.cornerRadius = 4.0
-            layer.fillColor = (emphasis.inactive ? inactiveColor : activeColor).cgColor
+            layer.fillColor = (emphasis.inactive ? inactiveColor : activeColor).safeCGColor
             layer.shadowColor = .black
             layer.shadowOpacity = emphasis.inactive ? 0.0 : 0.5
             layer.shadowOffset = CGSize(width: 0, height: 1.5)
@@ -229,15 +229,15 @@ public final class EmphasisManager {
         case .underline(let color):
             layer.lineWidth = 1.0
             layer.lineCap = .round
-            layer.strokeColor = color.cgColor
+            layer.strokeColor = color.safeCGColor
             layer.fillColor = nil
             layer.opacity = emphasis.flash ? 0.0 : 1.0
             layer.zPosition = 1
         case let .outline(color, shouldFill):
             layer.cornerRadius = 2.5
-            layer.borderColor = color.cgColor
+            layer.borderColor = color.safeCGColor
             layer.borderWidth = 0.5
-            layer.fillColor = shouldFill ? color.cgColor : nil
+            layer.fillColor = shouldFill ? color.safeCGColor : nil
             layer.opacity = emphasis.flash ? 0.0 : 1.0
             layer.zPosition = 1
         }
@@ -272,7 +272,7 @@ public final class EmphasisManager {
         // Create text layer
         let textLayer = CATextLayer()
         textLayer.frame = bounds
-        textLayer.backgroundColor = NSColor.clear.cgColor
+        textLayer.backgroundColor = NSColor.clear.safeCGColor
         textLayer.contentsScale = textView.window?.screen?.backingScaleFactor ?? 2.0
         textLayer.allowsFontSubpixelQuantization = true
         textLayer.zPosition = 2

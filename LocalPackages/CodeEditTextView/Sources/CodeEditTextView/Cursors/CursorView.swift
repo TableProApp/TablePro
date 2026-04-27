@@ -12,7 +12,7 @@ open class CursorView: NSView {
     /// The color of the cursor.
     public var color: NSColor {
         didSet {
-            layer?.backgroundColor = color.cgColor
+            layer?.backgroundColor = color.safeCGColor
         }
     }
 
@@ -43,7 +43,7 @@ open class CursorView: NSView {
 
         frame.size.width = width
         wantsLayer = true
-        layer?.backgroundColor = color.cgColor
+        layer?.backgroundColor = color.safeCGColor
     }
 
     func blinkTimer(_ shouldHideCursor: Bool) {

@@ -274,7 +274,7 @@ public final class LineFragmentRenderer {
         forRect: NSRect,
         in context: CGContext
     ) {
-        context.setFillColor(color.cgColor)
+        context.setFillColor(color.safeCGColor)
 
         let rect: CGRect
 

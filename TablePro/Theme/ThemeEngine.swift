@@ -398,7 +398,14 @@ internal final class ThemeEngine {
     // MARK: - Helpers
 
     private func srgb(_ color: NSColor) -> NSColor {
-        color.usingColorSpace(.sRGB) ?? color
+        if let converted = color.usingColorSpace(.sRGB) {
+            return converted
+        }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        if let deviceRgb = color.usingColorSpace(.deviceRGB) {
+            deviceRgb.getRed(&r, green: &g, blue: &b, alpha: &a)
+        }
+        return NSColor(srgbRed: r, green: g, blue: b, alpha: a)
     }
 }
 

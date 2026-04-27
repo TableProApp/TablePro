@@ -244,7 +244,7 @@ extension LineFoldRibbonView {
             yPosition - chevronSize.height
         }
 
-        context.setStrokeColor(NSColor.secondaryLabelColor.withAlphaComponent(hoveringFold.progress).cgColor)
+        context.setStrokeColor(NSColor.secondaryLabelColor.withAlphaComponent(hoveringFold.progress).safeCGColor)
         context.setLineCap(.round)
         context.setLineJoin(.round)
         context.setLineWidth(1.3)

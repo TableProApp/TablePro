@@ -222,7 +222,7 @@ public class GutterView: NSView {
         let width = maxX - minX
 
         context.saveGState()
-        context.setFillColor(backgroundColor.cgColor)
+        context.setFillColor(backgroundColor.safeCGColor)
         context.fill(CGRect(x: minX, y: dirtyRect.minY, width: width, height: dirtyRect.height))
         context.restoreGState()
     }
@@ -240,7 +240,7 @@ public class GutterView: NSView {
         context.saveGState()
 
         var highlightedLines: Set<UUID> = []
-        context.setFillColor(selectedLineColor.cgColor)
+        context.setFillColor(selectedLineColor.safeCGColor)
 
         let xPos = backgroundEdgeInsets.leading
         let width = frame.width - backgroundEdgeInsets.trailing
