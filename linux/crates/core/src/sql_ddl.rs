@@ -88,7 +88,13 @@ impl DraftColumn {
 }
 
 fn qualified_table(driver_id: &str, schema: Option<&str>, table: &str) -> String {
-    match schema {
+    // Trim leading / trailing whitespace before quoting so a user
+    // who typed `" users "` doesn't end up with a literally
+    // space-padded identifier in the generated DDL. The validator
+    // rejects after-trim-empty separately; here we only protect
+    // against accidental padding surviving into the SQL.
+    let table = table.trim();
+    match schema.map(str::trim) {
         Some(s) if !s.is_empty() => format!("{}.{}", quote_ident(driver_id, s), quote_ident(driver_id, table)),
         _ => quote_ident(driver_id, table),
     }

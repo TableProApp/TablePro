@@ -22,7 +22,6 @@
 //! `materialize` again and dispatches `ExecuteTransaction` to App.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
@@ -166,6 +165,13 @@ pub struct StructureTab {
     /// changed-signal echoes that would push duplicate RenameTable
     /// ops onto the tracker.
     suppress_emit: Rc<RefCell<bool>>,
+    /// Monotonic counter for the "Add Column" placeholder name. Using
+    /// `vec.len() + 1` produced duplicate `column_1` after the user
+    /// removed a column; a forever-incrementing counter avoids the
+    /// collision (validate_save rejects duplicates anyway, but the
+    /// confusing UX is worse than the no-op rename the user has to
+    /// do afterwards).
+    next_column_seq: Rc<RefCell<usize>>,
 }
 
 #[derive(Debug)]
@@ -839,19 +845,14 @@ fn present_fk_dialog(parent: &gtk::Box, columns: &[DraftColumn], sender: Compone
 
 /// Validate the model against driver constraints before Save. Returns
 /// the first user-visible error string, or None if all checks pass.
-fn validate_save(
-    table_name: &str,
-    columns: &[DraftColumn],
-    mode: StructureMode,
-    driver_id: &str,
-) -> Result<(), String> {
+fn validate_save(table_name: &str, columns: &[DraftColumn], mode: StructureMode) -> Result<(), String> {
     if matches!(mode, StructureMode::New) && table_name.trim().is_empty() {
         return Err(crate::tr!("Table name is required."));
     }
     if matches!(mode, StructureMode::New) && columns.is_empty() {
         return Err(crate::tr!("At least one column is required."));
     }
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for col in columns {
         if col.name.trim().is_empty() {
             return Err(crate::tr!("Every column needs a name."));
@@ -866,7 +867,6 @@ fn validate_save(
             return Err(crate::tr!("Primary key columns must be NOT NULL: {name}").replace("{name}", &col.name));
         }
     }
-    let _ = driver_id;
     Ok(())
 }
 
@@ -966,7 +966,7 @@ impl SimpleComponent for StructureTab {
             &sql_scroll,
             Some("sql"),
             &crate::tr!("SQL Preview"),
-            "accessories-text-editor-symbolic",
+            "text-x-generic-symbolic",
         );
         let _ = sql_page;
 
@@ -1094,6 +1094,7 @@ impl SimpleComponent for StructureTab {
             drop_button,
             last_dirty: Rc::new(RefCell::new(false)),
             suppress_emit,
+            next_column_seq: Rc::new(RefCell::new(1)),
         };
 
         // Initial render so New-mode tabs aren't blank.
@@ -1208,7 +1209,12 @@ impl SimpleComponent for StructureTab {
             StructureTabInput::AddColumn => {
                 let new_col = DraftColumn {
                     original: None,
-                    name: format!("column_{}", self.columns.borrow().len() + 1),
+                    name: {
+                        let mut seq = self.next_column_seq.borrow_mut();
+                        let name = format!("column_{}", *seq);
+                        *seq += 1;
+                        name
+                    },
                     data_type: default_type_for(&self.driver_id),
                     nullable: true,
                     primary_key: false,
@@ -1389,7 +1395,7 @@ impl SimpleComponent for StructureTab {
                 let table = self.table_name.borrow().clone();
                 let mode = *self.mode.borrow();
                 let columns = self.columns.borrow().clone();
-                if let Err(message) = validate_save(&table, &columns, mode, &self.driver_id) {
+                if let Err(message) = validate_save(&table, &columns, mode) {
                     let _ = sender.output(StructureTabOutput::ShowToast(message));
                     return;
                 }
