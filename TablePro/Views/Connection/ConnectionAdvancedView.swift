@@ -13,6 +13,7 @@ struct ConnectionAdvancedView: View {
     @Binding var startupCommands: String
     @Binding var preConnectScript: String
     @Binding var aiPolicy: AIConnectionPolicy?
+    @Binding var externalAccess: ExternalAccessLevel
     @Binding var localOnly: Bool
 
     let databaseType: DatabaseType
@@ -83,6 +84,20 @@ struct ConnectionAdvancedView: View {
                         }
                     }
                 }
+            }
+
+            Section(String(localized: "External Access")) {
+                Picker(String(localized: "Access Level"), selection: $externalAccess) {
+                    ForEach(ExternalAccessLevel.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+                .pickerStyle(.menu)
+                Text(
+                    "Controls how external clients (Raycast, Cursor, Claude Desktop) access this connection. Tokens cannot exceed this level even with full-access scope."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             if AppSettingsManager.shared.sync.enabled {

@@ -119,6 +119,7 @@ extension ConnectionFormView {
             selectedGroupId = existing.groupId
             safeModeLevel = existing.safeModeLevel
             aiPolicy = existing.aiPolicy
+            externalAccess = existing.externalAccess
             localOnly = existing.localOnly
 
             // Load additional fields from connection
@@ -235,6 +236,7 @@ extension ConnectionFormView {
             sshTunnelMode: sshTunnelMode,
             safeModeLevel: safeModeLevel,
             aiPolicy: aiPolicy,
+            externalAccess: externalAccess,
             redisDatabase: additionalFieldValues["redisDatabase"].map { Int($0) ?? 0 },
             startupCommands: startupCommands.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? nil : startupCommands,

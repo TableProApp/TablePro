@@ -102,6 +102,9 @@ struct ConnectionFormView: View {
     // AI policy
     @State var aiPolicy: AIConnectionPolicy?
 
+    // External access (Raycast / Cursor / Claude Desktop)
+    @State var externalAccess: ExternalAccessLevel = .readOnly
+
     // Plugin-driven additional connection fields
     @State var additionalFieldValues: [String: String] = [:]
 
@@ -240,6 +243,7 @@ struct ConnectionFormView: View {
                 startupCommands: $startupCommands,
                 preConnectScript: $preConnectScript,
                 aiPolicy: $aiPolicy,
+                externalAccess: $externalAccess,
                 localOnly: $localOnly,
                 databaseType: type,
                 additionalConnectionFields: additionalConnectionFields
