@@ -228,6 +228,7 @@ final class DataGridCellFactory {
             }
         }
 
+<<<<<<< HEAD
         if showFK {
             gridCellView.textFieldTrailing?.constant = -22
         } else if showChevron {
