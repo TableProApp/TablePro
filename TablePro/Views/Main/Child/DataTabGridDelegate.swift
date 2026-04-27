@@ -51,23 +51,28 @@ final class DataTabGridDelegate: DataGridViewDelegate {
     }
 
     func dataGridDeleteRows(_ indices: Set<Int>) {
-        NotificationCenter.default.post(
-            name: .deleteSelectedRows,
-            object: nil,
-            userInfo: ["rowIndices": indices]
-        )
+        coordinator?.deleteSelectedRows(indices: indices)
     }
 
     func dataGridCopyRows(_ indices: Set<Int>) {
-        NotificationCenter.default.post(
-            name: .copySelectedRows,
-            object: nil,
-            userInfo: ["rowIndices": indices]
-        )
+        coordinator?.copySelectedRowsToClipboard(indices: indices)
     }
 
     func dataGridPasteRows() {
-        NotificationCenter.default.post(name: .pasteRows, object: nil)
+        var cell = editingCell?.wrappedValue
+        coordinator?.pasteRows(editingCell: &cell)
+        editingCell?.wrappedValue = cell
+    }
+
+    func dataGridDuplicateRow() {
+        guard let selectionState, let firstIndex = selectionState.indices.first else { return }
+        var cell = editingCell?.wrappedValue
+        coordinator?.duplicateSelectedRow(index: firstIndex, editingCell: &cell)
+        editingCell?.wrappedValue = cell
+    }
+
+    func dataGridExportResults() {
+        NotificationCenter.default.post(name: .exportQueryResults, object: nil)
     }
 
     func dataGridUndo() {

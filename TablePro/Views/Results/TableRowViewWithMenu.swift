@@ -199,19 +199,11 @@ final class TableRowViewWithMenu: NSTableRowView {
         } else {
             [rowIndex]
         }
-        if let delegate = coordinator?.delegate {
-            delegate.dataGridDeleteRows(indices)
-        } else {
-            NotificationCenter.default.post(
-                name: .deleteSelectedRows,
-                object: nil,
-                userInfo: ["rowIndices": indices]
-            )
-        }
+        coordinator?.delegate?.dataGridDeleteRows(indices)
     }
 
     @objc private func duplicateRow() {
-        NotificationCenter.default.post(name: .duplicateRow, object: nil)
+        coordinator?.delegate?.dataGridDuplicateRow()
     }
 
     @objc private func undoDeleteRow() {
@@ -220,15 +212,6 @@ final class TableRowViewWithMenu: NSTableRowView {
 
     @objc private func undoInsertRow() {
         coordinator?.undoInsertRow(at: rowIndex)
-    }
-
-    @objc private func copyRow() {
-        coordinator?.copyRows(at: [rowIndex])
-    }
-
-    @objc private func copySelectedRows() {
-        guard let selectedIndices = coordinator?.selectedRowIndices else { return }
-        coordinator?.copyRows(at: selectedIndices)
     }
 
     @objc private func copySelectedOrCurrentRowWithHeaders() {
@@ -244,19 +227,11 @@ final class TableRowViewWithMenu: NSTableRowView {
         let indices: Set<Int> = !coordinator.selectedRowIndices.isEmpty
             ? coordinator.selectedRowIndices
             : [rowIndex]
-        if let delegate = coordinator.delegate {
-            delegate.dataGridCopyRows(indices)
-        } else {
-            coordinator.copyRows(at: indices)
-        }
+        coordinator.delegate?.dataGridCopyRows(indices)
     }
 
     @objc private func pasteRows() {
-        if let delegate = coordinator?.delegate {
-            delegate.dataGridPasteRows()
-        } else {
-            NotificationCenter.default.post(name: .pasteRows, object: nil)
-        }
+        coordinator?.delegate?.dataGridPasteRows()
     }
 
     @objc private func copyCellValue(_ sender: NSMenuItem) {

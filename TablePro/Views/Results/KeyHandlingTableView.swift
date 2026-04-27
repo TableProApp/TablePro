@@ -66,13 +66,8 @@ final class KeyHandlingTableView: NSTableView {
         let clickedRow = row(at: point)
         let clickedColumn = column(at: point)
 
-        // Double-click in empty area adds a new row
         if event.clickCount == 2 && clickedRow == -1 && coordinator?.isEditable == true {
-            if let delegate = coordinator?.delegate {
-                delegate.dataGridAddRow()
-            } else {
-                NotificationCenter.default.post(name: .addNewRow, object: nil)
-            }
+            coordinator?.delegate?.dataGridAddRow()
             return
         }
 
@@ -106,30 +101,14 @@ final class KeyHandlingTableView: NSTableView {
 
     // MARK: - Standard Edit Menu Actions
 
-    /// Delete selected rows - called from menu or keyboard shortcut
     @objc func delete(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
         guard !selectedRowIndexes.isEmpty else { return }
-
-        if let delegate = coordinator?.delegate {
-            delegate.dataGridDeleteRows(Set(selectedRowIndexes))
-        } else {
-            NotificationCenter.default.post(
-                name: .deleteSelectedRows,
-                object: nil,
-                userInfo: ["rowIndices": Set(selectedRowIndexes)]
-            )
-        }
+        coordinator?.delegate?.dataGridDeleteRows(Set(selectedRowIndexes))
     }
 
-    /// Copy selected rows to clipboard
     @objc func copy(_ sender: Any?) {
-        let indices = Set(selectedRowIndexes)
-        if let delegate = coordinator?.delegate {
-            delegate.dataGridCopyRows(indices)
-        } else {
-            coordinator?.copyRows(at: indices)
-        }
+        coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
     }
 
     /// Paste rows from clipboard
