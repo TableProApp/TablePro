@@ -97,7 +97,7 @@ extension MainContentCoordinator {
 
                     var tab = tabManager.tabs[idx]
                     tab.rowBuffer.rows.append(contentsOf: pagedResult.rows)
-                    tab.resultVersion += 1
+                    tab.schemaVersion += 1
                     tab.pagination.loadMoreOffset = pagedResult.nextOffset
                     tab.pagination.hasMoreRows = pagedResult.hasMore
                     tab.pagination.isLoadingMore = false
@@ -105,7 +105,7 @@ extension MainContentCoordinator {
                         tab.pagination.baseQueryForMore = nil
                     }
                     if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.resultVersion
+                        rs.resultVersion = tab.schemaVersion
                     }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)
@@ -221,10 +221,10 @@ extension MainContentCoordinator {
                     var tab = tabManager.tabs[idx]
                     tab.rowBuffer.rows = result.rows
                     tab.execution.executionTime = result.executionTime
-                    tab.resultVersion += 1
+                    tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()
                     if let rs = tab.display.activeResultSet {
-                        rs.resultVersion = tab.resultVersion
+                        rs.resultVersion = tab.schemaVersion
                     }
                     tabManager.tabs[idx] = tab
                     toolbarState.setExecuting(false)

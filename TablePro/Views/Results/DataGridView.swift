@@ -27,7 +27,7 @@ struct RowVisualState {
 /// Identity snapshot used to skip redundant updateNSView work when nothing has changed
 struct DataGridIdentity: Equatable {
     let reloadVersion: Int
-    let resultVersion: Int
+    let schemaVersion: Int
     let metadataVersion: Int
     let paginationVersion: Int
     let rowCount: Int
@@ -35,10 +35,10 @@ struct DataGridIdentity: Equatable {
     let isEditable: Bool
     let hiddenColumns: Set<String>
 
-    init(reloadVersion: Int, resultVersion: Int, metadataVersion: Int, paginationVersion: Int,
+    init(reloadVersion: Int, schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
          rowCount: Int, columnCount: Int, isEditable: Bool, hiddenColumns: Set<String>) {
         self.reloadVersion = reloadVersion
-        self.resultVersion = resultVersion
+        self.schemaVersion = schemaVersion
         self.metadataVersion = metadataVersion
         self.paginationVersion = paginationVersion
         self.rowCount = rowCount
@@ -47,10 +47,10 @@ struct DataGridIdentity: Equatable {
         self.hiddenColumns = hiddenColumns
     }
 
-    init(reloadVersion: Int, resultVersion: Int, metadataVersion: Int, paginationVersion: Int,
+    init(reloadVersion: Int, schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
          rowCount: Int, columnCount: Int, isEditable: Bool, configuration: DataGridConfiguration) {
         self.reloadVersion = reloadVersion
-        self.resultVersion = resultVersion
+        self.schemaVersion = schemaVersion
         self.metadataVersion = metadataVersion
         self.paginationVersion = paginationVersion
         self.rowCount = rowCount
@@ -64,7 +64,7 @@ struct DataGridIdentity: Equatable {
 struct DataGridView: NSViewRepresentable {
     let rowProvider: InMemoryRowProvider
     var changeManager: AnyChangeManager
-    var resultVersion: Int = 0
+    var schemaVersion: Int = 0
     var metadataVersion: Int = 0
     var paginationVersion: Int = 0
     let isEditable: Bool
@@ -182,6 +182,7 @@ struct DataGridView: NSViewRepresentable {
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
         context.coordinator.delegate = delegate
+        delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
         context.coordinator.typePickerColumns = configuration.typePickerColumns
         context.coordinator.customDropdownOptions = configuration.customDropdownOptions
@@ -238,7 +239,7 @@ struct DataGridView: NSViewRepresentable {
         // AppSettingsManager access on every SwiftUI re-evaluation.
         let currentIdentity = DataGridIdentity(
             reloadVersion: changeManager.reloadVersion,
-            resultVersion: resultVersion,
+            schemaVersion: schemaVersion,
             metadataVersion: metadataVersion,
             paginationVersion: paginationVersion,
             rowCount: rowProvider.totalRowCount,
@@ -249,6 +250,7 @@ struct DataGridView: NSViewRepresentable {
         if currentIdentity == coordinator.lastIdentity {
             // Only refresh delegate reference — it may have changed between body evals
             coordinator.delegate = delegate
+            delegate?.dataGridAttach(tableViewCoordinator: coordinator)
             return
         }
         let previousIdentity = coordinator.lastIdentity
@@ -305,6 +307,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.changeManager = changeManager
         coordinator.isEditable = isEditable
         coordinator.delegate = delegate
+        delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns
         coordinator.typePickerColumns = configuration.typePickerColumns
         coordinator.customDropdownOptions = configuration.customDropdownOptions

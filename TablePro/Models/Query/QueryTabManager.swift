@@ -231,7 +231,7 @@ final class QueryTabManager {
         tab.title = tableName
         tab.tableContext.tableName = tableName
         tab.content.query = query
-        tab.resultVersion += 1
+        tab.schemaVersion += 1
         tab.execution.executionTime = nil
         tab.execution.statusMessage = nil
         tab.execution.errorMessage = nil

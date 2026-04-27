@@ -26,7 +26,7 @@ struct QuerySortCacheEntry {
     let sortedIndices: [Int]
     let columnIndex: Int
     let direction: SortDirection
-    let resultVersion: Int
+    let schemaVersion: Int
 }
 
 /// Sidebar table loading state — single source of truth for sidebar UI
@@ -111,6 +111,10 @@ final class MainContentCoordinator {
     /// Direct reference to right panel state — enables showing AI panel programmatically
     @ObservationIgnored weak var rightPanelState: RightPanelState?
 
+    /// Direct reference to the data tab grid delegate — enables row mutation operations to
+    /// dispatch insertRows/removeRows directly to the NSTableView via DataGridViewDelegate.
+    @ObservationIgnored weak var dataTabDelegate: DataTabGridDelegate?
+
     /// Proxy for toggling the inspector NSSplitViewItem from coordinator code
     @ObservationIgnored weak var inspectorProxy: InspectorVisibilityProxy?
 
@@ -138,7 +142,7 @@ final class MainContentCoordinator {
     var sidebarLoadingState: SidebarLoadingState = .idle
 
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
-    @ObservationIgnored private(set) var querySortCache: [UUID: QuerySortCacheEntry] = [:]
+    @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
 
     // MARK: - Internal State
 
@@ -1353,7 +1357,7 @@ final class MainContentCoordinator {
             tabManager.tabs[tabIndex].pagination.reset()
             let rows = tab.resultRows
             let tabId = tab.id
-            let resultVersion = tab.resultVersion
+            let schemaVersion = tab.schemaVersion
             let sortColumns = currentSort.columns
             let colTypes = tab.columnTypes
 
@@ -1385,7 +1389,7 @@ final class MainContentCoordinator {
                             sortedIndices: sortedIndices,
                             columnIndex: sortColumns.first?.columnIndex ?? 0,
                             direction: sortColumns.first?.direction ?? .ascending,
-                            resultVersion: resultVersion
+                            schemaVersion: schemaVersion
                         )
                         var sortedTab = self.tabManager.tabs[idx]
                         sortedTab.execution.isExecuting = false
@@ -1394,13 +1398,12 @@ final class MainContentCoordinator {
                         self.toolbarState.setExecuting(false)
                         self.toolbarState.lastQueryDuration = sortDuration
                         self.activeSortTasks.removeValue(forKey: tabId)
-                        self.changeManager.reloadVersion += 1
+                        self.dataTabDelegate?.dataGridDidReplaceAllRows()
                     }
                 }
                 activeSortTasks[tabId] = task
             } else {
-                // Small dataset: view sorts synchronously, just trigger reload
-                changeManager.reloadVersion += 1
+                dataTabDelegate?.dataGridDidReplaceAllRows()
             }
             return
         }

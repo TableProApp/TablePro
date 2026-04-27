@@ -30,7 +30,7 @@ extension MainContentCoordinator {
             tabManager.tabs[tabIdx].execution.rowsAffected = 0
             tabManager.tabs[tabIdx].execution.executionTime = nil
             tabManager.tabs[tabIdx].execution.statusMessage = nil
-            tabManager.tabs[tabIdx].resultVersion += 1
+            tabManager.tabs[tabIdx].schemaVersion += 1
             tabManager.tabs[tabIdx].display.isResultsCollapsed = true
             toolbarState.isResultsCollapsed = true
         }

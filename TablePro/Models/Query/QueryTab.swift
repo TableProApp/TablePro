@@ -64,7 +64,7 @@ struct QueryTab: Identifiable, Equatable {
     var columnLayout: ColumnLayoutState
     var pagination: PaginationState
     var hasUserInteraction: Bool
-    var resultVersion: Int
+    var schemaVersion: Int
     var metadataVersion: Int
     var paginationVersion: Int
 
@@ -91,7 +91,7 @@ struct QueryTab: Identifiable, Equatable {
         self.columnLayout = ColumnLayoutState()
         self.pagination = PaginationState()
         self.hasUserInteraction = false
-        self.resultVersion = 0
+        self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
     }
@@ -123,7 +123,7 @@ struct QueryTab: Identifiable, Equatable {
         self.columnLayout = ColumnLayoutState()
         self.pagination = PaginationState()
         self.hasUserInteraction = false
-        self.resultVersion = 0
+        self.schemaVersion = 0
         self.metadataVersion = 0
         self.paginationVersion = 0
     }
@@ -194,7 +194,7 @@ struct QueryTab: Identifiable, Equatable {
         lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.execution == rhs.execution
-            && lhs.resultVersion == rhs.resultVersion
+            && lhs.schemaVersion == rhs.schemaVersion
             && lhs.paginationVersion == rhs.paginationVersion
             && lhs.pagination == rhs.pagination
             && lhs.sortState == rhs.sortState

@@ -15,13 +15,13 @@ private struct SortedRowsCache {
     let sortedIndices: [Int]
     let columnIndex: Int
     let direction: SortDirection
-    let resultVersion: Int
+    let schemaVersion: Int
 }
 
 /// Per-tab row provider cache entry — groups all cache-invalidation keys together
 private struct RowProviderCacheEntry {
     let provider: InMemoryRowProvider
-    let resultVersion: Int
+    let schemaVersion: Int
     let metadataVersion: Int
     let sortState: SortState
 }
@@ -145,7 +145,7 @@ struct MainEditorContentView: View {
 
             guard let newId, let tab = tabManager.selectedTab else { return }
             let cached = tabProviderCache[newId]
-            if cached?.resultVersion != tab.resultVersion
+            if cached?.schemaVersion != tab.schemaVersion
                 || cached?.metadataVersion != tab.metadataVersion
             {
                 cacheRowProvider(for: tab)
@@ -157,13 +157,15 @@ struct MainEditorContentView: View {
             if let tab = tabManager.selectedTab {
                 cacheRowProvider(for: tab)
             }
+            coordinator.dataTabDelegate = dataTabDelegate
             coordinator.onTeardown = { [self] in
                 tabProviderCache.removeAll()
                 sortCache.removeAll()
                 cachedChangeManager = nil
+                coordinator.dataTabDelegate = nil
             }
         }
-        .onChange(of: tabManager.selectedTab?.resultVersion) { _, newVersion in
+        .onChange(of: tabManager.selectedTab?.schemaVersion) { _, newVersion in
             guard let tab = tabManager.selectedTab, newVersion != nil else { return }
             cacheRowProvider(for: tab)
         }
@@ -497,7 +499,6 @@ struct MainEditorContentView: View {
             onPin: { id in
                 guard let tabIdx = coordinator.tabManager.selectedTabIndex else { return }
                 coordinator.tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }?.isPinned.toggle()
-                coordinator.tabManager.tabs[tabIdx].resultVersion += 1
             }
         )
     }
@@ -536,7 +537,7 @@ struct MainEditorContentView: View {
         DataGridView(
             rowProvider: rowProvider(for: tab),
             changeManager: currentChangeManager,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             paginationVersion: tab.paginationVersion,
             isEditable: isEditable,
@@ -567,7 +568,7 @@ struct MainEditorContentView: View {
             return makeRowProvider(for: tab)
         }
         if let entry = tabProviderCache[tab.id],
-            entry.resultVersion == tab.resultVersion,
+            entry.schemaVersion == tab.schemaVersion,
             entry.metadataVersion == tab.metadataVersion,
             entry.sortState == tab.sortState
         {
@@ -577,7 +578,7 @@ struct MainEditorContentView: View {
         Task { @MainActor in
             tabProviderCache[tab.id] = RowProviderCacheEntry(
                 provider: provider,
-                resultVersion: tab.resultVersion,
+                schemaVersion: tab.schemaVersion,
                 metadataVersion: tab.metadataVersion,
                 sortState: tab.sortState
             )
@@ -589,7 +590,7 @@ struct MainEditorContentView: View {
         let provider = makeRowProvider(for: tab)
         tabProviderCache[tab.id] = RowProviderCacheEntry(
             provider: provider,
-            resultVersion: tab.resultVersion,
+            schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
             sortState: tab.sortState
         )
@@ -715,7 +716,7 @@ struct MainEditorContentView: View {
         if let cached = coordinator.querySortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
-            cached.resultVersion == tab.resultVersion
+            cached.schemaVersion == tab.schemaVersion
         {
             return cached.sortedIndices
         }
@@ -729,7 +730,7 @@ struct MainEditorContentView: View {
         if let cached = sortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
-            cached.resultVersion == tab.resultVersion
+            cached.schemaVersion == tab.schemaVersion
         {
             return cached.sortedIndices
         }
@@ -763,7 +764,7 @@ struct MainEditorContentView: View {
             sortedIndices: sortedIndices,
             columnIndex: tab.sortState.columnIndex ?? -1,
             direction: tab.sortState.direction,
-            resultVersion: tab.resultVersion
+            schemaVersion: tab.schemaVersion
         )
 
         return sortedIndices

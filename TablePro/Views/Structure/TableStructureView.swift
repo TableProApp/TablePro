@@ -271,7 +271,7 @@ struct TableStructureView: View {
         return DataGridView(
             rowProvider: provider.asInMemoryProvider(),
             changeManager: wrappedChangeManager,
-            resultVersion: displayVersion,
+            schemaVersion: displayVersion,
             isEditable: canEdit,
             configuration: DataGridConfiguration(
                 dropdownColumns: allDropdownColumns,

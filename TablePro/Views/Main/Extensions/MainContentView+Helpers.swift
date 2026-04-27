@@ -90,12 +90,12 @@ extension MainContentView {
     private func cachedQueryResultsSummary() -> String? {
         guard let tab = currentTab else { return nil }
         if let cache = queryResultsSummaryCache,
-            cache.tabId == tab.id, cache.version == tab.resultVersion
+            cache.tabId == tab.id, cache.version == tab.schemaVersion
         {
             return cache.summary
         }
         let summary = buildQueryResultsSummary()
-        queryResultsSummaryCache = (tabId: tab.id, version: tab.resultVersion, summary: summary)
+        queryResultsSummaryCache = (tabId: tab.id, version: tab.schemaVersion, summary: summary)
         return summary
     }
 

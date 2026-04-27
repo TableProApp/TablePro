@@ -249,7 +249,7 @@ extension MainContentCoordinator {
             updatedTab.tableContext.isEditable = false
         }
 
-        updatedTab.resultVersion += 1
+        updatedTab.schemaVersion += 1
         updatedTab.execution.executionTime = cumulativeTime
         updatedTab.execution.rowsAffected = totalRowsAffected
         updatedTab.execution.isExecuting = false
@@ -268,7 +268,6 @@ extension MainContentCoordinator {
 
         if tabManager.selectedTabId == tabId {
             changeManager.clearChangesAndUndoHistory()
-            changeManager.reloadVersion += 1
         }
     }
 }

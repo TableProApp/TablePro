@@ -251,7 +251,7 @@ extension MainContentCoordinator {
         updatedTab.resultColumns = columns
         updatedTab.columnTypes = columnTypes
         updatedTab.resultRows = rows
-        updatedTab.resultVersion += 1
+        updatedTab.schemaVersion += 1
         updatedTab.execution.executionTime = executionTime
         updatedTab.execution.rowsAffected = rowsAffected
         updatedTab.execution.statusMessage = statusMessage
@@ -291,7 +291,7 @@ extension MainContentCoordinator {
         rs.statusMessage = updatedTab.execution.statusMessage
         rs.tableName = updatedTab.tableContext.tableName
         rs.isEditable = updatedTab.tableContext.isEditable
-        rs.resultVersion = updatedTab.resultVersion
+        rs.resultVersion = updatedTab.schemaVersion
         rs.metadataVersion = updatedTab.metadataVersion
         rs.columnTypes = updatedTab.columnTypes
         rs.columnDefaults = updatedTab.columnDefaults
