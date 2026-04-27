@@ -46,6 +46,27 @@ struct MCPToolHandlerIntegrationTests {
         try await body()
     }
 
+    // MARK: - list_connections
+
+    @Test("list_connections omits connections with externalAccess == .blocked")
+    func listConnectionsFiltersBlocked() async throws {
+        let handler = makeHandler()
+        let blocked = DatabaseConnection(name: "Blocked Prod", type: .mysql, externalAccess: .blocked)
+        let visible = DatabaseConnection(name: "Visible Staging", type: .mysql, externalAccess: .readOnly)
+        try await withConnections([blocked, visible]) {
+            let result = try await handler.handleToolCall(
+                name: "list_connections",
+                arguments: nil,
+                sessionId: "test-session",
+                token: nil
+            )
+            #expect(result.isError == nil)
+            let payload = result.content.first?.text ?? ""
+            #expect(!payload.contains(blocked.id.uuidString))
+            #expect(payload.contains(visible.id.uuidString))
+        }
+    }
+
     // MARK: - list_recent_tabs
 
     @Test("list_recent_tabs returns tabs JSON object")
