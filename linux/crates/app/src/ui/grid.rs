@@ -1074,12 +1074,41 @@ fn install_popover_close_cleanup(label: &gtk::EditableLabel, popover: &gtk::Popo
 /// entry, commit (or skip if unchanged) on exit, and reset
 /// `editable=false` so the next click can't enter edit mode via
 /// `EditableLabel`'s built-in click-to-edit path.
+///
+/// IME-safe: while the inner GtkText has an active preedit (CJK
+/// composition, ibus / fcitx / ime-mode entries), we ignore the
+/// `editing-notify(false)` event — it fires when focus shifts to
+/// the IME popover. The preedit-changed handler clears the gate
+/// when composition completes; the next `editing-notify(false)`
+/// after that fires the real commit.
 fn install_edit_commit_handler(
     label: &gtk::EditableLabel,
     col_index: usize,
     table: String,
     sender: relm4::Sender<GridMsg>,
 ) {
+    // GtkEditableLabel delegates editable-text behaviour to a child
+    // GtkText; that child is what owns the IME context and emits
+    // preedit-changed. Walking the delegate keeps the binding
+    // independent of EditableLabel's internal Stack > Text layout.
+    if let Some(delegate) = label.delegate()
+        && let Ok(text) = delegate.downcast::<gtk::Text>()
+    {
+        let label_for_preedit = label.clone();
+        let table_for_preedit = table.clone();
+        let sender_for_preedit = sender.clone();
+        text.connect_preedit_changed(move |_t, preedit| {
+            let active = !preedit.is_empty();
+            PREEDIT_SLOT.set(&label_for_preedit, active);
+            // If preedit just cleared and editing has already ended
+            // (focus left to the IME popover then back), fire the
+            // pending commit now.
+            if !active && !label_for_preedit.is_editing() {
+                commit_cell_edit(&label_for_preedit, col_index, &table_for_preedit, &sender_for_preedit);
+            }
+        });
+    }
+
     label.connect_editing_notify(move |label| {
         if label.is_editing() {
             let position = POSITION_SLOT.get(label).unwrap_or(0);
@@ -1088,22 +1117,36 @@ fn install_edit_commit_handler(
             return;
         }
         label.set_editable(false);
-        let Some(snap) = SNAPSHOT_SLOT.take(label) else {
-            return;
-        };
-        let new_value = label.text().to_string();
-        if new_value == snap.original {
+        // Defer commit while an IME preedit is still pending — the
+        // preedit-changed handler will trigger the commit when
+        // composition finishes.
+        if PREEDIT_SLOT.get(label).unwrap_or(false) {
             return;
         }
-        sender
-            .send(GridMsg::CellEdited {
-                table: table.clone(),
-                row_position: snap.position,
-                col_index,
-                new_value,
-            })
-            .ok();
+        commit_cell_edit(label, col_index, &table, &sender);
     });
+}
+
+/// Commit the current `EditableLabel` text via `GridMsg::CellEdited`
+/// if it differs from the snapshot taken at edit-mode entry. Shared
+/// between the editing-notify path and the IME preedit-cleared path
+/// so both produce identical tracker state.
+fn commit_cell_edit(label: &gtk::EditableLabel, col_index: usize, table: &str, sender: &relm4::Sender<GridMsg>) {
+    let Some(snap) = SNAPSHOT_SLOT.take(label) else {
+        return;
+    };
+    let new_value = label.text().to_string();
+    if new_value == snap.original {
+        return;
+    }
+    sender
+        .send(GridMsg::CellEdited {
+            table: table.to_string(),
+            row_position: snap.position,
+            col_index,
+            new_value,
+        })
+        .ok();
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1365,6 +1408,15 @@ const SUPPRESS_SLOT: WidgetSlot<bool> = WidgetSlot::new("tp-suppress-toggle");
 /// producing the same "Finalizing widget, but it still has children
 /// left: GtkPopover" warning that we hit on context menus.
 const POPOVER_SLOT: WidgetSlot<gtk::Popover> = WidgetSlot::new("tp-popover");
+/// `true` while the cell's inner GtkText has a non-empty IME preedit
+/// (CJK / Korean / Vietnamese / etc. composition in flight). The
+/// commit handler reads this flag and defers `editing-notify(false)`
+/// commits while preedit is active — focus shifts to an IME popover
+/// fire `editing-notify(false)` mid-composition, and committing the
+/// raw text at that point would either send an empty value or the
+/// pre-composition snapshot. Cleared by the preedit-changed handler
+/// when the user finishes composing.
+const PREEDIT_SLOT: WidgetSlot<bool> = WidgetSlot::new("tp-preedit-active");
 
 /// Look up the `(row_position, col_index)` of the currently focused
 /// cell widget. Returns `None` when the focus is outside the window
