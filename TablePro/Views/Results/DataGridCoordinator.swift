@@ -53,7 +53,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         var widths: [String: CGFloat] = [:]
         var order: [String] = []
         for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
-            guard let colIndex = DataGridView.columnIndex(from: column.identifier),
+            guard let colIndex = DataGridView.dataColumnIndex(from: column.identifier),
                   colIndex < rowProvider.columns.count else { continue }
             let name = rowProvider.columns[colIndex]
             widths[name] = column.width

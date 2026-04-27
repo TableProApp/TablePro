@@ -1,4 +1,9 @@
 {
+  "includeCoAuthoredBy": false,
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "enabledPlugins": {
     "feature-dev@claude-plugins-official": true
   }

@@ -270,7 +270,7 @@ final class DataGridCellFactory {
 
         CATransaction.commit()
 
-        if !isLargeDataset && Self.cachedVoiceOverEnabled {
+        if Self.cachedVoiceOverEnabled {
             let accessibilityValue = rawValue ?? String(localized: "NULL")
             cell.setAccessibilityLabel(
                 String(format: String(localized: "Row %d, column %d: %@"), row + 1, columnIndex + 1, accessibilityValue)

@@ -14,8 +14,7 @@ extension TableViewCoordinator {
 
         guard let sortDescriptor = tableView.sortDescriptors.first,
               let key = sortDescriptor.key,
-              key.hasPrefix("col_"),
-              let columnIndex = Int(key.dropFirst(4)),
+              let columnIndex = DataGridView.dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
               columnIndex >= 0 && columnIndex < rowProvider.columns.count else {
             return
         }
@@ -31,7 +30,7 @@ extension TableViewCoordinator {
         guard column.identifier.rawValue != "__rowNumber__" else {
             return column.width
         }
-        guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else {
+        guard let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else {
             return column.width
         }
 
@@ -64,14 +63,14 @@ extension TableViewCoordinator {
 
         // Derive base column name from stable identifier (avoids sort indicator in title)
         let baseName: String = {
-            if let idx = DataGridView.columnIndex(from: column.identifier),
+            if let idx = DataGridView.dataColumnIndex(from: column.identifier),
                idx < rowProvider.columns.count {
                 return rowProvider.columns[idx]
             }
             return column.title
         }()
 
-        if let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) {
+        if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
             let sortAscItem = NSMenuItem(
                 title: String(localized: "Sort Ascending"),
                 action: #selector(sortAscending(_:)),
@@ -104,7 +103,7 @@ extension TableViewCoordinator {
         menu.addItem(filterItem)
 
         // "Display As" submenu for value display format overrides
-        if let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) {
+        if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
             let columnType = dataColumnIndex < rowProvider.columnTypes.count ? rowProvider.columnTypes[dataColumnIndex] : nil
             let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
             if applicableFormats.count > 1 {
@@ -200,7 +199,7 @@ extension TableViewCoordinator {
               columnIndex >= 0 && columnIndex < tableView.tableColumns.count else { return }
 
         let column = tableView.tableColumns[columnIndex]
-        guard let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { return }
+        guard let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return }
 
         let width = cellFactory.calculateFitToContentWidth(
             for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
@@ -216,7 +215,7 @@ extension TableViewCoordinator {
 
         for column in tableView.tableColumns {
             guard column.identifier.rawValue != "__rowNumber__",
-                  let dataColumnIndex = DataGridView.columnIndex(from: column.identifier) else { continue }
+                  let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { continue }
 
             let width = cellFactory.calculateFitToContentWidth(
                 for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,

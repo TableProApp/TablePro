@@ -23,7 +23,7 @@ final class TableRowViewWithMenu: NSTableRowView {
         let clickedColumn = tableView.column(at: locationInTable)
 
         // Adjust for row number column (index 0)
-        let dataColumnIndex = clickedColumn > 0 ? clickedColumn - 1 : -1
+        let dataColumnIndex = clickedColumn > 0 ? DataGridView.dataColumnIndex(for: clickedColumn) : -1
 
         let menu = NSMenu()
 
@@ -36,8 +36,7 @@ final class TableRowViewWithMenu: NSTableRowView {
         if !coordinator.changeManager.isRowDeleted(rowIndex) {
             // Copy
             let copyItem = NSMenuItem(
-                title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "c")
-            copyItem.keyEquivalentModifierMask = .command
+                title: String(localized: "Copy"), action: #selector(copySelectedOrCurrentRow), keyEquivalent: "")
             copyItem.target = self
             menu.addItem(copyItem)
 
@@ -56,8 +55,7 @@ final class TableRowViewWithMenu: NSTableRowView {
             let copyWithHeadersItem = NSMenuItem(
                 title: String(localized: "With Headers"),
                 action: #selector(copySelectedOrCurrentRowWithHeaders),
-                keyEquivalent: "c")
-            copyWithHeadersItem.keyEquivalentModifierMask = [.command, .shift]
+                keyEquivalent: "")
             copyWithHeadersItem.target = self
             copyAsMenu.addItem(copyWithHeadersItem)
 
@@ -95,8 +93,7 @@ final class TableRowViewWithMenu: NSTableRowView {
             // Paste
             if coordinator.isEditable {
                 let pasteItem = NSMenuItem(
-                    title: String(localized: "Paste"), action: #selector(pasteRows), keyEquivalent: "v")
-                pasteItem.keyEquivalentModifierMask = .command
+                    title: String(localized: "Paste"), action: #selector(pasteRows), keyEquivalent: "")
                 pasteItem.target = self
                 menu.addItem(pasteItem)
             }
@@ -174,17 +171,15 @@ final class TableRowViewWithMenu: NSTableRowView {
             // Duplicate & Delete
             if coordinator.isEditable {
                 let duplicateItem = NSMenuItem(
-                    title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "d")
-                duplicateItem.keyEquivalentModifierMask = .command
+                    title: String(localized: "Duplicate"), action: #selector(duplicateRow), keyEquivalent: "")
                 duplicateItem.target = self
                 menu.addItem(duplicateItem)
 
                 let deleteItem = NSMenuItem(
                     title: String(localized: "Delete"),
                     action: #selector(deleteRow),
-                    keyEquivalent: String(UnicodeScalar(NSBackspaceCharacter).map { Character($0) } ?? "\u{8}")
+                    keyEquivalent: ""
                 )
-                deleteItem.keyEquivalentModifierMask = []
                 deleteItem.target = self
                 menu.addItem(deleteItem)
             }
@@ -286,7 +281,7 @@ final class TableRowViewWithMenu: NSTableRowView {
         guard let columnIndex = sender.representedObject as? Int,
               let coordinator, let tableView = coordinator.tableView else { return }
         coordinator.showForeignKeyPreview(
-            tableView: tableView, row: rowIndex, column: columnIndex + 1, columnIndex: columnIndex
+            tableView: tableView, row: rowIndex, column: DataGridView.tableColumnIndex(for: columnIndex), columnIndex: columnIndex
         )
     }
 

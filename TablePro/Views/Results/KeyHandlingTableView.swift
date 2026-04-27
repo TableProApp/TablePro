@@ -145,7 +145,7 @@ final class KeyHandlingTableView: NSTableView {
         case #selector(insertNewline(_:)):
             return selectedRow >= 0 && focusedColumn >= 1 && coordinator?.isEditable == true
         case #selector(cancelOperation(_:)):
-            return focusedRow >= 0 || focusedColumn >= 0 || !selectedRowIndexes.isEmpty
+            return focusedRow >= 0 || focusedColumn >= 0
         default:
             return super.validateUserInterfaceItem(item)
         }
@@ -209,6 +209,22 @@ final class KeyHandlingTableView: NSTableView {
             handleRightArrow(currentRow: row)
             return
 
+        case .home:
+            handleHome(isShiftHeld: isShiftHeld)
+            return
+
+        case .end:
+            handleEnd(isShiftHeld: isShiftHeld)
+            return
+
+        case .pageUp:
+            handlePageUp(isShiftHeld: isShiftHeld)
+            return
+
+        case .pageDown:
+            handlePageDown(isShiftHeld: isShiftHeld)
+            return
+
         default:
             break
         }
@@ -239,7 +255,7 @@ final class KeyHandlingTableView: NSTableView {
         }
 
         // Multiline values use overlay editor instead of field editor
-        let columnIndex = focusedColumn - 1
+        let columnIndex = DataGridView.dataColumnIndex(for: focusedColumn)
         if let value = coordinator?.rowProvider.value(atRow: row, column: columnIndex),
            value.containsLineBreak {
             coordinator?.showOverlayEditor(tableView: self, row: row, column: focusedColumn, columnIndex: columnIndex, value: value)
@@ -256,11 +272,9 @@ final class KeyHandlingTableView: NSTableView {
         delete(sender)
     }
 
-    /// Handle ESC key - clear selection and focus
     @objc override func cancelOperation(_ sender: Any?) {
         focusedRow = -1
         focusedColumn = -1
-        deselectAll(sender)
     }
 
     // MARK: - Arrow Key and Tab Helpers
@@ -386,6 +400,94 @@ final class KeyHandlingTableView: NSTableView {
             selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
             scrollRowToVisible(targetRow)
         }
+    }
+
+    private func handleHome(isShiftHeld: Bool) {
+        guard numberOfRows > 0 else { return }
+        if isShiftHeld {
+            if selectionAnchor == -1 {
+                selectionAnchor = selectedRow >= 0 ? selectedRow : 0
+                selectionPivot = selectionAnchor
+            }
+            selectionPivot = 0
+            let range = IndexSet(integersIn: 0...selectionAnchor)
+            selectRowIndexes(range, byExtendingSelection: false)
+        } else {
+            selectionAnchor = 0
+            selectionPivot = 0
+            focusedRow = 0
+            selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        }
+        scrollRowToVisible(0)
+    }
+
+    private func handleEnd(isShiftHeld: Bool) {
+        guard numberOfRows > 0 else { return }
+        let lastRow = numberOfRows - 1
+        if isShiftHeld {
+            if selectionAnchor == -1 {
+                selectionAnchor = selectedRow >= 0 ? selectedRow : lastRow
+                selectionPivot = selectionAnchor
+            }
+            selectionPivot = lastRow
+            let range = IndexSet(integersIn: selectionAnchor...lastRow)
+            selectRowIndexes(range, byExtendingSelection: false)
+        } else {
+            selectionAnchor = lastRow
+            selectionPivot = lastRow
+            focusedRow = lastRow
+            selectRowIndexes(IndexSet(integer: lastRow), byExtendingSelection: false)
+        }
+        scrollRowToVisible(lastRow)
+    }
+
+    private func handlePageUp(isShiftHeld: Bool) {
+        guard numberOfRows > 0 else { return }
+        let visibleRows = max(1, Int(visibleRect.height / rowHeight) - 1)
+        let currentRow = selectedRow >= 0 ? selectedRow : 0
+        let targetRow = max(0, currentRow - visibleRows)
+
+        if isShiftHeld {
+            if selectionAnchor == -1 {
+                selectionAnchor = currentRow
+                selectionPivot = currentRow
+            }
+            selectionPivot = targetRow
+            let startRow = min(selectionAnchor, selectionPivot)
+            let endRow = max(selectionAnchor, selectionPivot)
+            selectRowIndexes(IndexSet(integersIn: startRow...endRow), byExtendingSelection: false)
+        } else {
+            selectionAnchor = targetRow
+            selectionPivot = targetRow
+            focusedRow = targetRow
+            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
+        }
+        scrollRowToVisible(targetRow)
+    }
+
+    private func handlePageDown(isShiftHeld: Bool) {
+        guard numberOfRows > 0 else { return }
+        let visibleRows = max(1, Int(visibleRect.height / rowHeight) - 1)
+        let currentRow = selectedRow >= 0 ? selectedRow : 0
+        let lastRow = numberOfRows - 1
+        let targetRow = min(lastRow, currentRow + visibleRows)
+
+        if isShiftHeld {
+            if selectionAnchor == -1 {
+                selectionAnchor = currentRow
+                selectionPivot = currentRow
+            }
+            selectionPivot = targetRow
+            let startRow = min(selectionAnchor, selectionPivot)
+            let endRow = max(selectionAnchor, selectionPivot)
+            selectRowIndexes(IndexSet(integersIn: startRow...endRow), byExtendingSelection: false)
+        } else {
+            selectionAnchor = targetRow
+            selectionPivot = targetRow
+            focusedRow = targetRow
+            selectRowIndexes(IndexSet(integer: targetRow), byExtendingSelection: false)
+        }
+        scrollRowToVisible(targetRow)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
