@@ -1,16 +1,8 @@
-//
-//  DataGridCoordinator.swift
-//  TablePro
-//
-//  Coordinator handling NSTableView delegate and data source for DataGridView.
-//
-
 import AppKit
 import SwiftUI
 
 // MARK: - Coordinator
 
-/// Coordinator handling NSTableView delegate and data source
 @MainActor
 final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource,
                                   NSControlTextEditingDelegate, NSTextFieldDelegate, NSMenuDelegate
@@ -32,14 +24,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var databaseType: DatabaseType?
     var tableName: String?
     var primaryKeyColumns: [String] = []
-    /// First PK column, for copy-as-SQL and single-column contexts
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
 
-    /// Capture current column widths and order from the live NSTableView
-    /// and persist directly to ColumnLayoutStorage. Called from dismantleNSView
-    /// to guarantee layout is saved even when the view is torn down without
-    /// a SwiftUI render cycle (e.g., closing a tab).
     func persistColumnLayoutToStorage() {
         guard tabType == .table else { return }
         guard let tableView, let connectionId, let tableName, !tableName.isEmpty else { return }
@@ -171,7 +158,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    /// Subscribe to coordinator teardown to release NSTableView cell views.
     func observeTeardown(connectionId: UUID) {
         teardownObserver = NotificationCenter.default.addObserver(
             forName: MainContentCoordinator.teardownNotification,
@@ -184,8 +170,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         }
     }
 
-    /// Release all data and cell views from the NSTableView.
-    /// Called during coordinator teardown to free memory while SwiftUI holds the view.
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
         cachedTableRows = TableRows()

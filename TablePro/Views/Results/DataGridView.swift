@@ -9,13 +9,11 @@
 import AppKit
 import SwiftUI
 
-/// Position of a cell in the grid (row, column)
 struct CellPosition: Hashable {
     let row: Int
     let column: Int
 }
 
-/// Cached visual state for a row - avoids repeated changeManager lookups
 struct RowVisualState {
     let isDeleted: Bool
     let isInserted: Bool
@@ -24,7 +22,6 @@ struct RowVisualState {
     static let empty = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [])
 }
 
-/// Identity snapshot used to skip redundant updateNSView work when nothing has changed
 struct DataGridIdentity: Equatable {
     let reloadVersion: Int
     let schemaVersion: Int
@@ -54,7 +51,6 @@ struct DataGridIdentity: Equatable {
     }
 }
 
-/// High-performance table view using AppKit NSTableView
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
