@@ -26,7 +26,7 @@ impl App {
             self.show_toast(&crate::tr!("Connect to a database first."));
             return;
         }
-        self.append_structure_tab(schema, String::new(), StructureMode::New, sender);
+        self.append_new_structure_tab(schema, sender);
     }
 
     /// Sidebar right-click → "Edit Structure". Routes to the unified
@@ -235,7 +235,6 @@ impl App {
         let mut targets: Vec<Uuid> = Vec::new();
         for (id, tab) in self.workspace_tabs.borrow().iter() {
             match tab {
-                WorkspaceTab::Browse(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
                 WorkspaceTab::Structure(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
                 WorkspaceTab::Table(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
                 _ => {}
@@ -340,9 +339,16 @@ impl App {
         let _ = (schema, prev_table);
     }
 
-    /// Save resolved successfully. Tell the tab so it can clear the
-    /// tracker + (in New mode) promote to Edit; refresh sidebar +
-    /// any open Browse tabs for the affected table.
+    /// Save resolved successfully. Three cases:
+    ///
+    /// 1. **New-Table draft (`Structure` slot, has new_table_name)**:
+    ///    the table now exists. Close the draft tab and append a
+    ///    fresh `Table` tab pointed at the new name in Structure mode
+    ///    so the user keeps editing in the canonical M-1 UI.
+    /// 2. **Table tab Save**: the slot stays put; just clear its
+    ///    structure tracker via the controller and refetch.
+    /// 3. **Legacy Structure(Edit) slot** (no longer reachable post-
+    ///    cleanup, but kept defensively for safety): clear and stay.
     pub(super) fn on_structure_save_completed(
         &mut self,
         tab_id: Uuid,
@@ -353,51 +359,67 @@ impl App {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-        let mut affected_table: Option<String> = None;
-        let mut affected_schema: Option<String> = None;
-        match self.workspace_tabs.borrow_mut().get_mut(&tab_id) {
-            Some(WorkspaceTab::Structure(slot)) => {
-                affected_schema = slot.schema.clone();
-                if let Some(new_name) = new_table_name.clone() {
-                    slot.table = new_name.clone();
-                    slot.mode = StructureMode::Edit;
-                    slot.page.set_title(&new_name);
-                    affected_table = Some(new_name);
-                } else {
-                    affected_table = Some(slot.table.clone());
-                }
-            }
-            Some(WorkspaceTab::Table(slot)) => {
-                affected_schema = slot.schema.clone();
-                if let Some(new_name) = new_table_name.clone() {
-                    slot.table = new_name.clone();
-                    slot.structure_mode = StructureMode::Edit;
-                    slot.page.set_title(&new_name);
-                    affected_table = Some(new_name);
-                } else {
-                    affected_table = Some(slot.table.clone());
-                }
-            }
-            _ => {}
+
+        // Inspect slot kind first so we can branch — promote-and-close
+        // vs. in-place clear — without borrowing across mutation.
+        enum SaveKind {
+            PromoteNewToTable(Option<String>, String),
+            UpdateInPlace(Option<String>, String),
+            Skip,
         }
-        // Forward to the structure controller (legacy Structure or
-        // unified Table) so it clears + (if needed) promotes to Edit
-        // and refetches.
-        if let Some(controller) = self
-            .workspace_tabs
-            .borrow()
-            .get(&tab_id)
-            .and_then(|t| t.structure_controller())
-        {
-            let _ = controller
-                .sender()
-                .send(StructureTabInput::SaveCompleted { new_table_name });
-        }
-        if let Some(table) = affected_table {
-            sender.input(AppMsg::SchemaChanged {
-                schema: affected_schema,
-                table: Some(table),
-            });
+        let kind = {
+            let tabs = self.workspace_tabs.borrow();
+            match tabs.get(&tab_id) {
+                Some(WorkspaceTab::Structure(slot)) if matches!(slot.mode, StructureMode::New) => {
+                    if let Some(name) = new_table_name.clone() {
+                        SaveKind::PromoteNewToTable(slot.schema.clone(), name)
+                    } else {
+                        SaveKind::Skip
+                    }
+                }
+                Some(WorkspaceTab::Structure(slot)) => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
+                Some(WorkspaceTab::Table(slot)) => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
+                _ => SaveKind::Skip,
+            }
+        };
+
+        match kind {
+            SaveKind::PromoteNewToTable(schema, name) => {
+                if let Some(tab_view) = self.workspace_tab_view.clone() {
+                    self.finish_close_workspace_tab(tab_id, &tab_view);
+                }
+                super::App::append_table_tab(
+                    self,
+                    schema.clone(),
+                    name.clone(),
+                    super::TableMode::Structure,
+                    0,
+                    self.default_page_size,
+                    None,
+                    sender.clone(),
+                );
+                sender.input(AppMsg::SchemaChanged {
+                    schema,
+                    table: Some(name),
+                });
+            }
+            SaveKind::UpdateInPlace(schema, table) => {
+                if let Some(controller) = self
+                    .workspace_tabs
+                    .borrow()
+                    .get(&tab_id)
+                    .and_then(|t| t.structure_controller())
+                {
+                    let _ = controller
+                        .sender()
+                        .send(StructureTabInput::SaveCompleted { new_table_name });
+                }
+                sender.input(AppMsg::SchemaChanged {
+                    schema,
+                    table: Some(table),
+                });
+            }
+            SaveKind::Skip => {}
         }
     }
 
@@ -516,16 +538,10 @@ impl App {
         if let Some(table_name) = table.as_deref() {
             let mut affected: Vec<Uuid> = Vec::new();
             for (id, tab) in self.workspace_tabs.borrow().iter() {
-                let matches = match tab {
-                    WorkspaceTab::Browse(slot) => {
-                        slot.schema.as_deref() == schema.as_deref() && slot.table == table_name
-                    }
-                    WorkspaceTab::Table(slot) => {
-                        slot.schema.as_deref() == schema.as_deref() && slot.table == table_name
-                    }
-                    _ => false,
-                };
-                if matches {
+                if let WorkspaceTab::Table(slot) = tab
+                    && slot.schema.as_deref() == schema.as_deref()
+                    && slot.table == table_name
+                {
                     affected.push(*id);
                 }
             }

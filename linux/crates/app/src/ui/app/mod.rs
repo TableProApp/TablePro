@@ -122,15 +122,6 @@ pub struct EditorTabSlot {
     pub query: String,
 }
 
-pub struct BrowseTabSlot {
-    #[allow(dead_code)]
-    pub id: Uuid,
-    pub controller: Controller<BrowseTab>,
-    pub page: adw::TabPage,
-    pub schema: Option<String>,
-    pub table: String,
-}
-
 pub struct StructureTabSlot {
     pub id: Uuid,
     pub controller: Controller<crate::ui::structure_tab::StructureTab>,
@@ -176,41 +167,36 @@ pub struct TableTabSlot {
     pub view_stack: adw::ViewStack,
 }
 
-/// A tab in the unified workspace. Live variants:
+/// A tab in the unified workspace.
 ///
 /// - **Table**: one (schema, table) entity with an `AdwViewSwitcher`
 ///   to flip between Data (Browse grid) and Structure (DDL editor).
-///   This is the canonical shape per GNOME HIG (M-1 audit) and the
-///   default for every sidebar-driven open.
+///   The canonical shape per GNOME HIG (M-1 audit) and the default
+///   for every sidebar-driven open.
 /// - **Editor**: a free-form SQL workspace, orthogonal to any one
 ///   table.
-/// - **Browse / Structure** (legacy, transitional): kept while the
-///   M-1 migration is in flight so already-open tabs and
-///   workspace_state.json records loaded from older builds keep
-///   working. Persistence rewrites them as `Table` records on save;
-///   no new code path creates these variants.
+/// - **Structure**: only used for the New-Table draft flow — there
+///   is no real `(schema, table)` to browse yet, so the Data side
+///   would be meaningless. After a successful CreateTable the slot
+///   transitions into a `Table` tab.
 pub enum WorkspaceTab {
-    Browse(BrowseTabSlot),
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
     Table(TableTabSlot),
 }
 
 impl WorkspaceTab {
-    /// The Browse-side controller, whether this slot is a legacy
-    /// `Browse` variant or the unified `Table` variant. Editor /
-    /// Structure-only slots return `None`.
+    /// The Browse-side controller. Editor / Structure-only slots
+    /// return `None`.
     pub fn browse_controller(&self) -> Option<&Controller<BrowseTab>> {
         match self {
-            WorkspaceTab::Browse(s) => Some(&s.controller),
             WorkspaceTab::Table(s) => Some(&s.browse),
             _ => None,
         }
     }
 
-    /// The Structure-side controller, whether legacy `Structure` or
-    /// unified `Table`. Useful for refetch / load-failed / save
-    /// completion fanout.
+    /// The Structure-side controller, whether the New-Table draft or
+    /// the unified `Table` variant.
     pub fn structure_controller(&self) -> Option<&Controller<crate::ui::structure_tab::StructureTab>> {
         match self {
             WorkspaceTab::Structure(s) => Some(&s.controller),
@@ -219,11 +205,10 @@ impl WorkspaceTab {
         }
     }
 
-    /// `(schema, table)` when the slot is pinned to one — Browse,
-    /// Structure, or Table. Editor returns `None`.
+    /// `(schema, table)` when the slot is pinned to one. Editor
+    /// returns `None`.
     pub fn schema_table(&self) -> Option<(Option<&str>, &str)> {
         match self {
-            WorkspaceTab::Browse(s) => Some((s.schema.as_deref(), &s.table)),
             WorkspaceTab::Structure(s) => Some((s.schema.as_deref(), &s.table)),
             WorkspaceTab::Table(s) => Some((s.schema.as_deref(), &s.table)),
             WorkspaceTab::Editor(_) => None,

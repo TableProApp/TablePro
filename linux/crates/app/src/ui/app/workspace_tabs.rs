@@ -12,9 +12,7 @@ use crate::services::workspace_state::{self, ConnectionWorkspaceState, Workspace
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
 
-use super::{
-    App, AppMsg, BrowseTabSlot, EditorTabSlot, OpenMode, WorkspaceTab, read_workspace_tab_id, write_workspace_tab_id,
-};
+use super::{App, AppMsg, EditorTabSlot, OpenMode, WorkspaceTab, read_workspace_tab_id, write_workspace_tab_id};
 
 impl App {
     /// Builds the unified AdwTabOverview tree once per connection.
@@ -219,6 +217,10 @@ impl App {
         }
         for record in &saved.tabs {
             match record {
+                // Legacy Browse records (pre-M-1): rehydrate as a
+                // Table tab in Data mode. The unified slot owns both
+                // controllers, so the user gets the AdwViewSwitcher
+                // even on a workspace_state.json from an older build.
                 WorkspaceTabRecord::Browse {
                     schema,
                     table,
@@ -227,9 +229,10 @@ impl App {
                     sort_col,
                     sort_asc,
                 } => {
-                    self.append_browse_tab_inner(
+                    self.append_table_tab(
                         schema.clone(),
                         table.clone(),
+                        super::TableMode::Data,
                         *offset,
                         *page_size,
                         match (sort_col, sort_asc) {
@@ -242,14 +245,18 @@ impl App {
                 WorkspaceTabRecord::Editor { query } => {
                     self.append_editor_tab(Some(query.clone()), sender.clone());
                 }
+                // Legacy Structure(Edit) records (pre-M-1): rehydrate
+                // as a Table tab opened directly to Structure mode.
+                // New-mode Structure tabs never persist (drafts), so
+                // an Edit-mode rehydrate is the only case here.
                 WorkspaceTabRecord::Structure { schema, table } => {
-                    // Only Edit-mode Structure tabs persist; restore in
-                    // Edit mode and the tab fires FetchStructureData
-                    // automatically on init.
-                    self.append_structure_tab(
+                    self.append_table_tab(
                         schema.clone(),
                         table.clone(),
-                        crate::ui::structure_tab::StructureMode::Edit,
+                        super::TableMode::Structure,
+                        0,
+                        self.default_page_size,
+                        None,
                         sender.clone(),
                     );
                 }
@@ -292,98 +299,11 @@ impl App {
         self.workspace_outer_stack.set_visible_child_name("tabs");
     }
 
-    /// Public entry: append a Browse tab for `(schema, table)` and
-    /// select it. Legacy helper kept for backward compatibility with
-    /// any caller still expecting a Browse-only tab; new code should
-    /// use `append_table_tab` so the user gets the unified
-    /// AdwViewSwitcher (Data ↔ Structure) per M-1.
-    #[allow(dead_code)]
-    pub(super) fn append_browse_tab(&mut self, schema: Option<String>, table: String, sender: ComponentSender<Self>) {
-        self.append_browse_tab_inner(schema, table, 0, self.default_page_size, None, sender);
-    }
-
-    fn append_browse_tab_inner(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        offset: u64,
-        page_size: u64,
-        sort: Option<(usize, bool)>,
-        sender: ComponentSender<Self>,
-    ) {
-        self.ensure_workspace_root(sender.clone());
-        let Some(tab_view) = self.workspace_tab_view.clone() else {
-            return;
-        };
-        let tab_id = Uuid::new_v4();
-        let driver_id = self.driver_id().to_string();
-        let connection_id = database_service::instance().active_id();
-        let read_only = self.read_only;
-        let init = BrowseTabInit {
-            tab_id,
-            schema: schema.clone(),
-            table: table.clone(),
-            driver_id,
-            connection_id,
-            read_only,
-            page_size,
-            initial_offset: offset,
-            initial_sort: sort,
-        };
-        let controller = BrowseTab::builder()
-            .launch(init)
-            .forward(sender.input_sender(), move |out| match out {
-                BrowseTabOutput::FetchPage => AppMsg::FetchBrowsePage(tab_id),
-                BrowseTabOutput::FetchColumns => AppMsg::FetchBrowseColumns(tab_id),
-                BrowseTabOutput::FetchRowCount => AppMsg::FetchBrowseRowCount(tab_id),
-                BrowseTabOutput::StateChanged => AppMsg::WorkspaceTabsChanged,
-                BrowseTabOutput::CopyRowAsInsert { row_position } => AppMsg::CopyRowAsInsert { tab_id, row_position },
-                BrowseTabOutput::CopyToClipboard(text) => AppMsg::CopyToClipboard(text),
-                BrowseTabOutput::SchemaWordsChanged(_words) => AppMsg::WorkspaceSchemaWordsChanged,
-                BrowseTabOutput::ShowSelectionAlert { title, body } => AppMsg::ShowAlert { title, body },
-                BrowseTabOutput::ShowToast(msg) => AppMsg::ShowToast(msg),
-                BrowseTabOutput::DirtyChanged(dirty) => AppMsg::BrowseTabDirtyChanged(tab_id, dirty),
-                BrowseTabOutput::ExecuteTransaction { statements, sources } => AppMsg::ExecuteBrowseTransaction {
-                    tab_id,
-                    statements,
-                    sources,
-                },
-            });
-
-        let page = tab_view.append(controller.widget());
-        let label = qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table);
-        page.set_title(&label);
-        if let Some(tip) = browse_tab_tooltip(schema.as_deref(), &table, &label) {
-            page.set_tooltip(&tip);
-        }
-        write_workspace_tab_id(&page, tab_id);
-
-        let slot = BrowseTabSlot {
-            id: tab_id,
-            controller,
-            page: page.clone(),
-            schema,
-            table,
-        };
-        self.workspace_tabs
-            .borrow_mut()
-            .insert(tab_id, WorkspaceTab::Browse(slot));
-        tab_view.set_selected_page(&page);
-        self.workspace_outer_stack.set_visible_child_name("tabs");
-        self.refresh_window_title();
-        self.persist_workspace_state();
-    }
-
-    /// Public entry: append a Structure (DDL editor) tab in either
-    /// `New` mode (drafting a new table) or `Edit` mode (altering an
-    /// existing one). Mirrors `append_browse_tab_inner`'s shape.
-    pub(super) fn append_structure_tab(
-        &mut self,
-        schema: Option<String>,
-        table: String,
-        mode: crate::ui::structure_tab::StructureMode,
-        sender: ComponentSender<Self>,
-    ) {
+    /// Public entry: append a Structure draft tab for the New-Table
+    /// flow. Edit-mode is no longer reachable through this helper;
+    /// use `append_table_tab` for the unified Browse + Structure
+    /// view of an existing table.
+    pub(super) fn append_new_structure_tab(&mut self, schema: Option<String>, sender: ComponentSender<Self>) {
         self.ensure_workspace_root(sender.clone());
         let Some(tab_view) = self.workspace_tab_view.clone() else {
             return;
@@ -393,8 +313,8 @@ impl App {
         let init = crate::ui::structure_tab::StructureTabInit {
             tab_id,
             schema: schema.clone(),
-            table: table.clone(),
-            mode,
+            table: String::new(),
+            mode: crate::ui::structure_tab::StructureMode::New,
             driver_id,
         };
         let controller =
@@ -420,18 +340,7 @@ impl App {
                 });
 
         let page = tab_view.append(controller.widget());
-        let title = match mode {
-            crate::ui::structure_tab::StructureMode::New => crate::tr!("New Table"),
-            // Same disambig rule as Browse tabs: only show the
-            // schema prefix when the connection actually has more
-            // than one schema. Single-schema MySQL / SQLite show
-            // just the table name; multi-schema Postgres shows
-            // "schema.table".
-            crate::ui::structure_tab::StructureMode::Edit => {
-                qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table)
-            }
-        };
-        page.set_title(&title);
+        page.set_title(&crate::tr!("New Table"));
         write_workspace_tab_id(&page, tab_id);
 
         let slot = super::StructureTabSlot {
@@ -439,8 +348,8 @@ impl App {
             controller,
             page: page.clone(),
             schema,
-            table,
-            mode,
+            table: String::new(),
+            mode: crate::ui::structure_tab::StructureMode::New,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -678,7 +587,6 @@ impl App {
             .borrow()
             .get(&id)
             .and_then(|t| match t {
-                WorkspaceTab::Browse(s) => crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()),
                 WorkspaceTab::Structure(s) => {
                     crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending())
                 }
@@ -694,7 +602,6 @@ impl App {
             .unwrap_or(false);
         if pending {
             let page = self.workspace_tabs.borrow().get(&id).map(|t| match t {
-                WorkspaceTab::Browse(s) => s.page.clone(),
                 WorkspaceTab::Editor(s) => s.page.clone(),
                 WorkspaceTab::Structure(s) => s.page.clone(),
                 WorkspaceTab::Table(s) => s.page.clone(),
@@ -785,9 +692,6 @@ impl App {
             WorkspaceTab::Editor(slot) => {
                 let _ = slot.controller.sender().send(SqlEditorInput::Cancel);
             }
-            WorkspaceTab::Browse(slot) => {
-                crate::services::change_tracker::close_tab(slot.id);
-            }
             WorkspaceTab::Structure(slot) => {
                 crate::services::structure_tracker::close_tab(slot.id);
             }
@@ -800,7 +704,6 @@ impl App {
             }
         }
         let page = match &removed {
-            WorkspaceTab::Browse(s) => s.page.clone(),
             WorkspaceTab::Editor(s) => s.page.clone(),
             WorkspaceTab::Structure(s) => s.page.clone(),
             WorkspaceTab::Table(s) => s.page.clone(),
@@ -913,15 +816,10 @@ impl App {
             // Multiple tabs may be open for the same (schema, table)
             // pair (Ctrl+click duplicates). Prefer the currently-
             // selected tab when it matches, then any other match.
-            // Both legacy `Browse` slots and the new `Table` slot
-            // count as a match.
             let existing = {
                 let tabs = self.workspace_tabs.borrow();
                 let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
                 let matches_slot = |t: &WorkspaceTab| match t {
-                    WorkspaceTab::Browse(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
-                        Some(s.page.clone())
-                    }
                     WorkspaceTab::Table(s) if s.schema.as_deref() == schema.as_deref() && s.table == name => {
                         Some(s.page.clone())
                     }
@@ -1010,33 +908,12 @@ fn do_persist_workspace_state(
         };
         let Some(slot) = tabs.get(&id) else { continue };
         tab_records.push(match slot {
-            WorkspaceTab::Browse(s) => {
-                let model = s.controller.model();
-                let sort = model.current_sort();
-                WorkspaceTabRecord::Browse {
-                    schema: s.schema.clone(),
-                    table: s.table.clone(),
-                    offset: model.current_offset(),
-                    page_size: model.page_size(),
-                    sort_col: sort.map(|(c, _)| c),
-                    sort_asc: sort.map(|(_, a)| a),
-                }
-            }
             WorkspaceTab::Editor(s) => WorkspaceTabRecord::Editor { query: s.query.clone() },
-            WorkspaceTab::Structure(s) => {
-                // Only Edit-mode Structure tabs persist. New mode is
-                // a draft for a table that doesn't exist yet — restoring
-                // it would be meaningless. Skip by returning a record
-                // we'll filter out below.
-                if matches!(s.mode, crate::ui::structure_tab::StructureMode::Edit) && !s.table.is_empty() {
-                    WorkspaceTabRecord::Structure {
-                        schema: s.schema.clone(),
-                        table: s.table.clone(),
-                    }
-                } else {
-                    continue;
-                }
-            }
+            // Structure tabs only exist for the New-Table draft flow
+            // post-M-1 cleanup; never persist (the table the user is
+            // drafting doesn't exist yet, so a restore would be a
+            // meaningless empty form).
+            WorkspaceTab::Structure(_) => continue,
             WorkspaceTab::Table(s) => {
                 // New-mode draft Tables (no committed table name yet)
                 // don't survive a disconnect.
@@ -1173,23 +1050,16 @@ impl App {
         let Some(slot) = tabs.get(&tab_id) else {
             return;
         };
-        // Combined dirty state for `Table` slots: data-side dirty OR
-        // structure-side dirty surfaces the same "•" prefix. The
+        // Combined dirty state: data-side OR structure-side. The
         // Structure-side input also calls this helper via the
         // dirty-changed bus, so the Boolean ORs naturally compose.
-        let (page, schema, table) = match slot {
-            WorkspaceTab::Browse(s) => (&s.page, s.schema.as_deref(), s.table.as_str()),
-            WorkspaceTab::Table(s) => (&s.page, s.schema.as_deref(), s.table.as_str()),
-            _ => return,
+        let WorkspaceTab::Table(s) = slot else {
+            return;
         };
-        let combined_dirty = if let WorkspaceTab::Table(s) = slot {
-            let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-            let structure =
-                crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
-            data || structure
-        } else {
-            dirty
-        };
+        let (page, schema, table) = (&s.page, s.schema.as_deref(), s.table.as_str());
+        let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
+        let structure = crate::services::structure_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
+        let combined_dirty = data || structure || dirty;
         let base = qualified_browse_tab_label(schemas_count, schema, table);
         let title = if combined_dirty { format!("• {base}") } else { base };
         page.set_title(&title);
@@ -1213,7 +1083,6 @@ impl App {
         // would no longer be commitable.
         for tab in self.workspace_tabs.borrow().values() {
             match tab {
-                WorkspaceTab::Browse(slot) => crate::services::change_tracker::close_tab(slot.id),
                 WorkspaceTab::Structure(slot) => crate::services::structure_tracker::close_tab(slot.id),
                 WorkspaceTab::Table(slot) => {
                     crate::services::change_tracker::close_tab(slot.id);
