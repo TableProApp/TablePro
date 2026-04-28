@@ -191,7 +191,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableName = configuration.tableName
         context.coordinator.primaryKeyColumns = configuration.primaryKeyColumns
         context.coordinator.tabType = configuration.tabType
-        context.coordinator.rebuildColumnMetadataCache()
+        context.coordinator.rebuildColumnMetadataCache(from: tableRowsProvider())
         if let connectionId = configuration.connectionId {
             context.coordinator.observeTeardown(connectionId: connectionId)
         }
@@ -276,7 +276,7 @@ struct DataGridView: NSViewRepresentable {
         let needsFullReload = structureChanged
 
         coordinator.updateCache()
-        coordinator.rebuildColumnMetadataCache()
+        coordinator.rebuildColumnMetadataCache(from: latestRows)
 
         if previousIdentity == nil || previousIdentity?.rowCount == 0 {
             let rowH = tableView.rowHeight

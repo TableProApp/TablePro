@@ -416,13 +416,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         updateCache()
     }
 
-    func rebuildColumnMetadataCache() {
+    func rebuildColumnMetadataCache(from tableRows: TableRows) {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()
-        let columns = cachedTableRows.columns
-        let types = cachedTableRows.columnTypes
-        let enumValues = cachedTableRows.columnEnumValues
-        let fkKeys = cachedTableRows.columnForeignKeys
+        let columns = tableRows.columns
+        let types = tableRows.columnTypes
+        let enumValues = tableRows.columnEnumValues
+        let fkKeys = tableRows.columnForeignKeys
 
         for i in 0..<columns.count {
             let name = columns[i]
