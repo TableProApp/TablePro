@@ -141,9 +141,15 @@ impl FactoryComponent for SidebarRow {
         let right_click = gtk::GestureClick::builder().button(3).build();
         let root_for_right = root.clone();
         let sender_for_right = sender.clone();
+        let table_for_right = self.info.name.clone();
         right_click.connect_pressed(move |g, _, x, y| {
             g.set_state(gtk::EventSequenceState::Claimed);
-            tracing::trace!(target: "tablepro_app::sidebar_row", x, y, "right-click pressed; opening menu");
+            tracing::info!(
+                target: "tp_sidebar_menu",
+                table = %table_for_right,
+                x, y,
+                "[1] right-click pressed; about to call present_row_menu"
+            );
             present_row_menu(
                 &root_for_right,
                 Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
@@ -171,24 +177,45 @@ impl FactoryComponent for SidebarRow {
     }
 
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
+        tracing::info!(
+            target: "tp_sidebar_menu",
+            table = %self.info.name,
+            ?msg,
+            "[3] SidebarRow::update received message"
+        );
         match msg {
             SidebarRowMsg::OpenInNewTab => {
-                let _ = sender.output(SidebarRowOutput::OpenInNewTab {
+                let r = sender.output(SidebarRowOutput::OpenInNewTab {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });
+                tracing::info!(
+                    target: "tp_sidebar_menu",
+                    sent_ok = r.is_ok(),
+                    "[4] SidebarRow output OpenInNewTab dispatched"
+                );
             }
             SidebarRowMsg::EditStructure => {
-                let _ = sender.output(SidebarRowOutput::EditStructure {
+                let r = sender.output(SidebarRowOutput::EditStructure {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });
+                tracing::info!(
+                    target: "tp_sidebar_menu",
+                    sent_ok = r.is_ok(),
+                    "[4] SidebarRow output EditStructure dispatched"
+                );
             }
             SidebarRowMsg::DropTable => {
-                let _ = sender.output(SidebarRowOutput::DropTable {
+                let r = sender.output(SidebarRowOutput::DropTable {
                     schema: self.info.schema.clone(),
                     name: self.info.name.clone(),
                 });
+                tracing::info!(
+                    target: "tp_sidebar_menu",
+                    sent_ok = r.is_ok(),
+                    "[4] SidebarRow output DropTable dispatched"
+                );
             }
         }
     }
@@ -232,30 +259,45 @@ fn present_row_menu(
     let sender_open = sender.clone();
     let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
         .activate(move |_, _, _| {
-            tracing::trace!(target: "tablepro_app::sidebar_row", "action: open-in-new-tab");
+            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: open-in-new-tab");
             sender_open.input(SidebarRowMsg::OpenInNewTab);
         })
         .build();
     let sender_edit = sender.clone();
     let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
         .activate(move |_, _, _| {
-            tracing::trace!(target: "tablepro_app::sidebar_row", "action: edit-structure");
+            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: edit-structure");
             sender_edit.input(SidebarRowMsg::EditStructure);
         })
         .build();
     let drop_action = gtk::gio::ActionEntry::builder("drop-table")
         .activate(move |_, _, _| {
-            tracing::trace!(target: "tablepro_app::sidebar_row", "action: drop-table");
+            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: drop-table");
             sender.input(SidebarRowMsg::DropTable);
         })
         .build();
     group.add_action_entries([open_action, edit_action, drop_action]);
     popover.insert_action_group("sidebar-row", Some(&group));
 
+    // Sanity check: list the actions registered on the group we
+    // just inserted. If "open-in-new-tab" / "edit-structure" /
+    // "drop-table" all show up, the group is fully populated.
+    // gio::ActionGroupExt is in scope via gtk::prelude::*.
+    let action_names: Vec<glib::GString> = group.list_actions();
+    tracing::info!(
+        target: "tp_sidebar_menu",
+        ?action_names,
+        "[1.5] popover constructed with action group inserted"
+    );
+
     popover.set_parent(anchor);
     if let Some(rect) = pointing_to {
         popover.set_pointing_to(Some(rect));
     }
-    popover.connect_closed(|p| p.unparent());
+    popover.connect_closed(|p| {
+        tracing::info!(target: "tp_sidebar_menu", "popover closed; unparenting");
+        p.unparent();
+    });
     popover.popup();
+    tracing::info!(target: "tp_sidebar_menu", "[1.6] popover.popup() called");
 }
