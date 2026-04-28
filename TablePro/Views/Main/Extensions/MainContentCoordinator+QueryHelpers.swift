@@ -277,6 +277,14 @@ extension MainContentCoordinator {
                 updatedTab.pagination.totalRowCount = approxCount
                 updatedTab.pagination.isApproximateRowCount = true
             }
+        } else {
+            let existing = tableRowsStore.tableRows(for: updatedTab.id)
+            columnDefaults = existing.columnDefaults
+            columnForeignKeys = existing.columnForeignKeys
+            columnNullable = existing.columnNullable
+            for (col, vals) in existing.columnEnumValues where columnEnumValues[col] == nil {
+                columnEnumValues[col] = vals
+            }
         }
         if hasSchema {
             updatedTab.metadataVersion += 1

@@ -237,6 +237,7 @@ final class DataChangeManager: ChangeManaging {
         }
 
         hasChanges = !pending.isEmpty
+        reloadVersion += 1
 
         if let result = lastUndoResult {
             onUndoApplied?(result)
