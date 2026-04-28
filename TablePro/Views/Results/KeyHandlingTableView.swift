@@ -23,38 +23,35 @@ final class KeyHandlingTableView: NSTableView {
         true
     }
 
-    /// Currently focused row index (-1 = no focus)
-    var focusedRow: Int = -1 {
+    var selection = TableSelection() {
         didSet {
-            if oldValue != focusedRow && oldValue >= 0 {
-                if focusedColumn >= 0 && focusedColumn < numberOfColumns && oldValue < numberOfRows {
-                    reloadData(forRowIndexes: IndexSet(integer: oldValue),
-                               columnIndexes: IndexSet(integer: focusedColumn))
-                }
-            }
+            guard let (rows, columns) = selection.reloadIndexes(from: oldValue) else { return }
+            let validRows = rows.filteredIndexSet { $0 < numberOfRows }
+            let validColumns = columns.filteredIndexSet { $0 < numberOfColumns }
+            guard !validRows.isEmpty, !validColumns.isEmpty else { return }
+            reloadData(forRowIndexes: validRows, columnIndexes: validColumns)
         }
     }
 
-    /// Currently focused column index (-1 = no focus, 0 = row number column)
-    var focusedColumn: Int = -1 {
-        didSet {
-            guard oldValue != focusedColumn else { return }
-            let row = focusedRow
-            guard row >= 0 && row < numberOfRows else { return }
-            var cols = IndexSet()
-            if oldValue >= 0 && oldValue < numberOfColumns { cols.insert(oldValue) }
-            if focusedColumn >= 0 && focusedColumn < numberOfColumns { cols.insert(focusedColumn) }
-            if !cols.isEmpty {
-                reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: cols)
-            }
-        }
+    var focusedRow: Int {
+        get { selection.focusedRow }
+        set { selection.focusedRow = newValue }
     }
 
-    /// Anchor row for Shift+Arrow range selection (-1 = no anchor)
-    var selectionAnchor: Int = -1
+    var focusedColumn: Int {
+        get { selection.focusedColumn }
+        set { selection.focusedColumn = newValue }
+    }
 
-    /// Current pivot row for Shift+Arrow navigation
-    var selectionPivot: Int = -1
+    var selectionAnchor: Int {
+        get { selection.anchor }
+        set { selection.anchor = newValue }
+    }
+
+    var selectionPivot: Int {
+        get { selection.pivot }
+        set { selection.pivot = newValue }
+    }
 
     // MARK: - TablePlus-Style Cell Focus
 
