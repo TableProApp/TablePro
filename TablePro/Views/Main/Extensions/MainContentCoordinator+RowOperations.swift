@@ -219,9 +219,11 @@ extension MainContentCoordinator {
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
         guard let index = tabManager.selectedTabIndex else { return }
         let tabId = tabManager.tabs[index].id
+        var delta: Delta = .none
         tableRowsStore.updateTableRows(for: tabId) { rows in
-            rows.edit(row: rowIndex, column: columnIndex, value: value)
+            delta = rows.edit(row: rowIndex, column: columnIndex, value: value)
         }
         tabManager.tabs[index].hasUserInteraction = true
+        dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)
     }
 }
