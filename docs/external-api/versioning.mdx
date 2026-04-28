@@ -54,13 +54,6 @@ The following are not part of the External API contract and can change at any ti
 - Audit log file format at `~/Library/Application Support/TablePro/mcp-audit.db`. Read via the activity log view.
 - The connections file format at `~/Library/Application Support/TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
 
-## Past breaking changes
-
-| Version | Change |
-|---------|--------|
-| 0.37 | `tablepro://connect/<name>/...` deep links removed. Use UUID-keyed paths. Bookmarks must be regenerated. |
-| 0.37 | The MCP server lazy-starts on first external request. Manual enable in Settings is no longer required. |
-
 ## Reporting issues
 
 If you find a behavior that contradicts these rules, file an issue at [github.com/TableProApp/TablePro](https://github.com/TableProApp/TablePro/issues). Include the TablePro version, the URL or MCP call, expected and actual behavior, and a snippet of the activity log row if relevant.
