@@ -266,11 +266,28 @@ impl StructureTab {
         // outer columns_box holds (ListBox + Add button) so the rows
         // get the standard `.boxed-list` styling: rounded corners,
         // separators between rows, hover highlight.
+        //
+        // suppress_emit must be true while we tear down + recreate
+        // the row widgets: Entry::set_text and CheckButton::set_active
+        // for the initial values fire `changed` / `toggled` signals
+        // synchronously, and the row's connect_* callbacks (registered
+        // earlier in the build) would treat those as user edits and
+        // push phantom AlterColumn ops onto the tracker — every Edit-
+        // mode reload would land 7 columns × ~3 fields ≈ 19 spurious
+        // pending changes. We re-enable emit on the next idle tick so
+        // legitimate user input afterwards flows through.
+        *self.suppress_emit.borrow_mut() = true;
         clear_box(&self.columns_box);
         let driver_id = self.driver_id.clone();
         let list = boxed_list();
         for (i, col) in self.columns.borrow().iter().enumerate() {
-            let row = wrap_in_list_row(build_column_row(i, col, &driver_id, sender.clone()));
+            let row = wrap_in_list_row(build_column_row(
+                i,
+                col,
+                &driver_id,
+                sender.clone(),
+                self.suppress_emit.clone(),
+            ));
             list.append(&row);
         }
         self.columns_box.append(&list);
@@ -282,6 +299,10 @@ impl StructureTab {
         let sender_for_add = sender.clone();
         add_button.connect_clicked(move |_| sender_for_add.input(StructureTabInput::AddColumn));
         self.columns_box.append(&wrap_button_in_row(add_button));
+        let suppress = self.suppress_emit.clone();
+        relm4::gtk::glib::idle_add_local_once(move || {
+            *suppress.borrow_mut() = false;
+        });
     }
 
     fn rebuild_indexes_view(&self, sender: ComponentSender<Self>) {
@@ -378,11 +399,18 @@ fn clear_box(b: &gtk::Box) {
 /// understands why they can't edit. Non-original (newly added) columns
 /// always allow full editing — those become AddColumn ops which SQLite
 /// accepts at execution time.
+///
+/// `suppress_emit` lets the caller mark a window during which signal
+/// callbacks should NOT push edits onto the change tracker. Used by
+/// rebuild_columns_view to silence the spurious `changed` / `toggled`
+/// emissions GTK fires while we set initial values on freshly-built
+/// widgets.
 fn build_column_row(
     index: usize,
     col: &DraftColumn,
     driver_id: &str,
     sender: ComponentSender<StructureTab>,
+    suppress_emit: Rc<RefCell<bool>>,
 ) -> gtk::Widget {
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -404,7 +432,11 @@ fn build_column_row(
         .build();
     name_entry.set_widget_name(&format!("col-name-{index}"));
     let sender_for_name = sender.clone();
+    let suppress_for_name = suppress_emit.clone();
     name_entry.connect_changed(move |e| {
+        if *suppress_for_name.borrow() {
+            return;
+        }
         sender_for_name.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::Name(e.text().to_string()),
@@ -422,7 +454,11 @@ fn build_column_row(
     if let Some(entry) = combo_entry(&type_combo) {
         entry.set_text(&col.data_type);
         let sender_for_type = sender.clone();
+        let suppress_for_type = suppress_emit.clone();
         entry.connect_changed(move |e| {
+            if *suppress_for_type.borrow() {
+                return;
+            }
             sender_for_type.input(StructureTabInput::ColumnEdited {
                 index,
                 field: ColumnField::Type(e.text().to_string()),
@@ -446,7 +482,11 @@ fn build_column_row(
         nullable_check.set_tooltip_text(Some(&crate::tr!("Nullability changes aren't supported by SQLite.")));
     }
     let sender_for_null = sender.clone();
+    let suppress_for_null = suppress_emit.clone();
     nullable_check.connect_toggled(move |c| {
+        if *suppress_for_null.borrow() {
+            return;
+        }
         sender_for_null.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::Nullable(c.is_active()),
@@ -465,7 +505,11 @@ fn build_column_row(
         default_entry.set_tooltip_text(Some(&crate::tr!("Default changes aren't supported by SQLite.")));
     }
     let sender_for_default = sender.clone();
+    let suppress_for_default = suppress_emit.clone();
     default_entry.connect_changed(move |e| {
+        if *suppress_for_default.borrow() {
+            return;
+        }
         let text = e.text().to_string();
         let value = if text.is_empty() { None } else { Some(text) };
         sender_for_default.input(StructureTabInput::ColumnEdited {
@@ -482,7 +526,11 @@ fn build_column_row(
         .tooltip_text(crate::tr!("Primary key"))
         .build();
     let sender_for_pk = sender.clone();
+    let suppress_for_pk = suppress_emit.clone();
     pk_check.connect_toggled(move |c| {
+        if *suppress_for_pk.borrow() {
+            return;
+        }
         sender_for_pk.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::PrimaryKey(c.is_active()),
@@ -497,7 +545,11 @@ fn build_column_row(
         .tooltip_text(crate::tr!("Auto-increment / SERIAL"))
         .build();
     let sender_for_auto = sender.clone();
+    let suppress_for_auto = suppress_emit;
     auto_check.connect_toggled(move |c| {
+        if *suppress_for_auto.borrow() {
+            return;
+        }
         sender_for_auto.input(StructureTabInput::ColumnEdited {
             index,
             field: ColumnField::AutoIncrement(c.is_active()),
@@ -905,7 +957,16 @@ impl SimpleComponent for StructureTab {
         structure_tracker::open_tab(init.tab_id);
 
         // Top header: table-name entry + driver label.
-        let header = adw::HeaderBar::builder().show_title(false).build();
+        // Embedded headerbar — Structure tab is inside an AdwTabView,
+        // not a top-level window. Show neither set of window controls
+        // (start: app-menu / close on macOS-style; end: minimise /
+        // maximise / close on Linux). Letting them render here was a
+        // visible double-title-bar bug because the AdwApplicationWindow
+        // already paints the real ones.
+        let header = adw::HeaderBar::builder()
+            .show_start_title_buttons(false)
+            .show_end_title_buttons(false)
+            .build();
         let title_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
             .spacing(8)
@@ -1204,32 +1265,61 @@ impl SimpleComponent for StructureTab {
                 }
                 let new_col = col.clone();
                 drop(cols);
+                // Skip when nothing actually changed. The Entry /
+                // CheckButton handlers that drive ColumnEdited fire
+                // not just on user typing — they also echo on
+                // programmatic set_text / set_active during widget
+                // teardown / focus shifts / IME events. Without this
+                // guard each Refresh + interaction can stamp a string
+                // of phantom AlterColumn ops onto the tracker.
+                if prev == new_col {
+                    self.regenerate_sql_preview();
+                    return;
+                }
                 if matches!(mode, StructureMode::New) {
                     self.update_create_op_for_new();
-                } else if let Some(_orig) = new_col.original.as_ref() {
-                    // Existing column: push AlterColumn op (materialize
-                    // groups all alter ops per column for MySQL).
-                    let table = self.table_name.borrow().clone();
-                    let schema = self.schema.clone();
-                    structure_tracker::with_tab(self.tab_id, |t| {
-                        t.push(
-                            StructureOp::AlterColumn {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                column: new_col.clone(),
-                            },
-                            StructureOp::AlterColumn {
-                                schema: schema.clone(),
-                                table: table.clone(),
-                                column: prev.clone(),
-                            },
-                        );
-                    });
+                } else if let Some(orig) = new_col.original.as_ref() {
+                    // Existing column: push AlterColumn op only when
+                    // the post-edit state actually differs from the
+                    // baseline ColumnInfo. If the user toggled then
+                    // toggled back, the model returns to original and
+                    // the tracker shouldn't carry a no-op op.
+                    let baseline = DraftColumn::from_info(orig.clone());
+                    if baseline == new_col {
+                        // User reverted to original — strip any prior
+                        // AlterColumn ops on this column from the
+                        // tracker so dirty-count drops back to zero
+                        // for this attribute.
+                        let column_name = new_col.name.clone();
+                        let table = self.table_name.borrow().clone();
+                        structure_tracker::with_tab(self.tab_id, |t| {
+                            let table_for_filter = table.clone();
+                            t.retain_ops(|op| {
+                                matches!(op, StructureOp::AlterColumn { table: t, column: c, .. }
+                                    if *t == table_for_filter && c.name == column_name)
+                            });
+                        });
+                    } else {
+                        let table = self.table_name.borrow().clone();
+                        let schema = self.schema.clone();
+                        structure_tracker::with_tab(self.tab_id, |t| {
+                            t.push(
+                                StructureOp::AlterColumn {
+                                    schema: schema.clone(),
+                                    table: table.clone(),
+                                    column: new_col.clone(),
+                                },
+                                StructureOp::AlterColumn {
+                                    schema: schema.clone(),
+                                    table: table.clone(),
+                                    column: prev.clone(),
+                                },
+                            );
+                        });
+                    }
                 } else {
-                    // Newly-added column in Edit mode: regenerate the
-                    // AddColumn op (or rather, update its in-flight
-                    // payload). We do this by rebuilding the pending
-                    // ops for added columns each time the user edits.
+                    // Newly-added column in Edit mode: surgical
+                    // replace of pending AddColumn ops.
                     self.update_added_columns_ops();
                 }
                 self.regenerate_sql_preview();
