@@ -152,6 +152,9 @@ pub struct StructureTab {
     // Widget refs we touch from `update`.
     inner_stack: gtk::Stack,
     name_entry: gtk::Entry,
+    /// The PreferencesGroup wrapping `name_entry` — visible only in
+    /// New mode. Hidden after SaveCompleted promotes the tab to Edit.
+    name_row: adw::PreferencesGroup,
     columns_box: gtk::Box,
     indexes_box: gtk::Box,
     fks_box: gtk::Box,
@@ -962,36 +965,19 @@ impl SimpleComponent for StructureTab {
     fn init(init: Self::Init, root: Self::Root, sender: ComponentSender<Self>) -> ComponentParts<Self> {
         structure_tracker::open_tab(init.tab_id);
 
-        // Top header: table-name entry + driver label.
         // Embedded headerbar — Structure tab is inside an AdwTabView,
         // not a top-level window. Show neither set of window controls
-        // (start: app-menu / close on macOS-style; end: minimise /
-        // maximise / close on Linux). Letting them render here was a
-        // visible double-title-bar bug because the AdwApplicationWindow
-        // already paints the real ones.
+        // (the AdwApplicationWindow already paints the real ones), and
+        // put the AdwViewSwitcher in the title slot — that's the
+        // GNOME convention for tab-internal page switching (Builder,
+        // Settings, Calendar). The previous "Entry + driver Label"
+        // title widget was redundant: tab title already shows the
+        // table name and the window subtitle already shows the driver.
         let header = adw::HeaderBar::builder()
             .show_start_title_buttons(false)
             .show_end_title_buttons(false)
             .build();
-        let title_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(8)
-            .build();
-        let name_entry = gtk::Entry::builder()
-            .text(&init.table)
-            .placeholder_text(crate::tr!("table_name"))
-            .width_chars(20)
-            .build();
-        title_box.append(&name_entry);
-        let driver_label = gtk::Label::builder()
-            .label(driver_display_name(&init.driver_id))
-            .build();
-        driver_label.add_css_class("dim-label");
-        driver_label.add_css_class("caption");
-        title_box.append(&driver_label);
-        header.set_title_widget(Some(&title_box));
 
-        // ViewSwitcher header (under HeaderBar).
         let view_stack = adw::ViewStack::new();
 
         let columns_box = gtk::Box::builder()
@@ -1069,6 +1055,7 @@ impl SimpleComponent for StructureTab {
             .stack(&view_stack)
             .policy(adw::ViewSwitcherPolicy::Wide)
             .build();
+        header.set_title_widget(Some(&view_switcher));
 
         // Inner stack swaps between "loading" / "editor" / "error" so
         // Edit-mode tabs show a spinner until fetch_structure_data
@@ -1086,7 +1073,31 @@ impl SimpleComponent for StructureTab {
             .orientation(gtk::Orientation::Vertical)
             .spacing(0)
             .build();
-        editor_box.append(&view_switcher);
+        // New-mode only: prominent name row at the top of the editor.
+        // Edit mode hides this — the tab title already shows the name
+        // and rename is a separate (sidebar context-menu) action that
+        // we don't want users triggering accidentally by clicking a
+        // floating text field. The name_entry widget itself is still
+        // built and stored in the model so update()'s SaveCompleted
+        // path can `set_text` it when New mode promotes to Edit.
+        let name_entry = gtk::Entry::builder()
+            .text(&init.table)
+            .placeholder_text(crate::tr!("table_name"))
+            .build();
+        let name_row = adw::PreferencesGroup::builder()
+            .title(crate::tr!("New table"))
+            .description(crate::tr!("Pick a name and add at least one column to save."))
+            .margin_top(12)
+            .margin_bottom(6)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        let name_action_row = adw::ActionRow::builder().title(crate::tr!("Name")).build();
+        name_action_row.add_suffix(&name_entry);
+        name_action_row.set_activatable_widget(Some(&name_entry));
+        name_row.add(&name_action_row);
+        name_row.set_visible(matches!(init.mode, StructureMode::New));
+        editor_box.append(&name_row);
         editor_box.append(&view_stack);
         inner_stack.add_named(&editor_box, Some("editor"));
 
@@ -1179,6 +1190,7 @@ impl SimpleComponent for StructureTab {
             foreign_keys: Rc::new(RefCell::new(Vec::new())),
             inner_stack,
             name_entry,
+            name_row,
             columns_box,
             indexes_box,
             fks_box,
@@ -1600,6 +1612,11 @@ impl SimpleComponent for StructureTab {
                     self.name_entry.set_text(&name);
                     *self.suppress_emit.borrow_mut() = false;
                     self.drop_button.set_visible(true);
+                    // New mode → Edit mode: the prominent name row at
+                    // the top of the editor was a New-mode-only
+                    // affordance. Hide it now that the tab represents
+                    // a real, persisted table.
+                    self.name_row.set_visible(false);
                 }
                 structure_tracker::with_tab(self.tab_id, |t| t.clear());
                 if matches!(*self.mode.borrow(), StructureMode::Edit) {
@@ -1723,15 +1740,6 @@ fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
     };
     if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
         buffer.set_style_scheme(Some(&scheme));
-    }
-}
-
-fn driver_display_name(driver_id: &str) -> &'static str {
-    match driver_id {
-        "postgres" => "PostgreSQL",
-        "mysql" => "MySQL",
-        "sqlite" => "SQLite",
-        _ => "Database",
     }
 }
 
