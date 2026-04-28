@@ -687,7 +687,7 @@ final class MainContentCommandActions {
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex > 0 else { return }
-        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex - 1].id
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex - 1].id, in: tab.id)
     }
 
     func nextResultTab() {
@@ -697,7 +697,7 @@ final class MainContentCommandActions {
               let currentId = tab.display.activeResultSetId ?? tab.display.resultSets.last?.id,
               let currentIndex = tab.display.resultSets.firstIndex(where: { $0.id == currentId }),
               currentIndex < tab.display.resultSets.count - 1 else { return }
-        coordinator.tabManager.tabs[tabIndex].display.activeResultSetId = tab.display.resultSets[currentIndex + 1].id
+        coordinator.switchActiveResultSet(to: tab.display.resultSets[currentIndex + 1].id, in: tab.id)
     }
 
     func closeResultTab() {

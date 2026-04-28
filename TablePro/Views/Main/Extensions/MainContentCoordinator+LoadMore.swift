@@ -96,11 +96,10 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    var appendDelta: Delta = .none
                     var pageOffset = 0
-                    tableRowsStore.updateTableRows(for: tab.id) { rows in
+                    let appendDelta = mutateActiveTableRows(for: tab.id) { rows in
                         pageOffset = rows.count
-                        appendDelta = rows.appendPage(pagedResult.rows, startingAt: rows.count)
+                        return rows.appendPage(pagedResult.rows, startingAt: rows.count)
                     }
                     let newCount = pageOffset + pagedResult.rows.count
                     tab.schemaVersion += 1
@@ -223,9 +222,8 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    var replaceDelta: Delta = .none
-                    tableRowsStore.updateTableRows(for: tab.id) { rows in
-                        replaceDelta = rows.replace(rows: result.rows)
+                    let replaceDelta = mutateActiveTableRows(for: tab.id) { rows in
+                        rows.replace(rows: result.rows)
                     }
                     tab.execution.executionTime = result.executionTime
                     tab.schemaVersion += 1

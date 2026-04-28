@@ -488,9 +488,7 @@ struct MainEditorContentView: View {
             activeResultSetId: Binding(
                 get: { tab.display.activeResultSetId },
                 set: { newId in
-                    if let tabIdx = coordinator.tabManager.selectedTabIndex {
-                        coordinator.tabManager.tabs[tabIdx].display.activeResultSetId = newId
-                    }
+                    coordinator.switchActiveResultSet(to: newId, in: tab.id)
                 }
             ),
             onClose: { id in
@@ -525,8 +523,9 @@ struct MainEditorContentView: View {
                 resolvedTableRowsForTab(coordinator: coordinator, tabId: tabId)
             },
             tableRowsMutator: { [coordinator] mutate in
-                coordinator.tableRowsStore.updateTableRows(for: tabId) { rows in
+                coordinator.mutateActiveTableRows(for: tabId) { rows in
                     mutate(&rows)
+                    return .none
                 }
             },
             changeManager: currentChangeManager,
@@ -558,21 +557,12 @@ struct MainEditorContentView: View {
     }
 
     private func resolvedTableRows(for tab: QueryTab) -> TableRows {
-        if let rs = tab.display.activeResultSet, !rs.resultColumns.isEmpty {
-            return rs.tableRows
-        }
-        return coordinator.tableRowsStore.existingTableRows(for: tab.id) ?? TableRows()
+        coordinator.tableRowsStore.existingTableRows(for: tab.id) ?? TableRows()
     }
 
     @MainActor
     private func resolvedTableRowsForTab(coordinator: MainContentCoordinator, tabId: UUID) -> TableRows {
-        guard let tab = coordinator.tabManager.tabs.first(where: { $0.id == tabId }) else {
-            return coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
-        }
-        if let rs = tab.display.activeResultSet, !rs.resultColumns.isEmpty {
-            return rs.tableRows
-        }
-        return coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
+        coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
     }
 
     private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {

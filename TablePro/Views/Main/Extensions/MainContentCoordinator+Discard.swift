@@ -78,19 +78,21 @@ extension MainContentCoordinator {
                 tabId: tabId,
                 indices: changeManager.insertedRowIndices
             )
-            tableRowsStore.updateTableRows(for: tabId) { tableRows in
-                let edits = originalValues.map { (row: $0.0, column: $0.1, value: $0.2) }
-                if !edits.isEmpty {
-                    let editDelta = tableRows.editMany(edits)
-                    if editDelta != .none {
-                        deltas.append(editDelta)
-                    }
+            let edits = originalValues.map { (row: $0.0, column: $0.1, value: $0.2) }
+            if !edits.isEmpty {
+                let editDelta = mutateActiveTableRows(for: tabId) { rows in
+                    rows.editMany(edits)
                 }
-                if !insertedIDs.isEmpty {
-                    let removeDelta = tableRows.remove(rowIDs: insertedIDs)
-                    if removeDelta != .none {
-                        deltas.append(removeDelta)
-                    }
+                if editDelta != .none {
+                    deltas.append(editDelta)
+                }
+            }
+            if !insertedIDs.isEmpty {
+                let removeDelta = mutateActiveTableRows(for: tabId) { rows in
+                    rows.remove(rowIDs: insertedIDs)
+                }
+                if removeDelta != .none {
+                    deltas.append(removeDelta)
                 }
             }
         }

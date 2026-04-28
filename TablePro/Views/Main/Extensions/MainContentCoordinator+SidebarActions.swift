@@ -17,12 +17,14 @@ extension MainContentCoordinator {
         guard let tabIdx = tabManager.selectedTabIndex else { return }
         let rs = tabManager.tabs[tabIdx].display.resultSets.first { $0.id == id }
         guard rs?.isPinned != true else { return }
+        let tabId = tabManager.tabs[tabIdx].id
         tabManager.tabs[tabIdx].display.resultSets.removeAll { $0.id == id }
         if tabManager.tabs[tabIdx].display.activeResultSetId == id {
-            tabManager.tabs[tabIdx].display.activeResultSetId = tabManager.tabs[tabIdx].display.resultSets.last?.id
+            let newActiveId = tabManager.tabs[tabIdx].display.resultSets.last?.id
+            switchActiveResultSet(to: newActiveId, in: tabId)
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
-            tableRowsStore.setTableRows(TableRows(), for: tabManager.tabs[tabIdx].id)
+            tableRowsStore.setTableRows(TableRows(), for: tabId)
             tabManager.tabs[tabIdx].execution.errorMessage = nil
             tabManager.tabs[tabIdx].execution.rowsAffected = 0
             tabManager.tabs[tabIdx].execution.executionTime = nil

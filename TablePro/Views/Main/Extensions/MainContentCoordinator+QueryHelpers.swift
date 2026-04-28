@@ -478,10 +478,11 @@ extension MainContentCoordinator {
                         existing.columnEnumValues[key] != value
                     }
                     if hasNewValues {
-                        tableRowsStore.updateTableRows(for: tabId) { rows in
+                        mutateActiveTableRows(for: tabId) { rows in
                             for (col, vals) in columnEnumValues {
                                 rows.columnEnumValues[col] = vals
                             }
+                            return .columnsReplaced
                         }
                         tabManager.tabs[idx].metadataVersion += 1
                     }

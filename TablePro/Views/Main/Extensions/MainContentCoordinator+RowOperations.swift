@@ -14,12 +14,14 @@ extension MainContentCoordinator {
         let columns = tableRowsStore.tableRows(for: tabId).columns
 
         var addResult: RowOperationsManager.AddNewRowResult?
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            addResult = rowOperationsManager.addNewRow(
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.addNewRow(
                 columns: columns,
                 columnDefaults: columnDefaults,
                 tableRows: &rows
             )
+            addResult = result
+            return result.delta
         }
 
         guard let result = addResult else { return }
@@ -45,11 +47,13 @@ extension MainContentCoordinator {
             physicallyRemovedIndices: [],
             delta: .none
         )
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            deleteResult = rowOperationsManager.deleteSelectedRows(
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.deleteSelectedRows(
                 selectedIndices: indices,
                 tableRows: &rows
             )
+            deleteResult = result
+            return result.delta
         }
 
         let totalRows = tableRowsStore.tableRows(for: tabId).count
@@ -82,12 +86,14 @@ extension MainContentCoordinator {
         guard index >= 0, index < tableRowsStore.tableRows(for: tabId).count else { return }
 
         var dupResult: RowOperationsManager.AddNewRowResult?
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            dupResult = rowOperationsManager.duplicateRow(
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.duplicateRow(
                 sourceRowIndex: index,
                 columns: columns,
                 tableRows: &rows
             )
+            dupResult = result
+            return result.delta
         }
 
         guard let result = dupResult else { return }
@@ -109,12 +115,14 @@ extension MainContentCoordinator {
             adjustedSelection: selectionState.indices,
             delta: .none
         )
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            undoResult = rowOperationsManager.undoInsertRow(
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.undoInsertRow(
                 at: rowIndex,
                 tableRows: &rows,
                 selectedIndices: selectionState.indices
             )
+            undoResult = result
+            return result.delta
         }
 
         selectionState.indices = undoResult.adjustedSelection
@@ -130,8 +138,10 @@ extension MainContentCoordinator {
         let tabId = tab.id
 
         var application = RowOperationsManager.UndoApplicationResult(adjustedSelection: nil, delta: .none)
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            application = rowOperationsManager.applyUndoResult(result, tableRows: &rows)
+        mutateActiveTableRows(for: tabId) { rows in
+            let applied = rowOperationsManager.applyUndoResult(result, tableRows: &rows)
+            application = applied
+            return applied.delta
         }
 
         if let adjustedSelection = application.adjustedSelection {
@@ -197,12 +207,14 @@ extension MainContentCoordinator {
         let columns = tableRowsStore.tableRows(for: tabId).columns
 
         var pasteResult = RowOperationsManager.PasteRowsResult(pastedRows: [], delta: .none)
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            pasteResult = rowOperationsManager.pasteRowsFromClipboard(
+        mutateActiveTableRows(for: tabId) { rows in
+            let result = rowOperationsManager.pasteRowsFromClipboard(
                 columns: columns,
                 primaryKeyColumns: changeManager.primaryKeyColumns,
                 tableRows: &rows
             )
+            pasteResult = result
+            return result.delta
         }
 
         guard !pasteResult.pastedRows.isEmpty else { return }
@@ -219,9 +231,8 @@ extension MainContentCoordinator {
     func updateCellInTab(rowIndex: Int, columnIndex: Int, value: String?) {
         guard let index = tabManager.selectedTabIndex else { return }
         let tabId = tabManager.tabs[index].id
-        var delta: Delta = .none
-        tableRowsStore.updateTableRows(for: tabId) { rows in
-            delta = rows.edit(row: rowIndex, column: columnIndex, value: value)
+        let delta = mutateActiveTableRows(for: tabId) { rows in
+            rows.edit(row: rowIndex, column: columnIndex, value: value)
         }
         tabManager.tabs[index].hasUserInteraction = true
         dataTabDelegate?.tableViewCoordinator?.applyDelta(delta)

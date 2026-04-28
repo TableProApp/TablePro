@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Replaced RowBuffer / InMemoryRowProvider / RowDataStore with TableRows / TableRowsStore / TableRowsController. Mutations emit Delta events; the controller drives NSTableView via insertRows / removeRows / reloadData(forRowIndexes:). Sort and the display cache moved off the row provider into the data grid coordinator, keyed by Row.id.
+- Routed every TableRows mutation through `mutateActiveTableRows` on MainContentCoordinator so the active ResultSet's snapshot stays in sync with the store. Fixes empty cells on Load More and stale grid contents after switching between multi-statement result tabs.
 - DataChangeManager extracted a PendingChanges value type that owns cross-collection invariants for cell edits, row insertions, and deletions. DataChangeManager kept undo/redo registration, plugin SQL generation, and the `@Observable` boundary, dropping from ~960 to ~190 lines. The serialization DTO `TabPendingChanges` is renamed to `TabChangeSnapshot` to distinguish it from the live tracker.
 - AnyChangeManager uses ChangeManaging protocol instead of closure-based type erasure, removing all runtime `[Any]` downcasts
 - Row selection state moved from MainContentView @State to GridSelectionState @Observable class, preventing full view tree invalidation on every row click
