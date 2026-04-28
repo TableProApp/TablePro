@@ -268,6 +268,12 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         trace.info("applyFullReplace invalidateCache=\(t1)ms rebuildVS=\(t2 - t1)ms updateCache=\(t3 - t2)ms reloadData=\(t4 - t3)ms total=\(t4)ms rows=\(self.cachedRowCount) cellCalls=\(cellCalls)")
     }
 
+    func invalidateCachesForUndoRedo() {
+        rowProvider.invalidateDisplayCache()
+        rebuildVisualStateCache()
+        updateCache()
+    }
+
     func rebuildColumnMetadataCache() {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()

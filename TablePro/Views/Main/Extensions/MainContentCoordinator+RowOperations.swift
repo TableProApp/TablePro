@@ -129,10 +129,10 @@ extension MainContentCoordinator {
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tab.id)
 
-        let replaceStart = Date()
-        dataTabDelegate?.dataGridDidReplaceAllRows()
-        let replaceElapsed = Date().timeIntervalSince(replaceStart) * 1000
-        trace.info("dataGridDidReplaceAllRows elapsed=\(replaceElapsed)ms")
+        let invalidateStart = Date()
+        dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
+        let invalidateElapsed = Date().timeIntervalSince(invalidateStart) * 1000
+        trace.info("invalidateCachesForUndoRedo elapsed=\(invalidateElapsed)ms")
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {
