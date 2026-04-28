@@ -248,6 +248,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
+        rowProvider.invalidateDisplayCache()
         rebuildVisualStateCache()
         updateCache()
         tableView.reloadData()
