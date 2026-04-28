@@ -123,6 +123,7 @@ struct PendingChanges: Equatable {
         guard deletedRowIndices.contains(rowIndex) else { return false }
         removeChange(rowIndex: rowIndex, type: .delete)
         deletedRowIndices.remove(rowIndex)
+        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -134,6 +135,7 @@ struct PendingChanges: Equatable {
         insertedRowData.removeValue(forKey: rowIndex)
 
         shiftRowIndicesDown(at: rowIndex)
+        changedRowIndices.insert(rowIndex)
         return true
     }
 
@@ -157,6 +159,7 @@ struct PendingChanges: Equatable {
             removeChange(rowIndex: rowIndex, type: .insert)
             insertedRowIndices.remove(rowIndex)
             insertedRowData.removeValue(forKey: rowIndex)
+            changedRowIndices.insert(rowIndex)
         }
 
         let sortedRemoved = validRows.sorted()
@@ -185,6 +188,7 @@ struct PendingChanges: Equatable {
         modifiedCells.removeValue(forKey: rowIndex)
         appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
         deletedRowIndices.insert(rowIndex)
+        changedRowIndices.insert(rowIndex)
     }
 
     /// Re-apply a cell edit during undo replay (skips undo registration).
@@ -206,6 +210,7 @@ struct PendingChanges: Equatable {
         if let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] {
             updateInsertedCell(at: insertIdx, columnIndex: columnIndex,
                                columnName: columnName, newValue: newValue)
+            changedRowIndices.insert(rowIndex)
             return
         }
 
@@ -221,6 +226,7 @@ struct PendingChanges: Equatable {
             changeIndex[updateKey] = changes.count - 1
             modifiedCells[rowIndex, default: []].insert(columnIndex)
         }
+        changedRowIndices.insert(rowIndex)
     }
 
     /// Replace an inserted row's cell value during undo replay (no shift, no undo).
@@ -232,6 +238,7 @@ struct PendingChanges: Equatable {
     ) {
         guard let insertIdx = changeIndex[RowChangeKey(rowIndex: rowIndex, type: .insert)] else { return }
         updateInsertedCell(at: insertIdx, columnIndex: columnIndex, columnName: columnName, newValue: newValue)
+        changedRowIndices.insert(rowIndex)
     }
 
     /// Restore a cell's value during undo replay when an existing change matches.
@@ -264,6 +271,7 @@ struct PendingChanges: Equatable {
                 newValue: previousValue
             )
         }
+        changedRowIndices.insert(rowIndex)
     }
 
     /// Insert a synthetic .insert RowChange for undo replay (e.g., after redoing a deletion's undo).
@@ -280,6 +288,7 @@ struct PendingChanges: Equatable {
         if let savedValues {
             insertedRowData[rowIndex] = savedValues
         }
+        changedRowIndices.insert(rowIndex)
     }
 
     /// Insert a batch of rows (for undo replay of a batch deletion's undo).
@@ -302,6 +311,7 @@ struct PendingChanges: Equatable {
             changes.append(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: cellChanges))
             insertedRowIndices.insert(rowIndex)
             insertedRowData[rowIndex] = values
+            changedRowIndices.insert(rowIndex)
         }
         rebuildChangeIndex()
     }
