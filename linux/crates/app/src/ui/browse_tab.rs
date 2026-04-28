@@ -350,16 +350,14 @@ impl BrowseTab {
         let sender_for_next = sender;
         next_button.connect_clicked(move |_| sender_for_next.input(BrowseTabInput::NextPage));
 
-        let spacer = gtk::Box::builder().hexpand(true).build();
+        // Paginator lives in a native `gtk::ActionBar` to match the
+        // mutations bar and the Structure tab's bottom action bar.
+        // Prev/Next/label are start-packed; page-size + export are
+        // end-packed — which gives the same visual as before but
+        // through the toolkit's intended widget so spacing, dim-label
+        // background, and high-contrast theming come for free.
+        let paginator_bar = gtk::ActionBar::new();
 
-        let paginator_bar = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .spacing(8)
-            .margin_top(8)
-            .margin_bottom(8)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
         // Export menu uses win.export-csv / win.export-json (App-level
         // actions); they read the active tab's snapshot so the buttons
         // implicitly target this tab when this tab is active.
@@ -373,13 +371,19 @@ impl BrowseTab {
             .build();
         export_button.add_css_class("flat");
 
-        paginator_bar.append(&prev_button);
-        paginator_bar.append(&next_button);
-        paginator_bar.append(&paginator_label);
-        paginator_bar.append(&spacer);
-        paginator_bar.append(&page_size_label);
-        paginator_bar.append(&page_size_combo);
-        paginator_bar.append(&export_button);
+        // Prev / Next sit in a `linked` group so they read as one
+        // navigation control — same pattern GNOME Files uses on its
+        // back/forward toolbar buttons.
+        let nav_box = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).build();
+        nav_box.add_css_class("linked");
+        nav_box.append(&prev_button);
+        nav_box.append(&next_button);
+
+        paginator_bar.pack_start(&nav_box);
+        paginator_bar.pack_start(&paginator_label);
+        paginator_bar.pack_end(&export_button);
+        paginator_bar.pack_end(&page_size_combo);
+        paginator_bar.pack_end(&page_size_label);
 
         Paginator {
             bar: paginator_bar,
@@ -2179,7 +2183,7 @@ fn format_thousands(n: u64) -> String {
 /// Bundle of widgets returned by `build_paginator` so the builder
 /// signature stays narrow.
 struct Paginator {
-    bar: gtk::Box,
+    bar: gtk::ActionBar,
     prev_button: gtk::Button,
     next_button: gtk::Button,
     paginator_label: gtk::Label,
