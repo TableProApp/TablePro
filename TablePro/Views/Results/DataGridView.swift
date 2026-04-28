@@ -57,6 +57,7 @@ struct DataGridIdentity: Equatable {
 /// High-performance table view using AppKit NSTableView
 struct DataGridView: NSViewRepresentable {
     let rowProvider: InMemoryRowProvider
+    var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var changeManager: AnyChangeManager
     var schemaVersion: Int = 0
     var metadataVersion: Int = 0
@@ -178,6 +179,7 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
@@ -247,6 +249,7 @@ struct DataGridView: NSViewRepresentable {
         if currentIdentity == coordinator.lastIdentity {
             // Only refresh delegate reference — it may have changed between body evals
             coordinator.delegate = delegate
+            coordinator.tableRowsProvider = tableRowsProvider
             delegate?.dataGridAttach(tableViewCoordinator: coordinator)
             return
         }
@@ -303,6 +306,7 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.changeManager = changeManager
         coordinator.isEditable = isEditable
+        coordinator.tableRowsProvider = tableRowsProvider
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns
@@ -726,6 +730,16 @@ struct DataGridView: NSViewRepresentable {
 
 // MARK: - Preview
 
+private let previewTableRowsForDataGrid = TableRows.from(
+    queryRows: [
+        ["1", "John", "john@example.com"],
+        ["2", "Jane", nil],
+        ["3", "Bob", "bob@example.com"],
+    ],
+    columns: ["id", "name", "email"],
+    columnTypes: Array(repeating: ColumnType.text(rawType: nil), count: 3)
+)
+
 #Preview {
     DataGridView(
         rowProvider: InMemoryRowProvider(
@@ -736,6 +750,7 @@ struct DataGridView: NSViewRepresentable {
             ],
             columns: ["id", "name", "email"]
         ),
+        tableRowsProvider: { previewTableRowsForDataGrid },
         changeManager: AnyChangeManager(DataChangeManager()),
         isEditable: true,
         selectedRowIndices: .constant([]),

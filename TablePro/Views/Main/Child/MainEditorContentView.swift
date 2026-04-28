@@ -553,8 +553,12 @@ struct MainEditorContentView: View {
     private func dataGridView(tab: QueryTab) -> some View {
         let isEditable = tab.tableContext.isEditable && !tab.tableContext.isView && !coordinator.safeModeLevel.blocksAllWrites
 
+        let tabId = tab.id
         DataGridView(
             rowProvider: rowProvider(for: tab),
+            tableRowsProvider: { [coordinator] in
+                coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
+            },
             changeManager: currentChangeManager,
             schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,
@@ -662,8 +666,9 @@ struct MainEditorContentView: View {
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if settings.enableSmartValueDetection {
             let sampleRows: [[String?]]? = {
-                let rows = tab.display.activeResultSet?.resultRows ?? coordinator.rowDataStore.buffer(for: tab.id).rows
-                return rows.isEmpty ? nil : Array(rows.prefix(10))
+                let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
+                let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
+                return rows.isEmpty ? nil : Array(rows)
             }()
             detected = ValueDisplayDetector.detect(
                 columns: columns,

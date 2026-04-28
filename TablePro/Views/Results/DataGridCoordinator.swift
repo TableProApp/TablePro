@@ -16,6 +16,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                                   NSControlTextEditingDelegate, NSTextFieldDelegate, NSMenuDelegate
 {
     var rowProvider: InMemoryRowProvider
+    var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var changeManager: AnyChangeManager
     var isEditable: Bool
     weak var delegate: (any DataGridViewDelegate)?
@@ -326,17 +327,20 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         rowVisualStateCache.removeAll(keepingCapacity: true)
 
-        // Always clear cache, then rebuild if there are changes
-        // This ensures deleted state is cleared when changeManager.clearChanges() is called
-        guard changeManager.hasChanges else {
-            // No changes → cache is now empty (cleared above)
+        let tableRows = tableRowsProvider()
+        var insertedRowIndices = Set<Int>()
+        for (index, row) in tableRows.rows.enumerated() where row.id.isInserted {
+            insertedRowIndices.insert(index)
+        }
+
+        if !changeManager.hasChanges && insertedRowIndices.isEmpty {
             return
         }
 
         for rowChange in changeManager.rowChanges {
             let rowIndex = rowChange.rowIndex
             let isDeleted = rowChange.type == .delete
-            let isInserted = rowChange.type == .insert
+            let isInserted = insertedRowIndices.contains(rowIndex) || rowChange.type == .insert
             let modifiedColumns: Set<Int> = rowChange.type == .update
                 ? Set(rowChange.cellChanges.map { $0.columnIndex })
                 : []
@@ -345,6 +349,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 isDeleted: isDeleted,
                 isInserted: isInserted,
                 modifiedColumns: modifiedColumns
+            )
+        }
+
+        for rowIndex in insertedRowIndices where rowVisualStateCache[rowIndex] == nil {
+            rowVisualStateCache[rowIndex] = RowVisualState(
+                isDeleted: false,
+                isInserted: true,
+                modifiedColumns: []
             )
         }
     }
@@ -361,6 +373,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        cachedRowCount
+        tableRowsProvider().count
     }
 }

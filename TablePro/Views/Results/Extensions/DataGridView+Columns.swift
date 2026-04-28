@@ -11,24 +11,25 @@ extension TableViewCoordinator {
         guard let column = tableColumn else { return nil }
 
         let columnId = column.identifier.rawValue
+        let tableRows = tableRowsProvider()
 
         if columnId == "__rowNumber__" {
             return cellFactory.makeRowNumberCell(
                 tableView: tableView,
                 row: row,
-                cachedRowCount: cachedRowCount,
+                cachedRowCount: tableRows.count,
                 visualState: visualState(for: row)
             )
         }
 
         guard let columnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return nil }
 
-        guard row >= 0 && row < cachedRowCount,
+        guard row >= 0 && row < tableRows.count,
               columnIndex >= 0 && columnIndex < cachedColumnCount else {
             return nil
         }
 
-        let rawValue = rowProvider.value(atRow: row, column: columnIndex)
+        let rawValue = tableRows.value(at: row, column: columnIndex)
         let displayValue = rowProvider.displayValue(atRow: row, column: columnIndex)
         let state = visualState(for: row)
 
