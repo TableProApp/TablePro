@@ -823,34 +823,13 @@ impl SimpleComponent for App {
                 // the only signal that fires for both mouse and keyboard.
                 // The factory only carries the Ctrl+click / right-click
                 // "open in new tab" path.
-                SidebarRowOutput::OpenInNewTab { schema, name } => {
-                    tracing::info!(
-                        target: "tp_sidebar_menu",
-                        ?schema, name = %name,
-                        "[5] App forwarder: OpenInNewTab → SelectTable(NewTab)"
-                    );
-                    AppMsg::SelectTable {
-                        schema,
-                        name,
-                        open_mode: OpenMode::NewTab,
-                    }
-                }
-                SidebarRowOutput::EditStructure { schema, name } => {
-                    tracing::info!(
-                        target: "tp_sidebar_menu",
-                        ?schema, name = %name,
-                        "[5] App forwarder: EditStructure → EditStructureTab"
-                    );
-                    AppMsg::EditStructureTab { schema, table: name }
-                }
-                SidebarRowOutput::DropTable { schema, name } => {
-                    tracing::info!(
-                        target: "tp_sidebar_menu",
-                        ?schema, name = %name,
-                        "[5] App forwarder: DropTable → DropTablePrompt"
-                    );
-                    AppMsg::DropTablePrompt { schema, table: name }
-                }
+                SidebarRowOutput::OpenInNewTab { schema, name } => AppMsg::SelectTable {
+                    schema,
+                    name,
+                    open_mode: OpenMode::NewTab,
+                },
+                SidebarRowOutput::EditStructure { schema, name } => AppMsg::EditStructureTab { schema, table: name },
+                SidebarRowOutput::DropTable { schema, name } => AppMsg::DropTablePrompt { schema, table: name },
             });
 
         let sidebar_listbox = sidebar_factory.widget();
@@ -1127,14 +1106,7 @@ impl SimpleComponent for App {
                 schema,
                 name,
                 open_mode,
-            } => {
-                tracing::info!(
-                    target: "tp_sidebar_menu",
-                    ?schema, name = %name, ?open_mode,
-                    "[6] App::update SelectTable handler entered"
-                );
-                self.on_select_table(schema, name, open_mode, sender);
-            }
+            } => self.on_select_table(schema, name, open_mode, sender),
             AppMsg::ColumnsLoaded(tab_id, columns) => self.on_browse_columns_loaded(tab_id, columns),
             AppMsg::RowsLoaded(tab_id, offset, result) => self.on_browse_rows_loaded(tab_id, offset, result),
             AppMsg::LoadFailed(tab_id, msg) => self.on_browse_load_failed(tab_id, msg),
@@ -1218,22 +1190,8 @@ impl SimpleComponent for App {
             AppMsg::ShowToast(msg) => self.show_toast(&msg),
             AppMsg::BrowseTabDirtyChanged(tab_id, dirty) => self.refresh_browse_tab_dirty(tab_id, dirty),
             AppMsg::NewTableTab { schema } => self.on_new_table_tab(schema, sender),
-            AppMsg::EditStructureTab { schema, table } => {
-                tracing::info!(
-                    target: "tp_sidebar_menu",
-                    ?schema, %table,
-                    "[6] App::update EditStructureTab handler entered"
-                );
-                self.on_edit_structure_tab(schema, table, sender);
-            }
-            AppMsg::DropTablePrompt { schema, table } => {
-                tracing::info!(
-                    target: "tp_sidebar_menu",
-                    ?schema, %table,
-                    "[6] App::update DropTablePrompt handler entered"
-                );
-                self.on_drop_table_prompt(schema, table, sender);
-            }
+            AppMsg::EditStructureTab { schema, table } => self.on_edit_structure_tab(schema, table, sender),
+            AppMsg::DropTablePrompt { schema, table } => self.on_drop_table_prompt(schema, table, sender),
             AppMsg::DropTableConfirmed { schema, table } => self.on_drop_table_confirmed(schema, table, sender),
             AppMsg::DropTableSucceeded { schema, table } => self.on_drop_table_succeeded(schema, table, sender),
             AppMsg::ExecuteStructureTransaction { tab_id, statements } => {
