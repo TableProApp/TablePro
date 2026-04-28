@@ -1,8 +1,8 @@
-import { Action, ActionPanel, Icon, List, useNavigation } from "@raycast/api";
-import { useEffect, useState } from "react";
-import { Connection, DatabaseInfo, SchemaInfo } from "./lib/types";
+import { Action, ActionPanel, Icon, List } from "@raycast/api";
+import { useCachedPromise } from "@raycast/utils";
+import { Connection } from "./lib/types";
 import { databaseTypeLabel, loadConnections } from "./lib/connections";
-import { listDatabases, listSchemas, listTables } from "./lib/mcp";
+import { listDatabases, listSchemas } from "./lib/mcp";
 import { tableProInstalled } from "./lib/paths";
 import { TableProNotInstalledError } from "./lib/types";
 import { ScenarioEmptyView } from "./lib/empty-state";
@@ -10,24 +10,18 @@ import { classifyError } from "./lib/errors";
 import SearchTablesView from "./search-tables";
 
 export default function SearchSchema() {
-    const [connections, setConnections] = useState<Connection[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                if (!tableProInstalled()) throw new TableProNotInstalledError();
-                const list = await loadConnections();
-                if (!cancelled) setConnections(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const {
+        data: connections,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        async () => {
+            if (!tableProInstalled()) throw new TableProNotInstalledError();
+            return loadConnections();
+        },
+        [],
+        { keepPreviousData: true },
+    );
 
     if (error) {
         return (
@@ -38,11 +32,10 @@ export default function SearchSchema() {
     }
 
     return (
-        <List
-            isLoading={connections === null}
-            searchBarPlaceholder="Pick a connection"
-        >
-            {connections !== null && connections.length === 0 ? (
+        <List isLoading={isLoading} searchBarPlaceholder="Pick a connection">
+            {!isLoading &&
+            connections !== undefined &&
+            connections.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.Plug}
                     title="No connections yet"
@@ -73,24 +66,13 @@ export default function SearchSchema() {
 }
 
 function DatabasesView({ connection }: { connection: Connection }) {
-    const [databases, setDatabases] = useState<DatabaseInfo[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-    const { push } = useNavigation();
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const list = await listDatabases(connection.id);
-                if (!cancelled) setDatabases(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [connection.id]);
+    const {
+        data: databases,
+        isLoading,
+        error,
+    } = useCachedPromise((id: string) => listDatabases(id), [connection.id], {
+        keepPreviousData: true,
+    });
 
     if (error) {
         return (
@@ -102,11 +84,11 @@ function DatabasesView({ connection }: { connection: Connection }) {
 
     return (
         <List
-            isLoading={databases === null}
+            isLoading={isLoading}
             navigationTitle={connection.name}
             searchBarPlaceholder="Filter databases"
         >
-            {databases !== null && databases.length === 0 ? (
+            {!isLoading && databases !== undefined && databases.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.HardDrive}
                     title="No databases"
@@ -120,28 +102,24 @@ function DatabasesView({ connection }: { connection: Connection }) {
                     icon={Icon.HardDrive}
                     actions={
                         <ActionPanel>
-                            <Action
+                            <Action.Push
                                 title="Open Schemas"
                                 icon={Icon.Folder}
-                                onAction={() =>
-                                    push(
-                                        <SchemasView
-                                            connection={connection}
-                                            database={db.name}
-                                        />,
-                                    )
+                                target={
+                                    <SchemasView
+                                        connection={connection}
+                                        database={db.name}
+                                    />
                                 }
                             />
-                            <Action
+                            <Action.Push
                                 title="Browse Tables"
                                 icon={Icon.List}
-                                onAction={() =>
-                                    push(
-                                        <SearchTablesView
-                                            connection={connection}
-                                            database={db.name}
-                                        />,
-                                    )
+                                target={
+                                    <SearchTablesView
+                                        connection={connection}
+                                        database={db.name}
+                                    />
                                 }
                             />
                         </ActionPanel>
@@ -159,24 +137,15 @@ function SchemasView({
     connection: Connection;
     database: string;
 }) {
-    const [schemas, setSchemas] = useState<SchemaInfo[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-    const { push } = useNavigation();
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const list = await listSchemas(connection.id, database);
-                if (!cancelled) setSchemas(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [connection.id, database]);
+    const {
+        data: schemas,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        (id: string, db: string) => listSchemas(id, db),
+        [connection.id, database],
+        { keepPreviousData: true },
+    );
 
     if (error) {
         return (
@@ -188,11 +157,11 @@ function SchemasView({
 
     return (
         <List
-            isLoading={schemas === null}
+            isLoading={isLoading}
             navigationTitle={`${connection.name} / ${database}`}
             searchBarPlaceholder="Filter schemas"
         >
-            {schemas !== null && schemas.length === 0 ? (
+            {!isLoading && schemas !== undefined && schemas.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.Folder}
                     title="No schemas"
@@ -206,22 +175,16 @@ function SchemasView({
                     icon={Icon.Folder}
                     actions={
                         <ActionPanel>
-                            <Action
+                            <Action.Push
                                 title="Browse Tables"
                                 icon={Icon.List}
-                                onAction={async () => {
-                                    await listTables(connection.id, {
-                                        database,
-                                        schema: schema.name,
-                                    });
-                                    push(
-                                        <SearchTablesView
-                                            connection={connection}
-                                            database={database}
-                                            schema={schema.name}
-                                        />,
-                                    );
-                                }}
+                                target={
+                                    <SearchTablesView
+                                        connection={connection}
+                                        database={database}
+                                        schema={schema.name}
+                                    />
+                                }
                             />
                         </ActionPanel>
                     }

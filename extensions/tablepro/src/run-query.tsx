@@ -12,7 +12,8 @@ import {
     Alert,
     getPreferenceValues,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import {
     Connection,
     Preferences,
@@ -28,24 +29,18 @@ import { openQueryDeeplink } from "./lib/deeplink";
 import { isMutatingSQL, summarizeSQL } from "./lib/sql";
 
 export default function RunQueryCommand() {
-    const [connections, setConnections] = useState<Connection[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                if (!tableProInstalled()) throw new TableProNotInstalledError();
-                const list = await loadConnections();
-                if (!cancelled) setConnections(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const {
+        data: connections,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        async () => {
+            if (!tableProInstalled()) throw new TableProNotInstalledError();
+            return loadConnections();
+        },
+        [],
+        { keepPreviousData: true },
+    );
 
     if (error) {
         return (
@@ -55,7 +50,7 @@ export default function RunQueryCommand() {
         );
     }
 
-    if (connections === null) {
+    if (isLoading || connections === undefined) {
         return <List isLoading />;
     }
 
@@ -187,25 +182,14 @@ function RunningView({
     connection: Connection;
     sql: string;
 }) {
-    const [result, setResult] = useState<QueryResult | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const data = await executeQuery(connection.id, sql, {
-                    rowLimit: 200,
-                });
-                if (!cancelled) setResult(data);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [connection.id, sql]);
+    const {
+        data: result,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        (id: string, q: string) => executeQuery(id, q, { rowLimit: 200 }),
+        [connection.id, sql],
+    );
 
     if (error) {
         return (
@@ -215,7 +199,7 @@ function RunningView({
         );
     }
 
-    if (!result) {
+    if (isLoading || !result) {
         return (
             <Detail
                 isLoading

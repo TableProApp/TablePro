@@ -7,8 +7,8 @@ import {
     showToast,
     Toast,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
-import { QueryHistoryEntry } from "./lib/types";
+import { useCachedPromise } from "@raycast/utils";
+import { useState } from "react";
 import { searchHistory } from "./lib/mcp";
 import { ScenarioEmptyView } from "./lib/empty-state";
 import { classifyError } from "./lib/errors";
@@ -16,31 +16,13 @@ import { summarizeSQL } from "./lib/sql";
 
 export default function SearchHistoryCommand() {
     const [query, setQuery] = useState("");
-    const [results, setResults] = useState<QueryHistoryEntry[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-    const [isLoading, setIsLoading] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        setIsLoading(true);
-        const handle = setTimeout(async () => {
-            try {
-                const data = await searchHistory(query, 100);
-                if (!cancelled) {
-                    setResults(data);
-                    setError(null);
-                }
-            } catch (err) {
-                if (!cancelled) setError(err);
-            } finally {
-                if (!cancelled) setIsLoading(false);
-            }
-        }, 200);
-        return () => {
-            cancelled = true;
-            clearTimeout(handle);
-        };
-    }, [query]);
+    const {
+        data: results,
+        isLoading,
+        error,
+    } = useCachedPromise((q: string) => searchHistory(q, 100), [query], {
+        keepPreviousData: true,
+    });
 
     if (error) {
         return (
@@ -57,7 +39,7 @@ export default function SearchHistoryCommand() {
             searchBarPlaceholder="Search query history"
             throttle
         >
-            {results !== null && results.length === 0 ? (
+            {!isLoading && results !== undefined && results.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.MagnifyingGlass}
                     title="No matching history"

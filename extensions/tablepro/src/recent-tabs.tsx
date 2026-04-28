@@ -6,7 +6,7 @@ import {
     showToast,
     Toast,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useCachedPromise } from "@raycast/utils";
 import { RecentTab } from "./lib/types";
 import { listRecentTabs, openConnectionWindow } from "./lib/mcp";
 import { ScenarioEmptyView } from "./lib/empty-state";
@@ -14,23 +14,11 @@ import { classifyError } from "./lib/errors";
 import { openTableDeeplink } from "./lib/deeplink";
 
 export default function RecentTabsCommand() {
-    const [tabs, setTabs] = useState<RecentTab[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const list = await listRecentTabs();
-                if (!cancelled) setTabs(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const {
+        data: tabs,
+        isLoading,
+        error,
+    } = useCachedPromise(listRecentTabs, [], { keepPreviousData: true });
 
     if (error) {
         return (
@@ -41,11 +29,8 @@ export default function RecentTabsCommand() {
     }
 
     return (
-        <List
-            isLoading={tabs === null}
-            searchBarPlaceholder="Filter recent tabs"
-        >
-            {tabs !== null && tabs.length === 0 ? (
+        <List isLoading={isLoading} searchBarPlaceholder="Filter recent tabs">
+            {!isLoading && tabs !== undefined && tabs.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.Clock}
                     title="No recent tabs"

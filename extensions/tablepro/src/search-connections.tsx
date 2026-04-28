@@ -7,7 +7,7 @@ import {
     Toast,
     Clipboard,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useCachedPromise } from "@raycast/utils";
 import { Connection, TableProNotInstalledError } from "./lib/types";
 import { databaseTypeLabel, loadConnections } from "./lib/connections";
 import { tableProInstalled } from "./lib/paths";
@@ -16,26 +16,18 @@ import { ScenarioEmptyView } from "./lib/empty-state";
 import { classifyError } from "./lib/errors";
 
 export default function SearchConnections() {
-    const [connections, setConnections] = useState<Connection[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                if (!tableProInstalled()) {
-                    throw new TableProNotInstalledError();
-                }
-                const list = await loadConnections();
-                if (!cancelled) setConnections(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const {
+        data: connections,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        async () => {
+            if (!tableProInstalled()) throw new TableProNotInstalledError();
+            return loadConnections();
+        },
+        [],
+        { keepPreviousData: true },
+    );
 
     if (error) {
         return (
@@ -49,10 +41,12 @@ export default function SearchConnections() {
 
     return (
         <List
-            isLoading={connections === null}
+            isLoading={isLoading}
             searchBarPlaceholder="Filter connections by name, host, or type"
         >
-            {connections !== null && connections.length === 0 ? (
+            {!isLoading &&
+            connections !== undefined &&
+            connections.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.Plug}
                     title="No connections yet"

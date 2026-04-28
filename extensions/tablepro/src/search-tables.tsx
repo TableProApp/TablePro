@@ -8,7 +8,7 @@ import {
     Toast,
     useNavigation,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useCachedPromise } from "@raycast/utils";
 import { Connection, TableInfo } from "./lib/types";
 import { databaseTypeLabel, loadConnections } from "./lib/connections";
 import { listTables, getTableDDL } from "./lib/mcp";
@@ -38,25 +38,19 @@ export default function SearchTables(props: Props) {
 }
 
 function ConnectionPicker() {
-    const [connections, setConnections] = useState<Connection[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
+    const {
+        data: connections,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        async () => {
+            if (!tableProInstalled()) throw new TableProNotInstalledError();
+            return loadConnections();
+        },
+        [],
+        { keepPreviousData: true },
+    );
     const { push } = useNavigation();
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                if (!tableProInstalled()) throw new TableProNotInstalledError();
-                const list = await loadConnections();
-                if (!cancelled) setConnections(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
 
     if (error) {
         return (
@@ -67,11 +61,10 @@ function ConnectionPicker() {
     }
 
     return (
-        <List
-            isLoading={connections === null}
-            searchBarPlaceholder="Pick a connection"
-        >
-            {connections !== null && connections.length === 0 ? (
+        <List isLoading={isLoading} searchBarPlaceholder="Pick a connection">
+            {!isLoading &&
+            connections !== undefined &&
+            connections.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.Plug}
                     title="No connections yet"
@@ -110,26 +103,16 @@ function TablesList({
     database?: string;
     schema?: string;
 }) {
-    const [tables, setTables] = useState<TableInfo[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                const list = await listTables(connection.id, {
-                    database,
-                    schema,
-                });
-                if (!cancelled) setTables(list);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [connection.id, database, schema]);
+    const {
+        data: tables,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        (id: string, db: string | undefined, sc: string | undefined) =>
+            listTables(id, { database: db, schema: sc }),
+        [connection.id, database, schema],
+        { keepPreviousData: true },
+    );
 
     if (error) {
         return (
@@ -145,11 +128,11 @@ function TablesList({
 
     return (
         <List
-            isLoading={tables === null}
+            isLoading={isLoading}
             navigationTitle={navTitle}
             searchBarPlaceholder="Filter tables"
         >
-            {tables !== null && tables.length === 0 ? (
+            {!isLoading && tables !== undefined && tables.length === 0 ? (
                 <List.EmptyView
                     icon={Icon.List}
                     title="No tables"
@@ -161,11 +144,7 @@ function TablesList({
                     key={`${table.schema ?? ""}.${table.name}`}
                     title={table.name}
                     subtitle={table.schema}
-                    accessories={
-                        table.rowCount !== undefined
-                            ? [{ text: `${table.rowCount} rows` }]
-                            : undefined
-                    }
+                    accessories={tableAccessories(table)}
                     icon={Icon.List}
                     actions={
                         <ActionPanel>
@@ -225,4 +204,15 @@ function TablesList({
             ))}
         </List>
     );
+}
+
+function tableAccessories(table: TableInfo): List.Item.Accessory[] {
+    const accessories: List.Item.Accessory[] = [];
+    if (table.type && table.type.toLowerCase() !== "table") {
+        accessories.push({ tag: table.type });
+    }
+    if (table.rowCount !== undefined) {
+        accessories.push({ text: `${table.rowCount} rows` });
+    }
+    return accessories;
 }
