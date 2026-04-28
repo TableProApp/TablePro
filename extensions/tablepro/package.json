@@ -13,14 +13,12 @@
     {
       "name": "search-connections",
       "title": "Search Connections",
-      "subtitle": "TablePro",
       "description": "Search and open saved TablePro connections.",
       "mode": "view"
     },
     {
       "name": "open-connection",
       "title": "Open Connection",
-      "subtitle": "TablePro",
       "description": "Open a connection by name.",
       "mode": "no-view",
       "arguments": [
@@ -35,7 +33,6 @@
     {
       "name": "menu-bar-connections",
       "title": "TablePro Menu Bar",
-      "subtitle": "TablePro",
       "description": "Show connections in the menu bar.",
       "mode": "menu-bar",
       "interval": "10m"
@@ -43,43 +40,37 @@
     {
       "name": "search-schema",
       "title": "Search Schema",
-      "subtitle": "TablePro",
       "description": "Search databases and schemas across your connections.",
       "mode": "view"
     },
     {
       "name": "search-tables",
       "title": "Search Tables",
-      "subtitle": "TablePro",
       "description": "Search tables in a connection.",
       "mode": "view"
     },
     {
       "name": "recent-tabs",
       "title": "Recent Tabs",
-      "subtitle": "TablePro",
       "description": "Show recently opened tabs in TablePro.",
       "mode": "view"
     },
     {
       "name": "run-query",
       "title": "Run Query",
-      "subtitle": "TablePro",
       "description": "Run a SQL query against a connection.",
       "mode": "view"
     },
     {
       "name": "search-history",
       "title": "Search Query History",
-      "subtitle": "TablePro",
       "description": "Search the TablePro query history.",
       "mode": "view"
     },
     {
       "name": "pair",
       "title": "Pair with TablePro",
-      "subtitle": "TablePro",
-      "description": "Pair this extension with TablePro.",
+      "description": "Pair this extension with TablePro to issue an API token.",
       "mode": "view"
     }
   ],
