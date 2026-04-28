@@ -20,6 +20,10 @@ private final class MockClipboardProvider: ClipboardProvider {
         lastWrittenText = text
     }
 
+    func writeTabular(tsv: String, html: String) {
+        lastWrittenText = tsv
+    }
+
     var hasText: Bool { textToRead != nil }
 }
 

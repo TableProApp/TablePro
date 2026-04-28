@@ -34,34 +34,38 @@ extension TableViewCoordinator {
     func copyRows(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let columnTypes = rowProvider.columnTypes
-        var lines: [String] = []
+        var tsvRows: [String] = []
+        var htmlRows: [[String]] = []
 
         for index in sortedIndices {
             guard let values = rowProvider.rowValues(at: index) else { continue }
-            let line = formatRowForCopy(values: values, columnTypes: columnTypes)
-            lines.append(line)
+            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            tsvRows.append(formatted.joined(separator: "\t"))
+            htmlRows.append(formatted)
         }
 
-        let text = lines.joined(separator: "\n")
-        ClipboardService.shared.writeText(text)
+        let tsv = tsvRows.joined(separator: "\n")
+        let html = HtmlTableEncoder.encode(rows: htmlRows)
+        ClipboardService.shared.writeTabular(tsv: tsv, html: html)
     }
 
     func copyRowsWithHeaders(at indices: Set<Int>) {
         let sortedIndices = indices.sorted()
         let columnTypes = rowProvider.columnTypes
-        var lines: [String] = []
-
-        // Add header row
-        lines.append(rowProvider.columns.joined(separator: "\t"))
+        let columns = rowProvider.columns
+        var tsvRows: [String] = [columns.joined(separator: "\t")]
+        var htmlRows: [[String]] = []
 
         for index in sortedIndices {
             guard let values = rowProvider.rowValues(at: index) else { continue }
-            let line = formatRowForCopy(values: values, columnTypes: columnTypes)
-            lines.append(line)
+            let formatted = formatRowValues(values: values, columnTypes: columnTypes)
+            tsvRows.append(formatted.joined(separator: "\t"))
+            htmlRows.append(formatted)
         }
 
-        let text = lines.joined(separator: "\n")
-        ClipboardService.shared.writeText(text)
+        let tsv = tsvRows.joined(separator: "\n")
+        let html = HtmlTableEncoder.encode(rows: htmlRows, headers: columns)
+        ClipboardService.shared.writeTabular(tsv: tsv, html: html)
     }
 
     @MainActor
@@ -136,12 +140,12 @@ extension TableViewCoordinator {
         ClipboardService.shared.writeText(converter.generateJson(rows: rows))
     }
 
-    private func formatRowForCopy(values: [String?], columnTypes: [ColumnType]?) -> String {
+    private func formatRowValues(values: [String?], columnTypes: [ColumnType]?) -> [String] {
         values.enumerated().map { index, value in
             guard let value else { return "NULL" }
             let columnType = columnTypes.flatMap { $0.indices.contains(index) ? $0[index] : nil }
             return BlobFormattingService.shared.formatIfNeeded(value, columnType: columnType, for: .copy)
-        }.joined(separator: "\t")
+        }
     }
 
     private func resolveDriver() -> (any DatabaseDriver)? {
@@ -157,6 +161,16 @@ extension TableViewCoordinator {
         guard delegate != nil else { return nil }
         let item = NSPasteboardItem()
         item.setString(String(row), forType: Self.rowDragType)
+
+        if let values = rowProvider.rowValues(at: row) {
+            let formatted = formatRowValues(values: values, columnTypes: rowProvider.columnTypes)
+            item.setString(formatted.joined(separator: "\t"), forType: .string)
+            item.setString(
+                HtmlTableEncoder.encode(rows: [formatted], headers: rowProvider.columns),
+                forType: .html
+            )
+        }
+
         return item
     }
 
