@@ -116,31 +116,82 @@ impl FactoryComponent for SidebarRow {
         root.add_controller(click_gesture);
 
         // Right-click → context menu (three sections per HIG: open /
-        // structure / mutate). The popover is built lazily inside
-        // the gesture handler so a factory.guard().clear() while no
-        // menu is open can finalise the row cleanly without
-        // "PopoverMenu destroyed while visible" warnings.
+        // structure / mutate).
         //
-        // Critical: each lazy popover gets its own action group
-        // inserted directly on the popover, NOT on the parent row.
-        // PopoverMenu action lookup walks via gtk_widget_get_native(),
-        // which short-circuits at the popover's own surface — it does
-        // NOT continue up to widgets the popover was set_parent'd
-        // onto. Inserting on the row (the previous layout) caused
-        // every menu click to silently no-op: the menu opened, the
-        // user clicked, but GTK never found the action. Action-local
-        // registration on the popover sidesteps the parent walk
-        // entirely.
-        tracing::trace!(
-            target: "tablepro_app::sidebar_row",
-            schema = ?self.info.schema,
-            table = %self.info.name,
-            "init_widgets: wired right-click context menu"
+        // The popover is built + parented EAGERLY at init time. The
+        // earlier "lazy" approach (set_parent inside the gesture
+        // handler) broke action invocation: GtkPopoverMenu's internal
+        // action-muxer is wired at parent-attachment time, and
+        // dynamically `set_parent`-ing a popover on a ListBoxRow
+        // doesn't cause the muxer to pick up action groups inserted
+        // on the popover OR on the row. Menu items would render and
+        // popdown but the action callback never fired (verified via
+        // info-level tracing — see the [1]/[1.5]/[1.6] but no [2]
+        // pattern).
+        //
+        // The downside of eager set_parent was a possible
+        // "PopoverMenu destroyed while visible" warning if a factory
+        // clears rows while a menu is open. Defended against with a
+        // connect_unmap that calls popdown() before the row goes
+        // away.
+        let menu = gtk::gio::Menu::new();
+        let open_section = gtk::gio::Menu::new();
+        open_section.append(
+            Some(&crate::tr!("Open in new tab")),
+            Some("sidebar-row.open-in-new-tab"),
         );
+        menu.append_section(None, &open_section);
+        let structure_section = gtk::gio::Menu::new();
+        structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
+        menu.append_section(None, &structure_section);
+        let mutate_section = gtk::gio::Menu::new();
+        mutate_section.append(Some(&crate::tr!("Drop Table\u{2026}")), Some("sidebar-row.drop-table"));
+        menu.append_section(None, &mutate_section);
+
+        let popover = gtk::PopoverMenu::from_model(Some(&menu));
+        popover.set_has_arrow(true);
+        popover.set_parent(&root);
+
+        // Action group on the row (same widget the popover is
+        // parented to). The muxer walks up from the popover surface
+        // through its set_parent anchor; the row is the first widget
+        // in that chain that holds an action group.
+        let group = gtk::gio::SimpleActionGroup::new();
+        let sender_open = sender.clone();
+        let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
+            .activate(move |_, _, _| {
+                tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: open-in-new-tab");
+                sender_open.input(SidebarRowMsg::OpenInNewTab);
+            })
+            .build();
+        let sender_edit = sender.clone();
+        let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
+            .activate(move |_, _, _| {
+                tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: edit-structure");
+                sender_edit.input(SidebarRowMsg::EditStructure);
+            })
+            .build();
+        let sender_drop = sender.clone();
+        let drop_action = gtk::gio::ActionEntry::builder("drop-table")
+            .activate(move |_, _, _| {
+                tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: drop-table");
+                sender_drop.input(SidebarRowMsg::DropTable);
+            })
+            .build();
+        group.add_action_entries([open_action, edit_action, drop_action]);
+        root.insert_action_group("sidebar-row", Some(&group));
+
+        // Defence against the factory-clears-row-while-menu-is-open
+        // race: if the row is being removed from the view, the menu
+        // pops down before disposal so the popover doesn't get
+        // finalised mid-display.
+        let popover_for_unmap = popover.clone();
+        root.connect_unmap(move |_| {
+            popover_for_unmap.popdown();
+        });
 
         let right_click = gtk::GestureClick::builder().button(3).build();
-        let root_for_right = root.clone();
-        let sender_for_right = sender.clone();
+        let popover_for_right = popover.clone();
         let table_for_right = self.info.name.clone();
         right_click.connect_pressed(move |g, _, x, y| {
             g.set_state(gtk::EventSequenceState::Claimed);
@@ -148,24 +199,21 @@ impl FactoryComponent for SidebarRow {
                 target: "tp_sidebar_menu",
                 table = %table_for_right,
                 x, y,
-                "[1] right-click pressed; about to call present_row_menu"
+                "[1] right-click pressed; popping up menu"
             );
-            present_row_menu(
-                &root_for_right,
-                Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)),
-                sender_for_right.clone(),
-            );
+            popover_for_right.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+            popover_for_right.popup();
         });
         root.add_controller(right_click);
 
-        // Keyboard Menu key opens the same context menu.
-        let root_for_menu = root.clone();
-        let sender_for_menu = sender.clone();
+        // Keyboard Menu key opens the same context menu, anchored to
+        // the row centre (no pointer position).
+        let popover_for_menu = popover;
         let menu_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
             .action(&gtk::CallbackAction::new(move |_, _| {
-                tracing::trace!(target: "tablepro_app::sidebar_row", "Menu key pressed; opening menu");
-                present_row_menu(&root_for_menu, None, sender_for_menu.clone());
+                tracing::info!(target: "tp_sidebar_menu", "[1] Menu key pressed; popping up menu");
+                popover_for_menu.popup();
                 glib::Propagation::Stop
             }))
             .build();
@@ -219,85 +267,4 @@ impl FactoryComponent for SidebarRow {
             }
         }
     }
-}
-
-/// Build + parent + popup the row context menu lazily. Each call
-/// constructs a fresh popover with its own action group inserted
-/// directly on the popover, so action-name resolution doesn't
-/// depend on parent-chain walking (which doesn't reliably reach
-/// past the popover's surface in libadwaita 1.5 + gtk-rs 0.11).
-/// `connect_closed` unparents the popover after popdown so it
-/// finalises cleanly even if the row is destroyed by a factory
-/// reload while a previous menu was already open.
-fn present_row_menu(
-    anchor: &gtk::ListBoxRow,
-    pointing_to: Option<&gtk::gdk::Rectangle>,
-    sender: FactorySender<SidebarRow>,
-) {
-    let menu = gtk::gio::Menu::new();
-    let open_section = gtk::gio::Menu::new();
-    open_section.append(
-        Some(&crate::tr!("Open in new tab")),
-        Some("sidebar-row.open-in-new-tab"),
-    );
-    menu.append_section(None, &open_section);
-    let structure_section = gtk::gio::Menu::new();
-    structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
-    menu.append_section(None, &structure_section);
-    let mutate_section = gtk::gio::Menu::new();
-    mutate_section.append(Some(&crate::tr!("Drop Table\u{2026}")), Some("sidebar-row.drop-table"));
-    menu.append_section(None, &mutate_section);
-
-    let popover = gtk::PopoverMenu::from_model(Some(&menu));
-    popover.set_has_arrow(true);
-
-    // Build action group with the sender captured so each click
-    // routes to the row's input queue. Insert on the popover
-    // directly — the popover's parent (the ListBoxRow) does NOT
-    // satisfy GTK4's PopoverMenu action lookup chain.
-    let group = gtk::gio::SimpleActionGroup::new();
-    let sender_open = sender.clone();
-    let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
-        .activate(move |_, _, _| {
-            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: open-in-new-tab");
-            sender_open.input(SidebarRowMsg::OpenInNewTab);
-        })
-        .build();
-    let sender_edit = sender.clone();
-    let edit_action = gtk::gio::ActionEntry::builder("edit-structure")
-        .activate(move |_, _, _| {
-            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: edit-structure");
-            sender_edit.input(SidebarRowMsg::EditStructure);
-        })
-        .build();
-    let drop_action = gtk::gio::ActionEntry::builder("drop-table")
-        .activate(move |_, _, _| {
-            tracing::info!(target: "tp_sidebar_menu", "[2] action callback fired: drop-table");
-            sender.input(SidebarRowMsg::DropTable);
-        })
-        .build();
-    group.add_action_entries([open_action, edit_action, drop_action]);
-    popover.insert_action_group("sidebar-row", Some(&group));
-
-    // Sanity check: list the actions registered on the group we
-    // just inserted. If "open-in-new-tab" / "edit-structure" /
-    // "drop-table" all show up, the group is fully populated.
-    // gio::ActionGroupExt is in scope via gtk::prelude::*.
-    let action_names: Vec<glib::GString> = group.list_actions();
-    tracing::info!(
-        target: "tp_sidebar_menu",
-        ?action_names,
-        "[1.5] popover constructed with action group inserted"
-    );
-
-    popover.set_parent(anchor);
-    if let Some(rect) = pointing_to {
-        popover.set_pointing_to(Some(rect));
-    }
-    popover.connect_closed(|p| {
-        tracing::info!(target: "tp_sidebar_menu", "popover closed; unparenting");
-        p.unparent();
-    });
-    popover.popup();
-    tracing::info!(target: "tp_sidebar_menu", "[1.6] popover.popup() called");
 }
