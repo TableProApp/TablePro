@@ -37,7 +37,9 @@ extension TableViewCoordinator {
         if dropdownColumns?.contains(columnIndex) == true { return .blocked }
         if typePickerColumns?.contains(columnIndex) == true { return .blocked }
 
-        if let value = rowProvider.value(atRow: row, column: columnIndex) {
+        if let displayRow = displayRow(at: row),
+           columnIndex < displayRow.values.count,
+           let value = displayRow.values[columnIndex] {
             if value.containsLineBreak { return .needsOverlayEditor(value: value) }
             if value.looksLikeJson { return .blocked }
         }
@@ -122,7 +124,9 @@ extension TableViewCoordinator {
         // Check if next cell is also multiline → open overlay there
         let nextColumnIndex = nextColumn - 1
         if nextColumnIndex >= 0, nextColumnIndex < rowProvider.columns.count,
-           let value = rowProvider.value(atRow: nextRow, column: nextColumnIndex),
+           let nextDisplayRow = displayRow(at: nextRow),
+           nextColumnIndex < nextDisplayRow.values.count,
+           let value = nextDisplayRow.values[nextColumnIndex],
            value.containsLineBreak {
             showOverlayEditor(tableView: tableView, row: nextRow, column: nextColumn, columnIndex: nextColumnIndex, value: value)
         } else {
@@ -142,20 +146,24 @@ extension TableViewCoordinator {
 
         if isEscapeCancelling {
             isEscapeCancelling = false
-            let cancelTableRows = tableRowsProvider()
-            let originalValue: String? = row >= 0 && row < cancelTableRows.rows.count
-                ? cancelTableRows.value(at: row, column: columnIndex)
-                : rowProvider.value(atRow: row, column: columnIndex)
+            let originalValue: String? = {
+                if let displayRow = displayRow(at: row), columnIndex < displayRow.values.count {
+                    return displayRow.values[columnIndex]
+                }
+                return rowProvider.value(atRow: row, column: columnIndex)
+            }()
             textField.stringValue = originalValue ?? ""
             (control as? CellTextField)?.restoreTruncatedDisplay()
             return true
         }
 
         let rawInput = textField.stringValue
-        let tableRows = tableRowsProvider()
-        let oldValue: String? = row >= 0 && row < tableRows.rows.count
-            ? tableRows.value(at: row, column: columnIndex)
-            : rowProvider.value(atRow: row, column: columnIndex)
+        let oldValue: String? = {
+            if let displayRow = displayRow(at: row), columnIndex < displayRow.values.count {
+                return displayRow.values[columnIndex]
+            }
+            return rowProvider.value(atRow: row, column: columnIndex)
+        }()
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)

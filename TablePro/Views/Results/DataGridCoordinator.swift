@@ -20,6 +20,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
     var changeManager: AnyChangeManager
     var isEditable: Bool
+    var sortedIDs: [RowID]?
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
     var dropdownColumns: Set<Int>?
@@ -201,6 +202,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rowVisualStateCache.removeAll()
         cachedRowCount = 0
         cachedColumnCount = 0
+        sortedIDs = nil
         // Remove columns and reload to release cell views
         if let tableView {
             while let col = tableView.tableColumns.last {
@@ -259,6 +261,26 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         lastIdentity = nil
     }
 
+    func displayRow(at displayIndex: Int) -> Row? {
+        let tableRows = tableRowsProvider()
+        if let sorted = sortedIDs {
+            guard displayIndex >= 0, displayIndex < sorted.count else { return nil }
+            return tableRows.row(withID: sorted[displayIndex])
+        }
+        guard displayIndex >= 0, displayIndex < tableRows.count else { return nil }
+        return tableRows.rows[displayIndex]
+    }
+
+    func tableRowsIndex(forDisplayRow displayIndex: Int) -> Int? {
+        if let sorted = sortedIDs {
+            guard displayIndex >= 0, displayIndex < sorted.count else { return nil }
+            return tableRowsProvider().index(of: sorted[displayIndex])
+        }
+        let count = tableRowsProvider().count
+        guard displayIndex >= 0, displayIndex < count else { return nil }
+        return displayIndex
+    }
+
     func applyDelta(_ delta: Delta) {
         switch delta {
         case .cellChanged(let row, let column):
@@ -287,13 +309,35 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
         case .rowsInserted(let indices):
             guard !indices.isEmpty else { return }
+            appendInsertedIDsToSortedIDs(at: indices)
             applyInsertedRows(indices)
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
+            removeMissingIDsFromSortedIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
+            sortedIDs = nil
             applyFullReplace()
         }
+    }
+
+    private func appendInsertedIDsToSortedIDs(at indices: IndexSet) {
+        guard sortedIDs != nil else { return }
+        let tableRows = tableRowsProvider()
+        for index in indices where index >= 0 && index < tableRows.count {
+            sortedIDs?.append(tableRows.rows[index].id)
+        }
+    }
+
+    private func removeMissingIDsFromSortedIDs() {
+        guard sortedIDs != nil else { return }
+        let tableRows = tableRowsProvider()
+        var survivingIDs = Set<RowID>()
+        survivingIDs.reserveCapacity(tableRows.count)
+        for row in tableRows.rows {
+            survivingIDs.insert(row.id)
+        }
+        sortedIDs?.removeAll { !survivingIDs.contains($0) }
     }
 
     func invalidateCachesForUndoRedo() {
@@ -369,8 +413,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         let tableRows = tableRowsProvider()
         var insertedRowIndices = Set<Int>()
-        for (index, row) in tableRows.rows.enumerated() where row.id.isInserted {
-            insertedRowIndices.insert(index)
+        if let sorted = sortedIDs {
+            for (displayIndex, id) in sorted.enumerated() where id.isInserted {
+                insertedRowIndices.insert(displayIndex)
+            }
+        } else {
+            for (index, row) in tableRows.rows.enumerated() where row.id.isInserted {
+                insertedRowIndices.insert(index)
+            }
         }
 
         if !changeManager.hasChanges && insertedRowIndices.isEmpty {
@@ -413,6 +463,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     // MARK: - NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        tableRowsProvider().count
+        sortedIDs?.count ?? tableRowsProvider().count
     }
 }

@@ -10,9 +10,11 @@ import AppKit
 import CodeEditSourceEditor
 import SwiftUI
 
-/// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation
+/// Cache for sorted query result rows to avoid re-sorting on every SwiftUI body evaluation.
+/// Stores a permutation of `RowID` so the grid keeps the same display order even after
+/// inserts and deletes mutate the underlying TableRows storage.
 private struct SortedRowsCache {
-    let sortedIndices: [Int]
+    let sortedIDs: [RowID]
     let columnIndex: Int
     let direction: SortDirection
     let schemaVersion: Int
@@ -578,6 +580,7 @@ struct MainEditorContentView: View {
                 showRowNumbers: AppSettingsManager.shared.dataGrid.showRowNumbers,
                 hiddenColumns: columnVisibilityManager.hiddenColumns
             ),
+            sortedIDs: sortedIDsForTab(tab),
             delegate: dataTabDelegate,
             selectedRowIndices: Binding(
                 get: { selectionState.indices },
@@ -633,7 +636,6 @@ struct MainEditorContentView: View {
         if let rs = tab.display.activeResultSet, !rs.resultColumns.isEmpty {
             provider = InMemoryRowProvider(
                 rowBuffer: rs.rowBuffer,
-                sortIndices: sortIndicesForTab(tab),
                 columns: rs.resultColumns,
                 columnDefaults: rs.columnDefaults,
                 columnTypes: rs.columnTypes,
@@ -645,7 +647,6 @@ struct MainEditorContentView: View {
             let buffer = coordinator.rowDataStore.buffer(for: tab.id)
             provider = InMemoryRowProvider(
                 rowBuffer: buffer,
-                sortIndices: sortIndicesForTab(tab),
                 columns: buffer.columns,
                 columnDefaults: buffer.columnDefaults,
                 columnTypes: buffer.columnTypes,
@@ -715,73 +716,66 @@ struct MainEditorContentView: View {
         }
     }
 
-    /// Returns sort index permutation for a tab, or nil if no sorting is needed.
+    /// Returns the display order as a permutation of `RowID`, or nil when no sort applies.
     /// For table tabs, sorting is handled server-side via SQL ORDER BY.
-    private func sortIndicesForTab(_ tab: QueryTab) -> [Int]? {
-        // Resolve data source: active ResultSet or tab-level fallback
+    private func sortedIDsForTab(_ tab: QueryTab) -> [RowID]? {
         let rowBuffer: RowBuffer
-        let rows: [[String?]]
         let colTypes: [ColumnType]
         if let rs = tab.display.activeResultSet, !rs.resultColumns.isEmpty {
             rowBuffer = rs.rowBuffer
-            rows = rs.resultRows
             colTypes = rs.columnTypes
         } else {
             let buffer = coordinator.rowDataStore.buffer(for: tab.id)
             rowBuffer = buffer
-            rows = buffer.rows
             colTypes = buffer.columnTypes
         }
 
         guard !rowBuffer.isEvicted else { return nil }
 
-        // Table tabs: no client-side sorting
         if tab.tabType == .table {
             return nil
         }
 
-        // Query tabs: apply client-side sorting
         guard tab.sortState.isSorting else {
             return nil
         }
 
-        // Check coordinator's async sort cache (for large datasets sorted on background thread)
+        guard let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id),
+              !tableRows.rows.isEmpty else {
+            return nil
+        }
+
         if let cached = coordinator.querySortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
             cached.schemaVersion == tab.schemaVersion
         {
-            return cached.sortedIndices
+            return cached.sortedIDs
         }
 
-        // For datasets sorted async, return nil (unsorted) until cache is ready
-        if rows.count > 1_000 {
+        if tableRows.rows.count > 1_000 {
             return nil
         }
 
-        // Small dataset: sort synchronously with view-level cache
         if let cached = sortCache[tab.id],
             cached.columnIndex == (tab.sortState.columnIndex ?? -1),
             cached.direction == tab.sortState.direction,
             cached.schemaVersion == tab.schemaVersion
         {
-            return cached.sortedIndices
+            return cached.sortedIDs
         }
 
         let sortColumns = tab.sortState.columns
-        let indices = Array(rows.indices)
-        let sortedIndices = indices.sorted { idx1, idx2 in
-            let row1 = rows[idx1]
-            let row2 = rows[idx2]
+        let storageRows = tableRows.rows
+        let sortedIndices = Array(storageRows.indices).sorted { idx1, idx2 in
+            let row1 = storageRows[idx1].values
+            let row2 = storageRows[idx2].values
             for sortCol in sortColumns {
-                let val1 =
-                    sortCol.columnIndex < row1.count
+                let val1 = sortCol.columnIndex < row1.count
                     ? (row1[sortCol.columnIndex] ?? "") : ""
-                let val2 =
-                    sortCol.columnIndex < row2.count
+                let val2 = sortCol.columnIndex < row2.count
                     ? (row2[sortCol.columnIndex] ?? "") : ""
-                let colType =
-                    sortCol.columnIndex < colTypes.count
+                let colType = sortCol.columnIndex < colTypes.count
                     ? colTypes[sortCol.columnIndex] : nil
                 let result = RowSortComparator.compare(val1, val2, columnType: colType)
                 if result == .orderedSame { continue }
@@ -791,16 +785,16 @@ struct MainEditorContentView: View {
             }
             return false
         }
+        let sortedIDs = sortedIndices.map { storageRows[$0].id }
 
-        // Cache the result
         sortCache[tab.id] = SortedRowsCache(
-            sortedIndices: sortedIndices,
+            sortedIDs: sortedIDs,
             columnIndex: tab.sortState.columnIndex ?? -1,
             direction: tab.sortState.direction,
             schemaVersion: tab.schemaVersion
         )
 
-        return sortedIndices
+        return sortedIDs
     }
 
     private func sortStateBinding(for tab: QueryTab) -> Binding<SortState> {

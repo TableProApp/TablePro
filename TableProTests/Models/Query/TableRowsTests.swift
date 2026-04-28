@@ -80,6 +80,103 @@ struct TableRowsReadTests {
     }
 }
 
+@Suite("TableRows - id lookup")
+struct TableRowsIDLookupTests {
+    @Test("index(of:) returns the storage index for an existing RowID")
+    func indexOfExistingRowID() {
+        let table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.index(of: .existing(0)) == 0)
+        #expect(table.index(of: .existing(1)) == 1)
+        #expect(table.index(of: .existing(2)) == 2)
+    }
+
+    @Test("index(of:) returns nil for an unknown RowID")
+    func indexOfUnknownRowID() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.index(of: .existing(99)) == nil)
+        #expect(table.index(of: .inserted(UUID())) == nil)
+    }
+
+    @Test("index(of:) tracks inserted rows by their UUID after appendInsertedRow")
+    func indexOfInsertedRow() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.appendInsertedRow(values: ["new"])
+        let insertedID = table.rows[1].id
+        #expect(table.index(of: insertedID) == 1)
+    }
+
+    @Test("index(of:) reflects shifted positions after insertInsertedRow at the head")
+    func indexOfShiftsAfterHeadInsert() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let originalID = table.rows[0].id
+        _ = table.insertInsertedRow(at: 0, values: ["z"])
+        #expect(table.index(of: originalID) == 1)
+    }
+
+    @Test("index(of:) reflects shifted positions after remove")
+    func indexOfShiftsAfterRemove() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.remove(at: IndexSet(integer: 0))
+        #expect(table.index(of: .existing(0)) == nil)
+        #expect(table.index(of: .existing(1)) == 0)
+        #expect(table.index(of: .existing(2)) == 1)
+    }
+
+    @Test("row(withID:) returns the matching Row for an existing ID")
+    func rowWithIDReturnsMatch() {
+        let table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let row = table.row(withID: .existing(1))
+        #expect(row?.values == ["b"])
+        #expect(row?.id == .existing(1))
+    }
+
+    @Test("row(withID:) returns nil for an unknown ID")
+    func rowWithIDReturnsNilForUnknown() {
+        let table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        #expect(table.row(withID: .existing(99)) == nil)
+    }
+
+    @Test("row(withID:) reads back an inserted row by its UUID")
+    func rowWithIDReturnsInsertedRow() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.appendInsertedRow(values: ["v"])
+        let insertedID = table.rows[0].id
+        #expect(table.row(withID: insertedID)?.values == ["v"])
+    }
+}
+
 @Suite("TableRows - edit")
 struct TableRowsEditTests {
     private static func makeTable() -> TableRows {

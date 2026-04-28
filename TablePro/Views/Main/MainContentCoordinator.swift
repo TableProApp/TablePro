@@ -21,9 +21,11 @@ enum DiscardAction {
     case filter
 }
 
-/// Cache entry for async-sorted query tab rows (stores index permutation, not row copies)
+/// Cache entry for async-sorted query tab rows. Stores a permutation of `RowID` so the
+/// sort survives mutations: inserted rows append to the end of the sorted view, and
+/// removed rows are dropped from the permutation without re-sorting.
 struct QuerySortCacheEntry {
-    let sortedIndices: [Int]
+    let sortedIDs: [RowID]
     let columnIndex: Int
     let direction: SortDirection
     let schemaVersion: Int
@@ -1357,13 +1359,14 @@ final class MainContentCoordinator {
             tabManager.tabs[tabIndex].sortState = currentSort
             tabManager.tabs[tabIndex].hasUserInteraction = true
             tabManager.tabs[tabIndex].pagination.reset()
-            let rows = buffer.rows
             let tabId = tab.id
             let schemaVersion = tab.schemaVersion
             let sortColumns = currentSort.columns
             let colTypes = buffer.columnTypes
+            let storageRows = tableRowsStore.existingTableRows(for: tabId)?.rows ?? []
+            let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, $0.values) }
 
-            if rows.count > 1_000 {
+            if storageRows.count > 1_000 {
                 // Sort on background thread to avoid UI freeze
                 activeSortTasks[tabId]?.cancel()
                 activeSortTasks.removeValue(forKey: tabId)
@@ -1373,8 +1376,8 @@ final class MainContentCoordinator {
 
                 let sortStartTime = Date()
                 let task = Task.detached { [weak self] in
-                    let sortedIndices = Self.multiColumnSortIndices(
-                        rows: rows,
+                    let sortedIDs = Self.multiColumnSortedIDs(
+                        rows: snapshotRows,
                         sortColumns: sortColumns,
                         columnTypes: colTypes
                     )
@@ -1388,7 +1391,7 @@ final class MainContentCoordinator {
                             return
                         }
                         self.querySortCache[tabId] = QuerySortCacheEntry(
-                            sortedIndices: sortedIndices,
+                            sortedIDs: sortedIDs,
                             columnIndex: sortColumns.first?.columnIndex ?? 0,
                             direction: sortColumns.first?.direction ?? .ascending,
                             schemaVersion: schemaVersion
@@ -1430,13 +1433,12 @@ final class MainContentCoordinator {
         }
     }
 
-    /// Multi-column sort returning index permutation (nonisolated for background thread).
-    /// Returns an array of indices into the original `rows` array, sorted by the given columns.
-    nonisolated private static func multiColumnSortIndices(
-        rows: [[String?]],
+    /// Multi-column sort returning a permutation of `RowID` (nonisolated for background thread).
+    nonisolated private static func multiColumnSortedIDs(
+        rows: [(id: RowID, values: [String?])],
         sortColumns: [SortColumn],
         columnTypes: [ColumnType] = []
-    ) -> [Int] {
+    ) -> [RowID] {
         // Fast path: single-column sort avoids intermediate key array allocation
         if sortColumns.count == 1 {
             let col = sortColumns[0]
@@ -1445,18 +1447,20 @@ final class MainContentCoordinator {
             let colType = colIndex < columnTypes.count ? columnTypes[colIndex] : nil
             var indices = Array(0..<rows.count)
             indices.sort { i1, i2 in
-                let v1 = colIndex < rows[i1].count ? (rows[i1][colIndex] ?? "") : ""
-                let v2 = colIndex < rows[i2].count ? (rows[i2][colIndex] ?? "") : ""
+                let row1 = rows[i1].values
+                let row2 = rows[i2].values
+                let v1 = colIndex < row1.count ? (row1[colIndex] ?? "") : ""
+                let v2 = colIndex < row2.count ? (row2[colIndex] ?? "") : ""
                 let cmp = RowSortComparator.compare(v1, v2, columnType: colType)
                 return ascending ? cmp == .orderedAscending : cmp == .orderedDescending
             }
-            return indices
+            return indices.map { rows[$0].id }
         }
 
         var indices = Array(0..<rows.count)
         indices.sort { i1, i2 in
-            let row1 = rows[i1]
-            let row2 = rows[i2]
+            let row1 = rows[i1].values
+            let row2 = rows[i2].values
             for sortCol in sortColumns {
                 let v1 = sortCol.columnIndex < row1.count ? (row1[sortCol.columnIndex] ?? "") : ""
                 let v2 = sortCol.columnIndex < row2.count ? (row2[sortCol.columnIndex] ?? "") : ""
@@ -1470,6 +1474,6 @@ final class MainContentCoordinator {
             }
             return false
         }
-        return indices
+        return indices.map { rows[$0].id }
     }
 }

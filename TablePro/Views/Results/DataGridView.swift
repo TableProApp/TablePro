@@ -65,6 +65,7 @@ struct DataGridView: NSViewRepresentable {
     var paginationVersion: Int = 0
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
+    var sortedIDs: [RowID]?
     var delegate: (any DataGridViewDelegate)?
 
     @Binding var selectedRowIndices: Set<Int>
@@ -183,6 +184,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
+        context.coordinator.sortedIDs = sortedIDs
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
@@ -254,6 +256,7 @@ struct DataGridView: NSViewRepresentable {
             coordinator.delegate = delegate
             coordinator.tableRowsProvider = tableRowsProvider
             coordinator.tableRowsMutator = tableRowsMutator
+            coordinator.sortedIDs = sortedIDs
             delegate?.dataGridAttach(tableViewCoordinator: coordinator)
             return
         }
@@ -312,6 +315,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.isEditable = isEditable
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
+        coordinator.sortedIDs = sortedIDs
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns

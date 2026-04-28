@@ -10,17 +10,24 @@ extension TableViewCoordinator {
         guard let tableView else { return }
         guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
 
-        let tableRows = tableRowsProvider()
-        let usesTableRows = row >= 0 && row < tableRows.rows.count
-        let oldValue: String? = usesTableRows
-            ? tableRows.value(at: row, column: columnIndex)
-            : rowProvider.value(atRow: row, column: columnIndex)
+        let storageRow = tableRowsIndex(forDisplayRow: row)
+        let displayRowValues = displayRow(at: row)
+        let usesTableRows = storageRow != nil && displayRowValues != nil
+        let oldValue: String? = {
+            if let displayRowValues, columnIndex < displayRowValues.values.count {
+                return displayRowValues.values[columnIndex]
+            }
+            return rowProvider.value(atRow: row, column: columnIndex)
+        }()
         guard oldValue != newValue else { return }
 
         let columnName = rowProvider.columns[columnIndex]
-        let originalRow: [String?] = usesTableRows
-            ? tableRows.rows[row].values
-            : (rowProvider.rowValues(at: row) ?? [])
+        let originalRow: [String?] = {
+            if let displayRowValues {
+                return displayRowValues.values
+            }
+            return rowProvider.rowValues(at: row) ?? []
+        }()
         changeManager.recordCellChange(
             rowIndex: row,
             columnIndex: columnIndex,
@@ -31,34 +38,26 @@ extension TableViewCoordinator {
         )
 
         var delta: Delta = .none
-        tableRowsMutator { tableRows in
-            delta = tableRows.edit(row: row, column: columnIndex, value: newValue)
+        if let storageRow {
+            tableRowsMutator { tableRows in
+                delta = tableRows.edit(row: storageRow, column: columnIndex, value: newValue)
+            }
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
         rowProvider.invalidateDisplayCache()
 
         if usesTableRows, case .cellChanged = delta {
-            tableRowsController.apply(translatedColumnDelta(delta))
+            let displayDelta: Delta = .cellChanged(
+                row: row,
+                column: DataGridView.tableColumnIndex(for: columnIndex)
+            )
+            tableRowsController.apply(displayDelta)
         } else {
             let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumnIndex)
             )
-        }
-    }
-
-    private func translatedColumnDelta(_ delta: Delta) -> Delta {
-        switch delta {
-        case .cellChanged(let row, let column):
-            return .cellChanged(row: row, column: DataGridView.tableColumnIndex(for: column))
-        case .cellsChanged(let positions):
-            let translated = Set(positions.map {
-                CellPosition(row: $0.row, column: DataGridView.tableColumnIndex(for: $0.column))
-            })
-            return .cellsChanged(translated)
-        default:
-            return delta
         }
     }
 }

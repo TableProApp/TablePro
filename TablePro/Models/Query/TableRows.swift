@@ -39,6 +39,18 @@ struct TableRows: Sendable {
         return rows[row][column]
     }
 
+    func index(of id: RowID) -> Int? {
+        for (index, row) in rows.enumerated() where row.id == id {
+            return index
+        }
+        return nil
+    }
+
+    func row(withID id: RowID) -> Row? {
+        guard let index = index(of: id) else { return nil }
+        return rows[index]
+    }
+
     @discardableResult
     mutating func edit(row: Int, column: Int, value: String?) -> Delta {
         guard row >= 0, row < rows.count else { return .none }

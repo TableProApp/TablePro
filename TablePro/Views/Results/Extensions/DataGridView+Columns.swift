@@ -12,24 +12,29 @@ extension TableViewCoordinator {
 
         let columnId = column.identifier.rawValue
         let tableRows = tableRowsProvider()
+        let displayCount = sortedIDs?.count ?? tableRows.count
 
         if columnId == "__rowNumber__" {
             return cellFactory.makeRowNumberCell(
                 tableView: tableView,
                 row: row,
-                cachedRowCount: tableRows.count,
+                cachedRowCount: displayCount,
                 visualState: visualState(for: row)
             )
         }
 
         guard let columnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return nil }
 
-        guard row >= 0 && row < tableRows.count,
+        guard row >= 0 && row < displayCount,
               columnIndex >= 0 && columnIndex < cachedColumnCount else {
             return nil
         }
 
-        let rawValue = tableRows.value(at: row, column: columnIndex)
+        guard let displayRow = displayRow(at: row),
+              columnIndex < displayRow.values.count else {
+            return nil
+        }
+        let rawValue = displayRow.values[columnIndex]
         let displayValue = resolveDisplayValue(
             row: row,
             columnIndex: columnIndex,
@@ -96,7 +101,7 @@ extension TableViewCoordinator {
         rawValue: String?,
         tableRows: TableRows
     ) -> String? {
-        if row < rowProvider.totalRowCount {
+        if sortedIDs == nil, row < rowProvider.totalRowCount {
             return rowProvider.displayValue(atRow: row, column: columnIndex)
         }
         let columnType = columnIndex < tableRows.columnTypes.count
