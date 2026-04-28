@@ -131,7 +131,10 @@ pub enum BrowseTabInput {
     /// User clicked Next page.
     NextPage,
     /// Sort flipped on column idx (from grid sorter).
-    SortChanged(usize),
+    SortChanged {
+        col_idx: usize,
+        ascending: bool,
+    },
     /// Page size dropdown changed.
     PageSizeChanged(u64),
     /// User clicked the Insert button on this tab's paginator bar.
@@ -1348,7 +1351,7 @@ impl SimpleComponent for BrowseTab {
         // outputs that App's forwarder tags with this tab's id.
         let grid_input = sender.input_sender().clone();
         relm4::spawn_local(grid_receiver.forward(grid_input, |msg| match msg {
-            GridMsg::SortChanged(idx) => BrowseTabInput::SortChanged(idx),
+            GridMsg::SortChanged(col_idx, ascending) => BrowseTabInput::SortChanged { col_idx, ascending },
             GridMsg::CellEdited {
                 table,
                 row_position,
@@ -1543,12 +1546,18 @@ impl SimpleComponent for BrowseTab {
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
             }
-            BrowseTabInput::SortChanged(col_idx) => {
-                let next = match self.current_sort {
-                    Some((c, asc)) if c == col_idx => Some((c, !asc)),
-                    _ => Some((col_idx, true)),
-                };
-                self.current_sort = next;
+            BrowseTabInput::SortChanged { col_idx, ascending } => {
+                // Idempotent: GtkColumnViewSorter fires both
+                // `primary-sort-column` and `primary-sort-order`
+                // notifies for one logical click on a different
+                // column (column changes; order resets). Each
+                // notify dispatches the same post-state pair, so
+                // we short-circuit when the pair already matches.
+                let next = (col_idx, ascending);
+                if self.current_sort == Some(next) {
+                    return;
+                }
+                self.current_sort = Some(next);
                 self.current_offset = 0;
                 self.capture_focus_for_restore();
                 let _ = sender.output(BrowseTabOutput::FetchPage);

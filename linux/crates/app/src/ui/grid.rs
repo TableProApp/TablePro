@@ -14,7 +14,14 @@ pub type FilterSetter = Rc<dyn Fn(&str)>;
 
 #[derive(Debug)]
 pub enum GridMsg {
-    SortChanged(usize),
+    /// User clicked a column header. `(col_idx, ascending)` is the
+    /// resolved post-click state read from the GtkColumnViewSorter
+    /// — not a "toggle" hint. Reading the sorter directly avoids
+    /// the receiver having to keep its own toggle state in sync,
+    /// which broke when both `primary-sort-column` and
+    /// `primary-sort-order` notify fired for the same logical
+    /// click (column change resets order; two events, two flips).
+    SortChanged(usize, bool),
     CellEdited {
         table: String,
         row_position: u32,
@@ -166,17 +173,43 @@ pub fn build_column_view(
             .sorter()
             .and_then(|s| s.downcast::<gtk::ColumnViewSorter>().ok())
     {
-        view_sorter.connect_primary_sort_column_notify(move |sorter| {
-            let Some(active) = sorter.primary_sort_column() else {
-                return;
-            };
-            for (idx, col) in columns.iter().enumerate() {
-                if col == &active {
-                    app_sender.send(GridMsg::SortChanged(idx)).ok();
-                    break;
+        // Wire BOTH `primary-sort-column` AND `primary-sort-order`
+        // notify. Listening only to the former misses the case
+        // where the user clicks the same column a second time:
+        // GTK keeps `primary-sort-column` constant and just flips
+        // `primary-sort-order` (Ascending ↔ Descending). The
+        // chevron updates because GTK manages it internally, but
+        // without an order-notify listener the model never sees
+        // SortChanged, `current_sort` stays stale, and the next
+        // FetchPage issues the same ORDER BY as the previous one.
+        //
+        // Reading both column AND order off the sorter (rather
+        // than dispatching a "toggle" hint) makes the receiver's
+        // job idempotent: clicking a different column fires both
+        // notifies in some order, but each carries the post-state
+        // pair, and the receiver short-circuits when the pair
+        // already matches `current_sort`.
+        let dispatch = {
+            let app_sender = app_sender.clone();
+            let columns = columns.clone();
+            move |sorter: &gtk::ColumnViewSorter| {
+                let Some(active) = sorter.primary_sort_column() else {
+                    return;
+                };
+                let ascending = matches!(sorter.primary_sort_order(), gtk::SortType::Ascending);
+                for (idx, col) in columns.iter().enumerate() {
+                    if col == &active {
+                        app_sender.send(GridMsg::SortChanged(idx, ascending)).ok();
+                        break;
+                    }
                 }
             }
+        };
+        view_sorter.connect_primary_sort_column_notify({
+            let dispatch = dispatch.clone();
+            move |sorter| dispatch(sorter)
         });
+        view_sorter.connect_primary_sort_order_notify(move |sorter| dispatch(sorter));
     }
 
     (column_view, selection, setter)
