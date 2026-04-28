@@ -55,7 +55,7 @@ The exchange endpoint takes no auth. The single-use code is the auth.
 
 ## Privacy
 
-- Connection metadata (`name`, `host`, `port`, `type`) is read from `~/Library/Application Support/com.TablePro/connections.json`.
+- Connection metadata (`name`, `host`, `port`, `type`) is read from `~/Library/Application Support/TablePro/connections.json`.
 - Passwords are never read by the extension. They live in the TablePro Keychain.
 - Query results are fetched on demand from the local MCP server. Nothing leaves your machine.
 

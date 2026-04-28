@@ -52,7 +52,7 @@ The following are not part of the External API contract and can change at any ti
 - The handshake file format at `~/Library/Application Support/com.TablePro/mcp-handshake.json`. Use the bundled `tablepro-mcp` CLI rather than parsing it yourself.
 - The tokens file format at `~/Library/Application Support/com.TablePro/mcp-tokens.json`. Tokens are managed via Settings, not the file.
 - Audit log file format at `~/Library/Application Support/com.TablePro/mcp-audit.db`. Read via the activity log view.
-- The connections file format at `~/Library/Application Support/com.TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
+- The connections file format at `~/Library/Application Support/TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
 
 ## Past breaking changes
 

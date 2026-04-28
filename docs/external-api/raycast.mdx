@@ -92,6 +92,6 @@ The token is stored in the Keychain via Raycast's password preference type.
 
 ## Privacy
 
-The extension reads connection metadata from `~/Library/Application Support/com.TablePro/connections.json` to build the connection picker without an MCP roundtrip. Passwords are not in that file (they live in the Keychain). The extension never reads or transmits passwords.
+The extension reads connection metadata from `~/Library/Application Support/TablePro/connections.json` to build the connection picker without an MCP roundtrip. Passwords are not in that file (they live in the Keychain). The extension never reads or transmits passwords.
 
 Query results returned by `Run Query` stay in Raycast's process. Raycast does not send them to a server. AI tool calls go through Raycast's AI provider per Raycast's [privacy policy](https://www.raycast.com/privacy).
