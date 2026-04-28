@@ -223,13 +223,15 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
+                    var replaceDelta: Delta = .none
                     tableRowsStore.updateTableRows(for: tab.id) { rows in
-                        _ = rows.replace(rows: result.rows)
+                        replaceDelta = rows.replace(rows: result.rows)
                     }
                     tab.execution.executionTime = result.executionTime
                     tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()
                     tabManager.tabs[idx] = tab
+                    dataTabDelegate?.tableViewCoordinator?.applyDelta(replaceDelta)
                     toolbarState.setExecuting(false)
                     toolbarState.lastQueryDuration = result.executionTime
                     currentQueryTask = nil
