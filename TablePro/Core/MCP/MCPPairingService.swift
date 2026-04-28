@@ -168,7 +168,16 @@ final class MCPPairingService {
             return nil
         }
         var items = components.queryItems ?? []
-        items.append(URLQueryItem(name: "code", value: code))
+        if base.scheme == "raycast" {
+            let payload = ["code": code]
+            guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+                  let json = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            items.append(URLQueryItem(name: "context", value: json))
+        } else {
+            items.append(URLQueryItem(name: "code", value: code))
+        }
         components.queryItems = items
         return components.url
     }

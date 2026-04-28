@@ -26,7 +26,7 @@ sequenceDiagram
     U->>T: Approve
     T->>T: tokenStore.generate(...) -> { plaintext, prefix }
     T->>T: store pending exchange { code, plaintext, challenge }<br/>expires in 5 min
-    T->>E: open redirect URL with ?code=<one-time-code>
+    T->>E: open redirect URL with code (context for raycast://, ?code= otherwise)
     E->>M: POST /v1/integrations/exchange<br/>{ code, code_verifier: verifier }
     M->>M: SHA-256(verifier) == challenge ?
     M->>E: 200 { token: "tp_..." }
@@ -93,7 +93,10 @@ The plaintext token is held in memory only. The token store keeps the hashed for
 
 ### 5. TablePro redirects with the code
 
-TablePro appends `?code=<uuid>` to the `redirect` URL and opens it with `NSWorkspace.shared.open(...)`. Raycast routes the callback to the extension's `pair-callback` handler.
+TablePro opens the `redirect` URL with `NSWorkspace.shared.open(...)`. The encoding depends on the redirect scheme:
+
+- **`raycast://...`** — TablePro appends `?context={"code":"<uuid>"}` (URL-encoded JSON). Raycast parses `context` and passes it to the receiving command as `LaunchProps.launchContext`. This matches Raycast's documented launch-context convention.
+- **Anything else** (`http://127.0.0.1:<port>/callback`, custom schemes) — TablePro appends `?code=<uuid>` as a flat query parameter. Standard OAuth-callback shape.
 
 ### 6. Extension exchanges the code
 
