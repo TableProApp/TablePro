@@ -16,7 +16,7 @@ extension TableViewCoordinator {
         guard !grid.isEmpty, grid[0].count > 1 || grid.count > 1 else { return false }
 
         let maxRow = min(anchorRow + grid.count, cachedRowCount)
-        let maxCol = min(anchorColumn + (grid.first?.count ?? 0), rowProvider.columns.count)
+        let maxCol = min(anchorColumn + (grid.first?.count ?? 0), cachedTableRows.columns.count)
         guard anchorRow < maxRow, anchorColumn < maxCol else { return false }
 
         let undoManager = tableView?.window?.undoManager

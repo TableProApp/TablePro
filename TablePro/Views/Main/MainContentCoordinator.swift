@@ -89,7 +89,6 @@ final class MainContentCoordinator {
     let filterStateManager: FilterStateManager
     let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
-    let rowDataStore = RowDataStore()
     let tableRowsStore = TableRowsStore()
 
     // MARK: - Services
@@ -341,9 +340,7 @@ final class MainContentCoordinator {
     func evictInactiveRowData() {
         let selectedId = tabManager.selectedTabId
         for tab in tabManager.tabs where tab.id != selectedId && !tab.pendingChanges.hasChanges {
-            guard let buffer = rowDataStore.existingBuffer(for: tab.id),
-                  !buffer.isEvicted, !buffer.rows.isEmpty else { continue }
-            buffer.evict()
+            tableRowsStore.evict(for: tab.id)
         }
     }
 
@@ -576,20 +573,14 @@ final class MainContentCoordinator {
         for task in activeSortTasks.values { task.cancel() }
         activeSortTasks.removeAll()
 
-        // Let the view layer release cached row providers before we drop RowBuffers.
-        // Called synchronously here because SwiftUI onChange handlers don't fire
-        // reliably on disappearing views.
         onTeardown?()
         onTeardown = nil
 
-        // Notify DataGridView coordinators to release NSTableView cell views
         NotificationCenter.default.post(
             name: Self.teardownNotification,
             object: connection.id
         )
 
-        // Release heavy data so memory drops even if SwiftUI delays deallocation
-        rowDataStore.tearDown()
         tableRowsStore.tearDown()
         querySortCache.removeAll()
         cachedTableColumnTypes.removeAll()
@@ -1313,8 +1304,8 @@ final class MainContentCoordinator {
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        let buffer = rowDataStore.buffer(for: tab.id)
-        guard columnIndex >= 0 && columnIndex < buffer.columns.count else { return }
+        let tableRows = tableRowsStore.tableRows(for: tab.id)
+        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
 
         var currentSort = tab.sortState
         let newDirection: SortDirection = ascending ? .ascending : .descending
@@ -1342,7 +1333,7 @@ final class MainContentCoordinator {
             // When more rows are available server-side, re-execute with ORDER BY
             // instead of sorting locally (we only have a partial result set)
             if tab.pagination.hasMoreRows {
-                let columnName = buffer.columns[columnIndex]
+                let columnName = tableRows.columns[columnIndex]
                 let direction = currentSort.columns.first?.direction == .ascending ? "ASC" : "DESC"
                 let baseQuery = tab.pagination.baseQueryForMore ?? tab.content.query
                 let strippedQuery = Self.stripTrailingOrderBy(from: baseQuery)
@@ -1362,8 +1353,8 @@ final class MainContentCoordinator {
             let tabId = tab.id
             let schemaVersion = tab.schemaVersion
             let sortColumns = currentSort.columns
-            let colTypes = buffer.columnTypes
-            let storageRows = tableRowsStore.existingTableRows(for: tabId)?.rows ?? []
+            let colTypes = tableRows.columnTypes
+            let storageRows = tableRows.rows
             let snapshotRows: [(id: RowID, values: [String?])] = storageRows.map { ($0.id, $0.values) }
 
             if storageRows.count > 1_000 {
@@ -1416,7 +1407,7 @@ final class MainContentCoordinator {
         let tabId = tab.id
         let capturedSort = currentSort
         let capturedQuery = tab.content.query
-        let capturedColumns = buffer.columns
+        let capturedColumns = tableRows.columns
         confirmDiscardChangesIfNeeded(action: .sort) { [weak self] confirmed in
             guard let self, confirmed,
                   let idx = self.tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }

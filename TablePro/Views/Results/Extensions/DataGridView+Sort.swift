@@ -15,7 +15,7 @@ extension TableViewCoordinator {
         guard let sortDescriptor = tableView.sortDescriptors.first,
               let key = sortDescriptor.key,
               let columnIndex = DataGridView.dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
-              columnIndex >= 0 && columnIndex < rowProvider.columns.count else {
+              columnIndex >= 0 && columnIndex < cachedTableRows.columns.count else {
             return
         }
 
@@ -34,10 +34,11 @@ extension TableViewCoordinator {
             return column.width
         }
 
+        let tableRows = tableRowsProvider()
         let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            rowProvider: rowProvider
+            tableRows: tableRows
         )
         hasUserResizedColumns = true
         return width
@@ -64,8 +65,8 @@ extension TableViewCoordinator {
         // Derive base column name from stable identifier (avoids sort indicator in title)
         let baseName: String = {
             if let idx = DataGridView.dataColumnIndex(from: column.identifier),
-               idx < rowProvider.columns.count {
-                return rowProvider.columns[idx]
+               idx < cachedTableRows.columns.count {
+                return cachedTableRows.columns[idx]
             }
             return column.title
         }()
@@ -104,7 +105,7 @@ extension TableViewCoordinator {
 
         // "Display As" submenu for value display format overrides
         if let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) {
-            let columnType = dataColumnIndex < rowProvider.columnTypes.count ? rowProvider.columnTypes[dataColumnIndex] : nil
+            let columnType = dataColumnIndex < cachedTableRows.columnTypes.count ? cachedTableRows.columnTypes[dataColumnIndex] : nil
             let applicableFormats = ValueDisplayFormat.applicableFormats(for: columnType)
             if applicableFormats.count > 1 {
                 let displaySubmenu = NSMenu()
@@ -201,10 +202,11 @@ extension TableViewCoordinator {
         let column = tableView.tableColumns[columnIndex]
         guard let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { return }
 
+        let tableRows = tableRowsProvider()
         let width = cellFactory.calculateFitToContentWidth(
-            for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+            for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
             columnIndex: dataColumnIndex,
-            rowProvider: rowProvider
+            tableRows: tableRows
         )
         column.width = width
         hasUserResizedColumns = true
@@ -213,14 +215,15 @@ extension TableViewCoordinator {
     @objc func sizeAllColumnsToFit(_ sender: NSMenuItem) {
         guard let tableView else { return }
 
+        let tableRows = tableRowsProvider()
         for column in tableView.tableColumns {
             guard column.identifier.rawValue != "__rowNumber__",
                   let dataColumnIndex = DataGridView.dataColumnIndex(from: column.identifier) else { continue }
 
             let width = cellFactory.calculateFitToContentWidth(
-                for: dataColumnIndex < rowProvider.columns.count ? rowProvider.columns[dataColumnIndex] : column.title,
+                for: dataColumnIndex < tableRows.columns.count ? tableRows.columns[dataColumnIndex] : column.title,
                 columnIndex: dataColumnIndex,
-                rowProvider: rowProvider
+                tableRows: tableRows
             )
             column.width = width
         }

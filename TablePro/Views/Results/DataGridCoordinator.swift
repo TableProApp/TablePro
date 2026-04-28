@@ -15,9 +15,9 @@ import SwiftUI
 final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewDataSource,
                                   NSControlTextEditingDelegate, NSTextFieldDelegate, NSMenuDelegate
 {
-    var rowProvider: InMemoryRowProvider
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
+    var cachedTableRows: TableRows = TableRows()
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var sortedIDs: [RowID]?
@@ -43,14 +43,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func persistColumnLayoutToStorage() {
         guard tabType == .table else { return }
         guard let tableView, let connectionId, let tableName, !tableName.isEmpty else { return }
-        guard !rowProvider.columns.isEmpty else { return }
+        guard !cachedTableRows.columns.isEmpty else { return }
 
         var widths: [String: CGFloat] = [:]
         var order: [String] = []
         for column in tableView.tableColumns where column.identifier.rawValue != "__rowNumber__" {
             guard let colIndex = DataGridView.dataColumnIndex(from: column.identifier),
-                  colIndex < rowProvider.columns.count else { continue }
-            let name = rowProvider.columns[colIndex]
+                  colIndex < cachedTableRows.columns.count else { continue }
+            let name = cachedTableRows.columns[colIndex]
             widths[name] = column.width
             order.append(name)
         }
@@ -67,11 +67,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     let tableRowsController = TableRowsController()
     var overlayEditor: CellOverlayEditor?
 
-    // Settings observer for real-time updates
     var settingsObserver: NSObjectProtocol?
-    // Theme observer for font/color changes
     var themeObserver: NSObjectProtocol?
-    /// Snapshot of last-seen data grid settings for change detection
     private var lastDataGridSettings: DataGridSettings
 
     @Binding var selectedRowIndices: Set<Int>
@@ -84,14 +81,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     private(set) var enumOrSetColumns: Set<Int> = []
     private(set) var fkColumns: Set<Int> = []
     var isSyncingSortDescriptors: Bool = false
-    /// Suppresses selection delegate callbacks during programmatic selection sync
     var isSyncingSelection = false
     var isRebuildingColumns: Bool = false
     var hasUserResizedColumns: Bool = false
-    /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
     var isEscapeCancelling = false
-    /// Debounced task for persisting column layout after resize/reorder
     var layoutPersistTask: Task<Void, Never>?
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
@@ -105,13 +99,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var isLargeDataset: Bool { cachedRowCount > largeDatasetThreshold }
 
     init(
-        rowProvider: InMemoryRowProvider,
         changeManager: AnyChangeManager,
         isEditable: Bool,
         selectedRowIndices: Binding<Set<Int>>,
         delegate: (any DataGridViewDelegate)?
     ) {
-        self.rowProvider = rowProvider
         self.changeManager = changeManager
         self.isEditable = isEditable
         self._selectedRowIndices = selectedRowIndices
@@ -120,10 +112,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         super.init()
         updateCache()
 
-        // Subscribe to theme changes for font/color updates
         observeThemeChanges()
 
-        // Subscribe to settings changes for real-time updates
         settingsObserver = NotificationCenter.default.addObserver(
             forName: .dataGridSettingsDidChange,
             object: nil,
@@ -143,13 +133,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                     tableView.tile()
                 }
 
-                // Font changes are handled by .themeDidChange observer.
-                // Check for data format changes that need cell re-rendering.
                 let dataChanged = prev.dateFormat != settings.dateFormat
                     || prev.nullDisplay != settings.nullDisplay
                     || prev.enableSmartValueDetection != settings.enableSmartValueDetection
 
-                // When smart detection is toggled off, clear display formats so they stop being applied
                 if prev.enableSmartValueDetection != settings.enableSmartValueDetection
                     && !settings.enableSmartValueDetection {
                     self.updateDisplayFormats([])
@@ -200,14 +187,13 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Called during coordinator teardown to free memory while SwiftUI holds the view.
     private func releaseData() {
         overlayEditor?.dismiss(commit: false)
-        rowProvider = InMemoryRowProvider(rows: [], columns: [])
+        cachedTableRows = TableRows()
         rowVisualStateCache.removeAll()
         displayCache.removeAll()
         columnDisplayFormats = []
         cachedRowCount = 0
         cachedColumnCount = 0
         sortedIDs = nil
-        // Remove columns and reload to release cell views
         if let tableView {
             while let col = tableView.tableColumns.last {
                 tableView.removeTableColumn(col)
@@ -215,7 +201,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             tableView.reloadData()
         }
         tableRowsController.detach()
-        // Release delegate
         delegate = nil
         activeFKPreviewPopover?.close()
         activeFKPreviewPopover = nil
@@ -236,8 +221,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func updateCache() {
-        cachedRowCount = rowProvider.totalRowCount
-        cachedColumnCount = rowProvider.columns.count
+        cachedRowCount = sortedIDs?.count ?? cachedTableRows.count
+        cachedColumnCount = cachedTableRows.columns.count
     }
 
     func applyInsertedRows(_ indices: IndexSet) {
@@ -433,10 +418,10 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     func rebuildColumnMetadataCache() {
         var enumSet = Set<Int>()
         var fkSet = Set<Int>()
-        let columns = rowProvider.columns
-        let types = rowProvider.columnTypes
-        let enumValues = rowProvider.columnEnumValues
-        let fkKeys = rowProvider.columnForeignKeys
+        let columns = cachedTableRows.columns
+        let types = cachedTableRows.columnTypes
+        let enumValues = cachedTableRows.columnEnumValues
+        let fkKeys = cachedTableRows.columnForeignKeys
 
         for i in 0..<columns.count {
             let name = columns[i]
@@ -456,9 +441,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     // MARK: - Font Updates
 
-    /// Update fonts on existing visible cell views in-place.
-    /// Uses `DataGridFontVariant` tags set during cell configuration
-    /// to apply the correct font variant without inspecting cell content.
     @MainActor
     static func updateVisibleCellFonts(tableView: NSTableView) {
         let visibleRect = tableView.visibleRect
@@ -536,11 +518,9 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func visualState(for row: Int) -> RowVisualState {
-        // If delegate provides custom visual state, use it
         if let delegateState = delegate?.dataGridVisualState(forRow: row) {
             return delegateState
         }
-        // Otherwise use cache
         return rowVisualStateCache[row] ?? .empty
     }
 

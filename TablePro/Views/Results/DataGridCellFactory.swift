@@ -360,32 +360,22 @@ final class DataGridCellFactory {
     /// Since the cell font is monospaced, we avoid per-row CoreText measurement
     /// and instead multiply character count by the pre-computed glyph advance width.
     /// This reduces the cost from O(sampleRows * CoreText) to O(sampleRows * 1).
-    ///
-    /// - Parameters:
-    ///   - columnName: The column header name
-    ///   - columnIndex: Index of the column
-    ///   - rowProvider: Provider to get sample row data
-    /// - Returns: Optimal column width within min/max bounds
     func calculateOptimalColumnWidth(
         for columnName: String,
         columnIndex: Int,
-        rowProvider: InMemoryRowProvider
+        tableRows: TableRows
     ) -> CGFloat {
-        // For header: use character count * average proportional char width
-        // instead of CoreText measurement. ~0.6 of mono width is a good estimate
-        // for proportional system font.
         let headerCharCount = (columnName as NSString).length
         var maxWidth = CGFloat(headerCharCount) * ThemeEngine.shared.dataGridFonts.monoCharWidth * 0.75 + 48
 
-        let totalRows = rowProvider.totalRowCount
-        let columnCount = rowProvider.columns.count
-        // Reduce sample count for wide tables to keep total work bounded
+        let totalRows = tableRows.count
+        let columnCount = tableRows.columns.count
         let effectiveSampleCount = columnCount > 50 ? 10 : Self.sampleRowCount
         let step = max(1, totalRows / effectiveSampleCount)
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = rowProvider.value(atRow: i, column: columnIndex) else { continue }
+            guard let value = tableRows.value(at: i, column: columnIndex) else { continue }
 
             let charCount = min((value as NSString).length, Self.maxMeasureChars)
             let cellWidth = CGFloat(charCount) * charWidth + 16
@@ -404,19 +394,19 @@ final class DataGridCellFactory {
     func calculateFitToContentWidth(
         for columnName: String,
         columnIndex: Int,
-        rowProvider: InMemoryRowProvider
+        tableRows: TableRows
     ) -> CGFloat {
         let headerCharCount = (columnName as NSString).length
         var maxWidth = CGFloat(headerCharCount) * ThemeEngine.shared.dataGridFonts.monoCharWidth * 0.75 + 48
 
-        let totalRows = rowProvider.totalRowCount
-        let columnCount = rowProvider.columns.count
+        let totalRows = tableRows.count
+        let columnCount = tableRows.columns.count
         let effectiveSampleCount = columnCount > 50 ? 10 : Self.sampleRowCount
         let step = max(1, totalRows / effectiveSampleCount)
         let charWidth = ThemeEngine.shared.dataGridFonts.monoCharWidth
 
         for i in stride(from: 0, to: totalRows, by: step) {
-            guard let value = rowProvider.value(atRow: i, column: columnIndex) else { continue }
+            guard let value = tableRows.value(at: i, column: columnIndex) else { continue }
 
             let charCount = (value as NSString).length
             let cellWidth = CGFloat(charCount) * charWidth + 16

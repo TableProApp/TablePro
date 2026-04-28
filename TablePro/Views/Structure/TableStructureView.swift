@@ -268,8 +268,9 @@ struct TableStructureView: View {
         let customOptions = provider.customDropdownOptions
         let allDropdownColumns = provider.dropdownColumns.union(Set(customOptions.keys))
 
+        let tableRows = provider.asTableRows()
         return DataGridView(
-            rowProvider: provider.asInMemoryProvider(),
+            tableRowsProvider: { tableRows },
             changeManager: wrappedChangeManager,
             schemaVersion: displayVersion,
             isEditable: canEdit,

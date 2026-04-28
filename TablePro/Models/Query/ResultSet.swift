@@ -14,7 +14,7 @@ import os
 final class ResultSet: Identifiable {
     let id: UUID
     var label: String
-    var rowBuffer: RowBuffer
+    var tableRows: TableRows
     var executionTime: TimeInterval?
     var rowsAffected: Int = 0
     var errorMessage: String?
@@ -27,37 +27,11 @@ final class ResultSet: Identifiable {
     var pagination = PaginationState()
     var columnLayout = ColumnLayoutState()
 
-    var columnTypes: [ColumnType] {
-        get { rowBuffer.columnTypes }
-        set { rowBuffer.columnTypes = newValue }
-    }
+    var resultColumns: [String] { tableRows.columns }
 
-    var columnDefaults: [String: String?] {
-        get { rowBuffer.columnDefaults }
-        set { rowBuffer.columnDefaults = newValue }
-    }
-
-    var columnForeignKeys: [String: ForeignKeyInfo] {
-        get { rowBuffer.columnForeignKeys }
-        set { rowBuffer.columnForeignKeys = newValue }
-    }
-
-    var columnEnumValues: [String: [String]] {
-        get { rowBuffer.columnEnumValues }
-        set { rowBuffer.columnEnumValues = newValue }
-    }
-
-    var columnNullable: [String: Bool] {
-        get { rowBuffer.columnNullable }
-        set { rowBuffer.columnNullable = newValue }
-    }
-
-    var resultColumns: [String] { rowBuffer.columns }
-    var resultRows: [[String?]] { rowBuffer.rows }
-
-    init(id: UUID = UUID(), label: String, rowBuffer: RowBuffer = RowBuffer()) {
+    init(id: UUID = UUID(), label: String, tableRows: TableRows = TableRows()) {
         self.id = id
         self.label = label
-        self.rowBuffer = rowBuffer
+        self.tableRows = tableRows
     }
 }

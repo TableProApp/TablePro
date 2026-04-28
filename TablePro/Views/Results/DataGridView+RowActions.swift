@@ -26,7 +26,10 @@ extension TableViewCoordinator {
     func undoInsertRow(at index: Int) {
         delegate?.dataGridUndoInsert(at: index)
         changeManager.undoRowInsertion(rowIndex: index)
-        rowProvider.removeRow(at: index)
+        tableRowsMutator { rows in
+            _ = rows.remove(at: IndexSet(integer: index))
+        }
+        cachedTableRows = tableRowsProvider()
         updateCache()
         tableView?.reloadData()
     }

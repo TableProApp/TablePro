@@ -190,6 +190,27 @@ struct TableRowsStoreTests {
         #expect(resolved?.value(at: 0, column: 0) == "z")
     }
 
+    @Test("closing one tab removes only its TableRows entry, leaving siblings intact")
+    func closingTabRemovesOnlyThatEntry() {
+        let store = TableRowsStore()
+        let tabId1 = UUID()
+        let tabId2 = UUID()
+
+        store.setTableRows(
+            TableRows.from(queryRows: [["a"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
+            for: tabId1
+        )
+        store.setTableRows(
+            TableRows.from(queryRows: [["b"]], columns: ["c"], columnTypes: [.text(rawType: nil)]),
+            for: tabId2
+        )
+
+        store.removeTableRows(for: tabId1)
+
+        #expect(store.existingTableRows(for: tabId1) == nil)
+        #expect(store.existingTableRows(for: tabId2)?.rows.count == 1)
+    }
+
     @Test("tearDown() clears the store")
     func tearDownClearsAll() {
         let store = TableRowsStore()

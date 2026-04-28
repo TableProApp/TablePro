@@ -26,7 +26,7 @@ extension MainContentCoordinator {
             self.tabManager.tabs[capturedTabIndex].pagination.reset()
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.rowDataStore.buffer(for: tab.id)
+            let buffer = self.tableRowsStore.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildFilteredQuery(
                 tableName: capturedTableName,
@@ -64,7 +64,7 @@ extension MainContentCoordinator {
             guard capturedTabIndex < self.tabManager.tabs.count else { return }
 
             let tab = self.tabManager.tabs[capturedTabIndex]
-            let buffer = self.rowDataStore.buffer(for: tab.id)
+            let buffer = self.tableRowsStore.tableRows(for: tab.id)
             let exclusions = self.columnExclusions(for: capturedTableName)
             let newQuery = self.queryBuilder.buildBaseQuery(
                 tableName: capturedTableName,
@@ -95,7 +95,7 @@ extension MainContentCoordinator {
               let tableName = tabManager.tabs[tabIndex].tableContext.tableName else { return }
 
         let tab = tabManager.tabs[tabIndex]
-        let buffer = rowDataStore.buffer(for: tab.id)
+        let buffer = tableRowsStore.tableRows(for: tab.id)
         let hasFilters = filterStateManager.hasAppliedFilters
         let exclusions = columnExclusions(for: tableName)
 

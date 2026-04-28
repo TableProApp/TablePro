@@ -125,7 +125,6 @@ extension MainContentCoordinator {
                 filterStateManager.clearAll()
                 if let tabIndex = tabManager.selectedTabIndex {
                     let tabId = tabManager.tabs[tabIndex].id
-                    rowDataStore.setBuffer(RowBuffer(), for: tabId)
                     tableRowsStore.setTableRows(TableRows(), for: tabId)
                     tabManager.tabs[tabIndex].pagination.reset()
                     toolbarState.isTableTab = true
@@ -208,7 +207,6 @@ extension MainContentCoordinator {
                 previewCoordinator.filterStateManager.clearAll()
                 if let tabIndex = previewCoordinator.tabManager.selectedTabIndex {
                     let tabId = previewCoordinator.tabManager.tabs[tabIndex].id
-                    previewCoordinator.rowDataStore.setBuffer(RowBuffer(), for: tabId)
                     previewCoordinator.tableRowsStore.setTableRows(TableRows(), for: tabId)
                     previewCoordinator.tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                     previewCoordinator.tabManager.tabs[tabIndex].pagination.reset()
@@ -281,7 +279,6 @@ extension MainContentCoordinator {
             filterStateManager.clearAll()
             if let tabIndex = tabManager.selectedTabIndex {
                 let tabId = tabManager.tabs[tabIndex].id
-                rowDataStore.setBuffer(RowBuffer(), for: tabId)
                 tableRowsStore.setTableRows(TableRows(), for: tabId)
                 tabManager.tabs[tabIndex].display.resultsViewMode = showStructure ? .structure : .data
                 tabManager.tabs[tabIndex].pagination.reset()
@@ -392,7 +389,6 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
             tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil
@@ -428,7 +424,6 @@ extension MainContentCoordinator {
 
             closeSiblingNativeWindows()
             persistence.saveNowSync(tabs: tabManager.tabs, selectedTabId: tabManager.selectedTabId)
-            rowDataStore.tearDown()
             tableRowsStore.tearDown()
             tabManager.tabs = []
             tabManager.selectedTabId = nil

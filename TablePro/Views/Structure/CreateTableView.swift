@@ -235,8 +235,9 @@ struct CreateTableView: View {
             additionalFields: [.primaryKey]
         )
 
+        let tableRows = provider.asTableRows()
         return DataGridView(
-            rowProvider: provider.asInMemoryProvider(),
+            tableRowsProvider: { tableRows },
             changeManager: wrappedChangeManager,
             isEditable: true,
             configuration: DataGridConfiguration(

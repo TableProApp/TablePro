@@ -351,7 +351,7 @@ struct MainContentView: View {
                 handleStructureChange()
             }
             .onChange(of: currentTab?.schemaVersion) { _, _ in
-                let columns = currentTab.map { coordinator.rowDataStore.buffer(for: $0.id).columns }
+                let columns = currentTab.map { coordinator.tableRowsStore.tableRows(for: $0.id).columns }
                 handleColumnsChange(newColumns: columns)
             }
             .task { handleConnectionStatusChange() }

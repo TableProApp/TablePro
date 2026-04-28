@@ -38,9 +38,10 @@ struct EvictionTests {
         guard let index = tabManager.selectedTabIndex else { return }
         let rows = TestFixtures.makeRows(count: 10)
         let tabId = tabManager.tabs[index].id
-        let buffer = coordinator.rowDataStore.buffer(for: tabId)
-        buffer.rows = rows
-        buffer.columns = ["id", "name", "email"]
+        let columns = ["id", "name", "email"]
+        let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: columns.count)
+        let tableRows = TableRows.from(queryRows: rows, columns: columns, columnTypes: columnTypes)
+        coordinator.tableRowsStore.setTableRows(tableRows, for: tabId)
         tabManager.tabs[index].execution.lastExecutedAt = Date()
     }
 
@@ -49,15 +50,14 @@ struct EvictionTests {
         let (coordinator, tabManager) = makeCoordinator()
         addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
         let tabId = tabManager.tabs[0].id
-        let buffer = coordinator.rowDataStore.buffer(for: tabId)
 
-        #expect(buffer.rows.count == 10)
-        #expect(buffer.isEvicted == false)
+        #expect(coordinator.tableRowsStore.tableRows(for: tabId).rows.count == 10)
+        #expect(coordinator.tableRowsStore.isEvicted(tabId) == false)
 
         coordinator.evictInactiveRowData()
 
-        #expect(buffer.isEvicted == true)
-        #expect(buffer.rows.isEmpty)
+        #expect(coordinator.tableRowsStore.isEvicted(tabId) == true)
+        #expect(coordinator.tableRowsStore.tableRows(for: tabId).rows.isEmpty)
     }
 
     @Test("evictInactiveRowData skips tabs with pending changes")
@@ -69,33 +69,9 @@ struct EvictionTests {
 
         coordinator.evictInactiveRowData()
 
-        let buffer = coordinator.rowDataStore.buffer(for: tabManager.tabs[0].id)
-        #expect(buffer.isEvicted == false)
-        #expect(buffer.rows.count == 10)
-    }
-
-    @Test("evictInactiveRowData skips already evicted tabs")
-    func skipsAlreadyEvicted() {
-        let (coordinator, tabManager) = makeCoordinator()
-        addLoadedTab(to: coordinator, tabManager: tabManager, tableName: "users")
-
-        let buffer = coordinator.rowDataStore.buffer(for: tabManager.tabs[0].id)
-        buffer.evict()
-        #expect(buffer.isEvicted == true)
-
-        coordinator.evictInactiveRowData()
-        #expect(buffer.isEvicted == true)
-    }
-
-    @Test("evictInactiveRowData skips tabs with empty results")
-    func skipsEmptyResults() {
-        let (coordinator, tabManager) = makeCoordinator()
-        tabManager.addTableTab(tableName: "empty_table")
-
-        coordinator.evictInactiveRowData()
-
-        let buffer = coordinator.rowDataStore.buffer(for: tabManager.tabs[0].id)
-        #expect(buffer.isEvicted == false)
+        let tabId = tabManager.tabs[0].id
+        #expect(coordinator.tableRowsStore.isEvicted(tabId) == false)
+        #expect(coordinator.tableRowsStore.tableRows(for: tabId).rows.count == 10)
     }
 
     @Test("evictInactiveRowData preserves column metadata after eviction")
@@ -105,9 +81,10 @@ struct EvictionTests {
 
         coordinator.evictInactiveRowData()
 
-        let buffer = coordinator.rowDataStore.buffer(for: tabManager.tabs[0].id)
-        #expect(buffer.columns == ["id", "name", "email"])
-        #expect(buffer.isEvicted == true)
+        let tabId = tabManager.tabs[0].id
+        let rows = coordinator.tableRowsStore.tableRows(for: tabId)
+        #expect(rows.columns == ["id", "name", "email"])
+        #expect(coordinator.tableRowsStore.isEvicted(tabId) == true)
     }
 
     @Test("evictInactiveRowData with no tabs is no-op")

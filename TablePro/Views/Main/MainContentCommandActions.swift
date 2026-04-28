@@ -380,7 +380,7 @@ final class MainContentCommandActions {
         } else if coordinator?.tabManager.tabs.isEmpty == true {
             window.close()
         } else {
-            coordinator?.rowDataStore.evictAll(except: nil)
+            coordinator?.tableRowsStore.evictAll(except: nil)
             coordinator?.tabManager.tabs.removeAll()
             coordinator?.tabManager.selectedTabId = nil
             coordinator?.toolbarState.isTableTab = false

@@ -22,7 +22,7 @@ extension MainContentCoordinator {
             tabManager.tabs[tabIdx].display.activeResultSetId = tabManager.tabs[tabIdx].display.resultSets.last?.id
         }
         if tabManager.tabs[tabIdx].display.resultSets.isEmpty {
-            rowDataStore.setBuffer(RowBuffer(), for: tabManager.tabs[tabIdx].id)
+            tableRowsStore.setTableRows(TableRows(), for: tabManager.tabs[tabIdx].id)
             tabManager.tabs[tabIdx].execution.errorMessage = nil
             tabManager.tabs[tabIdx].execution.rowsAffected = 0
             tabManager.tabs[tabIdx].execution.executionTime = nil
@@ -105,7 +105,7 @@ extension MainContentCoordinator {
 
     func openExportQueryResultsDialog() {
         guard let tab = tabManager.selectedTab,
-              !rowDataStore.buffer(for: tab.id).rows.isEmpty else { return }
+              !tableRowsStore.tableRows(for: tab.id).rows.isEmpty else { return }
         activeSheet = .exportQueryResults
     }
 

@@ -96,12 +96,12 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    let buffer = rowDataStore.buffer(for: tab.id)
-                    let pageOffset = buffer.rows.count
-                    buffer.rows.append(contentsOf: pagedResult.rows)
+                    let existingRows = tableRowsStore.tableRows(for: tab.id)
+                    let pageOffset = existingRows.rows.count
                     tableRowsStore.updateTableRows(for: tab.id) { rows in
                         _ = rows.appendPage(pagedResult.rows, startingAt: pageOffset)
                     }
+                    let newCount = pageOffset + pagedResult.rows.count
                     tab.schemaVersion += 1
                     tab.pagination.loadMoreOffset = pagedResult.nextOffset
                     tab.pagination.hasMoreRows = pagedResult.hasMore
@@ -114,7 +114,7 @@ extension MainContentCoordinator {
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil
                     }
-                    progressLog.info("[loadMore] applied totalRows=\(buffer.rows.count)")
+                    progressLog.info("[loadMore] applied totalRows=\(newCount)")
                 }
             } catch {
                 await MainActor.run { [weak self] in
@@ -140,7 +140,7 @@ extension MainContentCoordinator {
               tab.pagination.hasMoreRows,
               let baseQuery = tab.pagination.baseQueryForMore else { return }
 
-        let loadedCount = rowDataStore.buffer(for: tab.id).rows.count
+        let loadedCount = tableRowsStore.tableRows(for: tab.id).rows.count
         let totalEstimate = tab.pagination.totalRowCount
 
         let message: String
@@ -221,8 +221,6 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    let buffer = rowDataStore.buffer(for: tab.id)
-                    buffer.rows = result.rows
                     tableRowsStore.updateTableRows(for: tab.id) { rows in
                         _ = rows.replace(rows: result.rows)
                     }

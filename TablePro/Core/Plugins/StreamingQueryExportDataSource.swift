@@ -4,7 +4,7 @@
 //
 //  Streaming export data source for query results.
 //  Re-executes the query and streams rows directly from the database to the export plugin,
-//  bypassing RowBuffer. Allows exporting large result sets without loading all rows into memory.
+//  bypassing in-memory storage. Allows exporting large result sets without loading all rows into memory.
 //
 
 import Foundation
