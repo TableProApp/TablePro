@@ -207,6 +207,104 @@ struct TableRowsInsertTests {
         #expect(table.rows[0].values == ["only-one", nil, nil])
         #expect(table.rows[1].values == ["a", "b", "c"])
     }
+
+    @Test("insertInsertedRow at the head shifts existing rows down")
+    func insertInsertedRowAtHead() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 0, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 0)))
+        #expect(table.count == 3)
+        #expect(table.rows[0].values == ["z"])
+        #expect(table.rows[0].id.isInserted)
+        #expect(table.rows[1].values == ["a"])
+        #expect(table.rows[2].values == ["b"])
+    }
+
+    @Test("insertInsertedRow in the middle preserves surrounding rows")
+    func insertInsertedRowInMiddle() {
+        var table = TableRows.from(
+            queryRows: [["a"], ["b"], ["c"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 1, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 1)))
+        #expect(table.count == 4)
+        #expect(table.rows[0].values == ["a"])
+        #expect(table.rows[1].values == ["z"])
+        #expect(table.rows[1].id.isInserted)
+        #expect(table.rows[2].values == ["b"])
+        #expect(table.rows[3].values == ["c"])
+    }
+
+    @Test("insertInsertedRow at the tail (index == count) appends")
+    func insertInsertedRowAtTail() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: table.count, values: ["z"])
+        #expect(delta == .rowsInserted(IndexSet(integer: 1)))
+        #expect(table.count == 2)
+        #expect(table.rows[1].values == ["z"])
+        #expect(table.rows[1].id.isInserted)
+    }
+
+    @Test("insertInsertedRow pads short values and truncates long values")
+    func insertInsertedRowPadsAndTruncates() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1", "c2", "c3"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil), .text(rawType: nil)]
+        )
+        _ = table.insertInsertedRow(at: 0, values: ["only-one"])
+        _ = table.insertInsertedRow(at: 1, values: ["a", "b", "c", "d"])
+        #expect(table.rows[0].values == ["only-one", nil, nil])
+        #expect(table.rows[1].values == ["a", "b", "c"])
+    }
+
+    @Test("insertInsertedRow with negative index returns Delta.none and does not mutate")
+    func insertInsertedRowNegativeIndexIsNoOp() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: -1, values: ["z"])
+        #expect(delta == .none)
+        #expect(table.count == 1)
+        #expect(table.rows[0].values == ["a"])
+    }
+
+    @Test("insertInsertedRow past the end returns Delta.none and does not mutate")
+    func insertInsertedRowPastEndIsNoOp() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.insertInsertedRow(at: 2, values: ["z"])
+        #expect(delta == .none)
+        #expect(table.count == 1)
+        #expect(table.rows[0].values == ["a"])
+    }
+
+    @Test("Two insertInsertedRow calls produce different RowID UUIDs")
+    func insertInsertedRowProducesDistinctUUIDs() {
+        var table = TableRows.from(
+            queryRows: [],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        _ = table.insertInsertedRow(at: 0, values: ["x"])
+        _ = table.insertInsertedRow(at: 0, values: ["y"])
+        #expect(table.rows[0].id != table.rows[1].id)
+    }
 }
 
 @Suite("TableRows - appendPage")

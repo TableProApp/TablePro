@@ -73,6 +73,15 @@ struct TableRows: Sendable {
     }
 
     @discardableResult
+    mutating func insertInsertedRow(at index: Int, values: [String?]) -> Delta {
+        guard index >= 0, index <= rows.count else { return .none }
+        let normalized = Self.normalize(values: values, toCount: columns.count)
+        let row = Row(id: .inserted(UUID()), values: normalized)
+        rows.insert(row, at: index)
+        return .rowsInserted(IndexSet(integer: index))
+    }
+
+    @discardableResult
     mutating func appendPage(_ pageRows: [[String?]], startingAt offset: Int) -> Delta {
         guard !pageRows.isEmpty else { return .none }
         let firstIndex = rows.count

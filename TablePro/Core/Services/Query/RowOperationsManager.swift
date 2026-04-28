@@ -176,19 +176,16 @@ final class RowOperationsManager {
             } else if result.needsRowRestore {
                 let columnCount = tableRows.columns.count
                 let values = result.restoreRow ?? [String?](repeating: nil, count: columnCount)
-                guard rowIndex >= 0, rowIndex == tableRows.count else {
-                    return UndoApplicationResult(adjustedSelection: nil, delta: .none)
-                }
-                let delta = tableRows.appendInsertedRow(values: values)
+                let delta = tableRows.insertInsertedRow(at: rowIndex, values: values)
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
             }
             return UndoApplicationResult(adjustedSelection: nil, delta: .none)
 
         case .rowDeletion:
-            return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
 
         case .batchRowDeletion:
-            return UndoApplicationResult(adjustedSelection: nil, delta: .none)
+            return UndoApplicationResult(adjustedSelection: nil, delta: result.delta)
 
         case .batchRowInsertion(let rowIndices, let rowValues):
             if result.needsRowRemoval {
@@ -200,10 +197,10 @@ final class RowOperationsManager {
                 return UndoApplicationResult(adjustedSelection: nil, delta: delta)
             } else if result.needsRowRestore {
                 var insertedIndices = IndexSet()
-                for (index, rowIndex) in rowIndices.enumerated() {
-                    guard index < rowValues.count else { continue }
-                    guard rowIndex == tableRows.count else { continue }
-                    _ = tableRows.appendInsertedRow(values: rowValues[index])
+                let pairs = zip(rowIndices, rowValues).sorted { $0.0 < $1.0 }
+                for (rowIndex, values) in pairs {
+                    guard rowIndex >= 0, rowIndex <= tableRows.count else { continue }
+                    _ = tableRows.insertInsertedRow(at: rowIndex, values: values)
                     insertedIndices.insert(rowIndex)
                 }
                 guard !insertedIndices.isEmpty else {
