@@ -333,10 +333,29 @@ impl SimpleComponent for SqlEditor {
                                 } else {
                                     Box::pin(std::future::pending::<()>())
                                 };
+                            // The cancel token is the editor's own
+                            // signal channel — the driver does not
+                            // subscribe to it (sqlx has no future-
+                            // drop cancellation hook for Postgres /
+                            // MySQL). When the timeout wins, we
+                            // *also* fire `token.cancel()` so any
+                            // outer logic (pool shutdown, connection
+                            // monitor) sees the same "this query is
+                            // abandoned" signal as a manual Cancel,
+                            // and the future drops on the next poll.
+                            // Even with this, the underlying driver
+                            // call may keep running on the server
+                            // until the network layer notices the
+                            // dropped read; users on long timeouts
+                            // should restart the connection.
+                            let token_for_timeout = token.clone();
                             let msg = tokio::select! {
                                 biased;
                                 _ = token.cancelled() => SqlEditorInput::ShowCancelled,
-                                _ = timeout => SqlEditorInput::ShowTimedOut(timeout_secs),
+                                _ = timeout => {
+                                    token_for_timeout.cancel();
+                                    SqlEditorInput::ShowTimedOut(timeout_secs)
+                                }
                                 outcomes = run_statements(conn, statements) => {
                                     let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
                                     let n_ok = outcomes
@@ -447,7 +466,7 @@ impl SimpleComponent for SqlEditor {
                 let page = adw::StatusPage::builder()
                     .title(crate::tr!("Query timed out"))
                     .description(&reason)
-                    .icon_name("appointment-soon-symbolic")
+                    .icon_name("dialog-warning-symbolic")
                     .vexpand(true)
                     .build();
                 self.results_holder.append(&page);

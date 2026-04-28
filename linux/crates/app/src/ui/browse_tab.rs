@@ -1567,12 +1567,17 @@ impl SimpleComponent for BrowseTab {
                 if self.current_columns.is_empty() {
                     return;
                 }
-                let Some(snapshot) = self.current_result.as_ref() else {
+                // Read the source row through the live RowObject at
+                // `row_position` in the FilterListModel — NOT by
+                // indexing `current_result.rows` directly. The grid's
+                // row_position reflects the user's current sort + any
+                // active search filter; raw `rows` is fetch order. A
+                // sort or filter would otherwise hand us the wrong
+                // row's cells.
+                let Some(source) = self.row_object_at(row_position) else {
                     return;
                 };
-                let Some(source_row) = snapshot.rows.get(row_position as usize) else {
-                    return;
-                };
+                let source_cells = source.cells_clone();
                 // Clone source values; blank columns whose value is
                 // owned by the database (PK, identity / serial,
                 // generated). The duplicate is meant to be a *new*
@@ -1586,7 +1591,7 @@ impl SimpleComponent for BrowseTab {
                         if col.primary_key || col.is_auto_increment || col.is_generated {
                             Value::Null
                         } else {
-                            source_row.get(i).cloned().unwrap_or(Value::Null)
+                            source_cells.get(i).cloned().unwrap_or(Value::Null)
                         }
                     })
                     .collect();
@@ -2124,7 +2129,12 @@ enum TypeKind {
 /// before bare `timestamp`, and `tinyint(1)` (MySQL bool) must be
 /// matched before generic `tinyint` / `int` patterns.
 fn classify_type(dt: &str) -> TypeKind {
-    if matches!(dt, "bool" | "boolean" | "bit" | "tinyint(1)") {
+    // Postgres `format_type()` returns "bit(1)" for length-1 BIT
+    // columns (not the bare "bit" the original guard expected).
+    // Both forms classify as Bool so the cell renders as a checkbox
+    // rather than a text editor that rejects "true"/"false" with
+    // "Invalid integer".
+    if matches!(dt, "bool" | "boolean" | "bit" | "bit(1)" | "tinyint(1)") {
         return TypeKind::Bool;
     }
     if dt.contains("uuid") {

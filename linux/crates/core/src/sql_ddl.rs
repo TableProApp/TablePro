@@ -434,21 +434,24 @@ pub fn build_rename_column(
     ))
 }
 
-/// Apply column type / nullable / default changes. MySQL's `MODIFY
-/// COLUMN` replaces the whole definition, so the caller passes the
-/// post-edit `DraftColumn` and this builder emits the full `MODIFY
-/// COLUMN col_def`. Postgres / SQLite get one of the per-attribute
-/// `ALTER COLUMN ...` sub-statements based on what differs from
-/// `column.original` — `_caller_intent` selects which attribute to
-/// emit when multiple differ; the caller inspects the diff and calls
-/// this once per attribute change for non-MySQL drivers, or once
-/// total for MySQL.
+/// Apply column type / nullable / default changes. Returns one or
+/// more SQL statements:
+///
+/// - **MySQL**: a single `ALTER TABLE ... MODIFY COLUMN col_def` that
+///   replaces the whole definition.
+/// - **Postgres**: one `ALTER TABLE ... ALTER COLUMN ...` per
+///   attribute that diffed against `column.original`. Returning a Vec
+///   means a single `AlterColumn` op carrying simultaneous type +
+///   nullable + default changes maps to up to three statements; the
+///   previous single-`String` return cascaded through early-return
+///   guards and silently dropped all but the first changed attribute.
+/// - **SQLite**: not supported; returns `SqliteNotSupported`.
 pub fn build_alter_column(
     driver_id: &str,
     schema: Option<&str>,
     table: &str,
     column: &DraftColumn,
-) -> Result<String, BuildDdlError> {
+) -> Result<Vec<String>, BuildDdlError> {
     validate_table(table)?;
     validate_column_name(&column.name)?;
     let qualified = qualified_table(driver_id, schema, table);
@@ -458,23 +461,29 @@ pub fn build_alter_column(
             // definition. Render the column inline (without inline-PK
             // since MODIFY can't change PK) and emit.
             let column_def = render_column_definition(driver_id, column, false)?;
-            Ok(format!("ALTER TABLE {} MODIFY COLUMN {}", qualified, column_def))
+            Ok(vec![format!("ALTER TABLE {} MODIFY COLUMN {}", qualified, column_def)])
         }
         "postgres" => {
             // Postgres needs separate sub-statements per attribute.
-            // Compute the diff against `original` and pick the most
-            // meaningful change. If multiple changed, the caller
-            // should call this builder repeatedly via separate ops in
-            // the tracker — this single call covers one attribute.
+            // Build all that changed and join with `;` so the single
+            // returned string carries every change. The caller passes
+            // the result to `Connection::execute` which splits on `;`
+            // and runs each as a separate statement, matching how
+            // MySQL's MODIFY COLUMN coalesces several changes into
+            // one wire-level command. Previously this builder
+            // returned only the first changed attribute (type wins
+            // over nullable wins over default), silently losing the
+            // user's other edits when more than one attribute moved.
             let original = column.original.as_ref();
             let type_changed = original.map(|o| o.data_type != column.data_type).unwrap_or(true);
             let nullable_changed = original.map(|o| o.nullable != column.nullable).unwrap_or(false);
             let default_changed = original
                 .map(|o| o.default_value.as_deref() != column.default_value.as_deref())
                 .unwrap_or(column.default_value.is_some());
+            let mut stmts: Vec<String> = Vec::new();
             if type_changed {
                 validate_safe_type(&column.data_type)?;
-                return Ok(format!(
+                stmts.push(format!(
                     "ALTER TABLE {} ALTER COLUMN {} TYPE {} USING {}::{}",
                     qualified,
                     quote_ident(driver_id, &column.name),
@@ -484,7 +493,7 @@ pub fn build_alter_column(
                 ));
             }
             if nullable_changed {
-                return Ok(if column.nullable {
+                stmts.push(if column.nullable {
                     format!(
                         "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL",
                         qualified,
@@ -499,7 +508,7 @@ pub fn build_alter_column(
                 });
             }
             if default_changed {
-                return Ok(match validated_default(column.default_value.as_deref())? {
+                stmts.push(match validated_default(column.default_value.as_deref())? {
                     Some(default) => format!(
                         "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}",
                         qualified,
@@ -513,11 +522,12 @@ pub fn build_alter_column(
                     ),
                 });
             }
-            // Nothing actually changed — surface as NoChange so the
-            // caller can skip emission. Previously we emitted a no-op
-            // ALTER COLUMN ... TYPE that risked an unnecessary table
-            // rewrite on Postgres versions where USING is required.
-            Err(BuildDdlError::NoChange)
+            if stmts.is_empty() {
+                // Nothing actually changed — surface as NoChange so
+                // the caller can skip emission.
+                return Err(BuildDdlError::NoChange);
+            }
+            Ok(stmts)
         }
         "sqlite" => Err(BuildDdlError::SqliteNotSupported(
             "ALTER COLUMN (type / nullable / default change)",
@@ -960,9 +970,10 @@ mod tests {
             auto_increment: false,
             default_value: None,
         };
-        let sql = build_alter_column("postgres", None, "t", &col).unwrap();
-        assert!(sql.contains("TYPE bigint"));
-        assert!(sql.contains("USING \"x\"::bigint"));
+        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        let joined = stmts.join("\n");
+        assert!(joined.contains("TYPE bigint"));
+        assert!(joined.contains("USING \"x\"::bigint"));
     }
 
     #[test]
@@ -984,8 +995,8 @@ mod tests {
             auto_increment: false,
             default_value: None,
         };
-        let sql = build_alter_column("postgres", None, "t", &col).unwrap();
-        assert!(sql.contains("SET NOT NULL"));
+        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        assert!(stmts.iter().any(|s| s.contains("SET NOT NULL")));
     }
 
     #[test]
@@ -1007,18 +1018,48 @@ mod tests {
             auto_increment: false,
             default_value: Some("'pending'".into()),
         };
-        let sql = build_alter_column("postgres", None, "t", &col).unwrap();
-        assert!(sql.contains("SET DEFAULT 'pending'"));
+        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        assert!(stmts.iter().any(|s| s.contains("SET DEFAULT 'pending'")));
     }
 
     #[test]
     fn alter_column_mysql_modify_full_def() {
         let col = nn(def(dc("status", "VARCHAR(64)"), "'open'"));
-        let sql = build_alter_column("mysql", None, "t", &col).unwrap();
+        let stmts = build_alter_column("mysql", None, "t", &col).unwrap();
+        assert_eq!(stmts.len(), 1);
         assert_eq!(
-            sql,
+            stmts[0],
             "ALTER TABLE `t` MODIFY COLUMN `status` VARCHAR(64) NOT NULL DEFAULT 'open'"
         );
+    }
+
+    #[test]
+    fn alter_column_postgres_emits_three_statements_when_all_change() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "integer".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "bigint".into(),
+            nullable: false,
+            primary_key: false,
+            auto_increment: false,
+            default_value: Some("'fallback'".into()),
+        };
+        let stmts = build_alter_column("postgres", None, "t", &col).unwrap();
+        // Type, nullable AND default all changed — all three must
+        // emit. Previously the early-return cascade lost the latter
+        // two.
+        assert_eq!(stmts.len(), 3);
+        assert!(stmts[0].contains("TYPE bigint"));
+        assert!(stmts[1].contains("SET NOT NULL"));
+        assert!(stmts[2].contains("SET DEFAULT 'fallback'"));
     }
 
     #[test]

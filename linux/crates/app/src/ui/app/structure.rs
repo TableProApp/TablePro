@@ -326,6 +326,12 @@ impl App {
                         }
                     }
                     if wrap_tx && let Err(e) = conn.execute("COMMIT").await {
+                        // COMMIT failure leaves the connection in an
+                        // open transaction. Fire ROLLBACK so the
+                        // pooled connection is reusable; ignore its
+                        // result because the user already has the
+                        // commit-failure to surface.
+                        let _ = conn.execute("ROLLBACK").await;
                         sender_for_cmd.input(AppMsg::StructureSaveFailed(tab_id, format!("{e}")));
                         return;
                     }
@@ -427,6 +433,14 @@ impl App {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
+        // Match the Browse-side `SaveFailedForTab` handler: a save
+        // that started from the close-with-pending dialog left this
+        // tab in `close_after_save`, and the window-close-after-save
+        // intent in `close_window_after_save`. Both must be cleared
+        // on failure or the next unrelated SaveCompleted on another
+        // tab will spuriously close the window.
+        self.close_after_save.borrow_mut().remove(&tab_id);
+        self.close_window_after_save.set(false);
         if let Some(controller) = self
             .workspace_tabs
             .borrow()

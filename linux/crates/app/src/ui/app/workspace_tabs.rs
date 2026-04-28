@@ -702,6 +702,13 @@ impl App {
         let Some(removed) = removed else {
             return;
         };
+        // Drop any close-after-save / window-close-after-save intent
+        // pinned to this tab. `close_tabs_for_table` (Drop Table)
+        // calls into here directly without going through the per-tab
+        // close prompt, so a stale entry would otherwise live on
+        // forever and cause a future unrelated SaveCompleted to
+        // spuriously close the window.
+        self.close_after_save.borrow_mut().remove(&id);
         match &removed {
             WorkspaceTab::Editor(slot) => {
                 let _ = slot.controller.sender().send(SqlEditorInput::Cancel);

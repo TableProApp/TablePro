@@ -349,10 +349,15 @@ impl StructureChangeTracker {
             for key in order {
                 if let Some(col) = latest.get(&key) {
                     match build_alter_column(driver_id, key.0.as_deref(), &key.1, col) {
-                        Ok(sql) => out.push(sql),
-                        // NoChange means the post-edit state matches the
-                        // original — no statement to emit. Real errors
-                        // still propagate.
+                        // MySQL emits exactly one MODIFY COLUMN; the
+                        // Vec is always length 1. Postgres returns
+                        // up to three statements when type +
+                        // nullable + default all changed in the same
+                        // op; flatten them.
+                        Ok(stmts) => out.extend(stmts),
+                        // NoChange means the post-edit state matches
+                        // the original — no statements to emit. Real
+                        // errors still propagate.
                         Err(BuildDdlError::NoChange) => {}
                         Err(e) => return Err(e),
                     }
@@ -362,7 +367,7 @@ impl StructureChangeTracker {
             for op in &self.ops {
                 if let StructureOp::AlterColumn { schema, table, column } = op {
                     match build_alter_column(driver_id, schema.as_deref(), table, column) {
-                        Ok(sql) => out.push(sql),
+                        Ok(stmts) => out.extend(stmts),
                         Err(BuildDdlError::NoChange) => {}
                         Err(e) => return Err(e),
                     }

@@ -21,7 +21,7 @@
 //! sets the SourceView buffer text. The Save button reads
 //! `materialize` again and dispatches `ExecuteTransaction` to App.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use relm4::adw::prelude::*;
@@ -175,8 +175,11 @@ pub struct StructureTab {
     last_dirty: Rc<RefCell<bool>>,
     /// Suppress reentrant rebuilds: setting Entry text triggers
     /// changed-signal echoes that would push duplicate RenameTable
-    /// ops onto the tracker.
-    suppress_emit: Rc<RefCell<bool>>,
+    /// ops onto the tracker. `Cell` (not `RefCell`) because GTK can
+    /// fire those signals re-entrantly during `clear_box` while
+    /// another `borrow_mut` is still live on the stack — a
+    /// `RefCell::borrow` racing it would panic.
+    suppress_emit: Rc<Cell<bool>>,
     /// Monotonic counter for the "Add Column" placeholder name. Using
     /// `vec.len() + 1` produced duplicate `column_1` after the user
     /// removed a column; a forever-incrementing counter avoids the
@@ -287,7 +290,7 @@ impl StructureTab {
         // mode reload would land 7 columns × ~3 fields ≈ 19 spurious
         // pending changes. We re-enable emit on the next idle tick so
         // legitimate user input afterwards flows through.
-        *self.suppress_emit.borrow_mut() = true;
+        self.suppress_emit.set(true);
         clear_box(&self.columns_box);
         let driver_id = self.driver_id.clone();
         let list = boxed_list();
@@ -308,7 +311,7 @@ impl StructureTab {
         self.columns_box.append(&wrap_button_in_row(add_button));
         let suppress = self.suppress_emit.clone();
         relm4::gtk::glib::idle_add_local_once(move || {
-            *suppress.borrow_mut() = false;
+            suppress.set(false);
         });
     }
 
@@ -435,7 +438,7 @@ fn build_column_row(
     col: &DraftColumn,
     driver_id: &str,
     sender: ComponentSender<StructureTab>,
-    suppress_emit: Rc<RefCell<bool>>,
+    suppress_emit: Rc<Cell<bool>>,
 ) -> gtk::Widget {
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -459,7 +462,7 @@ fn build_column_row(
     let sender_for_name = sender.clone();
     let suppress_for_name = suppress_emit.clone();
     name_entry.connect_changed(move |e| {
-        if *suppress_for_name.borrow() {
+        if suppress_for_name.get() {
             return;
         }
         sender_for_name.input(StructureTabInput::ColumnEdited {
@@ -481,7 +484,7 @@ fn build_column_row(
         let sender_for_type = sender.clone();
         let suppress_for_type = suppress_emit.clone();
         entry.connect_changed(move |e| {
-            if *suppress_for_type.borrow() {
+            if suppress_for_type.get() {
                 return;
             }
             sender_for_type.input(StructureTabInput::ColumnEdited {
@@ -509,7 +512,7 @@ fn build_column_row(
     let sender_for_null = sender.clone();
     let suppress_for_null = suppress_emit.clone();
     nullable_check.connect_toggled(move |c| {
-        if *suppress_for_null.borrow() {
+        if suppress_for_null.get() {
             return;
         }
         sender_for_null.input(StructureTabInput::ColumnEdited {
@@ -532,7 +535,7 @@ fn build_column_row(
     let sender_for_default = sender.clone();
     let suppress_for_default = suppress_emit.clone();
     default_entry.connect_changed(move |e| {
-        if *suppress_for_default.borrow() {
+        if suppress_for_default.get() {
             return;
         }
         let text = e.text().to_string();
@@ -553,7 +556,7 @@ fn build_column_row(
     let sender_for_pk = sender.clone();
     let suppress_for_pk = suppress_emit.clone();
     pk_check.connect_toggled(move |c| {
-        if *suppress_for_pk.borrow() {
+        if suppress_for_pk.get() {
             return;
         }
         sender_for_pk.input(StructureTabInput::ColumnEdited {
@@ -572,7 +575,7 @@ fn build_column_row(
     let sender_for_auto = sender.clone();
     let suppress_for_auto = suppress_emit;
     auto_check.connect_toggled(move |c| {
-        if *suppress_for_auto.borrow() {
+        if suppress_for_auto.get() {
             return;
         }
         sender_for_auto.input(StructureTabInput::ColumnEdited {
@@ -1193,11 +1196,11 @@ impl SimpleComponent for StructureTab {
 
         // Wire the table-name entry to push RenameTable / propagate to
         // the model.
-        let suppress_emit = Rc::new(RefCell::new(false));
+        let suppress_emit = Rc::new(Cell::new(false));
         let sender_for_name = sender.clone();
         let suppress_for_name = suppress_emit.clone();
         name_entry.connect_changed(move |e| {
-            if *suppress_for_name.borrow() {
+            if suppress_for_name.get() {
                 return;
             }
             sender_for_name.input(StructureTabInput::TableNameEdited(e.text().to_string()));
@@ -1648,9 +1651,9 @@ impl SimpleComponent for StructureTab {
                 if let Some(name) = new_table_name {
                     *self.mode.borrow_mut() = StructureMode::Edit;
                     *self.table_name.borrow_mut() = name.clone();
-                    *self.suppress_emit.borrow_mut() = true;
+                    self.suppress_emit.set(true);
                     self.name_entry.set_text(&name);
-                    *self.suppress_emit.borrow_mut() = false;
+                    self.suppress_emit.set(false);
                     self.drop_button.set_visible(true);
                     // New mode → Edit mode: the prominent name row at
                     // the top of the editor was a New-mode-only
