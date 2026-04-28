@@ -499,24 +499,8 @@ final class DataChangeManager: ChangeManaging {
 
     // MARK: - Core Undo Application
 
-    private static let undoTrace = Logger(subsystem: "com.TablePro", category: "UndoTrace")
-
     // swiftlint:disable:next function_body_length
     private func applyDataUndo(_ action: UndoAction) {
-        let traceStart = Date()
-        let actionName: String
-        switch action {
-        case .cellEdit: actionName = "cellEdit"
-        case .rowInsertion: actionName = "rowInsertion"
-        case .rowDeletion: actionName = "rowDeletion"
-        case .batchRowDeletion: actionName = "batchRowDeletion"
-        case .batchRowInsertion: actionName = "batchRowInsertion"
-        }
-        Self.undoTrace.info("applyDataUndo START action=\(actionName) changes=\(self.changes.count)")
-        defer {
-            let elapsed = Date().timeIntervalSince(traceStart) * 1000
-            Self.undoTrace.info("applyDataUndo END elapsed=\(elapsed)ms")
-        }
         switch action {
         case .cellEdit(let rowIndex, let columnIndex, let columnName, let previousValue, let newValue, let originalRow):
             registerUndo(actionName: String(localized: "Edit Cell")) { target in
@@ -711,10 +695,7 @@ final class DataChangeManager: ChangeManaging {
         reloadVersion += 1
 
         if let result = lastUndoResult {
-            let cbStart = Date()
             onUndoApplied?(result)
-            let cbElapsed = Date().timeIntervalSince(cbStart) * 1000
-            Self.undoTrace.info("onUndoApplied callback elapsed=\(cbElapsed)ms")
         }
     }
 

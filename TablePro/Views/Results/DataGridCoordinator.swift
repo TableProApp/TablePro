@@ -6,7 +6,6 @@
 //
 
 import AppKit
-import os
 import SwiftUI
 
 // MARK: - Coordinator
@@ -86,7 +85,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     /// Guards against two-frame bounce when async column layout write-back triggers updateNSView
     var isWritingColumnLayout: Bool = false
     var isEscapeCancelling = false
-    var viewForRowCallCount: Int = 0
     /// Debounced task for persisting column layout after resize/reorder
     var layoutPersistTask: Task<Void, Never>?
 
@@ -250,22 +248,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
-        let trace = Logger(subsystem: "com.TablePro", category: "UndoTrace")
-        let start = Date()
-        let beforeCallCount = viewForRowCallCount
-
         rowProvider.invalidateDisplayCache()
-        let t1 = Date().timeIntervalSince(start) * 1000
         rebuildVisualStateCache()
-        let t2 = Date().timeIntervalSince(start) * 1000
         updateCache()
-        let t3 = Date().timeIntervalSince(start) * 1000
         tableView.reloadData()
-        let t4 = Date().timeIntervalSince(start) * 1000
         lastIdentity = nil
-
-        let cellCalls = viewForRowCallCount - beforeCallCount
-        trace.info("applyFullReplace invalidateCache=\(t1)ms rebuildVS=\(t2 - t1)ms updateCache=\(t3 - t2)ms reloadData=\(t4 - t3)ms total=\(t4)ms rows=\(self.cachedRowCount) cellCalls=\(cellCalls)")
     }
 
     func invalidateCachesForUndoRedo() {

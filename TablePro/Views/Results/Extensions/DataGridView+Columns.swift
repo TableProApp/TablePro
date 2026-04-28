@@ -8,7 +8,6 @@ import SwiftUI
 
 extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        viewForRowCallCount &+= 1
         guard let column = tableColumn else { return nil }
 
         let columnId = column.identifier.rawValue

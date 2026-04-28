@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import os
 
 extension MainContentCoordinator {
     // MARK: - Row Operations
@@ -103,36 +102,20 @@ extension MainContentCoordinator {
     }
 
     func handleUndoResult(_ result: UndoResult) {
-        let traceStart = Date()
-        let trace = Logger(subsystem: "com.TablePro", category: "UndoTrace")
-        trace.info("handleUndoResult START")
-        defer {
-            let elapsed = Date().timeIntervalSince(traceStart) * 1000
-            trace.info("handleUndoResult END elapsed=\(elapsed)ms")
-        }
-
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
         let buffer = rowDataStore.buffer(for: tab.id)
-
-        let applyStart = Date()
         if let adjustedSelection = rowOperationsManager.applyUndoResult(
             result, resultRows: &buffer.rows
         ) {
             selectionState.indices = adjustedSelection
         }
-        let applyElapsed = Date().timeIntervalSince(applyStart) * 1000
-        trace.info("applyUndoResult elapsed=\(applyElapsed)ms rows=\(buffer.rows.count)")
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tab.id)
-
-        let invalidateStart = Date()
         dataTabDelegate?.tableViewCoordinator?.invalidateCachesForUndoRedo()
-        let invalidateElapsed = Date().timeIntervalSince(invalidateStart) * 1000
-        trace.info("invalidateCachesForUndoRedo elapsed=\(invalidateElapsed)ms")
     }
 
     func copySelectedRowsToClipboard(indices: Set<Int>) {

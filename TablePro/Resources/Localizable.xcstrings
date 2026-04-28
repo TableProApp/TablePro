@@ -29537,6 +29537,9 @@
         }
       }
     },
+    "Paste Cells" : {
+
+    },
     "Paste your CREATE TABLE statement below:" : {
       "extractionState" : "stale",
       "localizations" : {
