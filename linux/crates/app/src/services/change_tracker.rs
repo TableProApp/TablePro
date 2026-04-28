@@ -25,11 +25,6 @@
 //! Tests should construct a fresh `ChangeTrackerRegistry::new()` to
 //! avoid contaminating each other through the thread-local global.
 
-// Many items are public for the upcoming UI integration but unused
-// at this point of the rollout — silence dead-code warnings module-
-// wide rather than annotating each item.
-#![allow(dead_code)]
-
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 
@@ -204,6 +199,7 @@ pub struct TabChangeTracker {
 }
 
 impl TabChangeTracker {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -416,10 +412,12 @@ impl TabChangeTracker {
         Some(op)
     }
 
+    #[cfg(test)]
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
 
+    #[cfg(test)]
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
@@ -753,26 +751,22 @@ where
 }
 
 /// Open a tracker for a tab. Idempotent.
-#[allow(dead_code)]
 pub fn open_tab(tab_id: Uuid) {
     REGISTRY.with(|reg| reg.borrow_mut().open_tab(tab_id));
 }
 
 /// Drop a tab's tracker. Called when the BrowseTab is closed.
-#[allow(dead_code)]
 pub fn close_tab(tab_id: Uuid) {
     REGISTRY.with(|reg| reg.borrow_mut().close_tab(tab_id));
 }
 
 /// True if any open tab has pending changes — used by the app-level
 /// quit guard to decide whether to show the "Unsaved changes" dialog.
-#[allow(dead_code)]
 pub fn any_pending_globally() -> bool {
     REGISTRY.with(|reg| reg.borrow().any_pending())
 }
 
 /// Tabs with pending changes — ordered arbitrary (HashMap iteration).
-#[allow(dead_code)]
 pub fn pending_tabs() -> Vec<Uuid> {
     REGISTRY.with(|reg| reg.borrow().pending_tabs())
 }

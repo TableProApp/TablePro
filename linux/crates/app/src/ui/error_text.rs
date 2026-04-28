@@ -1,8 +1,8 @@
 use tablepro_core::DriverError;
-
+#[cfg(test)]
 use tablepro_core::sql_dialect::BuildSqlError;
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn build_sql_message(error: &BuildSqlError) -> String {
     match error {
         BuildSqlError::NoPrimaryKey => crate::tr!("This table has no primary key. Use the modal Edit dialog instead."),
@@ -15,7 +15,6 @@ pub fn build_sql_message(error: &BuildSqlError) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub fn driver_message(error: &DriverError) -> String {
     match error {
         DriverError::ConnectionRefused => crate::tr!("Could not reach the database. Is it running?"),

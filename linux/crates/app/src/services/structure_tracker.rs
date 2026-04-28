@@ -14,8 +14,6 @@
 //! `StructureTrackerRegistry::new()` instances to avoid contaminating
 //! each other through the thread-local global.
 
-#![allow(dead_code)]
-
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 
@@ -60,6 +58,12 @@ pub enum StructureOp {
         table: String,
         column_name: String,
     },
+    /// Renames a column inline. The Structure tab UI doesn't yet
+    /// expose this op as a dedicated affordance — column-name edits
+    /// today round-trip through Drop+Add via the AlterColumn path —
+    /// but `materialize` knows how to emit the SQL when a future UI
+    /// flow pushes it.
+    #[allow(dead_code)]
     RenameColumn {
         schema: Option<String>,
         table: String,
@@ -75,7 +79,11 @@ pub enum StructureOp {
         table: String,
         column: DraftColumn,
     },
-    /// MySQL-only. `after = None` means FIRST.
+    /// MySQL-only column reorder via `MODIFY COLUMN ... AFTER`.
+    /// `after = None` means `FIRST`. Drag-reorder UI not yet wired —
+    /// the materialize path is in place so adding the gesture later
+    /// is one UI commit.
+    #[allow(dead_code)]
     ReorderColumn {
         schema: Option<String>,
         table: String,
@@ -134,6 +142,7 @@ pub struct StructureChangeTracker {
 }
 
 impl StructureChangeTracker {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::default()
     }
@@ -213,10 +222,12 @@ impl StructureChangeTracker {
         Some(forward)
     }
 
+    #[cfg(test)]
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }
 
+    #[cfg(test)]
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }

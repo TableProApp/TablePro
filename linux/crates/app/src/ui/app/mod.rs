@@ -151,7 +151,6 @@ pub enum TableMode {
 /// parallel inside an `AdwViewStack`. Switching `mode` flips the
 /// stack's visible child without destroying state on the inactive
 /// side; pending-change trackers, pagination, sort, search remain.
-#[allow(dead_code)]
 pub struct TableTabSlot {
     pub id: Uuid,
     pub page: adw::TabPage,
@@ -251,11 +250,6 @@ pub(super) fn read_workspace_tab_id(page: &adw::TabPage) -> Option<Uuid> {
     unsafe { page.qdata::<Uuid>(workspace_tab_id_quark()).map(|p| *p.as_ref()) }
 }
 
-// `UndoActiveStructureTab` / `RedoActiveStructureTab` are the only
-// variants without a current emit site (Structure tab Ctrl+Z/Y will
-// fire them in a follow-up commit alongside the full UI). Carrying
-// the keep-alive on the enum is cheaper than annotating each variant.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum AppMsg {
     OpenConnect,
@@ -475,9 +469,14 @@ pub enum AppMsg {
     /// the sidebar factory without going through the full Connected
     /// path.
     TablesReloaded(Vec<TableInfo>),
-    /// Ctrl+Z on a Structure tab.
+    /// Ctrl+Z on a Structure tab. The Structure-side Ctrl+Z UI is
+    /// not yet wired; the handler is in place so the keybinding
+    /// can be added in a one-line follow-up.
+    #[allow(dead_code)]
     UndoActiveStructureTab,
-    /// Ctrl+Y on a Structure tab.
+    /// Ctrl+Y on a Structure tab. Same status as
+    /// `UndoActiveStructureTab`.
+    #[allow(dead_code)]
     RedoActiveStructureTab,
 }
 

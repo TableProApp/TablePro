@@ -239,7 +239,6 @@ pub enum ColumnField {
     Default(Option<String>),
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 pub enum StructureTabOutput {
     DirtyChanged(bool),
