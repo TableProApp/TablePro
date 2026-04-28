@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Introduced TableRows, Row, and Delta value types in TablePro/Models/Query/ as the foundation for the data grid row model rewrite. No callers migrated yet (Phase C.1 of the DataGrid refactor).
 - DataChangeManager extracted a PendingChanges value type that owns cross-collection invariants for cell edits, row insertions, and deletions. DataChangeManager kept undo/redo registration, plugin SQL generation, and the `@Observable` boundary, dropping from ~960 to ~190 lines. The serialization DTO `TabPendingChanges` is renamed to `TabChangeSnapshot` to distinguish it from the live tracker.
 - AnyChangeManager uses ChangeManaging protocol instead of closure-based type erasure, removing all runtime `[Any]` downcasts
 - Row selection state moved from MainContentView @State to GridSelectionState @Observable class, preventing full view tree invalidation on every row click
