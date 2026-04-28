@@ -7,6 +7,7 @@ import AppKit
 
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
+        guard !isCommittingCellEdit else { return }
         guard let tableView else { return }
         let tableRows = tableRowsProvider()
         guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
@@ -14,6 +15,9 @@ extension TableViewCoordinator {
         guard columnIndex < displayRowValues.values.count else { return }
         let oldValue = displayRowValues.values[columnIndex]
         guard oldValue != newValue else { return }
+
+        isCommittingCellEdit = true
+        defer { isCommittingCellEdit = false }
 
         let storageRow = tableRowsIndex(forDisplayRow: row)
         let columnName = tableRows.columns[columnIndex]

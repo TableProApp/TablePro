@@ -86,6 +86,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var hasUserResizedColumns: Bool = false
     var isWritingColumnLayout: Bool = false
     var isEscapeCancelling = false
+    var isCommittingCellEdit = false
     var layoutPersistTask: Task<Void, Never>?
 
     static let rowViewIdentifier = NSUserInterfaceItemIdentifier("TableRowView")
