@@ -175,6 +175,18 @@ pub enum BrowseTabInput {
         row_position: u32,
     },
     GridCopyToClipboard(String),
+    /// Ctrl+Z on this tab. Pops one entry off the change tracker's
+    /// undo stack AND mirrors the visual revert in the grid:
+    /// CellEdit → reset the RowObject's cell + items_changed;
+    /// Insert → remove the draft RowObject from the ListStore;
+    /// Delete → re-bind the row so the strikethrough overlay drops.
+    /// Without the mirror the chrome (counter, .tp-cell-modified
+    /// class) updated correctly while the cell text stayed at the
+    /// post-edit value.
+    Undo,
+    /// Ctrl+Shift+Z. Symmetric to Undo: re-applies the popped op
+    /// and mirrors the visual change forward.
+    Redo,
     /// User clicked Save — materialize tracker pending changes and
     /// emit them as a single `BrowseTabOutput::ExecuteTransaction`
     /// for atomic commit.
@@ -2018,6 +2030,100 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::FocusInsertedDraft => {
                 self.focus_inserted_draft();
+            }
+            BrowseTabInput::Undo => {
+                use crate::services::change_tracker::UndoOp;
+                let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.undo()) {
+                    Some(Some(op)) => op,
+                    _ => return,
+                };
+                match op {
+                    UndoOp::CellEdit {
+                        row_key,
+                        col,
+                        prev_value,
+                        ..
+                    } => {
+                        // Revert the visible RowObject's cell BEFORE
+                        // the tracker's emit_changed → ChangedRows →
+                        // items_changed cascade fires connect_bind on
+                        // the row. connect_bind reads `row.cell_value(col)`
+                        // off the RowObject; if the RowObject still
+                        // holds the post-edit value, the row re-binds
+                        // with stale text even though the tracker says
+                        // Clean. The chrome looks right (no orange
+                        // tint, counter at 0) but the cell still shows
+                        // the new value — exactly the user-reported bug.
+                        if let Some(pos) = self.find_row_position_by_key(&row_key)
+                            && let Some(row_obj) = self.row_object_at(pos)
+                        {
+                            row_obj.set_cell(col, prev_value);
+                        }
+                    }
+                    UndoOp::Insert { draft_id, .. } => {
+                        // The draft RowObject is still in the
+                        // ListStore (prepended by InsertRow). Walk
+                        // the store, find the row whose draft_id
+                        // matches, remove it. The subsequent
+                        // ChangedRows event for `Draft(id)` is a
+                        // no-op once the row is gone.
+                        if let Some(store) = self.list_store() {
+                            let n = store.n_items();
+                            for i in 0..n {
+                                if let Some(obj) = store.item(i)
+                                    && let Ok(row) = obj.downcast::<super::row_object::RowObject>()
+                                    && row.draft_id() == Some(draft_id)
+                                {
+                                    store.remove(i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    UndoOp::Delete { row_key, .. } => {
+                        // No RowObject mutation needed — the row was
+                        // never visually removed; it stayed in the
+                        // ListStore with a strikethrough overlay
+                        // applied at bind time. The tracker's
+                        // emit_changed → items_changed re-bind drops
+                        // the strikethrough automatically because
+                        // `row_state` returns Clean once the deletes
+                        // entry is gone.
+                        let _ = row_key;
+                    }
+                }
+            }
+            BrowseTabInput::Redo => {
+                use crate::services::change_tracker::UndoOp;
+                let op = match crate::services::change_tracker::with_tab(self.tab_id, |t| t.redo()) {
+                    Some(Some(op)) => op,
+                    _ => return,
+                };
+                match op {
+                    UndoOp::CellEdit {
+                        row_key,
+                        col,
+                        new_value,
+                        ..
+                    } => {
+                        if let Some(pos) = self.find_row_position_by_key(&row_key)
+                            && let Some(row_obj) = self.row_object_at(pos)
+                        {
+                            row_obj.set_cell(col, new_value);
+                        }
+                    }
+                    UndoOp::Insert { draft_id, values } => {
+                        // Re-add the draft RowObject. Match the
+                        // original insert path: prepend at position 0.
+                        if let Some(store) = self.list_store() {
+                            let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
+                            store.insert(0, &draft_row);
+                        }
+                    }
+                    UndoOp::Delete { row_key, .. } => {
+                        let _ = row_key;
+                    }
+                }
             }
         }
         // Quark prevents accidental cross-page lookups; tab_id used by App

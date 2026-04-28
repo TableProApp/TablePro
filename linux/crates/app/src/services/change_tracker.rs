@@ -320,7 +320,18 @@ impl TabChangeTracker {
         false
     }
 
-    pub fn undo(&mut self) -> Option<RowKey> {
+    /// Pop one entry off the undo stack, revert the tracker's
+    /// internal state, push it onto the redo stack, and return the
+    /// `UndoOp` so the UI layer knows which visual change to apply
+    /// (revert a RowObject's cell, remove a draft from the
+    /// ListStore, or just re-bind a row to drop its strikethrough).
+    ///
+    /// Returning the full op (instead of only the `RowKey`) is what
+    /// lets the visual revert happen: the tracker holds the
+    /// `prev_value` needed to restore the RowObject's cell, and the
+    /// caller would otherwise have to peek `self.redo.back()` after
+    /// the call — fragile and bypasses the encapsulation.
+    pub fn undo(&mut self) -> Option<UndoOp> {
         let op = self.undo.pop_back()?;
         let row_key = match &op {
             UndoOp::CellEdit {
@@ -349,12 +360,17 @@ impl TabChangeTracker {
                 row_key.clone()
             }
         };
-        self.redo.push_back(op);
-        self.emit_changed(vec![row_key.clone()]);
-        Some(row_key)
+        self.redo.push_back(op.clone());
+        self.emit_changed(vec![row_key]);
+        Some(op)
     }
 
-    pub fn redo(&mut self) -> Option<RowKey> {
+    /// Pop one entry off the redo stack, re-apply the tracker's
+    /// internal state, push back onto the undo stack, and return
+    /// the `UndoOp` so the UI layer knows which visual change to
+    /// re-apply (set a RowObject's cell to `new_value`, re-add a
+    /// draft to the ListStore, or re-bind a row's strikethrough).
+    pub fn redo(&mut self) -> Option<UndoOp> {
         let op = self.redo.pop_back()?;
         let row_key = match &op {
             UndoOp::CellEdit {
@@ -395,9 +411,9 @@ impl TabChangeTracker {
                 row_key.clone()
             }
         };
-        self.undo.push_back(op);
-        self.emit_changed(vec![row_key.clone()]);
-        Some(row_key)
+        self.undo.push_back(op.clone());
+        self.emit_changed(vec![row_key]);
+        Some(op)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -843,7 +859,10 @@ mod tests {
         let key = rk(&[Value::Int(1)]);
         t.track_cell_edit(key.clone(), 1, Value::Text("a".into()), Value::Text("b".into()));
         let undone = t.undo();
-        assert_eq!(undone, Some(key.clone()));
+        assert!(matches!(
+            undone,
+            Some(UndoOp::CellEdit { ref row_key, col: 1, .. }) if row_key == &key
+        ));
         assert_eq!(t.cell_state(&key, 1), CellState::Clean);
         assert!(t.can_redo());
     }

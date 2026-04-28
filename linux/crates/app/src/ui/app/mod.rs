@@ -1292,13 +1292,19 @@ impl SimpleComponent for App {
                 self.dispatch_to_tab(id, BrowseTabInput::CommitSave);
             }
             AppMsg::UndoActiveBrowseTab => {
+                // Route through the tab so the visual revert happens
+                // alongside the tracker pop. Calling `tracker.undo()`
+                // here directly would update the tracker (counter
+                // drops, .tp-cell-modified class clears) but leave
+                // the RowObject's cell at the post-edit value, so
+                // the cell text would refuse to revert.
                 if let Some(id) = self.selected_browse_tab_id() {
-                    crate::services::change_tracker::with_tab(id, |t| t.undo());
+                    self.dispatch_to_tab(id, BrowseTabInput::Undo);
                 }
             }
             AppMsg::RedoActiveBrowseTab => {
                 if let Some(id) = self.selected_browse_tab_id() {
-                    crate::services::change_tracker::with_tab(id, |t| t.redo());
+                    self.dispatch_to_tab(id, BrowseTabInput::Redo);
                 }
             }
             AppMsg::WorkspaceTabClosed(id) => self.close_workspace_tab_by_id(id, sender),
