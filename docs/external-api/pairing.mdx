@@ -95,8 +95,8 @@ The plaintext token is held in memory only. The token store keeps the hashed for
 
 TablePro opens the `redirect` URL with `NSWorkspace.shared.open(...)`. The encoding depends on the redirect scheme:
 
-- **`raycast://...`** — TablePro appends `?context={"code":"<uuid>"}` (URL-encoded JSON). Raycast parses `context` and passes it to the receiving command as `LaunchProps.launchContext`. This matches Raycast's documented launch-context convention.
-- **Anything else** (`http://127.0.0.1:<port>/callback`, custom schemes) — TablePro appends `?code=<uuid>` as a flat query parameter. Standard OAuth-callback shape.
+- **`raycast://...`**: TablePro appends `?context={"code":"<uuid>"}` (URL-encoded JSON). Raycast parses `context` and passes it to the receiving command as `LaunchProps.launchContext`. This matches Raycast's documented launch-context convention.
+- **Anything else** (`http://127.0.0.1:<port>/callback`, custom schemes): TablePro appends `?code=<uuid>` as a flat query parameter. Standard OAuth-callback shape.
 
 ### 6. Extension exchanges the code
 
