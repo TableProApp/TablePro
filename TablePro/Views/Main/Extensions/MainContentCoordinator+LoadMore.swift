@@ -96,10 +96,11 @@ extension MainContentCoordinator {
                     }
 
                     var tab = tabManager.tabs[idx]
-                    let existingRows = tableRowsStore.tableRows(for: tab.id)
-                    let pageOffset = existingRows.rows.count
+                    var appendDelta: Delta = .none
+                    var pageOffset = 0
                     tableRowsStore.updateTableRows(for: tab.id) { rows in
-                        _ = rows.appendPage(pagedResult.rows, startingAt: pageOffset)
+                        pageOffset = rows.count
+                        appendDelta = rows.appendPage(pagedResult.rows, startingAt: rows.count)
                     }
                     let newCount = pageOffset + pagedResult.rows.count
                     tab.schemaVersion += 1
@@ -110,6 +111,7 @@ extension MainContentCoordinator {
                         tab.pagination.baseQueryForMore = nil
                     }
                     tabManager.tabs[idx] = tab
+                    dataTabDelegate?.tableViewCoordinator?.applyDelta(appendDelta)
                     toolbarState.setExecuting(false)
                     if capturedGeneration == queryGeneration {
                         currentQueryTask = nil
