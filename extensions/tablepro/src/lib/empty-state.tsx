@@ -27,7 +27,7 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Open Tablepro Website"
+                                title="Open TablePro Website"
                                 icon={Icon.Globe}
                                 onAction={() => open("https://tablepro.app")}
                             />
@@ -44,7 +44,7 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Open Tablepro"
+                                title="Open TablePro"
                                 icon={Icon.AppWindow}
                                 onAction={() =>
                                     open("tablepro://integrations/start-mcp")
@@ -63,7 +63,7 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Pair with Tablepro"
+                                title="Pair with TablePro"
                                 icon={Icon.Key}
                                 onAction={async () => {
                                     await launchCommand({
@@ -90,7 +90,7 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Pair with Tablepro"
+                                title="Pair with TablePro"
                                 icon={Icon.Key}
                                 onAction={async () => {
                                     await launchCommand({

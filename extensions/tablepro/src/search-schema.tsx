@@ -107,7 +107,11 @@ function DatabasesView({ connection }: { connection: Connection }) {
             searchBarPlaceholder="Filter databases"
         >
             {databases !== null && databases.length === 0 ? (
-                <List.EmptyView icon={Icon.HardDrive} title="No databases" />
+                <List.EmptyView
+                    icon={Icon.HardDrive}
+                    title="No databases"
+                    description="This connection has no databases to browse."
+                />
             ) : null}
             {(databases ?? []).map((db) => (
                 <List.Item
@@ -189,7 +193,11 @@ function SchemasView({
             searchBarPlaceholder="Filter schemas"
         >
             {schemas !== null && schemas.length === 0 ? (
-                <List.EmptyView icon={Icon.Folder} title="No schemas" />
+                <List.EmptyView
+                    icon={Icon.Folder}
+                    title="No schemas"
+                    description="This database has no schemas to browse."
+                />
             ) : null}
             {(schemas ?? []).map((schema) => (
                 <List.Item

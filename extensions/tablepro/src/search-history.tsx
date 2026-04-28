@@ -83,7 +83,7 @@ export default function SearchHistoryCommand() {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Copy Sql"
+                                title="Copy SQL"
                                 icon={Icon.Clipboard}
                                 onAction={async () => {
                                     await Clipboard.copy(entry.query);

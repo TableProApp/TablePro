@@ -88,7 +88,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
             actions={
                 <ActionPanel>
                     <Action
-                        title="Open in Tablepro"
+                        title="Open in TablePro"
                         icon={Icon.AppWindow}
                         onAction={async () => {
                             try {
@@ -120,7 +120,7 @@ function ConnectionRow({ connection }: { connection: Connection }) {
                         }}
                     />
                     <Action.CopyToClipboard
-                        title="Copy Connection Id"
+                        title="Copy Connection ID"
                         content={connection.id}
                         shortcut={{ modifiers: ["cmd", "shift"], key: "." }}
                     />

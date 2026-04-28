@@ -77,6 +77,7 @@ function PairForm() {
                     <ActionPanel>
                         <Action
                             title="Open Extension Preferences"
+                            icon={Icon.Gear}
                             onAction={openExtensionPreferences}
                         />
                     </ActionPanel>
@@ -92,7 +93,7 @@ function PairForm() {
             actions={
                 <ActionPanel>
                     <Action.SubmitForm
-                        title="Continue in Tablepro"
+                        title="Continue in TablePro"
                         icon={Icon.AppWindow}
                         onSubmit={async (values: {
                             client: string;
@@ -137,7 +138,8 @@ function PairForm() {
         >
             <Form.TextField
                 id="client"
-                title="Client name"
+                title="Client Name"
+                placeholder="Raycast on this Mac"
                 defaultValue={`Raycast on ${hostname()}`}
             />
             <Form.Dropdown id="scope" title="Permissions" defaultValue="read">
@@ -151,7 +153,7 @@ function PairForm() {
             </Form.Dropdown>
             <Form.TagPicker
                 id="connections"
-                title="Allowed connections"
+                title="Allowed Connections"
                 info="Leave empty to allow all current and future connections."
                 value={selectedConnections}
                 onChange={setSelectedConnections}

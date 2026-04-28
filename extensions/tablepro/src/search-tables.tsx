@@ -72,7 +72,11 @@ function ConnectionPicker() {
             searchBarPlaceholder="Pick a connection"
         >
             {connections !== null && connections.length === 0 ? (
-                <List.EmptyView icon={Icon.Plug} title="No connections yet" />
+                <List.EmptyView
+                    icon={Icon.Plug}
+                    title="No connections yet"
+                    description="Add a connection in TablePro to browse its tables."
+                />
             ) : null}
             {(connections ?? []).map((connection) => (
                 <List.Item
@@ -146,7 +150,11 @@ function TablesList({
             searchBarPlaceholder="Filter tables"
         >
             {tables !== null && tables.length === 0 ? (
-                <List.EmptyView icon={Icon.List} title="No tables" />
+                <List.EmptyView
+                    icon={Icon.List}
+                    title="No tables"
+                    description="This connection has no tables in the selected scope."
+                />
             ) : null}
             {(tables ?? []).map((table) => (
                 <List.Item
@@ -162,7 +170,7 @@ function TablesList({
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Open Table in Tablepro"
+                                title="Open Table in TablePro"
                                 icon={Icon.AppWindow}
                                 onAction={async () => {
                                     await openTableDeeplink(
@@ -174,7 +182,7 @@ function TablesList({
                                 }}
                             />
                             <Action
-                                title="Copy Create Statement"
+                                title="Copy DDL"
                                 icon={Icon.Code}
                                 shortcut={{ modifiers: ["cmd"], key: "d" }}
                                 onAction={async () => {

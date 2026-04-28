@@ -62,7 +62,7 @@ export default function RecentTabsCommand() {
                     actions={
                         <ActionPanel>
                             <Action
-                                title="Open in Tablepro"
+                                title="Open in TablePro"
                                 icon={Icon.AppWindow}
                                 onAction={async () => {
                                     try {

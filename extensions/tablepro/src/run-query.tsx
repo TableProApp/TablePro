@@ -62,7 +62,11 @@ export default function RunQueryCommand() {
     if (connections.length === 0) {
         return (
             <List>
-                <List.EmptyView icon={Icon.Plug} title="No connections yet" />
+                <List.EmptyView
+                    icon={Icon.Plug}
+                    title="No connections yet"
+                    description="Add a connection in TablePro before running queries."
+                />
             </List>
         );
     }
@@ -125,7 +129,7 @@ function QueryForm({ connections }: { connections: Connection[] }) {
                         }}
                     />
                     <Action.SubmitForm
-                        title="Open in Tablepro"
+                        title="Open Query in TablePro"
                         icon={Icon.AppWindow}
                         onSubmit={async (values: {
                             connection: string;
@@ -239,7 +243,7 @@ function ResultView({
                 actions={
                     <ActionPanel>
                         <Action
-                            title="Open in Tablepro"
+                            title="Open in TablePro"
                             icon={Icon.AppWindow}
                             onAction={() =>
                                 openQueryDeeplink(connection.id, sql)
@@ -262,7 +266,7 @@ function ResultView({
                 actions={
                     <ActionPanel>
                         <Action
-                            title="Open in Tablepro"
+                            title="Open in TablePro"
                             icon={Icon.AppWindow}
                             onAction={() =>
                                 openQueryDeeplink(connection.id, sql)
@@ -281,11 +285,11 @@ function ResultView({
             actions={
                 <ActionPanel>
                     <Action
-                        title="Open in Tablepro"
+                        title="Open in TablePro"
                         icon={Icon.AppWindow}
                         onAction={() => openQueryDeeplink(connection.id, sql)}
                     />
-                    <Action.CopyToClipboard title="Copy Sql" content={sql} />
+                    <Action.CopyToClipboard title="Copy SQL" content={sql} />
                 </ActionPanel>
             }
         />
