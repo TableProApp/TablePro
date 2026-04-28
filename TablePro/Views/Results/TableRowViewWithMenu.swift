@@ -152,13 +152,7 @@ final class TableRowViewWithMenu: NSTableRowView {
                     setValueMenu.addItem(nullItem)
                 }
 
-                let hasDefault: Bool = {
-                    guard let columnName else { return false }
-                    if let value = coordinator.rowProvider.columnDefaults[columnName], value != nil {
-                        return true
-                    }
-                    return false
-                }()
+                let hasDefault = columnName.flatMap({ coordinator.rowProvider.columnDefaults[$0] ?? nil }) != nil
                 if hasDefault {
                     let defaultItem = NSMenuItem(
                         title: String(localized: "Default"), action: #selector(setDefaultValue(_:)), keyEquivalent: "")

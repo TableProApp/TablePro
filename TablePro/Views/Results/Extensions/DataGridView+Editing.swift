@@ -7,89 +7,67 @@ import AppKit
 import SwiftUI
 
 extension TableViewCoordinator {
-    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
-        guard isEditable else { return false }
-        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return false }
-        guard !changeManager.isRowDeleted(row) else { return false }
+    enum InlineEditEligibility {
+        case eligible
+        case needsOverlayEditor(value: String)
+        case blocked
+    }
+
+    func inlineEditEligibility(row: Int, columnIndex: Int) -> InlineEditEligibility {
+        guard isEditable else { return .blocked }
+        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return .blocked }
+        guard !changeManager.isRowDeleted(row) else { return .blocked }
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
         if immutable.contains(rowProvider.columns[columnIndex]) {
-            return false
+            return .blocked
         }
 
         let columnName = rowProvider.columns[columnIndex]
-        if rowProvider.columnForeignKeys[columnName] != nil { return false }
+        if rowProvider.columnForeignKeys[columnName] != nil { return .blocked }
 
         if columnIndex < rowProvider.columnTypes.count {
             let ct = rowProvider.columnTypes[columnIndex]
             if ct.isBooleanType || ct.isDateType || ct.isJsonType
                 || ct.isBlobType || ct.isEnumType || ct.isSetType {
-                return false
+                return .blocked
             }
         }
 
-        if dropdownColumns?.contains(columnIndex) == true { return false }
-        if typePickerColumns?.contains(columnIndex) == true { return false }
+        if dropdownColumns?.contains(columnIndex) == true { return .blocked }
+        if typePickerColumns?.contains(columnIndex) == true { return .blocked }
 
         if let value = rowProvider.value(atRow: row, column: columnIndex) {
-            if value.containsLineBreak { return false }
-            if value.looksLikeJson { return false }
+            if value.containsLineBreak { return .needsOverlayEditor(value: value) }
+            if value.looksLikeJson { return .blocked }
         }
 
-        return true
+        return .eligible
+    }
+
+    func canStartInlineEdit(row: Int, columnIndex: Int) -> Bool {
+        if case .eligible = inlineEditEligibility(row: row, columnIndex: columnIndex) {
+            return true
+        }
+        return false
     }
 
     func tableView(_ tableView: NSTableView, shouldEdit tableColumn: NSTableColumn?, row: Int) -> Bool {
-        guard isEditable,
-              let tableColumn = tableColumn else { return false }
+        guard let tableColumn else { return false }
+        guard tableColumn.identifier.rawValue != "__rowNumber__" else { return false }
+        guard let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) else { return false }
 
-        let columnId = tableColumn.identifier.rawValue
-        guard columnId != "__rowNumber__",
-              !changeManager.isRowDeleted(row) else { return false }
-
-        let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if !immutable.isEmpty,
-           let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier),
-           columnIndex < rowProvider.columns.count,
-           immutable.contains(rowProvider.columns[columnIndex]) {
+        switch inlineEditEligibility(row: row, columnIndex: columnIndex) {
+        case .eligible:
+            return true
+        case .needsOverlayEditor(let value):
+            let tableColumnIdx = tableView.column(withIdentifier: tableColumn.identifier)
+            guard tableColumnIdx >= 0 else { return false }
+            showOverlayEditor(tableView: tableView, row: row, column: tableColumnIdx, columnIndex: columnIndex, value: value)
+            return false
+        case .blocked:
             return false
         }
-
-        // Popover-editor columns (date/FK/JSON) are only editable via
-        // double-click (handleDoubleClick). Block inline editing for them.
-        if let columnIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier) {
-            if columnIndex < rowProvider.columns.count {
-                let columnName = rowProvider.columns[columnIndex]
-                if rowProvider.columnForeignKeys[columnName] != nil { return false }
-            }
-            if columnIndex < rowProvider.columnTypes.count {
-                let ct = rowProvider.columnTypes[columnIndex]
-                if ct.isDateType || ct.isJsonType || ct.isEnumType || ct.isSetType || ct.isBlobType || ct.isBooleanType { return false }
-            }
-            if let dropdownCols = dropdownColumns, dropdownCols.contains(columnIndex) {
-                return false
-            }
-            if let typePickerCols = typePickerColumns, typePickerCols.contains(columnIndex) {
-                return false
-            }
-
-            // Text columns containing JSON use JSON editor popover
-            if let value = rowProvider.value(atRow: row, column: columnIndex),
-               value.looksLikeJson {
-                return false
-            }
-
-            // Multiline values use overlay editor — block inline field editor
-            if let value = rowProvider.value(atRow: row, column: columnIndex),
-               value.containsLineBreak {
-                let tableColumnIdx = tableView.column(withIdentifier: tableColumn.identifier)
-                guard tableColumnIdx >= 0 else { return false }
-                showOverlayEditor(tableView: tableView, row: row, column: tableColumnIdx, columnIndex: columnIndex, value: value)
-                return false
-            }
-        }
-
-        return true
     }
 
     // MARK: - Overlay Editor (Multiline)

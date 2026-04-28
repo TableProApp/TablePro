@@ -27,8 +27,6 @@ final class CellChevronButton: NSButton {
 final class DataGridCellFactory {
     private let cellIdentifier = NSUserInterfaceItemIdentifier("DataCell")
     private let rowNumberCellIdentifier = NSUserInterfaceItemIdentifier("RowNumberCell")
-    private let booleanCellIdentifier = NSUserInterfaceItemIdentifier("BooleanCell")
-
     private let largeDatasetThreshold = 5_000
 
     private var nullDisplayString: String = AppSettingsManager.shared.dataGrid.nullDisplay
@@ -249,71 +247,6 @@ final class DataGridCellFactory {
         gridCellView.setAccessibilityColumnIndexRange(NSRange(location: columnIndex, length: 1))
 
         return gridCellView
-    }
-
-    // MARK: - Boolean Cell
-
-    func makeBooleanCell(
-        tableView: NSTableView,
-        row: Int,
-        columnIndex: Int,
-        rawValue: String?,
-        visualState: RowVisualState,
-        isEditable: Bool,
-        isFocused: Bool,
-        target: AnyObject?,
-        action: Selector?
-    ) -> NSView {
-        let cellView: BooleanCellView
-        if let reused = tableView.makeView(withIdentifier: booleanCellIdentifier, owner: nil) as? BooleanCellView {
-            cellView = reused
-        } else {
-            cellView = BooleanCellView()
-            cellView.identifier = booleanCellIdentifier
-            cellView.wantsLayer = true
-        }
-
-        cellView.cellRow = row
-        cellView.cellColumnIndex = columnIndex
-
-        let checkbox = cellView.checkbox
-        checkbox.target = target
-        checkbox.action = action
-        checkbox.isEnabled = isEditable && !visualState.isDeleted
-        checkbox.state = BooleanValueMapper.state(for: rawValue)
-
-        let isModified = visualState.modifiedColumns.contains(columnIndex)
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        if visualState.isDeleted {
-            cellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.deleted
-        } else if visualState.isInserted {
-            cellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.inserted
-        } else if isModified {
-            cellView.changeBackgroundColor = ThemeEngine.shared.colors.dataGrid.modified
-        } else {
-            cellView.changeBackgroundColor = nil
-        }
-        cellView.layer?.borderWidth = 0
-        cellView.isFocusedCell = isFocused
-        CATransaction.commit()
-
-        let accessibilityValue: String
-        switch checkbox.state {
-        case .on:
-            accessibilityValue = String(localized: "true")
-        case .off:
-            accessibilityValue = String(localized: "false")
-        default:
-            accessibilityValue = String(localized: "NULL")
-        }
-        cellView.setAccessibilityLabel(
-            String(format: String(localized: "Row %d, column %d: %@"), row + 1, columnIndex + 1, accessibilityValue)
-        )
-        cellView.setAccessibilityRowIndexRange(NSRange(location: row, length: 1))
-        cellView.setAccessibilityColumnIndexRange(NSRange(location: columnIndex, length: 1))
-
-        return cellView
     }
 
     // MARK: - Button Creation

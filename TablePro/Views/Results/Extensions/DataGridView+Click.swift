@@ -127,26 +127,6 @@ extension TableViewCoordinator {
         }
     }
 
-    // MARK: - Boolean Cell Toggle
-
-    @objc func handleBooleanCellToggle(_ sender: NSButton) {
-        guard isEditable else { return }
-        var current: NSView? = sender.superview
-        while let view = current, !(view is BooleanCellView) {
-            current = view.superview
-        }
-        guard let cellView = current as? BooleanCellView else { return }
-
-        let row = cellView.cellRow
-        let columnIndex = cellView.cellColumnIndex
-        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return }
-        guard !changeManager.isRowDeleted(row) else { return }
-
-        let usesTrueFalse = databaseType.map { PluginManager.shared.usesTrueFalseBooleans(for: $0) } ?? false
-        let newValue = BooleanValueMapper.rawValue(for: sender.state, usesTrueFalse: usesTrueFalse)
-        commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)
-    }
-
     // MARK: - FK Navigation
 
     @objc func handleFKArrowClick(_ sender: NSButton) {

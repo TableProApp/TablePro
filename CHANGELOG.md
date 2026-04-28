@@ -13,7 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Connection URL export: SSH password, Redis database index, MongoDB auth params (`authSource`, `authMechanism`, `replicaSet`), and multi-host
 - SSH Private Key auth resolves keys from `~/.ssh/config` and default locations (`id_ed25519`, `id_rsa`, `id_ecdsa`) when no explicit key path is set
 - Click a focused cell to start editing without a second click
-- Boolean columns render as native checkboxes; NULL shows as mixed state. Right-click "Set Value > NULL" sets the cell back to NULL on nullable columns.
 - Data grid focus ring follows the system accent color and contrast settings
 - Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
 
