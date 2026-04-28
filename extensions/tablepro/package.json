@@ -6,6 +6,18 @@
   "icon": "icon.png",
   "author": "ngoquocdat",
   "categories": ["Developer Tools", "Productivity"],
+  "keywords": [
+    "database",
+    "sql",
+    "mysql",
+    "postgres",
+    "postgresql",
+    "mongodb",
+    "redis",
+    "clickhouse",
+    "tableplus",
+    "dbeaver"
+  ],
   "platforms": ["macOS"],
   "license": "MIT",
   "version": "0.1.0",

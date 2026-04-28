@@ -6,7 +6,6 @@ import {
     launchCommand,
     LaunchType,
     openExtensionPreferences,
-    open,
 } from "@raycast/api";
 import { ErrorScenario, describeScenario } from "./errors";
 
@@ -26,10 +25,10 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     description={description}
                     actions={
                         <ActionPanel>
-                            <Action
+                            <Action.OpenInBrowser
                                 title="Open TablePro Website"
                                 icon={Icon.Globe}
-                                onAction={() => open("https://tablepro.app")}
+                                url="https://tablepro.app"
                             />
                         </ActionPanel>
                     }
@@ -43,12 +42,10 @@ export function ScenarioEmptyView({ scenario }: Props) {
                     description={description}
                     actions={
                         <ActionPanel>
-                            <Action
+                            <Action.Open
                                 title="Open TablePro"
                                 icon={Icon.AppWindow}
-                                onAction={() =>
-                                    open("tablepro://integrations/start-mcp")
-                                }
+                                target="tablepro://integrations/start-mcp"
                             />
                         </ActionPanel>
                     }
