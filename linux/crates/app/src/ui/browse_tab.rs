@@ -472,7 +472,31 @@ impl BrowseTab {
             };
             self.pending_banner.set_title(&banner_title);
         }
-        self.pending_banner.set_revealed(visible);
+        self.refresh_banner_visibility(visible);
+    }
+
+    /// Reveal at most ONE banner at a time. Stacking three banners
+    /// (read-only + no-PK + pending) wastes vertical space and
+    /// creates a wall-of-warnings aesthetic that desensitises the
+    /// user to actual problems. Priority order, most-blocking first:
+    ///
+    /// 1. Read-only — every other state is moot if edits are off.
+    /// 2. No primary key — edits are blocked at row-identity level.
+    /// 3. Pending unsaved changes — informational, only meaningful
+    ///    when the previous two are clear.
+    ///
+    /// `pending_visible` is the caller's intended pending-banner
+    /// state (it carries the per-tab pending-count so this helper
+    /// doesn't need to recompute it).
+    fn refresh_banner_visibility(&self, pending_visible: bool) {
+        let read_only = self.read_only;
+        let no_pk = self.current_columns.iter().any(|c| !c.primary_key)
+            && !self.current_columns.is_empty()
+            && !self.current_columns.iter().any(|c| c.primary_key);
+        self.read_only_banner.set_revealed(read_only);
+        self.no_pk_banner.set_revealed(!read_only && no_pk);
+        self.pending_banner
+            .set_revealed(!read_only && !no_pk && pending_visible);
     }
 
     /// Walk the selection → FilterListModel → ListStore chain to
@@ -931,7 +955,15 @@ impl BrowseTab {
             self.delete_button
                 .set_tooltip_text(Some(&crate::tr!("Delete selected row")));
         }
-        self.no_pk_banner.set_revealed(has_columns && !has_pk);
+        // Banner mutual exclusion lives in `refresh_banner_visibility`;
+        // forward the current pending-banner intent so the no-PK
+        // toggle doesn't override it. The pending banner reveals
+        // when there's an actual count > 0.
+        let pending_visible =
+            crate::services::change_tracker::with_tab_ref(self.tab_id, |tr| tr.pending_count() > 0).unwrap_or(false);
+        self.refresh_banner_visibility(pending_visible);
+        let _ = has_columns;
+        let _ = has_pk;
     }
 
     fn update_paginator_label(&self) {
@@ -1479,7 +1511,10 @@ impl SimpleComponent for BrowseTab {
             }
             BrowseTabInput::SetReadOnly(read_only) => {
                 self.read_only = read_only;
-                self.read_only_banner.set_revealed(read_only);
+                let pending_visible =
+                    crate::services::change_tracker::with_tab_ref(self.tab_id, |tr| tr.pending_count() > 0)
+                        .unwrap_or(false);
+                self.refresh_banner_visibility(pending_visible);
                 self.refresh_crud_buttons();
                 // Force a full grid rebuild so editable labels turn into
                 // read-only labels (or vice versa) without waiting for the

@@ -1,6 +1,6 @@
 use relm4::adw::prelude::*;
 use relm4::gtk::gio;
-use relm4::{ComponentController, ComponentSender, gtk};
+use relm4::{ComponentController, ComponentSender, adw, gtk};
 
 use tablepro_core::{ColumnInfo, QueryResult};
 use uuid::Uuid;
@@ -268,8 +268,39 @@ impl App {
     }
 
     pub(super) fn on_refresh_active_tab(&self) {
-        if let Some(id) = self.selected_browse_tab_id() {
+        let Some(id) = self.selected_browse_tab_id() else {
+            return;
+        };
+        let dirty = crate::services::change_tracker::with_tab_ref(id, |tr| tr.has_pending()).unwrap_or(false);
+        if !dirty {
             self.dispatch_to_tab(id, BrowseTabInput::Refresh);
+            return;
         }
+        // F5 mid-edit: a refetch overwrites the model and silently
+        // drops every pending row edit / insert / delete. Confirm
+        // with a destructive AlertDialog mirroring the close-with-
+        // pending path so the user has to opt in to the data loss.
+        let dialog = adw::AlertDialog::new(
+            Some(&crate::tr!("Discard pending changes?")),
+            Some(&crate::tr!(
+                "Refreshing reloads the table from the database and drops every unsaved edit on this tab."
+            )),
+        );
+        dialog.add_response("cancel", &crate::tr!("Cancel"));
+        dialog.add_response("discard", &crate::tr!("Discard and refresh"));
+        dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+        dialog.set_default_response(Some("cancel"));
+        dialog.set_close_response("cancel");
+        let workspace_tabs = self.workspace_tabs.clone();
+        dialog.connect_response(None, move |dlg: &adw::AlertDialog, response: &str| {
+            dlg.close();
+            if response == "discard" {
+                crate::services::change_tracker::with_tab(id, |t| t.clear());
+                if let Some(controller) = workspace_tabs.borrow().get(&id).and_then(|t| t.browse_controller()) {
+                    let _ = controller.sender().send(BrowseTabInput::Refresh);
+                }
+            }
+        });
+        dialog.present(Some(&self.window));
     }
 }

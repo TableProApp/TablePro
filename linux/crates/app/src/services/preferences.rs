@@ -9,10 +9,22 @@ pub struct Preferences {
     pub editor_font_size: u32,
     #[serde(default = "default_history_retention_days")]
     pub history_retention_days: u32,
+    /// Wall-clock seconds before the editor's Run cancels a query
+    /// the driver hasn't returned from. `0` disables the timeout.
+    /// Defaults to 60s — long enough for typical OLTP work and
+    /// catalog browsing, short enough that a runaway DDL or
+    /// cross-join doesn't pin the GTK main thread waiting on
+    /// shutdown.
+    #[serde(default = "default_query_timeout_secs")]
+    pub query_timeout_secs: u32,
 }
 
 fn default_history_retention_days() -> u32 {
     30
+}
+
+fn default_query_timeout_secs() -> u32 {
+    60
 }
 
 impl Default for Preferences {
@@ -22,6 +34,7 @@ impl Default for Preferences {
             confirm_destructive: true,
             editor_font_size: 12,
             history_retention_days: default_history_retention_days(),
+            query_timeout_secs: default_query_timeout_secs(),
         }
     }
 }

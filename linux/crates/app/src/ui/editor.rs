@@ -67,6 +67,10 @@ pub enum SqlEditorInput {
     /// vs. sub-tabs) based on Vec length.
     ShowOutcomes(Vec<StatementOutcome>),
     ShowCancelled,
+    /// Query exceeded the configured wall-clock timeout. Treated
+    /// like a manual cancel from the user's perspective but with
+    /// a different status / history-record reason.
+    ShowTimedOut(u32),
     ReplaceQuery(String),
 }
 
@@ -311,14 +315,28 @@ impl SimpleComponent for SqlEditor {
                 self.executing_metadata = database_service::instance().active_metadata();
                 self.executing_started_at = Some(SystemTime::now());
 
+                let timeout_secs = crate::services::preferences::load().query_timeout_secs;
                 let sender_clone = sender.clone();
                 sender.command(move |_, shutdown| {
                     shutdown
                         .register(async move {
                             let statements = split_sql_statements(&trimmed);
+                            // A `query_timeout_secs == 0` user opt-out
+                            // turns the timeout branch off by holding a
+                            // future that never resolves. Otherwise the
+                            // tokio sleep races against `cancelled()`
+                            // and `run_statements()`; first to finish
+                            // wins.
+                            let timeout: std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> =
+                                if timeout_secs > 0 {
+                                    Box::pin(tokio::time::sleep(std::time::Duration::from_secs(timeout_secs as u64)))
+                                } else {
+                                    Box::pin(std::future::pending::<()>())
+                                };
                             let msg = tokio::select! {
                                 biased;
                                 _ = token.cancelled() => SqlEditorInput::ShowCancelled,
+                                _ = timeout => SqlEditorInput::ShowTimedOut(timeout_secs),
                                 outcomes = run_statements(conn, statements) => {
                                     let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
                                     let n_ok = outcomes
@@ -407,6 +425,32 @@ impl SimpleComponent for SqlEditor {
                     .vexpand(true)
                     .build();
                 self.results_holder.append(&cancelled_page);
+            }
+
+            SqlEditorInput::ShowTimedOut(secs) => {
+                self.cancel_token = None;
+                self.run_button.set_sensitive(true);
+                self.cancel_button.set_visible(false);
+                self.running_spinner.set_visible(false);
+                let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
+                let elapsed = self
+                    .executing_started_at
+                    .and_then(|t| SystemTime::now().duration_since(t).ok())
+                    .map(|d| d.as_millis() as i64)
+                    .unwrap_or(0);
+                let secs_str = secs.to_string();
+                let reason =
+                    crate::tr!("Query exceeded the {n}s timeout configured in Preferences.").replace("{n}", &secs_str);
+                self.record_history(elapsed, None, Outcome::Error(reason.clone()));
+                self.status.set_label(&crate::tr!("timed out"));
+                clear_box(&self.results_holder);
+                let page = adw::StatusPage::builder()
+                    .title(crate::tr!("Query timed out"))
+                    .description(&reason)
+                    .icon_name("appointment-soon-symbolic")
+                    .vexpand(true)
+                    .build();
+                self.results_holder.append(&page);
             }
 
             SqlEditorInput::ReplaceQuery(text) => {

@@ -54,6 +54,43 @@ impl App {
     }
 
     pub(super) fn on_disconnect(&mut self, sender: ComponentSender<Self>) {
+        // Block disconnect when any tab has pending changes. The
+        // teardown below clears all tracker registries, so dropping
+        // the connection mid-edit silently destroys the user's work.
+        // Confirm via an AlertDialog mirroring the window-close-with-
+        // pending and F5-with-pending paths.
+        let has_pending = crate::services::change_tracker::any_pending_globally()
+            || crate::services::structure_tracker::any_pending_globally();
+        if has_pending {
+            let dialog = adw::AlertDialog::new(
+                Some(&crate::tr!("Discard pending changes?")),
+                Some(&crate::tr!(
+                    "Disconnecting will close every tab and drop every unsaved row edit and DDL change."
+                )),
+            );
+            dialog.add_response("cancel", &crate::tr!("Cancel"));
+            dialog.add_response("discard", &crate::tr!("Discard and disconnect"));
+            dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
+            dialog.set_default_response(Some("cancel"));
+            dialog.set_close_response("cancel");
+            let sender_for_resp = sender.clone();
+            dialog.connect_response(None, move |dlg, response| {
+                dlg.close();
+                if response == "discard" {
+                    sender_for_resp.input(AppMsg::ForceDisconnect);
+                }
+            });
+            dialog.present(Some(&self.window));
+            return;
+        }
+        self.do_disconnect(sender);
+    }
+
+    /// Skip the dirty check and tear the connection down. Reachable
+    /// either from the AlertDialog "Discard and disconnect" branch
+    /// or from a clean `Disconnect` when no tracker has pending
+    /// changes.
+    pub(super) fn do_disconnect(&mut self, sender: ComponentSender<Self>) {
         // Persist + tear down workspace tabs before dropping the
         // connection (persist needs the active connection_id).
         self.teardown_workspace_tabs();

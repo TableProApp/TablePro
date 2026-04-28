@@ -126,8 +126,19 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
     let font_size_row = adw::SpinRow::with_range(8.0, 32.0, 1.0);
     font_size_row.set_title(&crate::tr!("Editor font size"));
     font_size_row.set_value(current.editor_font_size as f64);
-
     editor_group.add(&font_size_row);
+
+    // 0 disables, 1..=3600s allowed range. Subtitle exposes the
+    // disable-via-zero contract so power users editing long-running
+    // analytical queries can opt out without spelunking the JSON.
+    let timeout_row = adw::SpinRow::with_range(0.0, 3600.0, 5.0);
+    timeout_row.set_title(&crate::tr!("Query timeout (seconds)"));
+    timeout_row.set_subtitle(&crate::tr!(
+        "Cancel long-running queries automatically. Set to 0 to disable."
+    ));
+    timeout_row.set_value(current.query_timeout_secs as f64);
+    editor_group.add(&timeout_row);
+
     editor.add(&editor_group);
 
     window.add(&general);
@@ -142,12 +153,14 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         let confirm = confirm_row.clone();
         let font = font_size_row.clone();
         let retention = retention_row.clone();
+        let timeout = timeout_row.clone();
         std::rc::Rc::new(move || {
             preferences::save(&Preferences {
                 default_page_size: page_size.value() as u64,
                 confirm_destructive: confirm.is_active(),
                 editor_font_size: font.value() as u32,
                 history_retention_days: retention.value() as u32,
+                query_timeout_secs: timeout.value() as u32,
             });
         })
     };
@@ -160,6 +173,10 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         move |_| s()
     });
     retention_row.connect_value_notify({
+        let s = save_all.clone();
+        move |_| s()
+    });
+    timeout_row.connect_value_notify({
         let s = save_all.clone();
         move |_| s()
     });

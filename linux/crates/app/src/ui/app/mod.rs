@@ -289,6 +289,10 @@ pub enum AppMsg {
     OpenHistoryQuery(String),
     ReplaceActiveTabQuery(String),
     Disconnect,
+    /// Skip the dirty-state confirmation and tear the connection
+    /// down immediately. Fired from the disconnect-with-pending
+    /// AlertDialog's "Discard and disconnect" response.
+    ForceDisconnect,
     PollHealth,
     RefreshPage,
     ShowShortcuts,
@@ -1201,6 +1205,7 @@ impl SimpleComponent for App {
             AppMsg::OpenConnect => self.on_open_connect(sender),
             AppMsg::Connected { tables, driver_id } => self.on_connected(tables, driver_id, sender),
             AppMsg::Disconnect => self.on_disconnect(sender),
+            AppMsg::ForceDisconnect => self.do_disconnect(sender),
             AppMsg::DialogClosed => self.dialog = None,
             AppMsg::SelectTable {
                 schema,
