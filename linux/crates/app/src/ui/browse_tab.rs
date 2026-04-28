@@ -164,6 +164,13 @@ pub enum BrowseTabInput {
     GridCopyRowAsInsert {
         row_position: u32,
     },
+    /// Cell context-menu "Duplicate row" — clone the cell values
+    /// from `row_position` into a fresh draft row prepended to the
+    /// grid. PK / generated / auto-increment columns are blanked so
+    /// the duplicate doesn't inherit the source's identity.
+    DuplicateRow {
+        row_position: u32,
+    },
     GridCopyToClipboard(String),
     /// User clicked Save — materialize tracker pending changes and
     /// emit them as a single `BrowseTabOutput::ExecuteTransaction`
@@ -1366,6 +1373,7 @@ impl SimpleComponent for BrowseTab {
             },
             GridMsg::DeleteRowAt { table, row_position } => BrowseTabInput::GridDeleteRowAt { table, row_position },
             GridMsg::InsertRow => BrowseTabInput::InsertRow,
+            GridMsg::DuplicateRow { row_position } => BrowseTabInput::DuplicateRow { row_position },
         }));
 
         let model = BrowseTab {
@@ -1554,6 +1562,55 @@ impl SimpleComponent for BrowseTab {
                 self.current_offset = 0;
                 let _ = sender.output(BrowseTabOutput::FetchPage);
                 let _ = sender.output(BrowseTabOutput::StateChanged);
+            }
+            BrowseTabInput::DuplicateRow { row_position } => {
+                if self.current_columns.is_empty() {
+                    return;
+                }
+                let Some(snapshot) = self.current_result.as_ref() else {
+                    return;
+                };
+                let Some(source_row) = snapshot.rows.get(row_position as usize) else {
+                    return;
+                };
+                // Clone source values; blank columns whose value is
+                // owned by the database (PK, identity / serial,
+                // generated). The duplicate is meant to be a *new*
+                // row — inheriting the source's identity would either
+                // collide on save or pre-fill nonsense.
+                let values: Vec<Value> = self
+                    .current_columns
+                    .iter()
+                    .enumerate()
+                    .map(|(i, col)| {
+                        if col.primary_key || col.is_auto_increment || col.is_generated {
+                            Value::Null
+                        } else {
+                            source_row.get(i).cloned().unwrap_or(Value::Null)
+                        }
+                    })
+                    .collect();
+                let key_opt =
+                    crate::services::change_tracker::with_tab(self.tab_id, |t| t.track_insert(values.clone()));
+                let Some(key) = key_opt else {
+                    return;
+                };
+                let crate::services::change_tracker::RowKey::Draft(draft_id) = key else {
+                    return;
+                };
+                if let Some(store) = self.list_store() {
+                    let draft_row = super::row_object::RowObject::new_draft(draft_id, values);
+                    store.insert(0, &draft_row);
+                }
+                if let Some(cv) = self.current_column_view.as_ref() {
+                    cv.scroll_to(
+                        0,
+                        None,
+                        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+                        None,
+                    );
+                }
+                sender.input(BrowseTabInput::FocusInsertedDraft);
             }
             BrowseTabInput::InsertRow => {
                 if self.current_columns.is_empty() {

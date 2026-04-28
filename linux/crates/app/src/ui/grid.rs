@@ -38,6 +38,15 @@ pub enum GridMsg {
     /// `BrowseTabInput::InsertRow`. Same effect as the toolbar Insert
     /// button or Ctrl+N.
     InsertRow,
+    /// "Duplicate row" — create a fresh draft row whose cell values
+    /// are pre-populated from the source row. The browse tab's
+    /// handler reads the source row from the result snapshot and
+    /// pushes a draft via the change tracker; user can edit before
+    /// Save. PK / generated / auto-increment columns are blanked so
+    /// the duplicate doesn't inherit the source's identity.
+    DuplicateRow {
+        row_position: u32,
+    },
 }
 
 /// Per-tab context plumbed into the grid factory so cell bind-time
@@ -1234,6 +1243,7 @@ fn attach_context_menu(
     if editable {
         let mutate = gio::Menu::new();
         mutate.append(Some(&crate::tr!("Insert row")), Some("cell.insert-row"));
+        mutate.append(Some(&crate::tr!("Duplicate row")), Some("cell.duplicate-row"));
         mutate.append(Some(&crate::tr!("Set to NULL")), Some("cell.set-null"));
         mutate.append(Some(&crate::tr!("Delete row")), Some("cell.delete-row"));
         menu.append_section(None, &mutate);
@@ -1315,7 +1325,7 @@ fn attach_context_menu(
     let table_for_delete = table;
     let delete_row = gio::ActionEntry::builder("delete-row")
         .activate({
-            let s = sender;
+            let s = sender.clone();
             move |_, _, _| {
                 let position = POSITION_SLOT.get(&widget_for_delete).unwrap_or(0);
                 s.send(GridMsg::DeleteRowAt {
@@ -1323,6 +1333,16 @@ fn attach_context_menu(
                     row_position: position,
                 })
                 .ok();
+            }
+        })
+        .build();
+    let widget_for_dup = widget.clone();
+    let duplicate_row = gio::ActionEntry::builder("duplicate-row")
+        .activate({
+            let s = sender;
+            move |_, _, _| {
+                let position = POSITION_SLOT.get(&widget_for_dup).unwrap_or(0);
+                s.send(GridMsg::DuplicateRow { row_position: position }).ok();
             }
         })
         .build();
@@ -1334,6 +1354,7 @@ fn attach_context_menu(
         insert_row,
         set_null,
         delete_row,
+        duplicate_row,
     ]);
     widget.insert_action_group("cell", Some(&group));
 
