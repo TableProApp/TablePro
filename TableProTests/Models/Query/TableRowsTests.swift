@@ -42,6 +42,18 @@ struct TableRowsConstructionTests {
         #expect(table.rows[0].values == ["1"])
         #expect(table.rows[1].values == ["2"])
     }
+
+    @Test("Factory pads short rows and truncates long rows to columns.count")
+    func factoryNormalizesRowWidth() {
+        let table = TableRows.from(
+            queryRows: [["a"], ["b", "c", "extra"]],
+            columns: ["c1", "c2"],
+            columnTypes: [.text(rawType: nil), .text(rawType: nil)]
+        )
+        #expect(table.count == 2)
+        #expect(table.rows[0].values == ["a", nil])
+        #expect(table.rows[1].values == ["b", "c"])
+    }
 }
 
 @Suite("TableRows - reads")
@@ -137,7 +149,8 @@ struct TableRowsEditTests {
         let delta = table.editMany([
             (row: 0, column: 0, value: "a"),
             (row: 0, column: 1, value: "y"),
-            (row: 99, column: 0, value: "ignored")
+            (row: 99, column: 0, value: "ignored"),
+            (row: 0, column: 99, value: "ignored")
         ])
         let expected: Set<CellPosition> = [CellPosition(row: 0, column: 1)]
         #expect(delta == .cellsChanged(expected))
@@ -310,6 +323,22 @@ struct TableRowsReplaceTests {
         #expect(table.count == 1)
         #expect(table.rows[0].id == .existing(0))
         #expect(table.rows[0].values == ["x"])
+    }
+
+    @Test("replace with non-zero offset assigns existing IDs starting from offset")
+    func replaceWithNonZeroOffsetAssignsExistingIDs() {
+        var table = TableRows.from(
+            queryRows: [["a"]],
+            columns: ["c1"],
+            columnTypes: [.text(rawType: nil)]
+        )
+        let delta = table.replace(rows: [["x"], ["y"]], offset: 5)
+        #expect(delta == .fullReplace)
+        #expect(table.count == 2)
+        #expect(table.rows[0].id == .existing(5))
+        #expect(table.rows[1].id == .existing(6))
+        #expect(table.rows[0].values == ["x"])
+        #expect(table.rows[1].values == ["y"])
     }
 }
 
