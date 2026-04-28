@@ -14,6 +14,7 @@ private final class FakeRowDeltaApplier: RowDeltaApplying {
     var removedCalls: [IndexSet] = []
     var fullReplaceCount: Int = 0
     var invalidateCount: Int = 0
+    var deltaCalls: [Delta] = []
 
     func applyInsertedRows(_ indices: IndexSet) {
         insertedCalls.append(indices)
@@ -29,6 +30,10 @@ private final class FakeRowDeltaApplier: RowDeltaApplying {
 
     func invalidateCachesForUndoRedo() {
         invalidateCount += 1
+    }
+
+    func applyDelta(_ delta: Delta) {
+        deltaCalls.append(delta)
     }
 }
 
