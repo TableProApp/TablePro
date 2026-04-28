@@ -380,10 +380,14 @@ final class MainContentCommandActions {
         } else if coordinator?.tabManager.tabs.isEmpty == true {
             window.close()
         } else {
-            coordinator?.tableRowsStore.evictAll(except: nil)
-            coordinator?.tabManager.tabs.removeAll()
-            coordinator?.tabManager.selectedTabId = nil
-            coordinator?.toolbarState.isTableTab = false
+            if let coordinator {
+                for tab in coordinator.tabManager.tabs {
+                    coordinator.tableRowsStore.removeTableRows(for: tab.id)
+                }
+                coordinator.tabManager.tabs.removeAll()
+                coordinator.tabManager.selectedTabId = nil
+                coordinator.toolbarState.isTableTab = false
+            }
         }
         Self.logger.info("[close] performClose done ms=\(Int(Date().timeIntervalSince(t0) * 1_000))")
     }
