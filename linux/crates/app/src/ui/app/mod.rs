@@ -165,6 +165,12 @@ pub struct TableTabSlot {
     /// promotes to `Edit` on first successful save.
     pub structure_mode: crate::ui::structure_tab::StructureMode,
     pub view_stack: adw::ViewStack,
+    /// Whether the Structure-side controller has been told to load
+    /// columns / indexes / FKs yet. Data-mode opens defer this to
+    /// avoid an N-tabs introspection stampede; flips to `true` on
+    /// the first mode switch into Structure (or eagerly when the
+    /// user opens directly to Structure mode via "Edit Structure").
+    pub structure_loaded: bool,
 }
 
 /// A tab in the unified workspace.
@@ -321,6 +327,14 @@ pub enum AppMsg {
     /// triggers persistence (writes the current display order + each
     /// slot's state to workspace_state.json).
     WorkspaceTabsChanged,
+    /// User flipped a Table tab's `AdwViewSwitcher` between Data and
+    /// Structure. Routed through the message loop so the slot.mode
+    /// mutation lands at a safe point — the visible-child-name notify
+    /// fires synchronously inside GTK signal cascades (during
+    /// `tab_view.append`, `set_selected_page`, etc.) and a direct
+    /// `borrow_mut()` from the closure re-enters another live borrow
+    /// and panics with "RefCell already borrowed".
+    TableTabModeChanged(Uuid, TableMode),
     /// Run a sequence of pending-changeset statements inside a single
     /// DB transaction. Materialised by a BrowseTab's change tracker
     /// when the user clicks Save. App calls
@@ -1201,6 +1215,20 @@ impl SimpleComponent for App {
             AppMsg::FetchBrowseColumns(tab_id) => self.fetch_browse_columns(tab_id, sender),
             AppMsg::FetchBrowseRowCount(tab_id) => self.fetch_browse_row_count(tab_id, sender),
             AppMsg::WorkspaceTabsChanged => self.on_workspace_tabs_changed(),
+            AppMsg::TableTabModeChanged(id, mode) => {
+                let mut needs_fetch = false;
+                if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+                    slot.mode = mode;
+                    if matches!(mode, TableMode::Structure) && !slot.structure_loaded {
+                        slot.structure_loaded = true;
+                        needs_fetch = true;
+                    }
+                }
+                if needs_fetch {
+                    sender.input(AppMsg::FetchStructureData { tab_id: id });
+                }
+                self.on_workspace_tabs_changed();
+            }
             AppMsg::WorkspaceSchemaWordsChanged => self.rebuild_schema_buffer(),
             AppMsg::ExecuteBrowseTransaction {
                 tab_id,

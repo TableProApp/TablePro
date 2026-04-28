@@ -49,6 +49,14 @@ pub struct StructureTabInit {
     pub table: String,
     pub mode: StructureMode,
     pub driver_id: String,
+    /// When `true`, skip the auto-`FetchStructure` fired at the end of
+    /// init. Used by `append_table_tab` for Data-mode opens — the
+    /// Structure pane is alive but invisible, so introspection is
+    /// deferred until the user actually switches to it. Without this,
+    /// restoring N Table tabs from disk fires N parallel three-query
+    /// introspection bursts that delay first paint and saturate the
+    /// driver pool.
+    pub defer_initial_fetch: bool,
 }
 
 /// Curated type lists per driver. Free-text input still allowed via
@@ -1174,8 +1182,10 @@ impl SimpleComponent for StructureTab {
             StructureTrackerEvent::Cleared => StructureTabInput::Cleared,
         }));
 
-        // Edit mode: kick the App for fetch_structure_data.
-        if matches!(init.mode, StructureMode::Edit) {
+        // Edit mode: kick the App for fetch_structure_data — unless
+        // the parent (Table tab in Data mode) explicitly deferred us
+        // to avoid an N-tabs-N-bursts startup stampede.
+        if matches!(init.mode, StructureMode::Edit) && !init.defer_initial_fetch {
             let _ = sender.output(StructureTabOutput::FetchStructure);
         }
 

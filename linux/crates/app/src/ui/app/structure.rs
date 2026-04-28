@@ -339,16 +339,16 @@ impl App {
         let _ = (schema, prev_table);
     }
 
-    /// Save resolved successfully. Three cases:
+    /// Save resolved successfully. Two cases post-M-1 cleanup:
     ///
-    /// 1. **New-Table draft (`Structure` slot, has new_table_name)**:
-    ///    the table now exists. Close the draft tab and append a
-    ///    fresh `Table` tab pointed at the new name in Structure mode
-    ///    so the user keeps editing in the canonical M-1 UI.
-    /// 2. **Table tab Save**: the slot stays put; just clear its
-    ///    structure tracker via the controller and refetch.
-    /// 3. **Legacy Structure(Edit) slot** (no longer reachable post-
-    ///    cleanup, but kept defensively for safety): clear and stay.
+    /// 1. **New-Table draft (`Structure` slot)**: CreateTable
+    ///    succeeded so the table now exists. Close the draft and
+    ///    append a fresh `Table` tab pointed at the new name in
+    ///    Structure mode so the user keeps editing in the canonical
+    ///    UI.
+    /// 2. **Table tab Save**: the slot stays put; just forward
+    ///    `SaveCompleted` to the structure controller so it clears
+    ///    the tracker + refetches introspection.
     pub(super) fn on_structure_save_completed(
         &mut self,
         tab_id: Uuid,
@@ -367,17 +367,16 @@ impl App {
             UpdateInPlace(Option<String>, String),
             Skip,
         }
+        // Post-M-1 cleanup: `WorkspaceTab::Structure` only exists for
+        // New-Table drafts. Edit-mode DDL flows through Table tabs
+        // exclusively. Match accordingly.
         let kind = {
             let tabs = self.workspace_tabs.borrow();
             match tabs.get(&tab_id) {
-                Some(WorkspaceTab::Structure(slot)) if matches!(slot.mode, StructureMode::New) => {
-                    if let Some(name) = new_table_name.clone() {
-                        SaveKind::PromoteNewToTable(slot.schema.clone(), name)
-                    } else {
-                        SaveKind::Skip
-                    }
-                }
-                Some(WorkspaceTab::Structure(slot)) => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
+                Some(WorkspaceTab::Structure(slot)) => match new_table_name.clone() {
+                    Some(name) => SaveKind::PromoteNewToTable(slot.schema.clone(), name),
+                    None => SaveKind::Skip,
+                },
                 Some(WorkspaceTab::Table(slot)) => SaveKind::UpdateInPlace(slot.schema.clone(), slot.table.clone()),
                 _ => SaveKind::Skip,
             }

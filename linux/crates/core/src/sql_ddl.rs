@@ -62,6 +62,18 @@ pub enum BuildDdlError {
 const MAX_TYPE_LEN: usize = 200;
 const MAX_DEFAULT_LEN: usize = 500;
 
+/// Characters that some SQL drivers (notably MySQL with certain
+/// client encodings) treat as effective statement terminators or
+/// line breaks. ASCII LF/CR are the obvious cases; Unicode
+/// `LINE SEPARATOR` (U+2028) and `PARAGRAPH SEPARATOR` (U+2029) round
+/// out the set so a crafted type / default string can't smuggle a
+/// newline that bypasses the comment / `;` heuristics.
+const FORBIDDEN_CONTROL_CHARS: &[char] = &['\0', '\n', '\r', '\u{2028}', '\u{2029}'];
+
+fn contains_forbidden_control(s: &str) -> bool {
+    s.chars().any(|c| FORBIDDEN_CONTROL_CHARS.contains(&c))
+}
+
 /// Reject sequences that escape the type-name syntactic context into
 /// statement scope (`;`, comments) or break identifier quoting (double
 /// quote, backtick, NUL, line-terminators). Type names may include
@@ -78,9 +90,7 @@ fn validate_safe_type(s: &str) -> Result<(), BuildDdlError> {
         || s.contains("*/")
         || s.contains('"')
         || s.contains('`')
-        || s.contains('\0')
-        || s.contains('\n')
-        || s.contains('\r')
+        || contains_forbidden_control(s)
     {
         return Err(BuildDdlError::UnsafeType(s.into()));
     }
@@ -97,14 +107,7 @@ fn validate_safe_default(s: &str) -> Result<(), BuildDdlError> {
     if s.len() > MAX_DEFAULT_LEN {
         return Err(BuildDdlError::UnsafeDefault(s.into()));
     }
-    if s.contains(';')
-        || s.contains("--")
-        || s.contains("/*")
-        || s.contains("*/")
-        || s.contains('\0')
-        || s.contains('\n')
-        || s.contains('\r')
-    {
+    if s.contains(';') || s.contains("--") || s.contains("/*") || s.contains("*/") || contains_forbidden_control(s) {
         return Err(BuildDdlError::UnsafeDefault(s.into()));
     }
     Ok(())
@@ -1210,6 +1213,21 @@ mod tests {
         let sql = build_add_foreign_key("postgres", None, "t", &fk).unwrap();
         assert!(sql.contains("ON DELETE CASCADE"));
         assert!(sql.contains("ON UPDATE SET NULL"));
+    }
+
+    #[test]
+    fn rejects_unicode_line_separator_in_type() {
+        let mut col = dc("x", "INT\u{2028}; DROP TABLE u; --");
+        col.nullable = false;
+        let err = build_add_column("postgres", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::UnsafeType(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn rejects_unicode_paragraph_separator_in_default() {
+        let col = def(dc("x", "TEXT"), "'a\u{2029}; DROP TABLE u; --");
+        let err = build_add_column("postgres", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::UnsafeDefault(_)), "got {err:?}");
     }
 
     #[test]

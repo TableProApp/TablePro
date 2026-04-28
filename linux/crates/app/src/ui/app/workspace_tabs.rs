@@ -316,6 +316,8 @@ impl App {
             table: String::new(),
             mode: crate::ui::structure_tab::StructureMode::New,
             driver_id,
+            // New mode has nothing to introspect (no real table yet).
+            defer_initial_fetch: false,
         };
         let controller =
             crate::ui::structure_tab::StructureTab::builder()
@@ -419,13 +421,19 @@ impl App {
 
         // Structure-side controller. Always Edit mode for an existing
         // table; the New-Table flow has its own dedicated entry point.
+        // Skip the auto-fetch on init when the user is opening to
+        // Data mode — we'll fire it on first mode switch instead, so
+        // a workspace with N tabs doesn't burst N×3 introspection
+        // queries at once on restore.
         let structure_mode = crate::ui::structure_tab::StructureMode::Edit;
+        let defer_structure_fetch = !matches!(initial_mode, super::TableMode::Structure);
         let structure_init = crate::ui::structure_tab::StructureTabInit {
             tab_id,
             schema: schema.clone(),
             table: table.clone(),
             mode: structure_mode,
             driver_id,
+            defer_initial_fetch: defer_structure_fetch,
         };
         let structure = crate::ui::structure_tab::StructureTab::builder()
             .launch(structure_init)
@@ -488,17 +496,19 @@ impl App {
 
         // Mode-change observer: keep slot.mode in sync with the stack
         // visible child so persistence reflects the user's last view.
-        let workspace_tabs_handle = self.workspace_tabs.clone();
+        // Route through a queued message — `visible-child-name` notify
+        // fires synchronously inside GTK signal cascades during widget
+        // realization (tab_view.append → realize → switcher binding
+        // notify → this closure), and a direct `workspace_tabs.borrow_mut()`
+        // here can re-enter another live borrow and panic with
+        // "RefCell already borrowed".
         let sender_for_mode = sender.clone();
         view_stack.connect_visible_child_name_notify(move |stack| {
             let new_mode = match stack.visible_child_name().as_deref() {
                 Some("structure") => super::TableMode::Structure,
                 _ => super::TableMode::Data,
             };
-            if let Some(WorkspaceTab::Table(slot)) = workspace_tabs_handle.borrow_mut().get_mut(&tab_id) {
-                slot.mode = new_mode;
-            }
-            sender_for_mode.input(AppMsg::WorkspaceTabsChanged);
+            sender_for_mode.input(AppMsg::TableTabModeChanged(tab_id, new_mode));
         });
 
         let page = tab_view.append(&wrapper);
@@ -519,6 +529,10 @@ impl App {
             structure,
             structure_mode,
             view_stack,
+            // Structure mode opens fetched eagerly; Data mode opens
+            // deferred — `TableTabModeChanged` flips this on first
+            // switch so we only fetch once.
+            structure_loaded: !defer_structure_fetch,
         };
         self.workspace_tabs
             .borrow_mut()
@@ -694,13 +708,18 @@ impl App {
             }
             WorkspaceTab::Structure(slot) => {
                 crate::services::structure_tracker::close_tab(slot.id);
+                self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
             WorkspaceTab::Table(slot) => {
                 // A Table tab owns BOTH a Browse-side row tracker and a
                 // Structure-side DDL tracker against the same uuid; close
-                // both registries.
+                // both registries. Also drop the in-flight-save guard
+                // entry so a re-opened tab with the same uuid (or a
+                // dropped async future from `drop_on_shutdown`) doesn't
+                // leave the save path permanently locked.
                 crate::services::change_tracker::close_tab(slot.id);
                 crate::services::structure_tracker::close_tab(slot.id);
+                self.structure_saves_in_flight.borrow_mut().remove(&slot.id);
             }
         }
         let page = match &removed {
