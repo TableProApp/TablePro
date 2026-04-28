@@ -284,6 +284,17 @@ extension MainContentCoordinator {
 
         rowDataStore.setBuffer(newBuffer, for: updatedTab.id)
 
+        let newTableRows = TableRows.from(
+            queryRows: newBuffer.rows,
+            columns: newBuffer.columns,
+            columnTypes: newBuffer.columnTypes,
+            columnDefaults: newBuffer.columnDefaults,
+            columnForeignKeys: newBuffer.columnForeignKeys,
+            columnEnumValues: newBuffer.columnEnumValues,
+            columnNullable: newBuffer.columnNullable
+        )
+        tableRowsStore.setTableRows(newTableRows, for: updatedTab.id)
+
         // Create a ResultSet for this single-statement execution
         let rs = ResultSet(label: tableName ?? "Result")
         rs.rowBuffer = newBuffer
@@ -473,6 +484,11 @@ extension MainContentCoordinator {
                     if hasNewValues {
                         for (col, vals) in columnEnumValues {
                             buffer.columnEnumValues[col] = vals
+                        }
+                        tableRowsStore.updateTableRows(for: tabId) { rows in
+                            for (col, vals) in columnEnumValues {
+                                rows.columnEnumValues[col] = vals
+                            }
                         }
                         tabManager.tabs[idx].metadataVersion += 1
                     }

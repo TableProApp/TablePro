@@ -191,6 +191,7 @@ extension MainContentCoordinator {
 
         for entry in toEvict {
             entry.buffer.evict()
+            tableRowsStore.evict(for: entry.tab.id)
         }
         Self.lifecycleLogger.debug(
             "[switch] evictInactiveTabs evicted=\(toEvict.count) keptInactive=\(maxInactiveLoaded) elapsedMs=\(Int(Date().timeIntervalSince(start) * 1_000))"

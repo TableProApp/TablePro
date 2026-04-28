@@ -97,7 +97,11 @@ extension MainContentCoordinator {
 
                     var tab = tabManager.tabs[idx]
                     let buffer = rowDataStore.buffer(for: tab.id)
+                    let pageOffset = buffer.rows.count
                     buffer.rows.append(contentsOf: pagedResult.rows)
+                    tableRowsStore.updateTableRows(for: tab.id) { rows in
+                        _ = rows.appendPage(pagedResult.rows, startingAt: pageOffset)
+                    }
                     tab.schemaVersion += 1
                     tab.pagination.loadMoreOffset = pagedResult.nextOffset
                     tab.pagination.hasMoreRows = pagedResult.hasMore
@@ -219,6 +223,9 @@ extension MainContentCoordinator {
                     var tab = tabManager.tabs[idx]
                     let buffer = rowDataStore.buffer(for: tab.id)
                     buffer.rows = result.rows
+                    tableRowsStore.updateTableRows(for: tab.id) { rows in
+                        _ = rows.replace(rows: result.rows)
+                    }
                     tab.execution.executionTime = result.executionTime
                     tab.schemaVersion += 1
                     tab.pagination.resetLoadMore()

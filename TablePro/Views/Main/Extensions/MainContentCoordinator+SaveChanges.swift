@@ -250,6 +250,7 @@ extension MainContentCoordinator {
                                 .firstIndex { tabIdsToRemove.contains($0.id) } ?? 0
                             for tabId in tabIdsToRemove {
                                 rowDataStore.removeBuffer(for: tabId)
+                                tableRowsStore.removeTableRows(for: tabId)
                             }
                             tabManager.tabs.removeAll { tabIdsToRemove.contains($0.id) }
                             if !tabManager.tabs.isEmpty {

@@ -237,10 +237,15 @@ extension MainContentCoordinator {
                 RowBuffer(rows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
                 for: updatedTab.id
             )
+            tableRowsStore.setTableRows(
+                TableRows.from(queryRows: safeRows, columns: safeColumns, columnTypes: safeColumnTypes),
+                for: updatedTab.id
+            )
             updatedTab.tableContext.tableName = tableName
             updatedTab.tableContext.isEditable = tableName != nil && updatedTab.tableContext.isEditable
         } else {
             rowDataStore.setBuffer(RowBuffer(), for: updatedTab.id)
+            tableRowsStore.setTableRows(TableRows(), for: updatedTab.id)
             if updatedTab.tabType != .table {
                 updatedTab.tableContext.tableName = nil
             }
