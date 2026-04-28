@@ -15,9 +15,10 @@ import {
     popToRoot,
     updateCommandMetadata,
 } from "@raycast/api";
+import { FormValidation, useCachedPromise, useForm } from "@raycast/utils";
 import { useEffect, useState } from "react";
 import { hostname } from "os";
-import { Connection, TableProNotInstalledError } from "./lib/types";
+import { TableProNotInstalledError } from "./lib/types";
 import { databaseTypeLabel, loadConnections } from "./lib/connections";
 import { tableProInstalled } from "./lib/paths";
 import { pairDeeplink } from "./lib/deeplink";
@@ -27,6 +28,12 @@ import { classifyError } from "./lib/errors";
 
 interface LaunchContext {
     code?: string;
+}
+
+interface PairFormValues {
+    client: string;
+    scope: string;
+    connections: string[];
 }
 
 const SCOPE_OPTIONS = [
@@ -46,28 +53,61 @@ export default function PairCommand(
 }
 
 function PairForm() {
-    const [connections, setConnections] = useState<Connection[] | null>(null);
-    const [error, setError] = useState<unknown>(null);
-    const [selectedConnections, setSelectedConnections] = useState<string[]>(
+    const {
+        data: connections,
+        isLoading,
+        error,
+    } = useCachedPromise(
+        async () => {
+            if (!tableProInstalled()) throw new TableProNotInstalledError();
+            return loadConnections();
+        },
         [],
+        { keepPreviousData: true },
     );
     const { push } = useNavigation();
 
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
+    const { handleSubmit, itemProps } = useForm<PairFormValues>({
+        async onSubmit(values) {
             try {
-                if (!tableProInstalled()) throw new TableProNotInstalledError();
-                const list = await loadConnections();
-                if (!cancelled) setConnections(list);
+                const { verifier, challenge } = generatePKCE();
+                await LocalStorage.setItem(
+                    STORAGE_KEYS.pendingVerifier,
+                    verifier,
+                );
+                await LocalStorage.setItem(
+                    STORAGE_KEYS.pendingClient,
+                    values.client,
+                );
+                await pairDeeplink({
+                    client: values.client,
+                    challenge,
+                    redirect: PAIR_CALLBACK_URL,
+                    scopes: scopeToList(values.scope),
+                    connectionIds:
+                        values.connections.length > 0
+                            ? values.connections
+                            : undefined,
+                });
+                push(<WaitingView />);
             } catch (err) {
-                if (!cancelled) setError(err);
+                await showToast({
+                    style: Toast.Style.Failure,
+                    title: "Failed to start pairing",
+                    message: err instanceof Error ? err.message : String(err),
+                });
             }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+        },
+        initialValues: {
+            client: `Raycast on ${hostname()}`,
+            scope: "read",
+            connections: [],
+        },
+        validation: {
+            client: FormValidation.Required,
+            scope: FormValidation.Required,
+        },
+    });
 
     if (error) {
         return (
@@ -88,61 +128,24 @@ function PairForm() {
 
     return (
         <Form
-            isLoading={connections === null}
+            isLoading={isLoading}
             navigationTitle="Pair with TablePro"
             actions={
                 <ActionPanel>
                     <Action.SubmitForm
                         title="Continue in TablePro"
                         icon={Icon.AppWindow}
-                        onSubmit={async (values: {
-                            client: string;
-                            scope: string;
-                            connections: string[];
-                        }) => {
-                            try {
-                                const { verifier, challenge } = generatePKCE();
-                                await LocalStorage.setItem(
-                                    STORAGE_KEYS.pendingVerifier,
-                                    verifier,
-                                );
-                                await LocalStorage.setItem(
-                                    STORAGE_KEYS.pendingClient,
-                                    values.client,
-                                );
-                                await pairDeeplink({
-                                    client: values.client,
-                                    challenge,
-                                    redirect: PAIR_CALLBACK_URL,
-                                    scopes: scopeToList(values.scope),
-                                    connectionIds:
-                                        values.connections.length > 0
-                                            ? values.connections
-                                            : undefined,
-                                });
-                                push(<WaitingView />);
-                            } catch (err) {
-                                await showToast({
-                                    style: Toast.Style.Failure,
-                                    title: "Failed to start pairing",
-                                    message:
-                                        err instanceof Error
-                                            ? err.message
-                                            : String(err),
-                                });
-                            }
-                        }}
+                        onSubmit={handleSubmit}
                     />
                 </ActionPanel>
             }
         >
             <Form.TextField
-                id="client"
                 title="Client Name"
                 placeholder="Raycast on this Mac"
-                defaultValue={`Raycast on ${hostname()}`}
+                {...itemProps.client}
             />
-            <Form.Dropdown id="scope" title="Permissions" defaultValue="read">
+            <Form.Dropdown title="Permissions" {...itemProps.scope}>
                 {SCOPE_OPTIONS.map((option) => (
                     <Form.Dropdown.Item
                         key={option.value}
@@ -152,11 +155,9 @@ function PairForm() {
                 ))}
             </Form.Dropdown>
             <Form.TagPicker
-                id="connections"
                 title="Allowed Connections"
                 info="Leave empty to allow all current and future connections."
-                value={selectedConnections}
-                onChange={setSelectedConnections}
+                {...itemProps.connections}
             >
                 {(connections ?? []).map((connection) => (
                     <Form.TagPicker.Item
@@ -244,23 +245,11 @@ function WaitingView() {
 }
 
 function ExchangeView({ code }: { code: string }) {
-    const [error, setError] = useState<unknown>(null);
-    const [done, setDone] = useState(false);
-
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            try {
-                await LocalStorage.setItem(STORAGE_KEYS.callbackCode, code);
-                if (!cancelled) setDone(true);
-            } catch (err) {
-                if (!cancelled) setError(err);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [code]);
+    const { isLoading, error } = useCachedPromise(
+        (c: string) => LocalStorage.setItem(STORAGE_KEYS.callbackCode, c),
+        [code],
+        { keepPreviousData: false },
+    );
 
     if (error) {
         return <Detail markdown={renderErrorMarkdown(error)} />;
@@ -269,9 +258,9 @@ function ExchangeView({ code }: { code: string }) {
     return (
         <Detail
             markdown={
-                done
-                    ? "# Pairing code received\n\nReturn to the open Pair with TablePro window to finish."
-                    : "# Receiving pairing code…"
+                isLoading
+                    ? "# Receiving pairing code…"
+                    : "# Pairing code received\n\nReturn to the open Pair with TablePro window to finish."
             }
         />
     );
@@ -305,8 +294,8 @@ async function persistToken(token: string): Promise<void> {
     await LocalStorage.setItem("apiToken", token);
     try {
         await updateCommandMetadata({ subtitle: "Paired" });
-    } catch {
-        // updateCommandMetadata is best-effort; ignore failures
+    } catch (err) {
+        console.error("updateCommandMetadata failed", err);
     }
     await showToast({
         style: Toast.Style.Success,
@@ -320,9 +309,13 @@ async function persistToken(token: string): Promise<void> {
             },
         },
     });
-    await open(
-        `raycast://extensions/ngoquocdat/tablepro?token=${encodeURIComponent(token)}`,
-    ).catch(() => undefined);
+    try {
+        await open(
+            `raycast://extensions/ngoquocdat/tablepro?token=${encodeURIComponent(token)}`,
+        );
+    } catch (err) {
+        console.error("post-pair redirect failed", err);
+    }
 }
 
 function renderErrorMarkdown(err: unknown): string {
