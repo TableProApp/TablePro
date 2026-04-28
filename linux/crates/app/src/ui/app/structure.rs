@@ -29,9 +29,13 @@ impl App {
         self.append_structure_tab(schema, String::new(), StructureMode::New, sender);
     }
 
-    /// Sidebar right-click → "Edit Structure". Switches to an existing
-    /// Edit-mode Structure tab when one matches `(schema, table)`,
-    /// otherwise appends a new one.
+    /// Sidebar right-click → "Edit Structure". Routes to the unified
+    /// Table tab (M-1): if a Table tab already exists for this
+    /// (schema, table), select it and flip its `AdwViewSwitcher` to
+    /// Structure mode. Otherwise append a new Table tab opened
+    /// directly to Structure mode. Legacy `Browse` / `Structure` slots
+    /// from older sessions are also considered a match so the user
+    /// doesn't end up with both a legacy tab and a fresh Table tab.
     pub(super) fn on_edit_structure_tab(
         &mut self,
         schema: Option<String>,
@@ -42,33 +46,56 @@ impl App {
             self.show_toast(&crate::tr!("Connect to a database first."));
             return;
         }
-        // Look for an existing Edit-mode Structure tab pointing at the
-        // same (schema, table). HashMap iteration order isn't stable,
-        // so prefer the currently-selected page when multiple match.
         let selected_page = self.workspace_tab_view.as_ref().and_then(|tv| tv.selected_page());
-        let mut existing: Option<adw::TabPage> = None;
-        for tab in self.workspace_tabs.borrow().values() {
-            if let WorkspaceTab::Structure(slot) = tab
-                && slot.mode == StructureMode::Edit
-                && slot.schema == schema
-                && slot.table == table
-            {
-                if Some(&slot.page) == selected_page.as_ref() {
-                    existing = Some(slot.page.clone());
-                    break;
+        let mut existing_table: Option<(uuid::Uuid, adw::TabPage)> = None;
+        let mut existing_legacy: Option<adw::TabPage> = None;
+        for (id, tab) in self.workspace_tabs.borrow().iter() {
+            match tab {
+                WorkspaceTab::Table(slot) if slot.schema == schema && slot.table == table => {
+                    if Some(&slot.page) == selected_page.as_ref() {
+                        existing_table = Some((*id, slot.page.clone()));
+                        break;
+                    }
+                    if existing_table.is_none() {
+                        existing_table = Some((*id, slot.page.clone()));
+                    }
                 }
-                if existing.is_none() {
-                    existing = Some(slot.page.clone());
+                WorkspaceTab::Structure(slot)
+                    if slot.mode == StructureMode::Edit && slot.schema == schema && slot.table == table =>
+                {
+                    if existing_legacy.is_none() {
+                        existing_legacy = Some(slot.page.clone());
+                    }
                 }
+                _ => {}
             }
         }
-        if let Some(page) = existing
+        if let Some((id, page)) = existing_table {
+            if let Some(tab_view) = self.workspace_tab_view.as_ref() {
+                tab_view.set_selected_page(&page);
+            }
+            if let Some(WorkspaceTab::Table(slot)) = self.workspace_tabs.borrow_mut().get_mut(&id) {
+                slot.view_stack.set_visible_child_name("structure");
+                slot.mode = super::TableMode::Structure;
+            }
+            return;
+        }
+        if let Some(page) = existing_legacy
             && let Some(tab_view) = self.workspace_tab_view.as_ref()
         {
             tab_view.set_selected_page(&page);
             return;
         }
-        self.append_structure_tab(schema, table, StructureMode::Edit, sender);
+        super::App::append_table_tab(
+            self,
+            schema,
+            table,
+            super::TableMode::Structure,
+            0,
+            self.default_page_size,
+            None,
+            sender,
+        );
     }
 
     /// Right-click → "Drop Table…", or in-tab destructive button.
@@ -210,6 +237,7 @@ impl App {
             match tab {
                 WorkspaceTab::Browse(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
                 WorkspaceTab::Structure(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
+                WorkspaceTab::Table(s) if s.schema.as_deref() == schema && s.table == table => targets.push(*id),
                 _ => {}
             }
         }
@@ -244,11 +272,18 @@ impl App {
         };
         let (schema, prev_table, mode) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(WorkspaceTab::Structure(slot)) = tabs.get(&tab_id) else {
+            let Some(slot) = tabs.get(&tab_id) else {
                 self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
                 return;
             };
-            (slot.schema.clone(), slot.table.clone(), slot.mode)
+            match slot {
+                WorkspaceTab::Structure(s) => (s.schema.clone(), s.table.clone(), s.mode),
+                WorkspaceTab::Table(s) => (s.schema.clone(), s.table.clone(), s.structure_mode),
+                _ => {
+                    self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
+                    return;
+                }
+            }
         };
         // For New mode we need the user-typed table name. Today the
         // stub UI doesn't expose a name field yet, so pull it from
@@ -320,22 +355,41 @@ impl App {
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
         let mut affected_table: Option<String> = None;
         let mut affected_schema: Option<String> = None;
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow_mut().get_mut(&tab_id) {
-            affected_schema = slot.schema.clone();
-            if let Some(new_name) = new_table_name.clone() {
-                slot.table = new_name.clone();
-                slot.mode = StructureMode::Edit;
-                slot.page.set_title(&new_name);
-                affected_table = Some(new_name);
-            } else {
-                affected_table = Some(slot.table.clone());
+        match self.workspace_tabs.borrow_mut().get_mut(&tab_id) {
+            Some(WorkspaceTab::Structure(slot)) => {
+                affected_schema = slot.schema.clone();
+                if let Some(new_name) = new_table_name.clone() {
+                    slot.table = new_name.clone();
+                    slot.mode = StructureMode::Edit;
+                    slot.page.set_title(&new_name);
+                    affected_table = Some(new_name);
+                } else {
+                    affected_table = Some(slot.table.clone());
+                }
             }
+            Some(WorkspaceTab::Table(slot)) => {
+                affected_schema = slot.schema.clone();
+                if let Some(new_name) = new_table_name.clone() {
+                    slot.table = new_name.clone();
+                    slot.structure_mode = StructureMode::Edit;
+                    slot.page.set_title(&new_name);
+                    affected_table = Some(new_name);
+                } else {
+                    affected_table = Some(slot.table.clone());
+                }
+            }
+            _ => {}
         }
-        // Forward to the tab so it clears + (if needed) promotes to
-        // Edit and refetches.
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot
-                .controller
+        // Forward to the structure controller (legacy Structure or
+        // unified Table) so it clears + (if needed) promotes to Edit
+        // and refetches.
+        if let Some(controller) = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab_id)
+            .and_then(|t| t.structure_controller())
+        {
+            let _ = controller
                 .sender()
                 .send(StructureTabInput::SaveCompleted { new_table_name });
         }
@@ -352,8 +406,13 @@ impl App {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
         self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot.controller.sender().send(StructureTabInput::SaveFailed(message));
+        if let Some(controller) = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab_id)
+            .and_then(|t| t.structure_controller())
+        {
+            let _ = controller.sender().send(StructureTabInput::SaveFailed(message));
         }
     }
 
@@ -365,10 +424,13 @@ impl App {
     pub(super) fn on_fetch_structure_data(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(WorkspaceTab::Structure(slot)) = tabs.get(&tab_id) else {
+            let Some(slot) = tabs.get(&tab_id) else {
                 return;
             };
-            (slot.schema.clone(), slot.table.clone())
+            let Some((schema, table)) = slot.schema_table() else {
+                return;
+            };
+            (schema.map(str::to_owned), table.to_string())
         };
         let sender_for_cmd = sender.clone();
         sender.command(move |_, shutdown| {
@@ -414,17 +476,26 @@ impl App {
         indexes: Vec<tablepro_core::IndexInfo>,
         fks: Vec<tablepro_core::ForeignKeyInfo>,
     ) {
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot
-                .controller
+        if let Some(controller) = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab_id)
+            .and_then(|t| t.structure_controller())
+        {
+            let _ = controller
                 .sender()
                 .send(StructureTabInput::StructureLoaded { columns, indexes, fks });
         }
     }
 
     pub(super) fn on_structure_load_failed(&self, tab_id: Uuid, message: String) {
-        if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
-            let _ = slot.controller.sender().send(StructureTabInput::LoadFailed(message));
+        if let Some(controller) = self
+            .workspace_tabs
+            .borrow()
+            .get(&tab_id)
+            .and_then(|t| t.structure_controller())
+        {
+            let _ = controller.sender().send(StructureTabInput::LoadFailed(message));
         }
     }
 
@@ -445,10 +516,16 @@ impl App {
         if let Some(table_name) = table.as_deref() {
             let mut affected: Vec<Uuid> = Vec::new();
             for (id, tab) in self.workspace_tabs.borrow().iter() {
-                if let WorkspaceTab::Browse(slot) = tab
-                    && slot.schema.as_deref() == schema.as_deref()
-                    && slot.table == table_name
-                {
+                let matches = match tab {
+                    WorkspaceTab::Browse(slot) => {
+                        slot.schema.as_deref() == schema.as_deref() && slot.table == table_name
+                    }
+                    WorkspaceTab::Table(slot) => {
+                        slot.schema.as_deref() == schema.as_deref() && slot.table == table_name
+                    }
+                    _ => false,
+                };
+                if matches {
                     affected.push(*id);
                 }
             }
@@ -487,23 +564,34 @@ impl App {
     pub(super) fn refresh_structure_tab_dirty(&self, tab_id: Uuid, dirty: bool) {
         let schemas_count = self.sidebar_schemas_distinct();
         let tabs = self.workspace_tabs.borrow();
-        let Some(WorkspaceTab::Structure(slot)) = tabs.get(&tab_id) else {
+        let Some(slot) = tabs.get(&tab_id) else {
             return;
         };
-        let base = if slot.table.is_empty() {
+        let (page, schema, table_name, combined_dirty) = match slot {
+            WorkspaceTab::Structure(s) => (&s.page, s.schema.as_deref(), s.table.clone(), dirty),
+            WorkspaceTab::Table(s) => {
+                // Combine with the data-side dirty state — either
+                // mode contributing pending changes prefixes the tab
+                // with the "•" GNOME convention.
+                let data = crate::services::change_tracker::with_tab_ref(s.id, |tr| tr.has_pending()).unwrap_or(false);
+                (&s.page, s.schema.as_deref(), s.table.clone(), dirty || data)
+            }
+            _ => return,
+        };
+        let base = if table_name.is_empty() {
             crate::tr!("New Table")
         } else {
-            super::workspace_tabs::qualified_browse_tab_label(schemas_count, slot.schema.as_deref(), &slot.table)
+            super::workspace_tabs::qualified_browse_tab_label(schemas_count, schema, &table_name)
         };
-        let title = if dirty { format!("• {base}") } else { base };
-        slot.page.set_title(&title);
+        let title = if combined_dirty { format!("• {base}") } else { base };
+        page.set_title(&title);
         let is_selected = self
             .workspace_tab_view
             .as_ref()
             .and_then(|tv| tv.selected_page())
-            .map(|p| p == slot.page)
+            .map(|p| &p == page)
             .unwrap_or(false);
-        slot.page.set_needs_attention(dirty && !is_selected);
+        page.set_needs_attention(combined_dirty && !is_selected);
         self.refresh_window_title();
     }
 
@@ -523,10 +611,15 @@ impl App {
         let tab_view = self.workspace_tab_view.as_ref()?;
         let page = tab_view.selected_page()?;
         let id = crate::ui::app::read_workspace_tab_id(&page)?;
-        if let WorkspaceTab::Structure(_) = self.workspace_tabs.borrow().get(&id)? {
-            Some(id)
-        } else {
-            None
+        let tabs = self.workspace_tabs.borrow();
+        let slot = tabs.get(&id)?;
+        // For Table tabs, only count as "structure tab" when the
+        // user is actually viewing the Structure axis — Ctrl+Z on a
+        // Data-mode tab should hit the data-side undo, not DDL undo.
+        match slot {
+            WorkspaceTab::Structure(_) => Some(id),
+            WorkspaceTab::Table(s) if s.mode == super::TableMode::Structure => Some(id),
+            _ => None,
         }
     }
 }

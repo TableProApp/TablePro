@@ -68,6 +68,25 @@ pub enum WorkspaceTabRecord {
     /// drafts for tables that don't exist yet, so they don't survive
     /// a disconnect).
     Structure { schema: Option<String>, table: String },
+    /// Persisted Table tab (canonical M-1 form). Carries the
+    /// user-visible mode (data vs structure) so the tab restores to
+    /// the same lens. `offset` / `sort_col` / `sort_asc` describe the
+    /// Browse side's last view; the Structure side rehydrates from
+    /// driver introspection on first switch.
+    Table {
+        schema: Option<String>,
+        table: String,
+        #[serde(default)]
+        mode: PersistedTableMode,
+        #[serde(default)]
+        offset: u64,
+        #[serde(default = "default_page_size")]
+        page_size: u64,
+        #[serde(default)]
+        sort_col: Option<usize>,
+        #[serde(default)]
+        sort_asc: Option<bool>,
+    },
     /// Forward-compat: an older binary reading a workspace_state.json
     /// written by a newer binary lands tabs of unrecognised kinds in
     /// this variant. `clamp_connection` and `restore_workspace_tabs`
@@ -78,6 +97,14 @@ pub enum WorkspaceTabRecord {
 
 fn default_page_size() -> u64 {
     DEFAULT_PAGE_SIZE
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PersistedTableMode {
+    #[default]
+    Data,
+    Structure,
 }
 
 fn load_locked() -> WorkspaceState {
@@ -171,6 +198,26 @@ fn clamp_connection(conn: &mut ConnectionWorkspaceState) {
                 {
                     let boundary = floor_char_boundary(s, MAX_SCHEMA_NAME_BYTES);
                     s.truncate(boundary);
+                }
+            }
+            WorkspaceTabRecord::Table {
+                schema,
+                table,
+                page_size,
+                ..
+            } => {
+                if table.len() > MAX_TABLE_NAME_BYTES {
+                    let boundary = floor_char_boundary(table, MAX_TABLE_NAME_BYTES);
+                    table.truncate(boundary);
+                }
+                if let Some(s) = schema.as_mut()
+                    && s.len() > MAX_SCHEMA_NAME_BYTES
+                {
+                    let boundary = floor_char_boundary(s, MAX_SCHEMA_NAME_BYTES);
+                    s.truncate(boundary);
+                }
+                if !PAGE_SIZE_OPTIONS.contains(page_size) {
+                    *page_size = DEFAULT_PAGE_SIZE;
                 }
             }
             WorkspaceTabRecord::Unknown => {

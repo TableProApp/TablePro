@@ -89,14 +89,15 @@ impl App {
     pub(super) fn on_copy_row_as_insert(&self, tab_id: Uuid, row_position: u32) {
         let (columns, driver_id, snapshot, table) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
             };
+            let model = controller.model();
             (
-                slot.controller.model().columns().to_vec(),
-                slot.controller.model().driver_id().to_string(),
-                slot.controller.model().snapshot(),
-                slot.controller.model().table().to_string(),
+                model.columns().to_vec(),
+                model.driver_id().to_string(),
+                model.snapshot(),
+                model.table().to_string(),
             )
         };
         let Some(snapshot) = snapshot else { return };

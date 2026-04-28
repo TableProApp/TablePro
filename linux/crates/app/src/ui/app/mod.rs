@@ -143,14 +143,92 @@ pub struct StructureTabSlot {
     pub mode: crate::ui::structure_tab::StructureMode,
 }
 
-/// A tab in the unified workspace — either a Browse table view, an
-/// SQL editor, or a Structure (DDL) editor. Stored together in a
-/// single HashMap so the user-facing tab strip is one homogeneous
-/// list rather than three separate ViewSwitcher modes.
+/// Active axis inside a `Table` tab — Data view (the Browse grid) or
+/// Structure view (the DDL editor). Each entity (table) has both
+/// lenses available; user toggles via `AdwViewSwitcher` in the tab
+/// content. This mirrors how TablePlus / DataGrip / DBeaver / Postico
+/// surface the same data, and matches GNOME HIG guidance that
+/// AdwViewSwitcher is for "different views of the same content".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableMode {
+    Data,
+    Structure,
+}
+
+/// One workspace tab pinned to a single `(schema, table)` entity, with
+/// both Data (Browse) and Structure (DDL) controllers alive in
+/// parallel inside an `AdwViewStack`. Switching `mode` flips the
+/// stack's visible child without destroying state on the inactive
+/// side; pending-change trackers, pagination, sort, search remain.
+#[allow(dead_code)]
+pub struct TableTabSlot {
+    pub id: Uuid,
+    pub page: adw::TabPage,
+    pub schema: Option<String>,
+    pub table: String,
+    pub mode: TableMode,
+    pub browse: Controller<BrowseTab>,
+    pub structure: Controller<crate::ui::structure_tab::StructureTab>,
+    /// Always `StructureMode::Edit` for tabs created from a sidebar
+    /// table; `New` only for the explicit "New Table…" flow which
+    /// promotes to `Edit` on first successful save.
+    pub structure_mode: crate::ui::structure_tab::StructureMode,
+    pub view_stack: adw::ViewStack,
+}
+
+/// A tab in the unified workspace. Live variants:
+///
+/// - **Table**: one (schema, table) entity with an `AdwViewSwitcher`
+///   to flip between Data (Browse grid) and Structure (DDL editor).
+///   This is the canonical shape per GNOME HIG (M-1 audit) and the
+///   default for every sidebar-driven open.
+/// - **Editor**: a free-form SQL workspace, orthogonal to any one
+///   table.
+/// - **Browse / Structure** (legacy, transitional): kept while the
+///   M-1 migration is in flight so already-open tabs and
+///   workspace_state.json records loaded from older builds keep
+///   working. Persistence rewrites them as `Table` records on save;
+///   no new code path creates these variants.
 pub enum WorkspaceTab {
     Browse(BrowseTabSlot),
     Editor(EditorTabSlot),
     Structure(StructureTabSlot),
+    Table(TableTabSlot),
+}
+
+impl WorkspaceTab {
+    /// The Browse-side controller, whether this slot is a legacy
+    /// `Browse` variant or the unified `Table` variant. Editor /
+    /// Structure-only slots return `None`.
+    pub fn browse_controller(&self) -> Option<&Controller<BrowseTab>> {
+        match self {
+            WorkspaceTab::Browse(s) => Some(&s.controller),
+            WorkspaceTab::Table(s) => Some(&s.browse),
+            _ => None,
+        }
+    }
+
+    /// The Structure-side controller, whether legacy `Structure` or
+    /// unified `Table`. Useful for refetch / load-failed / save
+    /// completion fanout.
+    pub fn structure_controller(&self) -> Option<&Controller<crate::ui::structure_tab::StructureTab>> {
+        match self {
+            WorkspaceTab::Structure(s) => Some(&s.controller),
+            WorkspaceTab::Table(s) => Some(&s.structure),
+            _ => None,
+        }
+    }
+
+    /// `(schema, table)` when the slot is pinned to one — Browse,
+    /// Structure, or Table. Editor returns `None`.
+    pub fn schema_table(&self) -> Option<(Option<&str>, &str)> {
+        match self {
+            WorkspaceTab::Browse(s) => Some((s.schema.as_deref(), &s.table)),
+            WorkspaceTab::Structure(s) => Some((s.schema.as_deref(), &s.table)),
+            WorkspaceTab::Table(s) => Some((s.schema.as_deref(), &s.table)),
+            WorkspaceTab::Editor(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

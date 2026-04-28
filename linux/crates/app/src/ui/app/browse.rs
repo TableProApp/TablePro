@@ -27,16 +27,17 @@ impl App {
     pub(super) fn fetch_browse_page(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table, offset, limit, sort, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
             };
+            let model = controller.model();
             (
-                slot.controller.model().schema().map(str::to_owned),
-                slot.controller.model().table().to_string(),
-                slot.controller.model().current_offset(),
-                slot.controller.model().page_size(),
-                slot.controller.model().current_sort(),
-                slot.controller.model().driver_id().to_string(),
+                model.schema().map(str::to_owned),
+                model.table().to_string(),
+                model.current_offset(),
+                model.page_size(),
+                model.current_sort(),
+                model.driver_id().to_string(),
             )
         };
 
@@ -46,10 +47,11 @@ impl App {
         };
         let order_by = sort.and_then(|(idx, asc)| {
             let tabs = self.workspace_tabs.borrow();
-            let cols = match tabs.get(&tab_id) {
-                Some(super::WorkspaceTab::Browse(s)) => s.controller.model().columns().to_vec(),
-                _ => Vec::new(),
-            };
+            let cols = tabs
+                .get(&tab_id)
+                .and_then(|t| t.browse_controller())
+                .map(|c| c.model().columns().to_vec())
+                .unwrap_or_default();
             cols.get(idx).map(|c| {
                 let name = tablepro_core::sql_dialect::quote_ident(&driver_id, &c.name);
                 let dir = if asc { "ASC" } else { "DESC" };
@@ -91,13 +93,11 @@ impl App {
     pub(super) fn fetch_browse_columns(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
             };
-            (
-                slot.controller.model().schema().map(str::to_owned),
-                slot.controller.model().table().to_string(),
-            )
+            let model = controller.model();
+            (model.schema().map(str::to_owned), model.table().to_string())
         };
 
         let Some(conn) = database_service::instance().active() else {
@@ -118,13 +118,14 @@ impl App {
     pub(super) fn fetch_browse_row_count(&self, tab_id: Uuid, sender: ComponentSender<Self>) {
         let (schema, table, driver_id) = {
             let tabs = self.workspace_tabs.borrow();
-            let Some(super::WorkspaceTab::Browse(slot)) = tabs.get(&tab_id) else {
+            let Some(controller) = tabs.get(&tab_id).and_then(|t| t.browse_controller()) else {
                 return;
             };
+            let model = controller.model();
             (
-                slot.controller.model().schema().map(str::to_owned),
-                slot.controller.model().table().to_string(),
-                slot.controller.model().driver_id().to_string(),
+                model.schema().map(str::to_owned),
+                model.table().to_string(),
+                model.driver_id().to_string(),
             )
         };
 
@@ -199,10 +200,9 @@ impl App {
         };
         let result = {
             let tabs = self.workspace_tabs.borrow();
-            match tabs.get(&active_id) {
-                Some(super::WorkspaceTab::Browse(s)) => s.controller.model().snapshot(),
-                _ => None,
-            }
+            tabs.get(&active_id)
+                .and_then(|t| t.browse_controller())
+                .and_then(|c| c.model().snapshot())
         };
         let Some(result) = result else {
             self.show_toast(&crate::tr!("Nothing to export"));
