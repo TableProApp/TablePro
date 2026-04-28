@@ -259,6 +259,111 @@ struct MCPToolHandlerIntegrationTests {
         }
     }
 
+    @Test("search_query_history pushes token allowlist into SQL so older allowed entries surface")
+    func searchQueryHistoryAllowlistOverFlood() async throws {
+        let handler = makeHandler()
+        let allowedConn = DatabaseConnection(name: "Allowed", type: .mysql)
+        let otherConn = DatabaseConnection(name: "Other", type: .mysql)
+        let marker = UUID().uuidString
+        let now = Date()
+
+        try await withConnections([allowedConn, otherConn]) {
+            let oldAllowed = QueryHistoryEntry(
+                query: "SELECT old_allowed_\(marker)",
+                connectionId: allowedConn.id,
+                databaseName: "db",
+                executedAt: now.addingTimeInterval(-3_600),
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+            _ = await QueryHistoryStorage.shared.addHistory(oldAllowed)
+
+            for index in 0..<20 {
+                let recentOther = QueryHistoryEntry(
+                    query: "SELECT recent_other_\(marker)_\(index)",
+                    connectionId: otherConn.id,
+                    databaseName: "db",
+                    executedAt: now.addingTimeInterval(Double(index)),
+                    executionTime: 0.01,
+                    rowCount: 1,
+                    wasSuccessful: true
+                )
+                _ = await QueryHistoryStorage.shared.addHistory(recentOther)
+            }
+
+            let token = makeToken(allowedConnectionIds: [allowedConn.id])
+            let result = try await handler.handleToolCall(
+                name: "search_query_history",
+                arguments: .object(["query": .string(marker), "limit": .int(5)]),
+                sessionId: "test-session",
+                token: token
+            )
+            #expect(result.isError == nil)
+            let payload = result.content.first?.text ?? ""
+            #expect(payload.contains("old_allowed_\(marker)"))
+            #expect(!payload.contains("recent_other_\(marker)"))
+        }
+    }
+
+    @Test("QueryHistoryStorage.fetchHistory restricts results to allowedConnectionIds")
+    func fetchHistoryAllowlistFilters() async throws {
+        let allowedId = UUID()
+        let otherId = UUID()
+        let marker = UUID().uuidString
+
+        let allowedEntry = QueryHistoryEntry(
+            query: "SELECT allowed_\(marker)",
+            connectionId: allowedId,
+            databaseName: "db",
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        let otherEntry = QueryHistoryEntry(
+            query: "SELECT other_\(marker)",
+            connectionId: otherId,
+            databaseName: "db",
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        _ = await QueryHistoryStorage.shared.addHistory(allowedEntry)
+        _ = await QueryHistoryStorage.shared.addHistory(otherEntry)
+
+        let entries = await QueryHistoryStorage.shared.fetchHistory(
+            limit: 100,
+            searchText: marker,
+            allowedConnectionIds: [allowedId]
+        )
+
+        #expect(entries.contains { $0.query.contains("allowed_\(marker)") })
+        #expect(!entries.contains { $0.query.contains("other_\(marker)") })
+    }
+
+    @Test("QueryHistoryStorage.fetchHistory returns empty when allowedConnectionIds is empty")
+    func fetchHistoryEmptyAllowlistReturnsEmpty() async throws {
+        let connectionId = UUID()
+        let marker = UUID().uuidString
+        let entry = QueryHistoryEntry(
+            query: "SELECT empty_allowlist_\(marker)",
+            connectionId: connectionId,
+            databaseName: "db",
+            executionTime: 0.01,
+            rowCount: 1,
+            wasSuccessful: true
+        )
+        _ = await QueryHistoryStorage.shared.addHistory(entry)
+
+        let entries = await QueryHistoryStorage.shared.fetchHistory(
+            limit: 100,
+            searchText: marker,
+            allowedConnectionIds: []
+        )
+
+        #expect(entries.isEmpty)
+    }
+
     @Test("search_query_history with since/until filters by executed_at window")
     func searchQueryHistorySinceUntilFilters() async throws {
         let handler = makeHandler()

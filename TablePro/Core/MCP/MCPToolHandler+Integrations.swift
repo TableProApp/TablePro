@@ -80,6 +80,12 @@ extension MCPToolHandler {
             connectionId = nil
         }
 
+        let allowedConnectionIds = await resolveHistoryAllowlist(
+            token: token,
+            scopedConnectionId: connectionId,
+            blockedConnectionIds: blockedConnectionIds
+        )
+
         let entries = await QueryHistoryStorage.shared.fetchHistory(
             limit: limit,
             offset: 0,
@@ -87,17 +93,11 @@ extension MCPToolHandler {
             searchText: query.isEmpty ? nil : query,
             dateFilter: .all,
             since: since,
-            until: until
+            until: until,
+            allowedConnectionIds: allowedConnectionIds
         )
 
-        let allowed = token?.allowedConnectionIds
-        let filtered = entries.filter { entry in
-            guard !blockedConnectionIds.contains(entry.connectionId) else { return false }
-            if let allowed, !allowed.contains(entry.connectionId) { return false }
-            return true
-        }
-
-        let payload = filtered.map { entry -> JSONValue in
+        let payload = entries.map { entry -> JSONValue in
             var dict: [String: JSONValue] = [
                 "id": .string(entry.id.uuidString),
                 "query": .string(entry.query),
@@ -220,6 +220,24 @@ extension MCPToolHandler {
     }
 
     // MARK: - Helpers
+
+    private func resolveHistoryAllowlist(
+        token: MCPAuthToken?,
+        scopedConnectionId: UUID?,
+        blockedConnectionIds: Set<UUID>
+    ) async -> Set<UUID>? {
+        if scopedConnectionId != nil {
+            return nil
+        }
+        if let tokenAllowed = token?.allowedConnectionIds {
+            return tokenAllowed.subtracting(blockedConnectionIds)
+        }
+        guard !blockedConnectionIds.isEmpty else { return nil }
+        let allConnectionIds = await MainActor.run {
+            Set(ConnectionStorage.shared.loadConnections().map(\.id))
+        }
+        return allConnectionIds.subtracting(blockedConnectionIds)
+    }
 
     private func ensureConnectionExists(_ connectionId: UUID) async throws {
         let exists = await MainActor.run {

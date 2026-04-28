@@ -283,17 +283,30 @@ actor QueryHistoryStorage {
         searchText: String? = nil,
         dateFilter: DateFilter = .all,
         since: Date? = nil,
-        until: Date? = nil
+        until: Date? = nil,
+        allowedConnectionIds: Set<UUID>? = nil
     ) -> [QueryHistoryEntry] {
         var entries: [QueryHistoryEntry] = []
 
+        if let allowedConnectionIds, allowedConnectionIds.isEmpty {
+            return entries
+        }
+
         let effectiveSince = [dateFilter.startDate, since].compactMap { $0 }.max()
+
+        let allowedList: [UUID]?
+        if let allowedConnectionIds {
+            allowedList = Array(allowedConnectionIds)
+        } else {
+            allowedList = nil
+        }
 
         var sql: String
         var bindIndex: Int32 = 1
         var hasConnectionFilter = false
         var hasSinceFilter = false
         var hasUntilFilter = false
+        var hasAllowedFilter = false
 
         if let searchText = searchText, !searchText.isEmpty {
             sql = """
@@ -306,6 +319,12 @@ actor QueryHistoryStorage {
             if connectionId != nil {
                 sql += " AND h.connection_id = ?"
                 hasConnectionFilter = true
+            }
+
+            if let allowedList {
+                let placeholders = Array(repeating: "?", count: allowedList.count).joined(separator: ", ")
+                sql += " AND h.connection_id IN (\(placeholders))"
+                hasAllowedFilter = true
             }
 
             if effectiveSince != nil {
@@ -326,6 +345,12 @@ actor QueryHistoryStorage {
             if connectionId != nil {
                 whereClauses.append("connection_id = ?")
                 hasConnectionFilter = true
+            }
+
+            if let allowedList {
+                let placeholders = Array(repeating: "?", count: allowedList.count).joined(separator: ", ")
+                whereClauses.append("connection_id IN (\(placeholders))")
+                hasAllowedFilter = true
             }
 
             if effectiveSince != nil {
@@ -363,6 +388,13 @@ actor QueryHistoryStorage {
         if let connectionId = connectionId, hasConnectionFilter {
             sqlite3_bind_text(statement, bindIndex, connectionId.uuidString, -1, SQLITE_TRANSIENT)
             bindIndex += 1
+        }
+
+        if let allowedList, hasAllowedFilter {
+            for allowedId in allowedList {
+                sqlite3_bind_text(statement, bindIndex, allowedId.uuidString, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
         }
 
         if let effectiveSince, hasSinceFilter {
