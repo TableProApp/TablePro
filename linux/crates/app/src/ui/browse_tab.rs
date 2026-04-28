@@ -530,6 +530,61 @@ impl BrowseTab {
         filter_model.model()?.downcast::<gtk::gio::ListStore>().ok()
     }
 
+    /// Notify the chain (ListStore → FilterListModel → SelectionModel
+    /// → ColumnView) that the row at `filter_pos` has changed so the
+    /// view rebinds its cells.
+    ///
+    /// Why: per GTK4 docs, `items-changed` "should never be emitted
+    /// directly by users of the model" — it's a signal the *model
+    /// implementation* emits when its content changes. Calling
+    /// `filter_model.items_changed(...)` from the outside emits the
+    /// signal but the FilterListModel's internal change-tracking
+    /// state stays stale, so the downstream ColumnView sees no
+    /// item-identity change and skips the bind. CSS classes
+    /// (orange-tint pending state) update correctly because they're
+    /// applied at bind time on every connect_bind, but the cell text
+    /// won't refresh because connect_bind never re-runs.
+    ///
+    /// Walking through to the underlying `gio::ListStore` and
+    /// emitting `items_changed` *there* propagates correctly: the
+    /// ListStore is the change-emitter the chain expects, every
+    /// derived model invalidates its caches, and the factory rebinds.
+    fn refresh_row_at(&self, filter_pos: u32) {
+        let row_obj = self.row_object_at(filter_pos);
+        let store = self.list_store();
+        let store_pos = match (row_obj.as_ref(), store.as_ref()) {
+            (Some(r), Some(s)) => s.find(r),
+            _ => None,
+        };
+        // ColumnView's list-item-manager keeps a per-listitem
+        // cached pointer to the model item it's currently bound
+        // to. When it receives items-changed for a position, it
+        // re-fetches the model item at that position and
+        // **compares pointers**: if same identity, it skips
+        // unbind/bind because the bound item "didn't actually
+        // change". Mutating cells *inside* the existing
+        // RowObject (which is what set_cell does) keeps the
+        // pointer constant — that's why neither plain
+        // `items_changed` nor `splice(pos, 1, &[same_row_obj])`
+        // forces a rebind here.
+        //
+        // The fix: substitute a freshly-allocated RowObject
+        // carrying the post-mutation cells. Different GObject
+        // identity → list-item-manager invalidates the cache,
+        // unbinds the old listitem widget, rebinds with the
+        // new item, connect_bind fires, label.set_text picks up
+        // the reverted value. Atomic via splice: one items-
+        // changed emission, no flicker, no scroll jump.
+        if let (Some(store), Some(store_pos), Some(old)) = (store, store_pos, row_obj) {
+            let cells = old.cells_clone();
+            let replacement = match old.draft_id() {
+                Some(id) => super::row_object::RowObject::new_draft(id, cells),
+                None => super::row_object::RowObject::new(cells),
+            };
+            store.splice(store_pos, 1, &[replacement]);
+        }
+    }
+
     /// Look up the live `RowObject` at a filter-model position. Used
     /// to detect whether a row is a draft (`draft_id().is_some()`)
     /// vs a persisted row, and to mutate draft cells in place when
@@ -619,12 +674,7 @@ impl BrowseTab {
         let tab_id = self.tab_id;
         let generation =
             crate::services::change_tracker::with_tab(tab_id, |t| t.set_error_row(key.clone())).unwrap_or(0);
-        if let Some(selection) = self.current_selection.as_ref()
-            && let Some(model) = selection.model()
-            && let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>()
-        {
-            filter_model.items_changed(position, 1, 1);
-        }
+        self.refresh_row_at(position);
         let selection_for_clear = self.current_selection.clone();
         glib::timeout_add_local_once(std::time::Duration::from_millis(1800), move || {
             let cleared = crate::services::change_tracker::with_tab(tab_id, |t| {
@@ -637,11 +687,21 @@ impl BrowseTab {
                 // A newer flash superseded ours; don't disturb its bind.
                 return;
             }
+            // Inline the underlying-store hop because `self` is gone
+            // from the closure scope (it's a 1.8s deferred timer);
+            // the chain walk is the same as `refresh_row_at`.
             if let Some(selection) = selection_for_clear
                 && let Some(model) = selection.model()
+                && let Some(row_obj) = model
+                    .item(position)
+                    .and_then(|o| o.downcast::<super::row_object::RowObject>().ok())
                 && let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>()
+                && let Some(store) = filter_model
+                    .model()
+                    .and_then(|m| m.downcast::<gtk::gio::ListStore>().ok())
+                && let Some(store_pos) = store.find(&row_obj)
             {
-                filter_model.items_changed(position, 1, 1);
+                store.items_changed(store_pos, 1, 1);
             }
         });
     }
@@ -912,16 +972,7 @@ impl BrowseTab {
     /// display from `RowObject.cell_value()` (which we did NOT mutate
     /// because the parse failed).
     fn refresh_row(&self, position: u32) {
-        let Some(selection) = self.current_selection.as_ref() else {
-            return;
-        };
-        let Some(model) = selection.model() else { return };
-        let Ok(filter_model) = model.downcast::<gtk::FilterListModel>() else {
-            return;
-        };
-        if position < filter_model.n_items() {
-            filter_model.items_changed(position, 1, 1);
-        }
+        self.refresh_row_at(position);
     }
 
     /// Build the (RowKey, current_values) pair for a row at the
@@ -1991,13 +2042,6 @@ impl SimpleComponent for BrowseTab {
                 // exactly one row and ChangedRows hits only that row.
             }
             BrowseTabInput::ChangedRows(keys) => {
-                let Some(selection) = self.current_selection.as_ref() else {
-                    return;
-                };
-                let Some(model) = selection.model() else { return };
-                let Some(filter_model) = model.downcast_ref::<gtk::FilterListModel>() else {
-                    return;
-                };
                 // Walk the model once per key. For typical interactive
                 // edits (one cell at a time) this is O(n) per keystroke
                 // where n = visible row count — bounded and cheap.
@@ -2005,7 +2049,7 @@ impl SimpleComponent for BrowseTab {
                 // op via undo unwind, again bounded.
                 for key in &keys {
                     if let Some(pos) = self.find_row_position_by_key(key) {
-                        filter_model.items_changed(pos, 1, 1);
+                        self.refresh_row_at(pos);
                     }
                 }
             }
@@ -2044,16 +2088,17 @@ impl SimpleComponent for BrowseTab {
                         prev_value,
                         ..
                     } => {
-                        // Revert the visible RowObject's cell BEFORE
-                        // the tracker's emit_changed → ChangedRows →
-                        // items_changed cascade fires connect_bind on
-                        // the row. connect_bind reads `row.cell_value(col)`
-                        // off the RowObject; if the RowObject still
-                        // holds the post-edit value, the row re-binds
-                        // with stale text even though the tracker says
-                        // Clean. The chrome looks right (no orange
-                        // tint, counter at 0) but the cell still shows
-                        // the new value — exactly the user-reported bug.
+                        // Drafts hold the post-edit value in
+                        // RowObject.cells (mirrored at edit time);
+                        // reverting the visible value requires
+                        // mutating the cell back. Persisted rows
+                        // never mutate RowObject — the tracker is
+                        // the single source of truth and
+                        // connect_bind queries
+                        // `current_cell_value` to overlay the
+                        // pending edit. set_cell on a persisted
+                        // row is a harmless no-op (the cell
+                        // already holds the original).
                         if let Some(pos) = self.find_row_position_by_key(&row_key)
                             && let Some(row_obj) = self.row_object_at(pos)
                         {

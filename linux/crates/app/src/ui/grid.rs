@@ -285,7 +285,37 @@ fn build_column(
         let Some(row) = item.item().and_downcast::<RowObject>() else {
             return;
         };
-        let value = row.cell_value(idx);
+        // For persisted rows, RowObject.cells holds the immutable
+        // original DB values — the tracker is the single source of
+        // truth for pending edits. Override with the tracker's
+        // pending value when one exists so the cell visibly
+        // reflects what the user typed (with `tp-cell-modified`
+        // applied below for the orange tint). Without this, edits
+        // appear to "disappear" the moment the cell rebinds, which
+        // is exactly the symptom the user hit on undo.
+        //
+        // Drafts skip this branch — their cells live inside the
+        // tracker's `inserts.values` AND mirror onto RowObject
+        // (set_cell at edit time), so `row.cell_value(idx)` is
+        // already authoritative for them.
+        let raw_value = row.cell_value(idx);
+        let value = if let Some(tab_id) = tab_ctx_for_bind.tab_id
+            && row.draft_id().is_none()
+        {
+            let pk_values: Vec<Value> = tab_ctx_for_bind
+                .pk_col_indices
+                .iter()
+                .map(|&i| row.cell_value(i))
+                .collect();
+            crate::services::change_tracker::with_tab_ref(tab_id, |t| {
+                crate::services::change_tracker::RowKey::from_pk_values(&pk_values)
+                    .map(|key| t.current_cell_value(&key, idx, &raw_value).clone())
+                    .unwrap_or_else(|| raw_value.clone())
+            })
+            .unwrap_or(raw_value)
+        } else {
+            raw_value
+        };
         let is_null = matches!(value, Value::Null);
         // Editable cells render NULL as the italic <NULL> sentinel —
         // distinguishes a true NULL from an empty string visually.
