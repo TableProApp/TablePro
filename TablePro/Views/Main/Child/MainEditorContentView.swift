@@ -437,11 +437,8 @@ struct MainEditorContentView: View {
                     .frame(maxHeight: .infinity)
                 }
             case .json:
-                let jsonBuffer = coordinator.rowDataStore.buffer(for: tab.id)
                 ResultsJsonView(
-                    columns: jsonBuffer.columns,
-                    columnTypes: jsonBuffer.columnTypes,
-                    rows: jsonBuffer.rows,
+                    tableRows: coordinator.tableRowsStore.tableRows(for: tab.id),
                     selectedRowIndices: selectionState.indices
                 )
             case .data:

@@ -180,7 +180,7 @@ struct MainContentView: View {
                         isPresented: dismissBinding,
                         mode: .queryResults(
                             connection: connectionWithCurrentDatabase,
-                            rowBuffer: coordinator.rowDataStore.buffer(for: tab.id),
+                            tableRows: coordinator.tableRowsStore.tableRows(for: tab.id),
                             suggestedFileName: fileName
                         )
                     )

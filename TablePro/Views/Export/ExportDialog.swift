@@ -54,8 +54,8 @@ struct ExportDialog: View {
     }
 
     private var queryResultsRowCount: Int {
-        if case .queryResults(_, let rowBuffer, _) = mode {
-            return rowBuffer.rows.count
+        if case .queryResults(_, let tableRows, _) = mode {
+            return tableRows.count
         }
         return 0
     }
@@ -867,10 +867,10 @@ struct ExportDialog: View {
                 service = ExportService(driver: driver, databaseType: connection.type)
                 exportService = service
                 try await service.exportStreamingQuery(query: query, config: config, to: url)
-            case .queryResults(_, let rowBuffer, _):
+            case .queryResults(_, let tableRows, _):
                 service = ExportService(databaseType: connection.type)
                 exportService = service
-                try await service.exportQueryResults(rowBuffer: rowBuffer, config: config, to: url)
+                try await service.exportQueryResults(tableRows: tableRows, config: config, to: url)
             default:
                 return
             }
