@@ -663,12 +663,12 @@ struct DataChangeManagerExtendedTests {
 
     // MARK: - Edge Cases
 
-    @Test("Recording deletion for already-deleted row adds duplicate entry")
+    @Test("Recording deletion for already-deleted row is idempotent")
     func recordDeletionForAlreadyDeletedRow() {
         let manager = makeManager()
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice", "a@test.com"])
         manager.recordRowDeletion(rowIndex: 0, originalRow: ["1", "Alice", "a@test.com"])
-        #expect(manager.changes.count == 2)
+        #expect(manager.changes.count == 1)
     }
 
     @Test("changedRowIndices includes all operation types")

@@ -183,6 +183,7 @@ final class DataChangeManager: ChangeManaging {
     func undoRowInsertion(rowIndex: Int) {
         guard pending.undoRowInsertion(rowIndex: rowIndex) else { return }
         hasChanges = !pending.isEmpty
+        reloadVersion += 1
     }
 
     func undoBatchRowInsertion(rowIndices: [Int]) {
@@ -193,6 +194,7 @@ final class DataChangeManager: ChangeManaging {
             target.applyDataUndo(.batchRowInsertion(rowIndices: validRows, rowValues: rowValues))
         }
         hasChanges = !pending.isEmpty
+        reloadVersion += 1
     }
 
     // MARK: - Core Undo Application
@@ -246,18 +248,12 @@ final class DataChangeManager: ChangeManaging {
                     columnName: columnName, previousValue: previousValue
                 )
             }
-            // No matching cellChange: leave the update unchanged. Reaching here means
-            // the row's update lost track of this column (e.g. earlier collapse), so
-            // creating a new entry would resurrect a stale edit.
         } else if pending.change(forRow: rowIndex, type: .insert) != nil {
             pending.updateInsertedCellDirectly(
                 rowIndex: rowIndex, columnIndex: columnIndex,
                 columnName: columnName, newValue: previousValue
             )
         } else {
-            // Redo creating a fresh update: the action's `newValue` is the unmodified
-            // DB value (because `previousValue` is what we're setting back to). Pass it
-            // as the cellChange's oldValue so a future undo can collapse correctly.
             pending.reapplyCellChange(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
                 originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
