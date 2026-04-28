@@ -31,12 +31,41 @@ pub struct SqlEditorInit {
     pub initial_query: Option<String>,
 }
 
+/// One statement's outcome inside a multi-statement script. The
+/// editor renders these as sub-tabs of the results pane so a user
+/// running a migration / ETL script sees every step's result, not
+/// just the last one. `sql_preview` is the leading ~60 chars of the
+/// statement text used for the tab tooltip.
+#[derive(Debug, Clone)]
+pub struct StatementOutcome {
+    pub sql_preview: String,
+    pub elapsed_ms: u128,
+    pub kind: StatementOutcomeKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum StatementOutcomeKind {
+    /// Statement returned a result set (SELECT, RETURNING, etc.).
+    /// `rows_affected` is `None` because driver `query` doesn't
+    /// distinguish; for non-SELECT the rows vec is empty and we
+    /// surface a "executed" status instead of a row count.
+    Rows(QueryResult),
+    /// Statement failed; remaining statements are NotRun.
+    Error(String),
+    /// Statement was queued behind a failure or cancellation —
+    /// never sent to the driver.
+    NotRun,
+}
+
 #[derive(Debug)]
 pub enum SqlEditorInput {
     Run,
     Cancel,
-    ShowResult(QueryResult, u128),
-    ShowError(String),
+    /// One outcome per statement in the script. Single-statement
+    /// scripts produce a Vec of len 1; multi-statement scripts a
+    /// Vec of len N. The editor decides the rendering (single grid
+    /// vs. sub-tabs) based on Vec length.
+    ShowOutcomes(Vec<StatementOutcome>),
     ShowCancelled,
     ReplaceQuery(String),
 }
@@ -282,7 +311,6 @@ impl SimpleComponent for SqlEditor {
                 self.executing_metadata = database_service::instance().active_metadata();
                 self.executing_started_at = Some(SystemTime::now());
 
-                let started = std::time::Instant::now();
                 let sender_clone = sender.clone();
                 sender.command(move |_, shutdown| {
                     shutdown
@@ -291,22 +319,18 @@ impl SimpleComponent for SqlEditor {
                             let msg = tokio::select! {
                                 biased;
                                 _ = token.cancelled() => SqlEditorInput::ShowCancelled,
-                                result = run_statements(conn, statements) => {
-                                    let elapsed = started.elapsed();
-                                    match result {
-                                        Ok(query_result) => {
-                                            tracing::info!(
-                                                rows = query_result.rows.len(),
-                                                elapsed_ms = elapsed.as_millis(),
-                                                "query ok"
-                                            );
-                                            SqlEditorInput::ShowResult(query_result, elapsed.as_millis())
-                                        }
-                                        Err(e) => {
-                                            tracing::warn!(error = %e, "query failed");
-                                            SqlEditorInput::ShowError(e)
-                                        }
-                                    }
+                                outcomes = run_statements(conn, statements) => {
+                                    let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
+                                    let n_ok = outcomes
+                                        .iter()
+                                        .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
+                                        .count();
+                                    let n_err = outcomes
+                                        .iter()
+                                        .filter(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
+                                        .count();
+                                    tracing::info!(n_ok, n_err, total_ms, "script run complete");
+                                    SqlEditorInput::ShowOutcomes(outcomes)
                                 }
                             };
                             sender_clone.input(msg);
@@ -321,75 +345,45 @@ impl SimpleComponent for SqlEditor {
                 }
             }
 
-            SqlEditorInput::ShowResult(result, elapsed_ms) => {
+            SqlEditorInput::ShowOutcomes(outcomes) => {
                 self.cancel_token = None;
                 self.run_button.set_sensitive(true);
                 self.cancel_button.set_visible(false);
                 self.running_spinner.set_visible(false);
                 let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
-                self.record_history(elapsed_ms as i64, Some(result.rows.len() as i64), Outcome::Success);
-                let n = result.rows.len().to_string();
-                let ms = elapsed_ms.to_string();
-                let label = if result.truncated {
-                    crate::tr!("{n} row(s) in {ms} ms (truncated)")
-                        .replace("{n}", &n)
-                        .replace("{ms}", &ms)
-                } else {
-                    crate::tr!("{n} row(s) in {ms} ms")
-                        .replace("{n}", &n)
-                        .replace("{ms}", &ms)
-                };
-                self.status.set_label(&label);
-                clear_box(&self.results_holder);
-                if result.rows.is_empty() {
-                    let placeholder = adw::StatusPage::builder()
-                        .title(crate::tr!("No rows"))
-                        .description(crate::tr!("Query returned no rows."))
-                        .icon_name("view-grid-symbolic")
-                        .vexpand(true)
-                        .build();
-                    self.results_holder.append(&placeholder);
-                } else {
-                    let (column_view, _selection, _filter) = build_column_view(
-                        &result,
-                        &result.columns,
-                        "",
-                        None,
-                        None,
-                        None,
-                        None,
-                        TabGridContext::default(),
-                    );
-                    let scrolled = gtk::ScrolledWindow::builder()
-                        .child(&column_view)
-                        .hexpand(true)
-                        .vexpand(true)
-                        .build();
-                    self.results_holder.append(&scrolled);
-                }
-            }
 
-            SqlEditorInput::ShowError(msg) => {
-                self.cancel_token = None;
-                self.run_button.set_sensitive(true);
-                self.cancel_button.set_visible(false);
-                self.running_spinner.set_visible(false);
-                let _ = sender.output(SqlEditorOutput::RunStateChanged(false));
-                let elapsed = self
-                    .executing_started_at
-                    .and_then(|t| SystemTime::now().duration_since(t).ok())
-                    .map(|d| d.as_millis() as i64)
-                    .unwrap_or(0);
-                self.record_history(elapsed, None, Outcome::Error(msg.clone()));
-                self.status.set_label(&crate::tr!("error"));
+                let total_ms: u128 = outcomes.iter().map(|o| o.elapsed_ms).sum();
+                let n_total = outcomes.len();
+                let n_ok = outcomes
+                    .iter()
+                    .filter(|o| matches!(o.kind, StatementOutcomeKind::Rows(_)))
+                    .count();
+                let first_error = outcomes.iter().find_map(|o| match &o.kind {
+                    StatementOutcomeKind::Error(msg) => Some(msg.clone()),
+                    _ => None,
+                });
+
+                // History records the whole script as one entry.
+                // rows_affected aggregates across SELECT outcomes
+                // (NULL for scripts containing only DML).
+                let total_rows: i64 = outcomes
+                    .iter()
+                    .filter_map(|o| match &o.kind {
+                        StatementOutcomeKind::Rows(qr) => Some(qr.rows.len() as i64),
+                        _ => None,
+                    })
+                    .sum();
+                let history_outcome = match &first_error {
+                    Some(msg) => Outcome::Error(msg.clone()),
+                    None => Outcome::Success,
+                };
+                let rows_for_history = if total_rows > 0 { Some(total_rows) } else { None };
+                self.record_history(total_ms as i64, rows_for_history, history_outcome);
+
+                self.status
+                    .set_label(&summary_label(n_total, n_ok, total_ms, first_error.is_some()));
                 clear_box(&self.results_holder);
-                let err_page = adw::StatusPage::builder()
-                    .title(crate::tr!("Query failed"))
-                    .description(&msg)
-                    .icon_name("dialog-error-symbolic")
-                    .vexpand(true)
-                    .build();
-                self.results_holder.append(&err_page);
+                render_outcomes(&self.results_holder, &outcomes);
             }
 
             SqlEditorInput::ShowCancelled => {
@@ -458,33 +452,201 @@ fn clear_box(b: &gtk::Box) {
 async fn run_statements(
     conn: std::sync::Arc<dyn tablepro_core::Connection>,
     statements: Vec<String>,
-) -> Result<QueryResult, String> {
+) -> Vec<StatementOutcome> {
     if statements.is_empty() {
-        return Ok(QueryResult {
-            columns: Vec::new(),
-            rows: Vec::new(),
-            truncated: false,
+        return Vec::new();
+    }
+    let mut out = Vec::with_capacity(statements.len());
+    let mut aborted = false;
+    for sql in statements.into_iter() {
+        let preview = sql_preview(&sql);
+        if aborted {
+            out.push(StatementOutcome {
+                sql_preview: preview,
+                elapsed_ms: 0,
+                kind: StatementOutcomeKind::NotRun,
+            });
+            continue;
+        }
+        let started = std::time::Instant::now();
+        let kind = match conn.query(&sql).await {
+            Ok(qr) => StatementOutcomeKind::Rows(qr),
+            Err(e) => {
+                aborted = true;
+                StatementOutcomeKind::Error(super::error_text::driver_message(&e))
+            }
+        };
+        out.push(StatementOutcome {
+            sql_preview: preview,
+            elapsed_ms: started.elapsed().as_millis(),
+            kind,
         });
     }
-    let last_idx = statements.len() - 1;
-    let mut last_result = QueryResult {
-        columns: Vec::new(),
-        rows: Vec::new(),
-        truncated: false,
-    };
-    for (i, sql) in statements.into_iter().enumerate() {
-        if i == last_idx {
-            last_result = conn
-                .query(&sql)
-                .await
-                .map_err(|e| super::error_text::driver_message(&e))?;
+    out
+}
+
+/// First ~60 chars of `sql`, single-line, used for tab tooltips so
+/// the user can tell sub-tabs apart on long scripts without reading
+/// the editor.
+fn sql_preview(sql: &str) -> String {
+    let single_line: String = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+    if single_line.chars().count() > 60 {
+        let prefix: String = single_line.chars().take(60).collect();
+        format!("{prefix}…")
+    } else {
+        single_line
+    }
+}
+
+/// Top-of-pane status string. Single-statement scripts show the
+/// classic "{n} rows in {ms} ms"; multi-statement scripts show
+/// "{ok}/{total} statements · {ms} ms" with a trailing error hint
+/// when applicable.
+fn summary_label(n_total: usize, n_ok: usize, total_ms: u128, has_error: bool) -> String {
+    if n_total == 1 {
+        let ms = total_ms.to_string();
+        if has_error {
+            crate::tr!("error in {ms} ms").replace("{ms}", &ms)
         } else {
-            conn.query(&sql)
-                .await
-                .map_err(|e| super::error_text::driver_message(&e))?;
+            crate::tr!("done in {ms} ms").replace("{ms}", &ms)
+        }
+    } else {
+        let ok_s = n_ok.to_string();
+        let total_s = n_total.to_string();
+        let ms = total_ms.to_string();
+        let base = crate::tr!("{ok}/{total} statements · {ms} ms")
+            .replace("{ok}", &ok_s)
+            .replace("{total}", &total_s)
+            .replace("{ms}", &ms);
+        if has_error {
+            format!("{base} · {}", crate::tr!("error"))
+        } else {
+            base
         }
     }
-    Ok(last_result)
+}
+
+/// Mount one StatementOutcome into a parent box (for single-result
+/// renders) or as an `AdwViewStack` page (multi-result). Wraps grids
+/// in a ScrolledWindow so the result pane stays scroll-bounded.
+fn build_outcome_widget(o: &StatementOutcome, idx: usize) -> gtk::Widget {
+    match &o.kind {
+        StatementOutcomeKind::Rows(result) if !result.rows.is_empty() => {
+            let (column_view, _selection, _filter) = build_column_view(
+                result,
+                &result.columns,
+                "",
+                None,
+                None,
+                None,
+                None,
+                TabGridContext::default(),
+            );
+            let scrolled = gtk::ScrolledWindow::builder()
+                .child(&column_view)
+                .hexpand(true)
+                .vexpand(true)
+                .build();
+            scrolled.upcast()
+        }
+        StatementOutcomeKind::Rows(_) => {
+            let ms = o.elapsed_ms.to_string();
+            adw::StatusPage::builder()
+                .title(crate::tr!("Statement {n} executed").replace("{n}", &(idx + 1).to_string()))
+                .description(crate::tr!("No rows returned · {ms} ms").replace("{ms}", &ms))
+                .icon_name("emblem-default-symbolic")
+                .vexpand(true)
+                .build()
+                .upcast()
+        }
+        StatementOutcomeKind::Error(msg) => adw::StatusPage::builder()
+            .title(crate::tr!("Statement {n} failed").replace("{n}", &(idx + 1).to_string()))
+            .description(msg)
+            .icon_name("dialog-error-symbolic")
+            .vexpand(true)
+            .build()
+            .upcast(),
+        StatementOutcomeKind::NotRun => adw::StatusPage::builder()
+            .title(crate::tr!("Statement {n} not run").replace("{n}", &(idx + 1).to_string()))
+            .description(crate::tr!("Skipped because an earlier statement failed."))
+            .icon_name("emblem-synchronizing-symbolic")
+            .vexpand(true)
+            .build()
+            .upcast(),
+    }
+}
+
+fn outcome_tab_label(idx: usize, o: &StatementOutcome) -> String {
+    match &o.kind {
+        StatementOutcomeKind::Rows(qr) => {
+            let n_str = qr.rows.len().to_string();
+            crate::tr!("Result {n} ({rows})")
+                .replace("{n}", &(idx + 1).to_string())
+                .replace("{rows}", &n_str)
+        }
+        StatementOutcomeKind::Error(_) => crate::tr!("Result {n} (error)").replace("{n}", &(idx + 1).to_string()),
+        StatementOutcomeKind::NotRun => crate::tr!("Result {n} (skipped)").replace("{n}", &(idx + 1).to_string()),
+    }
+}
+
+fn render_outcomes(holder: &gtk::Box, outcomes: &[StatementOutcome]) {
+    if outcomes.is_empty() {
+        let placeholder = adw::StatusPage::builder()
+            .title(crate::tr!("Empty query"))
+            .description(crate::tr!("Type a SQL statement and press Run."))
+            .icon_name("text-x-generic-symbolic")
+            .vexpand(true)
+            .build();
+        holder.append(&placeholder);
+        return;
+    }
+    if outcomes.len() == 1 {
+        let widget = build_outcome_widget(&outcomes[0], 0);
+        holder.append(&widget);
+        return;
+    }
+    // Multi-statement: nested AdwViewStack with a centred pill
+    // ViewSwitcher above. Mirrors the M-1 Table tab pattern (Data ↔
+    // Structure) so the visual vocabulary stays consistent across the
+    // app — same widget for "different views of the same execution".
+    let stack = adw::ViewStack::new();
+    for (idx, o) in outcomes.iter().enumerate() {
+        let widget = build_outcome_widget(o, idx);
+        let icon = match &o.kind {
+            StatementOutcomeKind::Rows(_) => "view-grid-symbolic",
+            StatementOutcomeKind::Error(_) => "dialog-error-symbolic",
+            StatementOutcomeKind::NotRun => "emblem-synchronizing-symbolic",
+        };
+        let page = stack.add_titled_with_icon(&widget, Some(&format!("r{idx}")), &outcome_tab_label(idx, o), icon);
+        if !o.sql_preview.is_empty() {
+            // Tooltip on the page widget itself surfaces the SQL
+            // preview when hovering the switcher pill.
+            widget.set_tooltip_text(Some(&o.sql_preview));
+            let _ = page;
+        }
+    }
+    let switcher = adw::ViewSwitcher::builder()
+        .stack(&stack)
+        .policy(adw::ViewSwitcherPolicy::Wide)
+        .build();
+    let switcher_holder = gtk::CenterBox::builder()
+        .margin_top(6)
+        .margin_bottom(6)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    switcher_holder.set_center_widget(Some(&switcher));
+    holder.append(&switcher_holder);
+    holder.append(&stack);
+    // First page is auto-selected; if the script had any errors,
+    // jump straight to the first failing statement so the user sees
+    // what broke without manual switching.
+    if let Some(err_idx) = outcomes
+        .iter()
+        .position(|o| matches!(o.kind, StatementOutcomeKind::Error(_)))
+    {
+        stack.set_visible_child_name(&format!("r{err_idx}"));
+    }
 }
 
 fn split_sql_statements(sql: &str) -> Vec<String> {
@@ -618,7 +780,7 @@ fn apply_editor_font_size(_view: &sourceview5::View, font_size: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::split_sql_statements;
+    use super::{split_sql_statements, sql_preview, summary_label};
 
     #[test]
     fn splits_on_top_level_semicolons() {
@@ -661,5 +823,33 @@ mod tests {
     fn empty_input_returns_empty() {
         assert!(split_sql_statements("").is_empty());
         assert!(split_sql_statements("   \n\t  ").is_empty());
+    }
+
+    #[test]
+    fn sql_preview_collapses_whitespace_and_truncates() {
+        let preview = sql_preview("SELECT *\n  FROM   users\n  WHERE id = 1");
+        assert_eq!(preview, "SELECT * FROM users WHERE id = 1");
+    }
+
+    #[test]
+    fn sql_preview_appends_ellipsis_when_too_long() {
+        let long = "SELECT col1, col2, col3, col4, col5, col6, col7, col8, col9 FROM users WHERE id = 1";
+        let preview = sql_preview(long);
+        assert!(preview.ends_with('…'));
+        assert!(preview.chars().count() <= 61);
+    }
+
+    #[test]
+    fn summary_label_single_statement_done() {
+        let s = summary_label(1, 1, 42, false);
+        assert!(s.contains("42"));
+        assert!(!s.contains("/"));
+    }
+
+    #[test]
+    fn summary_label_multi_statement_includes_counts() {
+        let s = summary_label(3, 2, 100, true);
+        assert!(s.contains("2/3"));
+        assert!(s.contains("100"));
     }
 }
