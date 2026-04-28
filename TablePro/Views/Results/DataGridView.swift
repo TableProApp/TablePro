@@ -58,6 +58,7 @@ struct DataGridIdentity: Equatable {
 struct DataGridView: NSViewRepresentable {
     let rowProvider: InMemoryRowProvider
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
+    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
     var changeManager: AnyChangeManager
     var schemaVersion: Int = 0
     var metadataVersion: Int = 0
@@ -179,7 +180,9 @@ struct DataGridView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         context.coordinator.tableView = tableView
+        context.coordinator.tableRowsController.attach(tableView)
         context.coordinator.tableRowsProvider = tableRowsProvider
+        context.coordinator.tableRowsMutator = tableRowsMutator
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
@@ -250,6 +253,7 @@ struct DataGridView: NSViewRepresentable {
             // Only refresh delegate reference — it may have changed between body evals
             coordinator.delegate = delegate
             coordinator.tableRowsProvider = tableRowsProvider
+            coordinator.tableRowsMutator = tableRowsMutator
             delegate?.dataGridAttach(tableViewCoordinator: coordinator)
             return
         }
@@ -307,6 +311,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.changeManager = changeManager
         coordinator.isEditable = isEditable
         coordinator.tableRowsProvider = tableRowsProvider
+        coordinator.tableRowsMutator = tableRowsMutator
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns
@@ -713,6 +718,7 @@ struct DataGridView: NSViewRepresentable {
             NotificationCenter.default.removeObserver(observer)
             coordinator.themeObserver = nil
         }
+        coordinator.tableRowsController.detach()
         coordinator.rowProvider = InMemoryRowProvider(rows: [], columns: [])
     }
 

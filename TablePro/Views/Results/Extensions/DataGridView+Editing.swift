@@ -142,14 +142,20 @@ extension TableViewCoordinator {
 
         if isEscapeCancelling {
             isEscapeCancelling = false
-            let originalValue = rowProvider.value(atRow: row, column: columnIndex)
+            let cancelTableRows = tableRowsProvider()
+            let originalValue: String? = row >= 0 && row < cancelTableRows.rows.count
+                ? cancelTableRows.value(at: row, column: columnIndex)
+                : rowProvider.value(atRow: row, column: columnIndex)
             textField.stringValue = originalValue ?? ""
             (control as? CellTextField)?.restoreTruncatedDisplay()
             return true
         }
 
         let rawInput = textField.stringValue
-        let oldValue = rowProvider.value(atRow: row, column: columnIndex)
+        let tableRows = tableRowsProvider()
+        let oldValue: String? = row >= 0 && row < tableRows.rows.count
+            ? tableRows.value(at: row, column: columnIndex)
+            : rowProvider.value(atRow: row, column: columnIndex)
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 
         commitCellEdit(row: row, columnIndex: columnIndex, newValue: newValue)

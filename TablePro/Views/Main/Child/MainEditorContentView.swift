@@ -559,6 +559,11 @@ struct MainEditorContentView: View {
             tableRowsProvider: { [coordinator] in
                 coordinator.tableRowsStore.existingTableRows(for: tabId) ?? TableRows()
             },
+            tableRowsMutator: { [coordinator] mutate in
+                coordinator.tableRowsStore.updateTableRows(for: tabId) { rows in
+                    mutate(&rows)
+                }
+            },
             changeManager: currentChangeManager,
             schemaVersion: tab.schemaVersion,
             metadataVersion: tab.metadataVersion,

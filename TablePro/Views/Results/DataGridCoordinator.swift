@@ -17,6 +17,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 {
     var rowProvider: InMemoryRowProvider
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
+    var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
     var changeManager: AnyChangeManager
     var isEditable: Bool
     weak var delegate: (any DataGridViewDelegate)?
@@ -60,6 +61,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     weak var tableView: NSTableView?
     let cellFactory = DataGridCellFactory()
+    let tableRowsController = TableRowsController()
     var overlayEditor: CellOverlayEditor?
 
     // Settings observer for real-time updates
@@ -206,6 +208,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             }
             tableView.reloadData()
         }
+        tableRowsController.detach()
         // Release delegate
         delegate = nil
         activeFKPreviewPopover?.close()
