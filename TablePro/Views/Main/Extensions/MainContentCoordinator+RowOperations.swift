@@ -21,7 +21,7 @@ extension MainContentCoordinator {
                 tableRows: &rows
             )
             addResult = result
-            return result.delta
+            return result?.delta ?? .none
         }
 
         guard let result = addResult else { return }
@@ -93,7 +93,7 @@ extension MainContentCoordinator {
                 tableRows: &rows
             )
             dupResult = result
-            return result.delta
+            return result?.delta ?? .none
         }
 
         guard let result = dupResult else { return }
