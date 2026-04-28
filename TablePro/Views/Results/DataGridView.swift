@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import os
 import SwiftUI
 
 /// Position of a cell in the grid (row, column)
@@ -201,6 +202,16 @@ struct DataGridView: NSViewRepresentable {
 
         let coordinator = context.coordinator
 
+        let trace = Logger(subsystem: "com.TablePro", category: "UndoTrace")
+        let traceStart = Date()
+        let inV = changeManager.reloadVersion
+        defer {
+            let elapsed = Date().timeIntervalSince(traceStart) * 1000
+            if elapsed > 1 {
+                trace.info("updateNSView reloadVersion=\(inV) elapsed=\(elapsed)ms")
+            }
+        }
+
         // Don't reload while editing (field editor or overlay)
         if tableView.editedRow >= 0 { return }
         if let editor = context.coordinator.overlayEditor, editor.isActive { return }
@@ -278,7 +289,9 @@ struct DataGridView: NSViewRepresentable {
 
         // Re-apply pending cell edits only when changes have been modified
         if changeManager.reloadVersion != coordinator.lastReapplyVersion {
+            let reapplyStart = Date()
             coordinator.lastReapplyVersion = changeManager.reloadVersion
+            var cellCount = 0
             for rowChange in changeManager.rowChanges {
                 for cellChange in rowChange.cellChanges {
                     coordinator.rowProvider.updateValue(
@@ -286,8 +299,11 @@ struct DataGridView: NSViewRepresentable {
                         at: rowChange.rowIndex,
                         columnIndex: cellChange.columnIndex
                     )
+                    cellCount += 1
                 }
             }
+            let reapplyElapsed = Date().timeIntervalSince(reapplyStart) * 1000
+            trace.info("reapplyCellChanges cells=\(cellCount) elapsed=\(reapplyElapsed)ms")
         }
 
         coordinator.updateCache()
@@ -542,7 +558,11 @@ struct DataGridView: NSViewRepresentable {
         metadataChanged: Bool = false,
         paginationChanged: Bool = false
     ) {
+        let trace = Logger(subsystem: "com.TablePro", category: "UndoTrace")
+        let start = Date()
+        let beforeCallCount = coordinator.viewForRowCallCount
         if needsFullReload {
+            trace.info("reloadAndSync FULL_RELOAD")
             tableView.reloadData()
         } else if metadataChanged {
             // FK metadata arrived (Phase 2) — reload only FK columns to show arrow buttons.
@@ -568,16 +588,24 @@ struct DataGridView: NSViewRepresentable {
         } else if versionChanged {
             let changedRows = changeManager.consumeChangedRowIndices()
             if changedRows.count > 500 {
+                trace.info("reloadAndSync VERSION_CHANGED count=\(changedRows.count) BIG -> full reloadData")
                 tableView.reloadData()
             } else if !changedRows.isEmpty {
                 let rowIndexSet = IndexSet(changedRows)
                 let columnIndexSet = IndexSet(integersIn: 0..<tableView.numberOfColumns)
+                trace.info("reloadAndSync VERSION_CHANGED count=\(changedRows.count) -> partial reload")
                 tableView.reloadData(forRowIndexes: rowIndexSet, columnIndexes: columnIndexSet)
             } else if !changeManager.hasChanges {
+                trace.info("reloadAndSync VERSION_CHANGED no changes -> full reloadData")
                 tableView.reloadData()
             }
         }
 
+        let elapsed = Date().timeIntervalSince(start) * 1000
+        let cellCalls = coordinator.viewForRowCallCount - beforeCallCount
+        if elapsed > 1 {
+            trace.info("reloadAndSync total elapsed=\(elapsed)ms cellCalls=\(cellCalls)")
+        }
         coordinator.lastReloadVersion = changeManager.reloadVersion
 
         // Scroll to first row when page changes
