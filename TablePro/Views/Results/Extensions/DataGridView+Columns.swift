@@ -35,11 +35,14 @@ extension TableViewCoordinator {
             return nil
         }
         let rawValue = displayRow.values[columnIndex]
-        let displayValue = resolveDisplayValue(
-            row: row,
-            columnIndex: columnIndex,
+        let columnType = columnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+        let formattedValue = displayValue(
+            forID: displayRow.id,
+            column: columnIndex,
             rawValue: rawValue,
-            tableRows: tableRows
+            columnType: columnType
         )
         let state = visualState(for: row)
 
@@ -58,8 +61,8 @@ extension TableViewCoordinator {
         let isFKColumn = fkColumns.contains(columnIndex)
 
         let hasSpecialEditor: Bool = {
-            guard columnIndex < rowProvider.columnTypes.count else { return false }
-            let ct = rowProvider.columnTypes[columnIndex]
+            guard columnIndex < tableRows.columnTypes.count else { return false }
+            let ct = tableRows.columnTypes[columnIndex]
             return ct.isBooleanType || ct.isDateType || ct.isJsonType || ct.isBlobType
         }()
 
@@ -67,7 +70,7 @@ extension TableViewCoordinator {
             tableView: tableView,
             row: row,
             columnIndex: columnIndex,
-            displayValue: displayValue,
+            displayValue: formattedValue,
             rawValue: rawValue,
             visualState: state,
             isEditable: isEditable && !state.isDeleted,
@@ -95,21 +98,4 @@ extension TableViewCoordinator {
         return rowView
     }
 
-    private func resolveDisplayValue(
-        row: Int,
-        columnIndex: Int,
-        rawValue: String?,
-        tableRows: TableRows
-    ) -> String? {
-        if sortedIDs == nil, row < rowProvider.totalRowCount {
-            return rowProvider.displayValue(atRow: row, column: columnIndex)
-        }
-        let columnType = columnIndex < tableRows.columnTypes.count
-            ? tableRows.columnTypes[columnIndex]
-            : nil
-        let displayFormat = columnIndex < rowProvider.columnDisplayFormats.count
-            ? rowProvider.columnDisplayFormats[columnIndex]
-            : nil
-        return CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: displayFormat)
-    }
 }

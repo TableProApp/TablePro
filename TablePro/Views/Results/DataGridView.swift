@@ -66,6 +66,7 @@ struct DataGridView: NSViewRepresentable {
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
     var sortedIDs: [RowID]?
+    var displayFormats: [ValueDisplayFormat?] = []
     var delegate: (any DataGridViewDelegate)?
 
     @Binding var selectedRowIndices: Set<Int>
@@ -185,6 +186,7 @@ struct DataGridView: NSViewRepresentable {
         context.coordinator.tableRowsProvider = tableRowsProvider
         context.coordinator.tableRowsMutator = tableRowsMutator
         context.coordinator.sortedIDs = sortedIDs
+        context.coordinator.syncDisplayFormats(displayFormats)
         context.coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: context.coordinator)
         context.coordinator.dropdownColumns = configuration.dropdownColumns
@@ -252,11 +254,11 @@ struct DataGridView: NSViewRepresentable {
             configuration: configuration
         )
         if currentIdentity == coordinator.lastIdentity {
-            // Only refresh delegate reference — it may have changed between body evals
             coordinator.delegate = delegate
             coordinator.tableRowsProvider = tableRowsProvider
             coordinator.tableRowsMutator = tableRowsMutator
             coordinator.sortedIDs = sortedIDs
+            coordinator.syncDisplayFormats(displayFormats)
             delegate?.dataGridAttach(tableViewCoordinator: coordinator)
             return
         }
@@ -307,7 +309,7 @@ struct DataGridView: NSViewRepresentable {
             let rowH = tableView.rowHeight
             if rowH > 0 {
                 let visibleRows = Int(tableView.visibleRect.height / rowH) + 5
-                coordinator.rowProvider.preWarmDisplayCache(upTo: visibleRows)
+                coordinator.preWarmDisplayCache(upTo: visibleRows)
             }
         }
 
@@ -316,6 +318,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.tableRowsProvider = tableRowsProvider
         coordinator.tableRowsMutator = tableRowsMutator
         coordinator.sortedIDs = sortedIDs
+        coordinator.syncDisplayFormats(displayFormats)
         coordinator.delegate = delegate
         delegate?.dataGridAttach(tableViewCoordinator: coordinator)
         coordinator.dropdownColumns = configuration.dropdownColumns

@@ -581,6 +581,7 @@ struct MainEditorContentView: View {
                 hiddenColumns: columnVisibilityManager.hiddenColumns
             ),
             sortedIDs: sortedIDsForTab(tab),
+            displayFormats: displayFormats(for: tab),
             delegate: dataTabDelegate,
             selectedRowIndices: Binding(
                 get: { selectionState.indices },
@@ -656,23 +657,21 @@ struct MainEditorContentView: View {
             )
         }
 
-        applyDisplayFormats(to: provider, tab: tab)
         return provider
     }
 
-    private func applyDisplayFormats(to provider: InMemoryRowProvider, tab: QueryTab) {
-        let columns = provider.columns
-        let columnTypes = provider.columnTypes
-        guard !columns.isEmpty else { return }
+    private func displayFormats(for tab: QueryTab) -> [ValueDisplayFormat?] {
+        let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
+        let columns = tableRows?.columns ?? []
+        let columnTypes = tableRows?.columnTypes ?? []
+        guard !columns.isEmpty else { return [] }
 
         let settings = AppSettingsManager.shared.dataGrid
         let service = ValueDisplayFormatService.shared
 
-        // Auto-detect formats when the setting is enabled
         var detected: [ValueDisplayFormat?] = Array(repeating: nil, count: columns.count)
         if settings.enableSmartValueDetection {
             let sampleRows: [[String?]]? = {
-                let tableRows = coordinator.tableRowsStore.existingTableRows(for: tab.id)
                 let rows = tableRows?.rows.prefix(10).map(\.values) ?? []
                 return rows.isEmpty ? nil : Array(rows)
             }()
@@ -682,7 +681,6 @@ struct MainEditorContentView: View {
                 sampleValues: sampleRows
             )
 
-            // Update service's auto-detected formats
             var autoMap: [String: ValueDisplayFormat] = [:]
             for (i, format) in detected.enumerated() where i < columns.count {
                 if let format {
@@ -694,7 +692,6 @@ struct MainEditorContentView: View {
             service.clearAutoDetectedFormats(connectionId: connectionId, tableName: tab.tableContext.tableName)
         }
 
-        // Merge with stored overrides (override > detection > nil)
         let connId = connectionId
         let tblName = tab.tableContext.tableName
         var merged = detected
@@ -710,10 +707,7 @@ struct MainEditorContentView: View {
             }
         }
 
-        // Only set if there's at least one non-nil format
-        if merged.contains(where: { $0 != nil }) {
-            provider.updateDisplayFormats(merged)
-        }
+        return merged.contains(where: { $0 != nil }) ? merged : []
     }
 
     /// Returns the display order as a permutation of `RowID`, or nil when no sort applies.

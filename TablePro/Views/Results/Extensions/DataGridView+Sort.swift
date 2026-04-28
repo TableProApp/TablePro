@@ -241,13 +241,12 @@ extension TableViewCoordinator {
             )
         }
 
-        // Update the provider's format array and refresh
-        var formats = rowProvider.columnDisplayFormats
+        var formats = columnDisplayFormats
         while formats.count <= info.columnIndex {
             formats.append(nil)
         }
         formats[info.columnIndex] = (info.format == .raw) ? nil : info.format
-        rowProvider.updateDisplayFormats(formats)
+        updateDisplayFormats(formats)
 
         guard let tableView else { return }
         let visibleRect = tableView.visibleRect

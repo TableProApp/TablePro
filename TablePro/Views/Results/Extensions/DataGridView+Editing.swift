@@ -15,19 +15,20 @@ extension TableViewCoordinator {
 
     func inlineEditEligibility(row: Int, columnIndex: Int) -> InlineEditEligibility {
         guard isEditable else { return .blocked }
-        guard row >= 0, columnIndex >= 0, columnIndex < rowProvider.columns.count else { return .blocked }
+        let tableRows = tableRowsProvider()
+        guard row >= 0, columnIndex >= 0, columnIndex < tableRows.columns.count else { return .blocked }
         guard !changeManager.isRowDeleted(row) else { return .blocked }
 
         let immutable = databaseType.map { PluginManager.shared.immutableColumns(for: $0) } ?? []
-        if immutable.contains(rowProvider.columns[columnIndex]) {
+        if immutable.contains(tableRows.columns[columnIndex]) {
             return .blocked
         }
 
-        let columnName = rowProvider.columns[columnIndex]
-        if rowProvider.columnForeignKeys[columnName] != nil { return .blocked }
+        let columnName = tableRows.columns[columnIndex]
+        if tableRows.columnForeignKeys[columnName] != nil { return .blocked }
 
-        if columnIndex < rowProvider.columnTypes.count {
-            let ct = rowProvider.columnTypes[columnIndex]
+        if columnIndex < tableRows.columnTypes.count {
+            let ct = tableRows.columnTypes[columnIndex]
             if ct.isBooleanType || ct.isDateType || ct.isJsonType
                 || ct.isBlobType || ct.isEnumType || ct.isSetType {
                 return .blocked
@@ -121,9 +122,8 @@ extension TableViewCoordinator {
 
         tableView.selectRowIndexes(IndexSet(integer: nextRow), byExtendingSelection: false)
 
-        // Check if next cell is also multiline → open overlay there
         let nextColumnIndex = nextColumn - 1
-        if nextColumnIndex >= 0, nextColumnIndex < rowProvider.columns.count,
+        if nextColumnIndex >= 0,
            let nextDisplayRow = displayRow(at: nextRow),
            nextColumnIndex < nextDisplayRow.values.count,
            let value = nextDisplayRow.values[nextColumnIndex],
@@ -147,10 +147,8 @@ extension TableViewCoordinator {
         if isEscapeCancelling {
             isEscapeCancelling = false
             let originalValue: String? = {
-                if let displayRow = displayRow(at: row), columnIndex < displayRow.values.count {
-                    return displayRow.values[columnIndex]
-                }
-                return rowProvider.value(atRow: row, column: columnIndex)
+                guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+                return displayRow.values[columnIndex]
             }()
             textField.stringValue = originalValue ?? ""
             (control as? CellTextField)?.restoreTruncatedDisplay()
@@ -159,10 +157,8 @@ extension TableViewCoordinator {
 
         let rawInput = textField.stringValue
         let oldValue: String? = {
-            if let displayRow = displayRow(at: row), columnIndex < displayRow.values.count {
-                return displayRow.values[columnIndex]
-            }
-            return rowProvider.value(atRow: row, column: columnIndex)
+            guard let displayRow = displayRow(at: row), columnIndex < displayRow.values.count else { return nil }
+            return displayRow.values[columnIndex]
         }()
         let newValue: String? = rawInput.isEmpty && oldValue == nil ? nil : rawInput
 

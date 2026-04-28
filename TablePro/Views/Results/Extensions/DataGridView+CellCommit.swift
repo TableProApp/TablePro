@@ -8,26 +8,16 @@ import AppKit
 extension TableViewCoordinator {
     func commitCellEdit(row: Int, columnIndex: Int, newValue: String?) {
         guard let tableView else { return }
-        guard columnIndex >= 0 && columnIndex < rowProvider.columns.count else { return }
-
-        let storageRow = tableRowsIndex(forDisplayRow: row)
-        let displayRowValues = displayRow(at: row)
-        let usesTableRows = storageRow != nil && displayRowValues != nil
-        let oldValue: String? = {
-            if let displayRowValues, columnIndex < displayRowValues.values.count {
-                return displayRowValues.values[columnIndex]
-            }
-            return rowProvider.value(atRow: row, column: columnIndex)
-        }()
+        let tableRows = tableRowsProvider()
+        guard columnIndex >= 0 && columnIndex < tableRows.columns.count else { return }
+        guard let displayRowValues = displayRow(at: row) else { return }
+        guard columnIndex < displayRowValues.values.count else { return }
+        let oldValue = displayRowValues.values[columnIndex]
         guard oldValue != newValue else { return }
 
-        let columnName = rowProvider.columns[columnIndex]
-        let originalRow: [String?] = {
-            if let displayRowValues {
-                return displayRowValues.values
-            }
-            return rowProvider.rowValues(at: row) ?? []
-        }()
+        let storageRow = tableRowsIndex(forDisplayRow: row)
+        let columnName = tableRows.columns[columnIndex]
+        let originalRow = displayRowValues.values
         changeManager.recordCellChange(
             rowIndex: row,
             columnIndex: columnIndex,
@@ -44,9 +34,9 @@ extension TableViewCoordinator {
             }
         }
         delegate?.dataGridDidEditCell(row: row, column: columnIndex, newValue: newValue)
-        rowProvider.invalidateDisplayCache()
+        invalidateDisplayCache()
 
-        if usesTableRows, case .cellChanged = delta {
+        if storageRow != nil, case .cellChanged = delta {
             let displayDelta: Delta = .cellChanged(
                 row: row,
                 column: DataGridView.tableColumnIndex(for: columnIndex)

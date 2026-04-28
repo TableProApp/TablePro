@@ -21,6 +21,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var changeManager: AnyChangeManager
     var isEditable: Bool
     var sortedIDs: [RowID]?
+    private(set) var columnDisplayFormats: [ValueDisplayFormat?] = []
+    private var displayCache: [RowID: [String?]] = [:]
     weak var delegate: (any DataGridViewDelegate)?
     weak var activeFKPreviewPopover: NSPopover?
     var dropdownColumns: Set<Int>?
@@ -150,11 +152,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 // When smart detection is toggled off, clear display formats so they stop being applied
                 if prev.enableSmartValueDetection != settings.enableSmartValueDetection
                     && !settings.enableSmartValueDetection {
-                    self.rowProvider.updateDisplayFormats([])
+                    self.updateDisplayFormats([])
                 }
 
                 if dataChanged {
-                    self.rowProvider.invalidateDisplayCache()
+                    self.invalidateDisplayCache()
                     let visibleRect = tableView.visibleRect
                     let visibleRange = tableView.rows(in: visibleRect)
                     if visibleRange.length > 0 {
@@ -200,6 +202,8 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         overlayEditor?.dismiss(commit: false)
         rowProvider = InMemoryRowProvider(rows: [], columns: [])
         rowVisualStateCache.removeAll()
+        displayCache.removeAll()
+        columnDisplayFormats = []
         cachedRowCount = 0
         cachedColumnCount = 0
         sortedIDs = nil
@@ -254,7 +258,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     func applyFullReplace() {
         guard let tableView else { return }
-        rowProvider.invalidateDisplayCache()
+        displayCache.removeAll()
         rebuildVisualStateCache()
         updateCache()
         tableView.reloadData()
@@ -281,6 +285,82 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         return displayIndex
     }
 
+    func displayValue(forID id: RowID, column: Int, rawValue: String?, columnType: ColumnType?) -> String? {
+        if let cachedRow = displayCache[id], column >= 0, column < cachedRow.count, let cached = cachedRow[column] {
+            return cached
+        }
+        let format = column >= 0 && column < columnDisplayFormats.count ? columnDisplayFormats[column] : nil
+        let formatted = CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: format) ?? rawValue
+
+        var rowCache = displayCache[id] ?? []
+        let neededCount = max(column + 1, columnDisplayFormats.count)
+        if rowCache.count < neededCount {
+            rowCache.append(contentsOf: Array(repeating: nil, count: neededCount - rowCache.count))
+        }
+        if column >= 0, column < rowCache.count {
+            rowCache[column] = formatted
+        }
+        displayCache[id] = rowCache
+        return formatted
+    }
+
+    func invalidateDisplayCache() {
+        displayCache.removeAll()
+    }
+
+    func updateDisplayFormats(_ formats: [ValueDisplayFormat?]) {
+        columnDisplayFormats = formats
+        displayCache.removeAll()
+    }
+
+    func syncDisplayFormats(_ formats: [ValueDisplayFormat?]) {
+        guard formats != columnDisplayFormats else { return }
+        columnDisplayFormats = formats
+        displayCache.removeAll()
+    }
+
+    func preWarmDisplayCache(upTo rowCount: Int) {
+        let tableRows = tableRowsProvider()
+        let displayCount = sortedIDs?.count ?? tableRows.count
+        let count = min(rowCount, displayCount)
+        guard count > 0 else { return }
+        for displayIndex in 0..<count {
+            guard let row = displayRow(at: displayIndex) else { continue }
+            let id = row.id
+            guard displayCache[id] == nil else { continue }
+            let columnCount = tableRows.columns.count
+            var rowCache = [String?](repeating: nil, count: columnCount)
+            for col in 0..<min(row.values.count, columnCount) {
+                let columnType = col < tableRows.columnTypes.count ? tableRows.columnTypes[col] : nil
+                let format = col < columnDisplayFormats.count ? columnDisplayFormats[col] : nil
+                rowCache[col] = CellDisplayFormatter.format(
+                    row.values[col],
+                    columnType: columnType,
+                    displayFormat: format
+                ) ?? row.values[col]
+            }
+            displayCache[id] = rowCache
+        }
+    }
+
+    private func pruneDisplayCacheToAliveIDs() {
+        guard !displayCache.isEmpty else { return }
+        let tableRows = tableRowsProvider()
+        var aliveIDs = Set<RowID>()
+        aliveIDs.reserveCapacity(tableRows.count)
+        for row in tableRows.rows {
+            aliveIDs.insert(row.id)
+        }
+        displayCache = displayCache.filter { aliveIDs.contains($0.key) }
+    }
+
+    private func invalidateDisplayCache(forDisplayRow displayIndex: Int, column: Int) {
+        guard let row = displayRow(at: displayIndex) else { return }
+        guard var rowCache = displayCache[row.id], column >= 0, column < rowCache.count else { return }
+        rowCache[column] = nil
+        displayCache[row.id] = rowCache
+    }
+
     func applyDelta(_ delta: Delta) {
         switch delta {
         case .cellChanged(let row, let column):
@@ -288,6 +368,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
             let tableColumn = DataGridView.tableColumnIndex(for: column)
             guard row >= 0, row < tableView.numberOfRows else { return }
             guard tableColumn >= 0, tableColumn < tableView.numberOfColumns else { return }
+            invalidateDisplayCache(forDisplayRow: row, column: column)
             tableView.reloadData(
                 forRowIndexes: IndexSet(integer: row),
                 columnIndexes: IndexSet(integer: tableColumn)
@@ -304,6 +385,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
                 if tableColumn >= 0, tableColumn < tableView.numberOfColumns {
                     colSet.insert(tableColumn)
                 }
+                invalidateDisplayCache(forDisplayRow: position.row, column: position.column)
             }
             guard !rowSet.isEmpty, !colSet.isEmpty else { return }
             tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
@@ -314,9 +396,11 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         case .rowsRemoved(let indices):
             guard !indices.isEmpty else { return }
             removeMissingIDsFromSortedIDs()
+            pruneDisplayCacheToAliveIDs()
             applyRemovedRows(indices)
         case .columnsReplaced, .fullReplace:
             sortedIDs = nil
+            displayCache.removeAll()
             applyFullReplace()
         }
     }
@@ -341,7 +425,7 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     }
 
     func invalidateCachesForUndoRedo() {
-        rowProvider.invalidateDisplayCache()
+        displayCache.removeAll()
         rebuildVisualStateCache()
         updateCache()
     }
