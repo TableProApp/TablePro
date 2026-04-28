@@ -192,10 +192,13 @@ struct PendingChanges: Equatable {
     }
 
     /// Re-apply a cell edit during undo replay (skips undo registration).
+    /// `originalDBValue` is the cell's value in the unmodified database row.
+    /// It must be preserved so that a later collapse compares correctly.
     mutating func reapplyCellChange(
         rowIndex: Int,
         columnIndex: Int,
         columnName: String,
+        originalDBValue: String?,
         newValue: String?,
         originalRow: [String?]?
     ) {
@@ -203,7 +206,7 @@ struct PendingChanges: Equatable {
             rowIndex: rowIndex,
             columnIndex: columnIndex,
             columnName: columnName,
-            oldValue: nil,
+            oldValue: originalDBValue,
             newValue: newValue
         )
 

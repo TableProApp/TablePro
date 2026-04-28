@@ -162,9 +162,22 @@ struct PendingChangesReplayTests {
         var pending = PendingChanges()
         pending.reapplyCellChange(
             rowIndex: 0, columnIndex: 1, columnName: "name",
-            newValue: "x", originalRow: nil
+            originalDBValue: "orig", newValue: "x", originalRow: nil
         )
         #expect(pending.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(pending.changes[0].cellChanges[0].oldValue == "orig")
+    }
+
+    @Test("Reapply cell change preserves the original DB value as oldValue")
+    func reapplyCellPreservesOriginalDBValue() {
+        var pending = PendingChanges()
+        pending.reapplyCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            originalDBValue: "Alice", newValue: "Bob", originalRow: nil
+        )
+        let cellChange = pending.changes[0].cellChanges[0]
+        #expect(cellChange.oldValue == "Alice")
+        #expect(cellChange.newValue == "Bob")
     }
 
     @Test("Reinsert row creates insert change with saved values")
@@ -258,7 +271,7 @@ struct PendingChangesChangedRowIndicesTests {
         _ = pending.consumeChangedRowIndices()
         pending.reapplyCellChange(
             rowIndex: 5, columnIndex: 1, columnName: "name",
-            newValue: "X", originalRow: nil
+            originalDBValue: nil, newValue: "X", originalRow: nil
         )
         #expect(pending.consumeChangedRowIndices().contains(5))
     }

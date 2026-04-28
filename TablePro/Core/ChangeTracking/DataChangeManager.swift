@@ -255,9 +255,12 @@ final class DataChangeManager: ChangeManaging {
                 columnName: columnName, newValue: previousValue
             )
         } else {
+            // Redo creating a fresh update: the action's `newValue` is the unmodified
+            // DB value (because `previousValue` is what we're setting back to). Pass it
+            // as the cellChange's oldValue so a future undo can collapse correctly.
             pending.reapplyCellChange(
                 rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                newValue: previousValue, originalRow: originalRow
+                originalDBValue: newValue, newValue: previousValue, originalRow: originalRow
             )
         }
         lastUndoResult = UndoResult(action: action, needsRowRemoval: false, needsRowRestore: false, restoreRow: nil)

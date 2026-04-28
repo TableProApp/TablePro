@@ -788,6 +788,23 @@ struct DataChangeManagerExtendedTests {
         #expect(!manager.changes.isEmpty)
     }
 
+    @Test("Edit -> undo -> redo -> undo collapses cleanly (no orphan modifiedCells)")
+    func editUndoRedoUndoCollapses() {
+        let manager = makeManager()
+        manager.recordCellChange(
+            rowIndex: 0, columnIndex: 1, columnName: "name",
+            oldValue: "Alice", newValue: "Bob"
+        )
+        _ = manager.undoLastChange()
+        _ = manager.redoLastChange()
+        #expect(manager.isCellModified(rowIndex: 0, columnIndex: 1))
+
+        _ = manager.undoLastChange()
+        #expect(!manager.isCellModified(rowIndex: 0, columnIndex: 1))
+        #expect(manager.changes.isEmpty)
+        #expect(!manager.hasChanges)
+    }
+
     @Test("Inserted row edit consistency between changes and insertedRowData")
     func invariantInsertedRowEditConsistency() {
         let manager = makeManager()
