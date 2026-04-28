@@ -98,6 +98,7 @@ struct PendingChanges: Equatable {
     }
 
     mutating func recordRowDeletion(rowIndex: Int, originalRow: [String?]) {
+        guard !deletedRowIndices.contains(rowIndex) else { return }
         removeChange(rowIndex: rowIndex, type: .update)
         modifiedCells.removeValue(forKey: rowIndex)
         appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))
@@ -106,13 +107,17 @@ struct PendingChanges: Equatable {
     }
 
     mutating func recordRowInsertion(rowIndex: Int, values: [String?]) {
+        guard !insertedRowIndices.contains(rowIndex) else {
+            insertedRowData[rowIndex] = values
+            return
+        }
         insertedRowData[rowIndex] = values
         appendChange(RowChange(rowIndex: rowIndex, type: .insert, cellChanges: []))
         insertedRowIndices.insert(rowIndex)
         changedRowIndices.insert(rowIndex)
     }
 
-    // MARK: - Mutate (undoing recorded edits)
+    // MARK: - Mutate (cancelling pending edits)
 
     mutating func undoRowDeletion(rowIndex: Int) -> Bool {
         guard deletedRowIndices.contains(rowIndex) else { return false }
@@ -171,8 +176,11 @@ struct PendingChanges: Equatable {
         return rowValues
     }
 
+    // MARK: - Replay (driven by NSUndoManager invocation)
+
     /// Re-apply a deletion during undo replay (skips undo registration).
     mutating func reapplyRowDeletion(rowIndex: Int, originalRow: [String?]) {
+        guard !deletedRowIndices.contains(rowIndex) else { return }
         removeChange(rowIndex: rowIndex, type: .update)
         modifiedCells.removeValue(forKey: rowIndex)
         appendChange(RowChange(rowIndex: rowIndex, type: .delete, originalRow: originalRow))

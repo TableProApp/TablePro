@@ -245,12 +245,10 @@ final class DataChangeManager: ChangeManaging {
                     rowIndex: rowIndex, columnIndex: columnIndex,
                     columnName: columnName, previousValue: previousValue
                 )
-            } else {
-                pending.reapplyCellChange(
-                    rowIndex: rowIndex, columnIndex: columnIndex, columnName: columnName,
-                    newValue: previousValue, originalRow: originalRow
-                )
             }
+            // No matching cellChange: leave the update unchanged. Reaching here means
+            // the row's update lost track of this column (e.g. earlier collapse), so
+            // creating a new entry would resurrect a stale edit.
         } else if pending.change(forRow: rowIndex, type: .insert) != nil {
             pending.updateInsertedCellDirectly(
                 rowIndex: rowIndex, columnIndex: columnIndex,

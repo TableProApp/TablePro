@@ -86,6 +86,25 @@ struct PendingChangesRecordTests {
         #expect(pending.isRowInserted(3))
         #expect(pending.savedInsertedValues(forRow: 3) == ["x", "y"])
     }
+
+    @Test("Double deletion of the same row is idempotent")
+    func doubleDeletionIsIdempotent() {
+        var pending = PendingChanges()
+        pending.recordRowDeletion(rowIndex: 5, originalRow: ["a"])
+        pending.recordRowDeletion(rowIndex: 5, originalRow: ["a"])
+        #expect(pending.changes.count == 1)
+        #expect(pending.isRowDeleted(5))
+    }
+
+    @Test("Double insertion of the same row updates stored values without duplicating")
+    func doubleInsertionIsIdempotent() {
+        var pending = PendingChanges()
+        pending.recordRowInsertion(rowIndex: 3, values: ["x"])
+        pending.recordRowInsertion(rowIndex: 3, values: ["y"])
+        #expect(pending.changes.count == 1)
+        #expect(pending.isRowInserted(3))
+        #expect(pending.savedInsertedValues(forRow: 3) == ["y"])
+    }
 }
 
 @Suite("PendingChanges - undo")
