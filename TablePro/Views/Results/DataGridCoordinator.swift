@@ -259,6 +259,43 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         lastIdentity = nil
     }
 
+    func applyDelta(_ delta: Delta) {
+        switch delta {
+        case .cellChanged(let row, let column):
+            guard let tableView else { return }
+            let tableColumn = DataGridView.tableColumnIndex(for: column)
+            guard row >= 0, row < tableView.numberOfRows else { return }
+            guard tableColumn >= 0, tableColumn < tableView.numberOfColumns else { return }
+            tableView.reloadData(
+                forRowIndexes: IndexSet(integer: row),
+                columnIndexes: IndexSet(integer: tableColumn)
+            )
+        case .cellsChanged(let positions):
+            guard !positions.isEmpty, let tableView else { return }
+            var rowSet = IndexSet()
+            var colSet = IndexSet()
+            for position in positions {
+                if position.row >= 0, position.row < tableView.numberOfRows {
+                    rowSet.insert(position.row)
+                }
+                let tableColumn = DataGridView.tableColumnIndex(for: position.column)
+                if tableColumn >= 0, tableColumn < tableView.numberOfColumns {
+                    colSet.insert(tableColumn)
+                }
+            }
+            guard !rowSet.isEmpty, !colSet.isEmpty else { return }
+            tableView.reloadData(forRowIndexes: rowSet, columnIndexes: colSet)
+        case .rowsInserted(let indices):
+            guard !indices.isEmpty else { return }
+            applyInsertedRows(indices)
+        case .rowsRemoved(let indices):
+            guard !indices.isEmpty else { return }
+            applyRemovedRows(indices)
+        case .columnsReplaced, .fullReplace:
+            applyFullReplace()
+        }
+    }
+
     func invalidateCachesForUndoRedo() {
         rowProvider.invalidateDisplayCache()
         rebuildVisualStateCache()

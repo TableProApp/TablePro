@@ -1,11 +1,3 @@
-//
-//  RowOperationsManagerCopyTests.swift
-//  TableProTests
-//
-//  Regression tests for RowOperationsManager copy optimization (P2-6).
-//  Validates TSV formatting, NULL handling, and large-row correctness.
-//
-
 import Foundation
 @testable import TablePro
 import Testing
@@ -30,13 +22,13 @@ private final class MockClipboardProvider: ClipboardProvider {
 @MainActor
 @Suite("RowOperationsManager Copy")
 struct RowOperationsManagerCopyTests {
-    // MARK: - Helpers
+    private static let defaultColumns = ["id", "name", "email"]
 
     private func makeManager() -> (RowOperationsManager, DataChangeManager) {
         let changeManager = DataChangeManager()
         changeManager.configureForTable(
             tableName: "users",
-            columns: ["id", "name", "email"],
+            columns: Self.defaultColumns,
             primaryKeyColumns: ["id"],
             databaseType: .mysql
         )
@@ -44,25 +36,29 @@ struct RowOperationsManagerCopyTests {
         return (manager, changeManager)
     }
 
+    private func makeTableRows(rows: [[String?]], columns: [String]? = nil) -> TableRows {
+        let cols = columns ?? Self.defaultColumns
+        let columnTypes: [ColumnType] = Array(repeating: .text(rawType: nil), count: cols.count)
+        return TableRows.from(queryRows: rows, columns: cols, columnTypes: columnTypes)
+    }
+
     private func copyAndCapture(
         manager: RowOperationsManager,
         indices: Set<Int>,
         rows: [[String?]],
-        columns: [String] = [],
+        columns: [String]? = nil,
         includeHeaders: Bool = false
     ) -> String? {
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows, columns: columns ?? Self.defaultColumns)
         manager.copySelectedRowsToClipboard(
             selectedIndices: indices,
-            resultRows: rows,
-            columns: columns,
+            tableRows: tableRows,
             includeHeaders: includeHeaders
         )
         return clipboard.lastWrittenText
     }
-
-    // MARK: - Single Row TSV
 
     @Test("Single row copy produces tab-separated values")
     func singleRowTSV() {
@@ -73,8 +69,6 @@ struct RowOperationsManagerCopyTests {
 
         #expect(result == "1\tAlice\talice@test.com")
     }
-
-    // MARK: - Multiple Rows
 
     @Test("Multiple rows separated by newlines in TSV format")
     func multipleRowsTSV() {
@@ -88,8 +82,6 @@ struct RowOperationsManagerCopyTests {
 
         #expect(result == "1\tAlice\ta@test.com\n2\tBob\tb@test.com")
     }
-
-    // MARK: - NULL Handling
 
     @Test("NULL values rendered as literal NULL string")
     func nullValuesRenderedAsNullString() {
@@ -117,24 +109,21 @@ struct RowOperationsManagerCopyTests {
         #expect(lines?[1] == "NULL\tBob\tNULL")
     }
 
-    // MARK: - Empty Selection
-
     @Test("Empty selection produces no clipboard write")
     func emptySelectionNoWrite() {
         let (manager, _) = makeManager()
         let rows = TestFixtures.makeRows(count: 3)
         let clipboard = MockClipboardProvider()
         ClipboardService.shared = clipboard
+        let tableRows = makeTableRows(rows: rows)
 
         manager.copySelectedRowsToClipboard(
             selectedIndices: [],
-            resultRows: rows
+            tableRows: tableRows
         )
 
         #expect(clipboard.lastWrittenText == nil)
     }
-
-    // MARK: - Large Row Count
 
     @Test("Large row count produces correct first and last rows")
     func largeRowCount() {
@@ -156,8 +145,6 @@ struct RowOperationsManagerCopyTests {
         #expect(lines.last == "\(count - 1)\tname_\(count - 1)\temail_\(count - 1)")
     }
 
-    // MARK: - Row Ordering
-
     @Test("Copied rows are in sorted index order regardless of selection order")
     func rowsInSortedOrder() {
         let (manager, _) = makeManager()
@@ -167,12 +154,10 @@ struct RowOperationsManagerCopyTests {
             ["C"],
         ]
 
-        let result = copyAndCapture(manager: manager, indices: [2, 0], rows: rows)
+        let result = copyAndCapture(manager: manager, indices: [2, 0], rows: rows, columns: ["letter"])
 
         #expect(result == "A\nC")
     }
-
-    // MARK: - Include Headers
 
     @Test("Copy with headers prepends column names as first TSV line")
     func copyWithHeaders() {
@@ -193,19 +178,15 @@ struct RowOperationsManagerCopyTests {
         #expect(lines[1] == "1\tAlice\ta@test.com")
     }
 
-    // MARK: - Out-of-Bounds Index
-
     @Test("Out-of-bounds indices are skipped gracefully")
     func outOfBoundsIndicesSkipped() {
         let (manager, _) = makeManager()
         let rows: [[String?]] = [["1", "Alice"]]
 
-        let result = copyAndCapture(manager: manager, indices: [0, 5, 10], rows: rows)
+        let result = copyAndCapture(manager: manager, indices: [0, 5, 10], rows: rows, columns: ["id", "name"])
 
         #expect(result == "1\tAlice")
     }
-
-    // MARK: - All NULL Row
 
     @Test("Row with all NULL values produces tab-separated NULL strings")
     func allNullRow() {

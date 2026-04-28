@@ -30,7 +30,12 @@ extension TableViewCoordinator {
         }
 
         let rawValue = tableRows.value(at: row, column: columnIndex)
-        let displayValue = rowProvider.displayValue(atRow: row, column: columnIndex)
+        let displayValue = resolveDisplayValue(
+            row: row,
+            columnIndex: columnIndex,
+            rawValue: rawValue,
+            tableRows: tableRows
+        )
         let state = visualState(for: row)
 
         let tableColumnIndex = DataGridView.tableColumnIndex(for: columnIndex)
@@ -83,5 +88,23 @@ extension TableViewCoordinator {
         rowView.coordinator = self
         rowView.rowIndex = row
         return rowView
+    }
+
+    private func resolveDisplayValue(
+        row: Int,
+        columnIndex: Int,
+        rawValue: String?,
+        tableRows: TableRows
+    ) -> String? {
+        if row < rowProvider.totalRowCount {
+            return rowProvider.displayValue(atRow: row, column: columnIndex)
+        }
+        let columnType = columnIndex < tableRows.columnTypes.count
+            ? tableRows.columnTypes[columnIndex]
+            : nil
+        let displayFormat = columnIndex < rowProvider.columnDisplayFormats.count
+            ? rowProvider.columnDisplayFormats[columnIndex]
+            : nil
+        return CellDisplayFormatter.format(rawValue, columnType: columnType, displayFormat: displayFormat)
     }
 }
