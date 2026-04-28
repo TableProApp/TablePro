@@ -86,7 +86,7 @@ enum UndoAction {
     case batchRowInsertion(rowIndices: [Int], rowValues: [[String?]])
 }
 
-// Note: TabPendingChanges is defined in QueryTab.swift
+// Note: TabChangeSnapshot is defined in QueryTab.swift
 
 // MARK: - Array Extension
 

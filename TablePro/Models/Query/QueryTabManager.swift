@@ -230,7 +230,7 @@ final class QueryTabManager {
         tab.display.resultsViewMode = .data
         tab.sortState = SortState()
         tab.selectedRowIndices = []
-        tab.pendingChanges = TabPendingChanges()
+        tab.pendingChanges = TabChangeSnapshot()
         tab.hasUserInteraction = false
         tab.tableContext.isView = isView
         tab.tableContext.isEditable = !isView

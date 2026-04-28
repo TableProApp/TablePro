@@ -17,6 +17,10 @@ struct DataChangeManagerExtendedTests {
         pk: String? = "id"
     ) -> DataChangeManager {
         let manager = DataChangeManager()
+        let undoManager = UndoManager()
+        undoManager.levelsOfUndo = 100
+        undoManager.groupsByEvent = false
+        manager.undoManagerProvider = { undoManager }
         manager.configureForTable(
             tableName: "test_table",
             columns: columns,
@@ -676,9 +680,10 @@ struct DataChangeManagerExtendedTests {
         )
         manager.recordRowDeletion(rowIndex: 1, originalRow: ["2", "Charlie", "c@test.com"])
         manager.recordRowInsertion(rowIndex: 2, values: ["x", "y", "z"])
-        #expect(manager.changedRowIndices.contains(0))
-        #expect(manager.changedRowIndices.contains(1))
-        #expect(manager.changedRowIndices.contains(2))
+        let changed = manager.consumeChangedRowIndices()
+        #expect(changed.contains(0))
+        #expect(changed.contains(1))
+        #expect(changed.contains(2))
     }
 
     @Test("configureForTable with triggerReload false does not increment reloadVersion")

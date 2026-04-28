@@ -20,7 +20,7 @@ struct QueryTab: Identifiable, Equatable {
     var tableContext: TabTableContext
     var display: TabDisplayState
 
-    var pendingChanges: TabPendingChanges
+    var pendingChanges: TabChangeSnapshot
     var selectedRowIndices: Set<Int>
     var sortState: SortState
     var filterState: TabFilterState
@@ -46,7 +46,7 @@ struct QueryTab: Identifiable, Equatable {
         self.execution = TabExecutionState()
         self.tableContext = TabTableContext(tableName: tableName, isEditable: tabType == .table)
         self.display = TabDisplayState()
-        self.pendingChanges = TabPendingChanges()
+        self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()
@@ -77,7 +77,7 @@ struct QueryTab: Identifiable, Equatable {
             isView: persisted.isView
         )
         self.display = TabDisplayState(erDiagramSchemaKey: persisted.erDiagramSchemaKey)
-        self.pendingChanges = TabPendingChanges()
+        self.pendingChanges = TabChangeSnapshot()
         self.selectedRowIndices = []
         self.sortState = SortState()
         self.filterState = TabFilterState()

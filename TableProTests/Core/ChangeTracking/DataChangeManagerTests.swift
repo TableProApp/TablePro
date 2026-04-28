@@ -12,6 +12,14 @@ import Testing
 @MainActor
 @Suite("Data Change Manager")
 struct DataChangeManagerTests {
+    private func makeManagerWithUndo() -> DataChangeManager {
+        let manager = DataChangeManager()
+        let undoManager = UndoManager()
+        undoManager.groupsByEvent = false
+        manager.undoManagerProvider = { undoManager }
+        return manager
+    }
+
     // MARK: - Configuration Tests
 
     @Test("configureForTable sets properties correctly")
@@ -246,7 +254,7 @@ struct DataChangeManagerTests {
             newValue: "Bob"
         )
 
-        #expect(manager.changedRowIndices.contains(5))
+        #expect(manager.consumeChangedRowIndices().contains(5))
     }
 
     // MARK: - Row Deletion Tests
@@ -382,7 +390,7 @@ struct DataChangeManagerTests {
 
         _ = manager.consumeChangedRowIndices()
 
-        #expect(manager.changedRowIndices.isEmpty)
+        #expect(manager.consumeChangedRowIndices().isEmpty)
     }
 
     // MARK: - clearChanges Tests
@@ -439,7 +447,7 @@ struct DataChangeManagerTests {
 
     @Test("After recording a change, canUndo is true")
     func canUndoAfterChange() async {
-        let manager = DataChangeManager()
+        let manager = makeManagerWithUndo()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
@@ -459,7 +467,7 @@ struct DataChangeManagerTests {
 
     @Test("After undo, the change is reversed")
     func undoReversesChange() async {
-        let manager = DataChangeManager()
+        let manager = makeManagerWithUndo()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
@@ -483,7 +491,7 @@ struct DataChangeManagerTests {
 
     @Test("canRedo after undo")
     func canRedoAfterUndo() async {
-        let manager = DataChangeManager()
+        let manager = makeManagerWithUndo()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],
@@ -505,7 +513,7 @@ struct DataChangeManagerTests {
 
     @Test("New change clears redo stack")
     func newChangeClearsRedo() async {
-        let manager = DataChangeManager()
+        let manager = makeManagerWithUndo()
         manager.configureForTable(
             tableName: "users",
             columns: ["id", "name"],

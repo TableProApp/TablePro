@@ -35,8 +35,7 @@ struct PersistedTab: Codable {
     var queryParameters: [QueryParameter]?
 }
 
-/// Stores pending changes for a tab (used to preserve state when switching tabs)
-struct TabPendingChanges: Equatable {
+struct TabChangeSnapshot: Equatable {
     var changes: [RowChange]
     var deletedRowIndices: Set<Int>
     var insertedRowIndices: Set<Int>
