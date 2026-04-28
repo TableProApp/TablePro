@@ -88,6 +88,7 @@ final class MainContentCoordinator {
     let columnVisibilityManager: ColumnVisibilityManager
     let toolbarState: ConnectionToolbarState
     let rowDataStore = RowDataStore()
+    let tableRowsStore = TableRowsStore()
 
     // MARK: - Services
 
@@ -587,6 +588,7 @@ final class MainContentCoordinator {
 
         // Release heavy data so memory drops even if SwiftUI delays deallocation
         rowDataStore.tearDown()
+        tableRowsStore.tearDown()
         querySortCache.removeAll()
         cachedTableColumnTypes.removeAll()
         cachedTableColumnNames.removeAll()
