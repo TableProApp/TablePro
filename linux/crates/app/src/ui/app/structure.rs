@@ -229,13 +229,23 @@ impl App {
         statements: Vec<String>,
         sender: ComponentSender<Self>,
     ) {
+        // Reject re-entry: a second Ctrl+S (or rapid double-click on
+        // Save) while the first DDL transaction is still mid-flight
+        // would dispatch a parallel async command and potentially
+        // commit the same statements twice. Mark the tab and bail.
+        if !self.structure_saves_in_flight.borrow_mut().insert(tab_id) {
+            tracing::debug!(?tab_id, "structure save already in flight; ignoring duplicate");
+            return;
+        }
         let Some(driver_id) = self.current_driver_id.clone() else {
+            self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
             sender.input(AppMsg::StructureSaveFailed(tab_id, crate::tr!("No active connection.")));
             return;
         };
         let (schema, prev_table, mode) = {
             let tabs = self.workspace_tabs.borrow();
             let Some(WorkspaceTab::Structure(slot)) = tabs.get(&tab_id) else {
+                self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
                 return;
             };
             (slot.schema.clone(), slot.table.clone(), slot.mode)
@@ -307,6 +317,7 @@ impl App {
         if self.in_flight_saves.get() > 0 {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
+        self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
         let mut affected_table: Option<String> = None;
         let mut affected_schema: Option<String> = None;
         if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow_mut().get_mut(&tab_id) {
@@ -340,6 +351,7 @@ impl App {
         if self.in_flight_saves.get() > 0 {
             self.in_flight_saves.set(self.in_flight_saves.get() - 1);
         }
+        self.structure_saves_in_flight.borrow_mut().remove(&tab_id);
         if let Some(WorkspaceTab::Structure(slot)) = self.workspace_tabs.borrow().get(&tab_id) {
             let _ = slot.controller.sender().send(StructureTabInput::SaveFailed(message));
         }

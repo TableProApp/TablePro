@@ -1,9 +1,20 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::config_io::{atomic_write_json, xdg_config_path};
+
+/// Serialises every read-modify-write of `workspace_state.json`. Each
+/// `save_connection` call loads the current state, mutates one entry,
+/// and rewrites the whole file; without this lock, two close events
+/// firing in quick succession can race with overlapping load → save
+/// pairs and silently drop one of the writes. The lock is held for
+/// the duration of the load + serialise + atomic-rename sequence —
+/// short enough that contention is negligible, long enough to make
+/// the sequence atomic from any other thread's perspective.
+static FILE_LOCK: Mutex<()> = Mutex::new(());
 
 const MAX_TABS_PER_CONNECTION: usize = 32;
 const MAX_TABLE_NAME_BYTES: usize = 256;
@@ -69,7 +80,7 @@ fn default_page_size() -> u64 {
     DEFAULT_PAGE_SIZE
 }
 
-pub fn load() -> WorkspaceState {
+fn load_locked() -> WorkspaceState {
     let Some(path) = xdg_config_path(FILE_NAME) else {
         return WorkspaceState::default();
     };
@@ -81,7 +92,7 @@ pub fn load() -> WorkspaceState {
     state
 }
 
-pub fn save(state: &WorkspaceState) {
+fn save_locked(state: &WorkspaceState) {
     let Some(path) = xdg_config_path(FILE_NAME) else {
         tracing::warn!("workspace_state: no config path; skipping save");
         return;
@@ -94,14 +105,19 @@ pub fn save(state: &WorkspaceState) {
 }
 
 pub fn load_connection(id: Uuid) -> Option<ConnectionWorkspaceState> {
-    let state = load();
+    let _guard = FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let state = load_locked();
     state.connections.get(&id.to_string()).cloned()
 }
 
 pub fn save_connection(id: Uuid, conn_state: ConnectionWorkspaceState) {
-    let mut state = load();
+    // Hold the lock across the load + insert + save so a concurrent
+    // save_connection on a different connection doesn't read a stale
+    // copy and overwrite our entry's neighbours.
+    let _guard = FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut state = load_locked();
     state.connections.insert(id.to_string(), conn_state);
-    save(&state);
+    save_locked(&state);
 }
 
 fn clamp(state: &mut WorkspaceState) {

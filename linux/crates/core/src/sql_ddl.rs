@@ -48,6 +48,80 @@ pub enum BuildDdlError {
 
     #[error("nothing changed — alter is a no-op")]
     NoChange,
+
+    #[error("unsafe column type: {0}")]
+    UnsafeType(String),
+
+    #[error("unsafe default expression: {0}")]
+    UnsafeDefault(String),
+
+    #[error("invalid foreign key action: {0}")]
+    InvalidFkAction(String),
+}
+
+const MAX_TYPE_LEN: usize = 200;
+const MAX_DEFAULT_LEN: usize = 500;
+
+/// Reject sequences that escape the type-name syntactic context into
+/// statement scope (`;`, comments) or break identifier quoting (double
+/// quote, backtick, NUL, line-terminators). Type names may include
+/// spaces (`DOUBLE PRECISION`), parens (`VARCHAR(255)`), commas
+/// (`DECIMAL(10,2)`), brackets (`INT[]`), single quotes for
+/// `ENUM('a','b')`, and dots for schema-qualified user types.
+fn validate_safe_type(s: &str) -> Result<(), BuildDdlError> {
+    if s.len() > MAX_TYPE_LEN {
+        return Err(BuildDdlError::UnsafeType(s.into()));
+    }
+    if s.contains(';')
+        || s.contains("--")
+        || s.contains("/*")
+        || s.contains("*/")
+        || s.contains('"')
+        || s.contains('`')
+        || s.contains('\0')
+        || s.contains('\n')
+        || s.contains('\r')
+    {
+        return Err(BuildDdlError::UnsafeType(s.into()));
+    }
+    Ok(())
+}
+
+/// DEFAULT expressions sit between `DEFAULT` and the next column-def
+/// boundary (comma, paren, end of statement). The user can legitimately
+/// type literals (`'foo'`, `42`), function calls (`now()`), and
+/// SQL-quoted strings with embedded escapes (`'O''Brien'`). The
+/// dangerous shapes are statement-terminators and SQL comments —
+/// outright reject those.
+fn validate_safe_default(s: &str) -> Result<(), BuildDdlError> {
+    if s.len() > MAX_DEFAULT_LEN {
+        return Err(BuildDdlError::UnsafeDefault(s.into()));
+    }
+    if s.contains(';')
+        || s.contains("--")
+        || s.contains("/*")
+        || s.contains("*/")
+        || s.contains('\0')
+        || s.contains('\n')
+        || s.contains('\r')
+    {
+        return Err(BuildDdlError::UnsafeDefault(s.into()));
+    }
+    Ok(())
+}
+
+const FK_ACTIONS: &[&str] = &["NO ACTION", "RESTRICT", "CASCADE", "SET NULL", "SET DEFAULT"];
+
+/// FK actions are a closed enum in the SQL standard. Allow-list rather
+/// than escape; case-insensitive match against the canonical strings
+/// returned in upper case for emission.
+fn validate_fk_action(s: &str) -> Result<&'static str, BuildDdlError> {
+    let upper = s.trim().to_ascii_uppercase();
+    FK_ACTIONS
+        .iter()
+        .copied()
+        .find(|canon| *canon == upper.as_str())
+        .ok_or_else(|| BuildDdlError::InvalidFkAction(s.into()))
 }
 
 /// User-edited column draft. Carries both the original (loaded from
@@ -118,7 +192,16 @@ fn validate_column_type(data_type: &str) -> Result<(), BuildDdlError> {
     if data_type.trim().is_empty() {
         return Err(BuildDdlError::EmptyColumnType);
     }
+    validate_safe_type(data_type)?;
     Ok(())
+}
+
+fn validated_default(default: Option<&str>) -> Result<Option<&str>, BuildDdlError> {
+    let Some(d) = default.filter(|d| !d.is_empty()) else {
+        return Ok(None);
+    };
+    validate_safe_default(d)?;
+    Ok(Some(d))
 }
 
 /// Render one inline column definition for a CREATE TABLE statement.
@@ -142,7 +225,7 @@ fn render_column_definition(driver_id: &str, column: &DraftColumn, inline_pk: bo
         if !column.nullable {
             parts.push("NOT NULL".into());
         }
-        if let Some(default) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
+        if let Some(default) = validated_default(column.default_value.as_deref())? {
             parts.push(format!("DEFAULT {default}"));
         }
         return Ok(parts.join(" "));
@@ -171,7 +254,7 @@ fn render_column_definition(driver_id: &str, column: &DraftColumn, inline_pk: bo
     if !column.nullable {
         parts.push("NOT NULL".into());
     }
-    if let Some(default) = column.default_value.as_deref().filter(|d| !d.is_empty()) {
+    if let Some(default) = validated_default(column.default_value.as_deref())? {
         parts.push(format!("DEFAULT {default}"));
     }
 
@@ -387,6 +470,7 @@ pub fn build_alter_column(
                 .map(|o| o.default_value.as_deref() != column.default_value.as_deref())
                 .unwrap_or(column.default_value.is_some());
             if type_changed {
+                validate_safe_type(&column.data_type)?;
                 return Ok(format!(
                     "ALTER TABLE {} ALTER COLUMN {} TYPE {} USING {}::{}",
                     qualified,
@@ -412,7 +496,7 @@ pub fn build_alter_column(
                 });
             }
             if default_changed {
-                return Ok(match column.default_value.as_deref().filter(|d| !d.is_empty()) {
+                return Ok(match validated_default(column.default_value.as_deref())? {
                     Some(default) => format!(
                         "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {}",
                         qualified,
@@ -545,10 +629,12 @@ pub fn build_add_foreign_key(
         ref_table,
         ref_cols.join(", "),
     )];
-    if let Some(action) = fk.on_delete.as_deref().filter(|a| !a.is_empty()) {
+    if let Some(raw) = fk.on_delete.as_deref().filter(|a| !a.is_empty()) {
+        let action = validate_fk_action(raw)?;
         clauses.push(format!("ON DELETE {action}"));
     }
-    if let Some(action) = fk.on_update.as_deref().filter(|a| !a.is_empty()) {
+    if let Some(raw) = fk.on_update.as_deref().filter(|a| !a.is_empty()) {
+        let action = validate_fk_action(raw)?;
         clauses.push(format!("ON UPDATE {action}"));
     }
     Ok(clauses.join(" "))
@@ -1091,6 +1177,86 @@ mod tests {
     fn drop_foreign_key_sqlite_rejected() {
         let err = build_drop_foreign_key("sqlite", None, "orders", "fk_user").unwrap_err();
         assert!(matches!(err, BuildDdlError::SqliteNotSupported(_)));
+    }
+
+    #[test]
+    fn rejects_injection_via_data_type() {
+        let mut col = dc("x", "INT; DROP TABLE users; --");
+        col.nullable = false;
+        let err = build_add_column("postgres", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::UnsafeType(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn rejects_injection_via_default() {
+        let col = def(dc("x", "TEXT"), "'a'); DROP TABLE t; --");
+        let err = build_add_column("postgres", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::UnsafeDefault(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn rejects_unknown_fk_action() {
+        let mut fk = fk_basic();
+        fk.on_delete = Some("DROP TABLE u; --".into());
+        let err = build_add_foreign_key("postgres", None, "t", &fk).unwrap_err();
+        assert!(matches!(err, BuildDdlError::InvalidFkAction(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn fk_action_canonicalised_case_insensitive() {
+        let mut fk = fk_basic();
+        fk.on_delete = Some("cascade".into());
+        fk.on_update = Some("Set Null".into());
+        let sql = build_add_foreign_key("postgres", None, "t", &fk).unwrap();
+        assert!(sql.contains("ON DELETE CASCADE"));
+        assert!(sql.contains("ON UPDATE SET NULL"));
+    }
+
+    #[test]
+    fn allows_legitimate_complex_types() {
+        // Postgres time-with-tz, ENUM with quoted labels, parameterised
+        // DECIMAL, array suffix — must all pass.
+        for ty in [
+            "TIMESTAMP WITH TIME ZONE",
+            "DOUBLE PRECISION",
+            "DECIMAL(10, 2)",
+            "INTEGER[]",
+            "ENUM('open','closed')",
+            "Nullable(Int64)",
+            "VARCHAR(255)",
+        ] {
+            assert!(validate_safe_type(ty).is_ok(), "rejected legitimate type: {ty}");
+        }
+    }
+
+    #[test]
+    fn allows_legitimate_default_expressions() {
+        for d in ["'foo'", "42", "now()", "CURRENT_TIMESTAMP", "'O''Brien'", "(1+2)"] {
+            assert!(validate_safe_default(d).is_ok(), "rejected legitimate default: {d}");
+        }
+    }
+
+    #[test]
+    fn alter_column_postgres_rejects_injection_in_type() {
+        let col = DraftColumn {
+            original: Some(ColumnInfo {
+                name: "x".into(),
+                data_type: "integer".into(),
+                nullable: true,
+                primary_key: false,
+                is_auto_increment: false,
+                default_value: None,
+                is_generated: false,
+            }),
+            name: "x".into(),
+            data_type: "bigint; DROP TABLE u; --".into(),
+            nullable: true,
+            primary_key: false,
+            auto_increment: false,
+            default_value: None,
+        };
+        let err = build_alter_column("postgres", None, "t", &col).unwrap_err();
+        assert!(matches!(err, BuildDdlError::UnsafeType(_)), "got {err:?}");
     }
 
     #[test]

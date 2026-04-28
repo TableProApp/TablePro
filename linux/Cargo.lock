@@ -4321,6 +4321,7 @@ dependencies = [
  "glib",
  "gtk4",
  "libadwaita",
+ "libc",
  "relm4",
  "rust_decimal",
  "secrecy",

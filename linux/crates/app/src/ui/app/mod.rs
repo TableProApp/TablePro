@@ -99,6 +99,12 @@ pub struct App {
     /// blocks while this is > 0 so an async transaction never commits
     /// after the tab / window has been torn down.
     in_flight_saves: std::rc::Rc<std::cell::Cell<usize>>,
+    /// Structure tabs currently mid-DDL-transaction. A second Ctrl+S
+    /// while a Save is still in flight would dispatch a parallel
+    /// transaction and potentially commit twice; this set lets the
+    /// dispatch path short-circuit. Cleared on
+    /// `StructureSaveCompleted` / `StructureSaveFailed`.
+    structure_saves_in_flight: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<Uuid>>>,
     /// Debounce flag for `persist_workspace_state`. Active tabs fire
     /// `WorkspaceTabsChanged` on every selection / drag-reorder /
     /// page-size change / state-changed event; without coalescing,
@@ -1057,6 +1063,7 @@ impl SimpleComponent for App {
             close_after_save: close_after_save_handle,
             close_window_after_save: close_window_after_save_handle,
             in_flight_saves: in_flight_saves_handle,
+            structure_saves_in_flight: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new())),
             persist_pending: std::rc::Rc::new(std::cell::Cell::new(false)),
         };
         sender.input(AppMsg::ReloadConnections);
