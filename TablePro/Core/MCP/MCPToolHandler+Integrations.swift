@@ -13,12 +13,12 @@ extension MCPToolHandler {
         let limit = optionalInt(args, key: "limit", default: 20, clamp: 1...500)
 
         let snapshots = await MainActor.run { Self.collectTabSnapshots() }
+        let blockedConnectionIds = await MainActor.run { Self.blockedExternalConnectionIds() }
         let allowed = token?.allowedConnectionIds
-        let filtered: [TabSnapshot]
-        if let allowed {
-            filtered = snapshots.filter { allowed.contains($0.connectionId) }
-        } else {
-            filtered = snapshots
+        let filtered = snapshots.filter { snapshot in
+            guard !blockedConnectionIds.contains(snapshot.connectionId) else { return false }
+            if let allowed, !allowed.contains(snapshot.connectionId) { return false }
+            return true
         }
 
         let trimmed = Array(filtered.prefix(limit))
@@ -62,12 +62,19 @@ extension MCPToolHandler {
             throw MCPError.invalidParams("'since' must be less than or equal to 'until'")
         }
 
+        let blockedConnectionIds = await MainActor.run { Self.blockedExternalConnectionIds() }
+
         let connectionId: UUID?
         if let connectionIdString {
             guard let parsed = UUID(uuidString: connectionIdString) else {
                 throw MCPError.invalidParams("Invalid UUID for parameter: connection_id")
             }
             if let token { try checkTokenConnectionAccess(token, connectionId: parsed) }
+            if blockedConnectionIds.contains(parsed) {
+                throw MCPError.forbidden(
+                    String(localized: "External access is disabled for this connection")
+                )
+            }
             connectionId = parsed
         } else {
             connectionId = nil
@@ -84,11 +91,10 @@ extension MCPToolHandler {
         )
 
         let allowed = token?.allowedConnectionIds
-        let filtered: [QueryHistoryEntry]
-        if let allowed {
-            filtered = entries.filter { allowed.contains($0.connectionId) }
-        } else {
-            filtered = entries
+        let filtered = entries.filter { entry in
+            guard !blockedConnectionIds.contains(entry.connectionId) else { return false }
+            if let allowed, !allowed.contains(entry.connectionId) { return false }
+            return true
         }
 
         let payload = filtered.map { entry -> JSONValue in
@@ -248,6 +254,12 @@ extension MCPToolHandler {
             }
         }
         return snapshots
+    }
+
+    @MainActor
+    static func blockedExternalConnectionIds() -> Set<UUID> {
+        let connections = ConnectionStorage.shared.loadConnections()
+        return Set(connections.filter { $0.externalAccess == .blocked }.map(\.id))
     }
 }
 

@@ -84,6 +84,19 @@ struct MCPToolHandlerIntegrationTests {
         #expect(payload.contains("\"tabs\""))
     }
 
+    @Test("blockedExternalConnectionIds returns ids of connections with externalAccess == .blocked")
+    func blockedExternalConnectionIdsHelper() async throws {
+        let blocked = DatabaseConnection(name: "Blocked", type: .mysql, externalAccess: .blocked)
+        let readOnly = DatabaseConnection(name: "ReadOnly", type: .mysql, externalAccess: .readOnly)
+        let readWrite = DatabaseConnection(name: "ReadWrite", type: .mysql, externalAccess: .readWrite)
+        try await withConnections([blocked, readOnly, readWrite]) {
+            let ids = MCPToolHandler.blockedExternalConnectionIds()
+            #expect(ids.contains(blocked.id))
+            #expect(!ids.contains(readOnly.id))
+            #expect(!ids.contains(readWrite.id))
+        }
+    }
+
     @Test("list_recent_tabs requires read scope only")
     func listRecentTabsScope() async throws {
         let handler = makeHandler()
@@ -178,6 +191,71 @@ struct MCPToolHandlerIntegrationTests {
             Issue.record("Expected invalidParams, got \(error)")
         } catch {
             Issue.record("Expected MCPError, got \(error)")
+        }
+    }
+
+    @Test("search_query_history rejects connection_id whose externalAccess is .blocked")
+    func searchQueryHistoryRejectsBlockedConnection() async throws {
+        let handler = makeHandler()
+        let blocked = DatabaseConnection(name: "Blocked Prod", type: .mysql, externalAccess: .blocked)
+        try await withConnections([blocked]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "search_query_history",
+                    arguments: .object([
+                        "query": .string(""),
+                        "connection_id": .string(blocked.id.uuidString)
+                    ]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for blocked connection")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("search_query_history filters out blocked connections when iterating without connection_id")
+    func searchQueryHistoryFiltersBlockedFromUnscopedQuery() async throws {
+        let handler = makeHandler()
+        let blocked = DatabaseConnection(name: "Blocked", type: .mysql, externalAccess: .blocked)
+        let visible = DatabaseConnection(name: "Visible", type: .mysql, externalAccess: .readOnly)
+        let marker = UUID().uuidString
+
+        try await withConnections([blocked, visible]) {
+            let blockedEntry = QueryHistoryEntry(
+                query: "SELECT blocked_\(marker)",
+                connectionId: blocked.id,
+                databaseName: "db",
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+            let visibleEntry = QueryHistoryEntry(
+                query: "SELECT visible_\(marker)",
+                connectionId: visible.id,
+                databaseName: "db",
+                executionTime: 0.01,
+                rowCount: 1,
+                wasSuccessful: true
+            )
+            _ = await QueryHistoryStorage.shared.addHistory(blockedEntry)
+            _ = await QueryHistoryStorage.shared.addHistory(visibleEntry)
+
+            let result = try await handler.handleToolCall(
+                name: "search_query_history",
+                arguments: .object(["query": .string(marker)]),
+                sessionId: "test-session",
+                token: nil
+            )
+            #expect(result.isError == nil)
+            let payload = result.content.first?.text ?? ""
+            #expect(payload.contains("visible_\(marker)"))
+            #expect(!payload.contains("blocked_\(marker)"))
         }
     }
 
