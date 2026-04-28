@@ -291,11 +291,7 @@ impl StructureTab {
             list.append(&row);
         }
         self.columns_box.append(&list);
-        let add_button = gtk::Button::builder()
-            .label(crate::tr!("Add Column"))
-            .icon_name("list-add-symbolic")
-            .build();
-        add_button.add_css_class("flat");
+        let add_button = make_add_button(&crate::tr!("Add Column"));
         let sender_for_add = sender.clone();
         add_button.connect_clicked(move |_| sender_for_add.input(StructureTabInput::AddColumn));
         self.columns_box.append(&wrap_button_in_row(add_button));
@@ -313,11 +309,7 @@ impl StructureTab {
             list.append(&row);
         }
         self.indexes_box.append(&list);
-        let add_button = gtk::Button::builder()
-            .label(crate::tr!("Add Index…"))
-            .icon_name("list-add-symbolic")
-            .build();
-        add_button.add_css_class("flat");
+        let add_button = make_add_button(&crate::tr!("Add Index…"));
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.indexes_box.clone();
@@ -336,11 +328,7 @@ impl StructureTab {
             list.append(&row);
         }
         self.fks_box.append(&list);
-        let add_button = gtk::Button::builder()
-            .label(crate::tr!("Add Foreign Key…"))
-            .icon_name("list-add-symbolic")
-            .build();
-        add_button.add_css_class("flat");
+        let add_button = make_add_button(&crate::tr!("Add Foreign Key…"));
         let columns_for_dialog = self.columns.clone();
         let sender_for_add = sender.clone();
         let parent_box = self.fks_box.clone();
@@ -349,6 +337,24 @@ impl StructureTab {
         });
         self.fks_box.append(&wrap_button_in_row(add_button));
     }
+}
+
+/// Build a flat "+ Label" button with both icon and label visible.
+/// `gtk::Button::builder().icon_name(...).label(...)` doesn't work
+/// the way it reads — the two property setters compete for the
+/// button's child slot, so whichever is set last replaces the
+/// other. To get both visible we have to set the child to a
+/// horizontal Box containing the image + label by hand.
+fn make_add_button(label: &str) -> gtk::Button {
+    let inner = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .spacing(8)
+        .build();
+    inner.append(&gtk::Image::from_icon_name("list-add-symbolic"));
+    inner.append(&gtk::Label::new(Some(label)));
+    let button = gtk::Button::builder().child(&inner).build();
+    button.add_css_class("flat");
+    button
 }
 
 /// Build a `gtk::ListBox` with the `.boxed-list` HIG style class. Used

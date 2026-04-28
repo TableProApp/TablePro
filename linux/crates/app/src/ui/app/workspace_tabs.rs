@@ -391,10 +391,14 @@ impl App {
         let page = tab_view.append(controller.widget());
         let title = match mode {
             crate::ui::structure_tab::StructureMode::New => crate::tr!("New Table"),
-            crate::ui::structure_tab::StructureMode::Edit => match schema.as_deref() {
-                Some(s) if !s.is_empty() => format!("{s}.{}", table),
-                _ => table.clone(),
-            },
+            // Same disambig rule as Browse tabs: only show the
+            // schema prefix when the connection actually has more
+            // than one schema. Single-schema MySQL / SQLite show
+            // just the table name; multi-schema Postgres shows
+            // "schema.table".
+            crate::ui::structure_tab::StructureMode::Edit => {
+                qualified_browse_tab_label(self.sidebar_schemas_distinct(), schema.as_deref(), &table)
+            }
         };
         page.set_title(&title);
         write_workspace_tab_id(&page, tab_id);
@@ -876,7 +880,7 @@ impl App {
         crate::ui::editor::update_schema_buffer(&self.schema_buffer, &words);
     }
 
-    fn sidebar_schemas_distinct(&self) -> usize {
+    pub(super) fn sidebar_schemas_distinct(&self) -> usize {
         let schemas = self.sidebar_schemas.borrow();
         let distinct: std::collections::BTreeSet<&str> = schemas.iter().filter_map(|s| s.as_deref()).collect();
         distinct.len()
@@ -1005,7 +1009,7 @@ impl App {
     }
 }
 
-fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
+pub(super) fn qualified_browse_tab_label(schemas_count: usize, schema: Option<&str>, table: &str) -> String {
     if schemas_count >= 2
         && let Some(s) = schema
     {

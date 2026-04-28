@@ -473,6 +473,7 @@ impl App {
     }
 
     pub(super) fn refresh_structure_tab_dirty(&self, tab_id: Uuid, dirty: bool) {
+        let schemas_count = self.sidebar_schemas_distinct();
         let tabs = self.workspace_tabs.borrow();
         let Some(WorkspaceTab::Structure(slot)) = tabs.get(&tab_id) else {
             return;
@@ -480,10 +481,7 @@ impl App {
         let base = if slot.table.is_empty() {
             crate::tr!("New Table")
         } else {
-            match slot.schema.as_deref() {
-                Some(s) if !s.is_empty() => format!("{s}.{}", slot.table),
-                _ => slot.table.clone(),
-            }
+            super::workspace_tabs::qualified_browse_tab_label(schemas_count, slot.schema.as_deref(), &slot.table)
         };
         let title = if dirty { format!("• {base}") } else { base };
         slot.page.set_title(&title);
