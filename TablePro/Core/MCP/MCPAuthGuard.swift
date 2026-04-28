@@ -72,6 +72,27 @@ actor MCPAuthGuard {
         }
     }
 
+    func checkExternalAccessLevel(
+        connectionId: UUID,
+        requires required: ExternalAccessLevel
+    ) async throws {
+        let externalAccess: ExternalAccessLevel? = await MainActor.run {
+            ConnectionStorage.shared.loadConnections().first { $0.id == connectionId }?.externalAccess
+        }
+
+        guard let externalAccess else {
+            throw MCPError.forbidden(
+                String(localized: "Connection not found")
+            )
+        }
+
+        guard externalAccess.satisfies(required) else {
+            throw MCPError.forbidden(
+                String(localized: "Connection is read-only for external clients")
+            )
+        }
+    }
+
     func checkExternalWritePermission(
         connectionId: UUID,
         sql: String,

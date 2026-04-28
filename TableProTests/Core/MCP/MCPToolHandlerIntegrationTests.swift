@@ -87,7 +87,7 @@ struct MCPToolHandlerIntegrationTests {
     @Test("blockedExternalConnectionIds returns ids of connections with externalAccess == .blocked")
     func blockedExternalConnectionIdsHelper() async throws {
         let blocked = DatabaseConnection(name: "Blocked", type: .mysql, externalAccess: .blocked)
-        let readOnly = DatabaseConnection(name: "ReadOnly", type: .mysql, externalAccess: .readOnly)
+        let readOnly = DatabaseConnection(name: "ReadOnly", type: .mysql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
         let readWrite = DatabaseConnection(name: "ReadWrite", type: .mysql, externalAccess: .readWrite)
         try await withConnections([blocked, readOnly, readWrite]) {
             let ids = MCPToolHandler.blockedExternalConnectionIds()
@@ -304,6 +304,141 @@ struct MCPToolHandlerIntegrationTests {
         let payload = result.content.first?.text ?? ""
         #expect(payload.contains("inside_\(marker)"))
         #expect(!payload.contains("outside_\(marker)"))
+    }
+
+    // MARK: - External access readOnly enforcement
+
+    @Test("switch_database against a readOnly connection returns forbidden")
+    func switchDatabaseDeniedByReadOnlyExternalAccess() async throws {
+        let handler = makeHandler()
+        let connection = DatabaseConnection(name: "ReadOnly", type: .mysql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
+        try await withConnections([connection]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "switch_database",
+                    arguments: .object([
+                        "connection_id": .string(connection.id.uuidString),
+                        "database": .string("postgres")
+                    ]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for readOnly externalAccess")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("switch_schema against a readOnly connection returns forbidden")
+    func switchSchemaDeniedByReadOnlyExternalAccess() async throws {
+        let handler = makeHandler()
+        let connection = DatabaseConnection(name: "ReadOnly", type: .postgresql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
+        try await withConnections([connection]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "switch_schema",
+                    arguments: .object([
+                        "connection_id": .string(connection.id.uuidString),
+                        "schema": .string("public")
+                    ]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for readOnly externalAccess")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("export_data against a readOnly connection returns forbidden")
+    func exportDataDeniedByReadOnlyExternalAccess() async throws {
+        let handler = makeHandler()
+        let connection = DatabaseConnection(name: "ReadOnly", type: .mysql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
+        try await withConnections([connection]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "export_data",
+                    arguments: .object([
+                        "connection_id": .string(connection.id.uuidString),
+                        "format": .string("csv"),
+                        "tables": .array([.string("users")])
+                    ]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for readOnly externalAccess")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("open_connection_window against a readOnly connection returns forbidden")
+    func openConnectionWindowDeniedByReadOnlyExternalAccess() async throws {
+        let handler = makeHandler()
+        let connection = DatabaseConnection(name: "ReadOnly", type: .mysql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
+        try await withConnections([connection]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "open_connection_window",
+                    arguments: .object(["connection_id": .string(connection.id.uuidString)]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for readOnly externalAccess")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("open_table_tab against a readOnly connection returns forbidden")
+    func openTableTabDeniedByReadOnlyExternalAccess() async throws {
+        let handler = makeHandler()
+        let connection = DatabaseConnection(name: "ReadOnly", type: .mysql, aiPolicy: .alwaysAllow, externalAccess: .readOnly)
+        try await withConnections([connection]) {
+            do {
+                _ = try await handler.handleToolCall(
+                    name: "open_table_tab",
+                    arguments: .object([
+                        "connection_id": .string(connection.id.uuidString),
+                        "table_name": .string("users")
+                    ]),
+                    sessionId: "test-session",
+                    token: nil
+                )
+                Issue.record("Expected MCPError.forbidden for readOnly externalAccess")
+            } catch let error as MCPError {
+                if case .forbidden = error { return }
+                Issue.record("Expected forbidden, got \(error)")
+            } catch {
+                Issue.record("Expected MCPError, got \(error)")
+            }
+        }
+    }
+
+    @Test("ExternalAccessLevel.satisfies follows blocked < readOnly < readWrite ordering")
+    func externalAccessLevelSatisfiesOrdering() {
+        #expect(ExternalAccessLevel.readWrite.satisfies(.readWrite))
+        #expect(ExternalAccessLevel.readWrite.satisfies(.readOnly))
+        #expect(ExternalAccessLevel.readOnly.satisfies(.readOnly))
+        #expect(!ExternalAccessLevel.readOnly.satisfies(.readWrite))
+        #expect(!ExternalAccessLevel.blocked.satisfies(.readOnly))
+        #expect(!ExternalAccessLevel.blocked.satisfies(.readWrite))
     }
 
     // MARK: - open_connection_window

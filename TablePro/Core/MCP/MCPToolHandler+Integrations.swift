@@ -123,6 +123,7 @@ extension MCPToolHandler {
         let connectionId = try requireUUID(args, key: "connection_id")
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -153,6 +154,7 @@ extension MCPToolHandler {
 
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await ensureConnectionExists(connectionId)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
         let windowId = await MainActor.run { () -> UUID in
             let payload = EditorTabPayload(
@@ -198,8 +200,9 @@ extension MCPToolHandler {
             throw MCPError.notFound("tab")
         }
 
-        if let connectionId = outcome.2, let token {
-            try checkTokenConnectionAccess(token, connectionId: connectionId)
+        if let connectionId = outcome.2 {
+            if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
+            try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
         }
 
         var dict: [String: JSONValue] = [

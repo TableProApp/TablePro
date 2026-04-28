@@ -160,6 +160,18 @@ enum ExternalAccessLevel: String, Codable, Sendable, CaseIterable, Identifiable 
         case .readWrite: return String(localized: "Read-Write")
         }
     }
+
+    private var rank: Int {
+        switch self {
+        case .blocked: 0
+        case .readOnly: 1
+        case .readWrite: 2
+        }
+    }
+
+    func satisfies(_ required: ExternalAccessLevel) -> Bool {
+        rank >= required.rank
+    }
 }
 
 // MARK: - Connection Color

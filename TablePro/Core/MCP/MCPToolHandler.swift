@@ -5,7 +5,7 @@ final class MCPToolHandler: Sendable {
     private static let logger = Logger(subsystem: "com.TablePro", category: "MCPToolHandler")
 
     private let bridge: MCPConnectionBridge
-    private let authGuard: MCPAuthGuard
+    let authGuard: MCPAuthGuard
 
     init(bridge: MCPConnectionBridge, authGuard: MCPAuthGuard) {
         self.bridge = bridge
@@ -393,6 +393,7 @@ final class MCPToolHandler: Sendable {
 
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
         var queries: [(label: String, sql: String)] = []
 
@@ -488,6 +489,7 @@ final class MCPToolHandler: Sendable {
 
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
         let result = try await bridge.switchDatabase(connectionId: connectionId, database: database)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
@@ -499,6 +501,7 @@ final class MCPToolHandler: Sendable {
 
         if let token { try checkTokenConnectionAccess(token, connectionId: connectionId) }
         try await authGuard.checkConnectionAccess(connectionId: connectionId, sessionId: sessionId)
+        try await authGuard.checkExternalAccessLevel(connectionId: connectionId, requires: .readWrite)
 
         let result = try await bridge.switchSchema(connectionId: connectionId, schema: schema)
         return MCPToolResult(content: [.text(encodeJSON(result))], isError: nil)
