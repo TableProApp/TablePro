@@ -120,6 +120,12 @@ final class KeyHandlingTableView: NSTableView {
 
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
+        if focusedRow >= 0, focusedColumn >= 1 {
+            let dataCol = DataGridView.dataColumnIndex(for: focusedColumn)
+            if coordinator?.pasteCellsFromClipboard(anchorRow: focusedRow, anchorColumn: dataCol) == true {
+                return
+            }
+        }
         coordinator?.delegate?.dataGridPasteRows()
     }
 
