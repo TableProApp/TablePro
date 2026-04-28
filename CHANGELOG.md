@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Click a focused cell to start editing without a second click
 - Data grid focus ring follows the system accent color and contrast settings
 - Data grid cells expose accessibility row and column index ranges to VoiceOver on all dataset sizes
+- Multi-cell paste: paste TSV data from the clipboard into the grid starting from the focused cell, grouped as a single undo action
+- Shift+Tab navigates to the previous cell in the data grid
+- Copy rows writes TSV, HTML table, and plain text to the clipboard for richer paste in spreadsheet apps
+- Row drag adds TSV and HTML representations alongside the internal drag type
 
 ### Changed
 
@@ -34,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Row data lives in a per-coordinator RowDataStore keyed by tab.id rather than on QueryTab itself, so SwiftUI's @Observable tracking on tabManager.tabs no longer fires for row writes.
 - DataGridConfiguration is Equatable; DataGridIdentity covers tabType, tableName, and primaryKeyColumns so updateNSView short-circuits when nothing structural changed. DataTabGridDelegate properties are wired in onAppear / onChange instead of in the body.
 - Date picker popover font follows the data grid font setting
+- Data grid undo/redo uses the window's UndoManager instead of a private instance, unifying Cmd+Z across editor and grid
+- Right-click during cell editing shows the native text context menu instead of the row menu
 
 ### Fixed
 
