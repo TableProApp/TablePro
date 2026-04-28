@@ -75,13 +75,9 @@ final class DataTabGridDelegate: DataGridViewDelegate {
         NotificationCenter.default.post(name: .exportQueryResults, object: nil)
     }
 
-    func dataGridUndo() {
-        coordinator?.undoLastChange()
-    }
+    func dataGridUndo() {}
 
-    func dataGridRedo() {
-        coordinator?.redoLastChange()
-    }
+    func dataGridRedo() {}
 
     func dataGridNavigateFK(value: String, fkInfo: ForeignKeyInfo) {
         coordinator?.navigateToFKReference(value: value, fkInfo: fkInfo)

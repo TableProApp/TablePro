@@ -101,33 +101,17 @@ extension MainContentCoordinator {
         dataTabDelegate?.dataGridDidRemoveRows(at: IndexSet(integer: rowIndex))
     }
 
-    func undoLastChange() {
-        guard let tabIndex = tabManager.selectedTabIndex,
-              tabIndex < tabManager.tabs.count else { return }
-
-        let tabId = tabManager.tabs[tabIndex].id
-        let buffer = rowDataStore.buffer(for: tabId)
-        if let adjustedSelection = rowOperationsManager.undoLastChange(
-            resultRows: &buffer.rows
-        ) {
-            selectionState.indices = adjustedSelection
-        }
-
-        tabManager.tabs[tabIndex].hasUserInteraction = true
-        querySortCache.removeValue(forKey: tabId)
-        dataTabDelegate?.dataGridDidReplaceAllRows()
-    }
-
-    func redoLastChange() {
+    func handleUndoResult(_ result: UndoResult) {
         guard let tabIndex = tabManager.selectedTabIndex,
               tabIndex < tabManager.tabs.count else { return }
 
         let tab = tabManager.tabs[tabIndex]
         let buffer = rowDataStore.buffer(for: tab.id)
-        _ = rowOperationsManager.redoLastChange(
-            resultRows: &buffer.rows,
-            columns: buffer.columns
-        )
+        if let adjustedSelection = rowOperationsManager.applyUndoResult(
+            result, resultRows: &buffer.rows
+        ) {
+            selectionState.indices = adjustedSelection
+        }
 
         tabManager.tabs[tabIndex].hasUserInteraction = true
         querySortCache.removeValue(forKey: tab.id)

@@ -118,25 +118,11 @@ final class KeyHandlingTableView: NSTableView {
         coordinator?.delegate?.dataGridCopyRows(Set(selectedRowIndexes))
     }
 
-    /// Paste rows from clipboard
     @objc func paste(_ sender: Any?) {
         guard coordinator?.isEditable == true else { return }
         coordinator?.delegate?.dataGridPasteRows()
     }
 
-    /// Undo last change
-    @objc func undo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridUndo()
-    }
-
-    /// Redo last undone change
-    @objc func redo(_ sender: Any?) {
-        guard coordinator?.isEditable == true else { return }
-        coordinator?.delegate?.dataGridRedo()
-    }
-
-    /// Validate menu items and shortcuts
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         switch item.action {
         case #selector(delete(_:)), #selector(deleteBackward(_:)):
@@ -145,10 +131,6 @@ final class KeyHandlingTableView: NSTableView {
             return !selectedRowIndexes.isEmpty
         case #selector(paste(_:)):
             return coordinator?.isEditable == true && coordinator?.delegate != nil
-        case #selector(undo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canUndo() ?? false)
-        case #selector(redo(_:)):
-            return coordinator?.isEditable == true && (coordinator?.canRedo() ?? false)
         case #selector(insertNewline(_:)):
             return selectedRow >= 0 && focusedColumn >= 1 && coordinator?.isEditable == true
         case #selector(cancelOperation(_:)):

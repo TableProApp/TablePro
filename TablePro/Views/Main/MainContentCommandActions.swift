@@ -719,7 +719,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.undo?()
         } else {
-            coordinator?.undoLastChange()
+            coordinator?.contentWindow?.undoManager?.undo()
         }
     }
 
@@ -727,7 +727,7 @@ final class MainContentCommandActions {
         if coordinator?.tabManager.selectedTab?.display.resultsViewMode == .structure {
             coordinator?.structureActions?.redo?()
         } else {
-            coordinator?.redoLastChange()
+            coordinator?.contentWindow?.undoManager?.redo()
         }
     }
 

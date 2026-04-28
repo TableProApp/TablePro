@@ -176,7 +176,7 @@ final class RowOperationsManager {
         return applyUndoResult(result, resultRows: &resultRows)
     }
 
-    private func applyUndoResult(_ result: UndoResult, resultRows: inout [[String?]]) -> Set<Int>? {
+    func applyUndoResult(_ result: UndoResult, resultRows: inout [[String?]]) -> Set<Int>? {
         switch result.action {
         case .cellEdit(let rowIndex, let columnIndex, _, let previousValue, _, _):
             if rowIndex < resultRows.count {

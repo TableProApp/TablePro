@@ -383,6 +383,8 @@ final class MainContentCoordinator {
         self.schemaProvider = SchemaProviderRegistry.shared.getOrCreate(for: connection.id)
         SchemaProviderRegistry.shared.retain(for: connection.id)
         urlFilterObservers = setupURLNotificationObservers()
+        changeManager.undoManagerProvider = { [weak self] in self?.contentWindow?.undoManager }
+        changeManager.onUndoApplied = { [weak self] result in self?.handleUndoResult(result) }
 
         // Synchronous save at quit time. NotificationCenter with queue: .main
         // delivers the closure on the main thread, satisfying assumeIsolated's

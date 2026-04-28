@@ -31,16 +31,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
     var primaryKeyColumn: String? { primaryKeyColumns.first }
     var tabType: TabType?
 
-    /// Check if undo is available
-    func canUndo() -> Bool {
-        changeManager.hasChanges
-    }
-
-    /// Check if redo is available
-    func canRedo() -> Bool {
-        changeManager.canRedo
-    }
-
     /// Capture current column widths and order from the live NSTableView
     /// and persist directly to ColumnLayoutStorage. Called from dismantleNSView
     /// to guarantee layout is saved even when the view is torn down without
