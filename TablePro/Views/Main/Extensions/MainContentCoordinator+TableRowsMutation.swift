@@ -2,9 +2,10 @@
 //  MainContentCoordinator+TableRowsMutation.swift
 //  TablePro
 //
-//  Single mutation surface for the active ResultSet's TableRows. Routes every
-//  mutation through the store, then syncs the active ResultSet so reads via
-//  `tab.display.activeResultSet?.tableRows` stay coherent with store state.
+//  Single mutation surface for the active ResultSet's TableRows. Mutations
+//  flow through the store; the per-ResultSet snapshot is only refreshed when
+//  the user switches result sets (save outgoing, load incoming) so editing
+//  one tab doesn't trigger an `@Observable` re-render of the whole editor.
 //
 
 import Foundation
@@ -19,26 +20,21 @@ extension MainContentCoordinator {
         tableRowsStore.updateTableRows(for: tabId) { rows in
             delta = mutate(&rows)
         }
-        syncActiveResultSet(for: tabId)
         return delta
     }
 
     func setActiveTableRows(_ tableRows: TableRows, for tabId: UUID) {
         tableRowsStore.setTableRows(tableRows, for: tabId)
-        syncActiveResultSet(for: tabId)
     }
 
     func switchActiveResultSet(to resultSetId: UUID?, in tabId: UUID) {
         guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
-        tabManager.tabs[tabIdx].display.activeResultSetId = resultSetId
-        if let rs = tabManager.tabs[tabIdx].display.activeResultSet {
-            tableRowsStore.setTableRows(rs.tableRows, for: tabId)
+        if let outgoing = tabManager.tabs[tabIdx].display.activeResultSet {
+            outgoing.tableRows = tableRowsStore.tableRows(for: tabId)
         }
-    }
-
-    private func syncActiveResultSet(for tabId: UUID) {
-        guard let tabIdx = tabManager.tabs.firstIndex(where: { $0.id == tabId }),
-              let activeRS = tabManager.tabs[tabIdx].display.activeResultSet else { return }
-        activeRS.tableRows = tableRowsStore.tableRows(for: tabId)
+        tabManager.tabs[tabIdx].display.activeResultSetId = resultSetId
+        if let incoming = tabManager.tabs[tabIdx].display.activeResultSet {
+            tableRowsStore.setTableRows(incoming.tableRows, for: tabId)
+        }
     }
 }

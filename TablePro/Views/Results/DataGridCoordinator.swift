@@ -462,16 +462,14 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
         rowVisualStateCache.removeAll(keepingCapacity: true)
 
-        let tableRows = tableRowsProvider()
-        var insertedRowIndices = Set<Int>()
+        var insertedRowIndices: Set<Int>
         if let sorted = sortedIDs {
+            insertedRowIndices = Set()
             for (displayIndex, id) in sorted.enumerated() where id.isInserted {
                 insertedRowIndices.insert(displayIndex)
             }
         } else {
-            for (index, row) in tableRows.rows.enumerated() where row.id.isInserted {
-                insertedRowIndices.insert(index)
-            }
+            insertedRowIndices = changeManager.insertedRowIndices
         }
 
         if !changeManager.hasChanges && insertedRowIndices.isEmpty {

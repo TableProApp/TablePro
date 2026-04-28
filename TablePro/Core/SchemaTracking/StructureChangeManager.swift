@@ -887,6 +887,8 @@ final class StructureChangeManager: ChangeManaging {
 
     var rowChanges: [RowChange] { [] }
 
+    var insertedRowIndices: Set<Int> { [] }
+
     func isRowDeleted(_ rowIndex: Int) -> Bool { false }
 
     func recordCellChange(
