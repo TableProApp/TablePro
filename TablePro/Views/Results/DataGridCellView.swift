@@ -5,7 +5,7 @@
 
 import AppKit
 
-class DataGridCellView: NSTableCellView {
+final class DataGridCellView: NSTableCellView {
     var fkArrowButton: FKArrowButton?
     var chevronButton: CellChevronButton?
     var textFieldTrailing: NSLayoutConstraint?

@@ -98,7 +98,7 @@ final class KeyHandlingTableView: NSTableView {
         focusedRow = clickedRow
         focusedColumn = clickedColumn
 
-        if alreadyFocusedHere && event.clickCount == 1 {
+        if alreadyFocusedHere && event.clickCount == 1 && selectedRowIndexes.count == 1 {
             let dataColumnIndex = DataGridView.dataColumnIndex(for: clickedColumn)
             if coordinator?.canStartInlineEdit(row: clickedRow, columnIndex: dataColumnIndex) == true {
                 editColumn(clickedColumn, row: clickedRow, with: nil, select: true)
