@@ -234,7 +234,6 @@ final class DataGridCellFactory {
             gridCellView.changeBackgroundColor = nil
         }
 
-        gridCellView.layer?.borderWidth = 0
         gridCellView.isFocusedCell = isFocused
 
         CATransaction.commit()

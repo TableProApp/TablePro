@@ -13,7 +13,7 @@ final class DataGridCellView: NSTableCellView {
     var isFocusedCell: Bool = false {
         didSet {
             guard oldValue != isFocusedCell else { return }
-            noteFocusRingMaskChanged()
+            updateFocusBorder()
         }
     }
 
@@ -46,15 +46,18 @@ final class DataGridCellView: NSTableCellView {
     override var backgroundStyle: NSView.BackgroundStyle {
         didSet {
             backgroundView.isHidden = (backgroundStyle == .emphasized) || (changeBackgroundColor == nil)
+            if isFocusedCell { updateFocusBorder() }
         }
     }
 
-    override var focusRingMaskBounds: NSRect {
-        isFocusedCell ? bounds : .zero
-    }
-
-    override func drawFocusRingMask() {
-        guard isFocusedCell else { return }
-        bounds.fill()
+    private func updateFocusBorder() {
+        if isFocusedCell {
+            layer?.borderWidth = 2
+            layer?.borderColor = backgroundStyle == .emphasized
+                ? NSColor.white.withAlphaComponent(0.8).cgColor
+                : NSColor.keyboardFocusIndicatorColor.cgColor
+        } else {
+            layer?.borderWidth = 0
+        }
     }
 }
