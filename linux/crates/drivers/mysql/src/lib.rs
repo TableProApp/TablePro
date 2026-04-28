@@ -76,8 +76,16 @@ impl Connection for MysqlConnection {
     }
 
     async fn fetch_columns(&self, schema: Option<&str>, table: &str) -> Result<Vec<ColumnInfo>, DriverError> {
+        // `column_type` is canonical: it carries the precision /
+        // length the user typed (`tinyint(1)`, `varchar(255)`,
+        // `decimal(10,2)`, `enum('a','b')`). `data_type` strips all
+        // that — returns `tinyint` for both `tinyint(1)` and
+        // `tinyint(4)`, which collapses MySQL's idiomatic boolean
+        // type into a generic int and breaks the bool-detection
+        // heuristic in `classify_type`. Prefer column_type for the
+        // displayed `data_type`.
         let rows = sqlx::query(
-            "SELECT CAST(column_name AS CHAR), CAST(data_type AS CHAR),
+            "SELECT CAST(column_name AS CHAR), CAST(column_type AS CHAR),
                     CAST(is_nullable AS CHAR), CAST(column_key AS CHAR),
                     CAST(extra AS CHAR), CAST(column_default AS CHAR),
                     CAST(generation_expression AS CHAR)
