@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - stdio MCP transport via bundled `tablepro-mcp` CLI at `Contents/MacOS/tablepro-mcp`. Reads handshake file, no token needed
 - Per-connection `External Access` setting (`blocked`, `readOnly`, `readWrite`). Defaults to `readOnly`. Bounds token reach via `MIN(token.scope, connection.externalAccess)`
 - Pairing flow with PKCE code exchange. One-click token issuance for Raycast and other extensions
-- Activity log at `~/Library/Application Support/com.TablePro/mcp-audit.db`. Viewable in Settings > Integrations > Activity Log. 90-day retention
+- Activity log at `~/Library/Application Support/TablePro/mcp-audit.db`. Viewable in Settings > Integrations > Activity Log. 90-day retention
 - New MCP tools: `list_recent_tabs`, `search_query_history`, `open_connection_window`, `open_table_tab`, `focus_query_tab`
 - PostgreSQL ICU collation provider in Create Database (PG 15+). Provider picker is added when the server reports PG 15 or newer. ICU locale list comes from `pg_collation`. SQL emission is version-aware: PG 16+ uses unified `LOCALE`, PG 15 uses `ICU_LOCALE` with `LC_COLLATE 'C' LC_CTYPE 'C'`.
 - Connection URL parsing: SSH `user:password@host` split, `safeModeLevel` from TablePlus URLs, case-insensitive query params
@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed (BREAKING)
 
 - `tablepro://connect/<name>/...` deep links. Replace with UUID-keyed paths from "Copy Connection Deep Link" in the sidebar context menu. User-saved bookmarks must be regenerated
+- MCP server data directory moved from `~/Library/Application Support/com.TablePro/` to `~/Library/Application Support/TablePro/`. Existing tokens, audit log, and handshake files are not migrated. Re-pair Raycast, Cursor, Claude Desktop, and any other external clients after upgrading. Delete the old directory with `rm -rf ~/Library/Application Support/com.TablePro`
 
 ### Fixed
 

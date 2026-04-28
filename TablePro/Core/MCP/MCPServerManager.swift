@@ -203,7 +203,7 @@ final class MCPServerManager {
 
     private static let handshakeDirectoryPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/Library/Application Support/com.TablePro"
+        return "\(home)/Library/Application Support/TablePro"
     }()
 
     private static let handshakeFilePath: String = {

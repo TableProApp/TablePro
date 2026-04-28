@@ -58,7 +58,7 @@ final class MCPBridgeProxy {
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        self.handshakePath = "\(home)/Library/Application Support/com.TablePro/mcp-handshake.json"
+        self.handshakePath = "\(home)/Library/Application Support/TablePro/mcp-handshake.json"
     }
 
     func run() async {

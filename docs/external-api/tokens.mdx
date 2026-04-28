@@ -5,7 +5,7 @@ description: Token model, scopes, per-connection allowlists, expiry, and revocat
 
 # Tokens
 
-Every external request needs a bearer token. Tokens carry a scope, an optional connection allowlist, and an optional expiry. Tokens are stored hashed (SHA-256 + salt) at `~/Library/Application Support/com.TablePro/mcp-tokens.json` with `0600` permissions. The plaintext is shown once at creation and never again.
+Every external request needs a bearer token. Tokens carry a scope, an optional connection allowlist, and an optional expiry. Tokens are stored hashed (SHA-256 + salt) at `~/Library/Application Support/TablePro/mcp-tokens.json` with `0600` permissions. The plaintext is shown once at creation and never again.
 
 ## Token shape
 
@@ -95,7 +95,7 @@ After revoking a token used by an extension, the extension shows an "unauthorize
 
 ## Audit log
 
-Every authentication, every tool call, every resource read is recorded in `~/Library/Application Support/com.TablePro/mcp-audit.db` with the token id (not the plaintext). The activity log view in **Settings > Integrations > Activity Log** shows:
+Every authentication, every tool call, every resource read is recorded in `~/Library/Application Support/TablePro/mcp-audit.db` with the token id (not the plaintext). The activity log view in **Settings > Integrations > Activity Log** shows:
 
 | Field | Example |
 |-------|---------|
@@ -129,7 +129,7 @@ A successful auth resets the counter. During lockout the server returns `429 Too
 | Read SSH keys | no |
 | Read license data | no |
 | Read app settings | no |
-| Read local files outside `~/Library/Application Support/com.TablePro/` | no |
+| Read local files outside `~/Library/Application Support/TablePro/` | no |
 | Mutate Safe Mode rules | no |
 | Mutate other tokens | no |
 | Mutate connection records | no |

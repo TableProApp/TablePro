@@ -4,23 +4,18 @@ import { getPreferenceValues } from "@raycast/api";
 import { existsSync } from "fs";
 import { Preferences } from "./types";
 
-const CONNECTION_SUPPORT_RELATIVE = "Library/Application Support/TablePro";
-const MCP_SUPPORT_RELATIVE = "Library/Application Support/com.TablePro";
+const APP_SUPPORT_RELATIVE = "Library/Application Support/TablePro";
 
-export function connectionSupportDir(): string {
-    return join(homedir(), CONNECTION_SUPPORT_RELATIVE);
-}
-
-export function mcpSupportDir(): string {
-    return join(homedir(), MCP_SUPPORT_RELATIVE);
+export function appSupportDir(): string {
+    return join(homedir(), APP_SUPPORT_RELATIVE);
 }
 
 export function connectionsFilePath(): string {
-    return join(connectionSupportDir(), "connections.json");
+    return join(appSupportDir(), "connections.json");
 }
 
 export function handshakeFilePath(): string {
-    return join(mcpSupportDir(), "mcp-handshake.json");
+    return join(appSupportDir(), "mcp-handshake.json");
 }
 
 export function tableProAppPath(): string {

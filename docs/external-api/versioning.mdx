@@ -49,9 +49,9 @@ The warn-to-remove gap is at least one minor version.
 The following are not part of the External API contract and can change at any time without notice:
 
 - Internal MCP message routing details, transport framing, and HTTP path layout under `/v1/internal/*`.
-- The handshake file format at `~/Library/Application Support/com.TablePro/mcp-handshake.json`. Use the bundled `tablepro-mcp` CLI rather than parsing it yourself.
-- The tokens file format at `~/Library/Application Support/com.TablePro/mcp-tokens.json`. Tokens are managed via Settings, not the file.
-- Audit log file format at `~/Library/Application Support/com.TablePro/mcp-audit.db`. Read via the activity log view.
+- The handshake file format at `~/Library/Application Support/TablePro/mcp-handshake.json`. Use the bundled `tablepro-mcp` CLI rather than parsing it yourself.
+- The tokens file format at `~/Library/Application Support/TablePro/mcp-tokens.json`. Tokens are managed via Settings, not the file.
+- Audit log file format at `~/Library/Application Support/TablePro/mcp-audit.db`. Read via the activity log view.
 - The connections file format at `~/Library/Application Support/TablePro/connections.json`. Treat as best-effort. Schema can shift between minor versions; integrations should fall back to MCP `list_connections`.
 
 ## Past breaking changes

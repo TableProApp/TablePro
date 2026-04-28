@@ -97,7 +97,7 @@ TablePro appends `?code=<uuid>` to the `redirect` URL and opens it with `NSWorks
 
 ### 6. Extension exchanges the code
 
-The extension reads the MCP port from `~/Library/Application Support/com.TablePro/mcp-handshake.json`, then:
+The extension reads the MCP port from `~/Library/Application Support/TablePro/mcp-handshake.json`, then:
 
 ```ts
 const port = await readHandshakePort();

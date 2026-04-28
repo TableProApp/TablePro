@@ -17,7 +17,7 @@ Any MCP client that supports the stdio transport and lets you point it at a comm
 }
 ```
 
-The `tablepro-mcp` CLI ships inside the app bundle. It reads `~/Library/Application Support/com.TablePro/mcp-handshake.json` for the local port and a bridge token, then forwards stdio JSON-RPC to the running app's HTTP MCP server. If the handshake file is missing, the CLI fires `tablepro://integrations/start-mcp` to lazy-start the server and waits up to 10 seconds for the handshake to appear. The TablePro app must be running; you can keep it minimized.
+The `tablepro-mcp` CLI ships inside the app bundle. It reads `~/Library/Application Support/TablePro/mcp-handshake.json` for the local port and a bridge token, then forwards stdio JSON-RPC to the running app's HTTP MCP server. If the handshake file is missing, the CLI fires `tablepro://integrations/start-mcp` to lazy-start the server and waits up to 10 seconds for the handshake to appear. The TablePro app must be running; you can keep it minimized.
 
 You do not pass a token in the client config. The bridge reuses the in-app handshake, so the token issued during pairing stays inside TablePro. The Raycast extension or any `tablepro://integrations/pair?...` link triggers the one-time pairing flow that puts a token on disk; clients launched via stdio inherit that trust automatically.
 
@@ -157,7 +157,7 @@ Run `goose session` and ask for the tool list to confirm.
 If you are building a client against the [MCP specification](https://modelcontextprotocol.io), TablePro speaks two transports:
 
 - **stdio**: spawn `/Applications/TablePro.app/Contents/MacOS/tablepro-mcp` with no arguments. The CLI handles the handshake and forwards JSON-RPC over its stdin and stdout. No token, no environment variables.
-- **HTTP**: connect to `http://127.0.0.1:<port>/mcp` using the port from `~/Library/Application Support/com.TablePro/mcp-handshake.json` and a bearer token issued via [Pairing](/external-api/pairing). See [Tokens](/external-api/tokens) for scope rules.
+- **HTTP**: connect to `http://127.0.0.1:<port>/mcp` using the port from `~/Library/Application Support/TablePro/mcp-handshake.json` and a bearer token issued via [Pairing](/external-api/pairing). See [Tokens](/external-api/tokens) for scope rules.
 
 For most desktop clients, stdio is the right default. Use HTTP when the client lives on a different machine, when you need a tighter token scope than the bridge token, or when the client cannot spawn a local process. See [MCP Server](/features/mcp#remote-access) for remote setup.
 
@@ -207,7 +207,7 @@ If the call fails, the response code tells you which layer rejected it:
 
 **Handshake timeout.** TablePro launched but did not respond to `tablepro://integrations/start-mcp` within 10 seconds. Open **Settings > Integrations** and toggle **Enable MCP Server** off and on, then re-launch the client.
 
-**Stale handshake file.** Delete `~/Library/Application Support/com.TablePro/mcp-handshake.json` and reopen TablePro. The app rewrites the file on launch.
+**Stale handshake file.** Delete `~/Library/Application Support/TablePro/mcp-handshake.json` and reopen TablePro. The app rewrites the file on launch.
 
 **Setapp or non-default install path.** Replace `/Applications/TablePro.app` in the `command` with the absolute path to your install. For Setapp the bundle lives under `~/Applications/Setapp/TablePro.app`.
 

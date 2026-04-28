@@ -65,7 +65,7 @@ actor MCPTokenStore {
     init() {
         let appSupportUrl = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let directory = appSupportUrl.appendingPathComponent("com.TablePro")
+        let directory = appSupportUrl.appendingPathComponent("TablePro")
         self.storageUrl = directory.appendingPathComponent("mcp-tokens.json")
     }
 

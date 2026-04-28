@@ -67,7 +67,7 @@ actor MCPAuditLogStorage {
             Self.logger.error("Unable to access application support directory")
             return
         }
-        let directory = appSupport.appendingPathComponent("com.TablePro")
+        let directory = appSupport.appendingPathComponent("TablePro")
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let suffix = testDatabaseSuffix ?? ""

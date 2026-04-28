@@ -34,7 +34,7 @@ This page covers the in-app **Settings > Integrations** UI. For protocol details
 
 The MCP server lazy-starts on first use. Pairing an extension or hitting `tablepro://integrations/start-mcp` from the bundled `tablepro-mcp` CLI starts the server on demand. You do not have to flip a toggle in Settings beforehand.
 
-When the server starts, it picks a free port in the `51000-52000` range and writes a handshake file at `~/Library/Application Support/com.TablePro/mcp-handshake.json`. The `tablepro-mcp` CLI and the Raycast extension read this file to find the port; you do not need to configure it manually.
+When the server starts, it picks a free port in the `51000-52000` range and writes a handshake file at `~/Library/Application Support/TablePro/mcp-handshake.json`. The `tablepro-mcp` CLI and the Raycast extension read this file to find the port; you do not need to configure it manually.
 
 To start it manually or keep it running between launches, open **Settings > Integrations** and toggle **Enable MCP Server**.
 
@@ -136,7 +136,7 @@ The server validates the `Origin` header against `localhost`, `127.0.0.1`, and `
 | Read SSH keys | no |
 | Read license data | no |
 | Read app settings | no |
-| Read local files outside `~/Library/Application Support/com.TablePro/` | no |
+| Read local files outside `~/Library/Application Support/TablePro/` | no |
 | Mutate Safe Mode rules | no |
 
 The reachable surface is the [tool catalog](/external-api/mcp-tools) and the [URL scheme](/external-api/url-scheme).
