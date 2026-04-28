@@ -120,23 +120,14 @@ impl FactoryComponent for SidebarRow {
         // emits a SidebarRowMsg variant that update() forwards as a
         // SidebarRowOutput; App's forwarder maps to the corresponding
         // AppMsg.
-        let menu = gtk::gio::Menu::new();
-        let open_section = gtk::gio::Menu::new();
-        open_section.append(
-            Some(&crate::tr!("Open in new tab")),
-            Some("sidebar-row.open-in-new-tab"),
-        );
-        menu.append_section(None, &open_section);
-        let structure_section = gtk::gio::Menu::new();
-        structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
-        menu.append_section(None, &structure_section);
-        let mutate_section = gtk::gio::Menu::new();
-        mutate_section.append(Some(&crate::tr!("Drop Table…")), Some("sidebar-row.drop-table"));
-        menu.append_section(None, &mutate_section);
-        let popover = gtk::PopoverMenu::from_model(Some(&menu));
-        popover.set_has_arrow(true);
-        popover.set_parent(&root);
-
+        //
+        // The action group is parented at row construction (cheap;
+        // GAction has no GTK-tree dependency). The popover itself is
+        // built lazily inside the gesture handler — set_parent + popup
+        // + connect_closed→unparent — so a factory.guard().clear()
+        // while no menu is open finalises the row cleanly. Eager
+        // set_parent on a row that gets destroyed mid-popup leaves
+        // GTK warning "PopoverMenu was destroyed while visible".
         let group = gtk::gio::SimpleActionGroup::new();
         let sender_for_open = sender.clone();
         let open_action = gtk::gio::ActionEntry::builder("open-in-new-tab")
@@ -154,19 +145,20 @@ impl FactoryComponent for SidebarRow {
         root.insert_action_group("sidebar-row", Some(&group));
 
         let right_click = gtk::GestureClick::builder().button(3).build();
-        let popover_for_gesture = popover.clone();
+        let root_for_right = root.clone();
         right_click.connect_pressed(move |g, _, x, y| {
             g.set_state(gtk::EventSequenceState::Claimed);
-            popover_for_gesture.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
-            popover_for_gesture.popup();
+            present_row_menu(&root_for_right, Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
         });
         root.add_controller(right_click);
 
-        // Keyboard menu key opens the same context menu.
+        // Keyboard Menu key opens the same context menu, anchored to
+        // the row centre (no pointer position).
+        let root_for_menu = root.clone();
         let menu_shortcut = gtk::Shortcut::builder()
             .trigger(&gtk::ShortcutTrigger::parse_string("Menu").expect("valid trigger"))
             .action(&gtk::CallbackAction::new(move |_, _| {
-                popover.popup();
+                present_row_menu(&root_for_menu, None);
                 glib::Propagation::Stop
             }))
             .build();
@@ -199,4 +191,32 @@ impl FactoryComponent for SidebarRow {
             }
         }
     }
+}
+
+/// Build + parent + popup the row context menu lazily, so a factory
+/// teardown that runs while no menu is showing finalises cleanly.
+/// `connect_closed` unparents the popover after popdown, breaking the
+/// reference cycle that would otherwise hold the menu alive.
+fn present_row_menu(anchor: &gtk::ListBoxRow, pointing_to: Option<&gtk::gdk::Rectangle>) {
+    let menu = gtk::gio::Menu::new();
+    let open_section = gtk::gio::Menu::new();
+    open_section.append(
+        Some(&crate::tr!("Open in new tab")),
+        Some("sidebar-row.open-in-new-tab"),
+    );
+    menu.append_section(None, &open_section);
+    let structure_section = gtk::gio::Menu::new();
+    structure_section.append(Some(&crate::tr!("Edit Structure")), Some("sidebar-row.edit-structure"));
+    menu.append_section(None, &structure_section);
+    let mutate_section = gtk::gio::Menu::new();
+    mutate_section.append(Some(&crate::tr!("Drop Table\u{2026}")), Some("sidebar-row.drop-table"));
+    menu.append_section(None, &mutate_section);
+    let popover = gtk::PopoverMenu::from_model(Some(&menu));
+    popover.set_has_arrow(true);
+    popover.set_parent(anchor);
+    if let Some(rect) = pointing_to {
+        popover.set_pointing_to(Some(rect));
+    }
+    popover.connect_closed(|p| p.unparent());
+    popover.popup();
 }

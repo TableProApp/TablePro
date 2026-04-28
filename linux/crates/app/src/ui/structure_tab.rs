@@ -260,17 +260,19 @@ impl StructureTab {
     }
 
     fn rebuild_columns_view(&self, sender: ComponentSender<Self>) {
-        // Tear down + rebuild. Editing happens infrequently enough that
-        // rebuilding the entire list view per change is cheap and keeps
-        // the bind / unbind code path minimal compared to a full
-        // gtk::ListStore + ColumnView factory setup.
+        // Tear down + rebuild. Editing happens infrequently enough
+        // that rebuilding the whole list per change is cheap. The
+        // outer columns_box holds (ListBox + Add button) so the rows
+        // get the standard `.boxed-list` styling: rounded corners,
+        // separators between rows, hover highlight.
         clear_box(&self.columns_box);
         let driver_id = self.driver_id.clone();
+        let list = boxed_list();
         for (i, col) in self.columns.borrow().iter().enumerate() {
-            let row = build_column_row(i, col, &driver_id, sender.clone());
-            self.columns_box.append(&row);
+            let row = wrap_in_list_row(build_column_row(i, col, &driver_id, sender.clone()));
+            list.append(&row);
         }
-        // Add Column button trailing the rows.
+        self.columns_box.append(&list);
         let add_button = gtk::Button::builder()
             .label(crate::tr!("Add Column"))
             .icon_name("list-add-symbolic")
@@ -278,23 +280,17 @@ impl StructureTab {
         add_button.add_css_class("flat");
         let sender_for_add = sender.clone();
         add_button.connect_clicked(move |_| sender_for_add.input(StructureTabInput::AddColumn));
-        let add_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .margin_top(6)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        add_box.append(&add_button);
-        self.columns_box.append(&add_box);
+        self.columns_box.append(&wrap_button_in_row(add_button));
     }
 
     fn rebuild_indexes_view(&self, sender: ComponentSender<Self>) {
         clear_box(&self.indexes_box);
+        let list = boxed_list();
         for (i, idx) in self.indexes.borrow().iter().enumerate() {
-            let row = build_index_row(i, idx, sender.clone());
-            self.indexes_box.append(&row);
+            let row = wrap_in_list_row(build_index_row(i, idx, sender.clone()));
+            list.append(&row);
         }
+        self.indexes_box.append(&list);
         let add_button = gtk::Button::builder()
             .label(crate::tr!("Add Index…"))
             .icon_name("list-add-symbolic")
@@ -306,24 +302,18 @@ impl StructureTab {
         add_button.connect_clicked(move |_| {
             present_index_dialog(&parent_box, &columns_for_dialog.borrow(), sender_for_add.clone());
         });
-        let add_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .margin_top(6)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        add_box.append(&add_button);
-        self.indexes_box.append(&add_box);
+        self.indexes_box.append(&wrap_button_in_row(add_button));
     }
 
     fn rebuild_fks_view(&self, sender: ComponentSender<Self>) {
         clear_box(&self.fks_box);
         let driver_id = self.driver_id.clone();
+        let list = boxed_list();
         for (i, fk) in self.foreign_keys.borrow().iter().enumerate() {
-            let row = build_fk_row(i, fk, &driver_id, sender.clone());
-            self.fks_box.append(&row);
+            let row = wrap_in_list_row(build_fk_row(i, fk, &driver_id, sender.clone()));
+            list.append(&row);
         }
+        self.fks_box.append(&list);
         let add_button = gtk::Button::builder()
             .label(crate::tr!("Add Foreign Key…"))
             .icon_name("list-add-symbolic")
@@ -335,16 +325,45 @@ impl StructureTab {
         add_button.connect_clicked(move |_| {
             present_fk_dialog(&parent_box, &columns_for_dialog.borrow(), sender_for_add.clone());
         });
-        let add_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
-            .margin_top(6)
-            .margin_bottom(12)
-            .margin_start(12)
-            .margin_end(12)
-            .build();
-        add_box.append(&add_button);
-        self.fks_box.append(&add_box);
+        self.fks_box.append(&wrap_button_in_row(add_button));
     }
+}
+
+/// Build a `gtk::ListBox` with the `.boxed-list` HIG style class. Used
+/// for the columns / indexes / FKs sections of the Structure tab so
+/// rows pick up the standard Adwaita rounded-corner + row-separator
+/// treatment used in GNOME Settings, Files, etc.
+fn boxed_list() -> gtk::ListBox {
+    let list = gtk::ListBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .margin_start(12)
+        .margin_end(12)
+        .margin_top(6)
+        .margin_bottom(6)
+        .build();
+    list.add_css_class("boxed-list");
+    list
+}
+
+/// Wrap a content widget in a non-activatable `gtk::ListBoxRow` so it
+/// participates in the boxed-list styling without GTK trying to treat
+/// it as an action target.
+fn wrap_in_list_row(content: gtk::Widget) -> gtk::ListBoxRow {
+    let row = gtk::ListBoxRow::builder().activatable(false).selectable(false).build();
+    row.set_child(Some(&content));
+    row
+}
+
+fn wrap_button_in_row(button: gtk::Button) -> gtk::Box {
+    let row = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .margin_top(6)
+        .margin_bottom(12)
+        .margin_start(12)
+        .margin_end(12)
+        .build();
+    row.append(&button);
+    row
 }
 
 fn clear_box(b: &gtk::Box) {

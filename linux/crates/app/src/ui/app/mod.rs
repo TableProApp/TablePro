@@ -1491,6 +1491,14 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
     ));
     section.append(&editor);
 
+    let structure = gtk::ShortcutsGroup::builder()
+        .title(crate::tr!("Table structure"))
+        .build();
+    structure.append(&shortcut_entry("<Primary>s", &crate::tr!("Save pending DDL")));
+    structure.append(&shortcut_entry("<Primary>z", &crate::tr!("Undo DDL change")));
+    structure.append(&shortcut_entry("<Primary><Shift>z", &crate::tr!("Redo DDL change")));
+    section.append(&structure);
+
     let dialogs = gtk::ShortcutsGroup::builder().title(crate::tr!("Dialogs")).build();
     dialogs.append(&shortcut_entry("Escape", &crate::tr!("Close dialog")));
     section.append(&dialogs);
