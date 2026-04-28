@@ -80,6 +80,10 @@ impl SimpleComponent for WelcomeView {
             .hexpand(true)
             .vexpand(true)
             .hscrollbar_policy(gtk::PolicyType::Never)
+            // Cap the scrollable content's natural width at 560px so
+            // narrow viewports don't push past the window edge.
+            .max_content_width(560)
+            .propagate_natural_width(true)
             .build();
         let outer = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -91,7 +95,6 @@ impl SimpleComponent for WelcomeView {
             .halign(gtk::Align::Center)
             .valign(gtk::Align::Center)
             .build();
-        outer.set_size_request(560, -1);
 
         // Single CTA on the populated page: the "+" button in the
         // group header. Previously we also rendered a bottom pill

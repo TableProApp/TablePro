@@ -911,8 +911,8 @@ impl SimpleComponent for App {
             let header_box = gtk::Box::builder()
                 .orientation(gtk::Orientation::Horizontal)
                 .spacing(6)
-                .margin_top(8)
-                .margin_bottom(4)
+                .margin_top(12)
+                .margin_bottom(6)
                 .margin_start(12)
                 .margin_end(6)
                 .build();

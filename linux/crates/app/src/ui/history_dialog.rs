@@ -271,7 +271,7 @@ impl Component for HistoryDialog {
             .margin_top(12)
             .margin_start(12)
             .margin_end(12)
-            .margin_bottom(4)
+            .margin_bottom(6)
             .visible(false)
             .build();
         pinned_heading.add_css_class("heading");
@@ -291,7 +291,7 @@ impl Component for HistoryDialog {
             .margin_top(12)
             .margin_start(12)
             .margin_end(12)
-            .margin_bottom(4)
+            .margin_bottom(6)
             .visible(false)
             .build();
         list_heading.add_css_class("heading");

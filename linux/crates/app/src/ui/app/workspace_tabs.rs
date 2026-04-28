@@ -1038,11 +1038,20 @@ fn editor_tab_tooltip(query: &str, label: &str) -> Option<String> {
     if q.is_empty() {
         return None;
     }
-    let preview: String = q.chars().take(200).collect();
-    let preview = if q.chars().count() > 200 {
-        format!("{preview}…")
-    } else {
-        preview
-    };
+    // Use char_indices().nth(200) to walk only the first 201 chars
+    // instead of materialising the whole query as a Vec<char> via
+    // chars().count(). For a multi-megabyte SQL dump this avoids an
+    // O(n) scan when only a 200-char preview matters.
+    let mut iter = q.char_indices();
+    let mut last_idx = 0;
+    for _ in 0..200 {
+        match iter.next() {
+            Some((i, c)) => last_idx = i + c.len_utf8(),
+            None => {
+                return if q == label { None } else { Some(q.to_string()) };
+            }
+        }
+    }
+    let preview = format!("{}…", &q[..last_idx]);
     if preview == label { None } else { Some(preview) }
 }

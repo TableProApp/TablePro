@@ -417,13 +417,36 @@ impl App {
     }
 
     /// Schema state changed somewhere — reload the table list, then
-    /// refetch any open Browse tab pointing at the affected table.
+    /// refetch any open Browse tab pointing at the affected table so
+    /// its grid reflects post-DDL schema (column adds / drops / type
+    /// changes / renames).
     pub(super) fn on_schema_changed(
         &self,
-        _schema: Option<String>,
-        _table: Option<String>,
+        schema: Option<String>,
+        table: Option<String>,
         sender: ComponentSender<Self>,
     ) {
+        // Refetch the affected Browse tab(s) immediately. Tab-id
+        // collection happens under a short-lived borrow; the sender
+        // dispatches happen after drop so the input handlers can
+        // re-borrow workspace_tabs without panic.
+        if let Some(table_name) = table.as_deref() {
+            let mut affected: Vec<Uuid> = Vec::new();
+            for (id, tab) in self.workspace_tabs.borrow().iter() {
+                if let WorkspaceTab::Browse(slot) = tab
+                    && slot.schema.as_deref() == schema.as_deref()
+                    && slot.table == table_name
+                {
+                    affected.push(*id);
+                }
+            }
+            for id in affected {
+                sender.input(AppMsg::FetchBrowseColumns(id));
+                sender.input(AppMsg::FetchBrowsePage(id));
+                sender.input(AppMsg::FetchBrowseRowCount(id));
+            }
+        }
+        // Sidebar refresh: re-list tables and rebuild the factory.
         let sender_for_cmd = sender.clone();
         sender.command(move |_, shutdown| {
             shutdown

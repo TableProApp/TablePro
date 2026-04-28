@@ -26,6 +26,7 @@ use std::rc::Rc;
 
 use relm4::adw::prelude::*;
 use relm4::{ComponentParts, ComponentSender, SimpleComponent, adw, gtk};
+use sourceview5::prelude::BufferExt;
 
 use tablepro_core::sql_ddl::{BuildDdlError, DraftColumn};
 use tablepro_core::{ColumnInfo, ForeignKeyInfo, IndexInfo};
@@ -386,8 +387,8 @@ fn build_column_row(
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
-        .margin_top(2)
-        .margin_bottom(2)
+        .margin_top(6)
+        .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -525,8 +526,8 @@ fn build_index_row(index: usize, idx: &IndexInfo, sender: ComponentSender<Struct
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
-        .margin_top(2)
-        .margin_bottom(2)
+        .margin_top(6)
+        .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -593,8 +594,8 @@ fn build_fk_row(
     let row = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(6)
-        .margin_top(2)
-        .margin_bottom(2)
+        .margin_top(6)
+        .margin_bottom(6)
         .margin_start(12)
         .margin_end(12)
         .build();
@@ -980,6 +981,14 @@ impl SimpleComponent for StructureTab {
         sql_view.set_left_margin(6);
         sql_view.set_right_margin(6);
         sql_view.set_bottom_margin(6);
+        // Match the system light / dark scheme. Mirrors the editor.rs
+        // hook so the SQL preview's syntax colours track the user's
+        // theme choice instead of staying frozen on the boot scheme.
+        apply_sql_scheme(&sql_buffer);
+        let buffer_for_theme = sql_buffer.clone();
+        adw::StyleManager::default().connect_dark_notify(move |_| {
+            apply_sql_scheme(&buffer_for_theme);
+        });
         let sql_scroll = gtk::ScrolledWindow::builder().child(&sql_view).vexpand(true).build();
         let sql_page = view_stack.add_titled_with_icon(
             &sql_scroll,
@@ -1605,6 +1614,20 @@ fn build_type_combo(driver_id: &str) -> gtk::ComboBoxText {
 #[allow(deprecated)]
 fn combo_entry(combo: &gtk::ComboBoxText) -> Option<gtk::Entry> {
     combo.child().and_then(|c| c.dynamic_cast::<gtk::Entry>().ok())
+}
+
+/// Pick the sourceview5 style scheme matching the active Adwaita
+/// light / dark mode. Called on init and on `connect_dark_notify`
+/// so the SQL preview tracks system theme switches.
+fn apply_sql_scheme(buffer: &sourceview5::Buffer) {
+    let scheme_name = if adw::StyleManager::default().is_dark() {
+        "Adwaita-dark"
+    } else {
+        "Adwaita"
+    };
+    if let Some(scheme) = sourceview5::StyleSchemeManager::default().scheme(scheme_name) {
+        buffer.set_style_scheme(Some(&scheme));
+    }
 }
 
 fn driver_display_name(driver_id: &str) -> &'static str {
