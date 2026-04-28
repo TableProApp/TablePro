@@ -100,6 +100,17 @@ impl FactoryComponent for SidebarRow {
     ) -> Self::Widgets {
         let widgets = view_output!();
 
+        // Tooltip surfaces the fully-qualified name (`schema.table`)
+        // for multi-schema connections so the user can disambiguate
+        // sibling tables without a tab open. Single-schema connections
+        // get a plain table-name tooltip — redundant with the visible
+        // label, but harmless and keeps screen-reader output uniform.
+        let tooltip = match self.info.schema.as_deref().filter(|s| !s.is_empty()) {
+            Some(schema) => format!("{schema}.{}", self.info.name),
+            None => self.info.name.clone(),
+        };
+        root.set_tooltip_text(Some(&tooltip));
+
         // Ctrl+click → "Open in new tab". A button=1 GestureClick fires
         // before the ListBoxRow's own activate signal, so we can intercept
         // and short-circuit when CONTROL is held; without claiming the

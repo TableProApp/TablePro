@@ -922,14 +922,30 @@ impl SimpleComponent for App {
         });
 
         let search_for_filter = widgets.table_search.clone();
+        let schemas_for_filter = sidebar_schemas.clone();
         sidebar_listbox.set_filter_func(move |row| {
             let query = search_for_filter.text().to_lowercase();
             if query.is_empty() {
                 return true;
             }
             // SidebarRow stashes its table name in widget-name; same
-            // identifier is read by sync_sidebar_selection.
-            row.widget_name().to_lowercase().contains(&query)
+            // identifier is read by sync_sidebar_selection. Search
+            // also matches the row's schema (when present) so a query
+            // for "auth" surfaces every table in the auth schema, and
+            // the qualified `schema.table` form so users with
+            // multi-schema connections can disambiguate by typing the
+            // dotted name they see in the tab title.
+            let table_name = row.widget_name().to_lowercase();
+            if table_name.contains(&query) {
+                return true;
+            }
+            let schemas = schemas_for_filter.borrow();
+            let idx = row.index() as usize;
+            let Some(schema) = schemas.get(idx).and_then(|s| s.as_deref()) else {
+                return false;
+            };
+            let schema_lc = schema.to_lowercase();
+            schema_lc.contains(&query) || format!("{schema_lc}.{table_name}").contains(&query)
         });
         let listbox_for_invalidate = sidebar_listbox.clone();
         widgets.table_search.connect_search_changed(move |_| {
