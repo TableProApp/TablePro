@@ -10,7 +10,7 @@ import AppKit
 import SwiftUI
 
 /// Position of a cell in the grid (row, column)
-struct CellPosition: Equatable {
+struct CellPosition: Hashable {
     let row: Int
     let column: Int
 }
