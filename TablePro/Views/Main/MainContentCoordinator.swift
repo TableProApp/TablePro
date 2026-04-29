@@ -147,6 +147,8 @@ final class MainContentCoordinator {
     /// Cache for async-sorted query tab rows (large datasets sorted on background thread)
     @ObservationIgnored var querySortCache: [UUID: QuerySortCacheEntry] = [:]
 
+    @ObservationIgnored var pendingScrollToTopAfterReplace: Bool = false
+
     // MARK: - Internal State
 
     /// Cached column types per table for selective queries (avoids refetching schema).

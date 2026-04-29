@@ -45,5 +45,9 @@ extension MainContentCoordinator {
               idx < tabManager.tabs.count,
               tabManager.tabs[idx].id == tabId else { return }
         dataTabDelegate?.tableViewCoordinator?.applyFullReplace()
+        if pendingScrollToTopAfterReplace {
+            pendingScrollToTopAfterReplace = false
+            dataTabDelegate?.tableViewCoordinator?.scrollToTop()
+        }
     }
 }

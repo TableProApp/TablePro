@@ -32,6 +32,11 @@ private final class FakeTableViewCoordinator: TableViewCoordinating {
     func beginEditing(displayRow: Int, column: Int) {
         beginEditingCalls.append((row: displayRow, column: column))
     }
+
+    var refreshFKCount = 0
+    var scrollToTopCount = 0
+    func refreshForeignKeyColumns() { refreshFKCount += 1 }
+    func scrollToTop() { scrollToTopCount += 1 }
 }
 
 @Suite("setActiveTableRows dispatch")

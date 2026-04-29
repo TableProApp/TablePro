@@ -9,6 +9,8 @@ protocol TableViewCoordinating: AnyObject {
     func invalidateCachesForUndoRedo()
     func commitActiveCellEdit()
     func beginEditing(displayRow: Int, column: Int)
+    func refreshForeignKeyColumns()
+    func scrollToTop()
 }
 
 extension TableViewCoordinator: TableViewCoordinating {}

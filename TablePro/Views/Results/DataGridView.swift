@@ -22,40 +22,10 @@ struct RowVisualState {
     static let empty = RowVisualState(isDeleted: false, isInserted: false, modifiedColumns: [])
 }
 
-struct DataGridIdentity: Equatable {
-    let schemaVersion: Int
-    let metadataVersion: Int
-    let paginationVersion: Int
-    let rowCount: Int
-    let columnCount: Int
-    let isEditable: Bool
-    let tabType: TabType?
-    let tableName: String?
-    let primaryKeyColumns: [String]
-    let hiddenColumns: Set<String>
-
-    init(schemaVersion: Int, metadataVersion: Int, paginationVersion: Int,
-         rowCount: Int, columnCount: Int, isEditable: Bool, configuration: DataGridConfiguration) {
-        self.schemaVersion = schemaVersion
-        self.metadataVersion = metadataVersion
-        self.paginationVersion = paginationVersion
-        self.rowCount = rowCount
-        self.columnCount = columnCount
-        self.isEditable = isEditable
-        self.tabType = configuration.tabType
-        self.tableName = configuration.tableName
-        self.primaryKeyColumns = configuration.primaryKeyColumns
-        self.hiddenColumns = configuration.hiddenColumns
-    }
-}
-
 struct DataGridView: NSViewRepresentable {
     var tableRowsProvider: @MainActor () -> TableRows = { TableRows() }
     var tableRowsMutator: @MainActor (@MainActor (inout TableRows) -> Void) -> Void = { _ in }
     var changeManager: AnyChangeManager
-    var schemaVersion: Int = 0
-    var metadataVersion: Int = 0
-    var paginationVersion: Int = 0
     let isEditable: Bool
     var configuration: DataGridConfiguration = .init()
     var sortedIDs: [RowID]?
@@ -228,27 +198,6 @@ struct DataGridView: NSViewRepresentable {
         let rowDisplayCount = sortedIDs?.count ?? latestRows.count
         let columnCount = latestRows.columns.count
 
-        let currentIdentity = DataGridIdentity(
-            schemaVersion: schemaVersion,
-            metadataVersion: metadataVersion,
-            paginationVersion: paginationVersion,
-            rowCount: rowDisplayCount,
-            columnCount: columnCount,
-            isEditable: isEditable,
-            configuration: configuration
-        )
-        if currentIdentity == coordinator.lastIdentity {
-            coordinator.delegate = delegate
-            coordinator.tableRowsProvider = tableRowsProvider
-            coordinator.tableRowsMutator = tableRowsMutator
-            coordinator.sortedIDs = sortedIDs
-            coordinator.syncDisplayFormats(displayFormats)
-            delegate?.dataGridAttach(tableViewCoordinator: coordinator)
-            return
-        }
-        let previousIdentity = coordinator.lastIdentity
-        coordinator.lastIdentity = currentIdentity
-
         let settings = AppSettingsManager.shared.dataGrid
         if tableView.rowHeight != CGFloat(settings.rowHeight.rawValue) {
             tableView.rowHeight = CGFloat(settings.rowHeight.rawValue)
@@ -257,7 +206,6 @@ struct DataGridView: NSViewRepresentable {
             tableView.usesAlternatingRowBackgroundColors = settings.showAlternateRows
         }
 
-        let metadataChanged = previousIdentity.map { $0.metadataVersion != metadataVersion } ?? false
         let oldRowCount = coordinator.cachedRowCount
         let oldColumnCount = coordinator.cachedColumnCount
 
@@ -267,7 +215,7 @@ struct DataGridView: NSViewRepresentable {
         coordinator.updateCache()
         coordinator.rebuildColumnMetadataCache(from: latestRows)
 
-        if previousIdentity == nil || previousIdentity?.rowCount == 0 {
+        if oldRowCount == 0, rowDisplayCount > 0 {
             let rowH = tableView.rowHeight
             if rowH > 0 {
                 let visibleRows = Int(tableView.visibleRect.height / rowH) + 5
@@ -315,15 +263,10 @@ struct DataGridView: NSViewRepresentable {
 
         syncSortDescriptors(tableView: tableView, coordinator: coordinator, columns: latestRows.columns)
 
-        let paginationChanged = previousIdentity.map { $0.paginationVersion != paginationVersion } ?? false
-
         reloadAndSyncSelection(
             tableView: tableView,
             coordinator: coordinator,
-            tableRows: latestRows,
-            needsFullReload: needsFullReload,
-            metadataChanged: metadataChanged,
-            paginationChanged: paginationChanged
+            needsFullReload: needsFullReload
         )
     }
 
@@ -493,36 +436,10 @@ struct DataGridView: NSViewRepresentable {
     private func reloadAndSyncSelection(
         tableView: NSTableView,
         coordinator: TableViewCoordinator,
-        tableRows: TableRows,
-        needsFullReload: Bool,
-        metadataChanged: Bool = false,
-        paginationChanged: Bool = false
+        needsFullReload: Bool
     ) {
         if needsFullReload {
             tableView.reloadData()
-        } else if metadataChanged {
-            let fkColumnIndices = IndexSet(
-                tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
-                    guard tableColumn.identifier.rawValue != "__rowNumber__",
-                          let modelIndex = Self.dataColumnIndex(from: tableColumn.identifier),
-                          modelIndex < tableRows.columns.count else { return nil }
-                    let columnName = tableRows.columns[modelIndex]
-                    return tableRows.columnForeignKeys[columnName] != nil ? displayIndex : nil
-                }
-            )
-            if !fkColumnIndices.isEmpty {
-                let visibleRange = tableView.rows(in: tableView.visibleRect)
-                if visibleRange.length > 0 {
-                    let visibleRows = IndexSet(
-                        integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
-                    )
-                    tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
-                }
-            }
-        }
-
-        if paginationChanged && tableView.numberOfRows > 0 {
-            tableView.scrollRowToVisible(0)
         }
 
         let currentSelection = tableView.selectedRowIndexes

@@ -60,7 +60,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
 
     @Binding var selectedRowIndices: Set<Int>
 
-    var lastIdentity: DataGridIdentity?
     private(set) var cachedRowCount: Int = 0
     private(set) var cachedColumnCount: Int = 0
     private(set) var enumOrSetColumns: Set<Int> = []
@@ -213,7 +212,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rebuildVisualStateCache()
         updateCache()
         tableView.insertRows(at: indices, withAnimation: .slideDown)
-        lastIdentity = nil
     }
 
     func applyRemovedRows(_ indices: IndexSet) {
@@ -221,7 +219,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rebuildVisualStateCache()
         updateCache()
         tableView.removeRows(at: indices, withAnimation: .slideUp)
-        lastIdentity = nil
     }
 
     func applyFullReplace() {
@@ -230,7 +227,6 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         rebuildVisualStateCache()
         updateCache()
         tableView.reloadData()
-        lastIdentity = nil
     }
 
     func displayRow(at displayIndex: Int) -> Row? {
@@ -420,6 +416,32 @@ final class TableViewCoordinator: NSObject, NSTableViewDelegate, NSTableViewData
         tableView.scrollRowToVisible(displayRow)
         tableView.selectRowIndexes(IndexSet(integer: displayRow), byExtendingSelection: false)
         tableView.editColumn(displayCol, row: displayRow, with: nil, select: true)
+    }
+
+    func refreshForeignKeyColumns() {
+        guard let tableView else { return }
+        let tableRows = tableRowsProvider()
+        let fkColumnIndices = IndexSet(
+            tableView.tableColumns.enumerated().compactMap { displayIndex, tableColumn in
+                guard tableColumn.identifier.rawValue != "__rowNumber__",
+                      let modelIndex = DataGridView.dataColumnIndex(from: tableColumn.identifier),
+                      modelIndex < tableRows.columns.count else { return nil }
+                let columnName = tableRows.columns[modelIndex]
+                return tableRows.columnForeignKeys[columnName] != nil ? displayIndex : nil
+            }
+        )
+        guard !fkColumnIndices.isEmpty else { return }
+        let visibleRange = tableView.rows(in: tableView.visibleRect)
+        guard visibleRange.length > 0 else { return }
+        let visibleRows = IndexSet(
+            integersIn: visibleRange.location..<(visibleRange.location + visibleRange.length)
+        )
+        tableView.reloadData(forRowIndexes: visibleRows, columnIndexes: fkColumnIndices)
+    }
+
+    func scrollToTop() {
+        guard let tableView, tableView.numberOfRows > 0 else { return }
+        tableView.scrollRowToVisible(0)
     }
 
     func rebuildColumnMetadataCache(from tableRows: TableRows) {

@@ -493,6 +493,11 @@ extension MainContentCoordinator {
                             return .columnsReplaced
                         }
                         tabManager.tabs[idx].metadataVersion += 1
+                        if let activeIdx = tabManager.selectedTabIndex,
+                           activeIdx < tabManager.tabs.count,
+                           tabManager.tabs[activeIdx].id == tabId {
+                            dataTabDelegate?.tableViewCoordinator?.refreshForeignKeyColumns()
+                        }
                     }
                 }
             }

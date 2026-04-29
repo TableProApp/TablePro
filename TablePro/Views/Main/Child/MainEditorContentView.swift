@@ -504,9 +504,6 @@ struct MainEditorContentView: View {
                 }
             },
             changeManager: currentChangeManager,
-            schemaVersion: tab.schemaVersion,
-            metadataVersion: tab.metadataVersion,
-            paginationVersion: tab.paginationVersion,
             isEditable: isEditable,
             configuration: DataGridConfiguration(
                 connectionId: connection.id,

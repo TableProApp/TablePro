@@ -97,6 +97,7 @@ extension MainContentCoordinator {
 
             mutate(&self.tabManager.tabs[idx].pagination)
             self.tabManager.tabs[idx].paginationVersion += 1
+            self.pendingScrollToTopAfterReplace = true
             self.reloadCurrentPage()
         }
     }
