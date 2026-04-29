@@ -541,6 +541,7 @@ struct DataGridView: NSViewRepresentable {
     ) {
         var columnByDataIndex: [Int: NSTableColumn] = [:]
         for column in tableView.tableColumns {
+            tableView.setIndicatorImage(nil, in: column)
             guard let colIndex = schema.dataIndex(from: column.identifier) else { continue }
             columnByDataIndex[colIndex] = column
             if let cell = column.headerCell as? MultiSortHeaderCell {
