@@ -49,13 +49,22 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
     retention_row.set_value(current.history_retention_days as f64);
     history_group.add(&retention_row);
 
+    // Trigger button uses `.flat`, NOT `.destructive-action`. GNOME
+    // Settings convention: the trigger that opens a destructive
+    // confirmation dialog is a regular/flat button — the confirmation
+    // dialog itself carries the destructive (red) appearance. Pre-
+    // coloring the trigger anticipates an action the user hasn't
+    // taken yet.
+    //
+    // Ellipsis on the label per GTK4 HIG: "Use ellipsis when the
+    // action requires more user input or confirmation."
     let clear_button = gtk::Button::builder()
-        .label(crate::tr!("Clear now"))
+        .label(crate::tr!("Clear\u{2026}"))
         .valign(gtk::Align::Center)
         .build();
-    clear_button.add_css_class("destructive-action");
+    clear_button.add_css_class("flat");
     let clear_row = adw::ActionRow::builder()
-        .title(crate::tr!("Clear history now"))
+        .title(crate::tr!("Clear query history"))
         .subtitle(crate::tr!("Removes every saved query, including pinned ones."))
         .build();
     clear_row.add_suffix(&clear_button);
@@ -98,6 +107,10 @@ pub fn present(parent: &impl IsA<gtk::Widget>) {
         .title(crate::tr!("Storage location"))
         .subtitle(&storage_subtitle)
         .build();
+    // AdwActionRow ellipsis-truncates long subtitles; the tooltip
+    // exposes the full path on hover so the user can verify exactly
+    // where their history lives without resorting to the file manager.
+    storage_row.set_tooltip_text(Some(&storage_subtitle));
     storage_row.add_suffix(&storage_button);
     let parent_for_launcher = window.clone();
     storage_button.connect_clicked(move |_| {
