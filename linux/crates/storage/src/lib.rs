@@ -5,6 +5,7 @@ mod secrets;
 
 pub use connections::{
     SavedConnection, SavedSshAuth, SavedSshConfig, delete_connection, load_connections, save_connections,
+    touch_last_opened,
 };
 pub use error::StorageError;
 pub use secrets::{

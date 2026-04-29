@@ -552,6 +552,10 @@ async fn run_connect(
         use_tls: opts_clone.use_tls,
         read_only,
         ssh: ssh.as_ref().map(|s| s.saved.clone()),
+        // Stays None until `App::on_connected` stamps it. Save then
+        // connect arrives in that order, so a freshly-saved entry is
+        // briefly None on disk before the touch lands.
+        last_opened_at: None,
     };
 
     save_one(&saved).await.map_err(|e| format!("save: {e}"))?;

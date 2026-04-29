@@ -49,6 +49,19 @@ impl App {
         // for this connection.
         if let Some(connection_id) = database_service::instance().active_id() {
             self.restore_workspace_tabs(connection_id, sender.clone());
+            // Stamp `last_opened_at = now()` then reload connections so
+            // the popover + welcome view re-sort with the fresh
+            // timestamp. Sequencing matters: ReloadConnections reads
+            // the JSON; firing it before the touch lands would render
+            // the previous ordering until the next reload.
+            let sender_for_touch = sender.clone();
+            relm4::spawn(async move {
+                if let Err(e) = tablepro_storage::touch_last_opened(connection_id).await {
+                    tracing::warn!(error = %e, "touch_last_opened failed");
+                }
+                sender_for_touch.input(AppMsg::ReloadConnections);
+            });
+            return;
         }
         sender.input(AppMsg::ReloadConnections);
     }
@@ -94,6 +107,10 @@ impl App {
         // Persist + tear down workspace tabs before dropping the
         // connection (persist needs the active connection_id).
         self.teardown_workspace_tabs();
+        // Drop reopen-stack entries — they reference tables in the
+        // connection we're about to release. Reopening one against a
+        // different connection would target a non-existent table.
+        self.clear_closed_tabs_stack();
         let svc = database_service::instance();
         if let Some(id) = svc.active_id() {
             svc.remove(id);

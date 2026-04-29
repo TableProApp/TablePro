@@ -12,7 +12,10 @@ use crate::services::workspace_state::{self, ConnectionWorkspaceState, Workspace
 use crate::ui::browse_tab::{BrowseTab, BrowseTabInit, BrowseTabInput, BrowseTabOutput};
 use crate::ui::editor::{SqlEditor, SqlEditorInit, SqlEditorInput, SqlEditorOutput, derive_tab_label};
 
-use super::{App, AppMsg, EditorTabSlot, OpenMode, WorkspaceTab, read_workspace_tab_id, write_workspace_tab_id};
+use super::{
+    App, AppMsg, CLOSED_TABS_CAPACITY, ClosedTabDescriptor, EditorTabSlot, OpenMode, WorkspaceTab,
+    read_workspace_tab_id, write_workspace_tab_id,
+};
 
 impl App {
     /// Builds the unified AdwTabOverview tree once per connection.
@@ -678,6 +681,15 @@ impl App {
         let Some(removed) = removed else {
             return;
         };
+        // Snapshot the closed tab into the reopen stack BEFORE running
+        // the per-kind teardown below — the BrowseModel still has its
+        // pagination + sort state intact, and the EditorTabSlot still
+        // owns the latest query buffer. New-mode Structure drafts are
+        // skipped because the table they describe doesn't exist yet,
+        // so reopening a draft would be useless.
+        if let Some(descriptor) = describe_closed_tab(&removed) {
+            push_closed_tab(&self.closed_tabs_stack, descriptor);
+        }
         // Drop any close-after-save / window-close-after-save intent
         // pinned to this tab. `close_tabs_for_table` (Drop Table)
         // calls into here directly without going through the per-tab
@@ -1200,6 +1212,75 @@ fn browse_tab_tooltip(schema: Option<&str>, table: &str, label: &str) -> Option<
     let s = schema?;
     let qualified = format!("{s}.{table}");
     if qualified == label { None } else { Some(qualified) }
+}
+
+fn describe_closed_tab(slot: &WorkspaceTab) -> Option<ClosedTabDescriptor> {
+    match slot {
+        WorkspaceTab::Editor(s) => Some(ClosedTabDescriptor::Editor { query: s.query.clone() }),
+        WorkspaceTab::Table(s) => {
+            let model = s.browse.model();
+            let sort = model.current_sort();
+            Some(ClosedTabDescriptor::Table {
+                schema: s.schema.clone(),
+                table: s.table.clone(),
+                mode: s.mode,
+                offset: model.current_offset(),
+                page_size: model.page_size(),
+                sort,
+            })
+        }
+        // New-Table draft: nothing to reopen. The Edit-mode case is
+        // unreachable post-M-1 (Structure tabs only exist for drafts).
+        WorkspaceTab::Structure(_) => None,
+    }
+}
+
+fn push_closed_tab(
+    stack: &std::rc::Rc<std::cell::RefCell<std::collections::VecDeque<ClosedTabDescriptor>>>,
+    descriptor: ClosedTabDescriptor,
+) {
+    let mut q = stack.borrow_mut();
+    if q.len() == CLOSED_TABS_CAPACITY {
+        q.pop_front();
+    }
+    q.push_back(descriptor);
+}
+
+impl App {
+    pub(super) fn on_reopen_closed_tab(&mut self, sender: ComponentSender<Self>) {
+        if !self.connected {
+            return;
+        }
+        let descriptor = self.closed_tabs_stack.borrow_mut().pop_back();
+        let Some(descriptor) = descriptor else {
+            // Stack empty — nothing to reopen. Toast keeps the
+            // shortcut from feeling broken when the user hits it
+            // before having closed anything (or after a reconnect
+            // wiped the stack).
+            self.show_toast(&crate::tr!("No recently closed tab"));
+            return;
+        };
+        match descriptor {
+            ClosedTabDescriptor::Editor { query } => {
+                let initial = if query.is_empty() { None } else { Some(query) };
+                self.append_editor_tab(initial, sender);
+            }
+            ClosedTabDescriptor::Table {
+                schema,
+                table,
+                mode,
+                offset,
+                page_size,
+                sort,
+            } => {
+                self.append_table_tab(schema, table, mode, offset, page_size, sort, sender);
+            }
+        }
+    }
+
+    pub(super) fn clear_closed_tabs_stack(&self) {
+        self.closed_tabs_stack.borrow_mut().clear();
+    }
 }
 
 /// Returns a tooltip for an Editor tab. Empty for blank queries; for

@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -21,6 +22,13 @@ pub struct SavedConnection {
     pub read_only: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SavedSshConfig>,
+    /// Last successful open of this connection. Drives the welcome
+    /// view's recency-first sort. `None` for connections saved before
+    /// this field shipped (legacy files just deserialize into None);
+    /// they sort after every connection that has been opened at least
+    /// once and fall back to alphabetical against each other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_opened_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +67,27 @@ pub async fn save_connections(connections: &[SavedConnection]) -> Result<(), Sto
 pub async fn delete_connection(id: Uuid) -> Result<(), StorageError> {
     let mut existing = load_connections().await.unwrap_or_default();
     existing.retain(|c| c.id != id);
+    save_connections(&existing).await
+}
+
+/// Stamp `last_opened_at = now()` on the matching connection. Called
+/// once per successful open so the welcome view can sort recency-first.
+/// No-op when `id` isn't in the file (e.g. an unsaved connection
+/// opened from the dialog without ticking "Save"); the missing-id case
+/// is silent because there is nothing to update.
+pub async fn touch_last_opened(id: Uuid) -> Result<(), StorageError> {
+    let mut existing = load_connections().await.unwrap_or_default();
+    let mut hit = false;
+    for c in existing.iter_mut() {
+        if c.id == id {
+            c.last_opened_at = Some(Utc::now());
+            hit = true;
+            break;
+        }
+    }
+    if !hit {
+        return Ok(());
+    }
     save_connections(&existing).await
 }
 
@@ -123,6 +152,7 @@ mod tests {
             use_tls: false,
             read_only: false,
             ssh: None,
+            last_opened_at: None,
         }
     }
 

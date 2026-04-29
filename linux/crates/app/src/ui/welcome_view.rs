@@ -136,17 +136,25 @@ impl SimpleComponent for WelcomeView {
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             WelcomeViewInput::SetConnections(connections) => {
-                // Sort by name (case-insensitive). Storage returns the
-                // raw insertion order, which becomes random-feeling
-                // once the user has more than three entries. Most DB
-                // clients sort alphabetically by default so power
-                // users with 20+ saved connections can find one
-                // without scanning the entire list. Last-used-first
-                // would be ideal but needs a `last_opened_at` field
-                // on `SavedConnection`; alphabetical is free.
+                // Recency-first with alphabetical tiebreaker. Connections
+                // that have been opened sort newest-first; never-opened
+                // entries (no timestamp) fall to the bottom and sort
+                // alphabetically among themselves. Mirrors GNOME Files'
+                // recent-files panel and DataGrip / TablePlus welcome
+                // screens — the connection the user opened last is
+                // almost always the one they want next.
                 self.connections = connections;
-                self.connections
-                    .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                self.connections.sort_by(|a, b| {
+                    use std::cmp::Ordering;
+                    match (a.last_opened_at, b.last_opened_at) {
+                        (Some(ta), Some(tb)) => tb
+                            .cmp(&ta)
+                            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
+                        (Some(_), None) => Ordering::Less,
+                        (None, Some(_)) => Ordering::Greater,
+                        (None, None) => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                    }
+                });
                 let mut guard = self.factory.guard();
                 guard.clear();
                 for saved in &self.connections {

@@ -136,7 +136,36 @@ pub struct App {
     /// connections JSON. This flag stays `true` while a 500ms timer
     /// is pending; subsequent persist requests in the window no-op.
     persist_pending: std::rc::Rc<std::cell::Cell<bool>>,
+    /// LIFO stack of recently-closed tab descriptors for Ctrl+Shift+T
+    /// reopen. Capped at `CLOSED_TABS_CAPACITY`; the oldest entry is
+    /// dropped when a new one is pushed against a full stack. Cleared
+    /// on disconnect — descriptors reference the active connection's
+    /// tables, so reopening across connections would target the wrong
+    /// schema. Editor descriptors round-trip the buffer text;
+    /// dirty tabs lose their pending row/DDL edits because the
+    /// trackers have already been cleared by the close path.
+    closed_tabs_stack: std::rc::Rc<std::cell::RefCell<std::collections::VecDeque<ClosedTabDescriptor>>>,
 }
+
+/// Snapshot of a tab the user just closed, retained for Ctrl+Shift+T
+/// reopen. Mirrors the persistence variants in `workspace_state` so
+/// reopen routes back through the same `append_*` constructors.
+#[derive(Debug, Clone)]
+pub enum ClosedTabDescriptor {
+    Editor {
+        query: String,
+    },
+    Table {
+        schema: Option<String>,
+        table: String,
+        mode: TableMode,
+        offset: u64,
+        page_size: u64,
+        sort: Option<(usize, bool)>,
+    },
+}
+
+pub(super) const CLOSED_TABS_CAPACITY: usize = 10;
 
 pub struct EditorTabSlot {
     pub controller: Controller<SqlEditor>,
@@ -491,6 +520,12 @@ pub enum AppMsg {
     /// the sidebar factory without going through the full Connected
     /// path.
     TablesReloaded(Vec<TableInfo>),
+    /// Ctrl+Shift+T → pop the most recent closed-tab descriptor and
+    /// reopen it. No-op when the stack is empty (e.g. no tabs closed
+    /// yet, or just reconnected). Editor tabs come back with their
+    /// buffer; Table tabs come back with their schema/table/mode and
+    /// last-known pagination, sort, page size.
+    ReopenClosedTab,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1220,6 +1255,9 @@ impl SimpleComponent for App {
             in_flight_saves: in_flight_saves_handle,
             structure_saves_in_flight: std::rc::Rc::new(std::cell::RefCell::new(std::collections::HashSet::new())),
             persist_pending: std::rc::Rc::new(std::cell::Cell::new(false)),
+            closed_tabs_stack: std::rc::Rc::new(std::cell::RefCell::new(std::collections::VecDeque::with_capacity(
+                CLOSED_TABS_CAPACITY,
+            ))),
         };
         sender.input(AppMsg::ReloadConnections);
         model.show_welcome_page(sender.clone());
@@ -1433,6 +1471,7 @@ impl SimpleComponent for App {
             AppMsg::CopyRowAsInsert { tab_id, row_position } => self.on_copy_row_as_insert(tab_id, row_position),
             AppMsg::DeleteConnection(id) => self.on_delete_connection(id, sender),
             AppMsg::OpenSaved(saved) => self.on_open_saved(saved, sender),
+            AppMsg::ReopenClosedTab => self.on_reopen_closed_tab(sender),
         }
     }
 }
@@ -1560,6 +1599,7 @@ fn install_window_actions(window: &adw::ApplicationWindow, sender: ComponentSend
         input_action!("save-changes", AppMsg::SaveActiveBrowseTab),
         input_action!("undo-change", AppMsg::UndoActiveBrowseTab),
         input_action!("redo-change", AppMsg::RedoActiveBrowseTab),
+        input_action!("reopen-closed-tab", AppMsg::ReopenClosedTab),
     ]);
     window.insert_action_group("win", Some(&group));
     let disconnect_action: gio::SimpleAction = group
@@ -1587,6 +1627,7 @@ fn install_window_shortcuts(window: &adw::ApplicationWindow) {
     controller.add_shortcut(make_shortcut("<Primary>z", "win.undo-change"));
     controller.add_shortcut(make_shortcut("<Primary>y", "win.redo-change"));
     controller.add_shortcut(make_shortcut("<Primary><Shift>z", "win.redo-change"));
+    controller.add_shortcut(make_shortcut("<Primary><Shift>t", "win.reopen-closed-tab"));
     window.add_controller(controller);
 }
 
@@ -1671,6 +1712,11 @@ fn build_shortcuts_window(parent: &adw::ApplicationWindow) -> gtk::ShortcutsWind
         "<Primary><Shift>Tab",
         &crate::tr!("Previous editor tab"),
     ));
+    editor.append(&shortcut_entry(
+        "<Primary><Shift>t",
+        &crate::tr!("Reopen last closed tab"),
+    ));
+    editor.append(&shortcut_entry("<Primary><Shift>f", &crate::tr!("Format SQL")));
     section.append(&editor);
 
     let structure = gtk::ShortcutsGroup::builder()

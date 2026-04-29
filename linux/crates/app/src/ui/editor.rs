@@ -72,6 +72,8 @@ pub enum SqlEditorInput {
     /// a different status / history-record reason.
     ShowTimedOut(u32),
     ReplaceQuery(String),
+    /// Ctrl+Shift+F → reformat the buffer in place via sqlformat.
+    Format,
 }
 
 #[derive(Debug)]
@@ -263,9 +265,25 @@ impl SimpleComponent for SqlEditor {
                 }
             }))
             .build();
+        // Ctrl+Shift+F — reformat the buffer in place. Matches the
+        // standard IDE shortcut (DataGrip, IntelliJ, VS Code SQL
+        // extensions) so users don't have to relearn it. Lives on the
+        // source-view controller so it only fires when the editor has
+        // focus; window-scoped Ctrl+F is "Find in results".
+        let format_shortcut = gtk::Shortcut::builder()
+            .trigger(&gtk::ShortcutTrigger::parse_string("<Primary><Shift>f").expect("valid trigger"))
+            .action(&gtk::CallbackAction::new({
+                let sender = sender.clone();
+                move |_, _| {
+                    sender.input(SqlEditorInput::Format);
+                    glib::Propagation::Stop
+                }
+            }))
+            .build();
         let controller = gtk::ShortcutController::new();
         controller.add_shortcut(run_shortcut);
         controller.add_shortcut(cancel_shortcut);
+        controller.add_shortcut(format_shortcut);
         widgets.source_view.add_controller(controller);
 
         let drop_target = gtk::DropTarget::new(gtk::gio::File::static_type(), gtk::gdk::DragAction::COPY);
@@ -507,6 +525,33 @@ impl SimpleComponent for SqlEditor {
 
             SqlEditorInput::ReplaceQuery(text) => {
                 self.source_view.buffer().set_text(&text);
+            }
+
+            SqlEditorInput::Format => {
+                // sqlformat is dialect-agnostic — it normalises
+                // whitespace, indents subqueries, uppercases keywords.
+                // Empty buffers no-op; the formatter would just return
+                // an empty string but `set_text` would still bump the
+                // change marker. Cursor lands at start because all
+                // pre-format byte offsets shift; the user can press
+                // Ctrl+Z if they don't like the result.
+                let buffer = self.source_view.buffer();
+                let (start, end) = buffer.bounds();
+                let text = buffer.text(&start, &end, false).to_string();
+                if text.trim().is_empty() {
+                    return;
+                }
+                let opts = sqlformat::FormatOptions {
+                    indent: sqlformat::Indent::Spaces(4),
+                    uppercase: Some(true),
+                    lines_between_queries: 2,
+                    ..sqlformat::FormatOptions::default()
+                };
+                let formatted = sqlformat::format(&text, &sqlformat::QueryParams::None, &opts);
+                if formatted == text {
+                    return;
+                }
+                buffer.set_text(&formatted);
             }
         }
     }
