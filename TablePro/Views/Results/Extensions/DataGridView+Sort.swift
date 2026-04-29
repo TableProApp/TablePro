@@ -12,16 +12,22 @@ extension TableViewCoordinator {
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
         guard !isSyncingSortDescriptors else { return }
 
-        guard let sortDescriptor = tableView.sortDescriptors.first,
-              let key = sortDescriptor.key,
+        guard let newDescriptor = tableView.sortDescriptors.first,
+              let key = newDescriptor.key,
               let columnIndex = dataColumnIndex(from: NSUserInterfaceItemIdentifier(key)),
               columnIndex >= 0, columnIndex < tableRowsProvider().columns.count else {
             return
         }
 
-        let isMultiSort = NSEvent.modifierFlags.contains(.shift)
-            || NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-        delegate?.dataGridSort(column: columnIndex, ascending: sortDescriptor.ascending, isMultiSort: isMultiSort)
+        if let oldDescriptor = oldDescriptors.first,
+           oldDescriptor.key == newDescriptor.key,
+           oldDescriptor.ascending == false,
+           newDescriptor.ascending == true {
+            delegate?.dataGridClearSort()
+            return
+        }
+
+        delegate?.dataGridSort(column: columnIndex, ascending: newDescriptor.ascending, isMultiSort: false)
     }
 
     // MARK: - Double-Click Column Divider Auto-Fit

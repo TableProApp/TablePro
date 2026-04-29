@@ -430,12 +430,18 @@ struct DataGridView: NSViewRepresentable {
 
         coordinator.currentSortState = sortState
 
-        let desired: [NSSortDescriptor] = sortState.columns.compactMap { sortCol in
-            guard let identifier = coordinator.identitySchema.identifier(for: sortCol.columnIndex) else { return nil }
-            return NSSortDescriptor(key: identifier.rawValue, ascending: sortCol.direction == .ascending)
+        let primary: NSSortDescriptor?
+        if let firstSort = sortState.columns.first,
+           let identifier = coordinator.identitySchema.identifier(for: firstSort.columnIndex) {
+            primary = NSSortDescriptor(key: identifier.rawValue, ascending: firstSort.direction == .ascending)
+        } else {
+            primary = nil
         }
 
-        if !descriptorsEqual(tableView.sortDescriptors, desired) {
+        let desired = primary.map { [$0] } ?? []
+        let current = tableView.sortDescriptors.first
+        let needsUpdate = (current?.key != primary?.key) || (current?.ascending != primary?.ascending)
+        if needsUpdate {
             tableView.sortDescriptors = desired
         }
 
@@ -444,14 +450,6 @@ struct DataGridView: NSViewRepresentable {
             sortState: sortState,
             schema: coordinator.identitySchema
         )
-    }
-
-    private func descriptorsEqual(_ lhs: [NSSortDescriptor], _ rhs: [NSSortDescriptor]) -> Bool {
-        guard lhs.count == rhs.count else { return false }
-        for (a, b) in zip(lhs, rhs) where a.key != b.key || a.ascending != b.ascending {
-            return false
-        }
-        return true
     }
 
     private func reloadAndSyncSelection(
