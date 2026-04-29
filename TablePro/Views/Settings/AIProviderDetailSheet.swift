@@ -443,7 +443,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: apiKey)
+        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
         isFetchingModels = true
         modelFetchError = nil
 
@@ -472,7 +472,7 @@ struct AIProviderDetailSheet: View {
             return
         }
 
-        let provider = AIProviderFactory.createProvider(for: draft, apiKey: apiKey)
+        let provider = AIProviderFactory.createProvider(for: normalizedDraft, apiKey: apiKey)
         isTesting = true
         testResult = nil
 
